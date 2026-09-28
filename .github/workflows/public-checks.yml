@@ -12,7 +12,6 @@ jobs:
   python:
     runs-on: ubuntu-latest
     env:
-      AUTOYOU_TEST_ROOT: ${{ runner.temp }}/autoyou-test-root
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
