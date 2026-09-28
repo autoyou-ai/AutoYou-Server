@@ -1,0 +1,44 @@
+from pathlib import Path
+
+from fastapi import Request
+
+from autoyou_agents.shared_tools.scheduler_mission_control import (
+    _api_auth_error,
+    create_agent_website_app,
+)
+
+
+APP_ROOT = Path(__file__).resolve().parents[1]
+FRONTEND_DIR = APP_ROOT / "frontend"
+
+def register_routes(app, agent_name: str) -> None:
+    @app.get("/health")
+    def health() -> dict:
+        return {
+            "status": "ok",
+            "agent_name": agent_name,
+            "proxy_path": "{{proxy_path}}",
+        }
+
+    @app.get("/api/status")
+    def status(request: Request):
+        auth_error = _api_auth_error(agent_name, request)
+        if auth_error:
+            return auth_error
+        return {
+            "agent_name": agent_name,
+            "ui_purpose": "{{ui_purpose}}",
+            "recommended_local_port": {{local_port}},
+            "proxy_path": "{{proxy_path}}",
+            "message": "Replace this scaffold with the real frontend/backend implementation.",
+        }
+
+
+app = create_agent_website_app(
+    agent_name="{{agent_name}}",
+    title="{{app_title}}",
+    description="{{ui_purpose}}",
+    index_path=FRONTEND_DIR / "index.html",
+    assets_dir=FRONTEND_DIR / "assets",
+    extra_routes_fn=register_routes,
+)

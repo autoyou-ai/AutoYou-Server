@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoYou Fine Tuning Agent</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body class="locked">
+    <div class="app-shell hidden" id="app-shell" inert>
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">FT</div>
+          <div>
+            <div class="brand-title">Fine Tuning</div>
+            <div class="brand-subtitle">AutoYou Agent</div>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="Fine tuning sections">
+          <a href="#overview" class="nav-link active">Overview</a>
+          <a href="#datasets" class="nav-link">Datasets</a>
+          <a href="#training" class="nav-link">Training</a>
+          <a href="#models" class="nav-link">Models</a>
+        </nav>
+        <div class="sidebar-foot">
+          <span id="authPill" class="pill neutral">Checking auth</span>
+          <button id="logoutBtn" class="ghost-button" type="button">Logout</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1>Fine-tuning workspace</h1>
+            <p>Prepare local datasets and run local training.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="refreshBtn" class="secondary-button" type="button">Refresh</button>
+            <button id="pullWhatsappBtn" class="primary-button" type="button">Use WhatsApp Log</button>
+            <button id="pullTelegramUserBtn" class="secondary-button" type="button">Use Saved Messages</button>
+          </div>
+        </header>
+
+        <section id="overview" class="section-grid">
+          <article class="panel metric-panel">
+            <span class="label">Workspace</span>
+            <strong id="workspaceText">Loading</strong>
+            <small id="diskText">Disk usage unavailable</small>
+          </article>
+          <article class="panel metric-panel">
+            <span class="label">WhatsApp live log</span>
+            <strong id="whatsappText">Checking</strong>
+            <small id="whatsappDetail">Runtime status pending</small>
+          </article>
+          <article class="panel metric-panel">
+            <span class="label">Telegram Saved Messages</span>
+            <strong id="telegramUserText">Checking</strong>
+            <small id="telegramUserDetail">Consent status pending</small>
+          </article>
+          <article class="panel metric-panel">
+            <span class="label">Local models</span>
+            <strong id="ollamaText">Checking</strong>
+            <small id="ollamaDetail">Model list pending</small>
+          </article>
+          <article class="panel metric-panel">
+            <span class="label">Trainer</span>
+            <strong id="trainerText">Checking</strong>
+            <small id="trainerDetail">Hardware preflight pending</small>
+          </article>
+          <article class="panel metric-panel">
+            <span class="label">Active Job</span>
+            <strong id="activeJobText">None</strong>
+            <small id="activeJobDetail">No trainer is running</small>
+          </article>
+        </section>
+
+        <section id="datasets" class="content-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Extract Messages</h2>
+                <p>Choose a source and prepare a dataset.</p>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="status-strip">
+                <span class="label">WhatsApp history</span>
+                <strong id="dumpSupportText">Checking support</strong>
+              </div>
+              <div class="status-strip">
+                <span class="label">Telegram Saved Messages</span>
+                <strong id="telegramUserSupportText">Checking consent</strong>
+              </div>
+              <form id="dumpForm" class="stack compact-stack">
+                <fieldset class="filter-group">
+                  <legend>What to include</legend>
+                  <label class="check-row">
+                    <input id="includePersonal" type="checkbox" checked />
+                    Include personal messages
+                  </label>
+                  <label class="check-row">
+                    <input id="includeGroups" type="checkbox" />
+                    Include group messages
+                  </label>
+                </fieldset>
+                <fieldset class="filter-group">
+                  <legend>Timeline</legend>
+                  <div class="segmented" role="radiogroup" aria-label="Timeline">
+                    <label class="radio-row">
+                      <input type="radio" name="timelineMode" value="all_time" checked />
+                      All time
+                    </label>
+                    <label class="radio-row">
+                      <input type="radio" name="timelineMode" value="range" />
+                      Custom range
+                    </label>
+                  </div>
+                  <div id="timelineRange" class="form-row" hidden>
+                    <label>
+                      Earliest
+                      <input id="timelineEarliest" type="date" />
+                    </label>
+                    <label>
+                      Latest
+                      <input id="timelineLatest" type="date" />
+                    </label>
+                  </div>
+                  <small id="timelineError" class="field-error" role="alert" hidden></small>
+                </fieldset>
+                <div class="form-row">
+                  <label>
+                    Owner name
+                    <input id="dumpMeName" type="text" placeholder="Optional" />
+                  </label>
+                  <label>
+                    Dataset title
+                    <input id="dumpTitle" type="text" placeholder="Message history" />
+                  </label>
+                </div>
+                <label class="check-row">
+                  <input id="pauseBridgeDuringDump" type="checkbox" checked />
+                  Pause the live bridge during extraction
+                </label>
+                <button class="primary-button" type="submit">Extract All Messages</button>
+              </form>
+              <div id="dumpJobList" class="list empty">No extractions loaded.</div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Upload Dataset</h2>
+                <p>Use text exports, CSV rows, JSON, JSONL, or Markdown files.</p>
+              </div>
+            </div>
+            <form id="uploadForm" class="stack">
+              <label>
+                File
+                <input id="datasetFile" name="file" type="file" accept=".txt,.csv,.json,.jsonl,.log,.md,.markdown" required />
+              </label>
+              <label>
+                Owner name
+                <input id="meName" name="me_name" type="text" placeholder="Optional sender name in exports" />
+              </label>
+              <label>
+                Dataset title
+                <input id="datasetTitle" name="title" type="text" placeholder="Optional label" />
+              </label>
+              <button class="primary-button" type="submit">Validate Upload</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Import a Folder</h2>
+                <p>Read supported files from a local data dump without keeping a raw copy here.</p>
+              </div>
+            </div>
+            <form id="folderForm" class="stack">
+              <label>
+                Folder path
+                <input id="folderPath" type="text" autocomplete="off" placeholder="C:\\Exports\\conversation-dump" required />
+              </label>
+              <label>
+                Owner name
+                <input id="folderMeName" type="text" placeholder="Optional sender name in exports" />
+              </label>
+              <label>
+                Dataset title
+                <input id="folderTitle" type="text" placeholder="Optional label" />
+              </label>
+              <button class="secondary-button" type="submit">Prepare Folder Dataset</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Data Collector</h2>
+                <p>Use a one-time loopback handoff from the standalone collector. Conversation text is never shown here.</p>
+              </div>
+              <button id="reloadDataCollectorBtn" class="ghost-button" type="button">Check</button>
+            </div>
+            <div class="stack">
+              <div class="status-strip">
+                <span class="label">Standalone collector</span>
+                <strong id="dataCollectorStatus">Checking</strong>
+                <small id="dataCollectorDetail">Looking only on this computer.</small>
+              </div>
+              <form id="dataCollectorHandoffForm" class="stack">
+                <label>
+                  Collector URL
+                  <input id="collectorUrl" type="url" value="http://127.0.0.1:18067" />
+                </label>
+                <label>
+                  One-time handoff code
+                  <input id="collectorHandoffCode" type="text" autocomplete="off" placeholder="Create this in Data Collector" required />
+                </label>
+                <label>
+                  Dataset title
+                  <input id="datacollectorDatasetTitle" type="text" placeholder="Optional label" />
+                </label>
+                <button class="secondary-button" type="submit">Import from Data Collector</button>
+              </form>
+            </div>
+          </article>
+
+          <article class="panel span-all">
+            <div class="panel-header">
+              <div>
+                <h2>Prepared Datasets</h2>
+                <p>Select one dataset before starting a training job.</p>
+              </div>
+              <button id="reloadDatasetsBtn" class="ghost-button" type="button">Reload</button>
+            </div>
+            <div id="datasetList" class="list empty">No datasets loaded.</div>
+          </article>
+        </section>
+
+        <section id="training" class="content-grid wide-right">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Training Config</h2>
+              <p>Defaults target a small local model that can run on this machine.</p>
+              </div>
+            </div>
+            <form id="trainForm" class="stack">
+              <label>
+                Dataset
+                <select id="datasetSelect" required></select>
+              </label>
+              <label>
+                New model name
+                <input id="modelName" type="text" placeholder="autoyou-whatsapp-persona" />
+              </label>
+              <label>
+                Training model
+                <input id="trainingModelId" type="text" />
+              </label>
+              <label>
+                Base model
+                <input id="ollamaBaseModel" type="text" />
+              </label>
+              <div class="form-row">
+                <label>
+                  Max steps
+                  <input id="maxSteps" type="number" min="1" max="5000" step="1" />
+                </label>
+                <label>
+                  Epochs
+                  <input id="epochs" type="number" min="0.1" max="20" step="0.1" value="1" />
+                </label>
+              </div>
+              <label class="check-row">
+                <input id="prepareOnly" type="checkbox" />
+                Validate and write Modelfile only
+              </label>
+              <label class="check-row">
+                <input id="allowCpuTraining" type="checkbox" />
+                Allow slower CPU training for tiny local models
+              </label>
+              <button class="primary-button" type="submit">Start Training</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Jobs</h2>
+                <p>Monitor ETA, install completed runs, or delete stale artifacts.</p>
+              </div>
+              <div class="header-actions">
+                <button id="cleanupJobsBtn" class="ghost-button" type="button">Clean Old Runs</button>
+                <button id="reloadJobsBtn" class="ghost-button" type="button">Reload</button>
+              </div>
+            </div>
+            <div id="jobList" class="list empty">No jobs loaded.</div>
+            <pre id="logPane" class="log-pane">Select a job to view logs.</pre>
+          </article>
+        </section>
+
+        <section id="models" class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Local Models</h2>
+              <p>Generated models can be installed from completed jobs.</p>
+            </div>
+            <button id="reloadModelsBtn" class="ghost-button" type="button">Reload</button>
+          </div>
+          <div id="modelList" class="model-list empty">No model data loaded.</div>
+        </section>
+      </main>
+    </div>
+
+    <div id="authModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="modal-panel">
+        <h2 id="authTitle">Agent Authentication</h2>
+        <p>Enter this agent's current six-digit TOTP code to open the dashboard.</p>
+        <form id="authForm" class="stack">
+          <input id="totpCode" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="000000" />
+          <button class="primary-button" type="submit">Unlock</button>
+        </form>
+        <div id="authError" class="error-text"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="assets/app.js"></script>
+  </body>
+</html>

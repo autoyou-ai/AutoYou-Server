@@ -1,0 +1,273 @@
+# AutoYou Source-Available Personal-Use License
+
+Version 1.3 (September 27, 2026)
+
+This AutoYou Source-Available Personal-Use License (the "License") is a
+limited copyright license from OpenStorey LLC, a California limited liability
+company ("OpenStorey"), to the person using the Licensed Materials
+("Licensee"). By accessing, copying, modifying, building, running, or using
+the Licensed Materials, Licensee accepts this License. If Licensee does not
+accept it, Licensee must stop using the Licensed Materials and delete copies
+that Licensee is not otherwise entitled to retain.
+
+This is a source-available license. It is not represented as an OSI-approved
+open-source license and does not grant the broad commercial freedoms normally
+associated with an open-source license. This License does not replace a
+separate written agreement signed by OpenStorey, a third-party license, an
+app-store rule, a privacy notice, a consumer right that cannot lawfully be
+waived, or a mandatory rule of applicable law.
+
+## 1. Definitions
+
+* **"Licensed Materials"** means the AutoYou source code, compiled binaries,
+  executables, scripts, assets, web pages, documentation, configuration files,
+  tests, build instructions, and other materials that OpenStorey distributes
+  under this License, excluding Third-Party Materials.
+* **"Third-Party Materials"** means software, models, SDKs, libraries, APIs,
+  services, media, fonts, data, or other material owned by a third party and
+  governed by its own license or terms.
+* **"Personal Use"** means use by a natural person for that person's private,
+  non-commercial purposes on devices that person owns or is authorized to
+  control, including personal use, household use, personal education,
+  research, evaluation, accessibility, and private development. Personal Use
+  does not include use for an employer, company, customer, public body,
+  organization, paid service, production operation, or business process.
+* **"Enterprise Use"** means any use by, for, or on behalf of a company,
+  employer, partnership, public body, nonprofit, school as an organization,
+  customer, or other organization, or any use in a paid, customer-facing,
+  production, managed, hosted, or revenue-generating operation.
+* **"Derivative Work"** means a modification, adaptation, integration,
+  compilation, build, installer, package, hosted service, fork, plugin, agent
+  bundle, white-label version, or other work based on or incorporating the
+  Licensed Materials.
+* **"Official Build"** means an artifact that OpenStorey or an authorized
+  release operator builds, signs, notarizes, publishes, or presents as an
+  authorized AutoYou release. A private build is not an Official Build merely
+  because it uses the AutoYou name in a source comment or because it was
+  compiled from public source.
+* **"Commercial Redistribution License"** means a separate written agreement
+  signed by OpenStorey LLC that expressly authorizes commercial client
+  interoperability with an AutoYou server.
+
+The term **"AutoYou Owner Board"** refers to a governance designation used by
+OpenStorey. It is not a separate contracting party, guarantor, charity, or
+trust unless a separate instrument expressly identifies and authorizes it as
+such. OpenStorey is the licensor and contracting party for this License.
+
+## 2. Personal-Use Grant
+
+Subject to this License, OpenStorey grants Licensee a limited, worldwide,
+non-exclusive, non-transferable, non-sublicensable, royalty-free license to
+access, run, privately modify, privately compile, and privately use the
+Licensed Materials solely for Personal Use.
+
+Licensee may create an unofficial private build for Personal Use. Licensee
+must label that build as unofficial when sharing it with another person and
+must not state or imply that OpenStorey, AutoYou, the AutoYou Owner Board, or
+any contributor approved, signed, supports, or warrants it.
+
+This License does not authorize Enterprise Use. Enterprise Use, commercial
+redistribution, paid hosted access, SaaS or managed services, customer or
+production deployment, white-labeling, marketplace distribution, bundled paid
+support, sublicensing, or other commercial exploitation requires a separate
+written commercial agreement signed by OpenStorey before that use begins. A
+runtime field, checkbox, build token, subscription, payment, or request for
+build access is not itself a commercial license.
+
+## 3. Restrictions
+
+Unless a separate written agreement expressly permits it, Licensee must not:
+
+1. use the Licensed Materials for Enterprise Use or any commercial purpose;
+2. distribute, sell, rent, lease, sublicense, publish, host, or make available
+   a Derivative Work to another person as a product or service;
+3. operate AutoYou as a managed service, hosted service, customer support
+   service, or revenue-generating service;
+4. remove or obscure required copyright, license, attribution, safety, or
+   third-party notices;
+5. use AutoYou, OpenStorey, or related marks, domains, logos, artwork, or
+   product identity to imply endorsement, affiliation, certification, or an
+   Official Build;
+6. bypass, disable, tamper with, or interfere with a release gate, entitlement
+   check, payment control, account control, access control, security feature,
+   audit record, or service restriction in order to obtain an unauthorized
+   commercial or hosted benefit; or
+7. distribute a build containing signing keys, credentials, private service
+   configuration, or other confidential release material.
+8. Connecting commercial, monetized, white-labeled, or subscription-gated
+   client software to this server without a Commercial Redistribution License
+   from OpenStorey LLC is strictly prohibited.
+
+Nothing in this License prevents a person using an independent private build
+for Personal Use from configuring that build for local-only operation, when
+doing so does not violate a Third-Party Material license or another written
+agreement. This permission does not authorize an organization or a commercial
+operator to remove or bypass OpenStorey controls in a distributed, hosted, or
+Enterprise deployment.
+
+## 4. User Responsibility and Lawful Operation
+
+AutoYou is self-operated software. Licensee is solely responsible for the
+data, prompts, messages, media, credentials, accounts, models, agents,
+plugins, automations, devices, recipients, outputs, and third-party services
+that Licensee connects to or operates with AutoYou.
+
+Licensee represents and warrants that Licensee will:
+
+1. use AutoYou only with the rights, notices, permissions, consents, lawful
+   bases, and approvals required for the intended use;
+2. comply with applicable privacy, data-protection, consumer-protection,
+   employment, recording, wiretap, telecommunications, anti-spam,
+   export-control, sanctions, intellectual-property, platform, app-store, and
+   third-party service rules;
+3. not use AutoYou for unlawful surveillance, unauthorized access, credential
+   misuse, malware, spam, bulk unsolicited messaging, impersonation,
+   harassment, infringement, deceptive practices, or other unlawful or abusive
+   activity; and
+4. not represent AutoYou, OpenStorey, the AutoYou Owner Board, contributors,
+   Apple, Google, Meta, Signal, Telegram, model providers, or another third
+   party as sponsoring, endorsing, approving, or controlling Licensee's use
+   without express written authorization.
+
+For a hosted OpenStorey service, data handling is governed by the applicable
+AutoYou Terms of Use, Privacy Policy, service-specific notice, and any signed
+data-processing agreement. For a local, self-hosted, source, or privately
+compiled deployment, Licensee is the operator and is responsible for access
+control, retention, deletion, backups, logs, data-subject requests, and
+downstream processing.
+
+## 5. Hosted Services and Third-Party Integrations
+
+This License grants no right to an AutoYou Cloud account, Cloud Pair,
+private-priority relay, shared community relay, STUN/TURN/ICE service,
+offline-notification service, reverse proxy or tunnel, messaging-partner
+service, QR configuration service, x402 access, advertising program, reward
+credit, subscription waiver, support plan, or other hosted entitlement. Each
+service is optional, may be unavailable or changed, and is subject to its
+current service terms, privacy notice, eligibility rules, provider rules, and
+technical limits.
+
+AutoYou may interoperate with messaging providers, AI providers, app stores,
+SDKs, operating systems, relays, tunnel providers, payment or x402
+facilitators, advertising providers, and APIs. Those providers are not parties
+to this License. Their terms, licenses, privacy notices, age limits, consent
+requirements, and enforcement decisions apply to the relevant integration.
+Licensee must stop using an integration if Licensee lacks authorization or if
+a provider, platform, regulator, or law requires the use to stop.
+
+## 6. Runtime Acceptance and Unofficial Builds
+
+By entering an administration password, clicking Start, Unlock, Sign In,
+Agree, or Connect, or otherwise using a released client or server, the user
+confirms that the user reviewed and accepted this License, the linked Terms of
+Use and Privacy Policy, the applicable Third-Party Materials notices, and the
+responsibility obligations above.
+
+An unofficial build may be compiled by a user for Personal Use, but it is not
+an OpenStorey release, is not covered by OpenStorey signing or support, and
+must not be presented as official. A build-access or electronic-signature
+workflow at `sign.autoyou.me` may be used to document authorization for an
+Official Build. It does not disclose or transfer signing keys, private network
+details, or private source code to the signer. Approval records may be sent to
+`build@autoyou.me` and retained as evidence of the agreed artifact scope.
+
+## 7. Intellectual Property and Contributions
+
+OpenStorey and its licensors retain all right, title, and interest in the
+Licensed Materials, AutoYou names, marks, logos, product identity, goodwill,
+documentation, and related intellectual property, except for the limited
+license expressly granted here.
+
+No patent, trademark, trade-secret, hosted-service, signing-key, entitlement,
+commercial-distribution, app-store, support, update, or Official Build right
+is granted unless expressly stated in a written agreement signed by OpenStorey.
+Nothing in this License is an assignment of intellectual property or a promise
+to assign it. A contribution is accepted only under the contribution terms,
+assignment, or contributor license agreement that applies to that contribution.
+
+## 8. Third-Party Materials and Required Notices
+
+Third-Party Materials are governed by their own license terms and notices.
+This License does not grant rights to third-party software, models, SDKs, APIs,
+services, media, data, fonts, or platforms beyond the rights their owners
+grant. If this License conflicts with a mandatory third-party license for a
+specific component, that third-party license controls for that component only.
+
+Release artifacts should include the artifact-specific `NOTICE.txt`,
+`THIRD-PARTY-NOTICES.md`, SBOM, and applicable license texts. The presence of
+an AutoYou license does not replace a required source offer, relinking right,
+notice, attribution, or network-source obligation under GPL, LGPL, AGPL, MPL,
+or another third-party license.
+
+## 9. No Warranty
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED MATERIALS ARE
+PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTY OF
+ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING ANY
+WARRANTY OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE,
+NONINFRINGEMENT, SECURITY, AVAILABILITY, ACCURACY, QUIET ENJOYMENT, OR
+COMPATIBILITY WITH A THIRD-PARTY SERVICE.
+
+OpenStorey, the AutoYou Owner Board, contributors, developers, maintainers,
+officers, directors, employees, contractors, licensors, and affiliates do not
+warrant uninterrupted operation, error-free operation, data preservation,
+provider availability, platform acceptance, legal suitability, or freedom from
+account action, service suspension, claims, or regulatory review. AutoYou is
+not a law firm, medical provider, financial adviser, emergency service,
+telecommunications carrier, or compliance service. Outputs must be reviewed by
+qualified humans before regulated, high-risk, legal, medical, financial,
+safety, employment, or consumer-impacting use.
+
+## 10. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, OPENSTOREY, THE AUTOYOU
+OWNER BOARD, CONTRIBUTORS, DEVELOPERS, MAINTAINERS, OFFICERS, DIRECTORS,
+EMPLOYEES, CONTRACTORS, LICENSORS, AND AFFILIATES WILL NOT BE LIABLE FOR
+INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, PUNITIVE, OR
+ENHANCED DAMAGES; LOST PROFITS, REVENUE, DATA, OR GOODWILL; BUSINESS
+INTERRUPTION; SUBSTITUTE SERVICES; SECURITY INCIDENTS; THIRD-PARTY ACCOUNT
+ACTION; PLATFORM REJECTION; REGULATORY INVESTIGATION; OR A CLAIM ARISING
+FROM LICENSEE DATA, AUTOMATIONS, OUTPUTS, MODELS, THIRD-PARTY SERVICES, OR
+UNAUTHORIZED USE.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, OPENSTOREY'S TOTAL
+AGGREGATE LIABILITY ARISING OUT OF OR RELATED TO THIS LICENSE OR THE LICENSED
+MATERIALS WILL NOT EXCEED THE GREATER OF (A) AMOUNTS LICENSEE PAID DIRECTLY
+TO OPENSTOREY FOR THE LICENSED MATERIALS IN THE THREE MONTHS BEFORE THE CLAIM
+OR (B) ONE HUNDRED U.S. DOLLARS (US $100).
+
+Some jurisdictions do not allow certain exclusions or limitations. In those
+jurisdictions, the exclusions and limitations apply to the fullest extent
+permitted by law and do not limit rights that cannot lawfully be limited.
+
+## 11. Indemnification
+
+To the maximum extent permitted by law, Licensee will defend, indemnify, and
+hold harmless OpenStorey, the AutoYou Owner Board, contributors, developers,
+maintainers, officers, directors, employees, contractors, licensors, and
+affiliates from claims, demands, damages, losses, liabilities, costs,
+penalties, settlements, and reasonable attorneys' fees arising from Licensee's
+use, deployment, modification, distribution, hosting, Enterprise Use, data,
+content, outputs, connected services, violation of law or third-party rights,
+or breach of this License or another AutoYou agreement.
+
+## 12. Termination and General Terms
+
+This License terminates automatically if Licensee materially breaches it. On
+termination, Licensee must stop the unauthorized use, distribution, hosting,
+and commercial exploitation of the Licensed Materials and stop using AutoYou
+marks or official branding. Sections that by their nature should survive,
+including responsibility, third-party risk, warranty disclaimer, liability
+limits, indemnification, intellectual-property reservation, termination, and
+enforcement, survive.
+
+This License is governed by the law specified in the applicable agreement or,
+if none exists, the laws applicable to OpenStorey in California, without
+regard to conflict-of-law rules. Any dispute forum, arbitration provision,
+consumer-law protection, or other mandatory rule is subject to the applicable
+written agreement and non-waivable law. If any provision is unenforceable, it
+will be limited to the minimum extent necessary and the remaining provisions
+will remain in effect.
+
+Copyright (c) 2026 OpenStorey LLC. All rights reserved except for the limited
+license expressly granted above.

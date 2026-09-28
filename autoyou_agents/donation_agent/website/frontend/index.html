@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Support AutoYou — donate, join AutoYou Creator, or share the project.">
+  <meta name="theme-color" content="#070b16">
+  <title>Support AutoYou</title>
+  <link rel="stylesheet" href="./assets/styles.css?v=3">
+</head>
+<body>
+  <div class="sky" aria-hidden="true">
+    <span class="orb orb-a"></span>
+    <span class="orb orb-b"></span>
+    <span class="orb orb-c"></span>
+  </div>
+
+  <main class="shell">
+    <header class="hero reveal">
+      <p class="eyebrow">AutoYou · Community Support</p>
+      <h1 id="hero-title">Support <span class="grad">AutoYou</span></h1>
+      <p id="hero-tagline" class="tagline">Local-first AI that answers to you, not the cloud.</p>
+      <p class="hero-note">Every donation is a voluntary gift that keeps AutoYou independent — no ads required, no data sold.</p>
+    </header>
+
+    <section class="section reveal" id="providers-section" hidden>
+      <div class="section-head">
+        <h2>Support &amp; Creator access</h2>
+        <p>Official hosted routes - payment happens on the provider's page, never here. Creator access is applied to your AutoYou account automatically after checkout.</p>
+      </div>
+      <div id="provider-list" class="provider-grid"></div>
+    </section>
+
+    <section class="section reveal" id="crypto-section" hidden>
+      <div class="section-head">
+        <h2>Donate crypto</h2>
+        <p>Choose the exact asset and network below, then send from your own wallet. Never assume two networks are interchangeable.</p>
+      </div>
+      <div class="crypto-route-picker" data-crypto-picker>
+        <div class="crypto-route-picker-controls">
+          <p class="eyebrow">Choose a route</p>
+          <label for="crypto-route-select">Asset and network</label>
+          <select id="crypto-route-select" class="crypto-route-select" aria-describedby="crypto-route-help"></select>
+          <p id="crypto-route-help" class="crypto-route-picker-help">Select the exact asset and network you are sending. The QR preview contains the public address only.</p>
+        </div>
+        <article class="crypto-route-preview" id="crypto-route-preview" hidden>
+          <div class="crypto-route-preview-head">
+            <div>
+              <p class="eyebrow">Selected route</p>
+              <h3 id="crypto-route-preview-name">Bitcoin</h3>
+              <p id="crypto-route-preview-network" class="crypto-route-preview-network"></p>
+            </div>
+            <span class="crypto-route-badge" id="crypto-route-badge">QR loading</span>
+          </div>
+          <div class="crypto-route-qr-wrap">
+            <img id="crypto-route-qr" class="crypto-route-qr" width="240" height="240" loading="eager" decoding="async" referrerpolicy="no-referrer" alt="">
+            <p id="crypto-route-qr-fallback" class="crypto-route-qr-fallback" hidden>QR preview unavailable. Copy the public address below instead.</p>
+          </div>
+          <div class="crypto-preview-value">
+            <small>Public receive address</small>
+            <code id="crypto-route-preview-address"></code>
+          </div>
+          <div id="crypto-route-preview-tag" class="crypto-preview-value crypto-preview-tag" hidden>
+            <small>Memo</small>
+            <code id="crypto-route-preview-tag-value"></code>
+          </div>
+          <div class="crypto-preview-actions">
+            <button id="crypto-route-copy" class="btn btn-copy" type="button" data-copy-label="Copy address">Copy address</button>
+            <button id="crypto-route-copy-tag" class="btn btn-copy btn-copy-secondary" type="button" data-copy-label="Copy memo" hidden>Copy memo</button>
+          </div>
+          <a id="crypto-route-deposit" class="crypto-deposit-link crypto-preview-deposit" href="#" target="_blank" rel="noopener noreferrer" hidden>Open deposit instructions</a>
+          <p id="crypto-route-status" class="crypto-preview-status" role="status" aria-live="polite">Verify the asset, network, address, and any memo before sending.</p>
+        </article>
+      </div>
+      <div id="crypto-list" class="crypto-grid"></div>
+      <p class="fineprint"><strong>Ripple (XRP) reminder:</strong> include the memo shown on the XRP card. Verify the first and last characters, asset, and network before sending.</p>
+      <p class="fineprint">AutoYou never asks for your seed phrase, private keys, or card details — in chat, by voice, or on this page.</p>
+    </section>
+
+    <section class="section reveal" id="crypto-pending" hidden>
+      <div class="pending-card">
+        <h2>No crypto routes are currently available</h2>
+        <p>When a route is published, it appears here with its exact asset, network, and any required memo.</p>
+      </div>
+    </section>
+
+    <section class="section reveal" id="socials-section" hidden>
+      <div class="section-head">
+        <h2>Join the community</h2>
+        <p>Follow, post, and tell a friend — sharing helps as much as donating.</p>
+      </div>
+      <div id="social-list" class="social-grid"></div>
+      <div class="share-row">
+        <button id="share-btn" type="button" class="btn btn-share">Share AutoYou</button>
+        <span id="share-feedback" class="share-feedback" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <footer class="footer reveal">
+      <p>Donations are voluntary gifts to the AutoYou project and are not payments for goods or services.</p>
+      <p id="footer-links"></p>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="./assets/app.js?v=3"></script>
+</body>
+</html>

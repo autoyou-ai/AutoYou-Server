@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Website Builder</title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('autoyou.ui.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (_) {}
+  })();
+</script>
+<link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+<script>
+  var __BOOTSTRAP__ = __BOOTSTRAP_JSON__;
+</script>
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-icon">🌐</span>
+      <span class="topbar-title">Website Builder</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="status-chip" id="auth-chip"></span>
+      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">◑</button>
+      <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
+      <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+      <a class="topbar-link" data-agent-link="notify_agent" href="/agent/notify_agent/">Notify</a>
+    </div>
+  </header>
+
+  <div id="login-gate" class="login-gate hidden">
+    <div class="login-card">
+      <h2>Authentication Required</h2>
+      <p class="login-hint">Enter your 6-digit authenticator code to access Website Builder.</p>
+      <div class="otp-row">
+        <input type="text" id="otp-input" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
+        <button class="btn btn-primary" id="otp-submit">Verify</button>
+      </div>
+      <p class="login-error hidden" id="otp-error"></p>
+    </div>
+  </div>
+
+  <div id="main-layout" class="main-layout hidden">
+    <div class="left-panel">
+      <div class="agent-picker-bar">
+        <label class="picker-label">Preview Agent:</label>
+        <select id="agent-select" class="agent-select">
+          <option value="">- select -</option>
+        </select>
+        <button class="btn btn-sm btn-outline" id="publish-btn" disabled>Publish</button>
+        <button class="btn btn-sm btn-ghost" id="unpublish-btn" disabled>Unpublish</button>
+        <span class="publish-status" id="publish-status"></span>
+      </div>
+      <div id="preview-panel" class="preview-panel">
+        <div class="preview-placeholder" id="preview-placeholder">
+          <p>Select an agent to preview its UI.</p>
+          <p class="muted">Build the frontend by chatting with Website Builder first.</p>
+        </div>
+        <iframe id="preview-iframe" class="preview-iframe hidden" title="Agent UI Preview" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+      </div>
+    </div>
+
+    <div class="chat-panel">
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-welcome">
+          <p>Chat with <strong>Website Builder</strong> to design and deploy agent UIs.</p>
+          <p class="muted">Try: <em>"Build a frontend for weather_agent with a search bar and forecast cards"</em></p>
+        </div>
+      </div>
+      <div class="chat-input-bar">
+        <textarea id="chat-input" class="chat-input" placeholder="Describe the website you want to build…" rows="2"></textarea>
+        <button class="btn btn-primary" id="send-btn">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

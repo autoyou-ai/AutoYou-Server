@@ -1,0 +1,9 @@
+# Desktop application bridge automation
+# Research-backed stack:
+# - PyAutoGUI for cross-platform mouse/keyboard control
+# - mss for fast cross-platform screenshots
+# - pywinauto for optional Windows-native window automation fallback
+PyAutoGUI>=0.9.54
+mss>=9.0.1
+pygetwindow>=0.0.9
+pywinauto>=0.6.9; platform_system == "Windows"

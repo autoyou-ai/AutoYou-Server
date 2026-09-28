@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <base href="./">
+  <title>AutoYou Notes</title>
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem("autoyou.ui.theme");
+        if (savedTheme === "light" || savedTheme === "dark") {
+          document.documentElement.dataset.theme = savedTheme;
+        }
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="preload" href="./assets/styles.css" as="style">
+  <link rel="preload" href="./assets/app.js" as="script">
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1 class="brand-title">AutoYou</h1>
+        <p class="brand-tagline">Your thoughts. A smarter you.</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="sync-status" class="sync-status" data-state="__INITIAL_SYNC_STATE__" title="__INITIAL_SYNC_TITLE__">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <span id="sync-label" class="sync-label">__INITIAL_SYNC_LABEL__</span>
+        </span>
+        <div class="menu-wrap">
+          <button id="notes-menu-toggle" class="round-button" type="button" aria-label="More options" aria-haspopup="menu" aria-expanded="false" aria-controls="notes-menu">
+            <i class="ic ic-more" aria-hidden="true"></i>
+          </button>
+          <div id="notes-menu" class="menu" role="menu" aria-label="Notes options" hidden>
+            <button id="notes-refresh" class="menu-item" type="button" role="menuitem">
+              <i class="ic ic-refresh" aria-hidden="true"></i>
+              <span class="action-text">Refresh</span>
+            </button>
+            <a id="all-frontends-link" class="menu-item" href="../../websites" role="menuitem">
+              <i class="ic ic-grid" aria-hidden="true"></i>
+              <span class="action-text">All websites</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="Find notes">
+      <label class="search-field" for="note-search">
+        <i class="ic ic-search" aria-hidden="true"></i>
+        <input
+          id="note-search"
+          class="search"
+          type="search"
+          aria-label="Search notes"
+          autocomplete="off"
+          enterkeyhint="search"
+          placeholder="Search your notes..."
+        >
+        <button id="note-search-clear" class="search-clear" type="button" aria-label="Clear search" hidden>
+          <i class="ic ic-close" aria-hidden="true"></i>
+        </button>
+      </label>
+      <div id="category-filters" class="category-filters" role="group" aria-label="Filter by category">__INITIAL_CATEGORY_FILTERS_HTML__</div>
+    </section>
+
+    <section class="notes-section" aria-labelledby="notes-heading">
+      <div class="section-head">
+        <h2 id="notes-heading">My Notes <span id="notes-count" class="count-badge">__INITIAL_NOTES_COUNT__</span></h2>
+        <div class="sort-wrap">
+          <button id="notes-sort-toggle" class="sort-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="notes-sort-menu">
+            <span id="notes-sort-label">Newest first</span>
+            <i class="ic ic-chevron-down" aria-hidden="true"></i>
+          </button>
+          <div id="notes-sort-menu" class="menu menu-sort" role="menu" aria-label="Sort notes" hidden>
+            <button class="menu-item" type="button" role="menuitemradio" aria-checked="true" data-order="newest">
+              <span class="action-text">Newest first</span>
+              <i class="ic ic-tick" aria-hidden="true"></i>
+            </button>
+            <button class="menu-item" type="button" role="menuitemradio" aria-checked="false" data-order="oldest">
+              <span class="action-text">Oldest first</span>
+              <i class="ic ic-tick" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="note-list" class="note-list">__INITIAL_NOTE_LIST_HTML__</div>
+      <div id="notes-loading-more" class="load-more" hidden>Loading more notes...</div>
+      <div id="note-list-sentinel" class="list-sentinel" aria-hidden="true"></div>
+      <p class="status" id="notes-status" role="status">__INITIAL_NOTES_STATUS__</p>
+    </section>
+  </main>
+
+  <button id="notes-new" class="fab" type="button" aria-label="Create new note">
+    <i class="ic ic-plus" aria-hidden="true"></i>
+    <span class="fab-label">New note</span>
+  </button>
+
+  <div id="note-modal" class="sheet-shell" aria-hidden="true">
+    <button id="note-modal-backdrop" class="sheet-backdrop" type="button" tabindex="-1" aria-label="Close note"></button>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <header class="sheet-header">
+        <div class="sheet-toolbar">
+          <div id="note-modal-kicker" class="sheet-kicker">Note</div>
+          <div class="sheet-actions">
+            <button id="note-edit-toggle" class="icon-button" type="button" disabled aria-label="Edit note">
+              <i class="ic ic-pencil" aria-hidden="true"></i>
+              <span class="action-text">Edit</span>
+            </button>
+            <button id="note-delete-toggle" class="icon-button danger" type="button" disabled aria-label="Delete note">
+              <i class="ic ic-trash" aria-hidden="true"></i>
+              <span class="action-text">Delete</span>
+            </button>
+            <button id="note-modal-close" class="icon-button" type="button" aria-label="Close note">
+              <i class="ic ic-close" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <h2 id="note-modal-title" class="sheet-title">Select a note</h2>
+      </header>
+      <div id="note-modal-content" class="sheet-content">
+        <div class="empty-state"><p class="empty-copy">Select a note to read it here.</p></div>
+      </div>
+      <div id="note-modal-footer" class="sheet-footer" hidden></div>
+    </section>
+  </div>
+
+  <div id="delete-confirm" class="confirm-shell" aria-hidden="true">
+    <button id="delete-confirm-backdrop" class="confirm-backdrop" type="button" tabindex="-1" aria-label="Cancel delete"></button>
+    <section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-message">
+      <span class="confirm-icon" aria-hidden="true"><i class="ic ic-trash"></i></span>
+      <h2 id="delete-confirm-title" class="confirm-title">Delete this note?</h2>
+      <p id="delete-confirm-message" class="confirm-message">This cannot be undone.</p>
+      <div id="delete-confirm-error" class="error-card" hidden></div>
+      <div class="confirm-actions">
+        <button id="delete-confirm-cancel" class="button subtle" type="button">Cancel</button>
+        <button id="delete-confirm-submit" class="button danger" type="button">Delete</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="media-viewer" class="media-viewer" role="dialog" aria-modal="true" aria-label="Photos" aria-hidden="true" hidden>
+    <div id="media-viewer-track" class="media-viewer-track" tabindex="-1"></div>
+    <header class="media-viewer-top">
+      <button id="media-viewer-close" class="viewer-button" type="button" aria-label="Close photos">
+        <i class="ic ic-close" aria-hidden="true"></i>
+      </button>
+      <p class="media-viewer-title"><span id="media-viewer-name"></span><span id="media-viewer-count"></span></p>
+      <a id="media-viewer-download" class="viewer-button" href="#" download aria-label="Download photo">
+        <i class="ic ic-download" aria-hidden="true"></i>
+      </a>
+    </header>
+    <button id="media-viewer-prev" class="viewer-button viewer-nav prev" type="button" aria-label="Previous photo">
+      <i class="ic ic-chevron-left" aria-hidden="true"></i>
+    </button>
+    <button id="media-viewer-next" class="viewer-button viewer-nav next" type="button" aria-label="Next photo">
+      <i class="ic ic-chevron-right" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <script>
+    window.__INITIAL_NOTES_BOOTSTRAP__ = __INITIAL_NOTES_BOOTSTRAP_JSON__;
+  </script>
+  <script src="./assets/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+AutoYou Server public maintainer context (version in VERSION)
+
+Scope
+- Work only with files and documentation included in this repository.
+- AutoYou Server is source-available under LICENSE (free for personal private use). Commercial, enterprise, organizational, and hosted uses require separate commercial licensing via https://www.autoyou.me/.
+- Client applications and hosted account services are distributed separately.
+
+Architecture & Features
+- Composition: server.py composes application startup, routers/ registers HTTP and WebSocket endpoints, and core_server/ manages state, lifecycle, security, and WebRTC engines.
+- Shared Runtime: shared/ provides peer-link, local intent routing, room bridge presence/calls, and libsodium encryption.
+- Messaging & Agents: autoyou_agents/, telegram_user_service.py, signal_service.py, and whatsapp_service.py provide agent workflows and chat bridges.
+- Build Authorization: Official release artifacts require build authorization via https://sign.autoyou.me/ verified against single-signer OAuth account credentials.
+
+Engineering Contract
+- Treat implementation and tests as authoritative when documentation and behavior differ.
+- Preserve pairing, peer-link, and transport compatibility.
+- Preserve official-build authorization checks. Local source builds are not official releases.
+- Never add credentials, personal data, runtime state, generated archives, signing keys, or private internal docs.
+- Use hyphens instead of em-dashes across all documentation and comments.
+
+Test Safety
+- Pytest must use AUTOYOU_TEST_ROOT. New stores, registries, caches, and credentials must honor it.
+- Use tmp_path, monkeypatches, and synthetic identifiers. Do not use live messages, accounts, tokens, or logs in tests.
+- Network and live-server tests are opt-in, using isolated ports and runtime roots.
+
+Verification
+- Run the smallest affected test directory first.
+- Before completing changes, run:
+  1. python -m pytest tests/server/build
+  2. python -m pytest tests/test_public_source_export.py
+  3. python -m pytest tests/test_official_build_authorization.py
+  4. python -m pytest tests/test_release_legal_gates.py

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08111f">
+  <title>Windows Security Agent</title>
+  <script>
+    try {
+      var savedTheme = localStorage.getItem('autoyou.ui.theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.dataset.theme = savedTheme;
+    } catch (_) {}
+  </script>
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <script>window.__BOOTSTRAP__ = __BOOTSTRAP_JSON__;</script>
+  <div id="app">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Windows Security Agent home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img"><path d="M12 2 20 5v6c0 5.1-3.4 9.4-8 11-4.6-1.6-8-5.9-8-11V5l8-3Zm0 3.1L8 6.6v4.3c0 3.7 2.3 6.9 4 7.8 1.7-.9 4-4.1 4-7.8V6.6l-4-1.5Z"/></svg>
+        </span>
+        <span><strong>Win Security</strong><small>local observability</small></span>
+      </a>
+      <div class="topbar-actions">
+        <span id="auth-chip" class="status-chip">Locked</span>
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle light and dark theme" title="Toggle theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M5.6 5.6 7 7m10 10 1.4 1.4M3 12h2m14 0h2M5.6 18.4 7 17m10-10 1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section id="login-gate" class="login-gate">
+        <div class="login-card">
+          <p class="eyebrow">PRIVATE AGENT / OTP REQUIRED</p>
+          <h1>Unlock network visibility</h1>
+          <p>Use the AutoYou authenticator code to inspect process-attributed TCP and UDP endpoints on this Windows machine.</p>
+          <label for="otp-input">Authenticator code</label>
+          <div class="otp-row">
+            <input id="otp-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" aria-describedby="otp-error">
+            <button id="otp-submit" class="button primary" type="button">Unlock</button>
+          </div>
+          <p id="otp-error" class="form-error" role="alert"></p>
+        </div>
+      </section>
+
+      <section id="dashboard" class="dashboard hidden" aria-live="polite">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">WINDOWS / PROCESS-BOUND NETWORK SURFACE</p>
+            <h1>See what is connected.</h1>
+            <p class="hero-copy">A low-noise local snapshot of TCP and UDP endpoints, grouped back to the userspace process that owns them.</p>
+          </div>
+          <button id="refresh-button" class="button primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.7-4.2L4 8V4h4L6.8 5.2A6 6 0 1 1 6 15H4a8 8 0 0 0 16-4Zm-4 5h-4v-4l1.3 1.3A4 4 0 1 0 8 11H6a6 6 0 1 1 10 5Z"/></svg>
+            Refresh
+          </button>
+        </div>
+
+        <div id="elevation-banner" class="notice hidden" role="status">
+          <strong>Limited visibility.</strong> <span id="capability-note">Run AutoYou elevated to include protected process metadata and system-owned endpoints.</span>
+        </div>
+
+        <section class="metric-grid" aria-label="Snapshot summary">
+          <article class="metric-card"><span>Total endpoints</span><strong id="metric-total">—</strong><small>latest snapshot</small></article>
+          <article class="metric-card"><span>TCP</span><strong id="metric-tcp">—</strong><small>transport endpoints</small></article>
+          <article class="metric-card"><span>UDP</span><strong id="metric-udp">—</strong><small>bound endpoints</small></article>
+          <article class="metric-card accent"><span>Remote peers</span><strong id="metric-remote">—</strong><small>non-local addresses</small></article>
+        </section>
+
+        <nav id="view-tabs" class="view-tabs" role="tablist" aria-label="Dashboard views">
+          <button class="view-tab active" type="button" role="tab" aria-selected="true" data-view="summary">Summary</button>
+          <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="connections">All connections</button>
+          <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="processes">Processes</button>
+          <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="peers">Remote peers</button>
+        </nav>
+
+        <section id="summary-view" class="view-panel">
+          <div class="overview-grid">
+            <section class="panel map-panel">
+              <div class="panel-heading"><div><p class="eyebrow">GLOBAL REMOTE SURFACE</p><h2>Mapped endpoints</h2></div><button id="map-peers" class="button secondary" type="button">Map public peers</button></div>
+              <div class="map-toolbar"><span id="map-status" class="muted">Cached locations only</span><span id="map-count" class="count-badge">0 mapped</span></div>
+              <svg id="global-map" class="global-map" viewBox="0 0 1000 460" role="img" aria-label="Global map of enriched remote endpoints">
+                <g class="map-graticule" aria-hidden="true"><path d="M40 90h920M40 180h920M40 270h920M40 360h920M250 28v404M500 28v404M750 28v404"/></g>
+                <g id="map-boundaries" class="map-boundaries" aria-label="Natural Earth country boundaries"></g>
+                <g id="map-points"></g>
+              </svg>
+              <p class="footer-note map-footnote">Coordinates are coarse network-location signals, not a verified device or person location. Boundaries: Natural Earth Admin 0, 1:110m, public-domain data.</p>
+            </section>
+            <section class="panel insight-panel">
+              <div class="panel-heading"><div><p class="eyebrow">CORRELATED ACTIVITY</p><h2>Process signals</h2></div><span id="summary-process-count" class="count-badge">0</span></div>
+              <div id="summary-process-list" class="compact-list"><div class="empty-state">No process data yet.</div></div>
+              <div class="subheading"><span class="eyebrow">PROCESS HISTORY</span><span class="muted">recent snapshots</span></div>
+              <div id="history-list" class="history-list"><div class="empty-state">History appears after the first snapshot.</div></div>
+            </section>
+          </div>
+          <section class="panel summary-peer-panel"><div class="panel-heading"><div><p class="eyebrow">REMOTE PEER GROUPS</p><h2>Where processes connect</h2></div><span id="summary-peer-count" class="count-badge">0</span></div><div id="summary-peer-list" class="peer-list"><div class="empty-state">No remote peers yet.</div></div></section>
+        </section>
+
+        <section id="peers-view" class="view-panel hidden">
+          <section class="panel"><div class="panel-heading"><div><p class="eyebrow">REMOTE PEER GROUPS</p><h2>Expandable peer detail</h2></div><span id="peer-count" class="count-badge">0</span></div><div id="remote-peer-list" class="peer-list"><div class="empty-state">No remote peers yet.</div></div></section>
+        </section>
+
+        <section id="connections-view" class="view-panel hidden">
+          <div class="toolbar">
+            <div>
+              <label for="connection-filter">Show</label>
+              <select id="connection-filter">
+                <option value="all">All connections</option>
+                <option value="tcp">TCP only</option>
+                <option value="udp">UDP only</option>
+                <option value="remote">Remote peers</option>
+                <option value="listen">Listening</option>
+              </select>
+            </div>
+            <span id="snapshot-status" class="muted" role="status">Waiting for snapshot</span>
+          </div>
+          <div class="content-grid">
+            <section id="process-panel" class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">USERSPACE OWNERSHIP</p><h2>Process activity</h2></div><span id="process-count" class="count-badge">0</span></div>
+              <div id="process-list" class="process-list"><div class="empty-state">No process data yet.</div></div>
+            </section>
+            <section id="connection-panel" class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">ENDPOINT DETAIL</p><h2>Connection stream</h2></div><span id="connection-count" class="count-badge">0</span></div>
+              <div id="connection-list" class="connection-list"><div class="empty-state">No connections yet.</div></div>
+            </section>
+          </div>
+        </section>
+        <section id="selection-panel" class="panel selection-panel hidden" aria-live="polite"><div class="panel-heading"><div><p class="eyebrow">SELECTED RELATIONSHIP</p><h2 id="selection-title">Peer details</h2></div><button id="selection-close" class="icon-button" type="button" aria-label="Close selected peer details">Ã—</button></div><div id="selection-details" class="selection-details"></div><div class="policy-actions"><button class="button secondary" type="button" disabled>Permit (planned)</button><button class="button danger" type="button" disabled>Block (planned)</button><span class="muted">Read-only now; stable policy keys are retained for future enforcement.</span></div></section>
+        <section id="enrichment-panel" class="panel enrichment-panel hidden" aria-live="polite">
+          <div class="panel-heading"><div><p class="eyebrow">PUBLIC NETWORK INTELLIGENCE</p><h2 id="enrichment-title">Remote IP</h2></div><button id="enrichment-close" class="icon-button" type="button" aria-label="Close IP intelligence panel">×</button></div>
+          <div id="enrichment-details" class="enrichment-details"></div>
+          <p id="enrichment-note" class="footer-note"></p>
+        </section>
+        <section class="panel bios-panel" aria-live="polite">
+          <div class="panel-heading"><div><p class="eyebrow">FIRMWARE INVENTORY</p><h2>BIOS &amp; TPM</h2></div><button id="bios-refresh" class="button secondary" type="button">Refresh</button></div>
+          <div id="bios-details" class="enrichment-details"><div class="empty-state">Read-only firmware inventory is not loaded.</div></div>
+        </section>
+        <p class="footer-note">Read-only collector · PowerShell networking APIs · local SQLite history · no packet payload capture</p>
+      </section>
+    </main>
+  </div>
+  <script src="./assets/app.js?v=earth-map-api"></script>
+</body>
+</html>

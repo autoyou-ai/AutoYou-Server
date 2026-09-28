@@ -1,0 +1,228 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.venv-*/
+.run/
+.run-*/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Node
+node_modules/
+openclaw/openclaw/node_modules/
+openclaw/openclaw/.git/
+openclaw/openclaw/dist/
+openclaw/dist/
+openclaw/tests/
+tools/signtoross/apps/mike/frontend/.next/
+
+# Client build trees that are packaged separately. Keep only the legal-manifest
+# inputs needed by the release generator, plus clients/python's contract file.
+clients/android/*
+!clients/android/app/
+clients/android/app/*
+!clients/android/app/build.gradle.kts
+!clients/android/app/src/
+clients/android/app/src/*
+!clients/android/app/src/main/
+clients/android/app/src/main/*
+!clients/android/app/src/main/java/
+!clients/android/app/src/main/java/**
+clients/ios/*
+!clients/ios/AutoYouApp/
+clients/ios/AutoYouApp/*
+!clients/ios/AutoYouApp/Views/
+!clients/ios/AutoYouApp/Views/**
+!clients/ios/AutoYouApp.xcodeproj/
+clients/ios/AutoYouApp.xcodeproj/*
+!clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/
+clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/*
+!clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcshareddata/
+clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcshareddata/*
+!clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/*
+!clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+clients/windows/*
+!clients/windows/requirements.txt
+clients/windows/build/
+clients/windows/dist/
+clients/windows/venv/
+clients/wsl/
+clients/macos/*
+!clients/macos/apple/
+clients/macos/apple/*
+!clients/macos/apple/requirements.txt
+clients/linux/
+
+# Platform-specific Windows build outputs are excluded below. Keep the source
+# scripts, README, and AppX metadata because the server legal gate validates
+# those release hooks even when the Linux image is being built.
+
+# Release and local virtual environments are never build inputs for the
+# protected Linux server image.
+# AutoYou Lite source is released separately as a protected wheel. Keep only
+# the dependency metadata needed by the server legal-bundle generator.
+autoyou_lite/*
+!autoyou_lite/pyproject.toml
+!autoyou_lite/autoyou_lite/
+autoyou_lite/autoyou_lite/*
+!autoyou_lite/autoyou_lite/requirements.txt
+autoyou_app.build/
+autoyou-website/
+
+# Server containers need only the Markdown guides read by server.py. Website
+# and maintainer guide pages are published separately and must not be copied
+# into the runtime image by COPY . . .
+guides/interactive/
+guides/*.md
+guides/*.txt
+!guides/installation-steps.md
+!guides/WINDOWS_BUILD_GUIDE.md
+!guides/MACOS_BUILD_GUIDE.md
+!guides/SIGNAL_QR_PAIRING_GUIDE.md
+!guides/WHATSAPP_PAIRING_GUIDE.md
+!guides/COMMUNITY_RELAY_SUBMISSION_GUIDE.md
+!guides/HOME_PRIVATE_NETWORK_GUIDE.md
+!guides/MOBILE_PAIRING_GUIDE.md
+!guides/CHROME_PAIRING_GUIDE.md
+AGENTS.md
+.venv-build312/
+.venv-wheel-smoke312-final/
+.venv-wheel-smoke312-rdc/
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*~
+*.tmp
+tmp/
+temp/
+
+# Local operator configuration and runtime state
+.env
+.env.*
+!.env.example
+autoyou-dev/
+autoyou_agents/cloudflare_agent/
+autoyou_agents/ionos_agent/
+autoyou_agents/ionos_cloudflare_agent/
+autoyou_agents/mail_agent/
+autoyou_agents/robinhood_agent/
+autoyou_agents/trading_agent/
+autoyou_agents/proxy_agent/
+autoyou_agents/self_improvement/
+scripts/autoyou_agent_goal_hook.py
+scripts/autoyou_agent_goal_loop.py
+release-keys/
+*.private.pem
+DO_NOT_UPLOAD/
+config.encrypted
+config.encrypted.*
+config.keystore.enc
+agent_install_registry.json
+agent_frontends_registry.json
+agent_ui_sessions.json
+login_ui_state.db
+page_feed.db
+sessions.db
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.adk/
+autoyou_agents/.adk/
+autoyou_agents/notes_agent/*.db
+autoyou_agents/notes_agent/*.sqlite
+autoyou_agents/notes_agent/*.sqlite3
+autoyou_agents/notes_agent/media/
+autoyou_agents/notes_agent/autoyou_notes_agent/
+signal_data/
+whatsapp/.wwebjs_auth/
+whatsapp/.wwebjs_cache/
+node/whatsapp/.wwebjs_auth/
+node/whatsapp/.wwebjs_cache/
+uploads/
+output/
+memory/
+ollama_data/
+cognee/
+vendor/cognee/
+vendor/odysseus/data/
+shared/voice_training/dataset/
+
+# Build outputs and local release payloads
+tests/
+clients/python/tests/
+servers/windows/artifacts/
+servers/windows/dist/
+autoyou-core/updates/
+autoyou-website/files/
+autoyou-core/
+training/
+support_training/
+research/
+reference/
+servers/wsl/build/
+servers/wsl/artifacts/
+screenshots/
+dist/
+build/
+nuitka-crash-report.xml
+.llm/*
+!.llm/security/
+!.llm/security/tunnelmole-vm2-production-audit.md
+.codex_runlogs/
+.codex-build-logs/
+Music/
+tools/mike/
+tools/
+
+# Local generated build, training, and tool runtime state
+.tmp/
+servers/macos/apple/.build/
+clients/android/.gradle/
+clients/android/build/
+clients/android/app/build/
+autoyou_agents/fine_tuning_agent/fine_tuning_agent/
+shared/voice_training/
+research/.venv/
+tools/signtoross/.git/
+tools/signtoross/.local/
+win_security_agent/
+autoyou_notes_agent/
+reference/
+# Keep the two tracked diagnostic scripts, but never send local captures,
+# credentials, or generated scratch material to Docker.
+scratch/*
+!scratch/verify_remote_desktop_live.py
+!scratch/verify_skills_agent_live.py
+.runtime_logs/
+build-logs/
+autoyou-outreach/output/
+node/whatsapp/node_modules/
+node/tunnelmole/node_modules/
+autoyou-core/node_modules/
+autoyou-website/node_modules/
+autoyou-website/playwright-report/
+autoyou-website/test-results/

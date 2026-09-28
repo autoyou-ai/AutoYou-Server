@@ -1,0 +1,39 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+
+services:
+  autoyou:
+    build:
+      context: .
+      args:
+        AUTOYOU_INCLUDE_COGNEE: ${AUTOYOU_INCLUDE_COGNEE:-0}
+        AUTOYOU_INCLUDE_TUNING: ${AUTOYOU_INCLUDE_TUNING:-0}
+    ports:
+      - "8001:8001"  # Admin Web Port
+      - "127.0.0.1:8067:8067"  # Authenticated Page Service / agent websites
+      - "8081:8081"  # AI Agent Port (plain HTTP, unauthenticated -- container-network only in intent)
+      - "8481:8481"  # AI Agent Port (HTTPS + one-time code, opt-in LAN access)
+    volumes:
+      - .:/app
+      - autoyou-data:/home/autoyou/.local/share/AutoYou
+    environment:
+      - OLLAMA_API_BASE=http://host.docker.internal:11434
+      - SIGNAL_API_URL=http://signal:8080
+      # 8067 is published on the host's loopback only, so the Docker gateway
+      # peer the page service sees is this computer's own browser.
+      - AUTOYOU_PAGE_TRUST_NETWORK_PEERS=1
+    depends_on:
+      - signal
+
+  signal:
+    image: bbernhard/signal-cli-rest-api:latest
+    ports:
+      - "8082:8080" # Expose Signal API on host port 8082
+    volumes:
+      - signal-data:/home/.local/share/signal-cli
+    restart: unless-stopped
+
+volumes:
+  autoyou-data:
+  signal-data:

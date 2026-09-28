@@ -1,0 +1,9 @@
+{
+  "agent_name": "remote_desktop_agent",
+  "title": "Remote Desktop",
+  "description": "Real-time desktop screen casting, monitor and app casting selection, and secure interactive mouse/keyboard control.",
+  "entry_path": "/",
+  "recommended_port": 8087,
+  "requires_proxy_registration": true,
+  "websocket_enabled": true
+}

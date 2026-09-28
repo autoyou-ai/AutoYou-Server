@@ -1,0 +1,1329 @@
+/* Copyright (c) 2026 OpenStorey LLC. All rights reserved. */
+
+/* ── Custom Properties & Design Tokens ──────────────────────────────────────── */
+:root {
+  --app-height: 100dvh;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Theme colors - Light Mode - Flat properly white & black */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --border-color: #e2e8f0;
+  --text-primary: #000000;
+  --text-secondary: #1e293b;
+  --text-muted: #64748b;
+  
+  --primary-hsl: 224, 76%, 48%;
+  --primary: hsl(var(--primary-hsl));
+  --primary-hover: hsl(224, 76%, 40%);
+  --primary-glow: rgba(37, 99, 235, 0.05);
+
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+
+  --glass-bg: #ffffff;
+  --glass-border: #e2e8f0;
+  --glass-shadow: rgba(0, 0, 0, 0.04);
+  --blur-radius: 0px;
+}
+
+[data-theme="dark"] {
+  /* Theme colors - Dark Mode */
+  --bg-primary: #0b0f19;
+  --bg-secondary: #131c2e;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --primary-hsl: 224, 88%, 62%;
+  --primary: hsl(var(--primary-hsl));
+  --primary-hover: hsl(224, 88%, 70%);
+  --primary-glow: rgba(59, 130, 246, 0.25);
+
+  --glass-bg: rgba(15, 23, 42, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+  --blur-radius: 16px;
+}
+
+/* ── Base & Global Reset ────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease;
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: var(--app-height, 100dvh);
+  height: var(--app-height, 100%);
+  background-color: var(--bg-primary);
+}
+
+[data-theme="dark"] #app {
+  background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+                    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
+}
+
+.glass-bg {
+  backdrop-filter: blur(var(--blur-radius));
+}
+
+/* ── Top Navigation Bar ──────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.5rem;
+  background-color: var(--glass-bg);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(var(--blur-radius));
+  z-index: 100;
+  min-height: 60px;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.topbar-icon {
+  font-size: 1.5rem;
+  filter: drop-shadow(0 2px 8px var(--primary-glow));
+}
+
+.topbar-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.topbar-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.topbar-link {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.topbar-link:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.theme-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.btn-logout {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  cursor: pointer;
+}
+
+.btn-logout:hover {
+  background-color: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* Status Chips */
+.status-chip {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 20px;
+  background-color: var(--text-muted);
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.status-chip.authenticated {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-chip.locked {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* ── OTP Verification Gate ──────────────────────────────────────────────────── */
+.login-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: max(2rem, env(safe-area-inset-top)) 2rem max(2rem, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 2.5rem;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 8px 32px var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(var(--blur-radius));
+}
+
+.login-header {
+  margin-bottom: 1.5rem;
+}
+
+.login-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.login-card h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+.login-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.otp-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: stretch;
+}
+
+.otp-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-family: var(--font-mono);
+  text-align: center;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  min-width: 0;
+}
+
+.otp-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.login-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+/* ── Main Dashboard Layout ───────────────────────────────────────────────────── */
+.main-layout {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.glass-panel {
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px var(--glass-shadow);
+  backdrop-filter: blur(var(--blur-radius));
+  border-radius: 12px;
+}
+
+/* ── Sidebar Styling ─────────────────────────────────────────────────────────── */
+.sidebar {
+  width: 320px;
+  min-width: 320px;
+  height: calc(100% - 20px);
+  margin: 10px;
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  border-radius: 12px;
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1.25rem;
+}
+
+.sidebar-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sidebar-section h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+/* Tab button grids */
+.tab-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background-color: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.btn-icon {
+  font-size: 1.1rem;
+}
+
+/* Select wrapper and input stylings */
+.select-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+select {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.select-wrapper::after {
+  content: "▼";
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* Sliders */
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.slider-value {
+  font-family: var(--font-mono);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background-color: rgba(0, 0, 0, 0.2);
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+[data-theme="light"] input[type="range"] {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Diagnostics Info */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  margin-bottom: 0.4rem;
+}
+
+.info-lbl {
+  color: var(--text-secondary);
+}
+
+.info-val {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.status-disconnected {
+  color: var(--danger);
+}
+
+.status-connected {
+  color: var(--success);
+}
+
+/* ── Viewer / Canvas Workspace Area ─────────────────────────────────────────── */
+.viewer-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin: 10px 10px 10px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.viewer-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding: 0;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.viewer-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.native-keyboard-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.6rem;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.native-keyboard-status[data-state="connected"] {
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--success);
+}
+
+.native-keyboard-status[data-state="active"] {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--primary);
+}
+
+.native-keyboard-status[data-state="hidden"] {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--warning);
+}
+
+.native-keyboard-status-icon,
+.native-keyboard-action-icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  flex: 0 0 auto;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  box-shadow: 0 0 6px var(--text-muted);
+}
+
+.status-indicator.connected {
+  background-color: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.viewer-title-text {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+/* Canvas Caster Box */
+.canvas-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  background-color: #000;
+  display: block;
+  transform-origin: center center;
+}
+
+.control-mode canvas {
+  cursor: crosshair;
+  /* We implement our own tap / drag / long-press / pinch gesture handling in
+     JS, so the browser must not intercept touches for native scroll/zoom. */
+  touch-action: none;
+}
+
+/* ── Touch tap / long-press feedback ────────────────────────────────────────── */
+.tap-ripple {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  background-color: var(--primary-glow);
+  pointer-events: none;
+  z-index: 15;
+  animation: tap-ripple-anim 0.45s ease-out forwards;
+}
+
+.tap-ripple.long-press {
+  border-color: var(--warning);
+  background-color: rgba(245, 158, 11, 0.18);
+  animation-duration: 0.6s;
+}
+
+@keyframes tap-ripple-anim {
+  0% { transform: scale(0.3); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* ── Floating zoom controls (control_desktop mode only) ─────────────────────── */
+.zoom-controls {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  border-radius: 14px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 18px var(--glass-shadow);
+  backdrop-filter: blur(var(--blur-radius));
+  z-index: 12;
+}
+
+.zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zoom-btn:hover {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.zoom-btn:active {
+  transform: scale(0.94);
+}
+
+.zoom-reset-btn {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+}
+
+.zoom-level {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 2.6rem;
+  text-align: center;
+}
+
+/* ── Floating keyboard bubble (self-view style, control_desktop mode only) ───
+   Lives in the canvas viewport (not the header) so it stays reachable in
+   fullscreen, where the whole .viewer-header is hidden. Draggable via JS;
+   collapses to a small edge handle and back independently of whether the
+   keyboard itself is shown/hidden. */
+.floating-keyboard-bubble {
+  position: absolute;
+  left: 0.9rem;
+  bottom: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 16;
+  touch-action: none;
+}
+
+.floating-keyboard-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background-color: var(--glass-bg);
+  color: var(--text-primary);
+  box-shadow: 0 4px 18px var(--glass-shadow);
+  backdrop-filter: blur(var(--blur-radius));
+  cursor: grab;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.floating-keyboard-main:active {
+  cursor: grabbing;
+  transform: scale(0.96);
+}
+
+.floating-keyboard-main .native-keyboard-action-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.floating-keyboard-main.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.floating-keyboard-main:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floating-keyboard-collapse {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  padding: 0;
+  cursor: pointer;
+}
+
+.floating-keyboard-collapse svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.floating-keyboard-handle {
+  position: absolute;
+  left: 0;
+  bottom: 1.4rem;
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 44px;
+  border: 1px solid var(--glass-border);
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+  background-color: var(--glass-bg);
+  color: var(--text-secondary);
+  box-shadow: 0 4px 18px var(--glass-shadow);
+  backdrop-filter: blur(var(--blur-radius));
+  cursor: pointer;
+}
+
+.floating-keyboard-handle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Touch gesture legend (hidden unless touch/small-screen) ────────────────── */
+.touch-hints {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  color: var(--text-secondary);
+}
+
+/* Glass Lock Overlay */
+.canvas-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.overlay-card {
+  max-width: 320px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px var(--glass-shadow);
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.overlay-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.overlay-card p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Viewer Footer */
+.viewer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.25rem;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  font-size: 0.8rem;
+}
+
+.shortcut-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.shortcut-chip {
+  font-family: var(--font-mono);
+  background-color: var(--bg-primary);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.cursor-coords {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+/* ── Standard Button Framework ──────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background-color: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-outline:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+.btn-refresh {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.btn-connect.streaming {
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+.btn-connect.streaming:hover {
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.btn-connect.stopped {
+  background-color: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+.btn-connect.stopped:hover {
+  background-color: var(--success);
+  border-color: var(--success);
+  color: #ffffff;
+}
+
+/* Utility visibility classes */
+.hidden {
+  display: none !important;
+}
+
+/* Fullscreen adjustment */
+.fullscreen-active {
+  position: fixed;
+  inset: 0;
+  width: 100vw !important;
+  height: var(--app-height, 100dvh) !important;
+  z-index: 9999;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+
+body.inline-viewer-fullscreen {
+  overflow: hidden;
+  background: #000;
+}
+
+body.inline-viewer-fullscreen .topbar,
+body.inline-viewer-fullscreen .sidebar,
+body.inline-viewer-fullscreen .sidebar-backdrop {
+  display: none !important;
+}
+
+body.inline-viewer-fullscreen .main-layout {
+  display: block;
+  height: var(--app-height, 100dvh);
+}
+
+body.inline-viewer-fullscreen .viewer-area {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  height: var(--app-height, 100dvh);
+  z-index: 4000;
+}
+
+body.inline-viewer-fullscreen .viewer-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  background: #000;
+}
+
+/* Fullscreen is a canvas-first mode. The full control strip (title, status,
+   Keyboard, Stop Stream) never shows here -- only a minimal exit button and
+   the zoom controls, both persistently visible, no tap-to-reveal needed. */
+body.inline-viewer-fullscreen .viewer-header,
+body.inline-viewer-fullscreen .viewer-footer {
+  display: none !important;
+}
+
+body.inline-viewer-fullscreen .canvas-wrapper {
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+body.inline-viewer-fullscreen .zoom-controls {
+  right: max(0.5rem, env(safe-area-inset-right));
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+
+.fullscreen-exit-btn {
+  display: none;
+}
+
+body.inline-viewer-fullscreen .fullscreen-exit-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  position: absolute;
+  top: max(0.5rem, env(safe-area-inset-top));
+  left: max(0.5rem, env(safe-area-inset-left));
+  z-index: 20;
+  padding: 0.45rem 0.75rem;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background-color: var(--glass-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 4px 18px var(--glass-shadow);
+  backdrop-filter: blur(var(--blur-radius));
+  cursor: pointer;
+}
+
+/* A native keyboard may resize the visual viewport without changing the
+   server-side keyboard lease immediately. Hide our own secondary chrome as
+   soon as either signal says the keyboard is taking space. */
+body.native-keyboard-open:not(.inline-viewer-fullscreen) .viewer-footer,
+body.viewport-keyboard-open:not(.inline-viewer-fullscreen) .viewer-footer {
+  display: none;
+}
+
+body.native-keyboard-open:not(.inline-viewer-fullscreen) .viewer-header,
+body.viewport-keyboard-open:not(.inline-viewer-fullscreen) .viewer-header {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+/* ── Mobile Sidebar & Responsiveness ── */
+.toggle-sidebar-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.toggle-sidebar-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  html, body {
+    overflow: hidden;
+  }
+
+  .toggle-sidebar-btn {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: calc(60px + env(safe-area-inset-top));
+    left: 0;
+    bottom: 0;
+    height: calc(100% - 60px - env(safe-area-inset-top));
+    margin: 0;
+    z-index: 1000;
+    width: 290px;
+    min-width: 290px;
+    border-radius: 0 12px 12px 0;
+    border-top: none;
+    border-left: none;
+    transform: translateX(-110%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    background-color: var(--bg-secondary) !important;
+    backdrop-filter: none !important;
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    top: calc(60px + env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    transition: opacity 0.3s ease;
+    cursor: pointer;
+  }
+
+  .sidebar-backdrop.active {
+    display: block;
+  }
+
+  .viewer-area {
+    margin: 6px;
+  }
+
+  .topbar {
+    padding: 0.75rem max(0.875rem, env(safe-area-inset-right)) 0.75rem max(0.875rem, env(safe-area-inset-left));
+    gap: 0.625rem;
+  }
+
+  .topbar-brand {
+    gap: 0.5rem;
+  }
+
+  .topbar-title {
+    font-size: 1rem;
+  }
+
+  .topbar-actions {
+    gap: 0.5rem;
+  }
+
+  .topbar-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .login-gate {
+    align-items: flex-start;
+  }
+
+  .login-card {
+    padding: 24px 18px;
+  }
+
+  .otp-row {
+    flex-direction: column;
+  }
+
+  .otp-input {
+    width: 100%;
+    font-size: 1.05rem;
+    letter-spacing: 0.22em;
+  }
+
+  .otp-row .btn {
+    width: 100%;
+  }
+
+  .viewer-header,
+  .viewer-footer {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .viewer-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .cursor-coords {
+    width: 100%;
+  }
+
+  .zoom-controls {
+    right: 0.6rem;
+    bottom: 0.6rem;
+  }
+
+  select,
+  .tab-btn,
+  .btn {
+    min-height: 44px;
+  }
+
+  input[type="range"] {
+    height: 8px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* Landscape phones have very little vertical room. Keep the non-fullscreen
+   fallback compact too; fullscreen still removes this strip entirely. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .topbar {
+    min-height: 0;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .topbar-icon,
+  .topbar-title,
+  .topbar-link,
+  .status-chip {
+    font-size: 0.72rem;
+  }
+
+  .viewer-area {
+    margin: 4px;
+  }
+
+  .viewer-header {
+    min-height: 0;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .viewer-actions {
+    gap: 0.25rem;
+  }
+
+  .viewer-actions .btn {
+    min-height: 34px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.72rem;
+  }
+
+  .viewer-footer {
+    display: none;
+  }
+
+  .zoom-controls {
+    right: 0.35rem;
+    bottom: 0.35rem;
+    gap: 0.15rem;
+    padding: 0.25rem;
+    border-radius: 10px;
+  }
+
+  .zoom-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+
+  .zoom-level {
+    min-width: 2.2rem;
+    font-size: 0.65rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (pointer: coarse) {
+  .viewer-status {
+    gap: 0.3rem;
+  }
+
+  .native-keyboard-status {
+    display: none;
+  }
+}
+
+/* Touch-primary devices (phones/tablets, at any width) get the tap/hold/drag
+   legend instead of desktop mouse-and-keyboard shortcut hints. */
+@media (max-width: 768px), (pointer: coarse) {
+  .shortcut-hints {
+    display: none;
+  }
+
+  .touch-hints {
+    display: flex;
+  }
+}

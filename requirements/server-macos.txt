@@ -1,0 +1,86 @@
+# AutoYou Server - macOS Optimized Requirements
+# This includes all core server functionality without heavy ML packages that conflict with Nuitka
+# Production build should use full features locally
+
+# Core server runtime: admin UI, encrypted config, WebRTC signaling/datachannel,
+# cloud-model path, and the local page service.
+google-adk==2.9.2
+google-genai==2.25.0
+google-cloud-aiplatform==1.156.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-semantic-conventions==0.63b1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+fastapi==0.136.3
+# google-adk 2.9.2 requires the Starlette 1.x line and the updated OpenTelemetry range above.
+starlette>=1.3.1,<2
+# Floor raised past GHSA-3w57-8xmc-8v26 / GHSA-5p39-cfhj-2xmp / GHSA-82r6-8w77-94w6 in anyio<4.14.2.
+anyio>=4.15.0
+uvicorn[standard]>=0.34.0,<1.0.0
+python-multipart>=0.0.31,<1
+litellm>=1.84.0,<2.0.0
+# Cognee currently pulls instructor 1.15.x, which has not accepted these newest
+# transitive releases yet. Keep shared pins compatible with optional Cognee.
+jiter>=0.6.1,<0.14
+rich>=13.7.0,<15.0.0
+packaging>=21,<25
+python-dotenv>=1.2.2
+pydantic>=2.0.0,<3.0.0
+requests>=2.32.4
+httpx[http2]>=0.27.0
+# Floor raised past CVE-2026-71554 in h2<=4.4.0.
+h2>=4.4.1
+aiohttp>=3.14.3
+aiosqlite>=0.21.0
+SQLAlchemy==2.0.50
+websockets>=15.0.1
+qrcode>=7.4.2
+aiortc>=1.7.0,<2.0.0
+av>=10.0.0
+cryptography>=50.0.0
+keyring>=25.7.0,<26.0.0
+pyotp>=2.9.0
+psutil>=5.9.0
+# Floor raised past GHSA-gjv8-xp57-g29c / GHSA-j934-xhv5-fg8f ReDoS in soupsieve<2.9.0.
+soupsieve>=2.9.0
+beautifulsoup4>=4.13.0
+authlib>=1.7.1,<2
+idna>=3.15,<4
+urllib3>=2.7.0,<3
+lxml>=6.1.0
+python-dateutil>=2.9.0.post0
+yt-dlp>=2026.7.4
+
+# Local LLM integrations
+ollama==0.6.0
+huggingface_hub>=0.34.0,<2.0.0
+# datasets 5.0.0 caps fsspec at <=2026.4.0; keep this profile compatible
+# with optional tuning installs in reused build venvs.
+fsspec[http]>=2025.9.0,<=2026.4.0
+
+# Messaging transports
+python-telegram-bot>=21.0.0,<22.0.0
+Telethon==1.44.0
+pyaes==1.6.1
+rsa==4.9.1
+# Native AES for Telethon; pyaes stays as the fallback for older interpreters.
+cryptg==0.6.0; python_version >= "3.11" and platform_python_implementation == "CPython"
+docker>=6.1.0
+pysignalclirestapi>=0.3.24
+
+# Browser-backed internet tooling
+playwright>=1.40.0
+PyAutoGUI>=0.9.54
+mss>=9.0.1
+pygetwindow>=0.0.9
+
+# Bluetooth Pair BLE signaling runtime
+-r bluetooth.txt
+
+# Tray app (autoyou_app.py) - required on all platforms
+pystray>=0.19.3
+Pillow>=12.3.0
+protobuf>=6.33.5,<7
+pyOpenSSL>=26.4.0
+pyasn1>=0.6.4
+filelock>=3.20.3

@@ -1,0 +1,62 @@
+import { useEffect, useState } from "react";
+
+type StatusPayload = {
+  agent_name?: string;
+  ui_purpose?: string;
+  frontend_stack_label?: string;
+  recommended_local_port?: number;
+  proxy_path?: string;
+  runtime_note?: string;
+};
+
+const appTitle = "{{app_title}}";
+const purpose = "{{ui_purpose}}";
+
+export default function App() {
+  const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [error, setError] = useState("");
+
+  async function refreshStatus() {
+    setError("");
+    try {
+      const response = await fetch("./api/status");
+      if (!response.ok) {
+        throw new Error(`Status failed: ${response.status}`);
+      }
+      setStatus(await response.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  useEffect(() => {
+    refreshStatus();
+  }, []);
+
+  return (
+    <main className="app-shell">
+      <section className="panel">
+        <p className="eyebrow">AutoYou Agent Website</p>
+        <h1>{appTitle}</h1>
+        <p className="summary">{purpose}</p>
+        <div className="status-grid" aria-label="Website status">
+          <div>
+            <span>Website type</span>
+            <strong>{status?.frontend_stack_label || "React + TypeScript"}</strong>
+          </div>
+          <div>
+            <span>Agent</span>
+            <strong>{status?.agent_name || "{{agent_name}}"}</strong>
+          </div>
+          <div>
+            <span>Port</span>
+            <strong>{status?.recommended_local_port || {{local_port}}}</strong>
+          </div>
+        </div>
+        <button type="button" onClick={refreshStatus}>Refresh status</button>
+        {error ? <p className="error">{error}</p> : null}
+        {status?.runtime_note ? <p className="hint">{status.runtime_note}</p> : null}
+      </section>
+    </main>
+  );
+}

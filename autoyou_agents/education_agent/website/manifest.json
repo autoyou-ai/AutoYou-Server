@@ -1,0 +1,8 @@
+{
+  "agent_name": "education_agent",
+  "title": "Education Agent",
+  "description": "A friendly, private workspace for following live learning sessions, questions, media, and recordings you choose to keep.",
+  "entry_path": "/",
+  "recommended_port": 8079,
+  "requires_proxy_registration": true
+}

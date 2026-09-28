@@ -1,0 +1,63 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+def find_repo_root(start: str | Path | None = None) -> Path:
+    cursor = Path(start or __file__).resolve()
+    if cursor.is_file():
+        cursor = cursor.parent
+    for candidate in (cursor, *cursor.parents):
+        if (candidate / "server.py").is_file() and (candidate / "README.md").is_file():
+            return candidate
+    raise RuntimeError(f"Could not locate AutoYou repo root from {cursor}")
+
+
+REPO_ROOT = find_repo_root(__file__)
+TESTS_ROOT = REPO_ROOT / "tests"
+PHASE3_TEST_KEYS_DIR = TESTS_ROOT / ".phase3_test_keys"
+PYTHON_CLIENT_DIR = REPO_ROOT / "clients" / "python"
+# Project root of the standalone autoyou-lite package. The package itself is
+# double-nested (autoyou_lite/autoyou_lite), so this directory must be on
+# sys.path for `import autoyou_lite` to resolve to the real package.
+AUTOYOU_LITE_DIR = REPO_ROOT / "autoyou_lite"
+
+
+def ensure_sys_path(path: str | Path) -> Path:
+    resolved = Path(path).resolve()
+    text = str(resolved)
+    while text in sys.path:
+        sys.path.remove(text)
+    sys.path.insert(0, text)
+    return resolved
+
+
+def ensure_repo_on_path() -> Path:
+    return ensure_sys_path(REPO_ROOT)
+
+
+def ensure_python_client_on_path() -> Path:
+    ensure_repo_on_path()
+    return ensure_sys_path(PYTHON_CLIENT_DIR)
+
+
+def ensure_autoyou_lite_on_path() -> Path:
+    """Put the autoyou_lite project root on sys.path so `import autoyou_lite`
+    resolves to the double-nested package (autoyou_lite/autoyou_lite/...).
+
+    Also evicts a stale namespace-package binding for ``autoyou_lite`` (the
+    repo-root project directory, which has no __init__.py) so the real package
+    wins under pytest's importlib import mode.
+    """
+    ensure_repo_on_path()
+    resolved = ensure_sys_path(AUTOYOU_LITE_DIR)
+    mod = sys.modules.get("autoyou_lite")
+    if mod is not None and getattr(mod, "__file__", None) is None:
+        for key in [k for k in list(sys.modules) if k == "autoyou_lite" or k.startswith("autoyou_lite.")]:
+            del sys.modules[key]
+    return resolved

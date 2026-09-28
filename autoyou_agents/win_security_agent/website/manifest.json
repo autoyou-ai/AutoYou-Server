@@ -1,0 +1,10 @@
+{
+  "agent_name": "win_security_agent",
+  "title": "Windows Security Agent",
+  "description": "Read-only Windows TCP and UDP connection visibility attributed to local processes.",
+  "entry_path": "/",
+  "recommended_port": 8075,
+  "requires_proxy_registration": true,
+  "default": false
+}
+

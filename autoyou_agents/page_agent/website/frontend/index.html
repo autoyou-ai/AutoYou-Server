@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="__INITIAL_UI_THEME__">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>__PAGE_TITLE__</title>
+  <link rel="icon" type="image/svg+xml" href="__FAVICON_URL__">
+  <link rel="preload" href="__PAGE_CSS_URL__" as="style">
+  <link rel="preload" href="__PAGE_JS_URL__" as="script">
+  <link rel="stylesheet" href="__PAGE_CSS_URL__">
+</head>
+<body data-autoyou-scroll-managed="1" __PAGE_ACCESS_ATTRS__>
+  <main class="app">
+    <header class="topbar">
+      <h1 class="wordmark">AutoYou</h1>
+      <div class="topbar-actions">
+        <button id="search-toggle" class="icon-button" type="button" aria-label="Search your Page" aria-expanded="false" aria-controls="search-panel">
+          <i class="ic ic-search" aria-hidden="true"></i>
+        </button>
+        <button id="add-open" class="icon-button solid requires-add" type="button" aria-label="Add to your Page">
+          <i class="ic ic-plus" aria-hidden="true"></i>
+        </button>
+        <div class="menu-wrap">
+          <button id="page-menu-toggle" class="round-button" type="button" aria-label="Page menu" aria-haspopup="menu" aria-expanded="false" aria-controls="page-menu">
+            <i class="ic ic-more" aria-hidden="true"></i>
+          </button>
+          <div id="page-menu" class="menu" role="menu" aria-label="Page options" hidden>
+            <button id="menu-refresh" class="menu-item" type="button" role="menuitem">
+              <i class="ic ic-refresh" aria-hidden="true"></i><span>Refresh</span>
+            </button>
+            <button id="menu-filters" class="menu-item" type="button" role="menuitem">
+              <i class="ic ic-filter" aria-hidden="true"></i><span>Filters</span>
+            </button>
+            <button id="menu-theme" class="menu-item requires-manage" type="button" role="menuitem">
+              <i class="ic ic-moon" aria-hidden="true"></i><span id="menu-theme-label">Dark mode</span>
+            </button>
+            <a id="all-websites-link" class="menu-item" href="../../websites" role="menuitem">
+              <i class="ic ic-grid" aria-hidden="true"></i><span>All websites</span>
+            </a>
+            <button id="menu-delete-all" class="menu-item danger requires-manage" type="button" role="menuitem">
+              <i class="ic ic-trash" aria-hidden="true"></i><span>Delete everything</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div id="search-panel" class="search-panel" hidden>
+      <label class="search-field" for="search-input">
+        <i class="ic ic-search" aria-hidden="true"></i>
+        <input id="search-input" class="search-input" type="search" autocomplete="off" enterkeyhint="search" placeholder="Search titles and tags" aria-label="Search titles and tags">
+        <button id="search-clear" class="search-clear" type="button" aria-label="Clear search" hidden>
+          <i class="ic ic-close" aria-hidden="true"></i>
+        </button>
+      </label>
+    </div>
+
+    <nav class="view-tabs" aria-label="Page views">
+      <button class="tab is-active" type="button" data-view="feed" aria-pressed="true">Feed</button>
+      <button class="tab" type="button" data-view="favourites" aria-pressed="false">Favourites</button>
+      <button class="tab" type="button" data-view="uploads" aria-pressed="false">Uploads</button>
+    </nav>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <div id="hero-cover" class="hero-cover">__HERO_COVER__</div>
+      <div class="hero-body">
+        <div class="hero-badges">
+          __PROFILE_AVATAR__
+          <span class="badge-group">
+            __ROLE_PILL__
+            <span id="live-pill" class="live-pill" data-state="live"><span class="live-dot" aria-hidden="true"></span><span id="live-label">Live</span></span>
+          </span>
+        </div>
+        <div class="hero-heading">
+          <h2 id="hero-title">__PROFILE_NAME__</h2>
+          <p class="hero-tagline">__PROFILE_TAGLINE__</p>
+        </div>
+        <div class="stats-row">
+          <dl class="stats">
+            <div class="stat"><dt>Saved</dt><dd id="stat-total">__STAT_TOTAL__</dd></div>
+            <div class="stat"><dt>Favourites</dt><dd id="stat-favourites">__STAT_FAVOURITES__</dd></div>
+            <div class="stat"><dt>Sources</dt><dd id="stat-sources">__STAT_SOURCES__</dd></div>
+          </dl>
+          <button id="play-feed" class="play-button" type="button" aria-label="Play the feed full screen" title="Play the feed full screen">
+            <i class="ic ic-play-fill" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="hero-actions requires-add">
+          <button id="upload-open" class="button soft" type="button"><i class="ic ic-upload" aria-hidden="true"></i>Upload</button>
+          <button id="link-open" class="button primary" type="button"><i class="ic ic-link" aria-hidden="true"></i>Add link</button>
+        </div>
+        <p class="hero-description">__HERO_DESCRIPTION__</p>
+        <div id="top-tags" class="tag-chips" role="group" aria-label="Your most used tags">__TOP_TAGS__</div>
+      </div>
+    </section>
+
+    <div id="latest-favourite">__LATEST_FAVOURITE__</div>
+
+    <nav id="type-tabs" class="type-tabs" aria-label="Filter by type">
+      <button class="tab is-active" type="button" data-tab="latest" aria-pressed="true">Latest</button>
+      <button class="tab" type="button" data-tab="articles" aria-pressed="false">Articles</button>
+      <button class="tab" type="button" data-tab="videos" aria-pressed="false">Videos</button>
+      <button class="tab" type="button" data-tab="social" aria-pressed="false">Social</button>
+      <button class="tab" type="button" data-tab="photos" aria-pressed="false">Photos</button>
+      <button class="tab" type="button" data-tab="audio" aria-pressed="false">Audio</button>
+      <button class="tab" type="button" data-tab="files" aria-pressed="false">Files</button>
+    </nav>
+
+    <div id="feed-notice">__FEED_NOTICE__</div>
+    <div id="feed-list" class="feed-list">__FEED_ROWS__</div>
+    <div id="feed-more" class="load-more" hidden>Loading more...</div>
+    <div id="feed-sentinel" class="sentinel" aria-hidden="true"></div>
+    <p id="feed-status" class="status" role="status"></p>
+  </main>
+
+  <button id="fab-add" class="fab requires-add" type="button" aria-label="Add to your Page">
+    <i class="ic ic-plus" aria-hidden="true"></i><span class="fab-label">Add</span>
+  </button>
+
+  <input id="upload-input" type="file" hidden accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.rtf">
+
+  <div id="item-sheet" class="sheet-shell" aria-hidden="true">
+    <button class="sheet-backdrop" type="button" tabindex="-1" aria-label="Close" data-close-sheet></button>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="item-title">
+      <span class="sheet-grabber" aria-hidden="true"></span>
+      <header class="sheet-header">
+        <div class="sheet-toolbar">
+          <div id="item-kicker" class="sheet-kicker"></div>
+          <div class="sheet-actions">
+            <button id="item-favourite" class="sheet-button requires-edit" type="button" aria-pressed="false" aria-label="Add to favourites">
+              <i class="ic ic-heart" aria-hidden="true"></i>
+            </button>
+            <button id="item-delete" class="sheet-button danger requires-delete" type="button" aria-label="Delete item">
+              <i class="ic ic-trash" aria-hidden="true"></i>
+            </button>
+            <button class="sheet-button" type="button" aria-label="Close" data-close-sheet>
+              <i class="ic ic-close" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="title-row">
+          <h2 id="item-title" class="sheet-title"></h2>
+          <button id="item-rename" class="link-button requires-edit" type="button" aria-label="Rename item">
+            <i class="ic ic-pencil" aria-hidden="true"></i>
+          </button>
+        </div>
+        <form id="item-rename-form" class="rename-form" hidden>
+          <label class="sr-only" for="item-rename-input">Title</label>
+          <input id="item-rename-input" class="text-input" type="text" maxlength="300" enterkeyhint="done">
+          <button class="button primary compact" type="submit">Save</button>
+          <button id="item-rename-cancel" class="button subtle compact" type="button">Cancel</button>
+        </form>
+      </header>
+      <div id="item-content" class="sheet-content"></div>
+    </section>
+  </div>
+
+  <div id="add-sheet" class="sheet-shell" aria-hidden="true">
+    <button class="sheet-backdrop" type="button" tabindex="-1" aria-label="Close" data-close-sheet></button>
+    <section class="sheet sheet-compact" role="dialog" aria-modal="true" aria-labelledby="add-title">
+      <span class="sheet-grabber" aria-hidden="true"></span>
+      <div class="sheet-content">
+        <div class="add-header">
+          <div>
+            <h2 id="add-title" class="sheet-title">Add to your Page</h2>
+            <p class="sheet-subtitle">Save a link or upload a file. It appears at the top of your feed.</p>
+          </div>
+          <button class="sheet-button" type="button" aria-label="Close" data-close-sheet>
+            <i class="ic ic-close" aria-hidden="true"></i>
+          </button>
+        </div>
+        <form id="add-link-form" class="add-form">
+          <label class="field-label" for="add-link-input">Link</label>
+          <div class="input-with-icon">
+            <i class="ic ic-link" aria-hidden="true"></i>
+            <input id="add-link-input" class="bare-input" type="url" inputmode="url" autocomplete="off" placeholder="Paste a URL" required>
+          </div>
+          <button id="add-link-submit" class="button primary wide" type="submit">Add link</button>
+        </form>
+        <div class="divider" aria-hidden="true"><span>or</span></div>
+        <button id="add-upload" class="upload-zone" type="button">
+          <span class="upload-icon" aria-hidden="true"><i class="ic ic-upload"></i></span>
+          <span class="upload-title">Upload a file</span>
+          <span class="upload-copy">Photos, videos, audio, PDFs and documents</span>
+        </button>
+        <div id="upload-progress" class="upload-progress" hidden>
+          <div class="progress-copy"><span id="upload-name">Uploading...</span><span id="upload-percent">0%</span></div>
+          <div class="progress-track"><span id="upload-bar" class="progress-bar"></span></div>
+        </div>
+        <p id="add-error" class="form-error" role="alert" hidden></p>
+        <p class="hint"><i class="ic ic-sparkle" aria-hidden="true"></i>Or ask AutoYou in Chat to save something here.</p>
+      </div>
+    </section>
+  </div>
+
+  <div id="filters-sheet" class="sheet-shell" aria-hidden="true">
+    <button class="sheet-backdrop" type="button" tabindex="-1" aria-label="Close" data-close-sheet></button>
+    <section class="sheet sheet-compact" role="dialog" aria-modal="true" aria-labelledby="filters-title">
+      <span class="sheet-grabber" aria-hidden="true"></span>
+      <div class="sheet-content">
+        <div class="add-header">
+          <h2 id="filters-title" class="sheet-title">Filters</h2>
+          <button class="sheet-button" type="button" aria-label="Close" data-close-sheet>
+            <i class="ic ic-close" aria-hidden="true"></i>
+          </button>
+        </div>
+        <fieldset class="filter-group">
+          <legend>Order</legend>
+          <div class="segmented" role="group" aria-label="Order">
+            <button type="button" class="segment is-active" data-order="desc" aria-pressed="true">Newest first</button>
+            <button type="button" class="segment" data-order="asc" aria-pressed="false">Oldest first</button>
+          </div>
+        </fieldset>
+        <fieldset class="filter-group">
+          <legend>Time</legend>
+          <div id="range-options" class="option-chips" role="group" aria-label="Time">
+            <button type="button" class="option-chip is-active" data-range="default" aria-pressed="true">Entire feed</button>
+            <button type="button" class="option-chip" data-range="all" aria-pressed="false" hidden>Entire feed</button>
+            <button type="button" class="option-chip" data-range="7" aria-pressed="false">Last 7 days</button>
+            <button type="button" class="option-chip" data-range="30" aria-pressed="false">Last 30 days</button>
+            <button type="button" class="option-chip" data-range="custom" aria-pressed="false">Dates</button>
+          </div>
+          <div id="custom-range" class="date-row" hidden>
+            <label class="date-field"><span>From</span><input id="date-from" class="text-input" type="date"></label>
+            <label class="date-field"><span>To</span><input id="date-to" class="text-input" type="date"></label>
+          </div>
+        </fieldset>
+        <fieldset class="filter-group">
+          <legend>Sites</legend>
+          <label class="sr-only" for="sites-input">Sites</label>
+          <input id="sites-input" class="text-input" type="text" autocomplete="off" placeholder="youtube.com, x.com, Local">
+          <p class="field-help">Separate sites with commas. Items from any listed site are shown.</p>
+        </fieldset>
+        <div class="filter-actions">
+          <button id="filters-clear" class="button subtle" type="button">Clear filters</button>
+          <button class="button primary" type="button" data-close-sheet>Done</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="confirm-dialog" class="confirm-shell" aria-hidden="true">
+    <button class="sheet-backdrop" type="button" tabindex="-1" aria-label="Cancel" data-close-confirm></button>
+    <section class="confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <span class="confirm-icon" aria-hidden="true"><i class="ic ic-trash"></i></span>
+      <h2 id="confirm-title" class="confirm-title">Delete this item?</h2>
+      <p id="confirm-message" class="confirm-message">This cannot be undone.</p>
+      <p id="confirm-error" class="form-error" role="alert" hidden></p>
+      <div class="confirm-actions">
+        <button class="button subtle" type="button" data-close-confirm>Cancel</button>
+        <button id="confirm-ok" class="button danger" type="button">Delete</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="reel" class="reel" role="dialog" aria-modal="true" aria-label="Feed" aria-hidden="true" hidden>
+    <div id="reel-track" class="reel-track" tabindex="-1"></div>
+    <header class="reel-top">
+      <button id="reel-close" class="reel-icon" type="button" aria-label="Back to the list">
+        <i class="ic ic-arrow-left" aria-hidden="true"></i>
+      </button>
+      <p class="reel-heading">
+        <img id="reel-avatar" class="reel-avatar" alt="" decoding="async" hidden>
+        <span id="reel-context" class="reel-context">Feed</span><span id="reel-count" class="reel-count"></span>
+      </p>
+      <button id="reel-sound" class="reel-icon" type="button" aria-pressed="false" aria-label="Turn sound on" hidden>
+        <i class="ic ic-volume-off" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div class="reel-nav">
+      <button id="reel-prev" class="reel-icon" type="button" aria-label="Previous item"><i class="ic ic-chevron-up" aria-hidden="true"></i></button>
+      <button id="reel-next" class="reel-icon" type="button" aria-label="Next item"><i class="ic ic-chevron-down" aria-hidden="true"></i></button>
+    </div>
+    <p id="reel-announcer" class="sr-only" aria-live="polite"></p>
+  </div>
+
+  <div id="photo-viewer" class="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo" aria-hidden="true" hidden>
+    <div id="photo-scroll" class="photo-scroll" tabindex="-1">
+      <img id="photo-image" class="photo-image" alt="" decoding="async" referrerpolicy="no-referrer">
+    </div>
+    <header class="reel-top">
+      <button id="photo-close" class="reel-icon" type="button" aria-label="Close photo">
+        <i class="ic ic-close" aria-hidden="true"></i>
+      </button>
+      <p id="photo-title" class="reel-heading"></p>
+      <button id="photo-size" class="reel-icon" type="button" aria-pressed="false" aria-label="Zoom in">
+        <i class="ic ic-expand" aria-hidden="true"></i>
+      </button>
+    </header>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script>
+    window.__PAGE_BOOTSTRAP__ = __PAGE_BOOTSTRAP_JSON__;
+  </script>
+  <script src="__PAGE_JS_URL__" defer></script>
+</body>
+</html>

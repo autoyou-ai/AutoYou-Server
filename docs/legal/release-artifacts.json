@@ -1,0 +1,708 @@
+{
+  "generatedRoot": "docs/legal/generated",
+  "policy": {
+    "strongCopyleftLicenses": [
+      "AGPL-3.0-only",
+      "GPL-2.0-only",
+      "GPL-3.0-only"
+    ],
+    "reviewCopyleftLicenses": [
+      "LGPL-2.1-only",
+      "LGPL-2.1-or-later",
+      "LGPL-3.0-only",
+      "MPL-2.0"
+    ],
+    "commercialBlockingLicenses": [
+      "CC-BY-NC-4.0",
+      "CC-BY-NC-SA-4.0",
+      "CC-BY-NC-ND-4.0"
+    ],
+    "nonCommercialAssetScans": [
+      {
+        "name": "openWakeWord pretrained model assets",
+        "license": "CC-BY-NC-SA-4.0",
+        "pathParts": [
+          "openwakeword",
+          "resources",
+          "models"
+        ],
+        "suffixes": [
+          ".onnx",
+          ".tflite",
+          ".pt",
+          ".pth"
+        ],
+        "roots": [
+          ".venv",
+          ".venv-build312",
+          "servers/macos/build",
+          "servers/windows/artifacts",
+          "servers/windows/dist"
+        ]
+      }
+    ],
+    "proprietaryLicenses": [
+      "Android Software Development Kit License",
+      "Apple SDK License",
+      "ElevenLabs Terms",
+      "GIPHY SDK Terms",
+      "Google AdSense Terms and Publisher Policies",
+      "Google API Terms",
+      "Google Play Developer Terms",
+      "Microsoft Product Terms",
+      "Picovoice Terms",
+      "Proprietary"
+    ],
+    "forbiddenPackages": [
+      {
+        "name": "undetected-chromedriver",
+        "license": "GPL-3.0-only",
+        "reason": "Research-only browser automation helper; not approved for official commercial bundles."
+      }
+    ],
+    "binaryDefaultForbiddenPackages": [
+      {
+        "name": "azure-cognitiveservices-speech",
+        "reason": "Unused optional cloud speech SDK; exclude from first signed binary-default server artifacts."
+      },
+      {
+        "name": "elevenlabs",
+        "reason": "Unused optional external voice provider SDK; exclude from first signed binary-default server artifacts."
+      },
+      {
+        "name": "pvporcupine",
+        "reason": "Optional wake-word provider/access-key dependency; exclude from first signed binary-default server artifacts."
+      },
+      {
+        "name": "openwakeword",
+        "reason": "Wake-word package may fetch/use non-commercial pretrained assets; exclude from first signed binary-default server artifacts."
+      },
+      {
+        "name": "realtimestt",
+        "reason": "Heavy optional voice/STT stack; keep out of binary-default artifacts unless a connector/full release is approved."
+      },
+      {
+        "name": "torch",
+        "reason": "Heavy optional voice/ML runtime; keep out of binary-default artifacts unless a connector/full release is approved."
+      },
+      {
+        "name": "torchaudio",
+        "reason": "Heavy optional voice/ML runtime; keep out of binary-default artifacts unless a connector/full release is approved."
+      },
+      {
+        "name": "faster-whisper",
+        "reason": "Optional local STT dependency for voice builds; keep out of binary-default artifacts."
+      },
+      {
+        "name": "ctranslate2",
+        "reason": "Optional local STT transitive/runtime dependency; keep out of binary-default artifacts."
+      },
+      {
+        "name": "soundfile",
+        "reason": "Optional voice/audio dependency; keep out of binary-default artifacts."
+      }
+    ]
+  },
+  "knownLicenses": {
+    "activityindicatorview": "MIT",
+    "aiohttp": "Apache-2.0",
+    "aiortc": "BSD-3-Clause",
+    "aiosqlite": "MIT",
+    "anyio": "MIT",
+    "anchoredpopup": "MIT",
+    "androidx.activity:activity-compose": "Apache-2.0",
+    "androidx.browser:browser": "Apache-2.0",
+    "androidx.compose.material:material-icons-extended": "Apache-2.0",
+    "androidx.compose.material3:material3": "Apache-2.0",
+    "androidx.compose:compose-bom": "Apache-2.0",
+    "androidx.compose.ui:ui": "Apache-2.0",
+    "androidx.compose.ui:ui-test-manifest": "Apache-2.0",
+    "androidx.compose.ui:ui-tooling": "Apache-2.0",
+    "androidx.compose.ui:ui-tooling-preview": "Apache-2.0",
+    "androidx.core:core-splashscreen": "Apache-2.0",
+    "androidx.fragment:fragment-ktx": "Apache-2.0",
+    "androidx.lifecycle:lifecycle-runtime-compose": "Apache-2.0",
+    "androidx.media3:media3-exoplayer": "Apache-2.0",
+    "androidx.media3:media3-session": "Apache-2.0",
+    "androidx.media3:media3-ui": "Apache-2.0",
+    "androidx.navigation:navigation-compose": "Apache-2.0",
+    "androidx.room:room-compiler": "Apache-2.0",
+    "androidx.room:room-ktx": "Apache-2.0",
+    "androidx.room:room-runtime": "Apache-2.0",
+    "androidx.security:security-crypto": "Apache-2.0",
+    "av": "BSD-3-Clause",
+    "authlib": "BSD-3-Clause",
+    "auto-browser-client": "MIT",
+    "auto-browser-langchain": "MIT",
+    "auto-browser-mcp": "MIT",
+    "azure-cognitiveservices-speech": "Microsoft Product Terms",
+    "beautifulsoup4": "MIT",
+    "bleak": "MIT",
+    "bless": "MIT",
+    "chat": "MIT",
+    "chardet": "LGPL-2.1-or-later",
+    "colorama": "BSD-3-Clause",
+    "coloredlogs": "MIT",
+    "com.android.billingclient:billing": "Google Play Developer Terms",
+    "com.google.android.gms:play-services-ads": "Android Software Development Kit License",
+    "com.google.android.gms:play-services-maps": "Android Software Development Kit License",
+    "com.google.android.ump:user-messaging-platform": "Android Software Development Kit License",
+    "com.google.firebase:firebase-bom": "Apache-2.0",
+    "com.google.firebase:firebase-messaging": "Apache-2.0",
+    "com.google.mlkit:genai-prompt": "ML Kit Terms of Service",
+    "com.goterl:lazysodium-android": "MPL-2.0",
+    "com.jakewharton.timber:timber": "Apache-2.0",
+    "com.journeyapps:zxing-android-embedded": "Apache-2.0",
+    "com.squareup.okhttp3:okhttp": "Apache-2.0",
+    "cryptg": "CC0-1.0",
+    "cryptography": "Apache-2.0 OR BSD-3-Clause",
+    "ctranslate2": "MIT",
+    "customtkinter": "MIT",
+    "docker": "Apache-2.0",
+    "elevenlabs": "MIT",
+    "enum34": "BSD-3-Clause",
+    "express": "MIT",
+    "faster-whisper": "MIT",
+    "fastapi": "MIT",
+    "filelock": "MIT",
+    "flatbuffers": "Apache-2.0",
+    "fsspec": "BSD-3-Clause",
+    "giphy-ios-sdk": "GIPHY SDK Terms",
+    "google-adk": "Apache-2.0",
+    "google-cloud-aiplatform": "Apache-2.0",
+    "google-genai": "Apache-2.0",
+    "h2": "MIT",
+    "halo": "MIT",
+    "huggingface_hub": "Apache-2.0",
+    "httpx": "BSD-3-Clause",
+    "idna": "BSD-3-Clause",
+    "io.github.webrtc-sdk:android": "BSD-3-Clause",
+    "jiter": "MIT",
+    "junit:junit": "EPL-1.0",
+    "keyring": "MIT",
+    "kingfisher": "MIT",
+    "kotlinx-coroutines-android": "Apache-2.0",
+    "kotlinx-serialization-json": "Apache-2.0",
+    "libwebp-xcode": "BSD-3-Clause",
+    "litellm": "MIT",
+    "log_symbols": "MIT",
+    "lxml": "BSD-3-Clause",
+    "mediapicker": "MIT",
+    "mss": "MIT",
+    "nanohttpd": "BSD-3-Clause",
+    "node-fetch": "MIT",
+    "net.java.dev.jna:jna": "Apache-2.0",
+    "numpy": "BSD-3-Clause",
+    "ollama": "MIT",
+    "onnxruntime": "MIT",
+    "opencv-python": "Apache-2.0",
+    "openwakeword": "Apache-2.0",
+    "opentelemetry-api": "Apache-2.0",
+    "opentelemetry-exporter-otlp-proto-http": "Apache-2.0",
+    "opentelemetry-sdk": "Apache-2.0",
+    "opentelemetry-semantic-conventions": "Apache-2.0",
+    "org.jetbrains.kotlinx:kotlinx-coroutines-android": "Apache-2.0",
+    "org.jetbrains.kotlinx:kotlinx-serialization-json": "Apache-2.0",
+    "org.json:json": "Public Domain",
+    "org.nanohttpd:nanohttpd": "BSD-3-Clause",
+    "org.nanohttpd:nanohttpd-websocket": "BSD-3-Clause",
+    "packaging": "Apache-2.0 OR BSD-2-Clause",
+    "pillow": "MIT-CMU",
+    "playwright": "Apache-2.0",
+    "extract-zip": "BSD-2-Clause",
+    "protobuf": "BSD-3-Clause",
+    "psutil": "BSD-3-Clause",
+    "pyaudio": "MIT",
+    "pyaudiowpatch": "Apache-2.0",
+    "pyaes": "MIT",
+    "portaudio": "MIT",
+    "pyasn1": "BSD-2-Clause",
+    "pvporcupine": "Apache-2.0",
+    "pyautogui": "BSD-3-Clause",
+    "pydantic": "MIT",
+    "pygetwindow": "BSD-3-Clause",
+    "pyobjc-framework-CoreLocation": "MIT",
+    "pyopenssl": "Apache-2.0",
+    "pyotp": "MIT",
+    "pysodium": "BSD-2-Clause",
+    "pysignalclirestapi": "MIT",
+    "python-dateutil": "Apache-2.0 OR BSD-3-Clause",
+    "python-dotenv": "BSD-3-Clause",
+    "python-multipart": "Apache-2.0",
+    "python-telegram-bot": "LGPL-3.0-only",
+    "pystray": "LGPL-3.0-only",
+    "pyttsx3": "MPL-2.0",
+    "pywinauto": "BSD-3-Clause",
+    "qrcode": "BSD-3-Clause",
+    "qrcode-terminal": "MIT",
+    "realtimestt": "MIT",
+    "requests": "Apache-2.0",
+    "rich": "MIT",
+    "rsa": "Apache-2.0",
+    "scipy": "BSD-3-Clause",
+    "setuptools": "MIT",
+    "signal-cli": "GPL-3.0-only",
+    "signal-cli-rest-api": "GPL-3.0-only",
+    "silero-vad": "MIT",
+    "soundfile": "BSD-3-Clause",
+    "soupsieve": "MIT",
+    "spinners": "MIT",
+    "sqlalchemy": "MIT",
+    "starlette": "BSD-3-Clause",
+    "sentence-stream": "Apache-2.0",
+    "swift-package-manager-google-mobile-ads": "Apache-2.0",
+    "swift-package-manager-google-user-messaging-platform": "Apache-2.0",
+    "termcolor": "MIT",
+    "telethon": "MIT",
+    "timber": "Apache-2.0",
+    "torch": "BSD-3-Clause",
+    "torchaudio": "BSD-3-Clause",
+    "torchvision": "BSD-3-Clause",
+    "transformers": "Apache-2.0",
+    "tunnelmole": "MIT",
+    "urllib3": "MIT",
+    "uvicorn": "BSD-3-Clause",
+    "websockets": "BSD-3-Clause",
+    "webrtc": "BSD-3-Clause",
+    "webrtcvad-wheels": "MIT",
+    "websocket-client": "Apache-2.0",
+    "whatsapp-web.js": "Apache-2.0",
+    "winrt-Windows.Devices.Bluetooth": "MIT",
+    "winrt-Windows.Devices.Bluetooth.Advertisement": "MIT",
+    "winrt-Windows.Devices.Bluetooth.GenericAttributeProfile": "MIT",
+    "winrt-Windows.Devices.Enumeration": "MIT",
+    "winrt-Windows.Devices.Geolocation": "MIT",
+    "winrt-Windows.Devices.Radios": "MIT",
+    "winrt-Windows.Foundation": "MIT",
+    "winrt-Windows.Foundation.Collections": "MIT",
+    "winrt-Windows.Storage.Streams": "MIT",
+    "winrt-runtime": "MIT",
+    "ws": "MIT",
+    "yt-dlp": "Unlicense",
+    "zeroconf": "LGPL-2.1-or-later",
+    "llmfit": "MIT",
+    "onnxruntime-swift-package-manager": "MIT",
+    "com.microsoft.onnxruntime:onnxruntime-android": "MIT",
+    "com.microsoft.onnxruntime:onnxruntime": "MIT"
+  },
+  "artifactProfiles": [
+    {
+      "id": "autoyou-server-source-full",
+      "displayName": "AutoYou Server source/full profile",
+      "description": "Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge.",
+      "sources": [
+        {
+          "type": "requirements",
+          "path": "requirements/full.txt"
+        },
+        {
+          "type": "requirements",
+          "path": "requirements/realtimestt-runtime.txt"
+        },
+        {
+          "type": "npm",
+          "path": "node/whatsapp/package.json"
+        },
+        {
+          "type": "npm",
+          "path": "node/tunnelmole/package.json"
+        }
+      ],
+      "manualComponents": [
+        {
+          "type": "service",
+          "name": "signal-cli",
+          "version": "optional external service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/AsamK/signal-cli"
+        },
+        {
+          "type": "service",
+          "name": "signal-cli-rest-api",
+          "version": "optional Docker service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/bbernhard/signal-cli-rest-api"
+        },
+        {
+          "type": "library",
+          "name": "libsndfile",
+          "version": "transitive/native via soundfile wheels",
+          "license": "LGPL-2.1-or-later",
+          "distributionBoundary": "native-library/wheel-transitive",
+          "source": "https://libsndfile.github.io/libsndfile/"
+        },
+        {
+          "type": "library",
+          "name": "PortAudio",
+          "version": "19.7.0 native runtime via PyAudio/PyAudioWPatch",
+          "license": "MIT",
+          "distributionBoundary": "native-library/wheel-transitive",
+          "source": "https://github.com/PortAudio/portaudio/tree/v19.7.0"
+        },
+        {
+          "type": "service",
+          "name": "ElevenLabs API service terms",
+          "version": "external API",
+          "license": "ElevenLabs Terms",
+          "distributionBoundary": "external-service",
+          "source": "https://elevenlabs.io/terms"
+        },
+        {
+          "type": "service",
+          "name": "Google AI and GenAI API terms",
+          "version": "external API",
+          "license": "Google API Terms",
+          "distributionBoundary": "external-service",
+          "source": "https://developers.google.com/terms"
+        },
+        {
+          "type": "tool",
+          "name": "llmfit",
+          "version": "prebuilt binary downloaded from GitHub release at runtime",
+          "license": "MIT",
+          "distributionBoundary": "downloaded-at-runtime",
+          "source": "https://github.com/AlexsJones/llmfit"
+        },
+        {
+          "type": "data",
+          "name": "sentence-transformers/all-MiniLM-L6-v2",
+          "version": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+          "license": "Apache-2.0",
+          "source": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+          "distributionBoundary": "bundled intent_router model; licenses and notices accompany assets"
+        }
+      ],
+      "allowedCopyleft": [
+        {
+          "name": "signal-cli",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate process/service; do not link or bundle into proprietary binaries without GPLv3 source/offer compliance."
+        },
+        {
+          "name": "signal-cli-rest-api",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate Docker service; ship its own source and notices if distributed."
+        },
+        {
+          "name": "libsndfile",
+          "license": "LGPL-2.1-or-later",
+          "condition": "Transitive native dependency of soundfile wheels; include LGPL notice/source offer/relinking rights, or build against a system-provided libsndfile."
+        },
+        {
+          "name": "zeroconf",
+          "license": "LGPL-2.1-or-later",
+          "condition": "Dynamic pure-Python dependency for local device discovery; include the LGPL notice and package source in binary bundles, and keep it replaceable in runtime_site_packages."
+        },
+        {
+          "name": "python-telegram-bot",
+          "license": "LGPL-3.0-only",
+          "condition": "Dynamic Python dependency for Telegram partners; include LGPLv3 notice and reverse-engineering/relinking rights in binary bundles."
+        },
+        {
+          "name": "pystray",
+          "license": "LGPL-3.0-only",
+          "condition": "Optional tray dependency; include LGPLv3 notice and keep replaceable from bundled runtime."
+        },
+        {
+          "name": "pyttsx3",
+          "license": "MPL-2.0",
+          "condition": "Unmodified dependency; include MPL notice."
+        }
+      ],
+      "proprietaryReview": [
+        "azure-cognitiveservices-speech",
+        "ElevenLabs API service terms",
+        "Google AI and GenAI API terms"
+      ],
+      "specialObligations": [
+        "Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.",
+        "Signal GPL components must remain separate services unless GPLv3 source distribution is approved.",
+        "Server voice builds install RealtimeSTT 1.0.2 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.",
+        "Build scripts must prune openWakeWord pretrained model assets if they ever appear in site-packages or packaged outputs.",
+        "WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready."
+      ],
+      "releaseProfile": "source-full",
+      "dependencyProfile": "full",
+      "legalBundle": "Legal"
+    },
+    {
+      "id": "autoyou-server-windows-default",
+      "displayName": "AutoYou Server Windows binary-default build",
+      "description": "First signed Windows commercial server binary profile using the local-first binary-default dependency profile.",
+      "releaseProfile": "binary-default",
+      "dependencyProfile": "binary-default",
+      "legalBundle": "Legal",
+      "sources": [
+        {
+          "type": "requirements",
+          "path": "requirements/binary-default.txt"
+        },
+        {
+          "type": "npm",
+          "path": "node/whatsapp/package.json"
+        },
+        {
+          "type": "npm",
+          "path": "node/tunnelmole/package.json"
+        }
+      ],
+      "manualComponents": [
+        {
+          "type": "service",
+          "name": "signal-cli",
+          "version": "optional external service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/AsamK/signal-cli"
+        },
+        {
+          "type": "service",
+          "name": "signal-cli-rest-api",
+          "version": "optional Docker service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/bbernhard/signal-cli-rest-api"
+        },
+        {
+          "type": "framework",
+          "name": "Microsoft WebView2 Runtime",
+          "version": "system/runtime",
+          "license": "Microsoft Product Terms",
+          "source": "https://developer.microsoft.com/microsoft-edge/webview2/"
+        },
+        {
+          "type": "library",
+          "name": "PortAudio",
+          "version": "19.7.0 native runtime via PyAudioWPatch 0.2.12.8",
+          "license": "MIT",
+          "distributionBoundary": "native-library/wheel-transitive",
+          "source": "https://github.com/PortAudio/portaudio/tree/v19.7.0"
+        },
+        {
+          "type": "tool",
+          "name": "llmfit",
+          "version": "prebuilt binary downloaded from GitHub release at runtime",
+          "license": "MIT",
+          "distributionBoundary": "downloaded-at-runtime",
+          "source": "https://github.com/AlexsJones/llmfit"
+        },
+        {
+          "type": "data",
+          "name": "sentence-transformers/all-MiniLM-L6-v2",
+          "version": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+          "license": "Apache-2.0",
+          "source": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+          "distributionBoundary": "bundled intent_router model; licenses and notices accompany assets"
+        }
+      ],
+      "allowedCopyleft": [
+        {
+          "name": "signal-cli",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate process/service; disabled by default in binary-default builds and not linked into proprietary binaries."
+        },
+        {
+          "name": "signal-cli-rest-api",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate Docker service; disabled by default in binary-default builds and not linked into proprietary binaries."
+        },
+        {
+          "name": "zeroconf",
+          "license": "LGPL-2.1-or-later",
+          "condition": "Dynamic pure-Python dependency for local device discovery; include the LGPL notice and package source in binary bundles, and keep it replaceable in runtime_site_packages."
+        },
+        {
+          "name": "python-telegram-bot",
+          "license": "LGPL-3.0-only",
+          "condition": "Dynamic Python dependency for Telegram partners; include LGPLv3 notice and reverse-engineering/relinking rights in binary bundles."
+        },
+        {
+          "name": "pystray",
+          "license": "LGPL-3.0-only",
+          "condition": "Optional tray dependency; include LGPLv3 notice and keep replaceable from bundled runtime."
+        },
+        {
+          "name": "pyttsx3",
+          "license": "MPL-2.0",
+          "condition": "Unmodified dependency; include MPL notice."
+        }
+      ],
+      "proprietaryReview": [
+        "Microsoft WebView2 Runtime"
+      ],
+      "specialObligations": [
+        "Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.",
+        "Signal GPL components must remain separate services unless GPLv3 source distribution is approved.",
+        "WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready.",
+        "PyAudioWPatch is Apache-2.0 and bundles the MIT-licensed PortAudio native runtime; include both notices in Windows binary packages.",
+        "Binary-default server builds intentionally exclude requirements/voice.txt, requirements/research.txt, Azure Speech SDK, ElevenLabs, Picovoice, and openWakeWord.",
+        "Signal and WhatsApp partners must stay disabled by default in signed binary-default distributions unless counsel/business approves enabling them."
+      ]
+    },
+    {
+      "id": "autoyou-server-macos-default",
+      "displayName": "AutoYou Server macOS binary-default build",
+      "description": "First signed macOS commercial server binary profile using the local-first binary-default dependency profile.",
+      "releaseProfile": "binary-default",
+      "dependencyProfile": "binary-default",
+      "legalBundle": "Contents/Resources/Legal",
+      "sources": [
+        {
+          "type": "requirements",
+          "path": "requirements/binary-default.txt"
+        },
+        {
+          "type": "npm",
+          "path": "node/whatsapp/package.json"
+        },
+        {
+          "type": "npm",
+          "path": "node/tunnelmole/package.json"
+        }
+      ],
+      "manualComponents": [
+        {
+          "type": "service",
+          "name": "signal-cli",
+          "version": "optional external service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/AsamK/signal-cli"
+        },
+        {
+          "type": "service",
+          "name": "signal-cli-rest-api",
+          "version": "optional Docker service",
+          "license": "GPL-3.0-only",
+          "distributionBoundary": "separate-service",
+          "source": "https://github.com/bbernhard/signal-cli-rest-api"
+        },
+        {
+          "type": "framework",
+          "name": "Apple platform SDKs",
+          "version": "system",
+          "license": "Apple SDK License",
+          "source": "https://developer.apple.com/support/terms/"
+        },
+        {
+          "type": "library",
+          "name": "PortAudio",
+          "version": "19.7.0 native runtime via PyAudio 0.2.14",
+          "license": "MIT",
+          "distributionBoundary": "native-library/wheel-transitive",
+          "source": "https://github.com/PortAudio/portaudio/tree/v19.7.0"
+        },
+        {
+          "type": "tool",
+          "name": "llmfit",
+          "version": "prebuilt binary downloaded from GitHub release at runtime",
+          "license": "MIT",
+          "distributionBoundary": "downloaded-at-runtime",
+          "source": "https://github.com/AlexsJones/llmfit"
+        },
+        {
+          "type": "data",
+          "name": "sentence-transformers/all-MiniLM-L6-v2",
+          "version": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+          "license": "Apache-2.0",
+          "source": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+          "distributionBoundary": "bundled intent_router model; licenses and notices accompany assets"
+        }
+      ],
+      "allowedCopyleft": [
+        {
+          "name": "signal-cli",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate process/service; disabled by default in binary-default builds and not linked into proprietary binaries."
+        },
+        {
+          "name": "signal-cli-rest-api",
+          "license": "GPL-3.0-only",
+          "condition": "Optional separate Docker service; disabled by default in binary-default builds and not linked into proprietary binaries."
+        },
+        {
+          "name": "zeroconf",
+          "license": "LGPL-2.1-or-later",
+          "condition": "Dynamic pure-Python dependency for local device discovery; include the LGPL notice and package source in binary bundles, and keep it replaceable in runtime_site_packages."
+        },
+        {
+          "name": "python-telegram-bot",
+          "license": "LGPL-3.0-only",
+          "condition": "Dynamic Python dependency for Telegram partners; include LGPLv3 notice and reverse-engineering/relinking rights in binary bundles."
+        },
+        {
+          "name": "pystray",
+          "license": "LGPL-3.0-only",
+          "condition": "Optional tray dependency; include LGPLv3 notice and keep replaceable from bundled runtime."
+        },
+        {
+          "name": "pyttsx3",
+          "license": "MPL-2.0",
+          "condition": "Unmodified dependency; include MPL notice."
+        }
+      ],
+      "proprietaryReview": [
+        "Apple platform SDKs"
+      ],
+      "specialObligations": [
+        "Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.",
+        "Signal GPL components must remain separate services unless GPLv3 source distribution is approved.",
+        "WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready.",
+        "Binary-default server builds intentionally exclude requirements/voice.txt, requirements/research.txt, Azure Speech SDK, ElevenLabs, Picovoice, and openWakeWord.",
+        "Signal and WhatsApp partners must stay disabled by default in signed binary-default distributions unless counsel/business approves enabling them."
+      ]
+    },
+    {
+      "id": "autoyou-server-windows-connector-full",
+      "displayName": "AutoYou Server Windows connector-full build",
+      "description": "Optional separately approved Windows build that inherits the full source/server dependency profile and connector/provider notices.",
+      "inherits": "autoyou-server-source-full",
+      "releaseProfile": "connector-full",
+      "dependencyProfile": "full",
+      "legalBundle": "Legal",
+      "manualComponents": [
+        {
+          "type": "framework",
+          "name": "Microsoft WebView2 Runtime",
+          "version": "system/runtime",
+          "license": "Microsoft Product Terms",
+          "source": "https://developer.microsoft.com/microsoft-edge/webview2/"
+        }
+      ],
+      "proprietaryReview": [
+        "Microsoft WebView2 Runtime"
+      ],
+      "specialObligations": [
+        "Do not distribute this connector/full binary until provider, voice, and messaging partner terms are approved for binary redistribution.",
+        "Do not add Porcupine/openWakeWord wake-word extras to connector/full binaries unless a new legal review approves that separate feature."
+      ]
+    },
+    {
+      "id": "autoyou-server-macos-connector-full",
+      "displayName": "AutoYou Server macOS connector-full build",
+      "description": "Optional separately approved macOS build that inherits the full source/server dependency profile and connector/provider notices.",
+      "inherits": "autoyou-server-source-full",
+      "releaseProfile": "connector-full",
+      "dependencyProfile": "full",
+      "legalBundle": "Contents/Resources/Legal",
+      "manualComponents": [
+        {
+          "type": "framework",
+          "name": "Apple platform SDKs",
+          "version": "system",
+          "license": "Apple SDK License",
+          "source": "https://developer.apple.com/support/terms/"
+        }
+      ],
+      "proprietaryReview": [
+        "Apple platform SDKs"
+      ],
+      "specialObligations": [
+        "Do not distribute this connector/full binary until provider, voice, and messaging partner terms are approved for binary redistribution.",
+        "Do not add Porcupine/openWakeWord wake-word extras to connector/full binaries unless a new legal review approves that separate feature."
+      ]
+    }
+  ]
+}

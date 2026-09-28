@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="./">
+  <title>Backup Agent</title>
+  <link rel="stylesheet" href="./assets/app.css">
+</head>
+<body>
+  <script id="autoyou-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+  <main class="shell">
+    <header>
+      <div class="mark" aria-hidden="true">B</div>
+      <div><p class="eyebrow">AutoYou Website Apps</p><h1>Backup Agent</h1></div>
+    </header>
+    <section class="card" aria-labelledby="upload-title">
+      <h2 id="upload-title">Back up files</h2>
+      <p>Choose files or photos, or choose a folder where your browser supports it. AutoYou sends small verified chunks over your current connection. If it stops, choose the same selection again to resume.</p>
+      <div class="pickers">
+        <label class="file-picker">Choose files <input id="files-input" type="file" multiple></label>
+        <label class="file-picker">Choose folder <input id="folder-input" type="file" webkitdirectory multiple></label>
+      </div>
+      <p id="selected" class="muted">No files selected</p>
+      <div class="actions"><button id="start" type="button" disabled>Start upload</button><button id="pause" type="button" disabled>Pause</button></div>
+      <progress id="progress" max="100" value="0" aria-label="Upload progress"></progress>
+      <p id="status" role="status" aria-live="polite">Ready</p>
+    </section>
+    <section class="card" aria-labelledby="files-title">
+      <div class="section-head"><h2 id="files-title">Files on this computer</h2><button id="refresh" type="button">Refresh</button></div>
+      <p class="muted">Backups stay as regular files in this computer's AutoYou data folder. Downloads use the same bounded transfer path.</p>
+      <div id="files" class="file-list"></div>
+      <button id="more" type="button" hidden>Load more</button>
+    </section>
+  </main>
+  <script defer src="./assets/app.js"></script>
+</body>
+</html>

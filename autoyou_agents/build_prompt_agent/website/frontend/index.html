@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AutoYou Prompt Builder</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101218; color: #edf0f7; }
+    [hidden] { display: none !important; }
+    body { max-width: 920px; margin: 0 auto; padding: 24px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    h1 { margin: 0; font-size: 1.7rem; } p { color: #aeb6c7; }
+    section { background: #191d27; border: 1px solid #2a3140; border-radius: 14px; padding: 16px; margin-top: 16px; }
+    label { display: block; color: #bfc7d8; font-size: .9rem; margin-bottom: 6px; }
+    select, textarea, input[type=file] { box-sizing: border-box; width: 100%; background: #0e1118; color: inherit; border: 1px solid #3a4355; border-radius: 9px; padding: 10px; }
+    textarea { min-height: 150px; resize: vertical; }
+    .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .metrics { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+    .metric { background: #10141d; border-radius: 9px; padding: 10px; } .metric strong { display: block; font-size: 1.25rem; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button { border: 0; border-radius: 8px; padding: 9px 13px; background: #39455b; color: white; cursor: pointer; }
+    button.primary { background: #536dff; } button.warn { background: #a34747; }
+    dialog { border: 1px solid #3a4355; border-radius: 14px; background: #191d27; color: #edf0f7; padding: 20px; max-width: 360px; }
+    dialog::backdrop { background: rgb(0 0 0 / 65%); }
+    dialog input { box-sizing: border-box; width: 100%; background: #0e1118; color: inherit; border: 1px solid #3a4355; border-radius: 9px; padding: 10px; }
+    #message { min-height: 1.4em; color: #9dd6b4; white-space: pre-wrap; }
+    @media (max-width: 650px) { .grid, .metrics { grid-template-columns: 1fr 1fr; } header { display: block; } }
+  </style>
+  <script>window.__BOOTSTRAP__ = __BOOTSTRAP_JSON__;</script>
+</head>
+<body>
+  <div id="prompt-builder-content" hidden inert>
+  <header><div><p>AutoYou · Telegram Saved Messages</p><h1>Prompt Builder</h1></div><p id="state">Loading…</p></header>
+  <button id="auth-button" type="button" hidden>Unlock</button>
+  <section>
+    <div class="grid">
+      <div><label for="agent">Application agent</label><select id="agent"></select></div>
+      <div><label><input id="telegram-enabled" type="checkbox"> Enable Telegram prompt-builder mode</label><p>Send <code>exit confirm</code> to return to the main agent.</p></div>
+    </div>
+  </section>
+  <section>
+    <label for="prompt-text">Exact text to append</label>
+    <textarea id="prompt-text" placeholder="Text is passed to the desktop composer as entered."></textarea>
+    <label for="files">Images/files to append</label><input id="files" type="file" multiple>
+    <div class="buttons"><button class="primary" id="build">Build prompt</button><button id="get">Read draft</button><button id="status">Check status</button><button id="new">New prompt</button><button id="delete">Delete prompt</button></div>
+    <p class="hint">Check status does not read the desktop draft. Use Read draft only when you want to inspect it.</p>
+    <div class="buttons"><button class="primary" id="execute">Execute prompt</button><button id="result">Result prompt</button><button class="warn" id="stop">Stop prompt</button></div>
+    <div class="grid" style="margin-top:12px"><div><label for="model">Native model</label><input id="model" placeholder="Optional model name"></div><div><label for="effort">Thinking / effort</label><input id="effort" placeholder="Optional effort"></div><div><label for="permissions">Permissions</label><input id="permissions" placeholder="Optional permissions mode"></div><div><label for="project">Project</label><input id="project" placeholder="Optional project name"></div></div>
+    <div class="buttons"><button id="configure">Configure prompt</button></div>
+  </section>
+  <section><div class="metrics"><div class="metric"><span>Images</span><strong id="images">0</strong></div><div class="metric"><span>Words</span><strong id="words">0</strong></div><div class="metric"><span>Tokens*</span><strong id="tokens">0</strong></div><div class="metric"><span>Characters</span><strong id="characters">0</strong></div><div class="metric"><span>Status</span><strong id="prompt-status">empty</strong></div></div><p id="message"></p><pre id="result-text"></pre></section>
+  <dialog id="login-dialog">
+    <form id="login-form" method="dialog">
+      <h2>Unlock Prompt Builder</h2>
+      <p>Enter the AutoYou one-time code to access prompt contents and controls.</p>
+      <input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code">
+      <div class="buttons"><button value="cancel" type="submit">Cancel</button><button id="login-submit" class="primary" type="button">Unlock</button></div>
+      <p id="login-error"></p>
+    </form>
+  </dialog>
+  </div>
+  <script>
+    const $ = id => document.getElementById(id);
+    const BOOTSTRAP = window.__BOOTSTRAP__ || {};
+    const AUTH_TOKEN_KEY = 'autoyou.build_prompt_agent.auth_token';
+    const state = {auth: BOOTSTRAP.auth || {}};
+    const agent = () => $('agent').value;
+    const setMessage = value => $('message').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    function storedToken() { try { return localStorage.getItem(AUTH_TOKEN_KEY) || ''; } catch (_) { return ''; } }
+    function setStoredToken(token) { try { token ? localStorage.setItem(AUTH_TOKEN_KEY, token) : localStorage.removeItem(AUTH_TOKEN_KEY); } catch (_) {} }
+    function authRequired() { return !!state.auth.required; }
+    function authenticated() { return !authRequired() || !!state.auth.authenticated; }
+    function setProtectedContentVisible(visible) { const content = $('prompt-builder-content'); content.hidden = !visible; content.inert = !visible; }
+    function renderAuth() { const button = $('auth-button'); button.textContent = authenticated() ? 'Unlocked' : 'Unlock'; button.hidden = !authRequired(); setProtectedContentVisible(authenticated()); }
+    function render(payload) { const p = payload.prompt || payload; ['images','words','tokens','characters'].forEach(k => $(k).textContent = p[k] ?? 0); $('prompt-status').textContent = p.status || 'empty'; $('state').textContent = `${p.application_label || agent()} · ${p.status || 'empty'}`; if (payload.result_text) $('result-text').textContent = payload.result_text; }
+    async function api(path, method = 'GET', body) {
+      const headers = body ? {'Content-Type':'application/json'} : {};
+      const token = storedToken(); if (token) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : undefined});
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) { const error = new Error(value.message || value.error || response.statusText); error.status = response.status; throw error; }
+      return value;
+    }
+    async function refreshAuth() { try { const value = await api('./api/auth/status'); state.auth = value.auth || state.auth; } catch (_) {} renderAuth(); }
+    async function ensureUnlocked() {
+      if (authenticated()) return true;
+      if (document.documentElement.dataset.autoyouAuthLocked === 'true') return false;
+      $('login-error').textContent = ''; $('login-code').value = '';
+      const dialog = $('login-dialog'); if (dialog.showModal) dialog.showModal();
+      return false;
+    }
+    async function submitLogin() {
+      const code = $('login-code').value.trim(); if (!code) { $('login-error').textContent = 'Enter the one-time code.'; return; }
+      try { const value = await api('./api/auth/login', 'POST', {code}); setStoredToken(value.token || ''); $('login-dialog').close(); await refreshAuth(); await refresh(); setMessage('Prompt Builder unlocked.'); }
+      catch (error) { $('login-error').textContent = error.message || 'Invalid code.'; }
+    }
+    async function refresh() {
+      await refreshAuth();
+      if (!authenticated()) { setMessage('Authentication required. Unlock Prompt Builder to continue.'); await ensureUnlocked(); return; }
+      const value = await api('./api/status'); const config = value.telegram_user || {}; $('telegram-enabled').checked = !!config.enabled; $('agent').innerHTML = ''; (value.application_agents || []).forEach(item => { const option = document.createElement('option'); option.value = item.application_agent; option.textContent = item.label; $('agent').appendChild(option); }); $('agent').value = config.application_agent || 'codex_desktop_agent'; render(value);
+    }
+    async function call(name, body = {}) {
+      if (!(await ensureUnlocked())) return;
+      try { const value = await api(`./api/tool/${name}`, 'POST', {...body, application_agent: agent()}); render(value); setMessage(value.message || `${name} completed`); }
+      catch (error) { if (error.status === 401) { setStoredToken(''); await refreshAuth(); await ensureUnlocked(); } setMessage(error.message); }
+    }
+    $('auth-button').onclick = ensureUnlocked;
+    $('login-submit').onclick = submitLogin;
+    $('build').onclick = async () => { const attachments = []; for (const file of $('files').files) { const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',',2)[1] || ''); reader.onerror = reject; reader.readAsDataURL(file); }); attachments.push({filename:file.name, mimetype:file.type, data}); } await call('build_prompt', {text:$('prompt-text').value, attachments}); $('prompt-text').value = ''; $('files').value = ''; };
+    $('get').onclick = () => call('get_prompt'); $('status').onclick = () => call('status_prompt'); $('new').onclick = () => call('new_prompt'); $('delete').onclick = () => call('delete_prompt'); $('execute').onclick = () => call('execute_prompt'); $('result').onclick = () => call('result_prompt'); $('stop').onclick = () => call('stop_prompt'); $('configure').onclick = () => call('configure_prompt', {model:$('model').value, effort:$('effort').value, permissions:$('permissions').value, project_name:$('project').value});
+    $('telegram-enabled').onchange = async () => { if (!(await ensureUnlocked())) return; try { const value = await api('./api/config','POST',{enabled:$('telegram-enabled').checked, application_agent:agent()}); setMessage('Telegram prompt-builder settings saved.'); render({prompt:value.prompt || {status:'empty'}, telegram_user:value.telegram_user}); } catch (error) { setMessage(error.message); } };
+    $('agent').onchange = () => $('telegram-enabled').dispatchEvent(new Event('change'));
+    refresh().catch(error => setMessage(error.message));
+  </script>
+</body>
+</html>

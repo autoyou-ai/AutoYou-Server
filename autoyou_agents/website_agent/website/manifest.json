@@ -1,0 +1,8 @@
+{
+  "agent_name": "website_agent",
+  "title": "Website Builder",
+  "description": "Chat with the Website Builder to design, scaffold, and publish agent frontend UIs. Includes live preview and publish controls.",
+  "entry_path": "/",
+  "recommended_port": 8084,
+  "requires_proxy_registration": true
+}

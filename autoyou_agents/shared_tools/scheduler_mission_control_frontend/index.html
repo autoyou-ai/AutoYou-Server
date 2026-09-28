@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>__MISSION_CONTROL_TITLE__</title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('autoyou.ui.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (_) {}
+  })();
+</script>
+<link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+<script>
+  window.__MISSION_CONTROL_BOOTSTRAP__ = __MISSION_CONTROL_BOOTSTRAP_JSON__;
+</script>
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-icon" id="topbar-icon"></span>
+      <span class="topbar-title" id="topbar-title">__MISSION_CONTROL_TITLE__</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="status-chip" id="auth-chip"></span>
+      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">◑</button>
+      <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
+      <a class="topbar-link" data-agent-link="website_agent" href="/agent/website_agent/">Website Builder</a>
+      <a class="topbar-link" id="peer-link" href="#">-</a>
+    </div>
+  </header>
+
+  <div id="login-gate" class="login-gate hidden">
+    <div class="login-card">
+      <h2>Authentication Required</h2>
+      <p class="login-hint" id="login-copy">Enter your 6-digit authenticator code to unlock this board.</p>
+      <div class="otp-row" id="otp-row">
+        <input id="otp-input" type="text" class="otp-input" maxlength="6" placeholder="000000"
+               autocomplete="one-time-code" inputmode="numeric">
+        <button class="btn btn-primary" id="otp-submit-btn">Unlock</button>
+      </div>
+      <p class="login-error hidden" id="otp-error"></p>
+      <div class="admin-link-row">
+        <a class="btn btn-ghost btn-sm" id="admin-login-link" href="/agent/admin_agent/login" target="_blank">Open Admin Login</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="main-layout" class="main-layout hidden">
+    <aside class="sidebar">
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading">Board State</div>
+        <div class="stats-grid" id="stats-grid">
+          <div class="placeholder-text">Loading…</div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading">Fallback Settings</div>
+        <form id="fallback-settings-form" class="stack-form">
+          <label class="field">
+            <span>Fallback Mode</span>
+            <select id="fallback-mode-select">
+              <option value="default">Default Messaging Partner</option>
+              <option value="broadcast">Broadcast (All Connected)</option>
+              <option value="telegram">Telegram</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="signal">Signal</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Timeout (Hours)</span>
+            <input id="fallback-timeout-input" type="number" min="0.1" step="0.1" value="12">
+          </label>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" id="save-fallback-btn" type="submit">Update Settings</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading" id="composer-title">New Item</div>
+        <form id="item-form" class="stack-form">
+          <input id="editing-item-id" type="hidden" value="">
+
+          <label class="field">
+            <span>Message Partner</span>
+            <select id="target-select"></select>
+          </label>
+
+          <div class="field task-only" id="task-mode-field">
+            <span>Task Type</span>
+            <div class="mode-toggle" id="task-mode-toggle">
+              <button type="button" class="mode-btn active" data-mode="recurring">Recurring</button>
+              <button type="button" class="mode-btn" data-mode="once">One-Time</button>
+            </div>
+          </div>
+
+          <label class="field task-only" id="task-instruction-field">
+            <span>Instruction</span>
+            <textarea id="task-instruction" rows="4" placeholder="Generate a fresh joke and send it to the user."></textarea>
+          </label>
+
+          <label class="field task-only" id="task-interval-field">
+            <span>Every (minutes)</span>
+            <input id="task-interval" type="number" min="1" step="1" value="60">
+          </label>
+
+          <label class="field task-only hidden" id="task-run-at-field">
+            <span>Run At (optional, leave empty to run ASAP)</span>
+            <input id="task-run-at" type="datetime-local">
+          </label>
+
+          <label class="field checkbox-field task-only" id="task-enabled-field">
+            <span>Enabled</span>
+            <input id="task-enabled" type="checkbox" checked>
+          </label>
+
+          <label class="field reminder-only" id="reminder-message-field">
+            <span>Message</span>
+            <textarea id="reminder-message" rows="4" placeholder="Take a break and stretch."></textarea>
+          </label>
+
+          <label class="field reminder-only" id="reminder-time-field">
+            <span>When</span>
+            <input id="reminder-time" type="datetime-local">
+          </label>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="save-item-button" type="submit">Save</button>
+            <button class="btn btn-ghost" id="clear-form-button" type="button">Clear</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading" id="role-title">About</div>
+        <p class="sidebar-note" id="role-copy"></p>
+        <p class="sidebar-note muted" id="role-points"></p>
+      </div>
+
+    </aside>
+
+    <main class="content-area">
+
+      <div class="content-section">
+        <div class="content-heading">
+          <span id="items-title">Scheduled Items</span>
+          <button class="btn btn-sm btn-danger" id="delete-all-button" type="button">Delete All</button>
+        </div>
+        <div id="items-list" class="item-list"></div>
+      </div>
+
+      <div class="content-section">
+        <div class="content-heading">Delivery Queue</div>
+        <p class="muted" id="queue-note"></p>
+        <div id="queue-list" class="item-list"></div>
+      </div>
+
+      <div class="content-section">
+        <div class="content-heading">Recent Activity</div>
+        <div id="activity-list" class="item-list"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+:root {
+    --interactive-bg: #07101d;
+    --interactive-bg-soft: #0b1424;
+    --interactive-panel: rgba(13, 26, 50, 0.92);
+    --interactive-line: rgba(137, 173, 220, 0.28);
+    --interactive-ink: #f5f8ff;
+    --interactive-muted: #b6c7dd;
+    --interactive-accent: #86f1d5;
+    --interactive-link: #9cc8ff;
+    color-scheme: dark;
+}
+
+html[data-theme="light"] {
+    --interactive-bg: #f4f7fb;
+    --interactive-bg-soft: #ffffff;
+    --interactive-panel: rgba(255, 255, 255, 0.94);
+    --interactive-line: rgba(14, 26, 42, 0.16);
+    --interactive-ink: #0e1a2a;
+    --interactive-muted: #405b73;
+    --interactive-accent: #0b6a59;
+    --interactive-link: #185ecb;
+    color-scheme: light;
+}
+
+html,
+body {
+    min-height: 100%;
+    margin: 0;
+    background: var(--interactive-bg);
+    color: var(--interactive-ink);
+}
+
+body {
+    font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+.interactive-index {
+    min-height: 100vh;
+    padding: clamp(1.25rem, 4vw, 4rem);
+    background:
+        radial-gradient(circle at 12% 12%, rgba(43, 117, 255, 0.18), transparent 28%),
+        radial-gradient(circle at 86% 18%, rgba(54, 213, 181, 0.14), transparent 25%),
+        linear-gradient(180deg, var(--interactive-bg-soft), var(--interactive-bg));
+}
+
+.interactive-index main {
+    width: min(100%, 980px);
+    margin: 0 auto;
+}
+
+.interactive-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.interactive-kicker {
+    margin: 0 0 0.65rem;
+    color: var(--interactive-accent);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.interactive-index h1 {
+    max-width: 18ch;
+    margin: 0;
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    font-size: clamp(2.25rem, 7vw, 5.6rem);
+    line-height: 0.98;
+    letter-spacing: -0.055em;
+}
+
+.interactive-theme {
+    flex: 0 0 auto;
+    min-height: 2.55rem;
+    border: 1px solid var(--interactive-line);
+    border-radius: 999px;
+    padding: 0.65rem 0.9rem;
+    background: var(--interactive-panel);
+    color: var(--interactive-ink);
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.interactive-theme:hover,
+.interactive-theme:focus-visible {
+    border-color: var(--interactive-accent);
+    outline: 3px solid rgba(123, 184, 255, 0.3);
+    outline-offset: 2px;
+}
+
+.interactive-note,
+.interactive-footer-note {
+    color: var(--interactive-muted);
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.interactive-index a {
+    color: var(--interactive-link);
+}
+
+.interactive-note {
+    max-width: 54rem;
+    margin: 1.3rem 0 2rem;
+}
+
+.interactive-note code {
+    border: 1px solid var(--interactive-line);
+    border-radius: 0.35rem;
+    padding: 0.12rem 0.32rem;
+    background: var(--interactive-panel);
+    color: var(--interactive-accent);
+}
+
+.interactive-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.interactive-guide-card {
+    display: grid;
+    gap: 0.55rem;
+    min-height: 9rem;
+    border: 1px solid var(--interactive-line);
+    border-radius: 20px;
+    padding: 1.2rem;
+    background: var(--interactive-panel);
+    color: var(--interactive-ink);
+    text-decoration: none;
+    box-shadow: 0 16px 42px rgba(1, 7, 18, 0.12);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.interactive-guide-card:hover,
+.interactive-guide-card:focus-visible {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 20px 48px rgba(1, 7, 18, 0.2);
+    outline: none;
+    transform: translateY(-3px);
+}
+
+.interactive-guide-number {
+    color: var(--interactive-accent);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.interactive-guide-card strong {
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    font-size: 1.25rem;
+}
+
+.interactive-guide-card span:last-child {
+    color: var(--interactive-muted);
+    line-height: 1.5;
+}
+
+.interactive-footer-note {
+    margin: 1.5rem 0 0;
+    font-size: 0.85rem;
+}
+
+.interactive-frame-page {
+    overflow: hidden;
+    background: var(--interactive-bg);
+}
+
+.interactive-frame {
+    display: block;
+    width: 100%;
+    height: 100vh;
+    min-height: 100vh;
+    border: 0;
+    background: var(--interactive-bg);
+}
+
+@media (max-width: 680px) {
+    .interactive-header {
+        display: block;
+    }
+
+    .interactive-theme {
+        margin-top: 1rem;
+    }
+
+    .interactive-guide-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .interactive-guide-card {
+        transition: none;
+    }
+}

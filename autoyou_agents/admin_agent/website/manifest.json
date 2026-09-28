@@ -1,0 +1,9 @@
+{
+  "agent_name": "admin_agent",
+  "description": "Admin web UI: lets connected app browsers open the server admin interface.",
+  "direct_forward_port": 8001,
+  "entry_path": "/",
+  "recommended_port": 8001,
+  "requires_proxy_registration": true,
+  "title": "Admin UI"
+}

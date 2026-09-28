@@ -1,0 +1,5 @@
+# Full AutoYou server runtime plus the optional local fine-tuning stack.
+# Use this profile for a package or bootstrap environment that must run
+# Fine Tuning Agent jobs, not only serve its dataset-import website.
+-r full.txt
+-r tuning.txt

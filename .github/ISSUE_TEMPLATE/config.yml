@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/SECURITY.md
+    about: Follow the security policy; do not disclose vulnerabilities in public issues.
+  - name: Support and license scope
+    url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/SUPPORT.md
+    about: Read the repository support and licensing guidance before opening an issue.

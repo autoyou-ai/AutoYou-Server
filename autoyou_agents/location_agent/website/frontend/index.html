@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Location Timeline</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+  <script>window.AUTOYOU_BOOTSTRAP = __BOOTSTRAP_JSON__;</script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">PRIVATE DEVICE MEMORY</p>
+        <h1>Where you’ve been.</h1>
+        <p class="lede">A quiet, connected timeline for the places your approved devices visit.</p>
+      </div>
+      <div class="pulse"><span></span><span></span><span></span><b id="connection-label">Ready</b></div>
+    </header>
+    <section class="consent card">
+      <div><strong>Native device collection</strong><p>Connected devices send samples only when sharing, server recording, and native location permission are enabled. This page is display-only and never requests browser location.</p></div>
+      <div class="sharing-status" aria-live="polite"><strong id="sharing-label">Checking sharing…</strong><p id="sharing-detail">Waiting for a connected device.</p></div>
+    </section>
+    <section class="stats">
+      <article class="stat card"><span>Visited points</span><strong id="point-count">—</strong></article>
+      <article class="stat card"><span>Devices</span><strong id="device-count">—</strong></article>
+      <article class="stat card"><span>Last seen</span><strong id="last-seen">—</strong></article>
+    </section>
+    <section class="workspace">
+      <div class="map-card card"><div class="map-toolbar"><div><span class="eyebrow">LATEST LOCATION</span><h2>Movement at a glance</h2></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button></div></div><div id="map" class="map" role="img" aria-label="Location map"><div class="map-empty">No points yet.<br /><small>Connect a device with location permission.</small></div></div><p class="map-credit">© OpenStreetMap contributors</p></div>
+      <aside class="timeline-card card"><div class="timeline-head"><div><span class="eyebrow">TIMELINE</span><h2>Recent places</h2></div><button id="refresh" class="quiet">Refresh</button></div><div id="devices" class="device-list"></div><div id="timeline" class="timeline"><p class="muted">Loading timeline…</p></div></aside>
+    </section>
+    <footer>Location history stays on the connected AutoYou computer. Website access follows your agent website security settings.</footer>
+  </main>
+  <script src="./assets/app.js"></script>
+</body>
+</html>

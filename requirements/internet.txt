@@ -1,0 +1,6 @@
+# Optional browser-backed internet tooling and smoke tests.
+playwright>=1.40.0
+# Auto-browser integration for advanced browser automation
+auto-browser-client==1.4.2
+auto-browser-langchain==1.4.2
+auto-browser-mcp==1.4.2

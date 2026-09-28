@@ -1,0 +1,557 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.machinery
+import json
+import os
+import py_compile
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, Iterator
+
+# Ensure repo root is on sys.path so autoyou_agents is importable when this
+# script is run from a venv that doesn't have the project installed (e.g. .venv-build312).
+SERVER_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(SERVER_ROOT))
+
+from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PACKAGE_NAMES
+
+
+RUNTIME_MODULES_DIRNAME = "runtime_modules"
+RUNTIME_INTEGRITY_MANIFEST = "runtime_integrity.json"
+FORBIDDEN_RUNTIME_PATHS = ("runtime_source",)
+TOP_LEVEL_RUNTIME_MODULES = (
+    "server.py",
+    "rest_api.py",
+    "pairing_router.py",
+    "ollama_service.py",
+    "autoyou_page_service.py",
+    "service_manager.py",
+    "session_utils.py",
+    "page_feed_db.py",
+    "signal_service.py",
+    "telegram_user_service.py",
+    "whatsapp_service.py",
+)
+PACKAGE_RUNTIME_ROOTS = (
+    Path("shared"),
+    Path("autoyou_agents"),
+    Path("core_server"),
+    Path("routers"),
+)
+STATIC_RUNTIME_FILES = (
+    Path("shared") / "tunnelmole_node_launcher.mjs",
+)
+STATIC_RUNTIME_DIRECTORIES = (
+    Path("shared") / "native" / "libsodium",
+)
+AGENT_SIDECAR_FILENAMES = frozenset(
+    {
+        "whatsapp_history_dump.mjs",
+    }
+)
+# Agent instruction files are not executable Python and are never compiled.
+# Preserve them as data only for trusted built-in agents that explicitly ship
+# one. The trusted-source check below keeps private agents out of the bundle.
+AGENT_CONTEXT_FILENAMES = frozenset({"AGENT.md", "AGENTS.md"})
+ASSET_DIRECTORY_NAMES = frozenset(
+    {
+        "website",
+        "desktop_assets",
+        "boilerplate",
+        "scheduler_mission_control_frontend",
+    }
+)
+SKIP_DIRECTORY_NAMES = frozenset(
+    {
+        "__pycache__",
+        ".pytest_cache",
+        ".adk",
+        "chrome_profile",
+        "media",
+        "autoyou_notes_agent",
+        "workspace",
+        "tests",
+        "test",
+    }
+)
+SKIP_ASSET_SUFFIXES = frozenset(
+    {
+        ".py",
+        ".pyc",
+        ".pyo",
+        ".db",
+        ".sqlite",
+        ".sqlite3",
+        ".db-journal",
+        ".log",
+        ".old",
+        ".sav",
+        ".pma",
+        ".dat",
+        ".pb",
+    }
+)
+AUTOYOU_AGENTS_BRIDGE_STUB = """from __future__ import annotations
+import logging
+from typing import Any
+
+LOGGER = logging.getLogger(__name__)
+__all__ = [\"root_agent\"]
+
+
+def _extend_package_path_for_runtime_agents() -> None:
+    try:
+        from shared.platform_runtime import get_dynamic_agents_root
+
+        dynamic_root = str(get_dynamic_agents_root(\"AutoYou\", anchor=__file__))
+        package_path = globals().get(\"__path__\", None)
+        if package_path is not None and dynamic_root not in package_path:
+            package_path.append(dynamic_root)
+    except Exception as exc:
+        LOGGER.debug(\"Could not extend autoyou_agents package path: %s\", exc)
+
+
+_extend_package_path_for_runtime_agents()
+
+
+def __getattr__(name: str) -> Any:
+    if name != \"root_agent\":
+        raise AttributeError(f\"module {__name__!r} has no attribute {name!r}\")
+    try:
+        from autoyou_agents.agent import root_agent as resolved_root_agent
+    except Exception as exc:
+        LOGGER.warning(\"autoyou_agents root_agent import failed: %s\", exc)
+        resolved_root_agent = None
+    return resolved_root_agent
+"""
+EMPTY_PACKAGE_BRIDGE_STUB = '"""Packaged runtime package marker."""\n'
+BRIDGE_STUBS = {
+    Path("autoyou_agents") / "__init__.py": AUTOYOU_AGENTS_BRIDGE_STUB,
+}
+TRUSTED_AUTOYOU_AGENT_SUBDIRS = frozenset(BUILTIN_AGENT_PACKAGE_NAMES) | frozenset({"shared_tools"})
+
+
+def _source_path(repo_root: Path, relative_path: Path) -> Path:
+    """Read private desktop sources beside a nested server checkout."""
+    local = repo_root / relative_path
+    if relative_path.parts[0] in {"clients", "v2"} and not local.exists():
+        return repo_root.parent / relative_path
+    return local
+
+
+@dataclass(frozen=True)
+class ModuleBuildSpec:
+    source_relative_path: Path
+
+    @property
+    def source_stem(self) -> str:
+        return self.source_relative_path.stem
+
+    @property
+    def destination_relative_dir(self) -> Path:
+        return self.source_relative_path.parent
+
+
+@dataclass(frozen=True)
+class RuntimeModulePlan:
+    compile_specs: tuple[ModuleBuildSpec, ...]
+    asset_files: tuple[Path, ...]
+    static_files: tuple[Path, ...]
+    bridge_stubs: tuple[Path, ...]
+
+
+def _is_skipped_path(relative_path: Path) -> bool:
+    return any(part in SKIP_DIRECTORY_NAMES for part in relative_path.parts)
+
+
+def _is_trusted_runtime_source(relative_path: Path) -> bool:
+    if not relative_path.parts:
+        return False
+    if relative_path.parts[0] != "autoyou_agents":
+        return True
+    if len(relative_path.parts) == 2:
+        return True
+    return relative_path.parts[1] in TRUSTED_AUTOYOU_AGENT_SUBDIRS
+
+
+def _iter_python_module_sources(repo_root: Path) -> Iterator[Path]:
+    for relative_path_text in TOP_LEVEL_RUNTIME_MODULES:
+        relative_path = Path(relative_path_text)
+        source_path = _source_path(repo_root, relative_path)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Expected runtime module at {source_path}")
+        yield relative_path
+
+    for package_root in PACKAGE_RUNTIME_ROOTS:
+        source_root = _source_path(repo_root, package_root)
+        if not source_root.is_dir():
+            raise FileNotFoundError(f"Expected runtime package root at {source_root}")
+        for source_path in sorted(source_root.rglob("*.py")):
+            relative_path = package_root / source_path.relative_to(source_root)
+            if _is_skipped_path(relative_path):
+                continue
+            if not _is_trusted_runtime_source(relative_path):
+                continue
+            if source_path.name == "__init__.py":
+                continue
+            if source_path.name.startswith("test_"):
+                continue
+            if relative_path in STATIC_RUNTIME_FILES:
+                continue
+            yield relative_path
+
+
+def _iter_agent_asset_files(repo_root: Path) -> Iterator[Path]:
+    agent_root = _source_path(repo_root, Path("autoyou_agents"))
+    for source_path in sorted(agent_root.rglob("*")):
+        if not source_path.is_file():
+            continue
+        relative_path = Path("autoyou_agents") / source_path.relative_to(agent_root)
+        if _is_skipped_path(relative_path):
+            continue
+        if not _is_trusted_runtime_source(relative_path):
+            continue
+        is_asset_directory_file = any(part in ASSET_DIRECTORY_NAMES for part in relative_path.parts)
+        is_agent_sidecar = (
+            len(relative_path.parts) == 3
+            and relative_path.parts[0] == "autoyou_agents"
+            and relative_path.name in AGENT_SIDECAR_FILENAMES
+        )
+        is_agent_context_file = (
+            len(relative_path.parts) >= 3
+            and relative_path.parts[0] == "autoyou_agents"
+            and relative_path.name in AGENT_CONTEXT_FILENAMES
+        )
+        if not is_asset_directory_file and not is_agent_sidecar and not is_agent_context_file:
+            continue
+        if source_path.suffix.lower() in SKIP_ASSET_SUFFIXES:
+            continue
+        yield relative_path
+
+
+def _iter_static_runtime_files(repo_root: Path) -> Iterator[Path]:
+    for relative_path in STATIC_RUNTIME_FILES:
+        source_path = repo_root / relative_path
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Expected runtime sidecar at {source_path}")
+        yield relative_path
+    for relative_directory in STATIC_RUNTIME_DIRECTORIES:
+        source_directory = repo_root / relative_directory
+        if not source_directory.is_dir():
+            raise FileNotFoundError(f"Expected runtime sidecar directory at {source_directory}")
+        for source_path in sorted(source_directory.rglob("*")):
+            if source_path.is_file():
+                yield source_path.relative_to(repo_root)
+
+
+def build_runtime_module_plan(repo_root: Path, *, desktop: bool = False) -> RuntimeModulePlan:
+    compile_specs = tuple(ModuleBuildSpec(relative_path) for relative_path in _iter_python_module_sources(repo_root))
+    asset_files = tuple(_iter_agent_asset_files(repo_root))
+    static_files = tuple(_iter_static_runtime_files(repo_root))
+    bridge_stubs = set(BRIDGE_STUBS)
+    if desktop:
+        desktop_paths = [Path("clients/python") / name for name in (
+            "autoyou_client.py", "desktop_client.py", "cloud_pair.py", "audio_streams.py",
+            "attachments_helper.py", "bluetooth_pairing_client.py", "http_proxy_client.py",
+            "legal_acceptance.py", "location_beacon.py", "conversation_history.py",
+        )]
+        for package in (Path("clients/python/peer_link"), Path("v2/runtime")):
+            for path in sorted(_source_path(repo_root, package).glob("*.py")):
+                relative = package / path.name
+                if path.name == "__init__.py":
+                    bridge_stubs.add(relative)
+                else:
+                    desktop_paths.append(relative)
+        for path in desktop_paths:
+            if not _source_path(repo_root, path).is_file():
+                raise FileNotFoundError(f"Missing native desktop runtime module: {path}")
+        compile_specs += tuple(ModuleBuildSpec(path) for path in desktop_paths)
+        bridge_stubs.add(Path("v2/__init__.py"))
+    return RuntimeModulePlan(
+        compile_specs=tuple(sorted(compile_specs, key=lambda spec: spec.source_relative_path.as_posix())),
+        asset_files=tuple(sorted(asset_files, key=lambda path: path.as_posix())),
+        static_files=tuple(sorted(static_files, key=lambda path: path.as_posix())),
+        bridge_stubs=tuple(sorted(bridge_stubs)),
+    )
+
+
+def _hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _matches_compiled_module_filename(path: Path, source_stem: str) -> bool:
+    filename = path.name
+    return any(filename == f"{source_stem}{suffix}" for suffix in importlib.machinery.EXTENSION_SUFFIXES)
+
+
+def _looks_like_nuitka_memory_failure(output_text: str) -> bool:
+    lowered = str(output_text or "").lower()
+    return (
+        "memoryerror" in lowered
+        or "out of memory" in lowered
+        or "allocation failed" in lowered
+    )
+
+
+def _run_nuitka_module_build(
+    *,
+    repo_root: Path,
+    build_root: Path,
+    output_root: Path,
+    spec: ModuleBuildSpec,
+    job_count: int,
+    extra_nuitka_args: Iterable[str],
+) -> Path:
+    per_module_build_root = build_root / spec.source_relative_path.parent / spec.source_stem
+    if per_module_build_root.exists():
+        shutil.rmtree(per_module_build_root)
+    per_module_build_root.mkdir(parents=True, exist_ok=True)
+
+    attempt_job_count = max(job_count, 1)
+    while True:
+        command = [
+            sys.executable,
+            "-m",
+            "nuitka",
+            "--module",
+            "--nofollow-imports",
+            f"--jobs={attempt_job_count}",
+            "--lto=no",
+            "--low-memory",
+            "--assume-yes-for-downloads",
+            "--file-reference-choice=runtime",
+            f"--output-dir={per_module_build_root}",
+            *extra_nuitka_args,
+            str(_source_path(repo_root, spec.source_relative_path)),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            errors="replace",
+        )
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=sys.stderr)
+        if completed.returncode == 0:
+            break
+
+        combined_output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+        if attempt_job_count > 1 and _looks_like_nuitka_memory_failure(combined_output):
+            next_job_count = max(attempt_job_count // 2, 1)
+            if next_job_count < attempt_job_count:
+                print(
+                    (
+                        f"[runtime-modules] Nuitka ran out of memory while compiling "
+                        f"{spec.source_relative_path.as_posix()} with --jobs={attempt_job_count}; "
+                        f"retrying with --jobs={next_job_count}"
+                    ),
+                    file=sys.stderr,
+                )
+                shutil.rmtree(per_module_build_root, ignore_errors=True)
+                per_module_build_root.mkdir(parents=True, exist_ok=True)
+                attempt_job_count = next_job_count
+                continue
+
+        raise subprocess.CalledProcessError(completed.returncode, command)
+
+    candidates = sorted(
+        candidate
+        for candidate in per_module_build_root.rglob("*")
+        if candidate.is_file() and _matches_compiled_module_filename(candidate, spec.source_stem)
+    )
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected exactly one compiled module for {spec.source_relative_path}, found {len(candidates)}"
+        )
+
+    destination_dir = output_root / spec.destination_relative_dir
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination_path = destination_dir / candidates[0].name
+    shutil.copy2(candidates[0], destination_path)
+    shutil.rmtree(per_module_build_root, ignore_errors=True)
+    return destination_path
+
+
+def _write_bridge_stubs(
+    *,
+    output_root: Path,
+    build_root: Path,
+    plan: RuntimeModulePlan,
+    repo_root: Path | None = None,
+) -> tuple[Path, ...]:
+    written_paths: list[Path] = []
+    for relative_path in plan.bridge_stubs:
+        source_path = build_root / "bridge-stubs" / relative_path
+        destination_path = output_root / relative_path.with_suffix(".pyc")
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        source_text = BRIDGE_STUBS.get(relative_path)
+        if source_text is None and repo_root is not None and _source_path(repo_root, relative_path).is_file():
+            source_text = _source_path(repo_root, relative_path).read_text(encoding="utf-8")
+        source_path.write_text(source_text or EMPTY_PACKAGE_BRIDGE_STUB, encoding="utf-8")
+        py_compile.compile(
+            str(source_path),
+            cfile=str(destination_path),
+            # Keep the bridge bytecode filename deterministic and independent
+            # of the checkout path. Absolute build-host paths are rejected by
+            # the Windows Store MSIX verifier.
+            dfile=relative_path.as_posix(),
+            doraise=True,
+            optimize=2,
+        )
+        source_path.unlink()
+        written_paths.append(destination_path)
+    return tuple(written_paths)
+
+
+def _copy_asset_files(*, repo_root: Path, output_root: Path, plan: RuntimeModulePlan) -> tuple[Path, ...]:
+    copied_paths: list[Path] = []
+    for relative_path in plan.asset_files:
+        source_path = _source_path(repo_root, relative_path)
+        destination_path = output_root / relative_path
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination_path)
+        copied_paths.append(destination_path)
+    return tuple(copied_paths)
+
+
+def _copy_static_runtime_files(*, repo_root: Path, output_root: Path, plan: RuntimeModulePlan) -> tuple[Path, ...]:
+    copied_paths: list[Path] = []
+    for relative_path in plan.static_files:
+        source_path = repo_root / relative_path
+        destination_path = output_root / relative_path
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination_path)
+        copied_paths.append(destination_path)
+    return tuple(copied_paths)
+
+
+def _build_integrity_manifest(bundle_root: Path, tracked_root: Path, plan: RuntimeModulePlan) -> dict[str, object]:
+    tracked_files: dict[str, str] = {}
+    for file_path in sorted(tracked_root.rglob("*")):
+        if not file_path.is_file():
+            continue
+        relative_path = file_path.relative_to(bundle_root).as_posix()
+        tracked_files[relative_path] = _hash_file(file_path)
+
+    allowed_python_files_set = {
+        relative_path.as_posix()
+        for relative_path in plan.static_files
+        if relative_path.suffix == ".py"
+    }
+    allowed_python_files = sorted(allowed_python_files_set)
+    allowed_python_files = [f"{RUNTIME_MODULES_DIRNAME}/{path}" for path in allowed_python_files]
+
+    return {
+        "version": 1,
+        "algorithm": "sha256",
+        "tracked_roots": [RUNTIME_MODULES_DIRNAME],
+        "forbidden_paths": list(FORBIDDEN_RUNTIME_PATHS),
+        "allowed_python_files": allowed_python_files,
+        "files": tracked_files,
+    }
+
+
+def build_packaged_runtime_modules(
+    *,
+    repo_root: Path,
+    bundle_root: Path,
+    build_root: Path,
+    job_count: int,
+    extra_nuitka_args: Iterable[str],
+    desktop: bool = False,
+) -> dict[str, object]:
+    output_root = bundle_root / RUNTIME_MODULES_DIRNAME
+    if output_root.exists():
+        shutil.rmtree(output_root)
+    output_root.mkdir(parents=True, exist_ok=True)
+    build_root.mkdir(parents=True, exist_ok=True)
+
+    plan = build_runtime_module_plan(repo_root, desktop=desktop)
+    for spec in plan.compile_specs:
+        print(f"[runtime-modules] compiling {spec.source_relative_path.as_posix()}")
+        _run_nuitka_module_build(
+            repo_root=repo_root,
+            build_root=build_root,
+            output_root=output_root,
+            spec=spec,
+            job_count=job_count,
+            extra_nuitka_args=extra_nuitka_args,
+        )
+
+    _copy_asset_files(repo_root=repo_root, output_root=output_root, plan=plan)
+    _copy_static_runtime_files(repo_root=repo_root, output_root=output_root, plan=plan)
+    _write_bridge_stubs(output_root=output_root, build_root=build_root, plan=plan, repo_root=repo_root)
+
+    manifest = _build_integrity_manifest(bundle_root, output_root, plan)
+    manifest_path = bundle_root / RUNTIME_INTEGRITY_MANIFEST
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return manifest
+
+
+def _normalize_cli_tokens(argv: list[str] | None) -> list[str] | None:
+    if argv is None:
+        return None
+
+    normalized: list[str] = []
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--nuitka-arg" and index + 1 < len(argv):
+            normalized.append(f"--nuitka-arg={argv[index + 1]}")
+            index += 2
+            continue
+        normalized.append(token)
+        index += 1
+
+    return normalized
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    argv = _normalize_cli_tokens(argv)
+    parser = argparse.ArgumentParser(description="Build compiled runtime modules for the packaged backend.")
+    parser.add_argument("--repo-root", required=True)
+    parser.add_argument("--bundle-root", required=True)
+    parser.add_argument("--build-root", required=True)
+    parser.add_argument("--jobs", type=int, default=max(os.cpu_count() or 1, 1))
+    parser.add_argument("--nuitka-arg", action="append", default=[])
+    parser.add_argument("--desktop", action="store_true", help="Include the native v2 client bridge and headless desktop engine")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    repo_root = Path(args.repo_root).resolve()
+    bundle_root = Path(args.bundle_root).resolve()
+    build_root = Path(args.build_root).resolve()
+
+    build_packaged_runtime_modules(
+        repo_root=repo_root,
+        bundle_root=bundle_root,
+        build_root=build_root,
+        job_count=max(int(args.jobs), 1),
+        extra_nuitka_args=tuple(args.nuitka_arg),
+        desktop=args.desktop,
+    )
+    print(f"Packaged runtime modules ready under {bundle_root / RUNTIME_MODULES_DIRNAME}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

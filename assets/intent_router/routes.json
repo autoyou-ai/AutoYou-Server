@@ -1,0 +1,116 @@
+{
+  "minimum_score": 0.65,
+  "minimum_margin": 0.15,
+  "routes": [
+    {
+      "id": "persona_agent",
+      "examples": [
+        "What is my name?",
+        "Read my personal profile.",
+        "Show my saved preferences.",
+        "Remember that I prefer short answers.",
+        "Add a personal detail to my persona journal.",
+        "Update my personal profile."
+      ]
+    },
+    {
+      "id": "notes_agent",
+      "examples": [
+        "Create a note for me.",
+        "Save this idea in my notes.",
+        "Jot down that we need more printer ink.",
+        "Find my notes about the project.",
+        "Show my saved notes.",
+        "Update the title of my note."
+      ]
+    },
+    {
+      "id": "tasks_agent",
+      "examples": [
+        "Schedule a recurring AI task every morning.",
+        "Show my scheduled tasks.",
+        "Run this research task at five oclock.",
+        "Stop the scheduled agent job.",
+        "Check the status of my running tasks."
+      ]
+    },
+    {
+      "id": "notify_agent",
+      "examples": [
+        "Remind me to water plants tomorrow.",
+        "Set a reminder for my appointment.",
+        "Cancel that reminder.",
+        "Send me a notification at five oclock."
+      ]
+    },
+    {
+      "id": "internet_agent",
+      "examples": [
+        "Search the web for the latest news.",
+        "Look up recent reviews of this camera.",
+        "Research this topic online.",
+        "Find the weather forecast.",
+        "Check the latest price online.",
+        "Read and summarize this website."
+      ]
+    },
+    {
+      "id": "files_agent",
+      "examples": [
+        "Find a file on my computer.",
+        "List files in my downloads folder.",
+        "Search my documents for a filename.",
+        "Move this file into another folder.",
+        "Delete a file from my computer."
+      ]
+    },
+    {
+      "id": "audio_agent",
+      "examples": [
+        "Play music from my library.",
+        "Pause the song.",
+        "Skip to the next track.",
+        "Find an album in my music collection.",
+        "Stop playing music."
+      ]
+    },
+    {
+      "id": "fine_tuning_agent",
+      "examples": [
+        "Train a local model on my dataset.",
+        "Check my fine tuning job progress.",
+        "Prepare a training dataset.",
+        "Install my trained model.",
+        "Evaluate the local intent classifier."
+      ]
+    },
+    {
+      "id": "datetime",
+      "examples": [
+        "What time is it right now?",
+        "Tell me today's date.",
+        "What day of the week is it?"
+      ]
+    },
+    {
+      "id": "general",
+      "examples": [
+        "Hello, how are you?",
+        "Tell me a joke.",
+        "Explain what photosynthesis means.",
+        "Thank you for your help.",
+        "What do you think about this idea?"
+      ]
+    },
+    {
+      "id": "human",
+      "examples": [
+        "I want to speak with the owner personally.",
+        "Can you meet me at five?",
+        "Can you agree to this deal?",
+        "Please ask the owner to call me back."
+      ]
+    }
+  ],
+  "defer_pattern": "\\b(?:not|never|no|don't|doesn't|can't|cannot|won't|wouldn't|shouldn't|instead|ignore|unless|except|if)\\b"
+}
