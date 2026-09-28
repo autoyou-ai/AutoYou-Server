@@ -42,7 +42,7 @@ zeroconf==0.151.3
 av>=10.0.0
 # Floor raised past the 41.x/42.x lines that carried CVE-2023-50782 /
 # CVE-2024-26130 / CVE-2024-12797; pip resolves to the newest anyway.
-cryptography>=50.0.0
+cryptography>=50.0.1
 keyring>=25.7.0,<26.0.0
 pyotp>=2.9.0
 # CPace pairing handshake (ristretto255 + XChaCha20-Poly1305) - thin ctypes
