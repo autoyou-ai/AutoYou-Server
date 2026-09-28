@@ -212,7 +212,9 @@ def test_one_tap_contact_addition_end_to_end(client):
     Two people, one action each - the flow this replaced took four clipboard
     steps split across both of them.
     """
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "clients" / "python"))
+    from tests.support.paths import ensure_python_client_on_path
+
+    ensure_python_client_on_path()
     from peer_link import rendezvous as rz  # noqa: E402
     from peer_link.codec import PeerAnswerAccepted, PeerPairCodec  # noqa: E402
     from peer_link.protocol import (  # noqa: E402

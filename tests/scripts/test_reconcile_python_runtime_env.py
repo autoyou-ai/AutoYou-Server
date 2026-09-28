@@ -12,21 +12,20 @@ __debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-45de90d1
 from pathlib import Path
 
 from scripts import reconcile_python_runtime_env as reconcile
+from tests.support.paths import PROJECT_ROOT, REPO_ROOT
 
 
 def test_signed_binary_profile_keeps_webcam_runtime_dependency():
-    profile = Path(__file__).resolve().parents[2] / "requirements" / "binary-default.txt"
+    profile = REPO_ROOT / "requirements" / "binary-default.txt"
 
     assert "opencv-python>=4.9.0,<5" in profile.read_text(encoding="utf-8")
     assert "opencv-python" not in reconcile.RETIRED_PACKAGES
 
 
 def test_twine_is_kept_out_of_the_runtime_environment():
-    release_requirements = (
-        Path(__file__).resolve().parents[2]
-        / "requirements"
-        / "autoyou-lite-release.txt"
-    ).read_text(encoding="utf-8")
+    release_requirements = (PROJECT_ROOT / "requirements" / "autoyou-lite-release.txt").read_text(
+        encoding="utf-8"
+    )
 
     assert "twine" in reconcile.RELEASE_ONLY_PACKAGES
     assert "twine==7.0.0" in release_requirements

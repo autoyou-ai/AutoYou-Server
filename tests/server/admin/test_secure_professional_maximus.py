@@ -697,6 +697,9 @@ def test_lite_accepts_maximus_name_but_keeps_existing_pairing_wire_mode():
 
 
 def test_lite_encrypted_config_reconnects_to_protected_store_after_restart(tmp_path):
+    from tests.support.paths import ensure_autoyou_lite_on_path
+
+    ensure_autoyou_lite_on_path()
     from autoyou_lite._runtime.encrypted_json_store import EncryptedJsonStore
 
     password = "synthetic-lite-config-password"
