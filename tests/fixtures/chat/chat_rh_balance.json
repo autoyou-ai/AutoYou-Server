@@ -1,0 +1,7 @@
+{
+  "message": "what is my account balance in robinhood?",
+  "session_id": "test-robinhood-balance",
+  "user_id": "AutoYou-ios",
+  "context": [],
+  "metadata": {"client": "signal"}
+}

@@ -1,0 +1,9 @@
+# Backwards-compatible "everything needed for the product runtime" bundle.
+# This intentionally excludes tuning/research-only extras.
+-r base.txt
+-r local-llm.txt
+-r desktop-automation.txt
+-r messaging.txt
+-r voice.txt
+-r internet.txt
+-r bluetooth.txt

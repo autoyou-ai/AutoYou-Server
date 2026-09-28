@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Persona - AutoYou</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <main id="app" class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>Persona</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="statusChip" class="chip">Loading…</span>
+        <button id="logoutBtn" class="icon-btn" type="button" hidden aria-label="Lock">Lock</button>
+      </div>
+    </header>
+
+    <section id="authView" class="card auth-card" hidden>
+      <h2>Unlock your persona</h2>
+      <p class="muted">Enter the 6-digit code from your authenticator to open this private profile.</p>
+      <form id="authForm" class="stack">
+        <input id="authCode" class="code-input" inputmode="numeric" autocomplete="one-time-code"
+               pattern="[0-9]*" maxlength="6" placeholder="000000" aria-label="Authentication code" />
+        <button class="primary" type="submit">Unlock</button>
+        <p id="authError" class="error" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <section id="personaView" class="stack" hidden inert>
+      <div class="card">
+        <div class="card-head">
+          <h2>Add to your journal</h2>
+          <p class="muted">Jot a personal detail or what you're working on now. Appended with today's date, just like a chat journal entry.</p>
+        </div>
+        <form id="appendForm" class="stack">
+          <input id="appendHeading" type="text" placeholder="Optional heading (e.g. Current work)" />
+          <textarea id="appendText" rows="4" placeholder="e.g. I just started leading the platform team…"></textarea>
+          <button class="primary" type="submit">Append</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head row">
+          <div>
+            <h2>Your persona journal</h2>
+            <p id="metaLine" class="muted">-</p>
+          </div>
+          <div class="head-actions">
+            <button id="editBtn" class="ghost" type="button">Edit</button>
+            <button id="reloadBtn" class="ghost" type="button">Reload</button>
+          </div>
+        </div>
+        <pre id="personaView_md" class="persona-md">No profile yet.</pre>
+        <div id="editor" hidden>
+          <textarea id="personaEditor" rows="14" spellcheck="true"></textarea>
+          <div class="row gap">
+            <button id="saveBtn" class="primary" type="button">Save</button>
+            <button id="cancelEditBtn" class="ghost" type="button">Cancel</button>
+          </div>
+        </div>
+        <div class="danger-zone">
+          <button id="wipeBtn" class="danger" type="button">Wipe profile…</button>
+          <span class="muted small">Permanently deletes the profile and its encryption key.</span>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" hidden></div>
+  </main>
+  <script src="assets/app.js"></script>
+</body>
+</html>

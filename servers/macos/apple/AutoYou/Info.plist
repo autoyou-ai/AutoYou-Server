@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>AutoYou</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.autoyou.macos.host</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleDisplayName</key>
+	<string>AutoYou</string>
+	<key>CFBundleName</key>
+	<string>AutoYou</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>81.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>81.0.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AutoYou uses the local network for pairing, WebRTC voice calls, and bundled services.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>AutoYou uses Bluetooth only when you turn on Bluetooth Pair to connect a nearby phone or computer.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AutoYou uses the camera only when you enable video features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AutoYou uses the microphone for voice calls and speech recognition.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>AutoYou uses screen recording access only when you enable Remote Desktop or share your computer screen.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>AutoYou uses automation only when you ask Remote Desktop to list or focus windows.</string>
+	<key>NSMainStoryboardFile</key>
+	<string></string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright (c) 2026 OpenStorey LLC. All rights reserved.</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+</dict>
+</plist>

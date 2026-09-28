@@ -1,0 +1,3 @@
+# Installed with --no-deps by scripts/install_realtimestt_runtime.py.
+# Keep this exact pin aligned with autoyou_lite's voice extra.
+RealtimeSTT==1.0.2

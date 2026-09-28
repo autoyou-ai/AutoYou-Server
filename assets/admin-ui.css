@@ -1,0 +1,3755 @@
+:root {
+    color-scheme: light;
+    --ayu-bg: #f5f6fa;
+    --ayu-bg-start: #faf9ff;
+    --ayu-bg-end: #eef2ff;
+    --ayu-bg-accent: rgba(124, 58, 237, 0.14);
+    --ayu-bg-accent-soft: rgba(59, 130, 246, 0.12);
+    --ayu-surface: rgba(255, 255, 255, 0.86);
+    --ayu-surface-strong: #ffffff;
+    --ayu-surface-muted: rgba(248, 250, 252, 0.92);
+    --ayu-border: rgba(143, 155, 179, 0.25);
+    --ayu-border-strong: rgba(124, 58, 237, 0.22);
+    --ayu-text: #19162a;
+    --ayu-muted: #615d78;
+    --ayu-faint: #8a88a2;
+    --ayu-primary: #6d28d9;
+    --ayu-primary-strong: #4c1d95;
+    --ayu-primary-soft: #f3e8ff;
+    --ayu-green: #15803d;
+    --ayu-green-soft: #ecfdf3;
+    --ayu-amber: #b45309;
+    --ayu-amber-soft: #fff7ed;
+    --ayu-red: #b91c1c;
+    --ayu-red-soft: #fef2f2;
+    --ayu-blue: #1d4ed8;
+    --ayu-blue-soft: #eff6ff;
+    --ayu-shadow: 0 30px 80px rgba(39, 31, 82, 0.09);
+    --ayu-shadow-soft: 0 14px 40px rgba(39, 31, 82, 0.08);
+    --ayu-sidebar-bg: rgba(255, 255, 255, 0.72);
+    --ayu-sidebar-border: rgba(255, 255, 255, 0.65);
+    --ayu-sidebar-shadow: 10px 0 40px rgba(76, 29, 149, 0.05);
+    --ayu-modal-backdrop: rgba(17, 24, 39, 0.54);
+    --ayu-hero-heading: #19162a;
+    --ayu-hero-copy: #615d78;
+    --ayu-banner-start: #6d28d9;
+    --ayu-banner-end: #2563eb;
+    --ayu-banner-shadow: 0 24px 44px rgba(76, 29, 149, 0.24);
+    --ayu-radius-xl: 28px;
+    --ayu-radius-lg: 22px;
+    --ayu-radius-md: 16px;
+    --ayu-radius-sm: 12px;
+    --ayu-font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    --ayu-font-display: "Optima", "Avenir Next", sans-serif;
+    --ayu-font-mono: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --ayu-bg: #08101d;
+    --ayu-bg-start: #040814;
+    --ayu-bg-end: #0a1224;
+    --ayu-bg-accent: rgba(59, 130, 246, 0.15);
+    --ayu-bg-accent-soft: rgba(124, 58, 237, 0.18);
+    --ayu-surface: rgba(10, 16, 31, 0.86);
+    --ayu-surface-strong: #0f172a;
+    --ayu-surface-muted: rgba(15, 23, 42, 0.94);
+    --ayu-border: rgba(143, 155, 179, 0.18);
+    --ayu-border-strong: rgba(96, 165, 250, 0.24);
+    --ayu-text: #eef2ff;
+    --ayu-muted: #bac5dd;
+    --ayu-faint: #91a3c4;
+    --ayu-primary: #8b5cf6;
+    --ayu-primary-strong: #ddd6fe;
+    --ayu-primary-soft: rgba(139, 92, 246, 0.18);
+    --ayu-green: #86efac;
+    --ayu-green-soft: rgba(34, 197, 94, 0.15);
+    --ayu-amber: #fdba74;
+    --ayu-amber-soft: rgba(245, 158, 11, 0.16);
+    --ayu-red: #fca5a5;
+    --ayu-red-soft: rgba(239, 68, 68, 0.16);
+    --ayu-blue: #93c5fd;
+    --ayu-blue-soft: rgba(59, 130, 246, 0.16);
+    --ayu-shadow: 0 32px 90px rgba(2, 6, 23, 0.44);
+    --ayu-shadow-soft: 0 18px 48px rgba(2, 6, 23, 0.34);
+    --ayu-sidebar-bg: rgba(7, 12, 24, 0.82);
+    --ayu-sidebar-border: rgba(148, 163, 184, 0.12);
+    --ayu-sidebar-shadow: 10px 0 40px rgba(2, 6, 23, 0.36);
+    --ayu-modal-backdrop: rgba(2, 6, 23, 0.68);
+    --ayu-hero-heading: #f8fbff;
+    --ayu-hero-copy: rgba(238, 242, 255, 0.92);
+    --ayu-banner-start: #0d172a;
+    --ayu-banner-end: #132544;
+    --ayu-banner-shadow: 0 24px 48px rgba(2, 6, 23, 0.42);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+    width: 100%;
+    overflow-x: hidden;
+    background:
+        radial-gradient(circle at top left, var(--ayu-bg-accent), transparent 34%),
+        radial-gradient(circle at right 18%, var(--ayu-bg-accent-soft), transparent 28%),
+        linear-gradient(180deg, var(--ayu-bg-start) 0%, var(--ayu-bg) 42%, var(--ayu-bg-end) 100%);
+    color: var(--ayu-text);
+    font-family: var(--ayu-font-body);
+}
+
+body {
+    min-height: 100vh;
+}
+
+a {
+    color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+img {
+    max-width: 100%;
+    display: block;
+}
+
+code,
+.ayu-code,
+.ayu-mono {
+    font-family: var(--ayu-font-mono);
+}
+
+#autoyou-admin-root {
+    min-height: 100vh;
+}
+
+.ayu-shell {
+    display: flex;
+    min-height: 100vh;
+    min-width: 0;
+    position: relative;
+    overflow-x: hidden;
+}
+
+.ayu-sidebar {
+    width: clamp(292px, 16vw, 320px);
+    flex: 0 0 clamp(292px, 16vw, 320px);
+    background: var(--ayu-sidebar-bg);
+    backdrop-filter: blur(24px);
+    border-right: 1px solid var(--ayu-sidebar-border);
+    box-shadow: var(--ayu-sidebar-shadow);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 20px;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    max-height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    z-index: 20;
+}
+
+.ayu-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 10px 14px;
+    flex: 0 0 auto;
+}
+
+.ayu-sidebar-header-copy {
+    min-width: 0;
+    flex: 1;
+    width: 0;
+}
+
+.ayu-logo-wrap {
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+}
+
+.ayu-logo-wrap img {
+    width: 46px;
+    height: 46px;
+    object-fit: contain;
+}
+
+.ayu-brand-title {
+    display: block;
+    font-family: var(--ayu-font-display);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    min-width: 0;
+    line-height: 1.2;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.ayu-brand-subtitle {
+    display: block;
+    color: var(--ayu-faint);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-nav {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    margin-top: 6px;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+    flex: 1 1 auto;
+}
+
+.ayu-nav-btn {
+    border: 0;
+    background: transparent;
+    color: var(--ayu-muted);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.ayu-nav-btn:hover,
+.ayu-nav-btn:focus-visible {
+    background: rgba(109, 40, 217, 0.08);
+    color: var(--ayu-text);
+    outline: none;
+}
+
+.ayu-nav-btn.active {
+    background: linear-gradient(135deg, rgba(109, 40, 217, 0.12), rgba(59, 130, 246, 0.08));
+    color: var(--ayu-primary-strong);
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.12);
+}
+
+.ayu-nav-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+}
+
+.ayu-nav-label {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ayu-sidebar-footer {
+    margin-top: 12px;
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+    border-radius: 22px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+    overflow: visible;
+    flex: 0 0 auto;
+}
+
+.ayu-sidebar-update {
+    width: 100%;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(109, 40, 217, 0.16), rgba(59, 130, 246, 0.11));
+    color: var(--ayu-text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ayu-sidebar-update:hover,
+.ayu-sidebar-update:focus-visible {
+    border-color: var(--ayu-primary);
+    outline: none;
+}
+
+.ayu-sidebar-update-icon,
+.ayu-sidebar-update-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--ayu-primary-strong);
+}
+
+.ayu-sidebar-update strong,
+.ayu-sidebar-update small {
+    display: block;
+}
+
+.ayu-sidebar-update small {
+    color: var(--ayu-muted);
+    margin-top: 2px;
+}
+
+.ayu-update-panel {
+    border-radius: 24px;
+}
+
+.ayu-sidebar-profile {
+    display: grid;
+    gap: 10px;
+}
+
+.ayu-sidebar-server {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-sidebar-server-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+    width: 100%;
+}
+
+.ayu-sidebar-server-copy {
+    min-width: 0;
+    flex: 1;
+    width: 0;
+    max-width: 100%;
+}
+
+.ayu-sidebar-server-copy strong,
+.ayu-sidebar-server-copy .ayu-hint {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ayu-sidebar-server-copy strong {
+    line-height: 1.25;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.ayu-sidebar-server-copy .ayu-hint {
+    white-space: nowrap;
+}
+
+.ayu-avatar {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+    color: white;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ayu-avatar span {
+    line-height: 1;
+}
+
+.ayu-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ayu-avatar-button {
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ayu-avatar-button:hover,
+.ayu-avatar-button:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.16), 0 12px 24px rgba(15, 23, 42, 0.24);
+    outline: none;
+}
+
+.ayu-icon-btn {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border-radius: 12px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    color: var(--ayu-muted);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.ayu-icon-btn:hover,
+.ayu-icon-btn:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--ayu-border-strong);
+    color: var(--ayu-text);
+    outline: none;
+}
+
+.ayu-icon-btn .ayu-nav-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.ayu-profile-menu {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    box-shadow: var(--ayu-shadow-soft);
+}
+
+.ayu-profile-menu .ayu-btn,
+.ayu-profile-menu .ayu-link-btn,
+.ayu-profile-menu .ayu-form-btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.ayu-profile-menu form {
+    margin: 0;
+}
+
+.ayu-profile-menu-divider {
+    height: 1px;
+    background: var(--ayu-border);
+    margin: 2px 0;
+}
+
+.ayu-file-input {
+    display: none;
+}
+
+.ayu-sidebar-actions {
+    display: grid;
+    gap: 7px;
+}
+
+.ayu-sidebar-actions .ayu-btn,
+.ayu-sidebar-actions .ayu-link-btn,
+.ayu-sidebar-actions .ayu-form-btn {
+    width: 100%;
+    min-height: 38px;
+    padding: 9px 14px;
+}
+
+.ayu-sidebar-actions form {
+    margin: 0;
+}
+
+.ayu-main-wrap {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.ayu-mobilebar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 18px 0;
+    gap: 12px;
+}
+
+.ayu-mobilebar-title {
+    font-family: var(--ayu-font-display);
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-main {
+    flex: 1;
+    padding: 28px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ayu-screen {
+    max-width: 1220px;
+    margin: 0 auto;
+    display: grid;
+    gap: 22px;
+    min-width: 0;
+    width: 100%;
+}
+
+.ayu-scroll-target {
+    scroll-margin-top: 96px;
+}
+
+.ayu-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    min-width: 0;
+}
+
+.ayu-hero-copy {
+    min-width: 0;
+}
+
+.ayu-hero-copy h1 {
+    margin: 0;
+    font-family: var(--ayu-font-display);
+    font-size: clamp(30px, 4vw, 42px);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ayu-hero-heading);
+}
+
+.ayu-hero-copy p {
+    margin: 10px 0 0;
+    color: var(--ayu-hero-copy);
+    max-width: 760px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.ayu-panel {
+    background: var(--ayu-surface);
+    backdrop-filter: blur(18px);
+    border: 1px solid var(--ayu-border);
+    border-radius: var(--ayu-radius-lg);
+    box-shadow: var(--ayu-shadow-soft);
+    overflow: hidden;
+    min-width: 0;
+}
+
+.ayu-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 22px 14px;
+    border-bottom: 1px solid var(--ayu-border);
+}
+
+.ayu-panel-head h2,
+.ayu-panel-head h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.ayu-panel-head p {
+    margin: 6px 0 0;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ayu-panel-body {
+    padding: 20px 22px 22px;
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+.ayu-banner {
+    background: linear-gradient(135deg, var(--ayu-banner-start) 0%, var(--ayu-banner-end) 100%);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--ayu-radius-xl);
+    padding: 24px 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    box-shadow: var(--ayu-banner-shadow);
+    min-width: 0;
+}
+
+.ayu-banner strong {
+    display: block;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+}
+
+.ayu-banner p {
+    margin: 8px 0 0;
+    opacity: 0.88;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.ayu-banner-meta {
+    text-align: right;
+    font-size: 12px;
+    opacity: 0.88;
+    line-height: 1.7;
+}
+
+.ayu-grid,
+.ayu-grid-2,
+.ayu-grid-3,
+.ayu-grid-4,
+.ayu-grid-hero {
+    display: grid;
+    gap: 18px;
+}
+
+.ayu-grid-hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ayu-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ayu-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ayu-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ayu-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.ayu-choice-card {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    border-radius: 20px;
+    padding: 16px;
+    display: grid;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ayu-choice-card:hover,
+.ayu-choice-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--ayu-border-strong);
+    box-shadow: var(--ayu-shadow-soft);
+    outline: none;
+}
+
+.ayu-choice-card.active {
+    border-color: var(--ayu-border-strong);
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.18), var(--ayu-shadow-soft);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), var(--ayu-primary-soft));
+}
+
+.ayu-choice-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.ayu-choice-card-eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ayu-faint);
+}
+
+.ayu-choice-card-title {
+    margin-top: 4px;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.ayu-choice-card-copy {
+    margin: 0;
+    color: var(--ayu-muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.ayu-setup-map {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.ayu-setup-map-head,
+.ayu-setup-recipe-head,
+.ayu-setup-tree-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    min-width: 0;
+}
+
+.ayu-setup-map-head h2,
+.ayu-setup-recipe-head h3,
+.ayu-setup-tree-head h3,
+.ayu-setup-recipe-block h4,
+.ayu-setup-restart h4 {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.25;
+}
+
+.ayu-setup-map-head p,
+.ayu-setup-recipe-head p,
+.ayu-setup-tree-head p,
+.ayu-setup-section-card p {
+    margin: 6px 0 0;
+    color: var(--ayu-muted);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ayu-setup-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ayu-setup-profile-card {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    border-radius: 18px;
+    padding: 14px;
+    min-height: 168px;
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    text-align: left;
+    color: var(--ayu-text);
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ayu-setup-profile-card:hover,
+.ayu-setup-profile-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--ayu-border-strong);
+    box-shadow: var(--ayu-shadow-soft);
+    outline: none;
+}
+
+.ayu-setup-profile-card.active {
+    border-color: var(--ayu-blue);
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.2), var(--ayu-shadow-soft);
+}
+
+.ayu-setup-profile-card p {
+    margin: 0;
+    color: var(--ayu-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.ayu-setup-tree {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ayu-setup-tree-branch,
+.ayu-setup-recipe-card,
+.ayu-setup-section-card {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    border-radius: 18px;
+}
+
+.ayu-setup-tree-branch,
+.ayu-setup-recipe-card {
+    padding: 16px;
+    display: grid;
+    gap: 14px;
+}
+
+.ayu-setup-tree-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.ayu-setup-tree-option {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-bg);
+    border-radius: 14px;
+    padding: 12px;
+    min-height: 84px;
+    display: grid;
+    gap: 6px;
+    text-align: left;
+    color: var(--ayu-text);
+    cursor: pointer;
+}
+
+.ayu-setup-tree-option:hover,
+.ayu-setup-tree-option:focus-visible {
+    border-color: var(--ayu-border-strong);
+    outline: none;
+}
+
+.ayu-setup-tree-option.active {
+    border-color: var(--ayu-green);
+    background: rgba(21, 128, 61, 0.08);
+}
+
+.ayu-setup-tree-option strong {
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.ayu-setup-tree-option span {
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.ayu-setup-coverage {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.ayu-setup-coverage div {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-bg);
+    border-radius: 14px;
+    padding: 12px;
+    min-width: 0;
+}
+
+.ayu-setup-coverage strong {
+    display: block;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.ayu-setup-coverage span {
+    display: block;
+    margin-top: 6px;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.ayu-setup-warning-list,
+.ayu-setup-restart,
+.ayu-setup-recipe-block {
+    display: grid;
+    gap: 10px;
+}
+
+.ayu-setup-warning-list .ayu-note p,
+.ayu-setup-restart .ayu-note p {
+    margin: 6px 0 0;
+}
+
+.ayu-setup-section-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.ayu-setup-section-card {
+    padding: 12px;
+    min-height: 136px;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+}
+
+.ayu-setup-section-card strong {
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.ayu-setup-agent-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-setup-agent-strip span {
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    background: var(--ayu-bg);
+    padding: 7px 10px;
+    color: var(--ayu-text);
+    font-size: 12px;
+    line-height: 1;
+    max-width: 100%;
+}
+
+.ayu-setup-next-actions {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--ayu-muted);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.ayu-stat-card {
+    background: var(--ayu-surface-strong);
+    border: 1px solid var(--ayu-border);
+    border-radius: var(--ayu-radius-md);
+    padding: 16px 18px;
+    display: grid;
+    gap: 10px;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.ayu-stat-card:hover,
+.ayu-stat-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--ayu-border-strong);
+    box-shadow: var(--ayu-shadow-soft);
+    outline: none;
+}
+
+.ayu-stat-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.ayu-kicker {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ayu-faint);
+    font-weight: 700;
+}
+
+.ayu-stat-value {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.ayu-stat-copy {
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.ayu-field {
+    display: grid;
+    gap: 7px;
+}
+
+.ayu-field label,
+.ayu-field .ayu-field-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ayu-text);
+}
+
+.ayu-field .ayu-field-hint {
+    font-size: 11px;
+    color: var(--ayu-faint);
+    line-height: 1.5;
+}
+
+.ayu-input,
+.ayu-select,
+.ayu-textarea {
+    width: 100%;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    color: var(--ayu-text);
+    border-radius: 14px;
+    padding: 12px 14px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ayu-input:focus,
+.ayu-select:focus,
+.ayu-textarea:focus {
+    outline: none;
+    border-color: rgba(109, 40, 217, 0.45);
+    box-shadow: 0 0 0 4px rgba(109, 40, 217, 0.1);
+}
+
+.ayu-input:disabled,
+.ayu-select:disabled,
+.ayu-textarea:disabled {
+    background: var(--ayu-surface-muted);
+    color: var(--ayu-faint);
+    border-color: var(--ayu-border);
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.ayu-textarea {
+    min-height: 118px;
+    resize: vertical;
+}
+
+.ayu-checkbox,
+.ayu-switch {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+}
+
+.ayu-checkbox input[type="checkbox"],
+.ayu-switch input[type="checkbox"] {
+    appearance: auto;
+    flex: 0 0 18px;
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    padding: 0;
+    margin: 2px 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.ayu-checkbox:has(input:disabled),
+.ayu-switch:has(input:disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.ayu-checkbox input:disabled,
+.ayu-switch input:disabled {
+    cursor: not-allowed;
+}
+
+.ayu-checkbox span,
+.ayu-switch span {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.ayu-checkbox small,
+.ayu-switch small {
+    display: block;
+    margin-top: 4px;
+    color: var(--ayu-faint);
+    font-size: 11px;
+}
+
+.ayu-inline-actions,
+.ayu-stack-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ayu-password-actions {
+    margin-top: -4px;
+}
+
+.ayu-stack-actions {
+    margin-top: 4px;
+}
+
+.ayu-btn,
+.ayu-link-btn,
+.ayu-form-btn {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 11px 16px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.ayu-btn span,
+.ayu-link-btn span,
+.ayu-form-btn span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ayu-btn:hover,
+.ayu-link-btn:hover,
+.ayu-form-btn:hover,
+.ayu-btn:focus-visible,
+.ayu-link-btn:focus-visible,
+.ayu-form-btn:focus-visible {
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.ayu-btn-primary {
+    background: linear-gradient(135deg, #6d28d9, #4f46e5);
+    color: white;
+    box-shadow: 0 12px 24px rgba(79, 70, 229, 0.18);
+}
+
+.ayu-btn-secondary {
+    background: var(--ayu-surface-strong);
+    color: var(--ayu-text);
+    border: 1px solid var(--ayu-border);
+}
+
+.ayu-btn-ghost {
+    background: var(--ayu-primary-soft);
+    color: var(--ayu-primary-strong);
+}
+
+.ayu-btn-green {
+    background: #15803d;
+    color: white;
+}
+
+.ayu-btn-amber {
+    background: #d97706;
+    color: white;
+}
+
+.ayu-btn-red {
+    background: #b91c1c;
+    color: white;
+}
+
+.ayu-btn-danger {
+    background: rgba(185, 28, 28, 0.08);
+    color: var(--ayu-red);
+    border: 1px solid rgba(185, 28, 28, 0.18);
+}
+
+.ayu-btn-sm {
+    padding: 8px 13px;
+    font-size: 12px;
+}
+
+.ayu-btn[disabled],
+.ayu-link-btn[aria-disabled="true"] {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+/* Permanently unavailable control (e.g. agent ships no website). */
+.ayu-btn-inert,
+.ayu-btn-inert[disabled] {
+    background: rgba(143, 155, 179, 0.12);
+    color: var(--ayu-faint);
+    border: 1px dashed var(--ayu-border);
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+.ayu-btn-inert:hover,
+.ayu-btn-inert:focus-visible {
+    transform: none;
+    filter: none;
+}
+
+.ayu-btn.is-loading {
+    transform: none;
+}
+
+.ayu-btn-spinner {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    display: inline-block;
+    animation: ayu-spin 0.7s linear infinite;
+}
+
+.ayu-btn-sm .ayu-btn-spinner {
+    width: 11px;
+    height: 11px;
+    border-width: 2px;
+}
+
+@keyframes ayu-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ayu-pill,
+.ayu-badge {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+}
+
+.ayu-badge-purple,
+.ayu-tone-purple {
+    background: var(--ayu-primary-soft);
+    color: var(--ayu-primary-strong);
+}
+
+.ayu-badge-green,
+.ayu-tone-green {
+    background: var(--ayu-green-soft);
+    color: var(--ayu-green);
+}
+
+.ayu-badge-amber,
+.ayu-tone-amber {
+    background: var(--ayu-amber-soft);
+    color: var(--ayu-amber);
+}
+
+.ayu-badge-red,
+.ayu-tone-red {
+    background: var(--ayu-red-soft);
+    color: var(--ayu-red);
+}
+
+.ayu-badge-blue,
+.ayu-tone-blue {
+    background: var(--ayu-blue-soft);
+    color: var(--ayu-blue);
+}
+
+.ayu-badge-gray,
+.ayu-tone-gray {
+    background: rgba(143, 155, 179, 0.14);
+    color: var(--ayu-muted);
+}
+
+.ayu-note {
+    border-radius: 18px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    background: rgba(109, 40, 217, 0.08);
+    color: var(--ayu-primary-strong);
+    border: 1px solid rgba(109, 40, 217, 0.12);
+    overflow-x: auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ayu-note code {
+    font-family: var(--ayu-font-mono);
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.ayu-note.ayu-note-green {
+    background: rgba(21, 128, 61, 0.08);
+    color: var(--ayu-green);
+    border-color: rgba(21, 128, 61, 0.12);
+}
+
+.ayu-note.ayu-note-amber {
+    background: rgba(217, 119, 6, 0.1);
+    color: var(--ayu-amber);
+    border-color: rgba(217, 119, 6, 0.14);
+}
+
+.ayu-note.ayu-note-red {
+    background: rgba(185, 28, 28, 0.08);
+    color: var(--ayu-red);
+    border-color: rgba(185, 28, 28, 0.12);
+}
+
+.ayu-note.ayu-note-gray {
+    background: rgba(143, 155, 179, 0.08);
+    color: var(--ayu-faint);
+    border-color: rgba(143, 155, 179, 0.12);
+}
+
+.ayu-note.ayu-note-blue {
+    background: var(--ayu-blue-soft);
+    color: var(--ayu-blue);
+    border-color: rgba(59, 130, 246, 0.16);
+}
+
+.ayu-network-note p,
+.ayu-network-alert p {
+    margin: 6px 0 0;
+}
+
+/* Home network exposed without HTTPS: the one access warning that must not
+   blend into the surrounding status notes. */
+.ayu-note.ayu-network-alert {
+    border-width: 2px;
+    border-color: rgba(185, 28, 28, 0.36);
+}
+
+:root[data-theme="dark"] .ayu-note.ayu-network-alert {
+    border-color: rgba(252, 165, 165, 0.42);
+}
+
+.ayu-network-alert .ayu-inline-actions {
+    margin-top: 10px;
+}
+
+.ayu-network-urls {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 4px;
+}
+
+.ayu-network-urls code {
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+
+/* Stranded protected-storage banner. Sits above every screen because sealed
+   stores break unrelated features, so the warning has to reach a user who is
+   nowhere near the Security page. */
+.ayu-storage-alert {
+    margin: 0 0 20px;
+    border-width: 2px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.ayu-storage-alert strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.ayu-storage-alert p {
+    margin: 0;
+}
+
+.ayu-storage-alert-files {
+    margin: 10px 0 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 2px;
+}
+
+.ayu-storage-alert-files code {
+    overflow-wrap: anywhere;
+}
+
+.ayu-storage-alert-actions {
+    margin-top: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .ayu-storage-alert {
+        animation: ayu-storage-alert-in 220ms ease-out;
+    }
+}
+
+@keyframes ayu-storage-alert-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}
+
+.ayu-model-thinking-note {
+    margin-top: 12px;
+}
+
+.ayu-model-capability-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.ayu-model-capability {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    color: var(--ayu-green);
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 8px;
+}
+
+.ayu-remote-desktop-runtime {
+    margin-top: 12px;
+}
+
+.ayu-remote-desktop-runtime p {
+    margin: 6px 0 0;
+}
+
+.ayu-list {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.ayu-list-row {
+    background: var(--ayu-surface-strong);
+    border: 1px solid var(--ayu-border);
+    border-radius: 18px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ayu-list-row-stack {
+    display: grid;
+    gap: 12px;
+}
+
+.ayu-telegram-onboarding {
+    display: grid;
+    gap: 14px;
+}
+
+.ayu-telegram-sender-list {
+    gap: 8px;
+}
+
+.ayu-telegram-sender-row {
+    align-items: center;
+}
+
+.ayu-telegram-sender-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.ayu-telegram-sender-check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--ayu-primary);
+}
+
+.ayu-agent-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 14px;
+    align-items: stretch;
+}
+
+.ayu-agent-grid .ayu-list-row {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 12px;
+    height: 100%;
+}
+
+.ayu-agent-grid .ayu-list-row .ayu-list-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.ayu-agent-grid .ayu-list-row .ayu-list-copy strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-agent-grid .ayu-list-row .ayu-list-copy p {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.ayu-agent-grid .ayu-list-row .ayu-inline-actions {
+    margin-top: auto;
+}
+
+.ayu-studio-picker {
+    display: grid;
+    gap: 8px;
+    padding-bottom: 14px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--ayu-border);
+}
+
+.ayu-studio-pick-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-studio-pick {
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    color: var(--ayu-text);
+    border-radius: 14px;
+    padding: 9px 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.ayu-studio-pick:hover,
+.ayu-studio-pick:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--ayu-border-strong);
+    outline: none;
+}
+
+.ayu-studio-pick.active {
+    border-color: var(--ayu-border-strong);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), var(--ayu-primary-soft));
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.18);
+    color: var(--ayu-primary-strong);
+}
+
+.ayu-studio-pick-name {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ayu-studio-pick-tag {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ayu-faint);
+    background: rgba(143, 155, 179, 0.14);
+    border-radius: 999px;
+    padding: 3px 7px;
+}
+
+.ayu-studio-pick-installed {
+    border-color: rgba(21, 128, 61, 0.38);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), var(--ayu-green-soft));
+    box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.12);
+}
+
+.ayu-studio-pick-installed .ayu-studio-pick-tag {
+    color: var(--ayu-green);
+    background: rgba(34, 197, 94, 0.18);
+}
+
+.ayu-studio-pick-blocked {
+    border-color: rgba(185, 28, 28, 0.36);
+}
+
+.ayu-studio-pick-blocked .ayu-studio-pick-tag {
+    color: var(--ayu-red);
+    background: var(--ayu-red-soft);
+}
+
+.ayu-studio-pick.active .ayu-studio-pick-tag {
+    color: var(--ayu-primary-strong);
+    background: rgba(109, 40, 217, 0.14);
+}
+
+.ayu-studio-pick-installed.active {
+    border-color: rgba(21, 128, 61, 0.48);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), var(--ayu-green-soft));
+    box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.2), var(--ayu-shadow-soft);
+    color: var(--ayu-text);
+}
+
+.ayu-studio-pick-installed.active .ayu-studio-pick-tag {
+    color: var(--ayu-green);
+    background: rgba(34, 197, 94, 0.22);
+}
+
+.ayu-studio-pick-blocked.active {
+    border-color: rgba(185, 28, 28, 0.46);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), var(--ayu-red-soft));
+    color: var(--ayu-text);
+}
+
+.ayu-studio-pick-blocked.active .ayu-studio-pick-tag {
+    color: var(--ayu-red);
+    background: var(--ayu-red-soft);
+}
+
+:root[data-theme="dark"] .ayu-studio-pick-installed {
+    border-color: rgba(134, 239, 172, 0.42);
+    background: linear-gradient(180deg, var(--ayu-surface-strong), rgba(21, 128, 61, 0.24));
+    box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.18);
+}
+
+:root[data-theme="dark"] .ayu-studio-pick-installed .ayu-studio-pick-tag {
+    background: rgba(34, 197, 94, 0.26);
+}
+
+.ayu-catalog-entry {
+    display: grid;
+    gap: 10px;
+}
+
+.ayu-card-trigger {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.ayu-card-trigger:focus-visible {
+    outline: 2px solid rgba(109, 40, 217, 0.28);
+    outline-offset: 8px;
+    border-radius: 14px;
+}
+
+.ayu-catalog-detail {
+    padding: 0 8px 6px;
+}
+
+.ayu-variant-list {
+    display: grid;
+    gap: 12px;
+}
+
+.ayu-variant-card {
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+    border-radius: 18px;
+    padding: 14px 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.ayu-variant-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-variant-head small {
+    display: block;
+    margin-top: 5px;
+    color: var(--ayu-muted);
+    line-height: 1.5;
+}
+
+.ayu-progress {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(143, 155, 179, 0.16);
+    overflow: hidden;
+}
+
+.ayu-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #6d28d9, #2563eb);
+    transition: width 0.2s ease;
+}
+
+.ayu-progress-fill.failed {
+    background: linear-gradient(135deg, #b91c1c, #ef4444);
+}
+
+.ayu-video-upload-status {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-muted);
+    min-width: 0;
+}
+
+.ayu-video-upload-blue {
+    border-color: rgba(59, 130, 246, 0.28);
+}
+
+.ayu-video-upload-green {
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.ayu-video-upload-red {
+    border-color: rgba(239, 68, 68, 0.32);
+}
+
+.ayu-video-upload-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+.ayu-video-upload-head > div {
+    min-width: 0;
+}
+
+.ayu-video-upload-head strong,
+.ayu-video-upload-head small {
+    display: block;
+}
+
+.ayu-video-upload-head small {
+    margin-top: 4px;
+    color: var(--ayu-muted);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.ayu-video-upload-status .ayu-status-list {
+    gap: 8px;
+}
+
+.ayu-list-copy {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+}
+
+.ayu-list-copy strong {
+    font-size: 14px;
+}
+
+.ayu-list-copy p,
+.ayu-list-copy small {
+    margin: 0;
+    color: var(--ayu-muted);
+    line-height: 1.55;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.ayu-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-tab {
+    border: 0;
+    border-radius: 999px;
+    background: var(--ayu-surface-muted);
+    color: var(--ayu-muted);
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.ayu-tab.active {
+    background: rgba(109, 40, 217, 0.12);
+    color: var(--ayu-primary-strong);
+}
+
+.ayu-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ayu-empty {
+    padding: 28px 18px;
+    border-radius: 18px;
+    border: 1px dashed var(--ayu-border);
+    background: var(--ayu-surface-muted);
+    color: var(--ayu-faint);
+    text-align: center;
+    line-height: 1.6;
+}
+
+.ayu-toast {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 80;
+    min-width: 260px;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 15px 18px;
+    border-radius: 18px;
+    color: white;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.24);
+}
+
+.ayu-toast.success {
+    background: linear-gradient(135deg, #15803d, #16a34a);
+}
+
+.ayu-toast.error {
+    background: linear-gradient(135deg, #b91c1c, #dc2626);
+}
+
+.ayu-toast.info {
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+.ayu-toast.warning {
+    background: linear-gradient(135deg, #b45309, #d97706);
+}
+
+.ayu-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.ayu-modal-dismiss {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: var(--ayu-modal-backdrop);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+}
+
+.ayu-modal-card {
+    position: relative;
+    z-index: 1;
+    width: min(580px, 100%);
+    max-height: min(88vh, 900px);
+    overflow: auto;
+    background: var(--ayu-surface-strong);
+    border-radius: 28px;
+    box-shadow: 0 40px 90px rgba(17, 24, 39, 0.22);
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+}
+
+.ayu-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ayu-modal-head > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ayu-modal-head .ayu-btn {
+    flex: 0 0 auto;
+    min-width: 78px;
+}
+
+.ayu-modal-head .ayu-btn span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
+.ayu-modal-head h2 {
+    margin: 0;
+    font-size: 22px;
+    font-family: var(--ayu-font-display);
+}
+
+.ayu-modal-head p {
+    margin: 8px 0 0;
+    color: var(--ayu-muted);
+    line-height: 1.6;
+}
+
+.ayu-modal-qr {
+    width: min(396px, 100%);
+    margin: 0 auto;
+    border-radius: 24px;
+    padding: 18px;
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+}
+
+.ayu-helper-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-hint {
+    color: var(--ayu-faint);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.ayu-soft-divider {
+    height: 1px;
+    background: var(--ayu-border);
+}
+
+.ayu-link-list {
+    display: grid;
+    gap: 12px;
+}
+
+.ayu-link-card {
+    text-decoration: none;
+    color: inherit;
+    border-radius: 20px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface);
+    padding: 18px;
+    display: grid;
+    gap: 8px;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.ayu-link-card:hover,
+.ayu-link-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--ayu-border-strong);
+    box-shadow: var(--ayu-shadow-soft);
+    outline: none;
+}
+
+.ayu-link-card strong {
+    font-size: 15px;
+}
+
+.ayu-link-card p {
+    margin: 0;
+    color: var(--ayu-muted);
+    line-height: 1.6;
+    font-size: 13px;
+}
+
+.ayu-guide-reader {
+    display: grid;
+    grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    min-width: 0;
+}
+
+.ayu-guide-toc {
+    display: grid;
+    gap: 14px;
+    position: sticky;
+    top: 88px;
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    padding-right: 2px;
+    min-width: 0;
+}
+
+.ayu-guide-toc-group {
+    display: grid;
+    gap: 6px;
+}
+
+.ayu-guide-toc-item {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ayu-muted);
+    border-radius: 14px;
+    padding: 9px 12px;
+    text-align: left;
+    cursor: pointer;
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.ayu-guide-toc-item strong {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ayu-guide-toc-item span {
+    font-size: 11px;
+    color: var(--ayu-faint);
+    line-height: 1.4;
+}
+
+.ayu-guide-toc-item:hover,
+.ayu-guide-toc-item:focus-visible {
+    background: rgba(109, 40, 217, 0.06);
+    color: var(--ayu-text);
+    outline: none;
+}
+
+.ayu-guide-toc-item.active {
+    background: linear-gradient(135deg, rgba(109, 40, 217, 0.12), rgba(59, 130, 246, 0.08));
+    color: var(--ayu-primary-strong);
+    box-shadow: inset 0 0 0 1px rgba(109, 40, 217, 0.12);
+}
+
+.ayu-guide-toc-item.active span {
+    color: var(--ayu-primary-strong);
+    opacity: 0.82;
+}
+
+.ayu-guide-content {
+    min-width: 0;
+}
+
+.ayu-guide-content-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.ayu-guide-doc {
+    min-width: 0;
+}
+
+.ayu-guide-doc .guide-shell {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ayu-guide-doc h1 {
+    font-family: var(--ayu-font-display);
+    font-size: 24px;
+    line-height: 1.15;
+    margin: 0 0 6px;
+    color: var(--ayu-text);
+}
+
+.ayu-guide-doc h2 {
+    font-size: 16px;
+    margin: 20px 0 6px;
+    color: var(--ayu-text);
+}
+
+.ayu-guide-doc h3 {
+    font-size: 14px;
+    margin: 14px 0 4px;
+    color: var(--ayu-text);
+}
+
+.ayu-guide-doc p,
+.ayu-guide-doc li {
+    color: var(--ayu-muted);
+    line-height: 1.65;
+    font-size: 13.5px;
+}
+
+.ayu-guide-doc ul,
+.ayu-guide-doc ol {
+    padding-left: 20px;
+    margin: 6px 0;
+}
+
+.ayu-guide-doc a {
+    color: var(--ayu-primary-strong);
+    font-weight: 600;
+}
+
+.ayu-guide-doc code {
+    font-family: var(--ayu-font-mono);
+    font-size: 0.88em;
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+    border-radius: 6px;
+    padding: 1px 5px;
+    overflow-wrap: anywhere;
+}
+
+.ayu-guide-doc pre {
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+    border-radius: 14px;
+    padding: 14px;
+    overflow: auto;
+}
+
+.ayu-guide-doc pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+.ayu-guide-doc .guide-callout {
+    margin: 14px 0;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(109, 40, 217, 0.16);
+    background: rgba(109, 40, 217, 0.07);
+    color: var(--ayu-text);
+}
+
+.ayu-guide-doc .guide-callout strong {
+    color: var(--ayu-text);
+}
+
+.ayu-totp-live {
+    display: grid;
+    gap: 12px;
+    text-align: center;
+}
+
+.ayu-totp-code {
+    font-size: clamp(34px, 7vw, 44px);
+    font-weight: 800;
+    letter-spacing: 0.28em;
+    font-family: var(--ayu-font-mono);
+    color: var(--ayu-primary-strong);
+    padding-left: 0.28em;
+}
+
+.ayu-totp-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ayu-totp-meta .ayu-progress {
+    flex: 1;
+}
+
+.ayu-boot-sweep-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.ayu-boot-sweep-stats > div {
+    background: var(--ayu-surface-muted);
+    border: 1px solid var(--ayu-border);
+    border-radius: 18px;
+    padding: 14px 16px;
+}
+
+.ayu-boot-sweep-number {
+    margin-top: 8px;
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--ayu-font-display);
+}
+
+.ayu-boot-sweep-board {
+    position: relative;
+    min-height: 260px;
+    border-radius: 24px;
+    border: 1px solid var(--ayu-border);
+    background:
+        radial-gradient(circle at top left, rgba(109, 40, 217, 0.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.16), transparent 34%),
+        linear-gradient(180deg, var(--ayu-surface-muted), var(--ayu-surface-strong));
+    overflow: hidden;
+}
+
+.ayu-boot-sweep-board::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(143, 155, 179, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(143, 155, 179, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+}
+
+.ayu-boot-sweep-node {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 0;
+    background: radial-gradient(circle at 30% 30%, #fef3c7, #f59e0b 58%, #b45309 100%);
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.12), 0 10px 18px rgba(180, 83, 9, 0.25);
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    animation: ayu-boot-sweep-pulse 1s ease-in-out infinite;
+}
+
+.ayu-boot-sweep-node::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 999px;
+    border: 1px solid rgba(245, 158, 11, 0.32);
+}
+
+@keyframes ayu-boot-sweep-pulse {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.14);
+    }
+}
+
+.ayu-boot-sweep-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.ayu-boot-sweep-table th,
+.ayu-boot-sweep-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--ayu-border);
+    text-align: left;
+}
+
+.ayu-boot-sweep-table th {
+    color: var(--ayu-faint);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ayu-boot-sweep-empty td {
+    color: var(--ayu-faint);
+}
+
+.ayu-backdrop {
+    display: none;
+}
+
+.ayu-screen-loading {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+}
+
+.ayu-loading-card {
+    width: min(440px, 100%);
+    border-radius: 32px;
+    background: var(--ayu-surface);
+    border: 1px solid var(--ayu-border);
+    box-shadow: var(--ayu-shadow);
+    padding: 32px;
+    text-align: center;
+}
+
+.ayu-loading-card h1 {
+    margin: 0 0 10px;
+    font-family: var(--ayu-font-display);
+    font-size: 28px;
+}
+
+.ayu-loading-card p {
+    margin: 0;
+    color: var(--ayu-muted);
+    line-height: 1.6;
+}
+
+.ayu-setup-check-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ayu-setup-check {
+    border-radius: 18px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-strong);
+    padding: 16px;
+    display: grid;
+    gap: 10px;
+}
+
+.ayu-setup-check.ready {
+    background: linear-gradient(160deg, var(--ayu-green-soft), var(--ayu-surface-strong));
+}
+
+.ayu-setup-check.warn {
+    background: linear-gradient(160deg, var(--ayu-amber-soft), var(--ayu-surface-strong));
+}
+
+.ayu-setup-check-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-setup-check strong {
+    font-size: 14px;
+}
+
+.ayu-setup-check p {
+    margin: 0;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.ayu-status-list {
+    display: grid;
+    gap: 10px;
+}
+
+.ayu-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px 14px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-muted);
+    min-width: 0;
+}
+
+.ayu-status-row > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.ayu-status-row .ayu-mono,
+.ayu-status-row code,
+.ayu-empty,
+.ayu-hint {
+    overflow-wrap: anywhere;
+}
+
+.ayu-status-row > .ayu-hint {
+    flex: 1 1 160px;
+    text-align: right;
+    line-height: 1.5;
+}
+
+/* Long/path values get the full remaining width and read left-aligned
+   instead of wrapping into a narrow right-justified column. */
+.ayu-status-row > .ayu-hint.ayu-mono {
+    text-align: left;
+}
+
+.ayu-status-row strong,
+.ayu-status-row small {
+    display: block;
+}
+
+.ayu-status-row small {
+    margin-top: 4px;
+    color: var(--ayu-muted);
+    line-height: 1.5;
+}
+
+.ayu-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--ayu-border);
+    background: var(--ayu-surface-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ayu-spinner {
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 18px;
+    border-radius: 50%;
+    border: 4px solid rgba(109, 40, 217, 0.12);
+    border-top-color: var(--ayu-primary);
+    animation: ayu-spin 0.9s linear infinite;
+}
+
+@keyframes ayu-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 1180px) {
+    .ayu-grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1020px) {
+    .ayu-grid-3,
+    .ayu-grid-hero,
+    .ayu-grid-2,
+    .ayu-detail-grid,
+    .ayu-setup-check-grid,
+    .ayu-choice-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-setup-profile-grid,
+    .ayu-setup-tree,
+    .ayu-setup-section-grid,
+    .ayu-setup-coverage {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ayu-hero,
+    .ayu-banner {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-banner-meta {
+        text-align: left;
+    }
+}
+
+@media (max-width: 900px) {
+    .ayu-shell {
+        display: block;
+    }
+
+    .ayu-mobilebar {
+        display: flex;
+        position: sticky;
+        top: 0;
+        z-index: 24;
+        padding: 14px 16px;
+        background: var(--ayu-sidebar-bg);
+        backdrop-filter: blur(24px);
+        border-bottom: 1px solid var(--ayu-border);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .ayu-mobilebar .ayu-btn {
+        flex: 0 0 auto;
+        max-width: 42%;
+    }
+
+    .ayu-sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 30;
+        transform: translateX(-104%);
+        transition: transform 0.22s ease;
+        width: min(280px, calc(100vw - 24px));
+        height: 100dvh;
+        max-height: 100vh;
+        box-shadow: 0 34px 70px rgba(17, 24, 39, 0.24);
+    }
+
+    .ayu-shell.nav-open .ayu-sidebar {
+        transform: translateX(0);
+    }
+
+    .ayu-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.38);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.22s ease;
+        z-index: 18;
+    }
+
+    .ayu-shell.nav-open .ayu-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .ayu-main {
+        padding: 18px;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-screen {
+        gap: 16px;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-hero .ayu-inline-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-agent-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-studio-pick {
+        flex: 1 1 auto;
+        justify-content: space-between;
+        min-height: 44px;
+    }
+
+    .ayu-guide-reader {
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-guide-toc {
+        position: static;
+        max-height: none;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-agent-grid .ayu-list-row .ayu-list-copy strong {
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-agent-grid .ayu-list-row .ayu-inline-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .ayu-main {
+        padding: 14px;
+    }
+
+    .ayu-grid-4,
+    .ayu-grid-3,
+    .ayu-grid-2 {
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-panel-head,
+    .ayu-panel-body {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .ayu-banner {
+        padding: 18px;
+    }
+
+    .ayu-list-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-status-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-status-row > .ayu-hint {
+        flex-basis: auto;
+        text-align: left;
+    }
+
+    .ayu-helper-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-panel-head,
+    .ayu-choice-card-top,
+    .ayu-setup-map-head,
+    .ayu-setup-recipe-head,
+    .ayu-setup-tree-head,
+    .ayu-variant-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-setup-profile-grid,
+    .ayu-setup-tree,
+    .ayu-setup-tree-options,
+    .ayu-setup-coverage,
+    .ayu-setup-section-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-setup-profile-card,
+    .ayu-setup-tree-option,
+    .ayu-setup-section-card {
+        min-height: auto;
+    }
+
+    .ayu-inline-actions,
+    .ayu-stack-actions {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .ayu-inline-actions .ayu-btn,
+    .ayu-inline-actions .ayu-link-btn,
+    .ayu-inline-actions .ayu-form-btn,
+    .ayu-stack-actions .ayu-btn,
+    .ayu-stack-actions .ayu-link-btn,
+    .ayu-stack-actions .ayu-form-btn {
+        width: 100%;
+        justify-content: center;
+        white-space: normal;
+    }
+
+    .ayu-btn span,
+    .ayu-link-btn span,
+    .ayu-form-btn span {
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    .ayu-modal-html {
+        display: grid;
+        gap: 12px;
+    }
+
+    /* Upstream - generic .ayu-agent-grid mobile rules */
+    .ayu-agent-grid .ayu-inline-actions {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        width: 100%;
+    }
+
+    .ayu-agent-grid .ayu-btn {
+        width: 100%;
+        margin: 0 !important;
+        text-align: center;
+        justify-content: center;
+    }
+
+    /* Local - Agents screen-specific overrides (more specific than the
+       generic rules above; targets the dedicated [data-screen="agents"] shell). */
+    .ayu-shell[data-screen="agents"] .ayu-hero-copy h1 {
+        font-size: clamp(28px, 9vw, 34px);
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-panel {
+        border-radius: 20px;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-panel-body {
+        gap: 14px;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-agent-grid .ayu-list-row {
+        padding: 16px 14px;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-tabs {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-tab {
+        width: 100%;
+        text-align: center;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-inline-actions .ayu-btn,
+    .ayu-shell[data-screen="agents"] .ayu-inline-actions .ayu-link-btn,
+    .ayu-shell[data-screen="agents"] .ayu-inline-actions .ayu-form-btn {
+        min-height: 44px;
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .ayu-shell[data-screen="agents"] .ayu-empty {
+        padding: 20px 14px;
+    }
+}
+
+/* ===== Local Pair connect card (Home + Live View) ===== */
+
+.ayu-localpair-target {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border-radius: 14px;
+    border: 1px solid var(--ayu-border, rgba(148, 163, 184, 0.25));
+    background: var(--ayu-surface-2, rgba(148, 163, 184, 0.08));
+}
+
+.ayu-localpair-target.ayu-localpair-primary {
+    border-color: var(--ayu-accent, #38bdf8);
+}
+
+.ayu-localpair-host {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: clamp(20px, 4.5vw, 28px);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    word-break: break-all;
+}
+
+.ayu-localpair-port {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: clamp(14px, 3vw, 18px);
+    font-weight: 600;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
+.ayu-localpair-steps {
+    margin: 12px 0 10px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.ayu-localpair-steps ol {
+    margin: 6px 0 0;
+    padding-left: 20px;
+}
+
+.ayu-localpair-steps li {
+    margin: 4px 0;
+}
+
+@media (max-width: 680px) {
+    .ayu-localpair-target {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 16px;
+    }
+
+    .ayu-localpair-host {
+        font-size: clamp(22px, 7.5vw, 30px);
+    }
+}
+
+/* ===== Per-Agent 2FA Profiles ===== */
+
+.ayu-2fa-enrol-qr {
+    display: flex;
+    justify-content: center;
+    margin: 4px 0;
+}
+
+.ayu-2fa-enrol-qr img {
+    width: min(220px, 100%);
+    height: auto;
+    border-radius: 20px;
+    padding: 14px;
+    /* QR codes need a light quiet zone to stay scannable regardless of theme. */
+    background: #ffffff;
+    border: 1px solid var(--ayu-border);
+}
+
+.ayu-2fa-profile-card {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+}
+
+.ayu-2fa-profile-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ayu-2fa-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-2fa-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 6px 6px 6px 12px;
+    border-radius: 999px;
+    background: var(--ayu-blue-soft);
+    color: var(--ayu-blue);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ayu-2fa-chip.ayu-2fa-chip-orphan {
+    background: rgba(143, 155, 179, 0.14);
+    color: var(--ayu-muted);
+}
+
+.ayu-2fa-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-2fa-chip-remove {
+    appearance: none;
+    border: 0;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.5);
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.ayu-2fa-chip-remove:hover,
+.ayu-2fa-chip-remove:focus-visible {
+    background: rgba(255, 255, 255, 0.8);
+    outline: none;
+}
+
+.ayu-2fa-assign-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.ayu-2fa-assign-row .ayu-field {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+@media (max-width: 680px) {
+    .ayu-2fa-assign-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ayu-2fa-assign-row .ayu-inline-actions {
+        width: 100%;
+    }
+
+    .ayu-2fa-chip {
+        font-size: 12.5px;
+        padding: 8px 8px 8px 12px;
+    }
+
+    .ayu-2fa-chip-remove {
+        width: 24px;
+        height: 24px;
+        min-width: 24px;
+    }
+}
+
+.ayu-mobile-setup ol { margin: 0; padding-left: 22px; display: grid; gap: 12px; }
+.ayu-mobile-setup li { padding-left: 4px; line-height: 1.6; overflow-wrap: anywhere; }
+.ayu-mobile-setup .ayu-hint { margin: 16px 0; }
+
+/* ===== Chat & History ===== */
+
+.ayu-chat-screen {
+    max-width: 1480px;
+    gap: 18px;
+}
+
+.ayu-chat-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.ayu-chat-heading h1,
+.ayu-chat-thread-head h2,
+.ayu-chat-history-top h2,
+.ayu-chat-call-copy h2 {
+    margin: 0;
+    font-family: var(--ayu-font-display);
+    letter-spacing: -0.025em;
+}
+
+.ayu-chat-heading h1 {
+    margin-top: 5px;
+    color: var(--ayu-hero-heading);
+    font-size: clamp(28px, 4vw, 42px);
+}
+
+.ayu-chat-heading p {
+    margin: 8px 0 0;
+    color: var(--ayu-hero-copy);
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 720px;
+}
+
+.ayu-chat-eyebrow {
+    color: var(--ayu-primary);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.ayu-chat-heading-actions,
+.ayu-chat-thread-actions,
+.ayu-chat-call-status,
+.ayu-chat-composer-footer,
+.ayu-chat-composer-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ayu-chat-heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.ayu-chat-server-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    color: var(--ayu-green);
+    background: var(--ayu-green-soft);
+    border: 1px solid color-mix(in srgb, var(--ayu-green) 22%, transparent);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ayu-chat-server-pill span,
+.ayu-chat-session-dot,
+.ayu-chat-recording-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.ayu-chat-workspace {
+    display: grid;
+    grid-template-columns: minmax(230px, 278px) minmax(0, 1fr);
+    height: min(720px, calc(100dvh - 188px));
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--ayu-border);
+    border-radius: 26px;
+    background: var(--ayu-surface);
+    box-shadow: var(--ayu-shadow-soft);
+    backdrop-filter: blur(22px);
+}
+
+.ayu-chat-history {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ayu-surface-muted) 72%, transparent);
+    border-right: 1px solid var(--ayu-border);
+}
+
+.ayu-chat-history-top,
+.ayu-chat-thread-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-chat-history-top {
+    padding: 20px 16px 14px;
+}
+
+.ayu-chat-history-top h2 {
+    margin-top: 4px;
+    font-size: 20px;
+}
+
+.ayu-chat-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 14px 12px;
+    padding: 0 12px;
+    min-height: 38px;
+    color: var(--ayu-faint);
+    border: 1px solid var(--ayu-border);
+    border-radius: 12px;
+    background: var(--ayu-surface);
+}
+
+.ayu-chat-search input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    color: var(--ayu-text);
+    background: transparent;
+    font-size: 12px;
+}
+
+.ayu-chat-filters {
+    display: flex;
+    gap: 5px;
+    padding: 0 14px 13px;
+}
+
+.ayu-chat-filters button {
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 9px;
+    color: var(--ayu-muted);
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ayu-chat-filters button:hover,
+.ayu-chat-filters button.active {
+    color: var(--ayu-primary-strong);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-history-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 0 9px 12px;
+}
+
+.ayu-chat-history-group {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 15px;
+}
+
+.ayu-chat-history-group-label {
+    padding: 0 8px 5px;
+    color: var(--ayu-faint);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.ayu-chat-session-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    width: 100%;
+    padding: 10px 8px;
+    border: 0;
+    border-radius: 13px;
+    color: var(--ayu-muted);
+    text-align: left;
+    background: transparent;
+    cursor: pointer;
+}
+
+.ayu-chat-session-row:hover,
+.ayu-chat-session-row.active {
+    color: var(--ayu-text);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-session-row.active {
+    box-shadow: inset 3px 0 0 var(--ayu-primary);
+}
+
+.ayu-chat-session-dot {
+    flex: 0 0 7px;
+    margin-top: 5px;
+    color: var(--ayu-primary);
+}
+
+.ayu-chat-session-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+}
+
+.ayu-chat-session-copy strong,
+.ayu-chat-session-copy small,
+.ayu-chat-session-copy em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-chat-session-copy strong {
+    color: inherit;
+    font-size: 12px;
+}
+
+.ayu-chat-session-copy small,
+.ayu-chat-session-copy em {
+    color: var(--ayu-faint);
+    font-size: 10px;
+    font-style: normal;
+}
+
+.ayu-chat-session-copy em {
+    color: var(--ayu-primary);
+    opacity: 0.8;
+}
+
+.ayu-chat-session-count {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-history-empty,
+.ayu-chat-history-loading {
+    display: grid;
+    place-items: center;
+    gap: 7px;
+    padding: 35px 15px;
+    color: var(--ayu-muted);
+    text-align: center;
+    font-size: 12px;
+}
+
+.ayu-chat-history-empty span {
+    color: var(--ayu-primary);
+    font-size: 26px;
+}
+
+.ayu-chat-history-empty strong {
+    color: var(--ayu-text);
+}
+
+.ayu-chat-history-empty p {
+    margin: 0;
+    line-height: 1.45;
+}
+
+.ayu-chat-history-loading .ayu-spinner {
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    border-width: 2px;
+}
+
+.ayu-chat-identity {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: auto 13px 13px;
+    padding: 10px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 14px;
+    background: var(--ayu-surface);
+}
+
+.ayu-chat-identity-avatar {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ayu-primary), var(--ayu-blue));
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.ayu-chat-identity span:last-child {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.ayu-chat-identity small {
+    color: var(--ayu-faint);
+    font-size: 9px;
+    text-transform: uppercase;
+}
+
+.ayu-chat-identity strong {
+    max-width: 190px;
+    overflow: hidden;
+    color: var(--ayu-text);
+    font-family: var(--ayu-font-mono);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-chat-thread {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--ayu-surface-strong) 40%, transparent);
+}
+
+.ayu-chat-thread-head {
+    flex: 0 0 auto;
+    padding: 22px 25px 17px;
+    border-bottom: 1px solid var(--ayu-border);
+}
+
+.ayu-chat-thread-head h2 {
+    margin-top: 5px;
+    font-size: 22px;
+}
+
+.ayu-chat-thread-head p {
+    margin: 6px 0 0;
+    color: var(--ayu-faint);
+    font-family: var(--ayu-font-mono);
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+
+.ayu-chat-transcript {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 24px clamp(18px, 4vw, 52px);
+}
+
+.ayu-chat-empty {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    flex: 1;
+    min-height: 320px;
+    color: var(--ayu-muted);
+    text-align: center;
+}
+
+.ayu-chat-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    margin-bottom: 14px;
+    border-radius: 18px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ayu-primary), var(--ayu-blue));
+    box-shadow: 0 16px 35px color-mix(in srgb, var(--ayu-primary) 26%, transparent);
+    font-size: 24px;
+}
+
+.ayu-chat-empty h2 {
+    margin: 0;
+    color: var(--ayu-text);
+    font-family: var(--ayu-font-display);
+    font-size: 24px;
+}
+
+.ayu-chat-empty p {
+    max-width: 450px;
+    margin: 8px 0 18px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ayu-chat-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.ayu-chat-suggestions button {
+    padding: 8px 12px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    color: var(--ayu-muted);
+    background: var(--ayu-surface-muted);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.ayu-chat-suggestions button:hover {
+    color: var(--ayu-primary-strong);
+    border-color: var(--ayu-border-strong);
+}
+
+.ayu-chat-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: min(760px, 92%);
+}
+
+.ayu-chat-message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.ayu-chat-avatar {
+    display: grid;
+    place-items: center;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    border-radius: 11px;
+    color: var(--ayu-primary-strong);
+    background: var(--ayu-primary-soft);
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.ayu-chat-message.user .ayu-chat-avatar {
+    color: var(--ayu-blue);
+    background: var(--ayu-blue-soft);
+}
+
+.ayu-chat-message-body {
+    min-width: 0;
+}
+
+.ayu-chat-message-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 6px 5px;
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-message-meta strong {
+    color: var(--ayu-text);
+}
+
+.ayu-chat-bubble {
+    padding: 12px 15px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 16px 16px 16px 5px;
+    color: var(--ayu-text);
+    background: var(--ayu-surface-muted);
+    line-height: 1.55;
+    font-size: 13px;
+}
+
+.ayu-chat-message.user .ayu-chat-bubble {
+    border-color: color-mix(in srgb, var(--ayu-primary) 22%, transparent);
+    border-radius: 16px 16px 5px 16px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--ayu-primary) 15%, var(--ayu-surface)), color-mix(in srgb, var(--ayu-blue) 9%, var(--ayu-surface)));
+}
+
+.ayu-chat-bubble p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.ayu-chat-pending,
+.ayu-chat-error {
+    display: block;
+    margin: 5px 7px 0;
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-error {
+    color: var(--ayu-red);
+}
+
+.ayu-chat-attachment-tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-chat-attachment {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 170px;
+    max-width: 260px;
+    padding: 8px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ayu-surface-strong) 70%, transparent);
+}
+
+.ayu-chat-attachment-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 27px;
+    width: 27px;
+    height: 27px;
+    border-radius: 9px;
+    color: var(--ayu-primary);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-attachment-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.ayu-chat-attachment-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.ayu-chat-attachment-copy strong,
+.ayu-chat-attachment-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-chat-attachment-copy strong {
+    color: var(--ayu-text);
+    font-size: 10px;
+}
+
+.ayu-chat-attachment-copy small {
+    color: var(--ayu-faint);
+    font-size: 9px;
+}
+
+.ayu-chat-attachment-preview {
+    width: 100%;
+    max-height: 130px;
+    margin-top: 5px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+.ayu-chat-audio {
+    width: 190px;
+    max-width: 100%;
+    height: 28px;
+    margin-top: 5px;
+}
+
+.ayu-chat-attachment-remove {
+    border: 0;
+    color: var(--ayu-faint);
+    background: transparent;
+    cursor: pointer;
+}
+
+.ayu-chat-attachment-remove:hover {
+    color: var(--ayu-red);
+}
+
+.ayu-chat-composer {
+    flex: 0 0 auto;
+    margin: 0 20px 20px;
+    padding: 10px 12px 9px;
+    border: 1px solid var(--ayu-border-strong);
+    border-radius: 18px;
+    background: var(--ayu-surface);
+    box-shadow: 0 14px 34px color-mix(in srgb, var(--ayu-primary) 8%, transparent);
+}
+
+.ayu-chat-composer textarea {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    resize: vertical;
+    border: 0;
+    outline: 0;
+    color: var(--ayu-text);
+    background: transparent;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.ayu-chat-composer-footer {
+    justify-content: space-between;
+    padding-top: 6px;
+}
+
+.ayu-chat-composer-tools button {
+    display: grid;
+    place-items: center;
+    width: 31px;
+    height: 31px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    color: var(--ayu-muted);
+    background: transparent;
+    cursor: pointer;
+    font-size: 19px;
+}
+
+.ayu-chat-composer-tools button:hover,
+.ayu-chat-composer-tools button.active {
+    color: var(--ayu-primary);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-composer-tools .ayu-chat-call-tool {
+    color: var(--ayu-blue);
+}
+
+.ayu-chat-composer-tools input[type="file"] {
+    display: none;
+}
+
+.ayu-chat-composer-hint {
+    flex: 1;
+    color: var(--ayu-faint);
+    font-size: 10px;
+    text-align: center;
+}
+
+.ayu-chat-send {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 11px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ayu-primary), var(--ayu-blue));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--ayu-primary) 22%, transparent);
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.ayu-chat-send:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.ayu-chat-recording {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    color: var(--ayu-red);
+    background: var(--ayu-red-soft);
+    font-size: 10px;
+}
+
+.ayu-chat-recording-dot {
+    color: var(--ayu-red);
+    animation: ayu-chat-pulse 1s ease-in-out infinite;
+}
+
+@keyframes ayu-chat-pulse {
+    50% { opacity: 0.35; transform: scale(0.78); }
+}
+
+.ayu-chat-call-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 17px;
+    padding: 17px;
+    border: 1px solid color-mix(in srgb, var(--ayu-blue) 25%, transparent);
+    border-radius: 20px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--ayu-blue) 13%, var(--ayu-surface)), color-mix(in srgb, var(--ayu-primary) 9%, var(--ayu-surface)));
+}
+
+.ayu-chat-call-card audio {
+    display: none;
+}
+
+.ayu-chat-call-orb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 54px;
+    height: 54px;
+    border-radius: 18px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ayu-primary), var(--ayu-blue));
+    box-shadow: 0 10px 25px color-mix(in srgb, var(--ayu-blue) 28%, transparent);
+}
+
+.ayu-chat-call-orb span {
+    width: 3px;
+    height: 13px;
+    border-radius: 5px;
+    background: currentColor;
+    animation: ayu-chat-wave 1s ease-in-out infinite;
+}
+
+.ayu-chat-call-orb span:nth-child(2) { height: 23px; animation-delay: 0.14s; }
+.ayu-chat-call-orb span:nth-child(3) { height: 10px; animation-delay: 0.28s; }
+
+@keyframes ayu-chat-wave {
+    50% { transform: scaleY(0.45); opacity: 0.72; }
+}
+
+.ayu-chat-call-copy {
+    min-width: 0;
+}
+
+.ayu-chat-call-copy h2 {
+    margin-top: 3px;
+    color: var(--ayu-text);
+    font-size: 18px;
+}
+
+.ayu-chat-call-copy p {
+    margin: 4px 0 7px;
+    color: var(--ayu-muted);
+    font-size: 12px;
+}
+
+.ayu-chat-call-status {
+    flex-wrap: wrap;
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-call-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+@media (max-width: 1050px) {
+    .ayu-chat-workspace {
+        grid-template-columns: minmax(205px, 240px) minmax(0, 1fr);
+    }
+    .ayu-chat-call-card {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+    .ayu-chat-call-controls {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 720px) {
+    .ayu-chat-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .ayu-chat-heading-actions {
+        justify-content: flex-start;
+    }
+    .ayu-chat-workspace {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 0;
+        overflow: visible;
+    }
+    .ayu-chat-history {
+        max-height: 280px;
+        border-right: 0;
+        border-bottom: 1px solid var(--ayu-border);
+    }
+    .ayu-chat-history-list {
+        max-height: 145px;
+    }
+    .ayu-chat-identity {
+        display: none;
+    }
+    .ayu-chat-thread {
+        height: min(610px, calc(100dvh - 220px));
+        min-height: 420px;
+    }
+    .ayu-chat-thread-head {
+        padding: 17px 16px 14px;
+    }
+    .ayu-chat-transcript {
+        padding: 18px 13px;
+    }
+    .ayu-chat-composer {
+        margin: 0 10px 10px;
+    }
+    .ayu-chat-composer-hint {
+        display: none;
+    }
+}

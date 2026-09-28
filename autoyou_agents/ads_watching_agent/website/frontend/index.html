@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watch Ad</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <main class="watch-shell" aria-labelledby="page-title">
+    <section class="watch-panel">
+      <p class="eyebrow">AutoYou Rewards</p>
+      <h1 id="page-title">Watch Ad</h1>
+      <p class="watch-copy">Choose Watch Ad to open an approved rewarded placement when one is available. Eligible completed ads can create pending, non-cash credits for future AutoYou Cloud time and subscription gifts.</p>
+      <button id="watch-ad-btn" class="watch-button" type="button" aria-describedby="watch-status" disabled>
+        Watch Ad
+      </button>
+      <section id="web-fallback-shell" class="web-fallback-shell" aria-label="Rewarded web ad" hidden>
+        <iframe id="web-fallback-frame" title="AutoYou rewarded web ad" loading="eager" referrerpolicy="no-referrer" allow="autoplay; fullscreen; encrypted-media"></iframe>
+      </section>
+      <p class="watch-note">Pending reward credits stay in AutoYou and can go toward future AutoYou Cloud time and subscription gifts. They are non-transferable: no cash, crypto, gift cards, or transfers. Standard display ads are not rewarded.</p>
+      <p id="watch-status" class="status-text" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <div id="reward-celebration" class="reward-celebration" role="dialog" aria-modal="true" aria-labelledby="reward-title" hidden>
+    <div class="reward-card">
+      <button id="reward-close" class="reward-close" type="button" aria-label="Close pending credit notice">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>
+      </button>
+      <svg class="reward-sparkle" viewBox="0 0 48 48" aria-hidden="true"><path d="m24 3 3.5 13.5L41 20l-13.5 3.5L24 37l-3.5-13.5L7 20l13.5-3.5L24 3Z" fill="currentColor"/><path d="m39 31 1.5 5.5L46 38l-5.5 1.5L39 45l-1.5-5.5L32 38l5.5-1.5L39 31Z" fill="currentColor" opacity=".72"/></svg>
+      <p class="reward-kicker">You earned</p>
+      <p id="reward-amount" class="reward-amount">+0</p>
+      <p class="reward-unit">Pending credits</p>
+      <p class="reward-terms">Calculated from the recorded completed-ad seconds × 10. Local, non-transferable credits toward future AutoYou Cloud time and subscription gifts.</p>
+    </div>
+  </div>
+
+  <script src="./assets/app.js?v=20260714.2"></script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+{
+  "format": "autoyou.peer-verification/1",
+  "purpose": "Cross-implementation conformance vectors for the Nearby verification code. shared/peer_verification.py is the reference; PeerVerificationCode.swift must produce identical rows. Generated from the reference, so a vector cannot bless a bug.",
+  "notes": [
+    "Codes are order-independent: swapping local and remote must not change the row.",
+    "The alphabet is a security parameter. It must be exactly 64 unique symbols so each contributes exactly six bits.",
+    "Six symbols, not four: four is 24 bits, which an attacker in the middle can grind offline inside a ten-minute invitation."
+  ],
+  "default_length": 6,
+  "alphabet": [
+    "🍎",
+    "🍌",
+    "🍇",
+    "🍓",
+    "🍑",
+    "🍍",
+    "🥕",
+    "🌽",
+    "🍄",
+    "🌰",
+    "🌻",
+    "🌵",
+    "🌲",
+    "🍁",
+    "⭐",
+    "🌙",
+    "☀️",
+    "☁️",
+    "⚡",
+    "🔥",
+    "💧",
+    "🌊",
+    "🏔️",
+    "🌈",
+    "🐶",
+    "🐱",
+    "🐭",
+    "🐰",
+    "🦊",
+    "🐻",
+    "🐼",
+    "🐨",
+    "🦁",
+    "🐮",
+    "🐷",
+    "🐸",
+    "🐵",
+    "🐔",
+    "🐧",
+    "🦉",
+    "🦋",
+    "🐝",
+    "🐌",
+    "🐢",
+    "🐍",
+    "🐳",
+    "🐬",
+    "🐙",
+    "🚗",
+    "🚂",
+    "✈️",
+    "🚀",
+    "⛵",
+    "🚲",
+    "⚓",
+    "🎈",
+    "🎸",
+    "🎹",
+    "🎺",
+    "🔔",
+    "🔑",
+    "🔒",
+    "💡",
+    "📎"
+  ],
+  "extract_fingerprint": [
+    {
+      "name": "colon_separated",
+      "sdp": "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\n",
+      "expected": "sha-256 abababababababababababababababababababababababababababababababab"
+    },
+    {
+      "name": "lowercase",
+      "sdp": "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\na=fingerprint:sha-256 ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab:ab\r\n",
+      "expected": "sha-256 abababababababababababababababababababababababababababababababab"
+    },
+    {
+      "name": "unseparated",
+      "sdp": "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\na=fingerprint:sha-256 ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\r\n",
+      "expected": "sha-256 abababababababababababababababababababababababababababababababab"
+    }
+  ],
+  "extract_reject": [
+    {
+      "name": "empty",
+      "sdp": ""
+    },
+    {
+      "name": "no_fingerprint",
+      "sdp": "v=0\r\na=nothing\r\n"
+    },
+    {
+      "name": "too_short",
+      "sdp": "v=0\r\na=fingerprint:sha-256 AB:CD\r\n"
+    },
+    {
+      "name": "conflicting",
+      "sdp": "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\na=fingerprint:sha-256 AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\r\na=fingerprint:sha-256 FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF:FF\r\n"
+    }
+  ],
+  "derive": [
+    {
+      "name": "AB_11_no_invitation",
+      "local_fingerprint": "sha-256 abababababababababababababababababababababababababababababababab",
+      "remote_fingerprint": "sha-256 1111111111111111111111111111111111111111111111111111111111111111",
+      "invitation_id": "",
+      "expected": [
+        "🔥",
+        "🍇",
+        "🐼",
+        "🐢",
+        "🔒",
+        "🐙"
+      ]
+    },
+    {
+      "name": "AB_11_invitation-1",
+      "local_fingerprint": "sha-256 abababababababababababababababababababababababababababababababab",
+      "remote_fingerprint": "sha-256 1111111111111111111111111111111111111111111111111111111111111111",
+      "invitation_id": "invitation-1",
+      "expected": [
+        "🥕",
+        "🐵",
+        "🔥",
+        "🍑",
+        "🚀",
+        "🐭"
+      ]
+    },
+    {
+      "name": "FF_00_no_invitation",
+      "local_fingerprint": "sha-256 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "remote_fingerprint": "sha-256 0000000000000000000000000000000000000000000000000000000000000000",
+      "invitation_id": "",
+      "expected": [
+        "🍓",
+        "🔥",
+        "🚀",
+        "🦊",
+        "📎",
+        "🍎"
+      ]
+    },
+    {
+      "name": "FF_00_invitation-1",
+      "local_fingerprint": "sha-256 ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "remote_fingerprint": "sha-256 0000000000000000000000000000000000000000000000000000000000000000",
+      "invitation_id": "invitation-1",
+      "expected": [
+        "🐙",
+        "🚂",
+        "🚗",
+        "🔥",
+        "⚓",
+        "🚗"
+      ]
+    },
+    {
+      "name": "1A_2B_no_invitation",
+      "local_fingerprint": "sha-256 1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+      "remote_fingerprint": "sha-256 2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+      "invitation_id": "",
+      "expected": [
+        "🐨",
+        "⛵",
+        "📎",
+        "🐧",
+        "🔒",
+        "🐌"
+      ]
+    },
+    {
+      "name": "1A_2B_invitation-1",
+      "local_fingerprint": "sha-256 1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+      "remote_fingerprint": "sha-256 2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+      "invitation_id": "invitation-1",
+      "expected": [
+        "🌲",
+        "🌙",
+        "🍓",
+        "🌊",
+        "🚲",
+        "🍑"
+      ]
+    },
+    {
+      "name": "9C_3D_no_invitation",
+      "local_fingerprint": "sha-256 9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c",
+      "remote_fingerprint": "sha-256 3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+      "invitation_id": "",
+      "expected": [
+        "🐱",
+        "🐮",
+        "🐸",
+        "☁️",
+        "📎",
+        "🍄"
+      ]
+    },
+    {
+      "name": "9C_3D_invitation-1",
+      "local_fingerprint": "sha-256 9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c",
+      "remote_fingerprint": "sha-256 3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+      "invitation_id": "invitation-1",
+      "expected": [
+        "🐼",
+        "🔒",
+        "🍇",
+        "🔒",
+        "⭐",
+        "🐵"
+      ]
+    }
+  ],
+  "derive_reject": [
+    {
+      "name": "reflected",
+      "local_fingerprint": "sha-256 abababababababababababababababababababababababababababababababab",
+      "remote_fingerprint": "sha-256 abababababababababababababababababababababababababababababababab",
+      "invitation_id": ""
+    },
+    {
+      "name": "missing_local",
+      "local_fingerprint": "",
+      "remote_fingerprint": "sha-256 1111111111111111111111111111111111111111111111111111111111111111",
+      "invitation_id": ""
+    }
+  ]
+}

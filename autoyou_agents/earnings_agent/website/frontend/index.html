@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AutoYou Earnings — pending ad credits collected on your devices.">
+  <meta name="theme-color" content="#070b16">
+  <title>AutoYou Earnings</title>
+  <link rel="stylesheet" href="./assets/styles.css?v=2">
+</head>
+<body>
+  <div class="sky" aria-hidden="true">
+    <span class="orb orb-a"></span>
+    <span class="orb orb-b"></span>
+  </div>
+
+  <main class="shell">
+    <header class="hero reveal">
+      <p class="eyebrow">AutoYou · Earnings</p>
+      <h1>Earnings <span class="soon-pill">Coming&nbsp;Soon</span></h1>
+      <p class="tagline">Watch optional rewarded ads on your devices today — your local pending credits are collected here for a future reviewed rewards program.</p>
+    </header>
+
+    <section class="section reveal">
+      <div class="credit-card">
+        <p class="credit-label">Pending Ad Credits</p>
+        <p id="credit-count" class="credit-count">0</p>
+        <p id="credit-rate" class="credit-rate">0 watched seconds × 10 credits/second</p>
+        <p id="credit-copy" class="credit-copy">Collected on this server from your connected devices.</p>
+        <div class="credit-meta">
+          <span id="sync-pill" class="meta-pill">Synced over your private connection</span>
+          <span id="last-event" class="meta-pill" hidden></span>
+        </div>
+        <button id="refresh-btn" type="button" class="btn btn-refresh">Refresh</button>
+      </div>
+    </section>
+
+    <section class="section reveal">
+      <div class="row-grid">
+        <article class="info-card" id="signin-card">
+          <h2>Keep your credits</h2>
+          <p id="signin-copy">Sign in with the same account on your phone and this server if you want future program eligibility reviewed. Nothing is transferred or confirmed here today.</p>
+          <a id="signin-link" class="btn btn-link" target="_blank" rel="noopener noreferrer" hidden>Sign in on app.autoyou.me</a>
+          <span id="signin-pill" class="meta-pill" hidden>Signed in — you're all set</span>
+        </article>
+        <article class="info-card">
+          <h2>How it works</h2>
+          <ol class="steps">
+            <li>Tap <strong>Watch Ad</strong> in the app or ask the Ads Watching agent.</li>
+            <li>Your device reports the finished ad to this server over your private WebRTC session.</li>
+            <li>Pending credits add up locally — nothing is sent to the cloud in the background.</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer reveal">
+      <p>Pending credits are non-transferable AutoYou support credits toward future AutoYou Cloud time and subscription gifts. They are not cash, crypto, gift cards, or confirmed balances.</p>
+    </footer>
+  </main>
+
+  <script src="./assets/app.js?v=2"></script>
+</body>
+</html>

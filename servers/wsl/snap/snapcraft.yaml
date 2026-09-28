@@ -1,0 +1,34 @@
+name: autoyou-server
+base: core22
+adopt-info: autoyou-server
+summary: AutoYou server backend for Linux/WSL
+description: |
+  Packaging scaffold for the AutoYou server backend produced by
+  servers/wsl/build-backend.sh. This snap dumps the already-built Nuitka
+  standalone bundle from servers/wsl/artifacts/backend/AutoYouServer and
+  runs its launcher as a background service.
+
+  This is a structural packaging scaffold, not a submitted or reviewed
+  Snap Store release. See snap/README.md before running `snapcraft`.
+grade: devel
+confinement: devmode
+
+apps:
+  autoyou-server:
+    command: AutoYou --admin 8001 --ai-agent 8081 --auth 8002
+    daemon: simple
+    restart-condition: on-failure
+    plugs:
+      - network
+      - network-bind
+      - home
+
+parts:
+  autoyou-server:
+    plugin: dump
+    # Run ./servers/wsl/build-backend.sh --clean --jobs max first so this
+    # directory exists and is current.
+    source: artifacts/backend/AutoYouServer
+    override-pull: |
+      craftctl default
+      craftctl set version "$(cat "$CRAFT_PROJECT_DIR/../../../VERSION")"

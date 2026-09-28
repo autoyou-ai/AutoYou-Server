@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>AutoYou Audio</title>
+    <link rel="stylesheet" href="assets/styles.css?v=20260817a">
+    <script>(function(){try{var t=localStorage.getItem('ay-audio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(_){}})()</script>
+    <script>(()=>{let queued=false;const sync=()=>{queued=false;const h=Math.round((window.visualViewport&&window.visualViewport.height)||window.innerHeight||0);if(h>0)document.documentElement.style.setProperty('--autoyou-viewport-height',h+'px');};const queue=()=>{if(!queued){queued=true;requestAnimationFrame(sync);}};sync();addEventListener('resize',queue);window.visualViewport?.addEventListener('resize',queue);})();</script>
+</head>
+<body>
+
+<div id="app" class="app">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="app-brand">&#9835; AutoYou Audio</span>
+        </div>
+        <div class="topbar-right">
+            <button id="theme-toggle-btn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
+                <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 1 0 9 9 9 9 0 1 1-9-9z"/></svg>
+            </button>
+            <button id="rescan-btn" class="icon-btn" title="Rescan library" aria-label="Rescan library">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+            <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Open settings">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Loading State -->
+    <div id="loading" class="loading-screen">
+        <div class="loading-note">&#9835;</div>
+        <p id="loading-text">Loading library&hellip;</p>
+    </div>
+
+    <!-- Player (revealed after library loads) -->
+    <div id="player" class="player hidden">
+
+        <!-- Now Playing Hero -->
+        <section class="now-playing">
+            <div class="art-wrap">
+                <img id="album-art-img" class="album-art" data-amplitude-song-info="cover_art_url" alt="">
+                <div class="art-fallback" id="art-fallback" aria-hidden="true">&#9835;</div>
+            </div>
+            <div class="track-info">
+                <p class="track-name" data-amplitude-song-info="name">Select a track</p>
+                <p class="track-artist" data-amplitude-song-info="artist">Local Library</p>
+            </div>
+        </section>
+
+        <div id="buffering-indicator" class="buffering-indicator" hidden aria-live="polite" aria-atomic="true">
+            <span class="buffering-spinner" aria-hidden="true"></span>
+            <span id="buffering-label" class="buffering-label">Loading track...</span>
+        </div>
+
+        <!-- Progress / Seek -->
+        <div class="progress-section">
+            <input type="range" class="amplitude-song-slider seek-slider" step="0.1" aria-label="Seek playback">
+            <div class="time-row">
+                <span class="amplitude-current-time time-label">0:00</span>
+                <span class="amplitude-duration-time time-label">0:00</span>
+            </div>
+        </div>
+
+        <!-- Transport Controls -->
+        <div class="transport">
+            <button class="t-btn t-secondary amplitude-shuffle" aria-label="Shuffle">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+            </button>
+            <button class="t-btn t-large amplitude-prev" aria-label="Previous">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><rect x="5" y="4" width="3" height="16" rx="1"/></svg>
+            </button>
+            <button class="t-btn t-play amplitude-play-pause" aria-label="Play or Pause">
+                <span class="sr-only">Play or Pause</span>
+                <svg class="play-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <svg class="pause-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+            </button>
+            <button class="t-btn t-large amplitude-next" aria-label="Next">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><rect x="16" y="4" width="3" height="16" rx="1"/></svg>
+            </button>
+            <button class="t-btn t-secondary amplitude-repeat" aria-label="Repeat">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                <span class="repeat-badge" id="repeat-badge" aria-hidden="true" hidden></span>
+            </button>
+        </div>
+
+        <!-- Volume -->
+        <div class="volume-row">
+            <svg class="vol-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+            <input type="range" class="amplitude-volume-slider vol-slider" min="0" max="100" value="80" aria-label="Volume">
+            <svg class="vol-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </div>
+
+        <!-- Playlist -->
+        <div class="playlist-wrap">
+            <div class="playlist-header">
+                <span id="lib-count" class="lib-count"></span>
+                <div class="playlist-tabs">
+                    <button id="tab-library" class="tab-btn active" onclick="switchPlaylistTab('library')">Library</button>
+                    <button id="tab-playlist" class="tab-btn" onclick="switchPlaylistTab('playlist')">Playlist</button>
+                </div>
+                <div class="playlist-header-right">
+                    <span id="status-text" class="status-msg"></span>
+                    <button id="list-density-btn" class="icon-btn list-density-btn" title="Expand song list" aria-label="Expand song list" aria-pressed="false">
+                        <svg class="expand-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5"/><path d="M3 3l7 7"/><path d="M16 21h5v-5"/><path d="M21 21l-7-7"/></svg>
+                        <svg class="collapse-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v5H5"/><path d="M3 10l7-7"/><path d="M14 21v-5h5"/><path d="M21 14l-7 7"/></svg>
+                    </button>
+                    <button id="search-toggle-btn" class="icon-btn search-toggle-btn" title="Search tracks" aria-label="Search tracks" aria-expanded="false">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="search-row" id="search-row" hidden>
+                <input id="track-search" class="track-search" type="search" placeholder="Search songs..." autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search songs">
+            </div>
+            <ul id="playlist" class="playlist" role="list" aria-label="Track list"></ul>
+        </div>
+
+    </div><!-- /player -->
+</div><!-- /app -->
+
+<!-- Settings Overlay + Drawer -->
+<div id="settings-overlay" class="settings-overlay" aria-hidden="true">
+    <div class="settings-backdrop" id="settings-backdrop"></div>
+    <aside class="settings-drawer" role="dialog" aria-modal="true" aria-label="Settings">
+
+        <header class="drawer-header">
+            <h2 class="drawer-title">Settings</h2>
+            <button id="settings-close" class="icon-btn" aria-label="Close settings">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </header>
+
+        <div class="drawer-body">
+
+            <!-- OTP Gate (visible until authenticated) -->
+            <div id="otp-gate" class="otp-gate">
+                <div class="otp-lock-icon">&#128274;</div>
+                <p class="otp-hint">Enter your 6-digit authenticator code to configure phone playback.</p>
+                <div class="otp-input-row">
+                    <input id="otp-input" type="text" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*">
+                    <button id="otp-submit" class="solid-btn" type="button">Verify</button>
+                </div>
+                <p id="otp-error" class="error-msg" hidden></p>
+            </div>
+
+            <!-- Settings Form (shown after OTP auth) -->
+            <div id="settings-form" class="settings-form" hidden>
+
+                <div class="auth-banner">
+                    <span class="auth-check">&#10003; Authenticated</span>
+                    <button id="logout-btn" class="text-danger-btn" type="button">Sign out</button>
+                </div>
+
+                <!-- Audio library sources -->
+                <section class="drawer-section">
+                    <h3 class="section-heading">Audio library</h3>
+                    <p class="section-copy">Choose which server folders are scanned when the library loads.</p>
+                    <div class="toggle-row">
+                        <label class="toggle-label" for="setting-source-voice">Voice transcriptions</label>
+                        <input id="setting-source-voice" type="checkbox" class="toggle-check">
+                    </div>
+                    <div class="toggle-row">
+                        <label class="toggle-label" for="setting-source-page">Page Agent feed audio</label>
+                        <input id="setting-source-page" type="checkbox" class="toggle-check">
+                    </div>
+                    <div class="toggle-row">
+                        <label class="toggle-label" for="setting-source-notes">Notes Agent media audio</label>
+                        <input id="setting-source-notes" type="checkbox" class="toggle-check">
+                    </div>
+                    <label class="field-label" for="setting-ad-hoc-paths">Server ad-hoc paths <span class="field-hint">(optional, one per line)</span></label>
+                    <textarea id="setting-ad-hoc-paths" class="field-input path-input" rows="2" placeholder="/server/audio/folder"></textarea>
+                    <div class="path-list-heading">Scanning these server paths</div>
+                    <ul id="audio-path-list" class="audio-path-list" aria-live="polite"></ul>
+                </section>
+
+                <!-- Import through the existing Page Agent blob/datachannel upload -->
+                <section class="drawer-section">
+                    <h3 class="section-heading">Import audio</h3>
+                    <p class="section-copy">Upload audio from this device into the Page Agent feed and Audio library.</p>
+                    <input id="audio-upload-input" type="file" class="field-input" accept="audio/*,.aac,.aiff,.flac,.m4a,.mp3,.ogg,.opus,.wav,.wma" multiple>
+                    <button id="audio-upload-btn" class="solid-btn wide-btn secondary-btn" type="button">Upload to Page Feed</button>
+                    <p id="audio-upload-status" class="settings-msg"></p>
+                </section>
+
+                <!-- Phone Playback Target -->
+                <section class="drawer-section">
+                    <h3 class="section-heading">Phone Playback Target</h3>
+                    <div class="prefetch-bar">
+                        <span id="prefetch-status" class="prefetch-msg"></span>
+                        <button id="prefetch-btn" class="text-btn" type="button">Refresh</button>
+                    </div>
+                    <label class="field-label" for="setting-owner-key">Owner Key</label>
+                    <input id="setting-owner-key" type="text" class="field-input" placeholder="user owner_key">
+                    <label class="field-label" for="setting-session-id">Session ID <span class="field-hint">(optional)</span></label>
+                    <input id="setting-session-id" type="text" class="field-input" placeholder="active session_id">
+                </section>
+
+                <!-- Playback Preferences -->
+                <section class="drawer-section">
+                    <h3 class="section-heading">Playback</h3>
+                    <div class="toggle-row">
+                        <label class="toggle-label" for="setting-auto-relay">Auto-send to phone on play</label>
+                        <input id="setting-auto-relay" type="checkbox" class="toggle-check">
+                    </div>
+                    <label class="field-label" for="setting-repeat-mode">Repeat Mode</label>
+                    <select id="setting-repeat-mode" class="field-select">
+                        <option value="off">Off</option>
+                        <option value="one">One</option>
+                        <option value="all">All</option>
+                    </select>
+                    <label class="field-label" for="setting-search-limit">Search Limit</label>
+                    <input id="setting-search-limit" type="number" class="field-input" min="100" max="12000" step="100" value="12000">
+                </section>
+
+                <!-- Phone Playback Controls -->
+                <section class="drawer-section">
+                    <h3 class="section-heading">Phone Playback Controls</h3>
+                    <div class="relay-grid">
+                        <button data-relay="status"   class="relay-btn" type="button">Status</button>
+                        <button data-relay="pause"    class="relay-btn" type="button">Pause</button>
+                        <button data-relay="resume"   class="relay-btn" type="button">Resume</button>
+                        <button data-relay="stop"     class="relay-btn" type="button">Stop</button>
+                        <button data-relay="next"     class="relay-btn" type="button">Next</button>
+                        <button data-relay="previous" class="relay-btn" type="button">Prev</button>
+                        <button data-relay="repeat"   class="relay-btn" type="button">Repeat</button>
+                        <button data-relay="shuffle"  class="relay-btn" type="button">Shuffle</button>
+                    </div>
+                    <p id="relay-result" class="relay-msg"></p>
+                </section>
+
+                <!-- Footer -->
+                <div class="drawer-footer">
+                    <button id="save-settings-btn" class="solid-btn wide-btn" type="button">Save Settings</button>
+                    <p id="settings-status" class="settings-msg"></p>
+                </div>
+
+            </div><!-- /settings-form -->
+
+        </div><!-- /drawer-body -->
+    </aside><!-- /settings-drawer -->
+</div><!-- /settings-overlay -->
+
+<script src="assets/amplitude.min.js?v=20260629a"></script>
+<script src="assets/app.js?v=20260815b"></script>
+</body>
+</html>

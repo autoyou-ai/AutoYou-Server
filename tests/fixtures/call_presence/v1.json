@@ -1,0 +1,41 @@
+{
+  "format": "autoyou.call-presence/1",
+  "purpose": "The participant row the Computer publishes into a call. Both the Python reference (shared/room_call_session.py) and the Swift model must agree, because this row is what tells participants what the Computer can and cannot do - and a client that renders it wrongly misrepresents the product's central claim.",
+  "notes": [
+    "capabilities is exactly ['chat']. Anything else would mean the Computer had media authority, which the whole design exists to avoid.",
+    "hears_audio is false: it receives a transcript, not a track.",
+    "The notice is user-facing copy and is shown verbatim; it must never be rewritten per client."
+  ],
+  "listening": {
+    "device_id": "computer:73f354a0a3b7e26010b4daf73a364e67",
+    "display_name": "Alice's Mac",
+    "platform": "computer",
+    "role": "computer",
+    "joined_at": 1700000000,
+    "listening": true,
+    "capabilities": [
+      "chat"
+    ],
+    "hears_audio": false,
+    "speaks_audio": false,
+    "records": false,
+    "runs_on": "this computer",
+    "notice": "Follows the conversation and replies in chat. It has no voice in the call and keeps no recording."
+  },
+  "not_listening": {
+    "device_id": "computer:73f354a0a3b7e26010b4daf73a364e67",
+    "display_name": "Alice's Mac",
+    "platform": "computer",
+    "role": "computer",
+    "joined_at": 1700000000,
+    "listening": false,
+    "capabilities": [
+      "chat"
+    ],
+    "hears_audio": false,
+    "speaks_audio": false,
+    "records": false,
+    "runs_on": "this computer",
+    "notice": "Follows the conversation and replies in chat. It has no voice in the call and keeps no recording."
+  }
+}

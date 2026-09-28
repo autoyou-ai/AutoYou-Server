@@ -1,0 +1,11 @@
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "license": "Apache-2.0",
+  "max_tokens": 256,
+  "dimensions": 384,
+  "files": {
+    "model.onnx": {"path": "onnx/model_qint8_arm64.onnx", "bytes": 23026053, "sha256": "4278337fd0ff3c68bfb6291042cad8ab363e1d9fbc43dcb499fe91c871902474"},
+    "vocab.txt": {"path": "vocab.txt", "bytes": 231508, "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"}
+  }
+}

@@ -1,0 +1,17 @@
+const output = document.getElementById("status-output");
+const button = document.getElementById("status-button");
+
+async function refreshStatus() {
+  if (!output) return;
+  output.textContent = "Checking status...";
+  try {
+    const response = await fetch("./api/status");
+    const payload = await response.json();
+    output.textContent = payload.runtime_note || "Website backend is ready.";
+  } catch (error) {
+    output.textContent = `Backend status is unavailable: ${error}`;
+  }
+}
+
+button?.addEventListener("click", refreshStatus);
+refreshStatus();

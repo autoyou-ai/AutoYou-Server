@@ -1,0 +1,11 @@
+# Backwards-compatible full runtime install.
+# Smaller install targets live under `requirements/`:
+#   - base.txt
+#     pinned server/web runtime: google-adk==2.9.2, google-genai==2.25.0, fastapi==0.136.3
+#   - local-llm.txt
+#   - messaging.txt
+#   - voice.txt
+#   - internet.txt
+#   - tuning.txt
+#   - research.txt
+-r requirements/full.txt

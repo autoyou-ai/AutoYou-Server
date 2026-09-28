@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoYou Data Collector</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body class="locked">
+    <div id="app" class="app-shell hidden" inert>
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">DC</span>
+          <span><strong>Data Collector</strong><small>Local workspace</small></span>
+        </div>
+        <nav aria-label="Data collector sections">
+          <a href="#overview">Overview</a>
+          <a href="#sources">Sources</a>
+          <a href="#exports">Training exports</a>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="authState" class="pill">Checking access</span>
+          <button id="logout" class="ghost" type="button">Logout</button>
+        </div>
+      </aside>
+
+      <main>
+        <header>
+          <div>
+            <p class="eyebrow">DATA COLLECTOR</p>
+            <h1>Local conversation collection</h1>
+            <p class="lede">Configure local sources and create a training export. Conversation text stays out of this interface.</p>
+          </div>
+          <div class="header-actions">
+            <button id="refresh" class="secondary" type="button">Refresh</button>
+            <button id="cancelRun" class="secondary" type="button" hidden>Stop collection</button>
+            <button id="collect" class="primary" type="button">Collect now</button>
+          </div>
+        </header>
+
+        <section id="overview" class="metrics" aria-label="Collection overview">
+          <article><span>Sessions</span><strong id="sessionCount">—</strong><small>Normalized private sessions</small></article>
+          <article><span>Turns</span><strong id="turnCount">—</strong><small>Conversation turns ready to review</small></article>
+          <article><span>Pairs</span><strong id="pairCount">—</strong><small>User and assistant pairs</small></article>
+          <article><span>Run status</span><strong id="runState">Idle</strong><small id="runDetail">Waiting for a collection run</small></article>
+        </section>
+
+        <section id="sources" class="grid">
+          <article class="panel source-panel">
+            <div class="panel-heading"><div><p class="eyebrow">1. CONFIGURE</p><h2>Conversation sources</h2></div><span id="sourceSummary" class="pill">Loading</span></div>
+            <p>One folder per line. Empty ChatGPT paths are intentionally ignored; use an explicit export, not browser storage.</p>
+            <form id="settings" class="stack">
+              <fieldset>
+                <legend>Include</legend>
+                <label class="check"><input id="codexEnabled" type="checkbox" /> Codex sessions</label>
+                <label class="check"><input id="claudeEnabled" type="checkbox" /> Claude sessions</label>
+                <label class="check"><input id="chatgptEnabled" type="checkbox" /> ChatGPT exports</label>
+                <label class="check"><input id="copyRaw" type="checkbox" /> Preserve raw copies for reprocessing</label>
+              </fieldset>
+              <label>Codex folders<textarea id="codexRoots" rows="3" spellcheck="false"></textarea></label>
+              <label>Claude folders<textarea id="claudeRoots" rows="3" spellcheck="false"></textarea></label>
+              <label>ChatGPT export folders<textarea id="chatgptRoots" rows="3" spellcheck="false" placeholder="Choose a folder containing conversations.json or exported chat JSON"></textarea></label>
+              <label>Optional project filters<textarea id="projectFilters" rows="2" placeholder="One project name or path fragment per line"></textarea></label>
+              <label>Optional worktree folders<textarea id="worktrees" rows="2" placeholder="One Git worktree folder per line"></textarea></label>
+              <div class="form-actions"><button id="save" class="secondary" type="submit">Save settings</button><button id="rebuild" class="ghost" type="button">Rebuild views only</button></div>
+            </form>
+          </article>
+
+          <article class="panel privacy-panel">
+            <p class="eyebrow">LOCAL SAFETY</p>
+            <h2>What this does not collect</h2>
+            <ul>
+              <li>Credential, token, and authentication files</li>
+              <li>Browser storage or account sessions</li>
+              <li>Anything outside the folders you configure</li>
+            </ul>
+            <p>Raw copies are off by default. Enable them only when you need to recompute the normalized view from the original logs.</p>
+            <div class="callout">Loopback only. Installed use server-managed OTP; standalone use local TOTP.</div>
+          </article>
+        </section>
+
+        <section id="exports" class="grid export-grid">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">2. EXPORT</p><h2>Fine Tuning-ready data</h2></div></div>
+            <p>Build a private JSONL training export after collection. It contains structured samples, not a public upload.</p>
+            <form id="exportForm" class="stack compact">
+              <label>Export title<input id="exportTitle" type="text" placeholder="My AI work history" /></label>
+              <button class="primary" type="submit">Create training export</button>
+            </form>
+            <div id="handoff" class="handoff hidden" aria-live="polite">
+              <strong>One-time local handoff code</strong>
+              <code id="handoffCode"></code>
+              <small>Enter this in Fine Tuning within five minutes. It is consumed after one import.</small>
+            </div>
+          </article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">3. HAND OFF</p><h2>Available exports</h2></div><button id="reloadExports" class="ghost" type="button">Reload</button></div><div id="exportList" class="list empty">No training exports yet.</div></article>
+        </section>
+      </main>
+    </div>
+
+    <div id="authModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <form id="authForm" class="modal-panel stack">
+        <p class="eyebrow">LOCAL AUTHENTICATION</p>
+        <h2 id="authTitle">Unlock Data Collector</h2>
+        <p>Enter the current six-digit authenticator code.</p>
+        <label>One-time code<input id="totpCode" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required /></label>
+        <button class="primary" type="submit">Unlock</button>
+        <small id="authError" class="error" role="alert"></small>
+      </form>
+    </div>
+    <div id="toast" class="toast hidden" role="status"></div>
+    <script src="assets/app.js"></script>
+  </body>
+</html>

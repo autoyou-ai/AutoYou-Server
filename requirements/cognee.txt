@@ -1,0 +1,13 @@
+# Optional graph/vector memory backend for higher-resource AutoYou installs.
+# Keep local upstream checkouts out of AutoYou's Git index. The adapter still
+# prefers an ignored vendor/cognee checkout when installed/editable locally.
+# To test preserved local Cognee changes without committing them:
+#   python -m pip install -e vendor/cognee
+# Release builds should use AUTOYOU_INCLUDE_COGNEE=1 instead of copying vendor.
+instructor==1.15.1
+# DiskCache has no released fix for CVE-2025-69872 yet. Pin the upstream
+# security pull request by immutable commit until the fix is released. The
+# commit adds HMAC verification for pickle-backed cache entries; AutoYou also
+# forces Cognee's filesystem cache to JSONDisk at runtime.
+diskcache @ git+https://github.com/grantjenks/python-diskcache.git@f98f2183b4261a0e0c31f88f2e157eaba4a4071e
+git+https://github.com/topoteretes/cognee.git@1913271821c84cec1630dd5b15ceb17dee8ace55#egg=cognee

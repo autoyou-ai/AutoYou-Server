@@ -1,0 +1,68 @@
+# Core server runtime: admin UI, encrypted config, WebRTC signaling/datachannel,
+# cloud-model path, and the local page service.
+google-adk==2.9.2
+google-genai==2.25.0
+google-cloud-aiplatform==1.156.0
+# Safe build metadata support for the packaged runtime and optional torch stack.
+setuptools>=83,<84
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-semantic-conventions==0.63b1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+fastapi==0.136.3
+# google-adk 2.9.2 requires the Starlette 1.x line and the updated OpenTelemetry range above.
+starlette>=1.3.1,<2
+# Floor raised past GHSA-3w57-8xmc-8v26 / GHSA-5p39-cfhj-2xmp / GHSA-82r6-8w77-94w6 in anyio<4.14.2.
+anyio>=4.15.0
+uvicorn[standard]>=0.34.0,<1.0.0
+python-multipart>=0.0.31,<1
+litellm>=1.84.0,<2.0.0
+# Cognee currently pulls instructor 1.15.x, which has not accepted these newest
+# transitive releases yet. Keep shared pins compatible with optional Cognee.
+jiter>=0.6.1,<0.14
+rich>=13.7.0,<15.0.0
+packaging>=21,<25
+python-dotenv>=1.2.2
+pydantic>=2.0.0,<3.0.0
+requests>=2.32.4
+httpx[http2]>=0.27.0
+# Floor raised past CVE-2026-71554 in h2<=4.4.0.
+h2>=4.4.1
+aiohttp>=3.14.3
+aiosqlite>=0.21.0
+# Exact pin: the packaged-binary builds verify this version at build time
+# (scripts/read_backend_runtime_pins.py via servers/*/build-backend).
+sqlalchemy[asyncio]==2.0.50
+websockets>=15.0.1
+qrcode>=7.4.2
+docker>=6.1.0
+aiortc>=1.7.0,<2.0.0
+# Native desktop Lobby discovery uses the mobile Bonjour service contract.
+zeroconf==0.151.3
+av>=10.0.0
+# Floor raised past the 41.x/42.x lines that carried CVE-2023-50782 /
+# CVE-2024-26130 / CVE-2024-12797; pip resolves to the newest anyway.
+cryptography>=50.0.0
+keyring>=25.7.0,<26.0.0
+pyotp>=2.9.0
+# CPace pairing handshake (ristretto255 + XChaCha20-Poly1305) - thin ctypes
+# wrapper over libsodium; shared/native_libsodium.py prefers a vendored copy
+# and falls back to a system install.
+pysodium>=0.7.18
+psutil>=5.9.0
+# Floor raised past GHSA-gjv8-xp57-g29c / GHSA-j934-xhv5-fg8f ReDoS in soupsieve<2.9.0.
+soupsieve>=2.9.0
+beautifulsoup4>=4.13.0
+authlib>=1.7.1,<2
+idna>=3.15,<4
+urllib3>=2.7.0,<3
+lxml>=6.1.0
+python-dateutil>=2.9.0.post0
+yt-dlp>=2026.7.4
+pystray>=0.19.3
+Pillow>=12.3.0
+protobuf>=6.33.5,<7
+pyOpenSSL>=26.4.0
+pyasn1>=0.6.4
+filelock>=3.20.3
+pyttsx3>=2.90

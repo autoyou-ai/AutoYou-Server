@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Remote Desktop - AutoYou</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('autoyou.ui.theme');
+      if (t === 'light' || t === 'dark') {
+        document.documentElement.dataset.theme = t;
+      } else {
+        document.documentElement.dataset.theme = 'dark'; // Premium dark mode by default
+      }
+    } catch (_) {}
+  })();
+</script>
+<link rel="stylesheet" href="./assets/index.css">
+</head>
+<body>
+<script>
+  var __BOOTSTRAP__ = __BOOTSTRAP_JSON__ || {};
+</script>
+<div id="app" class="glass-bg">
+  <header class="topbar">
+    <div class="topbar-brand">
+      <button class="toggle-sidebar-btn" id="toggle-sidebar-btn" aria-label="Toggle navigation sidebar">☰</button>
+      <span class="topbar-icon">🖥️</span>
+      <span class="topbar-title">Remote Desktop Caster</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="status-chip" id="auth-chip">Checking auth...</span>
+      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">◑</button>
+      <a class="topbar-link" data-agent-link="skills_agent" href="/agent/skills_agent/">Skills</a>
+      <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+      <a class="topbar-link" data-agent-link="notify_agent" href="/agent/notify_agent/">Notify</a>
+      <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
+      <button class="topbar-link btn-logout hidden" id="logout-btn">Logout</button>
+    </div>
+  </header>
+
+  <!-- OTP Authentication Gate -->
+  <div id="login-gate" class="login-gate hidden">
+    <div class="login-card glass-panel">
+      <div class="login-header">
+        <span class="login-icon">🔒</span>
+        <h2>OTP Verification Required</h2>
+      </div>
+      <p class="login-hint">Enter your 6-digit authenticator code configured in Settings to access Remote Desktop.</p>
+      <div class="otp-row">
+        <input type="text" id="otp-input" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
+        <button class="btn btn-primary" id="otp-submit">Verify Code</button>
+      </div>
+      <p class="login-error hidden" id="otp-error"></p>
+    </div>
+  </div>
+
+  <!-- Main Application Dashboard -->
+  <div id="main-layout" class="main-layout hidden">
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <!-- Left Sidebar for Configuration & Options -->
+    <aside class="sidebar glass-panel" id="sidebar">
+      <div class="sidebar-section">
+        <h3>Casting Mode</h3>
+        <div class="tab-buttons">
+          <button class="tab-btn active" id="tab-view-desktop" data-mode="view_desktop">
+            <span class="btn-icon">👁️</span> View Desktop
+          </button>
+          <button class="tab-btn" id="tab-control-desktop" data-mode="control_desktop">
+            <span class="btn-icon">🕹️</span> Control Desktop
+          </button>
+          <button class="tab-btn" id="tab-view-app" data-mode="view_app">
+            <span class="btn-icon">📦</span> View Application
+          </button>
+          <button class="tab-btn" id="tab-view-mobile-video" data-mode="view_mobile_video">
+            <span class="btn-icon">📹</span> Mobile Video
+          </button>
+        </div>
+      </div>
+
+      <!-- Displays Selection Panel -->
+      <div class="sidebar-section" id="monitor-selection-panel">
+        <h3>Select Monitor</h3>
+        <div class="select-wrapper">
+          <select id="monitor-select">
+            <option value="0">Loading monitors...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Applications Selection Panel -->
+      <div class="sidebar-section hidden" id="app-selection-panel">
+        <h3>Select Application Window</h3>
+        <div class="select-wrapper">
+          <select id="app-select">
+            <option value="">Loading applications...</option>
+          </select>
+        </div>
+        <button class="btn btn-outline btn-sm btn-refresh" id="refresh-apps-btn">
+          🔄 Refresh Apps List
+        </button>
+      </div>
+
+      <!-- Settings and Compression Parameters -->
+      <div class="sidebar-section">
+        <h3>Stream Settings</h3>
+        
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Resolution Scale</span>
+            <span class="slider-value" id="scale-val">35%</span>
+          </div>
+          <input type="range" id="scale-slider" min="10" max="100" step="5" value="35">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>JPEG Quality</span>
+            <span class="slider-value" id="quality-val">35%</span>
+          </div>
+          <input type="range" id="quality-slider" min="5" max="100" step="5" value="35">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Target Frame Rate</span>
+            <span class="slider-value" id="fps-val">4 FPS</span>
+          </div>
+          <input type="range" id="fps-slider" min="1" max="12" step="1" value="4">
+        </div>
+      </div>
+
+      <!-- Diagnostic Status / Connection Info -->
+      <div class="sidebar-section diagnostics">
+        <h3>Diagnostics & Info</h3>
+        <div class="info-row">
+          <span class="info-lbl">FPS Counter:</span>
+          <span class="info-val" id="diag-fps">0 FPS</span>
+        </div>
+        <div class="info-row">
+          <span class="info-lbl">Latency:</span>
+          <span class="info-val" id="diag-latency">-- ms</span>
+        </div>
+        <div class="info-row">
+          <span class="info-lbl">Connection:</span>
+          <span class="info-val status-disconnected" id="diag-connection">Disconnected</span>
+        </div>
+        <div class="info-row">
+          <span class="info-lbl">Failsafe Info:</span>
+          <span class="info-val" title="PyAutoGUI is configured with failsafe disabled to avoid crashes on screen boundary control.">Disabled (Safe)</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Live Screen Stream Caster -->
+    <main class="viewer-area">
+      <div class="viewer-container glass-panel" id="viewer-shell">
+        <div class="viewer-header">
+          <div class="viewer-status">
+            <span class="status-indicator" id="viewer-status-dot"></span>
+            <span class="viewer-title-text" id="viewer-title">Active Monitor Stream</span>
+            <span class="native-keyboard-status" id="native-keyboard-status" data-state="disconnected" role="status" aria-live="polite">
+              <svg class="native-keyboard-status-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3" y="6" width="18" height="12" rx="2"></rect>
+                <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"></path>
+              </svg>
+              <span id="native-keyboard-status-text">Native client unavailable</span>
+            </span>
+          </div>
+          <div class="viewer-actions">
+            <!-- The toolbar Show/Hide keyboard button was removed: the native
+                 keyboard is now controlled solely by the floating keyboard bubble
+                 inside the canvas viewport (which also survives fullscreen). -->
+            <button class="btn btn-outline btn-sm btn-icon btn-connect streaming" id="stream-toggle-btn" title="Toggle Stream Connection">
+              <span class="btn-icon">⏸</span> Stop Stream
+            </button>
+            <button class="btn btn-outline btn-sm btn-icon" id="toggle-fullscreen-btn" title="Toggle Fullscreen">
+              <span>⛶</span> Fullscreen
+            </button>
+          </div>
+        </div>
+
+        <div class="canvas-wrapper" id="canvas-wrapper">
+          <canvas id="screen-canvas" width="1280" height="720"></canvas>
+          <div class="canvas-overlay hidden" id="canvas-overlay">
+            <div class="overlay-card">
+              <span class="overlay-icon">🔒</span>
+              <p id="overlay-message">Interactive Control Disabled. Select "Control Desktop" mode to activate keyboard & mouse operations.</p>
+            </div>
+          </div>
+          <button class="fullscreen-exit-btn" id="fullscreen-exit-btn" type="button" title="Exit Fullscreen" aria-label="Exit Fullscreen">
+            <span>▣</span> Exit Full
+          </button>
+          <div class="zoom-controls hidden" id="zoom-controls" role="group" aria-label="Canvas zoom controls">
+            <button class="zoom-btn" id="zoom-in-btn" type="button" aria-label="Zoom in">+</button>
+            <span class="zoom-level" id="zoom-level">100%</span>
+            <button class="zoom-btn" id="zoom-out-btn" type="button" aria-label="Zoom out">&minus;</button>
+            <button class="zoom-btn zoom-reset-btn hidden" id="zoom-reset-btn" type="button" aria-label="Reset zoom">1:1</button>
+          </div>
+
+          <!-- Floating self-view-style keyboard toggle. Lives in the canvas
+               viewport (not the header) so it stays reachable in fullscreen,
+               where the header is hidden. Draggable; collapses to a small
+               edge handle and back, independently of keyboard show/hide. -->
+          <div class="floating-keyboard-bubble hidden" id="floating-keyboard-bubble" role="group" aria-label="Remote keyboard control">
+            <button class="floating-keyboard-main" id="floating-keyboard-main" type="button" aria-pressed="false" title="Show the connected phone keyboard" aria-label="Show the connected phone keyboard">
+              <svg class="native-keyboard-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3" y="6" width="18" height="12" rx="2"></rect>
+                <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"></path>
+              </svg>
+            </button>
+            <button class="floating-keyboard-collapse" id="floating-keyboard-collapse" type="button" aria-label="Minimize keyboard control">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 8l-5 5-5-5"></path></svg>
+            </button>
+          </div>
+          <button class="floating-keyboard-handle hidden" id="floating-keyboard-handle" type="button" aria-label="Show keyboard control">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6l5 5-5 5"></path></svg>
+          </button>
+        </div>
+
+        <div class="viewer-footer">
+          <div class="shortcut-hints">
+            <span class="shortcut-chip">Click + Drag</span> = Drag Start/End
+            <span class="shortcut-chip">Double Click</span> = Double Click
+            <span class="shortcut-chip">Esc</span> = Relinquish Focus
+          </div>
+          <div class="touch-hints" id="touch-hints">
+            <span class="shortcut-chip">Tap</span> Click
+            <span class="shortcut-chip">Hold</span> Right-click
+            <span class="shortcut-chip">Drag</span> Move / drag
+            <span class="shortcut-chip">2 fingers</span> Scroll &amp; pinch-zoom
+          </div>
+          <div class="cursor-coords" id="cursor-coords">
+            X: 0, Y: 0 (0.00, 0.00)
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="./assets/index.js"></script>
+</body>
+</html>

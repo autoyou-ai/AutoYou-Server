@@ -1,0 +1,2781 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "licenses": [
+        {
+          "license": {
+            "name": "Microsoft Product Terms"
+          }
+        }
+      ],
+      "name": "Microsoft WebView2 Runtime",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://developer.microsoft.com/microsoft-edge/webview2/"
+        }
+      ],
+      "type": "framework",
+      "version": "system/runtime"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "PortAudio",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/PortAudio/portaudio/tree/v19.7.0"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "native-library/wheel-transitive"
+        }
+      ],
+      "type": "library",
+      "version": "19.7.0 native runtime via PyAudioWPatch 0.2.12.8"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "llmfit",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/AlexsJones/llmfit"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "downloaded-at-runtime"
+        }
+      ],
+      "type": "tool",
+      "version": "prebuilt binary downloaded from GitHub release at runtime"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "sentence-transformers/all-MiniLM-L6-v2",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "bundled intent_router model; licenses and notices accompany assets"
+        }
+      ],
+      "type": "data",
+      "version": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-only"
+          }
+        }
+      ],
+      "name": "signal-cli",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/AsamK/signal-cli"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "separate-service"
+        }
+      ],
+      "type": "service",
+      "version": "optional external service"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-only"
+          }
+        }
+      ],
+      "name": "signal-cli-rest-api",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/bbernhard/signal-cli-rest-api"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "separate-service"
+        }
+      ],
+      "type": "service",
+      "version": "optional Docker service"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "express",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "^4.18.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/tunnelmole/package.json"
+        }
+      ],
+      "purl": "pkg:npm/express@4.18.2",
+      "type": "library",
+      "version": "4.18.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "extract-zip",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "file:vendor/extract-zip"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/whatsapp/package.json"
+        }
+      ],
+      "purl": "pkg:npm/extract-zip",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "node-fetch",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "^3.3.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/whatsapp/package.json"
+        }
+      ],
+      "purl": "pkg:npm/node-fetch@3.3.2",
+      "type": "library",
+      "version": "3.3.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "qrcode-terminal",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "^0.12.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/whatsapp/package.json"
+        }
+      ],
+      "purl": "pkg:npm/qrcode-terminal@0.12.0",
+      "type": "library",
+      "version": "0.12.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "tunnelmole",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "^2.2.14"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/tunnelmole/package.json"
+        }
+      ],
+      "purl": "pkg:npm/tunnelmole@2.2.14",
+      "type": "library",
+      "version": "2.2.14"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "whatsapp-web.js",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "https://github.com/wwebjs/whatsapp-web.js/archive/f4ea1e3cf4076e44e36dfe5f81ea57048d2f7761.tar.gz"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/whatsapp/package.json"
+        }
+      ],
+      "purl": "pkg:npm/whatsapp-web.js@1.34.7",
+      "type": "library",
+      "version": "1.34.7"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "ws",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "^8.18.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/whatsapp/package.json"
+        }
+      ],
+      "purl": "pkg:npm/ws@8.18.0",
+      "type": "library",
+      "version": "8.18.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT-CMU"
+          }
+        }
+      ],
+      "name": "Pillow",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "Pillow>=12.3.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=12.3.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/Pillow",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "PyAudio",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "PyAudio>=0.2.14; platform_system != \"Windows\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.2.14"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/binary-default.txt"
+        }
+      ],
+      "purl": "pkg:pypi/PyAudio",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "PyAudioWPatch",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "PyAudioWPatch==0.2.12.8; platform_system == \"Windows\""
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/binary-default.txt"
+        }
+      ],
+      "purl": "pkg:pypi/PyAudioWPatch@0.2.12.8",
+      "type": "library",
+      "version": "0.2.12.8"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "PyAutoGUI",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "PyAutoGUI>=0.9.54"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.9.54"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/desktop-automation.txt"
+        }
+      ],
+      "purl": "pkg:pypi/PyAutoGUI",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "Telethon",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "Telethon==1.44.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/Telethon@1.44.0",
+      "type": "library",
+      "version": "1.44.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "aiohttp",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "aiohttp>=3.14.3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.14.3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/aiohttp",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "aiortc",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "aiortc>=1.7.0,<2.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.7.0,<2.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/aiortc",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "aiosqlite",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "aiosqlite>=0.21.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.21.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/aiosqlite",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "anyio",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "anyio>=4.15.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=4.15.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/anyio",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "authlib",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "authlib>=1.7.1,<2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.7.1,<2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/authlib",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "auto-browser-client",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "auto-browser-client==1.4.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/internet.txt"
+        }
+      ],
+      "purl": "pkg:pypi/auto-browser-client@1.4.2",
+      "type": "library",
+      "version": "1.4.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "auto-browser-langchain",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "auto-browser-langchain==1.4.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/internet.txt"
+        }
+      ],
+      "purl": "pkg:pypi/auto-browser-langchain@1.4.2",
+      "type": "library",
+      "version": "1.4.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "auto-browser-mcp",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "auto-browser-mcp==1.4.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/internet.txt"
+        }
+      ],
+      "purl": "pkg:pypi/auto-browser-mcp@1.4.2",
+      "type": "library",
+      "version": "1.4.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "av",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "av>=10.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=10.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/av",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "beautifulsoup4",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "beautifulsoup4>=4.13.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=4.13.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/beautifulsoup4",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "bleak",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "bleak>=2.0.0,<3.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.0.0,<3.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/bleak",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "bless",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "bless>=0.3.0,<1.0.0; platform_system != \"Windows\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.3.0,<1.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/bless",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "CC0-1.0"
+          }
+        }
+      ],
+      "name": "cryptg",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "cryptg==0.6.0; python_version >= \"3.11\" and platform_python_implementation == \"CPython\""
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/cryptg@0.6.0",
+      "type": "library",
+      "version": "0.6.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "cryptography",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "cryptography>=50.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=50.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/cryptography",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "docker",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "docker>=6.1.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=6.1.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/docker",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "fastapi",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "fastapi==0.136.3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/fastapi@0.136.3",
+      "type": "library",
+      "version": "0.136.3"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "filelock",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "filelock>=3.20.3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.20.3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/filelock",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "fsspec",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "fsspec[http]>=2025.9.0,<=2026.4.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2025.9.0,<=2026.4.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/local-llm.txt"
+        }
+      ],
+      "purl": "pkg:pypi/fsspec",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "google-adk",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "google-adk==2.9.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/google-adk@2.9.2",
+      "type": "library",
+      "version": "2.9.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "google-cloud-aiplatform",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "google-cloud-aiplatform==1.156.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/google-cloud-aiplatform@1.156.0",
+      "type": "library",
+      "version": "1.156.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "google-genai",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "google-genai==2.25.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/google-genai@2.25.0",
+      "type": "library",
+      "version": "2.25.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "h2",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "h2>=4.4.1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=4.4.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/h2",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "httpx",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "httpx[http2]>=0.27.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.27.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/httpx",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "huggingface_hub",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "huggingface_hub>=0.34.0,<2.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.34.0,<2.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/local-llm.txt"
+        }
+      ],
+      "purl": "pkg:pypi/huggingface_hub",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "idna",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "idna>=3.15,<4"
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.15,<4"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/idna",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "jiter",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "jiter>=0.6.1,<0.14"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.6.1,<0.14"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/jiter",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "keyring",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "keyring>=25.7.0,<26.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=25.7.0,<26.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/keyring",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "litellm",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "litellm>=1.84.0,<2.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.84.0,<2.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/litellm",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "lxml",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "lxml>=6.1.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=6.1.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/lxml",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mss",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "mss>=9.0.1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=9.0.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/desktop-automation.txt"
+        }
+      ],
+      "purl": "pkg:pypi/mss",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "ollama",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "ollama==0.6.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/local-llm.txt"
+        }
+      ],
+      "purl": "pkg:pypi/ollama@0.6.0",
+      "type": "library",
+      "version": "0.6.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "onnxruntime",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "onnxruntime>=1.24.2,<2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.24.2,<2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/local-llm.txt"
+        }
+      ],
+      "purl": "pkg:pypi/onnxruntime",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "opencv-python",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "opencv-python>=4.9.0,<5"
+        },
+        {
+          "name": "specifier",
+          "value": ">=4.9.0,<5"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/binary-default.txt"
+        }
+      ],
+      "purl": "pkg:pypi/opencv-python",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "opentelemetry-api",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "opentelemetry-api==1.42.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-api@1.42.1",
+      "type": "library",
+      "version": "1.42.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "opentelemetry-exporter-otlp-proto-http",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "opentelemetry-exporter-otlp-proto-http==1.42.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.42.1",
+      "type": "library",
+      "version": "1.42.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "opentelemetry-sdk",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "opentelemetry-sdk==1.42.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-sdk@1.42.1",
+      "type": "library",
+      "version": "1.42.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "opentelemetry-semantic-conventions",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "opentelemetry-semantic-conventions==0.63b1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.63b1",
+      "type": "library",
+      "version": "0.63b1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "packaging",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "packaging>=21,<25"
+        },
+        {
+          "name": "specifier",
+          "value": ">=21,<25"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/packaging",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "playwright",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "playwright>=1.40.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.40.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/internet.txt"
+        }
+      ],
+      "purl": "pkg:pypi/playwright",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "protobuf",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "protobuf>=6.33.5,<7"
+        },
+        {
+          "name": "specifier",
+          "value": ">=6.33.5,<7"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/protobuf",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "psutil",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "psutil>=5.9.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=5.9.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/psutil",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "pyOpenSSL",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pyOpenSSL>=26.4.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=26.4.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pyOpenSSL",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pyaes",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pyaes==1.6.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pyaes@1.6.1",
+      "type": "library",
+      "version": "1.6.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "pyasn1",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pyasn1>=0.6.4"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.6.4"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pyasn1",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pydantic",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pydantic>=2.0.0,<3.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.0.0,<3.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pydantic",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pygetwindow",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pygetwindow>=0.0.9"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.0.9"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/desktop-automation.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pygetwindow",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pyotp",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pyotp>=2.9.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.9.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pyotp",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pysignalclirestapi",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pysignalclirestapi>=0.3.24"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.3.24"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pysignalclirestapi",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "pysodium",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pysodium>=0.7.18"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.7.18"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pysodium",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-3.0-only"
+          }
+        }
+      ],
+      "name": "pystray",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pystray>=0.19.3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.19.3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pystray",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "python-dateutil",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "python-dateutil>=2.9.0.post0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.9.0.post0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/python-dateutil",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "python-dotenv",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "python-dotenv>=1.2.2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.2.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/python-dotenv",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "python-multipart",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "python-multipart>=0.0.31,<1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.0.31,<1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/python-multipart",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-3.0-only"
+          }
+        }
+      ],
+      "name": "python-telegram-bot",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "python-telegram-bot>=21.0.0,<22.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=21.0.0,<22.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/python-telegram-bot",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "pyttsx3",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pyttsx3>=2.90"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.90"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pyttsx3",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pywinauto",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pywinauto>=0.6.9; platform_system == \"Windows\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.6.9"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/desktop-automation.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pywinauto",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "qrcode",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "qrcode>=7.4.2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=7.4.2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/qrcode",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "requests",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "requests>=2.32.4"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.32.4"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/requests",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "rich",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "rich>=13.7.0,<15.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=13.7.0,<15.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/rich",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "rsa",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "rsa==4.9.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/messaging.txt"
+        }
+      ],
+      "purl": "pkg:pypi/rsa@4.9.1",
+      "type": "library",
+      "version": "4.9.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "setuptools",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "setuptools>=83,<84"
+        },
+        {
+          "name": "specifier",
+          "value": ">=83,<84"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/setuptools",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "soupsieve",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "soupsieve>=2.9.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.9.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/soupsieve",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "sqlalchemy",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "sqlalchemy[asyncio]==2.0.50"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/sqlalchemy@2.0.50",
+      "type": "library",
+      "version": "2.0.50"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "starlette",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "starlette>=1.3.1,<2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.3.1,<2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/starlette",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "urllib3",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "urllib3>=2.7.0,<3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.7.0,<3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/urllib3",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "uvicorn",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "uvicorn[standard]>=0.34.0,<1.0.0"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.34.0,<1.0.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/uvicorn",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "websockets",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "websockets>=15.0.1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=15.0.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/websockets",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Devices.Bluetooth",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Devices.Bluetooth>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Devices.Bluetooth",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Devices.Bluetooth.Advertisement",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Devices.Bluetooth.Advertisement>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Devices.Bluetooth.Advertisement",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Devices.Bluetooth.GenericAttributeProfile",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Devices.Bluetooth.GenericAttributeProfile>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Devices.Bluetooth.GenericAttributeProfile",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Devices.Enumeration",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Devices.Enumeration>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Devices.Enumeration",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Devices.Radios",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Devices.Radios>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Devices.Radios",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Foundation",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Foundation>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Foundation",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Foundation.Collections",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Foundation.Collections>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Foundation.Collections",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "winrt-Windows.Storage.Streams",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "winrt-Windows.Storage.Streams>=3.1; platform_system == \"Windows\" and python_version >= \"3.12\""
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/bluetooth.txt"
+        }
+      ],
+      "purl": "pkg:pypi/winrt-Windows.Storage.Streams",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense"
+          }
+        }
+      ],
+      "name": "yt-dlp",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "yt-dlp>=2026.7.4"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2026.7.4"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/yt-dlp",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-2.1-or-later"
+          }
+        }
+      ],
+      "name": "zeroconf",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "zeroconf==0.151.3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/zeroconf@0.151.3",
+      "type": "library",
+      "version": "0.151.3"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "autoyou-server-windows-default",
+      "name": "AutoYou Server Windows binary-default build",
+      "properties": [
+        {
+          "name": "autoyou:releaseProfile",
+          "value": "binary-default"
+        },
+        {
+          "name": "autoyou:dependencyProfile",
+          "value": "binary-default"
+        },
+        {
+          "name": "autoyou:legalBundle",
+          "value": "Legal"
+        }
+      ],
+      "type": "application"
+    },
+    "timestamp": "2026-09-27T09:12:19+00:00",
+    "tools": [
+      {
+        "name": "generate_release_legal_artifacts.py",
+        "vendor": "AutoYou",
+        "version": "1"
+      }
+    ]
+  },
+  "serialNumber": "urn:uuid:df86d341-d3dd-4a24-8386-a04c9167622b",
+  "specVersion": "1.5",
+  "version": 1
+}

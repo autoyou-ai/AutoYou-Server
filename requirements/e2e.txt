@@ -1,0 +1,4 @@
+# Dev-only dependencies for the E2E validation tooling (scripts/e2e, tests/e2e).
+# Install into the repo venv: .venv/bin/pip install -r requirements/e2e.txt
+# pyyaml / requests / playwright ship with the main requirements already.
+telethon>=1.36  # Telegram user-session client for the T4 pairing transport fixture

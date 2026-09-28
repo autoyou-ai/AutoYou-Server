@@ -1,0 +1,8 @@
+{
+  "agent_name": "fine_tuning_agent",
+  "description": "Prepare message datasets, train a local personal model, and install the result.",
+  "entry_path": "/",
+  "recommended_port": 8068,
+  "requires_proxy_registration": true,
+  "title": "Fine Tuning Agent"
+}

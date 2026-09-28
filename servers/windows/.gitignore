@@ -1,0 +1,8 @@
+# Commit the Windows source tree, but ignore generated outputs.
+artifacts/
+dist/
+AutoYouWindowsHost/bin/
+AutoYouWindowsHost/obj/
+AutoYouWindowsHost/*.user
+AutoYouWindowsHost/*.suo
+AutoYouWindowsHost/*.userprefs

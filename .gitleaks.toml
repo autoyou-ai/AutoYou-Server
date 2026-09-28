@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "X25519 type annotation, not key material"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+  '''^\s*private_key: x25519\.X25519PrivateKey$''',
+  '''^\s*password_key: bytes$''',
+  '''^\s*ephemeral_secret: x25519\.X25519PrivateKey$''',
+  '''^\s*ephemeral_value: x25519\.X25519PrivateKey$''',
+]

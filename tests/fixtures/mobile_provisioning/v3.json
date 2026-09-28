@@ -1,0 +1,15 @@
+{
+  "v": 3,
+  "pw": "synthetic-computer-password",
+  "mode": "secure_professional",
+  "totp": "JBSWY3DPEHPK3PXP",
+  "preferred": "cloud_pair",
+  "profiles": {
+    "cloud_pair": {"tier": "A"},
+    "local_pair": {"tier": "A", "host": "192.0.2.10", "port": 8001},
+    "bluetooth_pair": {"tier": "A", "host": "Test Computer Bluetooth Pair"},
+    "auto_pair": {"tier": "B"},
+    "otp": {"tier": "B"}
+  },
+  "ice": [{"urls": "stun:stun.example.test:3478"}]
+}

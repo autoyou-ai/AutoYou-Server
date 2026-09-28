@@ -1,0 +1,22 @@
+# Commercial signed-binary default runtime.
+#
+# This local-first profile intentionally excludes the optional voice/provider
+# stack in requirements/voice.txt and the research-only extras in
+# requirements/research.txt. Bluetooth Pair is included because the Admin UI
+# exposes nearby pairing in the default runtime.
+# Source/bootstrap users can still install the full connector-ready stack with
+# requirements/full.txt or bootstrap --profile full.
+-r base.txt
+-r local-llm.txt
+-r messaging.txt
+-r bluetooth.txt
+-r internet.txt
+-r desktop-automation.txt
+
+# The Admin Video & Calls page exposes local webcam sharing in signed builds.
+opencv-python>=4.9.0,<5
+
+# Windows speaker sharing needs WASAPI loopback devices, which upstream PyAudio
+# does not expose. Other platforms use the upstream PortAudio bindings.
+PyAudioWPatch==0.2.12.8; platform_system == "Windows"
+PyAudio>=0.2.14; platform_system != "Windows"

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Internet Relay</title>
+  <link rel="stylesheet" href="./assets/styles.css" />
+  <script>window.AUTOYOU_BOOTSTRAP = __BOOTSTRAP_JSON__;</script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero"><div><p class="eyebrow">SERVER-SIDE BROWSING</p><h1>The web,<br /><em>from home.</em></h1><p class="lede">A focused relay for public websites. Requests leave through the connected AutoYou computer, never this browser’s network.</p></div><div class="shield">✦<span>OTP<br />GATED</span></div></header>
+    <section class="bar card"><label for="target">Open a public website</label><div class="url-row"><input id="target" value="https://www.google.com" spellcheck="false" autocomplete="off" /><button id="open">Open relay</button></div><p id="message" class="hint">Try a domain or full https:// URL. Private and local network targets are blocked.</p></section>
+    <section class="quick"><button data-target="https://www.google.com">Google</button><button data-target="https://www.wikipedia.org">Wikipedia</button><button data-target="https://www.openstreetmap.org">OpenStreetMap</button></section>
+    <section class="viewer card"><div class="viewer-head"><div><span class="eyebrow">INLINE VIEW</span><strong id="current">Nothing open</strong></div><button id="new-tab" class="quiet">Open in tab</button></div><iframe id="frame" title="Relayed website" sandbox="allow-forms allow-modals allow-popups allow-scripts"></iframe></section>
+    <footer>Relay port 7077 · No upstream cookies, origins, or credentials are forwarded · Standard WebSockets use the same public-target gate.</footer>
+  </main>
+  <script src="./assets/app.js"></script>
+</body>
+</html>

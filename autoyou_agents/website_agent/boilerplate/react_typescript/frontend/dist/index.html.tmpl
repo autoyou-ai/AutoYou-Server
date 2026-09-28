@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{app_title}}</title>
+    <base href="./">
+    <link rel="stylesheet" href="./assets/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel">
+        <p class="eyebrow">AutoYou Agent Website</p>
+        <h1>{{app_title}}</h1>
+        <p class="summary">{{ui_purpose}}</p>
+        <div class="status-grid" aria-label="Website status">
+          <div><span>Website type</span><strong>{{frontend_stack_label}}</strong></div>
+          <div><span>Agent</span><strong>{{agent_name}}</strong></div>
+          <div><span>Port</span><strong>{{local_port}}</strong></div>
+        </div>
+        <button id="status-button" type="button">Refresh status</button>
+        <p class="hint" id="status-output">Ready.</p>
+      </section>
+    </main>
+    <script type="module" src="./assets/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,155 @@
+{
+  "tokenizer": [
+    {
+      "text": "Café, punctuation!",
+      "ids": [
+        101,
+        7668,
+        1010,
+        26136,
+        6593,
+        14505,
+        999,
+        102
+      ]
+    },
+    {
+      "text": "你好，世界",
+      "ids": [
+        101,
+        100,
+        100,
+        1989,
+        1745,
+        100,
+        102
+      ]
+    },
+    {
+      "text": "Some\tcontrols\u0000\n😊",
+      "ids": [
+        101,
+        2070,
+        7711,
+        100,
+        102
+      ]
+    },
+    {
+      "text": "Short requests matter.",
+      "ids": [
+        101,
+        2460,
+        11186,
+        3043,
+        1012,
+        102
+      ]
+    },
+    {
+      "text": "I would like to schedule something.",
+      "ids": [
+        101,
+        1045,
+        2052,
+        2066,
+        2000,
+        6134,
+        2242,
+        1012,
+        102
+      ]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ids": [
+        101,
+        100,
+        102
+      ]
+    },
+    {
+      "text": "Résumé déjà vu — العربية",
+      "ids": [
+        101,
+        13746,
+        2139,
+        3900,
+        24728,
+        1517,
+        1270,
+        23673,
+        29830,
+        17149,
+        29816,
+        14498,
+        19433,
+        102
+      ]
+    },
+    {
+      "text": "Hi there​ friend",
+      "ids": [
+        101,
+        7632,
+        2045,
+        2767,
+        102
+      ]
+    }
+  ],
+  "routing": [
+    {
+      "text": "Read my personal profile.",
+      "route": "persona_agent"
+    },
+    {
+      "text": "Remember that I prefer short answers.",
+      "route": "persona_agent"
+    },
+    {
+      "text": "Save it",
+      "route": null
+    },
+    {
+      "text": "Do not store my personal profile",
+      "route": null
+    },
+    {
+      "text": "Show all my scheduled tasks",
+      "route": "tasks_agent"
+    },
+    {
+      "text": "Please pause the music",
+      "route": "audio_agent"
+    },
+    {
+      "text": "Find the latest camera reviews",
+      "route": "internet_agent"
+    },
+    {
+      "text": "What day of the week is today?",
+      "route": "datetime"
+    },
+    {
+      "text": "yes do that",
+      "route": null
+    },
+    {
+      "text": "Do not create a note",
+      "route": null
+    },
+    {
+      "text": "Never delete my files",
+      "route": null
+    },
+    {
+      "text": "I do not want to set a reminder",
+      "route": null
+    },
+    {
+      "text": "Can you help me with my note and also play music?",
+      "route": null
+    }
+  ]
+}

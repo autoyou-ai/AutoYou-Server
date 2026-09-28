@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoYou Media Generator</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/agent/media_generation_agent/assets/styles.css">
+</head>
+<body>
+  <!-- Login Gate -->
+  <div id="login-gate" class="login-gate hidden">
+    <div class="login-card glass-card animate-fade-in">
+      <div class="login-icon">🎬</div>
+      <h2>Authentication Required</h2>
+      <p class="login-hint" id="login-copy">Enter your 6-digit authenticator code to unlock the Media Lab.</p>
+      <div class="otp-row" id="otp-row">
+        <input id="otp-input" type="text" class="otp-input" maxlength="6" placeholder="000000"
+               autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*">
+        <button class="btn btn-primary" id="otp-submit-btn">Unlock</button>
+      </div>
+      <p class="login-error hidden" id="otp-error"></p>
+      <div class="admin-link-row">
+        <a class="btn btn-secondary btn-sm" id="admin-login-link" href="/agent/admin_agent/login" target="_blank">Open Admin Login</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container hidden" id="main-layout" inert>
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">🎬</span>
+          <span class="logo-text">AutoYou <span class="logo-highlight">Media</span></span>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-target="dashboard-view">
+          <span class="nav-icon">🔮</span> Generation Lab
+        </button>
+        <button class="nav-item" data-target="history-view">
+          <span class="nav-icon">📁</span> Gallery of Creations
+        </button>
+        <button class="nav-item" data-target="settings-view">
+          <span class="nav-icon">⚙️</span> Configuration
+        </button>
+        <button class="nav-item logout-btn" id="logout-btn">
+          <span class="nav-icon">🚪</span> Sign Out
+        </button>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="status-card" id="connection-status-card">
+          <div class="status-indicator">
+            <span class="status-dot red" id="status-dot"></span>
+            <span class="status-label" id="status-label">Wan2GP: Disconnected</span>
+          </div>
+          <p class="status-detail" id="status-detail">Local paths are unchecked.</p>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- VIEW: Generation Lab -->
+      <section class="view-section active" id="dashboard-view">
+        <header class="view-header">
+          <h1>Generation Lab</h1>
+          <p class="subtitle">Design stunning videos and images locally using your machine's Wan2GP models.</p>
+        </header>
+        
+        <div class="lab-grid">
+          <!-- Generation Panel -->
+          <div class="card glass-card form-container">
+            <div class="card-header">
+              <h2>Visual Generator</h2>
+            </div>
+            
+            <form id="generation-form">
+              <div class="form-group">
+                <label for="prompt">Describe your visual masterpiece</label>
+                <textarea id="prompt" placeholder="Describe the scene in detail. For example: A sleek dark room, a computer screen displays glowing green lines of code. The camera slowly pushes in as warm neon lights shine from the desk..." required></textarea>
+              </div>
+              
+              <div class="prompt-enhancer-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="enhance-prompt-btn">
+                  <span>✨</span> AI Prompt Enhancer
+                </button>
+              </div>
+              
+              <div class="optimized-prompt-display hidden" id="optimized-prompt-box">
+                <label>Refined Prompt</label>
+                <div class="prompt-text" id="optimized-prompt-text">Generating optimized prompts...</div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="media-type">Generation Type</label>
+                  <select id="media-type">
+                    <option value="video" selected>🎬 Video Clip</option>
+                    <option value="image">🖼️ Single Image</option>
+                  </select>
+                </div>
+                
+                <div class="form-group col">
+                  <label for="model-type">Wan2GP Model</label>
+                  <select id="model-type">
+                    <option value="ltx2_distilled_gguf_q4_k_m" selected>LTX2 Distilled (GGUF Q4)</option>
+                    <option value="ltx2_distilled">LTX2 Distilled (14B)</option>
+                    <option value="t2v">Wan Text2Video</option>
+                    <option value="flux_schnell">Flux Schnell Image</option>
+                    <option value="flux">Flux Image</option>
+                    <option value="z_image">Z-Image Turbo</option>
+                    <option value="qwen_image_20B">Qwen Image 20B</option>
+                  </select>
+                </div>
+              </div>
+              
+              <!-- Custom Parameter Accordion -->
+              <details class="advanced-params">
+                <summary>Advanced Custom Parameters</summary>
+                <div class="advanced-grid">
+                  <div class="form-group">
+                    <label for="resolution">Resolution</label>
+                    <select id="resolution">
+                      <option value="416x240" selected>416x240 (Fastest)</option>
+                      <option value="848x480">848x480 (Quality)</option>
+                      <option value="720x1280">720x1280 (Portrait)</option>
+                      <option value="1280x720">1280x720 (Landscape)</option>
+                    </select>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="num-steps">Quality Steps</label>
+                    <input type="number" id="num-steps" value="8" min="1" max="50">
+                  </div>
+                  
+                  <div class="form-group" id="frames-group">
+                    <label for="video-length">Length (Frames)</label>
+                    <input type="number" id="video-length" value="49" min="1" max="250">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="seed">Random Seed</label>
+                    <input type="number" id="seed" value="-1" min="-1">
+                  </div>
+                </div>
+              </details>
+              
+              <button type="submit" class="btn btn-primary" id="generate-submit-btn">
+                <span>🚀</span> Kick off Generation
+              </button>
+            </form>
+          </div>
+          
+          <!-- Live Status Panel -->
+          <div class="card glass-card jobs-panel">
+            <div class="card-header">
+              <h2>Running Generations</h2>
+            </div>
+            
+            <div class="jobs-list" id="active-jobs-list">
+              <div class="no-jobs">
+                <div class="no-jobs-icon">😴</div>
+                <p>No active background generation tasks running.</p>
+                <span class="no-jobs-sub">Submitting a request will show live progress here.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- VIEW: Gallery of Creations -->
+      <section class="view-section" id="history-view">
+        <header class="view-header">
+          <h1>Gallery of Creations</h1>
+          <p class="subtitle">Browse, playback, and manage all your locally generated videos and images.</p>
+        </header>
+        
+        <div class="gallery-filters">
+          <button class="filter-tab active" data-filter="all">All Media</button>
+          <button class="filter-tab" data-filter="video">🎬 Videos</button>
+          <button class="filter-tab" data-filter="image">🖼️ Images</button>
+        </div>
+        
+        <div class="gallery-grid" id="gallery-grid-container">
+          <!-- Populated by JavaScript -->
+        </div>
+        
+        <div class="empty-gallery hidden" id="gallery-empty">
+          <div class="empty-gallery-icon">📭</div>
+          <h3>Your Gallery is Empty</h3>
+          <p>You haven't generated any videos or images yet. Head over to the Generation Lab to create your first item.</p>
+        </div>
+      </section>
+      
+      <!-- VIEW: Settings Configuration -->
+      <section class="view-section" id="settings-view">
+        <header class="view-header">
+          <h1>Configuration</h1>
+          <p class="subtitle">Set the local Wan2GP folders and default generation choices.</p>
+        </header>
+        
+        <div class="card glass-card settings-card" id="environment-card">
+          <div class="card-header">
+              <h2>Wan2GP Environment</h2>
+          </div>
+          <p class="field-hint" id="env-platform-line">Checking this computer...</p>
+          <p class="field-hint" id="env-guidance-line"></p>
+          <div class="form-row" style="gap: 12px; margin: 12px 0;">
+            <button type="button" class="btn btn-secondary" id="env-detect-btn">
+              <span>🔍</span> Detect installation
+            </button>
+            <button type="button" class="btn btn-primary hidden" id="env-install-btn">
+              <span>⬇️</span> Install Wan2GP on this computer
+            </button>
+          </div>
+          <p class="field-hint" id="env-action-result"></p>
+          <pre id="env-install-log" class="hidden" style="max-height: 200px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; background: rgba(0,0,0,0.35); padding: 10px; border-radius: 8px;"></pre>
+        </div>
+
+        <div class="card glass-card settings-card">
+          <div class="card-header">
+              <h2>Local Wan2GP Paths</h2>
+          </div>
+
+          <form id="settings-form">
+            <div class="form-group">
+              <label for="settings-root">Wan2GP Root Folder</label>
+              <input type="text" id="settings-root" placeholder="e.g. ~/pinokio/api/wan.git (auto-detected)" required>
+              <span class="field-hint">The main folder where Wan2GP is installed.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-app">App Folder</label>
+              <input type="text" id="settings-app" placeholder="e.g. ~/pinokio/api/wan.git/app" required>
+              <span class="field-hint">The app folder that contains the Wan2GP generator (wgp.py).</span>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-python">Wan2GP Python Path</label>
+              <input type="text" id="settings-python" placeholder="e.g. .../app/env/bin/python (Windows: ...\\app\\env\\Scripts\\python.exe)" required>
+              <span class="field-hint">Full path to the Python inside Wan2GP's environment.</span>
+            </div>
+            
+            <hr class="form-divider">
+            
+            <div class="card-header" style="padding: 10px 0 20px 0;">
+              <h2>Model Defaults</h2>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-model">Default Model</label>
+                <input type="text" id="settings-model" placeholder="ltx2_distilled_gguf_q4_k_m" required>
+              </div>
+              <div class="form-group col">
+                <label for="settings-image-model">Default Image Model</label>
+                <input type="text" id="settings-image-model" placeholder="flux_schnell">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-resolution">Default Resolution</label>
+                <input type="text" id="settings-resolution" placeholder="416x240" required>
+              </div>
+              <div class="form-group col">
+                <label for="settings-image-resolution">Default Image Resolution</label>
+                <input type="text" id="settings-image-resolution" placeholder="1280x720">
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-steps">Default Steps</label>
+                <input type="number" id="settings-steps" min="1" required>
+              </div>
+              <div class="form-group col">
+                <label for="settings-image-steps">Default Image Steps</label>
+                <input type="number" id="settings-image-steps" min="1">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-length">Default Video Length (Frames)</label>
+                <input type="number" id="settings-length" min="1" required>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label class="checkbox-container">
+                <input type="checkbox" id="settings-enhance">
+                <span class="checkmark"></span> Enhance prompts by default
+              </label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" id="settings-save-btn">
+              <span>💾</span> Save Settings
+            </button>
+          </form>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+  
+  <!-- Media Modal Overlay -->
+  <div class="modal hidden" id="media-modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-container glass-card">
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+      <div class="modal-body" id="modal-media-content">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="modal-footer">
+        <h3 id="modal-title">Optimized Prompt</h3>
+        <p class="prompt-text" id="modal-prompt"></p>
+        <div class="meta-row" id="modal-meta">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/agent/media_generation_agent/assets/app.js"></script>
+</body>
+</html>

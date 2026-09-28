@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Website Management</title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("autoyou.ui.theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (_) {}
+  })();
+</script>
+<link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+<script>
+  var __BOOTSTRAP__ = __BOOTSTRAP_JSON__;
+</script>
+<div id="app">
+  <div id="login-gate" class="login-gate hidden">
+    <section class="login-card">
+      <div class="eyebrow">Website Management</div>
+      <h1>Enter your authenticator code</h1>
+      <p>Use the same code you use for secure AutoYou pairing.</p>
+      <div class="otp-row">
+        <input id="otp-input" class="otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+        <button id="otp-submit" class="btn primary">Verify</button>
+      </div>
+      <p id="otp-error" class="error hidden"></p>
+    </section>
+  </div>
+
+  <main id="main-view" class="shell hidden">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Public Website</div>
+        <h1>Website Management</h1>
+        <p>Pick the website visitors see when they open your public link.</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="status-chip" class="chip">Loading</span>
+        <button id="refresh-btn" class="btn secondary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="panel lead-panel">
+      <div class="lead-copy">
+        <h2 id="selected-title">Choose a website</h2>
+        <p id="selected-description">Your link works while AutoYou is open on this computer.</p>
+      </div>
+      <div class="public-link-box">
+        <span>Public link</span>
+        <a id="public-url" href="#" target="_blank" rel="noreferrer">Not running yet</a>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <label class="label" for="website-select">Website visitors see</label>
+        <select id="website-select" class="select"></select>
+        <label class="toggle-row">
+          <input id="enabled-toggle" type="checkbox">
+          <span>Show this website on my public link</span>
+        </label>
+        <label class="toggle-row">
+          <input id="autostart-toggle" type="checkbox">
+          <span>Reconnect this link when AutoYou opens</span>
+        </label>
+        <div class="actions">
+          <button id="save-btn" class="btn primary">Save choice</button>
+          <button id="start-btn" class="btn success">Turn on public website</button>
+          <button id="off-btn" class="btn secondary">Turn off website</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>What visitors get</h2>
+        <ul class="behavior-list">
+          <li>The public link opens the website selected here.</li>
+          <li>Pairing and sign-in still work from the same link.</li>
+          <li>If this computer sleeps or AutoYou closes, the website goes offline.</li>
+        </ul>
+        <div id="empty-note" class="note hidden">No installed websites are ready yet. Install or enable a website in Agents, then come back here.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>Available websites</h2>
+          <p>Choose any installed agent website.</p>
+        </div>
+      </div>
+      <div id="website-list" class="website-list"></div>
+    </section>
+  </main>
+</div>
+<script src="./assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+AutoYou Artifact Notice Bundle
+================================
+
+Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
+Release profile: connector-full
+Dependency profile: full
+Generated: 2026-09-27T09:12:19+00:00
+
+Optional separately approved macOS build that inherits the full source/server dependency profile and connector/provider notices.
+
+AutoYou License
+---------------
+AutoYou project code is licensed as stated in the repository LICENSE files and any artifact-specific license files.
+This NOTICE file does not grant rights beyond those licenses.
+
+Third-Party Components
+----------------------
+- Apple platform SDKs system [manual] - Apple SDK License - https://developer.apple.com/support/terms/
+- ElevenLabs API service terms external API [manual] - ElevenLabs Terms - https://elevenlabs.io/terms; boundary: external-service
+- Google AI and GenAI API terms external API [manual] - Google API Terms - https://developers.google.com/terms; boundary: external-service
+- PortAudio 19.7.0 native runtime via PyAudio/PyAudioWPatch [manual] - MIT - https://github.com/PortAudio/portaudio/tree/v19.7.0; boundary: native-library/wheel-transitive
+- libsndfile transitive/native via soundfile wheels [manual] - LGPL-2.1-or-later - https://libsndfile.github.io/libsndfile/; boundary: native-library/wheel-transitive
+- llmfit prebuilt binary downloaded from GitHub release at runtime [manual] - MIT - https://github.com/AlexsJones/llmfit; boundary: downloaded-at-runtime
+- sentence-transformers/all-MiniLM-L6-v2 1110a243fdf4706b3f48f1d95db1a4f5529b4d41 [manual] - Apache-2.0 - https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2; boundary: bundled intent_router model; licenses and notices accompany assets
+- signal-cli optional external service [manual] - GPL-3.0-only - https://github.com/AsamK/signal-cli; boundary: separate-service
+- signal-cli-rest-api optional Docker service [manual] - GPL-3.0-only - https://github.com/bbernhard/signal-cli-rest-api; boundary: separate-service
+- express 4.18.2 [npm] - MIT - node/tunnelmole/package.json
+- extract-zip [npm] - BSD-2-Clause - node/whatsapp/package.json
+- node-fetch 3.3.2 [npm] - MIT - node/whatsapp/package.json
+- qrcode-terminal 0.12.0 [npm] - MIT - node/whatsapp/package.json
+- tunnelmole 2.2.14 [npm] - MIT - node/tunnelmole/package.json
+- whatsapp-web.js 1.34.7 [npm] - Apache-2.0 - node/whatsapp/package.json
+- ws 8.18.0 [npm] - MIT - node/whatsapp/package.json
+- Pillow [pypi] - MIT-CMU - requirements/base.txt
+- PyAudio 0.2.14 [pypi] - MIT - requirements/voice.txt
+- PyAudioWPatch 0.2.12.8 [pypi] - Apache-2.0 - requirements/voice.txt
+- PyAutoGUI [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
+- RealtimeSTT 1.0.2 [pypi] - MIT - requirements/realtimestt-runtime.txt
+- Telethon 1.44.0 [pypi] - MIT - requirements/messaging.txt
+- aiohttp [pypi] - Apache-2.0 - requirements/base.txt
+- aiortc [pypi] - BSD-3-Clause - requirements/base.txt
+- aiosqlite [pypi] - MIT - requirements/base.txt
+- anyio [pypi] - MIT - requirements/base.txt
+- authlib [pypi] - BSD-3-Clause - requirements/base.txt
+- auto-browser-client 1.4.2 [pypi] - MIT - requirements/internet.txt
+- auto-browser-langchain 1.4.2 [pypi] - MIT - requirements/internet.txt
+- auto-browser-mcp 1.4.2 [pypi] - MIT - requirements/internet.txt
+- av [pypi] - BSD-3-Clause - requirements/base.txt
+- azure-cognitiveservices-speech [pypi] - Microsoft Product Terms - requirements/voice.txt
+- beautifulsoup4 [pypi] - MIT - requirements/base.txt
+- bleak [pypi] - MIT - requirements/bluetooth.txt
+- bless [pypi] - MIT - requirements/bluetooth.txt
+- colorama [pypi] - BSD-3-Clause - requirements/voice.txt
+- coloredlogs [pypi] - MIT - requirements/voice.txt
+- cryptg 0.6.0 [pypi] - CC0-1.0 - requirements/messaging.txt
+- cryptography [pypi] - Apache-2.0 OR BSD-3-Clause - requirements/base.txt
+- ctranslate2 [pypi] - MIT - requirements/voice.txt
+- docker [pypi] - Apache-2.0 - requirements/base.txt
+- elevenlabs [pypi] - MIT - requirements/voice.txt
+- fastapi 0.136.3 [pypi] - MIT - requirements/base.txt
+- faster-whisper 1.2.1 [pypi] - MIT - requirements/voice.txt
+- filelock [pypi] - MIT - requirements/base.txt
+- flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
+- fsspec [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- google-adk 2.9.2 [pypi] - Apache-2.0 - requirements/base.txt
+- google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
+- h2 [pypi] - MIT - requirements/base.txt
+- halo 0.0.31 [pypi] - MIT - requirements/voice.txt
+- httpx [pypi] - BSD-3-Clause - requirements/base.txt
+- huggingface_hub [pypi] - Apache-2.0 - requirements/local-llm.txt
+- idna [pypi] - BSD-3-Clause - requirements/base.txt
+- jiter [pypi] - MIT - requirements/base.txt
+- keyring [pypi] - MIT - requirements/base.txt
+- litellm [pypi] - MIT - requirements/base.txt
+- log_symbols [pypi] - MIT - requirements/voice.txt
+- lxml [pypi] - BSD-3-Clause - requirements/base.txt
+- mss [pypi] - MIT - requirements/desktop-automation.txt
+- numpy [pypi] - BSD-3-Clause - requirements/voice.txt
+- ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
+- onnxruntime [pypi] - MIT - requirements/local-llm.txt
+- opencv-python [pypi] - Apache-2.0 - requirements/voice.txt
+- opentelemetry-api 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-exporter-otlp-proto-http 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-sdk 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-semantic-conventions 0.63b1 [pypi] - Apache-2.0 - requirements/base.txt
+- packaging [pypi] - Apache-2.0 OR BSD-2-Clause - requirements/base.txt
+- playwright [pypi] - Apache-2.0 - requirements/internet.txt
+- protobuf [pypi] - BSD-3-Clause - requirements/base.txt
+- psutil [pypi] - BSD-3-Clause - requirements/base.txt
+- pyOpenSSL [pypi] - Apache-2.0 - requirements/base.txt
+- pyaes 1.6.1 [pypi] - MIT - requirements/messaging.txt
+- pyasn1 [pypi] - BSD-2-Clause - requirements/base.txt
+- pydantic [pypi] - MIT - requirements/base.txt
+- pygetwindow [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
+- pyotp [pypi] - MIT - requirements/base.txt
+- pysignalclirestapi [pypi] - MIT - requirements/messaging.txt
+- pysodium [pypi] - BSD-2-Clause - requirements/base.txt
+- pystray [pypi] - LGPL-3.0-only - requirements/base.txt
+- python-dateutil [pypi] - Apache-2.0 OR BSD-3-Clause - requirements/base.txt
+- python-dotenv [pypi] - BSD-3-Clause - requirements/base.txt
+- python-multipart [pypi] - Apache-2.0 - requirements/base.txt
+- python-telegram-bot [pypi] - LGPL-3.0-only - requirements/messaging.txt
+- pyttsx3 [pypi] - MPL-2.0 - requirements/base.txt
+- pywinauto [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
+- qrcode [pypi] - BSD-3-Clause - requirements/base.txt
+- requests [pypi] - Apache-2.0 - requirements/base.txt
+- rich [pypi] - MIT - requirements/base.txt
+- rsa 4.9.1 [pypi] - Apache-2.0 - requirements/messaging.txt
+- scipy 1.17.1 [pypi] - BSD-3-Clause - requirements/voice.txt
+- sentence-stream [pypi] - Apache-2.0 - requirements/voice.txt
+- setuptools [pypi] - MIT - requirements/base.txt
+- silero-vad 6.2.1 [pypi] - MIT - requirements/voice.txt
+- soundfile 0.13.1 [pypi] - BSD-3-Clause - requirements/voice.txt
+- soupsieve [pypi] - MIT - requirements/base.txt
+- spinners [pypi] - MIT - requirements/voice.txt
+- sqlalchemy 2.0.50 [pypi] - MIT - requirements/base.txt
+- starlette [pypi] - BSD-3-Clause - requirements/base.txt
+- termcolor [pypi] - MIT - requirements/voice.txt
+- torch [pypi] - BSD-3-Clause - requirements/voice.txt
+- torchaudio [pypi] - BSD-3-Clause - requirements/voice.txt
+- transformers [pypi] - Apache-2.0 - requirements/voice.txt
+- urllib3 [pypi] - MIT - requirements/base.txt
+- uvicorn [pypi] - BSD-3-Clause - requirements/base.txt
+- webrtcvad-wheels 2.0.14 [pypi] - MIT - requirements/voice.txt
+- websocket-client 1.9.0 [pypi] - Apache-2.0 - requirements/voice.txt
+- websockets [pypi] - BSD-3-Clause - requirements/base.txt
+- winrt-Windows.Devices.Bluetooth [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Devices.Bluetooth.Advertisement [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Devices.Bluetooth.GenericAttributeProfile [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Devices.Enumeration [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Devices.Radios [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Foundation [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Foundation.Collections [pypi] - MIT - requirements/bluetooth.txt
+- winrt-Windows.Storage.Streams [pypi] - MIT - requirements/bluetooth.txt
+- yt-dlp [pypi] - Unlicense - requirements/base.txt
+- zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
+
+Copyleft Review Notes
+---------------------
+- signal-cli (GPL-3.0-only): Optional separate process/service; do not link or bundle into proprietary binaries without GPLv3 source/offer compliance.
+- signal-cli-rest-api (GPL-3.0-only): Optional separate Docker service; ship its own source and notices if distributed.
+- libsndfile (LGPL-2.1-or-later): Transitive native dependency of soundfile wheels; include LGPL notice/source offer/relinking rights, or build against a system-provided libsndfile.
+- zeroconf (LGPL-2.1-or-later): Dynamic pure-Python dependency for local device discovery; include the LGPL notice and package source in binary bundles, and keep it replaceable in runtime_site_packages.
+- python-telegram-bot (LGPL-3.0-only): Dynamic Python dependency for Telegram partners; include LGPLv3 notice and reverse-engineering/relinking rights in binary bundles.
+- pystray (LGPL-3.0-only): Optional tray dependency; include LGPLv3 notice and keep replaceable from bundled runtime.
+- pyttsx3 (MPL-2.0): Unmodified dependency; include MPL notice.
+
+Vendor / Proprietary Terms Review
+----------------------------------
+- azure-cognitiveservices-speech: review and retain current vendor terms before release.
+- ElevenLabs API service terms: review and retain current vendor terms before release.
+- Google AI and GenAI API terms: review and retain current vendor terms before release.
+- Apple platform SDKs: review and retain current vendor terms before release.
+
+Special Release Obligations
+---------------------------
+- Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.
+- Signal GPL components must remain separate services unless GPLv3 source distribution is approved.
+- Server voice builds install RealtimeSTT 1.0.2 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.
+- Build scripts must prune openWakeWord pretrained model assets if they ever appear in site-packages or packaged outputs.
+- WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready.
+- Do not distribute this connector/full binary until provider, voice, and messaging partner terms are approved for binary redistribution.
+- Do not add Porcupine/openWakeWord wake-word extras to connector/full binaries unless a new legal review approves that separate feature.
+
+Repository Notice Index
+-----------------------
+See THIRD-PARTY-NOTICES.md and autoyou-website/attributions/index.html for the broader notice index.

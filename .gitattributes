@@ -1,0 +1,15 @@
+*.sh text eol=lf
+
+# Preserve PDF byte offsets and digital signatures across checkouts.
+*.pdf binary
+
+# shared/tunnelmole_node_payload.py embeds tunnelmole_node_launcher.mjs verbatim
+# and byte-compares it at runtime. Without this, a checkout with
+# core.autocrlf=true produces a CRLF working copy, and regenerating the payload
+# there desyncs it from every LF platform (macOS/Linux/WSL/Docker).
+*.mjs text eol=lf
+
+# The intent router verifies its vocabulary against a SHA-256 in
+# assets/intent_router/manifest.json; a CRLF checkout would fail that check
+# and silently disable local routing on Windows.
+assets/intent_router/vocab.txt -text

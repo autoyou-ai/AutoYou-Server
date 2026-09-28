@@ -1,0 +1,1610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Training App - AutoYou</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-start: #060814;
+      --bg-end: #0e112a;
+      --surface: rgba(18, 20, 38, 0.7);
+      --surface-hover: rgba(26, 29, 56, 0.8);
+      --surface-solid: #121426;
+      --border: rgba(124, 58, 237, 0.2);
+      --border-focus: rgba(139, 92, 246, 0.6);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-faint: #6b7280;
+      --primary: #8b5cf6;
+      --primary-gradient: linear-gradient(135deg, #a78bfa, #7c3aed);
+      --accent: #ec4899;
+      --accent-gradient: linear-gradient(135deg, #f472b6, #db2777);
+      --success: #10b981;
+      --success-gradient: linear-gradient(135deg, #34d399, #059669);
+      --error: #ef4444;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+      --font-body: "Inter", sans-serif;
+      --font-display: "Outfit", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.15), transparent 45%),
+                  radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.1), transparent 50%),
+                  linear-gradient(180deg, var(--bg-start), var(--bg-end));
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-start);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    /* Auth Screen */
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 6, 18, 0.85);
+      backdrop-filter: blur(20px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    .auth-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #app-container[hidden] {
+      display: none !important;
+    }
+
+    .auth-card {
+      width: min(420px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px 30px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 24px;
+      backdrop-filter: blur(12px);
+      text-align: center;
+      transform: translateY(0);
+      transition: transform 0.3s ease;
+    }
+
+    .auth-logo {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto;
+      background: var(--primary-gradient);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3);
+    }
+
+    .auth-logo svg {
+      width: 32px;
+      height: 32px;
+      fill: #fff;
+    }
+
+    .auth-title {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .auth-tagline {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .form-group {
+      display: grid;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .input-field {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--primary-gradient);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+    }
+
+    .btn-submit:active {
+      transform: translateY(1px);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .auth-error {
+      font-size: 13.5px;
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 8px;
+      padding: 10px;
+      display: none;
+    }
+
+    /* Main Container */
+    .app-container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      flex: 1;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-logo-small {
+      width: 48px;
+      height: 48px;
+      background: var(--primary-gradient);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.25);
+    }
+
+    .brand-logo-small svg {
+      width: 24px;
+      height: 24px;
+      fill: #fff;
+    }
+
+    .brand-text h1 {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-logout {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .btn-logout:hover {
+      background: var(--surface-hover);
+      color: #fff;
+    }
+
+    /* Tabs */
+    .tabs-nav {
+      display: flex;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      align-self: flex-start;
+    }
+
+    .tab-btn {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .tab-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .tab-btn.active {
+      background: var(--primary-gradient);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+    }
+
+    .tab-btn:hover:not(.active) {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Tab Content Grid */
+    .tab-pane {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .tab-pane.active {
+      display: grid;
+      gap: 24px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Layout Grids */
+    .grid-two-cols {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .grid-two-cols {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Glass Cards */
+    .glass-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 14px;
+    }
+
+    .card-title svg {
+      width: 20px;
+      height: 20px;
+      stroke: var(--primary);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    /* Transcripts List */
+    .transcripts-list {
+      display: grid;
+      gap: 16px;
+      max-height: 600px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+
+    .transcript-card {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 14px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .transcript-card:hover {
+      border-color: rgba(124, 58, 237, 0.3);
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .transcript-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .meta-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .meta-badge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .badge-call {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-upload {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .transcript-time {
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .transcript-body {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.5;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px 14px;
+      border-radius: 8px;
+      border-left: 3px solid var(--primary);
+    }
+
+    .transcript-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    audio {
+      height: 32px;
+      flex: 1;
+      max-width: 400px;
+    }
+
+    /* Custom dark audio override style */
+    audio::-webkit-media-controls-enclosure {
+      background-color: #1a1b2f;
+    }
+
+    .btn-delete {
+      background: transparent;
+      color: var(--text-faint);
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .btn-delete:hover {
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .btn-delete svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+
+    /* Upload Area */
+    .upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.15);
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .upload-area:hover {
+      border-color: var(--primary);
+      background: rgba(124, 58, 237, 0.05);
+    }
+
+    .upload-icon svg {
+      width: 40px;
+      height: 40px;
+      stroke: var(--text-muted);
+      stroke-width: 1.5;
+      fill: none;
+    }
+
+    .upload-text {
+      font-size: 13.5px;
+      color: var(--text-muted);
+    }
+
+    .upload-text span {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .selected-file-banner {
+      font-size: 13px;
+      color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .btn-clear-file {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    /* Training State Indicator */
+    .training-status-card {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 99px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #8b5cf6, #ec4899);
+      border-radius: 99px;
+      transition: width 0.3s ease;
+    }
+
+    .status-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-text-desc {
+      font-size: 14.5px;
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .storage-summary {
+      display: grid;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .storage-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .storage-label {
+      color: var(--text-faint);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    .storage-value {
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .storage-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    /* Pulse wave training animation */
+    .wave-container {
+      height: 60px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin: 10px 0;
+    }
+
+    .wave-bar {
+      width: 4px;
+      height: 10px;
+      background: var(--primary);
+      border-radius: 2px;
+      animation: bounce 1s ease-in-out infinite alternate;
+    }
+
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; background: #9d6df7; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; background: #af7ef9; }
+    .wave-bar:nth-child(4) { animation-delay: 0.3s; background: #c28ffa; }
+    .wave-bar:nth-child(5) { animation-delay: 0.4s; background: #d4a0fc; }
+    .wave-bar:nth-child(6) { animation-delay: 0.5s; background: #e6b1fd; }
+    .wave-bar:nth-child(7) { animation-delay: 0.6s; background: var(--accent); }
+
+    @keyframes bounce {
+      from { height: 10px; }
+      to { height: 50px; }
+    }
+
+    /* Synthesis Area */
+    .synthesis-input-container {
+      display: grid;
+      gap: 12px;
+    }
+
+    .btn-synthesize {
+      background: var(--accent-gradient);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(236, 72, 153, 0.2);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-synthesize:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(236, 72, 153, 0.35);
+    }
+
+    .synthesis-result {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+    }
+
+    .synthesis-result.active {
+      display: flex;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-faint);
+      padding: 40px 20px;
+      font-size: 14.5px;
+    }
+
+    @media (max-width: 640px) {
+      .app-container {
+        padding: 22px 14px 110px;
+        gap: 20px;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .brand-section {
+        align-items: flex-start;
+      }
+
+      .brand-text h1 {
+        font-size: 21px;
+      }
+
+      .tabs-nav {
+        align-self: stretch;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+      }
+
+      .tab-btn {
+        flex-direction: column;
+        gap: 5px;
+        justify-content: center;
+        min-width: 0;
+        padding: 9px 6px;
+        text-align: center;
+        font-size: 12px;
+      }
+
+      .tab-btn svg {
+        flex: 0 0 auto;
+        width: 17px;
+        height: 17px;
+      }
+
+      .glass-card {
+        border-radius: 16px;
+        padding: 18px;
+      }
+
+      .card-title {
+        font-size: 17px;
+      }
+
+      .status-meta {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .storage-row,
+      .storage-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .transcript-header,
+      .transcript-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      audio,
+      #synthesis-audio {
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Auth Dialog -->
+  <div id="auth-modal" class="auth-overlay hidden">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+        </svg>
+      </div>
+      <div>
+        <h2 class="auth-title">Verify 2FA</h2>
+        <p class="auth-tagline">Enter the 6-digit verification code from your authenticator app to unlock the Voice Training agent.</p>
+      </div>
+      <div id="auth-error-box" class="auth-error"></div>
+      <form id="auth-form" class="form-group">
+        <label for="totp-code-input">6-Digit Code</label>
+        <input id="totp-code-input" class="input-field" type="text" placeholder="e.g. 123456" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" required>
+        <button id="auth-submit-btn" class="btn-submit" type="submit">Verify & Unlock</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main UI Container -->
+  <div id="app-container" class="app-container" hidden inert>
+    <header>
+      <div class="brand-section">
+        <div class="brand-logo-small">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 3v18M17 5v14M22 8v8M7 6v12M2 9v6" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Voice Training Dashboard</h1>
+          <p>Local custom voice provider, recordings dataset, and TTS install manager</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-logout" class="btn-logout" style="display: none;">Logout</button>
+      </div>
+    </header>
+
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="tab-transcripts">
+        <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+        Call Recordings
+      </button>
+      <button class="tab-btn" data-tab="tab-training">
+        <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
+        Provider Setup
+      </button>
+      <button class="tab-btn" data-tab="tab-synthesis">
+        <svg viewBox="0 0 24 24"><path d="M12 3v18M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
+        Test Synthesis
+      </button>
+    </div>
+
+    <!-- TAB: TRANSCRIPTS -->
+    <div id="tab-transcripts" class="tab-pane active grid-two-cols">
+      <div class="glass-card">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+          Dataset Recordings
+        </h2>
+        <div id="transcripts-list-container" class="transcripts-list">
+          <div class="empty-state">Loading voice recording dataset...</div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 14c-6.1 0-8 4-8 4v2h16v-2s-1.9-4-8-4Z"/></svg>
+          Add Custom Sample
+        </h2>
+        <p class="auth-tagline" style="text-align: left;">Upload high quality audio recording of your own voice (WAV mono, 16kHz) with corresponding transcription to enrich the voice dataset.</p>
+        
+        <form id="upload-form" class="form-group" style="gap: 16px;">
+          <div id="upload-dropzone" class="upload-area">
+            <div class="upload-icon">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            </div>
+            <p class="upload-text">Drag and drop WAV file here or <span>browse</span></p>
+            <input type="file" id="upload-file-input" class="file-input" accept="audio/wav,audio/*">
+            <div id="file-banner" class="selected-file-banner">
+              <span id="file-banner-name">file.wav</span>
+              <button type="button" id="btn-clear-upload" class="btn-clear-file">&times;</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="upload-transcript-input">Speech Transcript</label>
+            <input id="upload-transcript-input" class="input-field" type="text" placeholder="Enter exactly what you said in the audio file" required>
+          </div>
+
+          <button id="upload-submit-btn" class="btn-submit" type="submit">Add to Dataset</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- TAB: TRAINING -->
+    <div id="tab-training" class="tab-pane">
+      <div class="glass-card" style="max-width: 700px; margin: 0 auto; width: 100%;">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
+          Fine-Tune Custom Voice Provider
+        </h2>
+        <p class="auth-tagline" style="text-align: left; margin-bottom: 10px;">
+          Fine-tune the local VITS custom voice provider from your captured voice transcripts and uploaded samples.
+          Longer runs and cleaner recordings produce better cloned-voice quality.
+        </p>
+
+        <div class="training-status-card">
+          <div class="status-meta">
+            <span class="status-text-desc" id="training-message">Loading training status...</span>
+            <span id="training-percentage">0%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div id="training-progress-fill" class="progress-bar-fill"></div>
+          </div>
+          <div id="training-wave" class="wave-container">
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+          <div class="status-meta" style="font-size: 12px;">
+            <span id="training-epoch-label">Pass 0 / 0</span>
+            <span id="training-status-badge" class="meta-badge badge-upload">Status: Idle</span>
+          </div>
+        </div>
+
+        <form id="train-form" class="form-group" style="margin-top: 14px; gap: 16px;">
+          <div class="form-group">
+            <label for="epochs-input">Fine-Tuning Epochs</label>
+            <input id="epochs-input" class="input-field" type="number" min="1" max="10000" value="200" required>
+          </div>
+          <button id="btn-start-train" class="btn-submit" type="submit">Start Fine-Tuning</button>
+        </form>
+        <button id="btn-install-provider" class="btn-submit" type="button" style="margin-top: 12px;">Install as AutoYou TTS Provider</button>
+        <p id="install-provider-status" style="font-size: 14px; font-weight: 600; color: var(--success);"></p>
+      </div>
+
+      <div class="glass-card" style="max-width: 700px; margin: 0 auto; width: 100%;">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M7 9h10M7 13h6"/></svg>
+          Storage Location
+        </h2>
+        <div class="storage-summary">
+          <div class="storage-row">
+            <span class="storage-label">Active</span>
+            <span id="storage-active-dir" class="storage-value">Loading...</span>
+          </div>
+          <div class="storage-row">
+            <span class="storage-label">Free Space</span>
+            <span id="storage-free-space" class="storage-value">Loading...</span>
+          </div>
+          <div class="storage-row">
+            <span class="storage-label">Data Size</span>
+            <span id="storage-data-size" class="storage-value">Loading...</span>
+          </div>
+        </div>
+        <form id="storage-form" class="form-group" style="gap: 14px;">
+          <div class="form-group">
+            <label for="storage-path-input">Custom Training Folder</label>
+            <input id="storage-path-input" class="input-field" type="text" placeholder="%APPDATA%\AutoYou\voice_training">
+          </div>
+          <label class="checkbox-row">
+            <input id="storage-migrate-checkbox" type="checkbox" checked>
+            Copy existing voice dataset and model files into the new folder
+          </label>
+          <div class="storage-actions">
+            <button id="btn-save-storage" class="btn-submit" type="submit">Save Storage Path</button>
+            <button id="btn-reset-storage" class="btn-logout" type="button">Reset</button>
+          </div>
+          <p id="storage-status" style="font-size: 14px; font-weight: 600; color: var(--success);"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- TAB: SYNTHESIS -->
+    <div id="tab-synthesis" class="tab-pane">
+      <div class="glass-card" style="max-width: 700px; margin: 0 auto; width: 100%;">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24"><path d="M12 3v18M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
+          Test Custom Voice Provider
+        </h2>
+        <p class="auth-tagline" style="text-align: left; margin-bottom: 10px;">
+          Enter any text to convert it into speech using your prepared local provider.
+        </p>
+
+        <form id="synthesis-form" class="synthesis-input-container">
+          <input id="synthesis-text" class="input-field" type="text" placeholder="Hello there! This is my own cloned voice speaking completely locally." required>
+          <button id="btn-synthesis-submit" class="btn-synthesize" type="submit">Synthesize Custom Voice</button>
+        </form>
+
+        <div id="synthesis-result-card" class="synthesis-result">
+          <p id="synthesis-status" style="font-size: 14px; font-weight: 600; color: var(--success);"></p>
+          <audio id="synthesis-audio" controls></audio>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "";
+    const AGENT_PROXY_PREFIX = "/agent/voice_training_agent";
+    const AGENT_ROUTE_BASE = (() => {
+      try {
+        const path = String(window.location.pathname || "");
+        const agentIndex = path.indexOf(AGENT_PROXY_PREFIX);
+        if (agentIndex >= 0) {
+          return `${path.slice(0, agentIndex)}${AGENT_PROXY_PREFIX}`;
+        }
+        const genericAgentIndex = path.indexOf("/agent/");
+        if (genericAgentIndex >= 0) {
+          return `${path.slice(0, genericAgentIndex)}${AGENT_PROXY_PREFIX}`;
+        }
+      } catch (_) {}
+      return API_BASE;
+    })();
+
+    function apiPath(path) {
+      const normalized = String(path || "/");
+      const suffix = normalized.startsWith("/") ? normalized : `/${normalized}`;
+      return `${AGENT_ROUTE_BASE}${suffix}`;
+    }
+
+    let isTrainingActive = false;
+    let pollInterval = null;
+    let pollIntervalMs = 0;
+    let selectedWavFile = null;
+
+    // Dom elements
+    const authModal = document.getElementById("auth-modal");
+    const appContainer = document.getElementById("app-container");
+    const authForm = document.getElementById("auth-form");
+    const authInput = document.getElementById("totp-code-input");
+    const authError = document.getElementById("auth-error-box");
+    const btnLogout = document.getElementById("btn-logout");
+
+    function setAuthVisibility(unlocked) {
+      authModal.classList.toggle("hidden", unlocked);
+      authModal.inert = unlocked;
+      appContainer.hidden = !unlocked;
+      appContainer.inert = !unlocked;
+    }
+
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    const transcriptsContainer = document.getElementById("transcripts-list-container");
+
+    const uploadDropzone = document.getElementById("upload-dropzone");
+    const uploadFileInput = document.getElementById("upload-file-input");
+    const fileBanner = document.getElementById("file-banner");
+    const fileBannerName = document.getElementById("file-banner-name");
+    const btnClearUpload = document.getElementById("btn-clear-upload");
+    const uploadForm = document.getElementById("upload-form");
+    const uploadTranscriptInput = document.getElementById("upload-transcript-input");
+    const uploadSubmitBtn = document.getElementById("upload-submit-btn");
+
+    const trainForm = document.getElementById("train-form");
+    const epochsInput = document.getElementById("epochs-input");
+    const btnStartTrain = document.getElementById("btn-start-train");
+    const trainingMessage = document.getElementById("training-message");
+    const trainingPercentage = document.getElementById("training-percentage");
+    const trainingProgressFill = document.getElementById("training-progress-fill");
+    const trainingEpochLabel = document.getElementById("training-epoch-label");
+    const trainingStatusBadge = document.getElementById("training-status-badge");
+    const trainingWave = document.getElementById("training-wave");
+    const btnInstallProvider = document.getElementById("btn-install-provider");
+    const installProviderStatus = document.getElementById("install-provider-status");
+    const storageActiveDir = document.getElementById("storage-active-dir");
+    const storageFreeSpace = document.getElementById("storage-free-space");
+    const storageDataSize = document.getElementById("storage-data-size");
+    const storageForm = document.getElementById("storage-form");
+    const storagePathInput = document.getElementById("storage-path-input");
+    const storageMigrateCheckbox = document.getElementById("storage-migrate-checkbox");
+    const btnSaveStorage = document.getElementById("btn-save-storage");
+    const btnResetStorage = document.getElementById("btn-reset-storage");
+    const storageStatus = document.getElementById("storage-status");
+
+    const synthesisForm = document.getElementById("synthesis-form");
+    const synthesisText = document.getElementById("synthesis-text");
+    const btnSynthesisSubmit = document.getElementById("btn-synthesis-submit");
+    const synthesisResultCard = document.getElementById("synthesis-result-card");
+    const synthesisStatus = document.getElementById("synthesis-status");
+    const synthesisAudio = document.getElementById("synthesis-audio");
+
+    // ── Session & Auth Handler ──────────────────────────────────────────────
+
+    async function checkAuthStatus() {
+      try {
+        const response = await fetch(apiPath("/api/auth/status"));
+        const status = await response.json();
+        const unlocked = Boolean(status.authenticated || status.auth_mode === "open");
+        setAuthVisibility(unlocked);
+        if (unlocked) {
+          btnLogout.style.display = "block";
+          loadDashboardData();
+        } else {
+          btnLogout.style.display = "none";
+        }
+      } catch (err) {
+        console.error("Failed to check auth status", err);
+      }
+    }
+
+    authForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      authError.style.display = "none";
+      const code = authInput.value.trim();
+      try {
+        const response = await fetch(apiPath("/api/auth/login"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        const res = await response.json();
+        if (res.success) {
+          setAuthVisibility(true);
+          btnLogout.style.display = "block";
+          loadDashboardData();
+        } else {
+          authError.textContent = res.error || "Failed to verify authenticator code.";
+          authError.style.display = "block";
+        }
+      } catch (err) {
+        authError.textContent = "Server connection lost.";
+        authError.style.display = "block";
+      }
+    });
+
+    btnLogout.addEventListener("click", async () => {
+      try {
+        await fetch(apiPath("/api/auth/logout"), { method: "POST" });
+        checkAuthStatus();
+      } catch (err) {
+        console.error("Logout failed", err);
+      }
+    });
+
+    // ── Tab Navigation ────────────────────────────────────────────────────────
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        tabButtons.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const tabId = btn.getAttribute("data-tab");
+        document.getElementById(tabId).classList.add("active");
+      });
+    });
+
+    // ── Load Dashboard Data ───────────────────────────────────────────────────
+
+    function loadDashboardData() {
+      fetchTranscripts();
+      fetchTrainingStatus();
+      fetchStorageStatus();
+    }
+
+    // ── Call Transcripts Dataset ──────────────────────────────────────────────
+
+    async function fetchTranscripts() {
+      try {
+        const response = await fetch(apiPath("/api/transcripts"));
+        const res = await response.json();
+        if (res.status === "success") {
+          renderTranscripts(res.transcripts);
+        } else {
+          transcriptsContainer.innerHTML = `<div class="empty-state">Failed to load dataset: ${res.message}</div>`;
+        }
+      } catch (err) {
+        transcriptsContainer.innerHTML = `<div class="empty-state">Error connecting to voice api.</div>`;
+      }
+    }
+
+    function renderTranscripts(transcripts) {
+      if (!transcripts || transcripts.length === 0) {
+        transcriptsContainer.innerHTML = `<div class="empty-state">No call recordings collected yet. They will appear here automatically when voice call mode is used, or you can upload audio below.</div>`;
+        return;
+      }
+
+      transcriptsContainer.innerHTML = transcripts.map(t => {
+        const timeLabel = new Date(t.timestamp * 1000).toLocaleString();
+        const badgeClass = t.source === "upload" ? "badge-upload" : "badge-call";
+        const badgeText = t.source === "upload" ? "Custom Upload" : "Call Recording";
+        const recordingUrl = apiPath(`/api/recordings/${encodeURIComponent(t.filename || "")}`);
+
+        return `
+          <div class="transcript-card" id="transcript-${t.id}">
+            <div class="transcript-header">
+              <div class="meta-badge-row">
+                <span class="meta-badge ${badgeClass}">${badgeText}</span>
+                <span class="transcript-time">${timeLabel}</span>
+              </div>
+              <button class="btn-delete" onclick="deleteTranscript('${t.id}')" title="Delete sample">
+                <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+              </button>
+            </div>
+            <div class="transcript-body">${escapeHTML(t.transcript)}</div>
+            <div class="transcript-actions">
+              <audio src="${recordingUrl}" controls preload="metadata"></audio>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function deleteTranscript(id) {
+      if (!confirm("Are you sure you want to delete this voice recording from the training dataset?")) return;
+      try {
+        const response = await fetch(apiPath(`/api/transcripts/${encodeURIComponent(id)}`), {
+          method: "DELETE"
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          const card = document.getElementById(`transcript-${id}`);
+          if (card) card.remove();
+          // Check if empty now
+          if (transcriptsContainer.children.length === 0) {
+            transcriptsContainer.innerHTML = `<div class="empty-state">No call recordings collected yet.</div>`;
+          }
+        } else {
+          alert(`Failed to delete: ${res.message}`);
+        }
+      } catch (err) {
+        alert("Network error deleting transcript.");
+      }
+    }
+
+    // ── Upload Custom Sample ──────────────────────────────────────────────────
+
+    uploadDropzone.addEventListener("click", () => {
+      uploadFileInput.click();
+    });
+
+    uploadDropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      uploadDropzone.style.borderColor = "var(--primary)";
+      uploadDropzone.style.background = "rgba(124, 58, 237, 0.08)";
+    });
+
+    uploadDropzone.addEventListener("dragleave", () => {
+      uploadDropzone.style.borderColor = "var(--border)";
+      uploadDropzone.style.background = "rgba(0, 0, 0, 0.15)";
+    });
+
+    uploadDropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      uploadDropzone.style.borderColor = "var(--border)";
+      uploadDropzone.style.background = "rgba(0, 0, 0, 0.15)";
+
+      if (e.dataTransfer.files.length > 0) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    uploadFileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+
+    function handleFileSelect(file) {
+      if (!file.name.toLowerCase().endsWith(".wav")) {
+        alert("Only mono WAV recordings (16kHz preferred) are supported for voice training.");
+        return;
+      }
+      selectedWavFile = file;
+      fileBannerName.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+      fileBanner.style.display = "flex";
+      uploadDropzone.querySelector(".upload-icon").style.display = "none";
+      uploadDropzone.querySelector(".upload-text").style.display = "none";
+    }
+
+    btnClearUpload.addEventListener("click", (e) => {
+      e.stopPropagation();
+      clearUploadState();
+    });
+
+    function clearUploadState() {
+      selectedWavFile = null;
+      uploadFileInput.value = "";
+      fileBanner.style.display = "none";
+      uploadDropzone.querySelector(".upload-icon").style.display = "block";
+      uploadDropzone.querySelector(".upload-text").style.display = "block";
+    }
+
+    uploadForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!selectedWavFile) {
+        alert("Please select a WAV recording first.");
+        return;
+      }
+
+      uploadSubmitBtn.disabled = true;
+      uploadSubmitBtn.textContent = "Uploading...";
+
+      const formData = new FormData();
+      formData.append("file", selectedWavFile);
+      formData.append("transcript", uploadTranscriptInput.value.trim());
+
+      try {
+        const response = await fetch(apiPath("/api/transcripts/upload"), {
+          method: "POST",
+          body: formData
+        });
+        const res = await response.json();
+        if (res.success) {
+          clearUploadState();
+          uploadTranscriptInput.value = "";
+          fetchTranscripts();
+          alert("Custom voice sample added successfully!");
+        } else {
+          alert(`Failed to add sample: ${res.error}`);
+        }
+      } catch (err) {
+        alert("Connection error during upload.");
+      } finally {
+        uploadSubmitBtn.disabled = false;
+        uploadSubmitBtn.textContent = "Add to Dataset";
+      }
+    });
+
+    // ── Model Training ────────────────────────────────────────────────────────
+
+    async function fetchStorageStatus() {
+      try {
+        const response = await fetch(apiPath("/api/storage"));
+        const res = await response.json();
+        if (res.success) {
+          updateStorageUI(res.storage);
+        } else {
+          storageStatus.textContent = res.error || "Unable to load storage status.";
+        }
+      } catch (err) {
+        storageStatus.textContent = "Connection error loading storage status.";
+      }
+    }
+
+    function updateStorageUI(storage) {
+      const activeDir = storage.active_dir || "";
+      storageActiveDir.textContent = activeDir || "Unknown";
+      storagePathInput.value = storage.using_custom_dir ? activeDir : "";
+      storageDataSize.textContent = `${storage.size_mb || 0} MB`;
+      if (storage.disk) {
+        storageFreeSpace.textContent = `${storage.disk.free_gb} GB free on ${storage.disk.path}`;
+        storageFreeSpace.style.color = (storage.disk.free_gb || 0) < 2 ? "var(--error)" : "var(--success)";
+      } else {
+        storageFreeSpace.textContent = "Unknown";
+        storageFreeSpace.style.color = "var(--text-muted)";
+      }
+    }
+
+    function updateStorageControlsForTraining(isTraining) {
+      btnSaveStorage.disabled = isTraining;
+      btnResetStorage.disabled = isTraining;
+      storagePathInput.disabled = isTraining;
+      storageMigrateCheckbox.disabled = isTraining;
+      if (isTraining && !storageStatus.textContent) {
+        storageStatus.textContent = "Storage changes are locked while fine-tuning is running.";
+      }
+    }
+
+    function setTrainingPollInterval(intervalMs) {
+      if (pollInterval && pollIntervalMs === intervalMs) {
+        return;
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      pollIntervalMs = intervalMs;
+      pollInterval = setInterval(fetchTrainingStatus, intervalMs);
+    }
+
+    async function fetchTrainingStatus() {
+      try {
+        const response = await fetch(apiPath("/api/train/status"));
+        const res = await response.json();
+        if (res.success) {
+          updateTrainingUI(res.training_status);
+        }
+      } catch (err) {
+        console.error("Failed to check training status", err);
+      }
+    }
+
+    function updateTrainingUI(status) {
+      const isTraining = status.status === "training";
+      isTrainingActive = isTraining;
+      updateStorageControlsForTraining(isTraining);
+
+      trainingMessage.textContent = status.message || "Model is idle.";
+      trainingPercentage.textContent = `${Math.round(status.progress || 0)}%`;
+      trainingProgressFill.style.width = `${status.progress || 0}%`;
+      trainingEpochLabel.textContent = `Epoch ${status.current_epoch || 0} / ${status.total_epochs || 0}`;
+
+      trainingStatusBadge.textContent = `Status: ${status.status.toUpperCase()}`;
+      if (status.status === "completed") {
+        trainingStatusBadge.className = "meta-badge badge-call";
+      } else if (status.status === "failed") {
+        trainingStatusBadge.className = "meta-badge";
+        trainingStatusBadge.style.background = "rgba(239, 68, 68, 0.15)";
+        trainingStatusBadge.style.color = "var(--error)";
+      } else if (status.status === "training") {
+        trainingStatusBadge.className = "meta-badge badge-upload";
+      } else {
+        trainingStatusBadge.className = "meta-badge";
+        trainingStatusBadge.style.background = "rgba(255, 255, 255, 0.1)";
+        trainingStatusBadge.style.color = "var(--text-muted)";
+      }
+
+      if (isTraining) {
+        trainingWave.style.display = "flex";
+        btnStartTrain.disabled = true;
+        btnStartTrain.textContent = "Fine-Tuning in Progress...";
+        setTrainingPollInterval(1500);
+      } else {
+        trainingWave.style.display = "none";
+        btnStartTrain.disabled = false;
+        btnStartTrain.textContent = "Start Fine-Tuning";
+        setTrainingPollInterval(5000);
+      }
+    }
+
+    storageForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const path = storagePathInput.value.trim();
+      if (!path) {
+        alert("Enter a custom storage folder path first.");
+        return;
+      }
+
+      btnSaveStorage.disabled = true;
+      storageStatus.style.color = "var(--text-muted)";
+      storageStatus.textContent = "Saving storage path...";
+      try {
+        const response = await fetch(apiPath("/api/storage"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path,
+            migrate_existing: storageMigrateCheckbox.checked
+          })
+        });
+        const res = await response.json();
+        if (res.success) {
+          updateStorageUI(res.storage);
+          storageStatus.style.color = "var(--success)";
+          storageStatus.textContent = "Storage path saved. Restart the AutoYou server and managed agent backend before starting training.";
+        } else {
+          storageStatus.style.color = "var(--error)";
+          storageStatus.textContent = res.error || "Failed to save storage path.";
+        }
+      } catch (err) {
+        storageStatus.style.color = "var(--error)";
+        storageStatus.textContent = "Connection error saving storage path.";
+      } finally {
+        btnSaveStorage.disabled = isTrainingActive;
+      }
+    });
+
+    btnResetStorage.addEventListener("click", async () => {
+      if (!confirm("Reset voice training storage to the default AutoYou location?")) return;
+      btnResetStorage.disabled = true;
+      storageStatus.style.color = "var(--text-muted)";
+      storageStatus.textContent = "Resetting storage path...";
+      try {
+        const response = await fetch(apiPath("/api/storage/reset"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const res = await response.json();
+        if (res.success) {
+          updateStorageUI(res.storage);
+          storageStatus.style.color = "var(--success)";
+          storageStatus.textContent = "Storage path reset. Restart runtimes before starting training.";
+        } else {
+          storageStatus.style.color = "var(--error)";
+          storageStatus.textContent = res.error || "Failed to reset storage path.";
+        }
+      } catch (err) {
+        storageStatus.style.color = "var(--error)";
+        storageStatus.textContent = "Connection error resetting storage path.";
+      } finally {
+        btnResetStorage.disabled = isTrainingActive;
+      }
+    });
+
+    trainForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const epochs = parseInt(epochsInput.value) || 200;
+
+      try {
+        const response = await fetch(apiPath("/api/train"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ epochs })
+        });
+        const res = await response.json();
+        if (res.success) {
+          fetchTrainingStatus();
+        } else {
+          alert(`Could not start training: ${res.error}`);
+        }
+      } catch (err) {
+        alert("Connection failure triggering training.");
+      }
+    });
+
+    btnInstallProvider.addEventListener("click", async () => {
+      btnInstallProvider.disabled = true;
+      installProviderStatus.textContent = "Installing provider...";
+      try {
+        const response = await fetch(apiPath("/api/install-provider"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const res = await response.json();
+        if (res.success || res.status === "success") {
+          installProviderStatus.textContent = res.message || "Custom voice provider installed.";
+        } else {
+          installProviderStatus.textContent = res.message || res.error || "Install failed.";
+        }
+      } catch (err) {
+        installProviderStatus.textContent = "Connection error installing provider.";
+      } finally {
+        btnInstallProvider.disabled = false;
+      }
+    });
+
+    // ── Test Voice Synthesis ──────────────────────────────────────────────────
+
+    synthesisForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = synthesisText.value.trim();
+      if (!text) return;
+
+      btnSynthesisSubmit.disabled = true;
+      btnSynthesisSubmit.textContent = "Synthesizing...";
+      synthesisResultCard.classList.remove("active");
+
+      try {
+        const response = await fetch(apiPath("/api/synthesize"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          synthesisStatus.textContent = res.message || "Synthesis complete!";
+          const audioUrl = apiPath(`/api/synthesize/file/${encodeURIComponent(res.filename || "")}`);
+          synthesisAudio.pause();
+          synthesisAudio.removeAttribute("src");
+          synthesisAudio.load();
+          synthesisAudio.setAttribute("src", `${audioUrl}?t=${Date.now()}`);
+          synthesisAudio.load();
+          synthesisResultCard.classList.add("active");
+          const playPromise = synthesisAudio.play();
+          if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+              synthesisStatus.textContent = `${res.message || "Synthesis complete!"} Tap play to listen.`;
+            });
+          }
+        } else {
+          alert(`Synthesis failed: ${res.message}`);
+        }
+      } catch (err) {
+        alert("Connection error during voice synthesis.");
+      } finally {
+        btnSynthesisSubmit.disabled = false;
+        btnSynthesisSubmit.textContent = "Synthesize Custom Voice";
+      }
+    });
+
+    // Helpers
+    function escapeHTML(str) {
+      return str.replace(/[&<>'"]/g, 
+        tag => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          "'": '&#39;',
+          '"': '&quot;'
+        }[tag] || tag)
+      );
+    }
+
+    // Startup
+    checkAuthStatus();
+  </script>
+</body>
+</html>

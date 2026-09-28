@@ -1,0 +1,8 @@
+{
+  "agent_name": "tasks_agent",
+  "description": "Mission-control board for recurring tasks, delivery targets, security policy, and scheduler audit logs.",
+  "entry_path": "/",
+  "recommended_port": 8095,
+  "requires_proxy_registration": true,
+  "title": "Tasks Mission Control"
+}
