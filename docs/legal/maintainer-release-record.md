@@ -1,11 +1,84 @@
 # AutoYou Server Maintainer Release Record
 
-Release date: 2026-07-14
+Record refreshed: 2026-09-27 (PDT)
+Release date: pending owner publication
 
-This record documents the reviewed source-only release candidate. It is
-maintainer evidence, not a license grant or legal advice.
+This is source-only maintainer evidence, not a license grant, legal approval, or
+evidence that a compiled release is ready. The 2026-07-14 evidence is retained
+below as a historical snapshot; the current candidate has separate checks and
+hashes.
 
-## Selected source and archive
+## Current source candidate: 2026-09-27
+
+### Selected source and archive
+
+- Candidate source commit: `ddd072075b7d2f61752c699e305530fe30c79653`
+  (`main` at the time of this review); owner-approved release commit: pending.
+- Archive: `autoyou-server-ddd0720-source.zip`; SHA-256:
+  `C1D693AEFE678D8A0562B613120B5FC4ABD1DACE66AA6C10355BEFA29DA8A4AD`.
+- Format: deterministic Git ZIP archive of that commit's 1,088 regular files,
+  excluding this evidence-only record to avoid a self-referential checksum.
+  The archive was extracted and checked; no `clients/`, `v2/`, `.llm/`, or
+  `autoyou_agents/private/` entries were present.
+- Publication URL, publication date, release tag, owner approval, and reviewer:
+  pending. The source candidate and its checksum do not establish publication.
+
+### Current validation evidence
+
+- The committed-source and worktree public boundary checks both passed with
+  1,089 included repository files at the candidate commit. A separate scan of
+  every reachable commit found 1,089 unique historical paths and no path
+  outside the publication allowlist.
+- Gitleaks v8.30.1, using its verified official macOS arm64 binary, scanned
+  all reachable Git history through the candidate commit and the extracted
+  source archive. Both runs exited 0 with zero findings. These automated
+  checks do not replace the final human review for personal data or private
+  paths in source content.
+- The current public-check-equivalent Python suite passed: 123 tests, with
+  four dependency deprecation warnings. The `public-checks` workflow for the
+  candidate commit also completed successfully.
+- `node/tunnelmole` passed `npm audit --omit=dev` with zero production
+  vulnerabilities.
+- The five checked-in Server NOTICE/SBOM profile pairs were compared with
+  freshly computed components and notices using their recorded timestamps;
+  all five matched the current release-artifact definitions. No new bundle
+  timestamp or approval was assigned by this comparison.
+- The strict source legal gate failed on the four open publication decisions
+  in `release-compliance-checklist.md`. With
+  `--allow-open-release-blockers`, the remaining engineering checks passed.
+  Ownership/counsel, current third-party terms, final human source/history
+  review, and owner-approved publication evidence remain open.
+- No Windows, macOS, WSL, native v2, mobile, or hosted-service build or
+  operational release check was run for this record refresh.
+
+### Current source and legal file hashes
+
+SHA-256 values below describe the candidate commit and its checked-in legal
+files; they supersede the July table for this candidate only.
+
+| File | SHA-256 |
+|---|---|
+| `LICENSE` | `3D36C9669DCF9789D7EF00F91433FB0CFFE2C0924D5C6490FD29D6725D8436BA` |
+| `THIRD-PARTY-NOTICES.md` | `11D981097EA8FA3B39CBDD366A4BE7D4F3656B31A95BF20818558597C491C839` |
+| `docs/legal/generated/manifest-summary.json` | `29A712A1B530EB3009353CBDA359E14CF724AC096C7C067873DE9A89F7CD5E42` |
+| `docs/legal/generated/README.md` | `DE56D1A5E88DE5377AD008396EC68D6322711F5B9882ECE1E62F7A30093901DC` |
+| `docs/legal/generated/autoyou-server-source-full/NOTICE.txt` | `6454A66BDEF4265E80D7DD319036D1B8D33C03AB7B45C949662C8CC1CA35C2D4` |
+| `docs/legal/generated/autoyou-server-source-full/sbom.cdx.json` | `72FA344F8F34CA4211BFE5387DF6308CBD53491696D8E43A67F5E813873B26B8` |
+| `docs/legal/generated/autoyou-server-windows-default/NOTICE.txt` | `AA9F9F3DDCAFAA537B047776D7614809967D381D26370C5B5112752917F679AB` |
+| `docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json` | `F7CDE467972FABCC1542B1CC3787479DC8C4D8C534AB6691FEA2B6665BE20568` |
+| `docs/legal/generated/autoyou-server-macos-default/NOTICE.txt` | `2D2C0248D587C1D5B43FF9223307D79C0F22E5D022A0B7EEB382896F71CA788B` |
+| `docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json` | `5F7B60891F3F4F70B76B2D0A8C303B15B20DDE4266ACC8AC5493E2A377AC8347` |
+| `docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt` | `D1BCEBEAC2A1827842FDE62E85B701DF3925CC3690BC3E54254DBEE52DBBF8D4` |
+| `docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json` | `5BE090337EF84AFD8A0DA3582AF21356D88E67B7C032B05311278A9E914F6541` |
+| `docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt` | `BA4FABB23A9BAD18F5C6D892627DCCD11556A458967258DF4EF7C79394B10B82` |
+| `docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json` | `65C203D83E099E5DE55443FB1B6DA208C6E916D01EAE637BBD36B317ACCCD8A9` |
+
+## Historical source candidate: 2026-07-14
+
+The following evidence belongs to the earlier reviewed archive. Its hashes,
+checks, and repository controls must not be read as current evidence.
+
+### Selected source and archive
 
 - Reviewed release commit: `8eae613e2bfc7f8ba9d607316b5dba34a0298c93`
 - Archive: `autoyou-server-8eae613.zip`
@@ -16,7 +89,7 @@ maintainer evidence, not a license grant or legal advice.
 - The archive intentionally excludes this evidence file so its checksum is not
   self-referential. The evidence file is committed in the public repository.
 
-## Public-boundary and validation evidence
+### Public-boundary and validation evidence
 
 - `python scripts/export_public_autoyou_server.py --check` passed from a
   detached clean checkout of the reviewed commit.
@@ -37,7 +110,7 @@ maintainer evidence, not a license grant or legal advice.
   requirements were refreshed to supported pytest 9 and pytest-asyncio 1.x
   ranges.
 
-## Legal artifacts and hashes
+### Legal artifacts and hashes
 
 The selected distributed artifact is source-only. Five configured profiles were
 regenerated and reviewed: source-full, Windows default, macOS default, Windows
@@ -68,7 +141,7 @@ messaging, runtime-download, model, binary, and SDK obligations remain
 conditional on an owner enabling those integrations; the source archive does
 not approve or bundle them.
 
-## GitHub review and controls
+### GitHub review and controls
 
 Before the repository was made public, the reviewed surfaces were: no issues,
 no releases, no packages, disabled wiki and discussions, an empty visible
@@ -91,7 +164,7 @@ Final repository controls were read back through the GitHub API:
 independently tested; GitHub private vulnerability reporting was enabled and
 read back successfully as the tested reporting path.
 
-## Completion evidence
+### Completion evidence
 
 - The exact command
   `python scripts/check_release_legal_gates.py --no-generate --artifact-scope server --strict-unknown-license`
