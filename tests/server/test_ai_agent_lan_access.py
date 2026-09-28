@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-96365184e13a2f822e88baf2
+
 """Tests for the AI Agent server's LAN-exposure hardening.
 
 Covers three things found live this session: port 8081 (the ADK dev-ui/API
@@ -8,6 +14,11 @@ host, an explicit opt-in is required to reach it from the LAN, and reaching
 it that way requires a valid OTP code -- while the existing loopback port's
 behavior stays completely unchanged.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-96365184e13a2f822e88baf2"
+
 
 import os
 from unittest.mock import patch

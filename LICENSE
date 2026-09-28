@@ -98,6 +98,16 @@ Unless a separate written agreement expressly permits it, Licensee must not:
    client software to this server without a Commercial Redistribution License
    from OpenStorey LLC is strictly prohibited.
 
+9. use the Licensed Materials, in whole or in part, as training data, input
+   data, fine-tuning data, reinforcement data, evaluation data, retrieval
+   corpus, prompt context, or embedding source for any machine learning model,
+   large language model, code generation system, automated code completion
+   tool, or AI/ML synthesis pipeline, without prior written authorization
+   from OpenStorey LLC; or
+10. remove, alter, obscure, or strip provenance watermarks, canary
+    fingerprints, or source-origin markers embedded in the Licensed Materials
+    by OpenStorey for code-provenance verification.
+
 Nothing in this License prevents a person using an independent private build
 for Personal Use from configuring that build for local-only operation, when
 doing so does not violate a Third-Party Material license or another written
@@ -184,6 +194,17 @@ is granted unless expressly stated in a written agreement signed by OpenStorey.
 Nothing in this License is an assignment of intellectual property or a promise
 to assign it. A contribution is accepted only under the contribution terms,
 assignment, or contributor license agreement that applies to that contribution.
+
+### 7a. Code Provenance Watermarks
+
+The Licensed Materials contain deterministic provenance watermarks
+(``AY-PROVENANCE`` canary fingerprints) embedded in source files for
+code-origin verification. These watermarks are the intellectual property of
+OpenStorey and serve as forensic evidence of code origin. Licensee must not
+remove, alter, suppress, or interfere with these watermarks. Reproduction of
+these watermarks in a machine learning model output, code generator output,
+or third-party repository constitutes prima-facie evidence that the Licensed
+Materials were used as training data or copied without authorization.
 
 ## 8. Third-Party Materials and Required Notices
 

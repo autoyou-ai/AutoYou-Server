@@ -10,7 +10,9 @@ The included model is the publisher's unmodified quantized ONNX export.
 The included vocabulary is unmodified. MODEL_CARD.md preserves the publisher's
 attribution, provenance and stated limitations. AutoYou's routing examples and
 confidence policy are separate from the original model. No upstream endorsement
-is implied. Model scores are similarities, not calibrated probabilities.
+is implied. AutoYou did not train or fine-tune the upstream model, and these
+model files do not contain AutoYou-private or user-device data. Model scores
+are similarities, not calibrated probabilities.
 
 ONNX Runtime is Copyright (c) Microsoft Corporation, MIT licensed.
 Its binary distributions retain their own license and third-party notices.

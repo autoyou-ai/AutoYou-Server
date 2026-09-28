@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-e985d4eef024ec46ea6c8eb0
+
 """Mobile-first web UI backend for the AutoYou Persona agent.
 
 Serves the persona self-data editor over the page-service proxy
@@ -11,6 +14,11 @@ against the derive-from-password secret (falling back to the shared pairing secr
 when no profile is assigned).
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-e985d4eef024ec46ea6c8eb0"
+
 
 from pathlib import Path
 from typing import Any, Dict

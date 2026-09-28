@@ -1,10 +1,18 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-E-652076696120284254432061-4774cff5d596eff33e9c99f8
+
 """
 Comprehensive Playwright test for AutoYou Admin UI Signal functionality.
 Tests the complete Signal integration including QR code generation.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-4774cff5d596eff33e9c99f8"
+
 
 import asyncio
 import os

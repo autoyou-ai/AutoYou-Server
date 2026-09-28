@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6bf326ff4bfb153976d3d965
 
 """Tests for the opt-in shared cross-agent OTP session in scheduler_mission_control.
 
@@ -9,6 +11,11 @@ also unlocks another eligible agent website in the same cookie jar - unless
 that agent's own manifest opts out via shared_session_eligible: False.
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6bf326ff4bfb153976d3d965"
+
 
 import sys
 import types

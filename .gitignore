@@ -2,6 +2,8 @@
 .env
 /private/
 /config/donations.json
+# Provenance manifest (generated per-build by scripts/provenance_watermark.py)
+PROVENANCE_MANIFEST.json
 .venv/
 .run/
 .trae/
@@ -86,6 +88,13 @@ servers/windows/build/
 servers/windows/dist/
 servers/windows/artifacts/
 servers/windows/venv/
+servers/windows/AutoYouWindowsHost/[Bb]in/
+servers/windows/AutoYouWindowsHost/[Oo]bj/
+servers/windows/AutoYouWindowsHost/.vs/
+servers/windows/AutoYouWindowsHost/corehost-trace.txt
+servers/windows/AutoYouWindowsHost/*.user
+servers/windows/AutoYouWindowsHost/*.suo
+servers/windows/AutoYouWindowsHost/*.userprefs
 clients/linux/build/
 clients/linux/dist/
 clients/linux/venv/
@@ -330,3 +339,8 @@ graphify-out/
 # Local environment and tracking
 .gemini/
 .source-revision
+scripts/provenance_watermark.py
+shared/ai_training_detection.py
+shared/source_provenance.py
+tests/test_ai_training_detection.py
+tests/test_source_provenance.py

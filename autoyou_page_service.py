@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-56d6bb836ea40af10d913f53
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -8,6 +14,11 @@ For AutoYou Page Service
 A simple HTTP server that serves the "For AutoYou Page" website on 127.0.0.1:8067.
 This service handles HTTP requests forwarded from remote clients via WebRTC datachannel.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-56d6bb836ea40af10d913f53"
+
 
 import asyncio
 import difflib

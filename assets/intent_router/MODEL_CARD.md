@@ -34,7 +34,7 @@ datasets:
 pipeline_tag: sentence-similarity
 ---
 
-<!-- AutoYou copy: trailing whitespace removed; model-card content preserved. -->
+<!-- AutoYou distribution note: this upstream model card is retained for attribution. References below to "we", "our model", training, fine-tuning, datasets, or infrastructure describe the upstream sentence-transformers/all-MiniLM-L6-v2 publisher, not AutoYou. AutoYou did not train this model, fine-tune it, or use AutoYou-private or user-device data to create these upstream model files. -->
 
 
 # all-MiniLM-L6-v2

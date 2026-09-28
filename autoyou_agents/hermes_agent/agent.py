@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-4d1b77972826d4b8fc3ca135
+
 """
 AutoYou Hermes Bridge Agent.
 
@@ -8,6 +11,11 @@ This optional agent sends requests to a locally running Hermes Agent gateway
 (NousResearch Hermes). Users install it from Admin -> Agent Management after
 they have the Hermes gateway running locally.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-4d1b77972826d4b8fc3ca135"
+
 import logging
 import os
 from typing import Optional

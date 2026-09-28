@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-aebfd519d4fe56ee75c14830
 
 """Tests for the x402 agent client used for agent-to-agent AutoYou links.
 
@@ -11,6 +13,11 @@ exercised without any network access.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-aebfd519d4fe56ee75c14830"
+
 
 import json
 import sys

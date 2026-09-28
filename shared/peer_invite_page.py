@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a27fddc1cd9b6b0d79de0dc7
 
 """The invite landing page.
 
@@ -29,6 +31,11 @@ it works before the invitee has any relationship with this server at all.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a27fddc1cd9b6b0d79de0dc7"
+
 
 from typing import Optional
 

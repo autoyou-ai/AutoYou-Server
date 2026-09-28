@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8fb80ed6be2e66c96607a62b
 
 """Native Ollama gateway transport shared by AutoYou Server and Lite.
 
@@ -10,6 +12,11 @@ runtime to produce a reply.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8fb80ed6be2e66c96607a62b"
+
 
 import asyncio
 import logging

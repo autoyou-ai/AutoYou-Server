@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c233431631ae05bf7a4be4ac
 
 """The in-person verification code for Nearby pairing.
 
@@ -37,6 +39,11 @@ difference between a code that looks reassuring and one that is.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c233431631ae05bf7a4be4ac"
+
 
 import hashlib
 import hmac

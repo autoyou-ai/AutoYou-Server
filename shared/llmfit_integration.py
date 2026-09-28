@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-L-643937636335396144393239-52ceba08a02f0ab5067a0c9b
+
 """LLMFit integration for the AutoYou model_picker_agent.
 
 LLMFit (https://github.com/AlexsJones/llmfit, MIT-licensed) is a small Rust CLI
@@ -24,6 +27,11 @@ Public surface used by the agent::
     )
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-52ceba08a02f0ab5067a0c9b"
+
 
 import json
 import logging

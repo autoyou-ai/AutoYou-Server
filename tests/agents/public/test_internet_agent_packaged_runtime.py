@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-F-646472657373202d20334163-bc0803ab15127a83f0456b10
 
 """Internet agent behaviour in a Nuitka-compiled (packaged) runtime.
 
@@ -8,6 +10,11 @@ Compiled builds differ from dev in two ways that reach this agent: the browser
 defaults to headless, and the optional `internet` extra (Playwright) may not be
 installed at all. Both paths have to keep working.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-bc0803ab15127a83f0456b10"
+
 
 import sys
 

@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-E-652076696120284254432061-ba8ddba382a4ba74b3c9a757
+
 #!/usr/bin/env python3
 """Copy the shipped admin bundle into the public website demo, redacted.
 
@@ -18,6 +24,11 @@ Run after changing `assets/admin-ui.js` or `assets/admin-ui.css`:
     python scripts/sync_demo_admin_ui.py
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-ba8ddba382a4ba74b3c9a757"
+
 
 import sys
 from pathlib import Path

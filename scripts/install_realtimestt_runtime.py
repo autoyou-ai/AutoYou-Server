@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9e9af5d2bd14b2372a41c3d2
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -12,6 +18,11 @@ bootstrap/build paths therefore install the wheel without dependencies and
 patch only the installed METADATA for the runtime AutoYou actually ships.
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9e9af5d2bd14b2372a41c3d2"
+
 
 import argparse
 import importlib.metadata

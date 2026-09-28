@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-486e1f6af8ca993b7f1c4f1a
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -20,6 +26,11 @@ Prints the output path on success; prints nothing and exits 0 if the lockfile is
 absent (callers then install without constraints, unchanged behavior).
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-486e1f6af8ca993b7f1c4f1a"
+
 
 import sys
 from pathlib import Path

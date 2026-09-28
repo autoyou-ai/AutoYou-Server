@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-0f208a6264d3f9be4d81ec98
+
 """Local-first agent harness helpers.
 
 These helpers keep provider-specific orchestration quirks out of individual
@@ -9,6 +12,11 @@ use them without importing the full ADK agent graph.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-0f208a6264d3f9be4d81ec98"
+
 
 import re
 from typing import Any

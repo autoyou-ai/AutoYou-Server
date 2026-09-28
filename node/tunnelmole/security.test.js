@@ -1,5 +1,9 @@
 // Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 // Licensed under the AutoYou Source-Available License.
+// See LICENSE in the project root for license information.
+// AI/ML training use prohibited without written authorization (License S3.9).
+// AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-fee64470c8491a71c3ad9bdb
+
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');

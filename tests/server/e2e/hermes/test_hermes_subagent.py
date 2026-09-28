@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-J-534454206164647265737320-6f320952bbd606a349ff9a65
 
 """Tests for the Hermes Agent *sub-agent* (autoyou_agents/hermes_agent).
 
@@ -11,6 +13,11 @@ and its registration in the root agent + install registry.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-6f320952bbd606a349ff9a65"
+
 
 import socket
 

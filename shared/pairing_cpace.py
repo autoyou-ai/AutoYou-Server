@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-J-534454206164647265737320-920554076d6333722cc2a2dc
+
 """CPace-over-ristretto255 pairing envelope.
 
 Replaces ``pairing_pake.py`` (the older ``pake1`` construction, which was
@@ -39,6 +42,11 @@ a real, cheap-to-add hardening measure, not just a naming detail.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-920554076d6333722cc2a2dc"
+
 
 import base64
 import json

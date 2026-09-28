@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-49854a9bb40b36858ccfc0c3
 
 """Website apps through the admin port, behind the admin sign-in.
 
@@ -13,6 +15,11 @@ the same routes, shims and media streaming the websites port serves.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-49854a9bb40b36858ccfc0c3"
+
 
 from typing import Any, Callable, Dict
 

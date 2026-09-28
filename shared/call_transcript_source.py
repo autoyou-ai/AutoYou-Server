@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f464edf96a29f039b0381625
 
 """Turns live call audio into the transcript turns the Computer listens to.
 
@@ -36,6 +38,11 @@ feature, so one continuous talker cannot grow this process without limit.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f464edf96a29f039b0381625"
+
 
 import logging
 import math

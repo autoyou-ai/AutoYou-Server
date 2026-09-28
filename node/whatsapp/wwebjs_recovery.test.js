@@ -1,3 +1,9 @@
+// Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+// Licensed under the AutoYou Source-Available License.
+// See LICENSE in the project root for license information.
+// AI/ML training use prohibited without written authorization (License S3.9).
+// AUTOYOU-PROVENANCE-K-2d2030786345634238313737-fb2ec5f9d75c5618d02a6478
+
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-57a12d2c0dbe179104fdca7d
 
 """
 Tests for the WebRTC offline voice-reply queue.
@@ -12,6 +14,11 @@ Covers:
 - Full round-trip: voice reply buffered then delivered after reconnect
 - Shutdown clears offline queue
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-57a12d2c0dbe179104fdca7d"
+
 import asyncio
 import base64
 import os

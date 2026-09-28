@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-52eef82208a808dfb126ccaa
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -6,6 +12,11 @@
 """Release legal gates for Billing, store-copy, SBOM/NOTICE, and licenses."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-52eef82208a808dfb126ccaa"
+
 
 import argparse
 import json

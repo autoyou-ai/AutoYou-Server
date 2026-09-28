@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d964d9512b868a7dc120ef1a
 
 """Shared helper to scrub secrets from subprocess environments.
 
@@ -19,6 +21,11 @@ copying to the clipboard continue to work.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d964d9512b868a7dc120ef1a"
+
 
 import os
 from typing import Dict, FrozenSet, Tuple

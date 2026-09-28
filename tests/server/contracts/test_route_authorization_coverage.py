@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e8ddd70469f3fb92440287de
 
 """Structural guard against unauthenticated admin routes.
 
@@ -19,6 +21,11 @@ a new route that forgets the check fails here instead of in production.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e8ddd70469f3fb92440287de"
+
 
 import ast
 import pathlib

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-E-652076696120284254432061-7b6e13c84c8cf432d3b9726a
 
 """Native HTTP adapter for the external Odysseus companion API.
 
@@ -9,6 +11,11 @@ its documented companion endpoints and never vendors or manages its data.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-7b6e13c84c8cf432d3b9726a"
+
 
 import hashlib
 import json

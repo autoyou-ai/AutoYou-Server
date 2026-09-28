@@ -1,10 +1,18 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-C-746f20706179203130252061-00a05e1601533fda4769bed3
+
 """
 Prompt configuration for the AutoYou Page Agent.
 Focuses on concise hyperlink processing and feed management with minimal tokens.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-00a05e1601533fda4769bed3"
+
 
 AGENT_NAME = "autoyou_page_agent"
 

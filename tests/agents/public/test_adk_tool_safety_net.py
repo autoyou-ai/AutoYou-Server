@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-31e35a499b893e2ac0777072
+
 """Tests for the ADK _get_tool safety net monkey-patch.
 
 The safety net catches hallucinated tool names that slip past the LiteLLM-level
@@ -12,6 +15,11 @@ The safety net is a **fallback only** - it fires solely when the original
 ``_get_tool`` raises ValueError. Models that correctly use LiteLLM + Google ADK
 (ministral-3:8b, ministral-3:8b, etc.) never trigger this path.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-31e35a499b893e2ac0777072"
+
 
 import json
 import re

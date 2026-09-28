@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a20d26bff16e9e8bc9e18ed9
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -5,6 +11,11 @@
 """
 Test script to verify WhatsApp client's enhanced state handling and recovery mechanisms.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a20d26bff16e9e8bc9e18ed9"
+
 
 import asyncio
 import json

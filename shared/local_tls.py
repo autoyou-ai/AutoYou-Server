@@ -1,5 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-e559daa97805a77b017e1454
+
 """Self-signed local CA + server certificate management for opt-in HTTPS.
 
 AutoYou's admin / auth / page web services normally speak plain HTTP on the
@@ -32,6 +36,11 @@ Design choices
 The module has no AutoYou dependencies and is safe to import anywhere.
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-e559daa97805a77b017e1454"
+
 
 import datetime
 import ipaddress

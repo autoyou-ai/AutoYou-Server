@@ -1,12 +1,20 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a07b9d1aa6a1b694bb91a3dd
+
 """Prompt configuration for the AutoYou Model Picker Agent.
 
 The model picker agent runs an LLMFit hardware-fit pass, suggests the
 best-fitting local model, and - after explicit user confirmation and an admin
 TOTP session - downloads it and switches AutoYou to it.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a07b9d1aa6a1b694bb91a3dd"
+
 
 AGENT_NAME = "autoyou_model_picker_agent"
 

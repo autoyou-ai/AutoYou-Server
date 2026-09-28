@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-C-746f20706179203130252061-b845dbcc528e832e211966f3
 
 """
 WhatsApp Docker Service - wwebjs-api integration for compiled AutoYou builds.
@@ -28,6 +30,11 @@ port (default 3200 - avoids clash with the existing WS port 8083).
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-b845dbcc528e832e211966f3"
+
 
 import asyncio
 import base64

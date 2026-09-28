@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b7005f85162c87aedd5281a4
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -6,6 +12,11 @@
 """Copy GGML Whisper models into a distributable runtime directory."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b7005f85162c87aedd5281a4"
+
 
 import argparse
 import json

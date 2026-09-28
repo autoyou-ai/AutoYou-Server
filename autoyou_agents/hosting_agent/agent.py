@@ -1,8 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-87a75f67555305e3efc5b9bb
+
 """AutoYou Hosting Agent - publish a local site / public agent access to a
 persistent public URL on the Public Proxy tier."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-87a75f67555305e3efc5b9bb"
+
 import logging
 
 from google.adk.agents import Agent
