@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e7b96498a2b018405e776cca
+
 """
 Tests for the multi-provider AI model architecture.
 
@@ -13,6 +16,11 @@ Covers:
 - OpenClaw sub-agent package is importable and exposes create_openclaw_agent factory
 - _build_resilient_fallback_model() returns provider-appropriate fallback
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e7b96498a2b018405e776cca"
+
 import os
 import sys
 import importlib

@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-7e9f1d53e45742d7af208af6
+
 """
 Prompt configuration for the AutoYou OpenClaw Agent.
 
@@ -14,6 +17,11 @@ AutoYou agent's LLM; the root agent still uses whatever provider is configured
 (Ollama, Google, LiteLLM, etc.). The OpenClaw agent is invoked when the user
 explicitly requests an action that OpenClaw specializes in.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-7e9f1d53e45742d7af208af6"
+
 
 AGENT_NAME = "autoyou_openclaw_agent"
 

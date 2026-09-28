@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-J-534454206164647265737320-1deef658619941bf82fb04a7
 
 """No test may install a finite fake clock on the shared `time` module.
 
@@ -30,6 +32,11 @@ existing sites that banning it belongs in its own change.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-1deef658619941bf82fb04a7"
+
 
 import pathlib
 import re

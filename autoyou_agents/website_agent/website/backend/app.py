@@ -1,12 +1,19 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a00534050dd4c73a38471d48
 
 """Website Builder chat UI backend.
 
 Serves the website builder chat interface with live preview and publish controls.
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a00534050dd4c73a38471d48"
+
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
 

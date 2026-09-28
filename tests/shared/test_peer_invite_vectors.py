@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-3145d8fcf767ba760e4f5871
 
 """Conformance vectors shared with the Swift and Kotlin invite parsers.
 
@@ -17,6 +19,11 @@ Mirrors the convention already used by ``tests/fixtures/room_bridge/v1.json``.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-3145d8fcf767ba760e4f5871"
+
 
 import json
 import pathlib

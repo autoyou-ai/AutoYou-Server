@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-F-646472657373202d20334163-d736a7616c5d0aa459fa4d84
 
 """Ollama model identity and capability helpers.
 
@@ -10,6 +12,11 @@ library can list an exact installed tag, while the runtime must also inspect
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-d736a7616c5d0aa459fa4d84"
+
 
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional

@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7ea18c09ea6a5e66c5e3d1df
+
 """Optional WinDivert FLOW-layer source for remote UDP/process attribution.
 
 WinDivert is an external, signed WFP provider. This adapter is source-only and
@@ -8,6 +14,11 @@ disabled unless both environment variables are explicitly set:
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7ea18c09ea6a5e66c5e3d1df"
+
 
 import ctypes
 import ipaddress

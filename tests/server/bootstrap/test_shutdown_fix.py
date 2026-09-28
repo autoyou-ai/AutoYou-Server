@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-9ded17b70250dcd6372e91b1
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -7,6 +13,11 @@
 Test script to verify the shutdown functionality fix.
 This script will test the shutdown button and verify it works without asyncio errors.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-9ded17b70250dcd6372e91b1"
+
 
 import asyncio
 import os

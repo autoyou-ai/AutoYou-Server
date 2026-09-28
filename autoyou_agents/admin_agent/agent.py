@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-d0ddd1d8683fc3af1fa206dc
+
 """Admin agent - ADK wiring (factory + callbacks) over ``admin_tool``.
 
 The admin tool implementations, HTTP transport, and elevated-session helpers
@@ -17,6 +20,11 @@ See ``admin_tool`` for the elevated admin-session (TOTP 2FA) workflow.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-d0ddd1d8683fc3af1fa206dc"
+
 
 import logging
 from typing import Any, Dict

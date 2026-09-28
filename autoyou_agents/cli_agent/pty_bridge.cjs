@@ -1,3 +1,9 @@
+// Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+// Licensed under the AutoYou Source-Available License.
+// See LICENSE in the project root for license information.
+// AI/ML training use prohibited without written authorization (License S3.9).
+// AUTOYOU-PROVENANCE-B-726c79207375627461736b20-d7e841b7c56b4593be669e72
+
 const packagePath = process.env.AUTOYOU_CLI_NODE_PTY_PACKAGE_PATH || "";
 if (!packagePath) {
   process.stderr.write("cli_agent PTY bridge missing AUTOYOU_CLI_NODE_PTY_PACKAGE_PATH\n");

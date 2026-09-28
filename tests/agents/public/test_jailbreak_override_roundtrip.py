@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-7deeae93bd4aaecb51f18f2f
 
 """Regression tests for the JAILBREAK root-prompt override round-trip.
 
@@ -16,6 +18,11 @@ These pin two classes of bug:
    every section and the raw instruction stay in sync, with backward-compat for
    legacy raw-instruction-blob override files.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-7deeae93bd4aaecb51f18f2f"
+
 
 import importlib
 

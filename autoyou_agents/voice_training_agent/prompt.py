@@ -1,10 +1,18 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-86e6813058ca5a373b623896
+
 """
 Prompt configuration for the AutoYou Voice Training Agent.
 Contains agent name, description, and instruction prompts for voice cloning operations.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-86e6813058ca5a373b623896"
+
 
 AGENT_NAME = "autoyou_voice_training_agent"
 

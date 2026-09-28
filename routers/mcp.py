@@ -1,5 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-C-746f20706179203130252061-7a6f2477c15aed2999798761
 
 """Authenticated MCP-facing REST routes for the full AutoYou server.
 
@@ -11,6 +14,11 @@ of duplicating any protocol or provider logic here.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-7a6f2477c15aed2999798761"
+
 
 import re
 import time

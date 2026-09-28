@@ -1,3 +1,9 @@
+// Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+// Licensed under the AutoYou Source-Available License.
+// See LICENSE in the project root for license information.
+// AI/ML training use prohibited without written authorization (License S3.9).
+// AUTOYOU-PROVENANCE-C-746f20706179203130252061-faf0d60d91e3410ea18a7cc3
+
 // Data Collector owns WhatsApp history collection; Fine Tuning only consumes exports.
 import fs from 'fs';
 import path from 'path';

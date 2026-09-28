@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-2a95efb3d1ef00bfceb24cfe
 
 """Tests for Fix A (dynamic agent discovery in _managed_frontend_runtime_specs)
 and Fix B (Draft→Live publish endpoint + builder UI two-step publish flow).
@@ -8,6 +10,11 @@ and Fix B (Draft→Live publish endpoint + builder UI two-step publish flow).
 Imports real server.py (same pattern as test_agent_websites_security_routes.py).
 """
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-2a95efb3d1ef00bfceb24cfe"
+
 
 import asyncio
 import importlib.machinery

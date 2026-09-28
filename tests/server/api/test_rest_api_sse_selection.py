@@ -1,6 +1,13 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-c3a38ec2b61aa6b7ae70e2c5
+
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-c3a38ec2b61aa6b7ae70e2c5"
 
 from rest_api import (
     _payload_visible_agent_response_text,

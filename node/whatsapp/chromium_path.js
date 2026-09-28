@@ -1,6 +1,8 @@
 // Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
+// AI/ML training use prohibited without written authorization (License S3.9).
+// AUTOYOU-PROVENANCE-R-304232623937526530302920-f8e13cde77be9ff9858a65e1
 
 import fs from 'fs';
 import path from 'path';

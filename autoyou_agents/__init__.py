@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fa8e858ec8751542ebb90289
+
 """AutoYou agents package.
 
 Keep package import lightweight. Importing ``autoyou_agents`` should not
@@ -9,6 +12,11 @@ need utility submodules such as ``autoyou_agents.notes_agent.notes_tool``.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fa8e858ec8751542ebb90289"
+
 
 import logging
 from pathlib import Path

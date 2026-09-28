@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-J-534454206164647265737320-eb847ef2db675a6c0a27a4a3
 
 """
 aiortc_turn - make aiortc's single TURN choice a usable one.
@@ -21,6 +23,11 @@ has not been probed, TLS/TCP (port 443 first) when UDP is known to be blocked.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-eb847ef2db675a6c0a27a4a3"
+
 
 import asyncio
 import logging

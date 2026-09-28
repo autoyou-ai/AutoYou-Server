@@ -1,12 +1,20 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fd68d278b5c68ff7d1ff6762
+
 """
 Memory subagent.
 
 This module implements the Memory Agent, which allows the root agent 
 to securely look up its own long-term conversation history via SQLite.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fd68d278b5c68ff7d1ff6762"
+
 
 import logging
 from google.adk.agents import Agent

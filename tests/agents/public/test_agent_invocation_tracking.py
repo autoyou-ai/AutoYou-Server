@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-9f6dce27cf26e6430bcd3efb
 
 """Tests for per-invocation agent tracking in the root agent.
 
@@ -9,6 +11,11 @@ _autoyou_root_invocation_agent so that rest_api.py can surface the correct
 display name to WebRTC clients (iOS, Android, Python GUI) without relying on
 the ADK event author which is always the root agent name.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-9f6dce27cf26e6430bcd3efb"
+
 import asyncio
 from types import SimpleNamespace
 

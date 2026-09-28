@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c972956f6303443c21cf946f
 
 """Background Mode sessions must still own a dedicated outbound media lane.
 
@@ -15,6 +17,11 @@ speech lane, so an agent-started song lands on the TTS queue - where VAD
 barge-in, `stop_tts` and background-audio suppression all cancel it. See
 `tests/server/media/test_audio_manager_playback_lane.py` for the other half.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c972956f6303443c21cf946f"
+
 
 import ast
 

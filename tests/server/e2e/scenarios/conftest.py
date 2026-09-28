@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-L-643937636335396144393239-2e4869977f0397ce60d92bf0
 
 """Shared live-server session for registry scenario probes (tier T1).
 
@@ -11,6 +13,11 @@ enabled for the launched server via AUTOYOU_ENABLE_TEST_ENDPOINTS.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-2e4869977f0397ce60d92bf0"
+
 
 import json
 import os

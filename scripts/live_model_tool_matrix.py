@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-L-643937636335396144393239-39e414f7d325d81f23cd8ae3
+
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
@@ -11,6 +17,11 @@ Ollama model, and exercises the same /api/chat surface used by clients.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-39e414f7d325d81f23cd8ae3"
+
 
 import argparse
 import dataclasses

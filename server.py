@@ -1,11 +1,19 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-edfb885cba09d4bcda978ecb
+
 """
 AutoYou FastAPI Server.
 
 This module provides the main AutoYou admin, auth, and runtime server process.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-edfb885cba09d4bcda978ecb"
+
 
 import argparse
 import ast
@@ -44,6 +52,7 @@ from routers.mcp import register_routes as register_mcp_routes
 from routers.peer_rendezvous import register_routes as register_peer_rendezvous_routes
 from routers.moderation import register_routes as register_moderation_routes
 from routers.website_gateway import register_routes as register_website_gateway_routes
+from routers.ai_opt_out import register_ai_opt_out_routes
 from routers.ai_agent import (
     attach_ai_agent_endpoints,
     bind_runtime as _bind_ai_agent_routes_runtime,
@@ -7027,6 +7036,11 @@ globals().update(register_mcp_routes(admin_app, auth_app, sys.modules[__name__])
 globals().update(register_peer_rendezvous_routes(admin_app, auth_app, sys.modules[__name__]))
 globals().update(register_moderation_routes(admin_app, auth_app, sys.modules[__name__]))
 globals().update(register_website_gateway_routes(admin_app, auth_app, sys.modules[__name__]))
+
+# AI training opt-out: serves /.well-known/ai.txt, /robots.txt, and injects
+# X-Robots-Tag + TDM-Reservation headers on every response.
+register_ai_opt_out_routes(admin_app)
+register_ai_opt_out_routes(auth_app)
 
 async def _serve_admin_logo_file():
     """Serve the branded PNG logo for admin/auth HTML display."""

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-2fe38ce4326de8d8f787ce23
 
 """Education Agent website backend.
 
@@ -9,6 +11,11 @@ state to an authenticated operator without starting media capture by itself.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-2fe38ce4326de8d8f787ce23"
+
 
 import asyncio
 import json

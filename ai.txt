@@ -1,0 +1,25 @@
+# AutoYou-Server - AI Training Restriction
+# https://autoyou.me
+# Version: 1.0
+# Contact: legal@autoyou.me
+#
+# This file declares that this repository and all associated content
+# are excluded from AI/ML training under the terms of the
+# AutoYou Source-Available Personal-Use License.
+
+User-Agent: *
+Disallow-Training: /
+Disallow-Synthesis: /
+Disallow-Adaptation: /
+Disallow-Embedding: /
+
+# Legal basis: AutoYou Source-Available Personal-Use License v1.3
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+#
+# Unauthorized use of this source code as training data for machine
+# learning models, large language models, code generation systems,
+# or any automated synthesis tool is a violation of the License and
+# applicable copyright law.
+#
+# For licensing inquiries: legal@autoyou.me
+# For security reports: security@autoyou.me

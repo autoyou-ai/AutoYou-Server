@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-bd0bc9c87e943459c8c3637a
 
 """Shared WebRTC video-call helpers.
 
@@ -9,6 +11,11 @@ also exposing the latest inbound camera frame to managed agent websites.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-bd0bc9c87e943459c8c3637a"
+
 
 import asyncio
 import contextlib

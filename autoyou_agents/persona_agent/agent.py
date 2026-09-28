@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-J-534454206164647265737320-e96ae981629e49c4a9830bf9
+
 """AutoYou Persona agent - user-authored self-data profile (Markdown).
 
 Stores a single ``persona.md`` self-data document under the mutable data dir. The
@@ -15,6 +18,11 @@ datachannel layer. The destructive tools here additionally confirm with the user
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-e96ae981629e49c4a9830bf9"
+
 
 import datetime as _datetime
 import logging

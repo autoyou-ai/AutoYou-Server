@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-E-652076696120284254432061-73d8b620253b0778ee235ad2
+
 """
 Prompt configuration for the AutoYou Hermes Agent.
 
@@ -21,6 +24,11 @@ Two distinct Hermes integration modes:
      tasks here, and Hermes runs its own agentic pipeline. The root provider can
      be anything else.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-73d8b620253b0778ee235ad2"
+
 
 AGENT_NAME = "autoyou_hermes_agent"
 

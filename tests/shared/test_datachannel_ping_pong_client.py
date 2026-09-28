@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-L-643937636335396144393239-60d957def9d10a43ad88770b
+
 """Client-role keepalive RTT + ping-pong game contract.
 
 Every AutoYou client (Python GUI/TUI/CLI via DataChannelManager, Android,
@@ -7,6 +13,11 @@ ping-pong rally with that number; it must never derive RTT by subtracting the
 client's wall-clock ``header.timestamp`` from its own ``time.time()``, which
 yields one-way delay plus NTP skew.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-60d957def9d10a43ad88770b"
+
 
 import asyncio
 import json

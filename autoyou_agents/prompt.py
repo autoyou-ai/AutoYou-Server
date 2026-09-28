@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-R-304232623937526530302920-4d45153d8a9f66850a9b6fd8
+
 """
 Prompt configuration for the root AutoYou AI Agent.
 Contains agent name, description, and instruction prompts.
@@ -12,6 +15,11 @@ Custom AGENT_INSTRUCTION text is preserved verbatim; unavailable agent
 references are reported by the runtime and Admin UI instead of being silently
 removed from operator-authored instructions.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-4d45153d8a9f66850a9b6fd8"
+
 
 # Root agent configuration
 AGENT_NAME = "autoyou_agent"

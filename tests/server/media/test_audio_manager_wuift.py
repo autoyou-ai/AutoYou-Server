@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4bc470923e5435b992068f85
 
 """WUIFT ("Wait Until I Finish Talking") segmentation-hold unit tests.
 
@@ -8,6 +10,11 @@ The hold must (a) disable VAD-silence utterance finalization on the live
 recorder without a restart, (b) survive recorder (re)initialization, and
 (c) stay memory-bounded via the WUIFT_MAX_SEGMENT_SECONDS safety cap.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4bc470923e5435b992068f85"
+
 
 import queue
 import threading
