@@ -728,6 +728,7 @@ class PageFeedService:
             "icon": icon,
             "host": host,
             "title": display_title,
+            "content": str(item.get("content") or "")[:50000],
             "thumb": thumb,
             "video_thumb": video_thumb,
             "favicon": favicon,
@@ -811,14 +812,15 @@ class PageFeedService:
         )
         return (
             f'<article class="feed-row" data-item-id="{item_id}">'
-            f'<button class="feed-item" type="button" data-action="open" data-item-id="{item_id}">'
-            f"{self._render_feed_thumb(view)}"
-            '<span class="feed-body">'
-            f'<span class="feed-title">{esc(view.get("title"))}</span>'
-            f'<span class="feed-meta">{meta}{favourite}</span>'
-            "</span>"
-            '<i class="ic ic-chevron-right feed-chevron" aria-hidden="true"></i>'
-            "</button></article>"
+            + f'<button class="feed-item" type="button" data-action="open" data-item-id="{item_id}">'
+            + self._render_feed_thumb(view)
+            + '<span class="feed-body">'
+            + f'<span class="feed-title">{esc(view.get("title"))}</span>'
+            + (f'<span class="feed-preview">{esc(view.get("content"))}</span>' if view.get("content") else "")
+            + f'<span class="feed-meta">{meta}{favourite}</span>'
+            + "</span>"
+            + '<i class="ic ic-chevron-right feed-chevron" aria-hidden="true"></i>'
+            + "</button></article>"
         )
 
     def _render_empty_feed(self, access: Dict[str, Any]) -> str:
@@ -963,7 +965,7 @@ class PageFeedService:
             return "video"
         return "article"
 
-    def _append_item(self, item_type: str, url: str, title: Optional[str] = None, source: Optional[str] = None) -> Dict[str, Any]:
+    def _append_item(self, item_type: str, url: str, title: Optional[str] = None, source: Optional[str] = None, content: str = "") -> Dict[str, Any]:
         """Append a new item to the feed and return it."""
         item_type = "twitter" if str(item_type or "").strip().lower() in {"twitter", "x"} else str(item_type or "").strip().lower()
         if item_type == "twitter":
@@ -974,7 +976,7 @@ class PageFeedService:
         # Persist to DB if available; otherwise fall back to in-memory only
         if getattr(self, "db", None) is not None:
             try:
-                item = self.db.insert(item_type=item_type, url=url, title=title, source=source)
+                item = self.db.insert(item_type=item_type, url=url, title=title, source=source, content=content)
                 self.feed_items.append(item)
                 self._next_id = item["id"] + 1
                 return item
@@ -986,6 +988,7 @@ class PageFeedService:
             "type": item_type,
             "url": url,
             "title": title or "",
+            "content": str(content or "")[:50000],
             "source": source or "",
             "added_at": datetime.now().isoformat(),
         }
@@ -1572,9 +1575,12 @@ class PageFeedService:
             try:
                 data = await request.json()
                 url = str(data.get("url", "")).strip()
-                item_type = str(data.get("type") or self._classify_url(url))
+                content = str(data.get("content") or "")[:50000]
+                item_type = str(data.get("type") or (self._classify_url(url) if url else "text"))
+                if not url and not content:
+                    raise HTTPException(status_code=400, detail="url or content is required")
                 if not url:
-                    raise HTTPException(status_code=400, detail="url is required")
+                    item_type = "text"
                 item_type = "twitter" if item_type.strip().lower() in {"twitter", "x"} else item_type.strip().lower()
                 if item_type == "twitter":
                     url = self._normalize_x_url(url)
@@ -1595,7 +1601,7 @@ class PageFeedService:
                             title = fetched
                     except Exception:
                         pass
-                item = self._append_item(item_type, url, title, source)
+                item = self._append_item(item_type, url, title, source, content)
                 try:
                     if getattr(self, "db", None) is not None and url.lower().startswith("blob://") and title:
                         blob_id = url.split("://", 1)[1]

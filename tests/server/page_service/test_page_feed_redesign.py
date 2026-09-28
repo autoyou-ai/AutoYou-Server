@@ -95,6 +95,23 @@ def test_views_and_type_tabs_filter_the_feed(feed):
     assert ids("tab=photos") == [upload]
 
 
+def test_page_feed_accepts_native_text_items(feed):
+    service, client = feed
+    response = client.post(
+        "/api/feed",
+        headers=EDITOR,
+        json={"type": "text", "title": "Trip note", "content": "Pack the camera and charger.", "source": "This Device"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["item"]
+    assert item["type"] == "text"
+    assert item["content"] == "Pack the camera and charger."
+    stored = client.get("/api/feed/page").json()["items"][0]
+    assert stored["content"] == item["content"]
+    assert "Pack the camera and charger." in client.get("/").text
+
+
 def test_summary_reports_genuine_totals_tags_favourite_and_cover(feed):
     service, client = feed
     first = service.db.insert("article", "https://news.example.test/a", title="A")["id"]

@@ -117,6 +117,7 @@ class FeedItem(TypedDict):
     type: str
     url: str
     title: str
+    content: str
     source: str
     added_at: str
     favourite: bool
@@ -168,6 +169,7 @@ class PageFeedDB:
                     type TEXT NOT NULL,
                     url TEXT NOT NULL,
                     title TEXT,
+                    content TEXT NOT NULL DEFAULT '',
                     source TEXT,
                     added_at TEXT NOT NULL,
                     favourite INTEGER NOT NULL DEFAULT 0
@@ -186,6 +188,8 @@ class PageFeedDB:
                 cols = [row[1] for row in cur.fetchall()]
                 if 'favourite' not in cols:
                     con.execute("ALTER TABLE feed_items ADD COLUMN favourite INTEGER NOT NULL DEFAULT 0")
+                if 'content' not in cols:
+                    con.execute("ALTER TABLE feed_items ADD COLUMN content TEXT NOT NULL DEFAULT ''")
             except Exception:
                 # If PRAGMA or ALTER fails, continue; fresh DBs already have the column
                 pass
@@ -272,28 +276,29 @@ class PageFeedDB:
         """Load all feed items ordered by added_at DESC (latest first)."""
         with self._connect() as con:
             cur = con.execute(
-                "SELECT id, type, url, title, source, added_at, favourite FROM feed_items ORDER BY added_at DESC"
+                "SELECT id, type, url, title, content, source, added_at, favourite FROM feed_items ORDER BY added_at DESC"
             )
             rows = cur.fetchall()
         items: List[FeedItem] = []
         for r in rows:
             item_type = _canonicalize_feed_type(r[1])
             item_url = _canonicalize_x_url(r[2]) if item_type == "twitter" else str(r[2])
-            item_source = _canonicalize_source(r[4]) if item_type == "twitter" else str(r[4] or "")
+            item_source = _canonicalize_source(r[5]) if item_type == "twitter" else str(r[5] or "")
             items.append(
                 FeedItem(
                     id=int(r[0]),
                     type=item_type,
                     url=item_url,
                     title=str(r[3] or ""),
+                    content=str(r[4] or ""),
                     source=item_source,
-                    added_at=str(r[5]),
-                    favourite=bool(int(r[6] or 0)),
+                    added_at=str(r[6]),
+                    favourite=bool(int(r[7] or 0)),
                 )
             )
         return items
 
-    def insert(self, item_type: str, url: str, title: Optional[str] = None, source: Optional[str] = None) -> FeedItem:
+    def insert(self, item_type: str, url: str, title: Optional[str] = None, source: Optional[str] = None, content: str = "") -> FeedItem:
         """Insert a new item and return the created record with id."""
         item_type = _canonicalize_feed_type(item_type)
         url = _canonicalize_x_url(url) if item_type == "twitter" else str(url or "").strip()
@@ -301,8 +306,8 @@ class PageFeedDB:
         added_at = datetime.now().isoformat()
         with self._connect() as con:
             cur = con.execute(
-                "INSERT INTO feed_items (type, url, title, source, added_at, favourite) VALUES (?, ?, ?, ?, ?, 0)",
-                (item_type, url, title or "", source or "", added_at),
+                "INSERT INTO feed_items (type, url, title, content, source, added_at, favourite) VALUES (?, ?, ?, ?, ?, ?, 0)",
+                (item_type, url, title or "", str(content or "")[:50000], source or "", added_at),
             )
             item_id = int(cur.lastrowid)
         return FeedItem(
@@ -310,6 +315,7 @@ class PageFeedDB:
             type=item_type,
             url=url,
             title=title or "",
+            content=str(content or "")[:50000],
             source=source or "",
             added_at=added_at,
             favourite=False,
@@ -812,7 +818,7 @@ class PageFeedDB:
         limit_sql = f" LIMIT {int(limit)}" if (limit and limit > 0) else ""
 
         sql = (
-            "SELECT feed_items.id, feed_items.type, feed_items.url, feed_items.title, feed_items.source, "
+            "SELECT feed_items.id, feed_items.type, feed_items.url, feed_items.title, feed_items.content, feed_items.source, "
             "feed_items.added_at, feed_items.favourite "
             "FROM feed_items "
             f"{join_clause}"
@@ -840,16 +846,17 @@ class PageFeedDB:
             item_id = int(r[0])
             item_type = _canonicalize_feed_type(r[1])
             item_url = _canonicalize_x_url(r[2]) if item_type == "twitter" else str(r[2])
-            item_source = _canonicalize_source(r[4]) if item_type == "twitter" else str(r[4] or "")
+            item_source = _canonicalize_source(r[5]) if item_type == "twitter" else str(r[5] or "")
             items.append(
                 FeedItemFull(
                     id=item_id,
                     type=item_type,
                     url=item_url,
                     title=str(r[3] or ""),
+                    content=str(r[4] or ""),
                     source=item_source,
-                    added_at=str(r[5]),
-                    favourite=bool(int(r[6] or 0)),
+                    added_at=str(r[6]),
+                    favourite=bool(int(r[7] or 0)),
                     tags=tags_map.get(item_id, []),
                 )
             )
