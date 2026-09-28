@@ -13,7 +13,7 @@
     "node-fetch": "^3.3.2",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "https://github.com/wwebjs/whatsapp-web.js/archive/f4ea1e3cf4076e44e36dfe5f81ea57048d2f7761.tar.gz",
-    "ws": "^8.18.0",
+    "ws": "^8.21.3",
     "extract-zip": "file:vendor/extract-zip"
   },
   "overrides": {
