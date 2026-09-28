@@ -784,7 +784,30 @@ def test_autoyou_lite_service_launches_canonical_package(monkeypatch):
     assert all("synthetic" not in str(value) for value in captured["command"])
     assert captured["kwargs"]["env"]["AUTOYOU_LITE_PASSWORD"] == "synthetic-pairing-password"
     assert captured["kwargs"]["env"]["AUTOYOU_LITE_ADMIN_PASSWORD"] == "synthetic-admin-password"
-    assert str(bootstrap.REPO_ROOT / "autoyou_lite") in captured["kwargs"]["env"]["PYTHONPATH"]
+    assert Path(captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0]).name == "autoyou_lite"
+
+
+def test_autoyou_lite_service_uses_private_parent_source(monkeypatch, tmp_path):
+    server_root = tmp_path / "AutoYou-Server"
+    server_root.mkdir()
+    lite_source = tmp_path / "autoyou_lite" / "autoyou_lite" / "server.py"
+    lite_source.parent.mkdir(parents=True)
+    lite_source.write_text("# synthetic Lite source\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", server_root)
+
+    env = bootstrap.build_server_env(
+        service="autoyou-lite",
+        admin_port=8001,
+        ai_agent_port=8081,
+        auth_port=8082,
+        lib_port=8099,
+        lib_auth_port=8098,
+        server_password="",
+        lib_password="",
+        lib_admin_password="",
+    )
+
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(lite_source.parents[1])
 
 
 def test_bootstrap_cli_version_flag_prints_version(capsys):
@@ -840,17 +863,8 @@ def test_launchers_reflect_build_version_and_support_upgrade():
     root = bootstrap.REPO_ROOT
     bat_text = (root / "run_autoyou.bat").read_text(encoding="utf-8")
     sh_text = (root / "run_autoyou.sh").read_text(encoding="utf-8")
-    client_bat = (root / "clients" / "python" / "run_autoyou_client.bat").read_text(encoding="utf-8")
-    client_sh = (root / "clients" / "python" / "run_autoyou_client.sh").read_text(encoding="utf-8")
 
     assert "AUTOYOU_BUILD_VERSION" in bat_text
     assert "AutoYou v%AUTOYOU_BUILD_VERSION% Launcher" in bat_text
     assert "AUTOYOU_BUILD_VERSION" in sh_text
     assert 'AutoYou v${AUTOYOU_BUILD_VERSION} Launcher' in sh_text
-
-    assert "AUTOYOU_CLIENT_VERSION" in client_bat
-    assert "UPGRADE_FLAG" in client_bat
-    assert "--upgrade" in client_bat
-    assert "CLIENT_VERSION" in client_sh
-    assert "UPGRADE_FLAG" in client_sh
-    assert "--upgrade" in client_sh

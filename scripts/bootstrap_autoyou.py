@@ -1710,6 +1710,9 @@ def build_server_env(
         env["AUTOYOU_SOFTWARE_UPDATES_ENABLED"] = "0"
     if service == "autoyou-lite":
         lib_source_root = REPO_ROOT / "autoyou_lite"
+        sibling_source_root = REPO_ROOT.parent / "autoyou_lite"
+        if (sibling_source_root / "autoyou_lite" / "server.py").is_file():
+            lib_source_root = sibling_source_root
         existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
         env["PYTHONPATH"] = (
             str(lib_source_root)
