@@ -82,6 +82,10 @@ clients/windows/dist-audio-fix-*/
 clients/windows/build-chatbar-fix-*/
 clients/windows/dist-chatbar-fix-*/
 clients/windows/venv/
+servers/windows/build/
+servers/windows/dist/
+servers/windows/artifacts/
+servers/windows/venv/
 clients/linux/build/
 clients/linux/dist/
 clients/linux/venv/
