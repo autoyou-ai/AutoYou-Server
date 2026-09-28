@@ -42,9 +42,6 @@ media/
 !tests/**/media/
 ios/DerivedData/
 web/
-# The published AutoYou demo captures are intentional repository artifacts.
-!screenshots/autoyou-demo/web/
-!screenshots/autoyou-demo/web/**
 smoke/
 .DS_Store
 trae_agent.log

@@ -35,6 +35,16 @@ checkout can sit beside this repository. Source runs discover its optional
 agents and ignored `private/` overlay; server packages continue to include
 only the built-in agents in this repository.
 
+## Inside the local admin UI
+
+These captures show the running Server admin interface. Account, Server ID,
+and local network values were replaced with synthetic examples for the images;
+service status reflects the captured setup. Select an image to see the full page.
+
+| Overview | Live View | Security |
+| --- | --- | --- |
+| [<img src="docs/images/admin/overview.png" alt="Server overview dashboard showing local services and pairing controls" width="280">](docs/images/admin/overview.png) | [<img src="docs/images/admin/live-view.png" alt="Live View showing connected clients, local pairing, and messaging status" width="280">](docs/images/admin/live-view.png) | [<img src="docs/images/admin/security.png" alt="Security settings showing protection modes and authenticator controls" width="280">](docs/images/admin/security.png) |
+
 ## License and use
 
 AutoYou Server is source-available under the

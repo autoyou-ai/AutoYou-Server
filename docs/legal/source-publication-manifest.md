@@ -1,6 +1,6 @@
 # AutoYou Source Publication Manifest
 
-Last updated: 2026-09-08
+Last updated: 2026-09-27
 
 This manifest defines the source-publication scope for AutoYou local/self-hosted releases. It is not legal advice, does not publish anything by itself, and does not grant rights beyond the repository `LICENSE`, trademark policy, third-party licenses, or a separate written agreement signed by OpenStorey LLC.
 
@@ -12,7 +12,9 @@ publication set should include:
 - root server source, `core_server/`, `routers/`, shared modules, tests, release scripts, and local run/build scripts needed to build and run the local AutoYou server;
 - `servers/windows/`, `servers/macos/`, and `servers/wsl/` wrapper/build scripts and host source needed to build local server packages;
 - Dockerfiles, Docker Compose files, and server requirements needed for local full-server source builds;
-- reviewed protocol/security documentation and assets, plus the server repository's contributor and legal guidance, within the explicit exporter allowlist;
+- reviewed protocol/security documentation and assets, including the three
+  synthetic-value admin UI captures named in the exporter allowlist, plus the
+  server repository's contributor and legal guidance;
 - server legal, attribution, SBOM/NOTICE, trademark, and release-profile documents needed to understand the source-available release boundary;
 - generated legal bundles for AutoYou Server source, Windows, and macOS release profiles only.
 
@@ -31,7 +33,7 @@ Source publication must exclude:
 - `autoyou-dev/` coordinator source and state. Public source releases may keep
   neither build-machine collection/classification tools nor the maintainer
   release ownership matrix or publication handoff state;
-- desktop capture assets, unreviewed binary/media assets, maintainer training tests, and local runtime files;
+- desktop-agent capture assets, unreviewed binary/media assets, maintainer training tests, and local runtime files;
 - tracked or local `.llm/machines/profiles/` and `.llm/machines/runs/`
   observations, even when the collector reports that they contain no personal
   identifiers;

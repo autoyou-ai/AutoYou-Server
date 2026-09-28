@@ -53,6 +53,11 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("docs/legal/generated/manifest-summary.json")
     assert exporter.should_publish_path("docs/legal/messaging-partner-policy.md")
     assert exporter.should_publish_path("docs/legal/optional-integrations.md")
+    assert all(exporter.should_publish_path(path) for path in (
+        "docs/images/admin/overview.png",
+        "docs/images/admin/live-view.png",
+        "docs/images/admin/security.png",
+    ))
 
 
 def test_public_export_excludes_private_release_material() -> None:
@@ -122,6 +127,7 @@ def test_public_export_rejects_runtime_and_unreviewed_artifacts() -> None:
         "node/whatsapp/.wwebjs_auth/session/Cookies",
         "servers/windows/dist/release.zip",
         "docs/images/private-screenshot.png",
+        "docs/images/admin/unreviewed.png",
         "shared/native/unknown.dll",
         "shared/native/unknown.pyd",
     )
