@@ -23,7 +23,7 @@ __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-c6437f0e
 
 import pytest
 
-from tests.support.paths import REPO_ROOT, ensure_repo_on_path
+from tests.support.paths import PROJECT_ROOT, ensure_repo_on_path
 
 ensure_repo_on_path()
 
@@ -114,7 +114,7 @@ def test_lite_server_applies_the_same_tolerance():
     the Lite server rebinds the ``autoyou_lite`` namespace package for the rest
     of the session, which is too much collateral for one assertion.
     """
-    source = (REPO_ROOT / "autoyou_lite/autoyou_lite/server.py").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "autoyou_lite/autoyou_lite/server.py").read_text(encoding="utf-8")
     assert "def _apply_ice_consent_tolerance()" in source
     block = source[source.index("def _apply_ice_consent_tolerance()"):]
     block = block[: block.index("\ndef ")]

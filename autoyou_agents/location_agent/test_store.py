@@ -17,6 +17,7 @@ from pathlib import Path
 import sqlite3
 
 from .store import LocationStore
+from tests.support.paths import PROJECT_ROOT
 
 
 def test_location_store_round_trip(tmp_path):
@@ -91,7 +92,7 @@ def test_location_agent_import_is_lazy_and_native_clients_use_datachannel_ingest
     importlib.import_module(".agent", package=__package__)
     assert not (runtime_root / "location_agent" / "locations.sqlite3").exists()
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = PROJECT_ROOT
     android_source = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/location/LocationBeacon.kt").read_text(encoding="utf-8")
     android_buffer = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/messaging/BufferMessageManager.kt").read_text(encoding="utf-8")
     android_connection = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/repository/ConnectionRepository.kt").read_text(encoding="utf-8")

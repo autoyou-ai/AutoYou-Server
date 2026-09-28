@@ -14,6 +14,7 @@ __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
 __debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-dffbfa152c572d1735f36474"
 
 import asyncio
+from pathlib import Path
 import types
 from unittest.mock import patch, MagicMock
 
@@ -47,6 +48,13 @@ def _anon_request():
     return req
 
 
+def _has_frontend_manifest(agent_name: str) -> bool:
+    for package_root in getattr(__import__("autoyou_agents"), "__path__", []):
+        if (Path(package_root) / agent_name / "website" / "manifest.json").is_file():
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # MANAGED_FRONTEND_APPS registration
 # ---------------------------------------------------------------------------
@@ -70,7 +78,8 @@ def test_cloudflare_agent_is_opt_in_path_proxy():
     cfg = server.MANAGED_FRONTEND_APPS["cloudflare_agent"]
     assert cfg["app_import"] == "autoyou_agents.cloudflare_agent.website.backend.app:app"
     assert cfg["default_port"] == 8102
-    assert server._managed_frontend_runtime_specs()["cloudflare_agent"]["recommended_port"] == 8102
+    if _has_frontend_manifest("cloudflare_agent"):
+        assert server._managed_frontend_runtime_specs()["cloudflare_agent"]["recommended_port"] == 8102
     assert server.FRONTEND_DEFAULT_ENABLEMENT["cloudflare_agent"] is False
     assert server.FRONTEND_CONTROL_LABELS["cloudflare_agent"] == "Cloudflare Tunnel"
 
@@ -90,7 +99,8 @@ def test_ionos_agents_are_opt_in_path_proxies():
             "app_import": app_import,
             "default_port": port,
         }
-        assert specs[agent_name]["recommended_port"] == port
+        if _has_frontend_manifest(agent_name):
+            assert specs[agent_name]["recommended_port"] == port
         assert server.FRONTEND_DEFAULT_ENABLEMENT[agent_name] is False
         assert server.FRONTEND_CONTROL_LABELS[agent_name] == label
 

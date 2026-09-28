@@ -25,14 +25,32 @@ def find_repo_root(start: str | Path | None = None) -> Path:
     raise RuntimeError(f"Could not locate AutoYou repo root from {cursor}")
 
 
+def find_project_root(server_root: str | Path | None = None) -> Path:
+    """Return the enclosing AutoYou checkout when Server is nested as a submodule."""
+    resolved_server_root = Path(server_root or REPO_ROOT).resolve()
+    parent = resolved_server_root.parent
+    if (
+        resolved_server_root.name == "AutoYou-Server"
+        and (parent / "AutoYou-Server" / "server.py").is_file()
+        and (
+            (parent / "autoyou_lite" / "autoyou_lite" / "server.py").is_file()
+            or (parent / "clients").is_dir()
+            or (parent / "requirements").is_dir()
+        )
+    ):
+        return parent
+    return resolved_server_root
+
+
 REPO_ROOT = find_repo_root(__file__)
+PROJECT_ROOT = find_project_root(REPO_ROOT)
 TESTS_ROOT = REPO_ROOT / "tests"
 PHASE3_TEST_KEYS_DIR = TESTS_ROOT / ".phase3_test_keys"
-PYTHON_CLIENT_DIR = REPO_ROOT / "clients" / "python"
+PYTHON_CLIENT_DIR = PROJECT_ROOT / "clients" / "python"
 # Project root of the standalone autoyou-lite package. The package itself is
 # double-nested (autoyou_lite/autoyou_lite), so this directory must be on
 # sys.path for `import autoyou_lite` to resolve to the real package.
-AUTOYOU_LITE_DIR = REPO_ROOT / "autoyou_lite"
+AUTOYOU_LITE_DIR = PROJECT_ROOT / "autoyou_lite"
 
 
 def ensure_sys_path(path: str | Path) -> Path:
