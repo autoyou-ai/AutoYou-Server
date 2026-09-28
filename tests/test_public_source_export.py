@@ -1,4 +1,17 @@
+import pytest
+
 from scripts import export_public_autoyou_server as exporter
+
+
+def test_force_export_preserves_a_nested_git_checkout(tmp_path) -> None:
+    output = tmp_path / "AutoYou-Server"
+    marker = output / ".git" / "HEAD"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("synthetic", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Refusing to replace a Git checkout"):
+        exporter.export_entries([], output, force=True)
+    assert marker.read_text(encoding="utf-8") == "synthetic"
 
 
 def test_public_checkout_uses_its_own_readme_and_checklist(monkeypatch) -> None:

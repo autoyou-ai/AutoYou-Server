@@ -755,6 +755,8 @@ def export_entries(entries: list[GitEntry], output: Path, *, force: bool) -> Non
     if output.exists():
         if not force:
             raise RuntimeError(f"Output already exists: {output}. Pass --force to replace it.")
+        if os.path.lexists(output / ".git"):
+            raise RuntimeError(f"Refusing to replace a Git checkout: {output}")
         shutil.rmtree(output)
     output.mkdir(parents=True)
 
