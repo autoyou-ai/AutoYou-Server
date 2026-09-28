@@ -11,7 +11,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "^5.2.1",
     "tunnelmole": "^2.2.14"
   },
   "overrides": {
