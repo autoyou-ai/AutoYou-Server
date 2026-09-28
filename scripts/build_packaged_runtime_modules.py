@@ -13,9 +13,9 @@ import py_compile
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Mapping
 
 # Ensure repo root is on sys.path so autoyou_agents is importable when this
 # script is run from a venv that doesn't have the project installed (e.g. .venv-build312).
@@ -27,6 +27,7 @@ from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PAC
 
 RUNTIME_MODULES_DIRNAME = "runtime_modules"
 RUNTIME_INTEGRITY_MANIFEST = "runtime_integrity.json"
+SIBLING_AGENT_MANIFEST = "packaged_sibling_agents.json"
 FORBIDDEN_RUNTIME_PATHS = ("runtime_source",)
 TOP_LEVEL_RUNTIME_MODULES = (
     "server.py",
@@ -60,7 +61,7 @@ AGENT_SIDECAR_FILENAMES = frozenset(
 )
 # Agent instruction files are not executable Python and are never compiled.
 # Preserve them as data only for trusted built-in agents that explicitly ship
-# one. The trusted-source check below keeps private agents out of the bundle.
+# one. Server builds may explicitly add sibling agents to the same bundle.
 AGENT_CONTEXT_FILENAMES = frozenset({"AGENT.md", "AGENTS.md"})
 ASSET_DIRECTORY_NAMES = frozenset(
     {
@@ -68,15 +69,21 @@ ASSET_DIRECTORY_NAMES = frozenset(
         "desktop_assets",
         "boilerplate",
         "scheduler_mission_control_frontend",
+        "worker",
     }
 )
 SKIP_DIRECTORY_NAMES = frozenset(
     {
         "__pycache__",
+        ".git",
         ".pytest_cache",
         ".adk",
+        ".venv",
+        "build",
         "chrome_profile",
+        "dist",
         "media",
+        "node_modules",
         "autoyou_notes_agent",
         "workspace",
         "tests",
@@ -98,6 +105,10 @@ SKIP_ASSET_SUFFIXES = frozenset(
         ".pma",
         ".dat",
         ".pb",
+        ".pem",
+        ".key",
+        ".p12",
+        ".pfx",
     }
 )
 AUTOYOU_AGENTS_BRIDGE_STUB = """from __future__ import annotations
@@ -167,6 +178,8 @@ class RuntimeModulePlan:
     asset_files: tuple[Path, ...]
     static_files: tuple[Path, ...]
     bridge_stubs: tuple[Path, ...]
+    source_overrides: Mapping[Path, Path] = field(default_factory=dict)
+    sibling_agent_names: tuple[str, ...] = ()
 
 
 def _is_skipped_path(relative_path: Path) -> bool:
@@ -210,32 +223,66 @@ def _iter_python_module_sources(repo_root: Path) -> Iterator[Path]:
             yield relative_path
 
 
+def _is_agent_asset(relative_path: Path) -> bool:
+    is_asset_directory_file = any(part in ASSET_DIRECTORY_NAMES for part in relative_path.parts)
+    is_agent_sidecar = len(relative_path.parts) == 3 and relative_path.name in AGENT_SIDECAR_FILENAMES
+    is_agent_context_file = len(relative_path.parts) >= 3 and relative_path.name in AGENT_CONTEXT_FILENAMES
+    return (
+        (is_asset_directory_file or is_agent_sidecar or is_agent_context_file)
+        and relative_path.suffix.lower() not in SKIP_ASSET_SUFFIXES
+        and ".test." not in relative_path.name
+        and not relative_path.name.startswith(".env")
+    )
+
+
 def _iter_agent_asset_files(repo_root: Path) -> Iterator[Path]:
     agent_root = _source_path(repo_root, Path("autoyou_agents"))
     for source_path in sorted(agent_root.rglob("*")):
-        if not source_path.is_file():
+        if not source_path.is_file() or source_path.is_symlink():
             continue
         relative_path = Path("autoyou_agents") / source_path.relative_to(agent_root)
-        if _is_skipped_path(relative_path):
+        if not _is_skipped_path(relative_path) and _is_trusted_runtime_source(relative_path) and _is_agent_asset(relative_path):
+            yield relative_path
+
+
+def _sibling_agent_sources(repo_root: Path, existing_paths: set[Path]) -> tuple[dict[Path, Path], set[str]]:
+    """Overlay adjacent agent packages without copying live agent state."""
+    sibling_root = repo_root.parent / "autoyou_agents"
+    if not (sibling_root / "__init__.py").is_file() or sibling_root.is_symlink():
+        return {}, set()
+
+    overrides: dict[Path, Path] = {}
+    extra_names: set[str] = set()
+    server_agent_root = repo_root / "autoyou_agents"
+    for agent_root in (sibling_root, sibling_root / "private"):
+        if not agent_root.is_dir() or agent_root.is_symlink():
             continue
-        if not _is_trusted_runtime_source(relative_path):
-            continue
-        is_asset_directory_file = any(part in ASSET_DIRECTORY_NAMES for part in relative_path.parts)
-        is_agent_sidecar = (
-            len(relative_path.parts) == 3
-            and relative_path.parts[0] == "autoyou_agents"
-            and relative_path.name in AGENT_SIDECAR_FILENAMES
-        )
-        is_agent_context_file = (
-            len(relative_path.parts) >= 3
-            and relative_path.parts[0] == "autoyou_agents"
-            and relative_path.name in AGENT_CONTEXT_FILENAMES
-        )
-        if not is_asset_directory_file and not is_agent_sidecar and not is_agent_context_file:
-            continue
-        if source_path.suffix.lower() in SKIP_ASSET_SUFFIXES:
-            continue
-        yield relative_path
+        for package in sorted(agent_root.iterdir()):
+            if not package.is_dir() or package.is_symlink() or not package.name.endswith("_agent"):
+                continue
+            if _is_skipped_path(Path(package.name)):
+                continue
+            if not (package / "agent.py").is_file() and not (server_agent_root / package.name / "agent.py").is_file():
+                continue
+            if agent_root == sibling_root / "private" and (server_agent_root / package.name).exists():
+                raise ValueError(f"Private agent collides with Server source: {package.name}")
+            included = False
+            for source_path in sorted(package.rglob("*")):
+                if not source_path.is_file() or source_path.is_symlink():
+                    continue
+                relative_path = Path("autoyou_agents") / package.name / source_path.relative_to(package)
+                if _is_skipped_path(relative_path) or relative_path in existing_paths or relative_path in overrides:
+                    continue
+                if source_path.suffix == ".py":
+                    if source_path.name == "__init__.py" or source_path.name.startswith("test_"):
+                        continue
+                elif not _is_agent_asset(relative_path):
+                    continue
+                overrides[relative_path] = source_path
+                included = True
+            if included and package.name not in BUILTIN_AGENT_PACKAGE_NAMES:
+                extra_names.add(package.name)
+    return overrides, extra_names
 
 
 def _iter_static_runtime_files(repo_root: Path) -> Iterator[Path]:
@@ -253,11 +300,25 @@ def _iter_static_runtime_files(repo_root: Path) -> Iterator[Path]:
                 yield source_path.relative_to(repo_root)
 
 
-def build_runtime_module_plan(repo_root: Path, *, desktop: bool = False) -> RuntimeModulePlan:
+def build_runtime_module_plan(
+    repo_root: Path, *, desktop: bool = False, include_sibling_agents: bool = False,
+) -> RuntimeModulePlan:
+    if desktop and include_sibling_agents:
+        raise ValueError("Native v2 runtime cannot include sibling agents")
     compile_specs = tuple(ModuleBuildSpec(relative_path) for relative_path in _iter_python_module_sources(repo_root))
     asset_files = tuple(_iter_agent_asset_files(repo_root))
     static_files = tuple(_iter_static_runtime_files(repo_root))
     bridge_stubs = set(BRIDGE_STUBS)
+    source_overrides: dict[Path, Path] = {}
+    sibling_agent_names: set[str] = set()
+    if include_sibling_agents:
+        source_overrides, sibling_agent_names = _sibling_agent_sources(
+            repo_root, {spec.source_relative_path for spec in compile_specs} | set(asset_files),
+        )
+        compile_specs += tuple(
+            ModuleBuildSpec(path) for path in source_overrides if path.suffix == ".py"
+        )
+        asset_files += tuple(path for path in source_overrides if path.suffix != ".py")
     if desktop:
         desktop_paths = [Path("clients/python") / name for name in (
             "autoyou_client.py", "desktop_client.py", "cloud_pair.py", "audio_streams.py",
@@ -281,6 +342,8 @@ def build_runtime_module_plan(repo_root: Path, *, desktop: bool = False) -> Runt
         asset_files=tuple(sorted(asset_files, key=lambda path: path.as_posix())),
         static_files=tuple(sorted(static_files, key=lambda path: path.as_posix())),
         bridge_stubs=tuple(sorted(bridge_stubs)),
+        source_overrides=source_overrides,
+        sibling_agent_names=tuple(sorted(sibling_agent_names)),
     )
 
 
@@ -314,6 +377,7 @@ def _run_nuitka_module_build(
     spec: ModuleBuildSpec,
     job_count: int,
     extra_nuitka_args: Iterable[str],
+    source_override: Path | None = None,
 ) -> Path:
     per_module_build_root = build_root / spec.source_relative_path.parent / spec.source_stem
     if per_module_build_root.exists():
@@ -335,7 +399,7 @@ def _run_nuitka_module_build(
             "--file-reference-choice=runtime",
             f"--output-dir={per_module_build_root}",
             *extra_nuitka_args,
-            str(_source_path(repo_root, spec.source_relative_path)),
+            str(source_override or _source_path(repo_root, spec.source_relative_path)),
         ]
         completed = subprocess.run(
             command,
@@ -423,7 +487,7 @@ def _write_bridge_stubs(
 def _copy_asset_files(*, repo_root: Path, output_root: Path, plan: RuntimeModulePlan) -> tuple[Path, ...]:
     copied_paths: list[Path] = []
     for relative_path in plan.asset_files:
-        source_path = _source_path(repo_root, relative_path)
+        source_path = plan.source_overrides.get(relative_path, _source_path(repo_root, relative_path))
         destination_path = output_root / relative_path
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, destination_path)
@@ -476,14 +540,17 @@ def build_packaged_runtime_modules(
     job_count: int,
     extra_nuitka_args: Iterable[str],
     desktop: bool = False,
+    include_sibling_agents: bool = False,
 ) -> dict[str, object]:
+    plan = build_runtime_module_plan(
+        repo_root, desktop=desktop, include_sibling_agents=include_sibling_agents,
+    )
     output_root = bundle_root / RUNTIME_MODULES_DIRNAME
     if output_root.exists():
         shutil.rmtree(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     build_root.mkdir(parents=True, exist_ok=True)
 
-    plan = build_runtime_module_plan(repo_root, desktop=desktop)
     for spec in plan.compile_specs:
         print(f"[runtime-modules] compiling {spec.source_relative_path.as_posix()}")
         _run_nuitka_module_build(
@@ -493,11 +560,16 @@ def build_packaged_runtime_modules(
             spec=spec,
             job_count=job_count,
             extra_nuitka_args=extra_nuitka_args,
+            source_override=plan.source_overrides.get(spec.source_relative_path),
         )
 
     _copy_asset_files(repo_root=repo_root, output_root=output_root, plan=plan)
     _copy_static_runtime_files(repo_root=repo_root, output_root=output_root, plan=plan)
     _write_bridge_stubs(output_root=output_root, build_root=build_root, plan=plan, repo_root=repo_root)
+    if plan.source_overrides:
+        (output_root / "autoyou_agents" / SIBLING_AGENT_MANIFEST).write_text(
+            json.dumps(list(plan.sibling_agent_names), indent=2) + "\n", encoding="utf-8",
+        )
 
     manifest = _build_integrity_manifest(bundle_root, output_root, plan)
     manifest_path = bundle_root / RUNTIME_INTEGRITY_MANIFEST
@@ -532,6 +604,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--jobs", type=int, default=max(os.cpu_count() or 1, 1))
     parser.add_argument("--nuitka-arg", action="append", default=[])
     parser.add_argument("--desktop", action="store_true", help="Include the native v2 client bridge and headless desktop engine")
+    parser.add_argument("--include-sibling-agents", action="store_true", help="Include adjacent public and private agents in server builds")
     return parser.parse_args(argv)
 
 
@@ -548,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         job_count=max(int(args.jobs), 1),
         extra_nuitka_args=tuple(args.nuitka_arg),
         desktop=args.desktop,
+        include_sibling_agents=args.include_sibling_agents,
     )
     print(f"Packaged runtime modules ready under {bundle_root / RUNTIME_MODULES_DIRNAME}")
     return 0

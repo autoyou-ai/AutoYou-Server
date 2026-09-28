@@ -20,6 +20,9 @@ def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():
     assert "--allow-source-dir runtime_site_packages" in text
     assert "--verify-server-imports" in text
     assert "--nofollow-imports" in text
+    assert "--include-sibling-agents" in text
+    assert "--unofficial" in text
+    assert "UNOFFICIAL_BUILD" in text
 
 
 def test_wsl_build_backend_supports_local_patchelf_without_system_install():

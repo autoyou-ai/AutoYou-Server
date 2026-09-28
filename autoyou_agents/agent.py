@@ -1462,6 +1462,12 @@ except Exception as _import_err:
     _create_page_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.proxy_agent.agent import create_proxy_agent as _create_proxy_agent
+except Exception as _import_err:
+    logger.warning("proxy_agent static import failed: %s", _import_err)
+    _create_proxy_agent = None  # type: ignore[assignment]
+
+try:
     from autoyou_agents.notify_agent.agent import create_notify_agent as _create_notify_agent
 except Exception as _import_err:
     logger.warning("notify_agent static import failed: %s", _import_err)
@@ -1560,6 +1566,7 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "openclaw_agent": _create_openclaw_agent,
     "hermes_agent": _create_hermes_agent,
     "page_agent": _create_page_agent,
+    "proxy_agent": _create_proxy_agent,
     "persona_agent": _create_persona_agent,
     "skills_agent": _create_skills_agent,
     "tasks_agent": _create_tasks_agent,

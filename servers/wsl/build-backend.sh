@@ -44,6 +44,7 @@ INSTALL_BUILD_DEPS=false
 INCLUDE_COGNEE=false
 INCLUDE_TUNING=false
 SKIP_VERIFY=false
+UNOFFICIAL=false
 
 include_cognee_enabled() {
     local env_value
@@ -111,6 +112,7 @@ Options:
   --include-cognee        Install optional Cognee memory backend before packaging.
   --include-tuning        Install the optional local Fine Tuning Agent stack.
   --skip-verify           Skip packaged import and hardening verification.
+  --unofficial            Build a local development artifact without official release gates.
   --help                  Show this help.
 EOF
 }
@@ -149,6 +151,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_VERIFY=true
             shift
             ;;
+        --unofficial)
+            UNOFFICIAL=true
+            shift
+            ;;
         --help|-h)
             usage
             exit 0
@@ -175,20 +181,26 @@ if [[ ! -x "$PYTHON_CMD" ]]; then
     fi
 fi
 
-"$PYTHON_CMD" "${PROJECT_ROOT}/scripts/check_official_build_authorization.py" \
-    --required \
-    --artifact-profile autoyou-server-source-full || {
-    echo "Official build authorization failed. Complete the SignToROSS/OpenSign build-access agreement before WSL server release packaging." >&2
-    exit 1
-}
+if [[ "$UNOFFICIAL" == false ]]; then
+    "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/check_official_build_authorization.py" \
+        --required \
+        --artifact-profile autoyou-server-source-full || {
+        echo "Official build authorization failed. Complete the SignToROSS/OpenSign build-access agreement before WSL server release packaging." >&2
+        exit 1
+    }
+fi
 
 echo "Pruning non-commercial model assets from ${PYTHON_CMD} site-packages..."
 prune_noncommercial_site_packages
 
-"$PYTHON_CMD" "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
-    echo "Release legal gate failed. Resolve open blockers before WSL server release packaging." >&2
-    exit 1
-}
+if [[ "$UNOFFICIAL" == false ]]; then
+    "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
+        echo "Release legal gate failed. Resolve open blockers before WSL server release packaging." >&2
+        exit 1
+    }
+else
+    echo "Building an unofficial local WSL backend; release authorization is required for official packaging."
+fi
 
 if [[ "$CLEAN" == true ]]; then
     rm -rf "$BUILD_ROOT" "$BACKEND_ARTIFACT_ROOT"
@@ -429,6 +441,11 @@ if [[ -z "$LAUNCHER_DIST" || ! -d "$LAUNCHER_DIST" ]]; then
 fi
 
 cp -a "$LAUNCHER_DIST" "$FINAL_BACKEND_ROOT"
+if [[ "$UNOFFICIAL" == true ]]; then
+    printf 'Unofficial local build; release authorization was not checked.\n' > "${FINAL_BACKEND_ROOT}/UNOFFICIAL_BUILD"
+else
+    rm -f "${FINAL_BACKEND_ROOT}/UNOFFICIAL_BUILD"
+fi
 if [[ -x "${FINAL_BACKEND_ROOT}/autoyou_app.bin" ]]; then
     mv "${FINAL_BACKEND_ROOT}/autoyou_app.bin" "${FINAL_BACKEND_ROOT}/AutoYou"
 elif [[ -x "${FINAL_BACKEND_ROOT}/AutoYou.bin" ]]; then
@@ -452,7 +469,8 @@ echo "Building compiled runtime modules..."
     --bundle-root "$FINAL_BACKEND_ROOT" \
     --build-root "$RUNTIME_MODULE_BUILD_ROOT" \
     --jobs "$NUITKA_JOBS" \
-    --nuitka-arg=--disable-plugin=transformers
+    --nuitka-arg=--disable-plugin=transformers \
+    --include-sibling-agents
 
 for native_module in remote_desktop_input remote_desktop_settings; do
     if ! compgen -G "${FINAL_BACKEND_ROOT}/runtime_modules/shared/${native_module}*.so" >/dev/null; then

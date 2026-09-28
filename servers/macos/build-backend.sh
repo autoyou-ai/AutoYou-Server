@@ -259,6 +259,8 @@ build_runtime_modules_bundle() {
     local desktop_args=()
     if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
         desktop_args+=(--desktop)
+    else
+        desktop_args+=(--include-sibling-agents)
     fi
     "$PYTHON_CMD" "$RUNTIME_MODULE_BUILDER" \
         --repo-root "$PROJECT_ROOT" \

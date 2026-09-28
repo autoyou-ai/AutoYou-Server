@@ -38,6 +38,20 @@ WebRTC engine. `scripts/build_packaged_runtime_modules.py` includes those roots
 with `shared/` and `autoyou_agents/`; do not repair a package by moving their
 code back into `server.py`.
 
+When an `autoyou_agents/` checkout sits beside `AutoYou-Server/`, all three
+`servers/` backend builders also compile its agent packages and those under
+`autoyou_agents/private/`. The Server copy wins for duplicate agent code;
+unique sibling assets are added. The build excludes live databases, config,
+logs, caches, and tests. Compiled private agents are opt-in at runtime. The
+bundle records the extra agent names in `runtime_modules/autoyou_agents/packaged_sibling_agents.json`
+and seals that file in `runtime_integrity.json`. A standalone public Server
+checkout still builds with its own agents only.
+
+Native `v2/` backend builds use `--desktop` or `-DesktopV2` and reject the
+sibling overlay. Client packages do not use this server agent plan. Official
+server releases continue through their authorization, legal, and signing gates;
+the WSL backend supports `--unofficial` for a local build without release gates.
+
 The compiled `.pyd`/`.so` files are produced by Nuitka. AutoYou has no
 first-party Rust crate or `autoyou_native` build path at HEAD, although bundled
 third-party dependencies may contain their own native or Rust-backed

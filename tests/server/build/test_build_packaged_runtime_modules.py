@@ -4,6 +4,8 @@
 
 from pathlib import Path
 
+import pytest
+
 import scripts.build_packaged_runtime_modules as runtime_builder
 
 
@@ -65,6 +67,75 @@ def test_runtime_module_plan_keeps_embedded_agents_with_sibling_checkout(tmp_pat
 
     assert "autoyou_agents/notes_agent/stale_only.py" in compiled_paths
     assert "autoyou_agents/notes_agent/sibling_only.py" not in compiled_paths
+
+
+def test_server_plan_includes_sibling_agents_private_agents_and_safe_assets(tmp_path, monkeypatch):
+    server_root = tmp_path / "AutoYou-Server"
+    _populate_required_runtime_sources(server_root)
+    _write_text(server_root / "autoyou_agents" / "notes_agent" / "agent.py")
+    sibling_root = tmp_path / "autoyou_agents"
+    _write_text(sibling_root / "__init__.py", "")
+    _write_text(sibling_root / "notes_agent" / "agent.py", "SERVER_SOURCE_MUST_WIN = False\n")
+    _write_text(sibling_root / "notes_agent" / "desktop_assets" / "icon.svg", "<svg/>\n")
+    _write_text(sibling_root / "trading_agent" / "agent.py")
+    _write_text(sibling_root / "trading_agent" / "website" / "manifest.json", "{}\n")
+    _write_text(sibling_root / "trading_agent" / "trading_agent" / "trading_agent.db", "live state\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "agent.py")
+    _write_text(sibling_root / "private" / "mail_agent" / "prompt.py")
+    _write_text(sibling_root / "private" / "mail_agent" / "AGENT.md", "private context\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "mail_agent" / "configuration.json", "live config\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "index.mjs", "export default {};\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "index.test.mjs", "test code\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "worker" / ".env", "secret\n")
+    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "node_modules" / "pkg" / "index.js", "package\n")
+
+    plan = runtime_builder.build_runtime_module_plan(server_root, include_sibling_agents=True)
+    compiled = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
+    assets = {path.as_posix() for path in plan.asset_files}
+
+    assert "autoyou_agents/notes_agent/agent.py" in compiled
+    assert Path("autoyou_agents/notes_agent/agent.py") not in plan.source_overrides
+    assert "autoyou_agents/trading_agent/agent.py" in compiled
+    assert "autoyou_agents/mail_agent/agent.py" in compiled
+    assert "autoyou_agents/mail_agent/prompt.py" in compiled
+    assert "autoyou_agents/notes_agent/desktop_assets/icon.svg" in assets
+    assert "autoyou_agents/trading_agent/website/manifest.json" in assets
+    assert "autoyou_agents/mail_agent/AGENT.md" in assets
+    assert "autoyou_agents/mail_agent/worker/index.mjs" in assets
+    assert "autoyou_agents/mail_agent/worker/index.test.mjs" not in assets
+    assert "autoyou_agents/mail_agent/worker/.env" not in assets
+    assert "autoyou_agents/mail_agent/worker/node_modules/pkg/index.js" not in assets
+    assert "autoyou_agents/trading_agent/trading_agent/trading_agent.db" not in assets
+    assert "autoyou_agents/mail_agent/mail_agent/configuration.json" not in assets
+    assert plan.sibling_agent_names == ("mail_agent", "trading_agent")
+
+    def fake_run_nuitka_module_build(*, output_root, spec, source_override=None, **_kwargs):
+        if spec.source_relative_path == Path("autoyou_agents/mail_agent/agent.py"):
+            assert source_override == sibling_root / "private" / "mail_agent" / "agent.py"
+        destination = output_root / spec.destination_relative_dir / f"{spec.source_stem}.cp313-linux_x86_64.so"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"compiled-module")
+        return destination
+
+    monkeypatch.setattr(runtime_builder, "_run_nuitka_module_build", fake_run_nuitka_module_build)
+    bundle_root = tmp_path / "bundle"
+    manifest = runtime_builder.build_packaged_runtime_modules(
+        repo_root=server_root,
+        bundle_root=bundle_root,
+        build_root=tmp_path / "build",
+        job_count=1,
+        extra_nuitka_args=(),
+        include_sibling_agents=True,
+    )
+    marker = bundle_root / "runtime_modules/autoyou_agents/packaged_sibling_agents.json"
+    assert marker.read_text(encoding="utf-8").strip().startswith('[\n  "mail_agent"')
+    assert "runtime_modules/autoyou_agents/packaged_sibling_agents.json" in manifest["files"]
+    assert not (bundle_root / "runtime_modules/autoyou_agents/mail_agent/mail_agent/configuration.json").exists()
+
+
+def test_native_v2_plan_rejects_sibling_overlay(tmp_path):
+    with pytest.raises(ValueError, match="cannot include sibling agents"):
+        runtime_builder.build_runtime_module_plan(tmp_path, desktop=True, include_sibling_agents=True)
 
 
 def test_desktop_runtime_plan_reads_private_native_sources_beside_server(tmp_path):

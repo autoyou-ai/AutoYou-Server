@@ -107,6 +107,10 @@ From the repository root:
 ./servers/wsl/build-backend.sh --clean
 ```
 
+For a local unofficial build while release authorization is pending, use
+`./servers/wsl/build-backend.sh --clean --unofficial`. Official WSL builds use
+the default path and require the release gates.
+
 To include the optional Fine Tuning trainer stack, add `--include-tuning` (or
 set `AUTOYOU_INCLUDE_TUNING=1`). Data Collector's website/chat surface is
 always bundled with the full server; the flag is only needed to run actual

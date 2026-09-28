@@ -40,7 +40,8 @@ background network daemon under `devmode` is unlikely to pass as-is.
   (matches the existing WSL smoke-test recipe). Reaching it from Windows over
   the WSL2 network needs the operator's own port-forwarding/firewall setup,
   same as running the unpackaged binary — the snap does not change that.
-- **Legal/build-access gate**: `build-backend.sh` requires a signed
-  SignToROSS/OpenSign build-access authorization for the
-  `autoyou-server-source-full` artifact profile before it will produce the
-  bundle this snap dumps. See `docs/legal/license-build-control-strategy.md`.
+- **Legal/build-access gate**: the default `build-backend.sh` path requires
+  signed SignToROSS/OpenSign authorization for the `autoyou-server-source-full`
+  artifact profile. A backend built with `--unofficial` is marked and this
+  Snap scaffold refuses to package it. See
+  `docs/legal/license-build-control-strategy.md`.

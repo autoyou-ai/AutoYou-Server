@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -97,10 +98,11 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "openclaw_agent": False,         # Opt-in: install manually when OpenClaw Gateway is running locally
     "page_agent": True,
     "persona_agent": True,
+    "proxy_agent": False,           # Opt-in: authenticated internet relay
     "remote_desktop_agent": False,   # Opt-in: desktop control capability
-    "robinhood_agent": False,        # Source-only private trading integration
+    "robinhood_agent": False,        # Opt-in when the private package is bundled
     "skills_agent": False,           # Opt-in: reusable skill scripts
-    "trading_agent": False,          # Source-only private trading integration
+    "trading_agent": False,          # Opt-in when the sibling package is bundled
     "education_agent": False,        # Opt-in: learning workspace
     "tasks_agent": True,
     "voice_training_agent": False,   # Opt-in: local voice datasets and TTS training
@@ -109,9 +111,8 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "mac_security_agent": False,     # Opt-in: macOS-only local security telemetry
 }
 
-# Source-only agents that are never included in compiled/packaged builds. Keep
-# a False entry in DEFAULT_AGENT_INSTALL_STATES for every name so source runs
-# can still install them explicitly while compiled builds reject them.
+# Sibling agents remain opt-in and are accepted by compiled servers only when
+# the build manifest confirms that their modules were actually bundled.
 PRIVATE_AGENT_PACKAGE_NAMES: frozenset[str] = frozenset(
     {
         "cloudflare_agent",
@@ -123,6 +124,27 @@ PRIVATE_AGENT_PACKAGE_NAMES: frozenset[str] = frozenset(
     }
 )
 BUILTIN_AGENT_PACKAGE_NAMES = frozenset(DEFAULT_AGENT_INSTALL_STATES.keys()) - PRIVATE_AGENT_PACKAGE_NAMES
+
+
+def _load_packaged_sibling_agent_names() -> frozenset[str]:
+    manifest = Path(__file__).resolve().parents[1] / "packaged_sibling_agents.json"
+    try:
+        names = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return frozenset()
+    if not isinstance(names, list):
+        return frozenset()
+    return frozenset(
+        name for name in names
+        if isinstance(name, str) and re.fullmatch(r"[a-z][a-z0-9_]*_agent", name)
+    )
+
+
+PACKAGED_SIBLING_AGENT_NAMES = _load_packaged_sibling_agent_names()
+
+
+def _compiled_agent_names() -> frozenset[str]:
+    return BUILTIN_AGENT_PACKAGE_NAMES | PACKAGED_SIBLING_AGENT_NAMES
 
 
 def runtime_install_block_reason(raw_name: Optional[str]) -> str:
@@ -152,7 +174,14 @@ def normalize_agent_package_name(raw_name: Optional[str]) -> str:
 
 def is_builtin_agent_name(raw_name: Optional[str]) -> bool:
     """Return True when an agent is part of the trusted packaged runtime set."""
-    return normalize_agent_package_name(raw_name) in BUILTIN_AGENT_PACKAGE_NAMES
+    normalized = normalize_agent_package_name(raw_name)
+    if normalized in BUILTIN_AGENT_PACKAGE_NAMES:
+        return True
+    try:
+        from shared.platform_runtime import is_compiled
+        return bool(is_compiled()) and normalized in PACKAGED_SIBLING_AGENT_NAMES
+    except Exception:
+        return False
 
 
 def can_install_agent_in_runtime(
@@ -174,7 +203,7 @@ def can_install_agent_in_runtime(
         return False
     if not compiled:
         return True
-    return normalized in BUILTIN_AGENT_PACKAGE_NAMES
+    return normalized in _compiled_agent_names()
 
 
 def get_agent_install_registry_path(
@@ -238,7 +267,7 @@ def discover_agent_directories(agents_root: Path) -> list[str]:
     try:
         from shared.platform_runtime import is_compiled
         if is_compiled():
-            discovered.update(BUILTIN_AGENT_PACKAGE_NAMES)
+            discovered.update(_compiled_agent_names())
     except Exception:
         pass
 

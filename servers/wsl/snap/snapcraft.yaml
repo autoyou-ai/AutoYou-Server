@@ -31,4 +31,5 @@ parts:
     source: artifacts/backend/AutoYouServer
     override-pull: |
       craftctl default
+      test ! -f "$CRAFT_PART_SRC/UNOFFICIAL_BUILD" || { echo "Refusing to package an unofficial WSL backend" >&2; exit 1; }
       craftctl set version "$(cat "$CRAFT_PROJECT_DIR/../../../VERSION")"
