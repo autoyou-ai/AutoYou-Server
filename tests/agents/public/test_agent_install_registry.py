@@ -136,6 +136,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "hermes_agent",
         "media_generation_agent",
         "openclaw_agent",
+        "proxy_agent",
         "remote_desktop_agent",
         "robinhood_agent",
         "trading_agent",
@@ -268,6 +269,27 @@ def test_compiled_registry_omits_private_agent_names_by_default(tmp_path, monkey
     for agent_name in PRIVATE_AGENT_PACKAGE_NAMES:
         assert agent_name not in payload["agents"]
         assert agent_name not in payload["available_agents"]
+
+
+def test_compiled_registry_accepts_only_agents_named_in_server_bundle(tmp_path, monkeypatch):
+    import autoyou_agents.shared_tools.agent_install_registry as registry
+
+    embedded_root = tmp_path / "runtime_modules" / "autoyou_agents"
+    (embedded_root / "shared_tools").mkdir(parents=True)
+    (embedded_root / "packaged_sibling_agents.json").write_text(
+        '["trading_agent", "../unexpected_agent", 42]', encoding="utf-8",
+    )
+    monkeypatch.setattr(registry, "__file__", str(embedded_root / "shared_tools/agent_install_registry.py"))
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", registry._load_packaged_sibling_agent_names())
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(platform_runtime, "iter_agent_roots", lambda anchor, app_name="AutoYou": (embedded_root,))
+
+    assert registry.can_install_agent_in_runtime("trading_agent", compiled=True)
+    assert registry.is_builtin_agent_name("trading_agent")
+    assert not registry.can_install_agent_in_runtime("mail_agent", compiled=True)
+    assert not registry.can_install_agent_in_runtime("unexpected_agent", compiled=True)
+    assert "trading_agent" in registry.discover_agent_directories(embedded_root)
+    assert "mail_agent" not in registry.discover_agent_directories(embedded_root)
 
 
 def test_compiled_registry_forces_workspace_agents_to_stay_uninstalled(tmp_path, monkeypatch):

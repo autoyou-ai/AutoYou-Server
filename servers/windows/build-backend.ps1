@@ -1746,6 +1746,8 @@ foreach ($argument in $compilerConfiguration.Arguments) {
 $runtimeModuleBuildArguments += @("--nuitka-arg=--disable-plugin=transformers")
 if ($DesktopV2) {
     $runtimeModuleBuildArguments += "--desktop"
+} else {
+    $runtimeModuleBuildArguments += "--include-sibling-agents"
 }
 if ($NuitkaDiagnostics) {
     foreach ($argument in @("--show-progress", "--verbose")) {
