@@ -1891,6 +1891,11 @@ class PageFeedService:
 
                 path, mime = self.db.get_blob_path_and_type(str(blob_id))
                 if not path or not os.path.exists(path):
+                    if path:
+                        candidate = os.path.join(self.uploads_dir, os.path.basename(path))
+                        if os.path.exists(candidate):
+                            path = candidate
+                if not path or not os.path.exists(path):
                     raise HTTPException(status_code=404, detail="Blob not found")
                 mime = self._canonicalize_blob_mimetype(os.path.basename(path), mime)
                 preview_requested = str(request.query_params.get("preview") or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -2235,6 +2240,8 @@ class PageFeedService:
             if entry is None:
                 raise HTTPException(status_code=404, detail="Not found")
             asset_path, media_type = entry
+            if not asset_path.is_file():
+                raise HTTPException(status_code=404, detail="Not found")
             return Response(
                 content=asset_path.read_bytes(),
                 media_type=media_type,
