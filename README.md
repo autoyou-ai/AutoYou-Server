@@ -107,9 +107,12 @@ launching the server.
 
 ## Docker
 
-The Compose setup is deliberately bound to localhost and requires a strong
-`AUTOYOU_SERVER_PASSWORD` before it starts. It persists configuration in a
-named Docker volume and does not mount your checkout into the container.
+The Compose setup binds published ports to host loopback and requires
+`AUTOYOU_SERVER_PASSWORD` to be set before it starts. Choose a strong, unique
+password. It persists configuration in a named Docker volume and does not
+mount your checkout into the container. On Docker Engine versions before 28,
+localhost-published ports may still be reachable from the same LAN segment;
+see [Docker's port-publishing guidance](https://docs.docker.com/engine/network/port-publishing/).
 
 Windows PowerShell:
 
@@ -125,9 +128,11 @@ export AUTOYOU_SERVER_PASSWORD='choose-a-strong-unique-password'
 docker compose up --build
 ```
 
-The image does not download the upstream Tunnelmole binary by default. Set
-`AUTOYOU_PRECACHE_TUNNELMOLE=1` to opt into its build-stage download, or
-`AUTOYOU_DOWNLOAD_TUNNELMOLE=1` to enable the existing runtime download opt-in.
+The Docker build attempts to pre-cache the upstream Tunnelmole binary, and the
+server can download it at runtime if absent. Set both
+`AUTOYOU_SKIP_TUNNELMOLE_DOWNLOAD=1` and `AUTOYOU_NO_DOWNLOAD_TUNNELMOLE=1`
+before `docker compose up --build` to disable those downloads. Pairing through
+Tunnelmole then requires a binary you provide separately.
 
 To configure donation links for a source run, copy
 `config/donations.example.json` to `config/donations.json` and edit the local

@@ -60,6 +60,7 @@ output.txt
 build_log.txt
 build_output.txt
 build/
+!tests/server/build/
 !/.llm/build/
 !/.llm/build/*.md
 local.properties
