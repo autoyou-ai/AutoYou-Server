@@ -145,6 +145,7 @@ MACOS_RUNTIME_SITE_PACKAGE_OVERLAY=(
     "mss"
     "onnxruntime"
     "playwright"
+    "pyaudio"
     "pyaes"
     "pyasn1"
     "pyee"

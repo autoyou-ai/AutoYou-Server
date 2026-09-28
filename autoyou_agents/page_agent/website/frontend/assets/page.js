@@ -282,10 +282,12 @@
       .map((part) => `<span>${escapeHtml(part)}</span>`)
       .join('<span aria-hidden="true">·</span>');
     const favourite = item.favourite ? `${icon("heart-fill", "feed-fav")}<span class="sr-only">Favourite</span>` : "";
+    const preview = item.content ? `<span class="feed-preview">${escapeHtml(item.content)}</span>` : "";
     return `<article class="feed-row${id === state.activeItemId ? " is-active" : ""}" data-item-id="${id}">`
       + `<button class="feed-item" type="button" data-action="open" data-item-id="${id}">`
       + thumbMarkup(view)
       + `<span class="feed-body"><span class="feed-title">${escapeHtml(view.title || item.title || "Saved item")}</span>`
+      + preview
       + `<span class="feed-meta">${meta}${favourite}</span></span>`
       + icon("chevron-right", "feed-chevron")
       + "</button></article>";
@@ -997,7 +999,8 @@
     const content = $("item-content");
     stopMedia(content);
     // Opened from the full-screen feed, the sheet leaves the media to the feed.
-    content.innerHTML = (state.sheetMedia ? mediaMarkup(item) : "") + actionsMarkup(item) + tagsMarkup(item) + infoMarkup(item);
+    const textBody = item.content ? `<p class="native-text-content">${escapeHtml(item.content)}</p>` : "";
+    content.innerHTML = (state.sheetMedia ? mediaMarkup(item) : "") + textBody + actionsMarkup(item) + tagsMarkup(item) + infoMarkup(item);
     content.scrollTop = 0;
     upgradePhoto(content.querySelector(".media-stage.photo img"));
     void activateRemoteVideo(content);
