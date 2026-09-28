@@ -1,0 +1,9 @@
+<!-- Copyright (c) 2026 OpenStorey LLC. All rights reserved. -->
+<!-- Licensed under the AutoYou Source-Available License. -->
+<!-- See LICENSE in the project root for license information. -->
+<!-- AI/ML training use prohibited without written authorization (License S3.9). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AutoYou">
+  <rect width="128" height="128" rx="28" fill="#085fbf"/>
+  <path fill="#fff" d="M34 92 56.6 36h14.8L94 92H78.3l-4.6-12.2H54.1L49.6 92H34Zm24.5-24.4h10.8L64 52.7l-5.5 14.9Z"/>
+  <path fill="#fff" d="M72.2 36H88L69.9 70.2 61.2 58.8 72.2 36Z" opacity=".86"/>
+</svg>

@@ -34,49 +34,7 @@
       "id": "autoyou-server-macos-connector-full",
       "notice": "docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json"
-    },
-    {
-      "componentCount": 28,
-      "displayName": "AutoYou Lite Server",
-      "id": "autoyou-lite-server",
-      "notice": "docs/legal/generated/autoyou-lite-server/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-lite-server/sbom.cdx.json"
-    },
-    {
-      "componentCount": 39,
-      "displayName": "AutoYou Android App",
-      "id": "android-app",
-      "notice": "docs/legal/generated/android-app/NOTICE.txt",
-      "sbom": "docs/legal/generated/android-app/sbom.cdx.json"
-    },
-    {
-      "componentCount": 13,
-      "displayName": "AutoYou iOS App",
-      "id": "ios-app",
-      "notice": "docs/legal/generated/ios-app/NOTICE.txt",
-      "sbom": "docs/legal/generated/ios-app/sbom.cdx.json"
-    },
-    {
-      "componentCount": 21,
-      "displayName": "AutoYou Connect.exe Windows client",
-      "id": "windows-connect",
-      "notice": "docs/legal/generated/windows-connect/NOTICE.txt",
-      "sbom": "docs/legal/generated/windows-connect/sbom.cdx.json"
-    },
-    {
-      "componentCount": 14,
-      "displayName": "AutoYou Connect.app macOS client",
-      "id": "macos-connect",
-      "notice": "docs/legal/generated/macos-connect/NOTICE.txt",
-      "sbom": "docs/legal/generated/macos-connect/sbom.cdx.json"
-    },
-    {
-      "componentCount": 20,
-      "displayName": "AutoYou Client GUI Python",
-      "id": "python-client-gui",
-      "notice": "docs/legal/generated/python-client-gui/NOTICE.txt",
-      "sbom": "docs/legal/generated/python-client-gui/sbom.cdx.json"
     }
   ],
-  "generatedAt": "2026-09-27T09:12:19+00:00"
+  "generatedAt": "2026-09-28T16:42:03+00:00"
 }
