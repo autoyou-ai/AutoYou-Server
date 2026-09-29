@@ -16,11 +16,12 @@ import importlib.machinery
 import importlib.util
 import logging
 import os
+import re
 import sys
 import threading
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-3a11462fdabfbe95a7c7048e"
 
@@ -44,6 +45,18 @@ _EMOTION_WORDS = {
     "excited": ("excited", "surprised", "amazing", "wow", "awesome", "惊讶", "惊喜", "兴奋", "太好了"),
 }
 _EMOTION_PROMPTS = {"angry": "Angry", "sad": "Sad", "happy": "Happy", "excited": "Excited"}
+# simbert-base-chinese has 512 position embeddings, so the content embedding of a
+# long reply fails with a tensor size mismatch. Synthesize in chunks well under it
+# ([CLS]/[SEP] included) and join the audio with a short pause.
+_CHUNK_TOKEN_BUDGET = 256
+_CHUNK_PAUSE_SECONDS = 0.2
+_SAMPLE_RATE = 16_000
+# Sentences, then words, then characters for anything that still does not fit.
+_CHUNK_LEVELS = (
+    (re.compile(r"(?<=[.!?;])\s+|(?<=[。！？；])").split, " "),
+    (str.split, " "),
+    (list, ""),
+)
 
 
 def vendor_root() -> Path:
@@ -64,6 +77,34 @@ def conversation_emotion_prompt(context: str) -> str:
     }
     selected = max(matches, key=matches.get)
     return _EMOTION_PROMPTS[selected] if matches[selected] else "Neutral"
+
+
+def split_for_synthesis(
+    text: str,
+    count_tokens: Callable[[str], int],
+    budget: int = _CHUNK_TOKEN_BUDGET,
+    level: int = 0,
+) -> list[str]:
+    """Greedily pack sentences into chunks whose token count stays within ``budget``."""
+    split, joiner = _CHUNK_LEVELS[level]
+    chunks: list[str] = []
+    current = ""
+    for unit in filter(None, (part.strip() for part in split(text))):
+        if count_tokens(unit) > budget and level + 1 < len(_CHUNK_LEVELS):
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(split_for_synthesis(unit, count_tokens, budget, level + 1))
+            continue
+        candidate = f"{current}{joiner}{unit}" if current else unit
+        if not current or count_tokens(candidate) <= budget:
+            current = candidate
+        else:
+            chunks.append(current)
+            current = unit
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def _torch_mps_available(torch_module: Any) -> bool:
@@ -291,34 +332,44 @@ def synthesize(text: str, output_path: str, settings: Dict[str, Any], context: s
     if speaker_name not in speaker_to_id:
         raise ValueError("Unknown EmotiVoice speaker ID")
     prompt = conversation_emotion_prompt(context or text) if emo_config.get("conversation_emotion", True) else "Neutral"
-    phonemes = g2p_cn_en(str(text), g2p, lexicon).split()
-    unknown = [phone for phone in phonemes if phone not in token_to_id]
+    chunks = split_for_synthesis(str(text), lambda value: len(tokenizer.tokenize(value)) + 2)
+    chunk_phonemes = [g2p_cn_en(chunk, g2p, lexicon).split() for chunk in chunks]
+    unknown = [phone for phonemes in chunk_phonemes for phone in phonemes if phone not in token_to_id]
     if unknown:
         raise ValueError(f"EmotiVoice cannot encode phoneme token: {unknown[0]}")
 
-    with _INFERENCE_LOCK, torch.inference_mode():
-        prompt_batch = tokenizer([prompt], return_tensors="pt")
-        content_batch = tokenizer([str(text)], return_tensors="pt")
+    def style_embedding(batch):
+        return style_encoder(
+            input_ids=batch["input_ids"].to(device),
+            token_type_ids=batch["token_type_ids"].to(device),
+            attention_mask=batch["attention_mask"].to(device),
+        )["pooled_output"]
 
-        def style_embedding(batch):
-            return style_encoder(
-                input_ids=batch["input_ids"].to(device),
-                token_type_ids=batch["token_type_ids"].to(device),
-                attention_mask=batch["attention_mask"].to(device),
-            )["pooled_output"]
-
-        sequence = torch.tensor([[token_to_id[phone] for phone in phonemes]], dtype=torch.long, device=device)
-        lengths = torch.tensor([sequence.shape[1]], dtype=torch.long, device=device)
-        speakers = torch.tensor([speaker_to_id[speaker_name]], dtype=torch.long, device=device)
-        result = generator(
-            inputs_ling=sequence,
-            input_lengths=lengths,
-            inputs_speaker=speakers,
-            inputs_style_embedding=style_embedding(prompt_batch),
-            inputs_content_embedding=style_embedding(content_batch),
-            alpha=1.0,
-        )["wav_predictions"]
-        audio = result.detach().squeeze().float().cpu().numpy()
+    pieces = []
+    pause = np.zeros(int(_SAMPLE_RATE * _CHUNK_PAUSE_SECONDS), dtype=np.float32)
+    for chunk, phonemes in zip(chunks, chunk_phonemes):
+        # Only <sos/eos> left means the chunk had nothing speakable (e.g. bare punctuation).
+        if len(phonemes) <= 2:
+            continue
+        with _INFERENCE_LOCK, torch.inference_mode():
+            prompt_embedding = style_embedding(tokenizer([prompt], return_tensors="pt"))
+            content_embedding = style_embedding(tokenizer([chunk], return_tensors="pt"))
+            sequence = torch.tensor([[token_to_id[phone] for phone in phonemes]], dtype=torch.long, device=device)
+            lengths = torch.tensor([sequence.shape[1]], dtype=torch.long, device=device)
+            speakers = torch.tensor([speaker_to_id[speaker_name]], dtype=torch.long, device=device)
+            result = generator(
+                inputs_ling=sequence,
+                input_lengths=lengths,
+                inputs_speaker=speakers,
+                inputs_style_embedding=prompt_embedding,
+                inputs_content_embedding=content_embedding,
+                alpha=1.0,
+            )["wav_predictions"]
+            piece = result.detach().squeeze().float().cpu().numpy().reshape(-1)
+        if pieces:
+            pieces.append(pause)
+        pieces.append(piece)
+    audio = np.concatenate(pieces) if pieces else np.zeros(0, dtype=np.float32)
     if audio.size == 0 or not np.isfinite(audio).all():
         raise RuntimeError("EmotiVoice produced invalid audio")
     samples = np.clip(audio * 32768.0, -32768, 32767).astype(np.int16)
@@ -332,4 +383,4 @@ def synthesize(text: str, output_path: str, settings: Dict[str, Any], context: s
 
         ratio = Fraction(1.0 / min(4.0, max(0.25, rate))).limit_denominator(1000)
         samples = np.clip(resample_poly(samples.astype(np.float32), ratio.numerator, ratio.denominator), -32768, 32767).astype(np.int16)
-    sf.write(output_path, samples, 16_000, format="WAV", subtype="PCM_16")
+    sf.write(output_path, samples, _SAMPLE_RATE, format="WAV", subtype="PCM_16")
