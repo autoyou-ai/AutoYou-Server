@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server source/full profile (autoyou-server-source-full)
 Release profile: source-full
 Dependency profile: full
-Generated: 2026-09-29T01:53:39+00:00
+Generated: 2026-09-29T02:05:10+00:00
 
 Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge; WSL full-profile builds compile the EmotiVoice inference modules.
 

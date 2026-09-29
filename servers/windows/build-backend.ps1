@@ -1288,6 +1288,45 @@ if failures:
     Invoke-CheckedCommand -FilePath $PythonExe -Arguments (@($scriptPath) + $PackageNames)
 }
 
+function Assert-InstalledRuntimePackageImports {
+    param(
+        [string]$PythonExe,
+        [string[]]$PackageImports
+    )
+
+    $verificationRoot = Join-Path $artifactRoot "verification"
+    New-Item -ItemType Directory -Force -Path $verificationRoot | Out-Null
+
+    $scriptPath = Join-Path $verificationRoot "verify_required_runtime_imports.py"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    $pythonCode = @'
+import importlib
+import sys
+from importlib import metadata
+
+failures = []
+for spec in sys.argv[1:]:
+    package_name, _, module_name = spec.partition("=")
+    module_name = module_name or package_name.replace("-", "_")
+    try:
+        metadata.version(package_name)
+    except metadata.PackageNotFoundError:
+        failures.append(f"{package_name}: distribution is missing")
+        continue
+    try:
+        importlib.import_module(module_name)
+    except Exception as exc:
+        failures.append(f"{package_name} ({module_name}): {exc!r}")
+
+if failures:
+    raise SystemExit("Required runtime package imports failed: " + "; ".join(failures))
+'@
+
+    [System.IO.File]::WriteAllText($scriptPath, $pythonCode, $utf8NoBom)
+    Invoke-CheckedCommand -FilePath $PythonExe -Arguments (@($scriptPath) + $PackageImports)
+}
+
 function Assert-CompiledBackendHardening {
     param(
         [string]$PythonExe,
@@ -1384,9 +1423,19 @@ function Assert-PackagedBackendServerImports {
     }
     if ($requirementsIncludesVoice) {
         $verifyArguments += @(
+            "--verify-runtime-import", "shared.emotivoice_tts",
             "--verify-runtime-import", "RealtimeSTT",
             "--verify-runtime-import", "faster_whisper",
-            "--verify-runtime-import", "ctranslate2"
+            "--verify-runtime-import", "ctranslate2",
+            "--verify-runtime-import", "modelscope",
+            "--verify-runtime-import", "nltk",
+            "--verify-runtime-import", "numba",
+            "--verify-runtime-import", "g2p_en",
+            "--verify-runtime-import", "jieba",
+            "--verify-runtime-import", "pypinyin",
+            "--verify-runtime-import", "pypinyin_dict",
+            "--verify-runtime-import", "cn2an",
+            "--verify-runtime-import", "yacs"
         )
     }
     Invoke-CheckedCommand -FilePath $BackendExe -Arguments $verifyArguments -Environment @{
@@ -1526,6 +1575,23 @@ if ($requirementsIncludesTuning) {
 Invoke-CheckedCommand -FilePath $pythonExe -Arguments $reconcileArguments
 Assert-PipDependencyConsistency -PythonExe $pythonExe
 Assert-InstalledOptionalRuntimeImports -PythonExe $pythonExe -PackageNames @("huggingface-hub", "transformers")
+if ($requirementsIncludesVoice) {
+    Assert-InstalledRuntimePackageImports -PythonExe $pythonExe -PackageImports @(
+        "PyAudioWPatch=pyaudiowpatch",
+        "RealtimeSTT=RealtimeSTT",
+        "faster-whisper=faster_whisper",
+        "ctranslate2",
+        "modelscope",
+        "nltk",
+        "numba",
+        "g2p-en=g2p_en",
+        "jieba",
+        "pypinyin",
+        "pypinyin-dict=pypinyin_dict",
+        "cn2an",
+        "yacs"
+    )
+}
 if ($requirementsIncludesTuning) {
     Assert-InstalledOptionalRuntimeImports -PythonExe $pythonExe -PackageNames @("torch", "torchvision", "transformers", "datasets", "peft", "accelerate", "safetensors", "sentencepiece")
 }

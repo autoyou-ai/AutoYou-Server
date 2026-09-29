@@ -1254,6 +1254,17 @@ def run_desktop_stdio_mode():
     packaged = _looks_like_packaged_executable()
     if packaged:
         os.environ["AUTOYOU_V2_SERVER_EXECUTABLE"] = sys.executable
+        os.environ[PACKAGED_RUNTIME_ENV] = "1"
+        os.environ[PACKAGED_RESOURCES_ROOT_ENV] = str(APP_ROOT)
+        os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+        _patch_dotenv_for_packaged_runtime()
+        _prepare_runtime_server_imports(APP_ROOT)
+        try:
+            platform_runtime_module = _get_shared_platform_runtime_module()
+            platform_runtime_module.configure_runtime(__file__)
+            platform_runtime_module.configure_whisper_cache_environment("AutoYou")
+        except Exception as exc:
+            _append_launcher_log(f"desktop stdio packaged runtime setup warning: {exc.__class__.__name__}: {exc}")
     os.environ["AUTOYOU_V2_BUNDLED"] = "1" if packaged else "0"
     # Dynamic import keeps legacy server distributions free of desktop modules.
     worker = importlib.import_module("v2.runtime.worker")
