@@ -24,10 +24,9 @@ def _populate_required_runtime_sources(repo_root: Path) -> None:
     # these tests failing.
     for package_root in runtime_builder.PACKAGE_RUNTIME_ROOTS:
         _write_text(repo_root / package_root / "_fixture_runtime_module.py", "VALUE = 1\n")
-    _write_text(
-        repo_root / "shared" / "tunnelmole_node_launcher.mjs",
-        "console.log('runtime launcher');\n",
-    )
+    for relative_path in runtime_builder.STATIC_RUNTIME_FILES:
+        contents = "console.log('runtime launcher');\n" if relative_path.name == "tunnelmole_node_launcher.mjs" else "runtime sidecar\n"
+        _write_text(repo_root / relative_path, contents)
     _write_text(repo_root / "shared" / "log_redaction.py", "VALUE = 1\n")
     # STATIC_RUNTIME_DIRECTORIES entries must exist with at least one file each;
     # mirror the real repo's vendored libsodium platform payloads.
@@ -177,6 +176,16 @@ def test_runtime_module_plan_includes_agent_directory_shared_logic(tmp_path):
     assert "autoyou_agents/shared_tools/agent_install_registry.py" in compiled_paths
     assert "autoyou_agents/shared_tools/frontend_registry.py" in compiled_paths
     assert "autoyou_agents/shared_tools/desktop_app_registry.py" in compiled_paths
+
+
+def test_compiled_runtime_keeps_emotivoice_python_source_out_of_bundle():
+    repo_root = Path(__file__).resolve().parents[3]
+    plan = runtime_builder.build_runtime_module_plan(repo_root)
+
+    compiled_paths = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
+    static_paths = {path.as_posix() for path in plan.static_files}
+    assert "shared/emotivoice_tts.py" in compiled_paths
+    assert not any(path.startswith("vendor/emotivoice/") for path in compiled_paths | static_paths)
 
 
 def test_build_packaged_runtime_modules_copies_static_runtime_sidecars(tmp_path, monkeypatch):

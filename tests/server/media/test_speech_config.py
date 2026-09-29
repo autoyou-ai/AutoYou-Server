@@ -38,6 +38,18 @@ def test_normalize_speech_config_preserves_tts_off():
     assert speech["tts"]["provider"] == "off"
 
 
+def test_emotivoice_provider_normalizes_speaker_and_emotion_context():
+    speech = normalize_speech_config({
+        "tts": {
+            "provider": "emotivoice",
+            "emotivoice": {"speaker": "11614", "conversation_emotion": "false"},
+        }
+    })
+
+    assert speech["tts"]["provider"] == "emotivoice"
+    assert speech["tts"]["emotivoice"] == {"speaker": "11614", "conversation_emotion": False}
+
+
 def test_update_speech_config_applies_custom_values():
     cfg = {}
 

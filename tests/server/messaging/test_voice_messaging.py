@@ -82,8 +82,9 @@ def test_voice_reply_synthesis_uses_live_speech_settings_provider(monkeypatch, t
             del on_text_callback, enable_stt
             self.settings_provider = settings_provider
 
-        def synthesize_to_file(self, text):
+        def synthesize_to_file(self, text, *, context=""):
             captured["text"] = text
+            captured["context"] = context
             captured["settings"] = self.settings_provider()
             output_path = tmp_path / "reply.wav"
             output_path.write_bytes(b"RIFF" + (b"\0" * 256))
@@ -99,11 +100,15 @@ def test_voice_reply_synthesis_uses_live_speech_settings_provider(monkeypatch, t
     )
 
     try:
-        result = voice_messaging.synthesize_voice_reply("Synthetic voice reply")
+        result = voice_messaging.synthesize_voice_reply(
+            "Synthetic voice reply",
+            context="Synthetic user transcript",
+        )
     finally:
         voice_messaging.set_speech_settings_provider(None)
         voice_messaging._tts_manager = None
 
     assert result == str(tmp_path / "reply.wav")
     assert captured["text"] == "Synthetic voice reply"
+    assert captured["context"] == "Synthetic user transcript"
     assert captured["settings"]["tts"]["provider"] == "custom"

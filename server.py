@@ -4895,6 +4895,11 @@ def _speech_summary(cfg: Optional[Dict[str, Any]] = None) -> str:
     elif provider == CUSTOM_VOICE_PROVIDER:
         readiness = "ready" if custom_voice_model_ready() else "model not prepared"
         tts_summary = f"Custom cloned voice TTS ({readiness})"
+    elif provider == "emotivoice":
+        from shared.emotivoice_tts import status as emotivoice_status
+
+        readiness = "ready" if emotivoice_status()["ready"] else "models or dependencies not installed"
+        tts_summary = f"EmotiVoice local TTS ({readiness})"
     elif provider == "off":
         tts_summary = "TTS disabled"
     else:
@@ -4952,8 +4957,8 @@ def _update_speech_config(
 
     if speech_tts_provider is not None:
         provider = speech_tts_provider.strip().lower()
-        if provider not in {"system", "openai", "azure", CUSTOM_VOICE_PROVIDER, "off"}:
-            raise ValueError("TTS provider must be one of: system, custom, openai, azure, off")
+        if provider not in {"system", "openai", "azure", CUSTOM_VOICE_PROVIDER, "emotivoice", "off"}:
+            raise ValueError("TTS provider must be one of: system, custom, openai, azure, emotivoice, off")
         tts_cfg["provider"] = provider
 
     if speech_tts_rate is not None:

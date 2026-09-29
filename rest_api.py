@@ -3324,7 +3324,10 @@ async def process_chat_message(
         try:
             from shared import voice_messaging as _voice_messaging
 
-            voice_artifacts = await _voice_messaging.build_voice_reply(response.response)
+            voice_artifacts = await _voice_messaging.build_voice_reply(
+                response.response,
+                context=voice_note_transcript or str(request.message or ""),
+            )
             if voice_artifacts and voice_artifacts.has_audio:
                 response.voice_reply_audio_path = voice_artifacts.audio_path
                 response.voice_reply_transcript = voice_note_transcript
@@ -4481,7 +4484,8 @@ async def process_chat_message(
             try:
                 from shared import voice_messaging as _voice_messaging
                 _voice_artifacts = await _voice_messaging.build_voice_reply(
-                    _voice_chat_response.response
+                    _voice_chat_response.response,
+                    context=voice_note_transcript or str(request.message or ""),
                 )
                 if _voice_artifacts and _voice_artifacts.has_audio:
                     _voice_chat_response.voice_reply_audio_path = _voice_artifacts.audio_path
