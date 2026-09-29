@@ -12,6 +12,7 @@ __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-a30e007a
 
 
 import logging
+import importlib.util
 import threading
 import time
 import uuid
@@ -420,6 +421,85 @@ class SpeechModelLibraryService:
         )
         worker.start()
         return job.to_dict()
+
+    def start_emotivoice_download_job(self) -> Dict[str, Any]:
+        from shared.emotivoice_tts import model_root
+
+        if any(importlib.util.find_spec(name) is None for name in ("modelscope", "huggingface_hub", "nltk", "tqdm")):
+            raise RuntimeError("EmotiVoice downloads need modelscope, huggingface_hub, nltk, and tqdm from the full voice profile")
+        model_name = "EmotiVoice models"
+        with self._jobs_lock:
+            for existing in self._jobs.values():
+                if existing.model_name == model_name and existing.status in {"queued", "running"}:
+                    return existing.to_dict()
+            job = SpeechDownloadJob(
+                job_id=uuid.uuid4().hex,
+                model_name=model_name,
+                repo_id="syq163/outputs + WangZeJun/simbert-base-chinese",
+                title=model_name,
+            )
+            self._jobs[job.job_id] = job
+        threading.Thread(
+            target=self._emotivoice_download_worker,
+            kwargs={"job_id": job.job_id, "model_root": model_root()},
+            name=f"autoyou-emotivoice-{job.job_id[:8]}",
+            daemon=True,
+        ).start()
+        return job.to_dict()
+
+    def _emotivoice_download_worker(self, *, job_id: str, model_root: Path) -> None:
+        self._update_job(job_id, status="running", message="Downloading EmotiVoice acoustic and style checkpoints...")
+        try:
+            from modelscope.hub.snapshot_download import snapshot_download as modelscope_snapshot_download
+
+            output_dir = model_root / "outputs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            modelscope_snapshot_download(
+                model_id="syq163/outputs",
+                local_dir=str(output_dir),
+                allow_patterns=[
+                    "prompt_tts_open_source_joint/ckpt/g_00140000",
+                    "style_encoder/ckpt/checkpoint_163431",
+                ],
+                max_workers=4,
+            )
+            self._update_job(job_id, message="Downloading the SimBERT style encoder...")
+            snapshot_download(
+                "WangZeJun/simbert-base-chinese",
+                local_dir=str(model_root / "simbert-base-chinese"),
+                allow_patterns=["config.json", "model.safetensors", "tokenizer_config.json", "tokenizer.json", "special_tokens_map.json", "vocab.txt"],
+                max_workers=4,
+                tqdm_class=self._make_tqdm_class(job_id),
+            )
+            self._update_job(job_id, message="Installing the local English pronunciation resources...")
+            import nltk
+
+            nltk_data = model_root / "nltk_data"
+            for resource in ("averaged_perceptron_tagger", "averaged_perceptron_tagger_eng", "cmudict"):
+                if not nltk.download(resource, download_dir=str(nltk_data), quiet=True):
+                    raise RuntimeError(f"Could not install the English pronunciation resource: {resource}")
+            from shared.emotivoice_tts import status as emotivoice_status
+
+            voice_status = emotivoice_status()
+            if not voice_status["models_ready"]:
+                raise RuntimeError("EmotiVoice checkpoint download is incomplete")
+            self._update_job(
+                job_id,
+                status="completed",
+                message="EmotiVoice models are installed locally",
+                progress=1.0,
+                local_path=str(model_root),
+                finished_at=_now_ts(),
+            )
+        except Exception as exc:
+            LOGGER.warning("Failed to install EmotiVoice models: %s", exc)
+            self._update_job(
+                job_id,
+                status="failed",
+                message="EmotiVoice model download failed",
+                error=str(exc),
+                finished_at=_now_ts(),
+            )
 
     def _download_worker(self, *, job_id: str) -> None:
         job = self._get_job(job_id)

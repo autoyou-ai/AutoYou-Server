@@ -79,6 +79,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "twine": "7.0.0",
         "stream2sentence": "1.0.0",
         "mcp": "1.26.0",
+        "nltk": "3.10.3",
         "h2": "4.3.0",
         "cognee": "1.2.2",
     }
@@ -112,6 +113,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "twine",
     ]
     assert installed["cognee"] == "1.2.2"
+    assert installed["nltk"] == "3.10.3"
     assert installed["opencv-python"] == "4.12.0.88"
     assert ["install", "--upgrade", "h2==4.4.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "instructor==1.15.1", "-c", str(constraints)] in calls

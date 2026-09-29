@@ -90,6 +90,10 @@ DEFAULT_SPEECH_CONFIG: Dict[str, Any] = {
             "voice": "en-US-AvaMultilingualNeural",
             "endpoint_id": "",
         },
+        "emotivoice": {
+            "speaker": "8051",
+            "conversation_emotion": True,
+        },
     },
     "stt": {
         "model": "tiny.en",
@@ -150,6 +154,16 @@ def normalize_speech_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             ).strip()
             normalized["tts"]["azure"]["endpoint_id"] = str(azure_cfg.get("endpoint_id") or "").strip()
 
+        emotivoice_cfg = tts.get("emotivoice")
+        if isinstance(emotivoice_cfg, dict):
+            normalized["tts"]["emotivoice"]["speaker"] = str(
+                emotivoice_cfg.get("speaker") or normalized["tts"]["emotivoice"]["speaker"]
+            ).strip()
+            conversation_emotion = emotivoice_cfg.get("conversation_emotion", True)
+            if isinstance(conversation_emotion, str):
+                conversation_emotion = conversation_emotion.strip().lower() not in {"0", "false", "no", "off"}
+            normalized["tts"]["emotivoice"]["conversation_emotion"] = bool(conversation_emotion)
+
     stt = config.get("stt")
     if isinstance(stt, dict):
         normalized["stt"]["model"] = str(stt.get("model") or normalized["stt"]["model"]).strip()
@@ -194,7 +208,7 @@ def normalize_speech_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if normalized["stt"]["device"] not in {"cpu", "cuda", "auto"}:
         normalized["stt"]["device"] = "cpu"
 
-    if normalized["tts"]["provider"] not in {"system", "openai", "azure", "custom", "off"}:
+    if normalized["tts"]["provider"] not in {"system", "openai", "azure", "custom", "emotivoice", "off"}:
         normalized["tts"]["provider"] = "system"
 
     if not normalized["tts"]["openai"]["response_format"]:

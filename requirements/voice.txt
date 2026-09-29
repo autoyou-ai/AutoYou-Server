@@ -17,6 +17,15 @@ huggingface_hub>=0.34.0,<2.0.0
 # Transformers 4.56.x caps huggingface-hub below 1.0; AutoYou's lock uses
 # Hugging Face Hub 1.x, so keep the supported runtime on the 5.x line.
 transformers>=5.12.1,<6
+numba>=0.65.1,<0.68
+g2p-en>=2.1.0,<3
+jieba>=0.42.1,<1
+pypinyin>=0.53.0,<1
+pypinyin-dict>=0.9.0,<1
+cn2an>=0.5.23,<1
+yacs==0.1.8
+modelscope>=1.40.1,<2
+nltk>=3.9.2,<4
 sentence-stream>=1.3.0
 webrtcvad-wheels==2.0.14
 halo==0.0.31

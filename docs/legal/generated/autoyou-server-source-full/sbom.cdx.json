@@ -32,6 +32,32 @@
       "licenses": [
         {
           "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "EmotiVoice inference source",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "vendored source; license included"
+        }
+      ],
+      "type": "library",
+      "version": "59f0f36de4db12825f4705dd4e0780d79dd6bb01"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "name": "Google API Terms"
           }
         }
@@ -951,6 +977,36 @@
       "licenses": [
         {
           "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "cn2an",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "cn2an>=0.5.23,<1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.5.23,<1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/cn2an",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "id": "BSD-3-Clause"
           }
         }
@@ -1306,6 +1362,36 @@
           }
         }
       ],
+      "name": "g2p-en",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "g2p-en>=2.1.0,<3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.1.0,<3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/g2p-en",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
       "name": "google-adk",
       "properties": [
         {
@@ -1534,6 +1620,36 @@
           }
         }
       ],
+      "name": "jieba",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "jieba>=0.42.1,<1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.42.1,<1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/jieba",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "name": "jiter",
       "properties": [
         {
@@ -1680,6 +1796,36 @@
       "licenses": [
         {
           "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "modelscope",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "modelscope>=1.40.1,<2"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.40.1,<2"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/modelscope",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "id": "MIT"
           }
         }
@@ -1704,6 +1850,66 @@
         }
       ],
       "purl": "pkg:pypi/mss",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "nltk",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "nltk>=3.9.2,<4"
+        },
+        {
+          "name": "specifier",
+          "value": ">=3.9.2,<4"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/nltk",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "numba",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "numba>=0.65.1,<0.68"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.65.1,<0.68"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/numba",
       "type": "library"
     },
     {
@@ -2226,6 +2432,66 @@
         }
       ],
       "purl": "pkg:pypi/pyotp",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pypinyin",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pypinyin>=0.53.0,<1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.53.0,<1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pypinyin",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "pypinyin-dict",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "pypinyin-dict>=0.9.0,<1"
+        },
+        {
+          "name": "specifier",
+          "value": ">=0.9.0,<1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/pypinyin-dict",
       "type": "library"
     },
     {
@@ -3381,6 +3647,33 @@
       "licenses": [
         {
           "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "yacs",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "yacs==0.1.8"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/voice.txt"
+        }
+      ],
+      "purl": "pkg:pypi/yacs@0.1.8",
+      "type": "library",
+      "version": "0.1.8"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "id": "Unlicense"
           }
         }
@@ -3455,7 +3748,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-28T16:42:03+00:00",
+    "timestamp": "2026-09-29T00:28:28+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3464,7 +3757,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:5ed9b639-e58f-4bcc-991c-dcf019a2165e",
+  "serialNumber": "urn:uuid:05444ba7-eed2-4288-8b5f-c2bc3c6d71aa",
   "specVersion": "1.5",
   "version": 1
 }

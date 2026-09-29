@@ -64,6 +64,7 @@ except Exception as exc:
         raise RuntimeError(f"Custom voice runtime is unavailable: {_CUSTOM_VOICE_IMPORT_ERROR}")
 
 from shared.speech_config import deepcopy_speech_config, normalize_speech_config
+from shared.emotivoice_tts import status as emotivoice_status, synthesize as synthesize_emotivoice
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json, write_secure_file
 
 _REALTIMESTT_IMPORT_ERROR: Optional[Exception] = None
@@ -901,6 +902,9 @@ def voice_runtime_available(settings: Dict[str, Any]) -> bool:
             and str(azure_cfg.get("speech_key") or "").strip()
             and str(azure_cfg.get("speech_region") or "").strip()
         )
+
+    if provider == "emotivoice":
+        return bool(emotivoice_status()["ready"])
 
     return False
 
@@ -2003,6 +2007,12 @@ class AudioManager:
             if not self.tts_available:
                 LOGGER.warning("Azure TTS selected but Speech SDK/key/region is unavailable")
             return
+        if provider == "emotivoice":
+            voice_status = emotivoice_status()
+            self.tts_available = bool(voice_status["ready"])
+            if not self.tts_available:
+                LOGGER.warning("EmotiVoice TTS is not ready: %s", voice_status)
+            return
         self.tts_available = False
         LOGGER.warning("Unknown TTS provider selected: %s", provider)
 
@@ -2868,7 +2878,7 @@ class AudioManager:
         status.pop("file_path", None)
         return status
 
-    def speak(self, text: str) -> bool:
+    def speak(self, text: str, *, context: str = "") -> bool:
         settings = self._current_settings()
         self._setup_tts(settings)
         if settings["tts"]["provider"] == "off":
@@ -2893,7 +2903,7 @@ class AudioManager:
             self.tts_track.stop_playback()
         threading.Thread(
             target=self._speak_thread,
-            args=(text, settings, generation),
+            args=(text, settings, generation, context),
             daemon=True,
             name="TTS-Synthesizer",
         ).start()
@@ -2904,6 +2914,7 @@ class AudioManager:
         text: str,
         *,
         output_path: Optional[str] = None,
+        context: str = "",
     ) -> str:
         """Synchronously synthesize text to an audio file and return its path.
 
@@ -2943,6 +2954,8 @@ class AudioManager:
             self._synthesize_openai_tts(tts_text, temp_path, settings)
         elif provider == "azure":
             self._synthesize_azure_tts(tts_text, temp_path, settings)
+        elif provider == "emotivoice":
+            synthesize_emotivoice(tts_text, temp_path, settings, context=context)
         else:
             raise RuntimeError(f"Unsupported TTS provider: {provider}")
 
@@ -2959,7 +2972,7 @@ class AudioManager:
             and not self._stop_tts_event.is_set()
         )
 
-    def _speak_thread(self, text: str, settings: Dict[str, Any], generation: int):
+    def _speak_thread(self, text: str, settings: Dict[str, Any], generation: int, context: str = ""):
         try:
             provider = settings["tts"]["provider"]
             temp_suffix = ".wav"
@@ -2991,6 +3004,8 @@ class AudioManager:
                 self._synthesize_openai_tts(tts_text, temp_path, settings)
             elif provider == "azure":
                 self._synthesize_azure_tts(tts_text, temp_path, settings)
+            elif provider == "emotivoice":
+                synthesize_emotivoice(tts_text, temp_path, settings, context=context or tts_text)
             else:
                 raise RuntimeError(f"Unsupported TTS provider: {provider}")
 

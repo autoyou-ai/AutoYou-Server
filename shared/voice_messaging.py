@@ -409,7 +409,7 @@ def _get_tts_manager() -> Any:
             )
         return _tts_manager
 
-def synthesize_voice_reply(text: str) -> Optional[str]:
+def synthesize_voice_reply(text: str, *, context: str = "") -> Optional[str]:
     """Synthesize ``text`` to a WAV file and return its path, or ``None`` when TTS is
     off/unavailable (caller then sends a text reply so the user is never left silent)."""
     cleaned = str(text or "").strip()
@@ -417,13 +417,13 @@ def synthesize_voice_reply(text: str) -> Optional[str]:
         return None
     try:
         manager = _get_tts_manager()
-        return manager.synthesize_to_file(cleaned)
+        return manager.synthesize_to_file(cleaned, context=context) if context else manager.synthesize_to_file(cleaned)
     except Exception as exc:
         LOGGER.warning("Voice reply synthesis unavailable: %s", exc)
         return None
 
-async def synthesize_voice_reply_async(text: str) -> Optional[str]:
-    return await asyncio.to_thread(synthesize_voice_reply, text)
+async def synthesize_voice_reply_async(text: str, *, context: str = "") -> Optional[str]:
+    return await asyncio.to_thread(synthesize_voice_reply, text, context=context)
 
 # ---------------------------------------------------------------------------
 # Transcode WAV -> OGG/Opus (for a real "voice note" bubble on WhatsApp/Telegram)
@@ -530,10 +530,10 @@ async def transcribe_attachment(
         if cleanup_materialized and os.path.basename(path).startswith(_TMP_PREFIX):
             cleanup_paths(path)
 
-async def build_voice_reply(reply_text: str) -> Optional[VoiceReplyArtifacts]:
+async def build_voice_reply(reply_text: str, *, context: str = "") -> Optional[VoiceReplyArtifacts]:
     """Synthesize ``reply_text`` to audio and transcode to OGG/Opus. Returns ``None``
     when TTS is unavailable (caller should send text)."""
-    wav = await synthesize_voice_reply_async(reply_text)
+    wav = await synthesize_voice_reply_async(reply_text, context=context)
     if not wav:
         return None
     ogg = await to_voice_note_ogg_async(wav)
