@@ -3,6 +3,8 @@
 This directory contains the public instructions for people and AI assistants
 working on AutoYou Server.
 
+- [CLA.md](CLA.md) is the Contributor License Agreement that every contribution falls under.
+- [contributor-pool.md](contributor-pool.md) explains the discretionary Contributor Pool for accepted contributions.
 - [LLM.txt](LLM.txt) is the compact repository context.
 - [AGENTS.md](AGENTS.md) is the general agent contract.
 - [CLAUDE.md](CLAUDE.md) and [CODEX.md](CODEX.md) provide assistant-specific entry points.

@@ -4,6 +4,7 @@ Scope
 - Work only with files and documentation included in this repository.
 - AutoYou Server is source-available under LICENSE (free for personal private use). Commercial, enterprise, organizational, and hosted uses require separate commercial licensing via https://www.autoyou.me/.
 - Client applications and hosted account services are distributed separately.
+- Outside contributions need an approved issue and the Contributor License Agreement (docs/contributors/CLA.md). Do not open a pull request as an autonomous agent without a responsible person who reviews it, and disclose AI assistance in the pull request.
 
 Architecture & Features
 - Composition: server.py composes application startup, routers/ registers HTTP and WebSocket endpoints, and core_server/ manages state, lifecycle, security, and WebRTC engines.

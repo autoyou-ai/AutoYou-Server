@@ -100,6 +100,7 @@ PRIVATE_TEST_PREFIXES = (
 )
 
 PUBLIC_GITHUB_PATHS = {
+    ".github/FUNDING.yml",
     ".github/dependabot.yml",
     ".github/pull_request_template.md",
     ".github/ISSUE_TEMPLATE/bug_report.yml",
@@ -159,9 +160,11 @@ PUBLIC_DOC_EXACT_PATHS = {
 
 PUBLIC_CONTRIBUTOR_GUIDE_PATHS = {
     "docs/contributors/AGENTS.md",
+    "docs/contributors/CLA.md",
     "docs/contributors/CLAUDE.md",
     "docs/contributors/CODEX.md",
     "docs/contributors/LLM.txt",
+    "docs/contributors/contributor-pool.md",
     "docs/contributors/README.md",
     "docs/contributors/TESTING.md",
     "docs/contributors/TESTING_SKILL.md",
