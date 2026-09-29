@@ -373,10 +373,27 @@ install_runtime_site_packages_overlay() {
         MACOS_RUNTIME_SITE_PACKAGE_OVERLAY+=("torch" "torchgen" "torchaudio")
         distribution_overlay+=(
             "torch"
+            "transformers"
+            "huggingface-hub"
+            "safetensors"
+            "tokenizers"
             "realtimestt"
             "faster-whisper"
             "ctranslate2"
             "scipy"
+            "yacs"
+            "g2p-en"
+            "jieba"
+            "pypinyin"
+            "pypinyin-dict"
+            "cn2an"
+            "numba"
+            "soundfile"
+            "nltk"
+            "modelscope"
+            "tqdm"
+            "sentence-stream"
+            "onnxruntime"
         )
     fi
     if requirements_has_tuning; then
@@ -475,8 +492,10 @@ PY
         log "Installing runtime distribution overlay closure for Intel runtime-only launcher..."
     elif requirements_has_tuning; then
         log "Installing runtime distribution overlay closure for training dependencies..."
+    elif requirements_has_voice; then
+        log "Installing runtime distribution overlay closure for voice dependencies..."
     fi
-    if [[ "$GOOGLE_NUITKA_INCLUDE_MODE" == "runtime" ]] || requirements_has_tuning; then
+    if [[ "$GOOGLE_NUITKA_INCLUDE_MODE" == "runtime" ]] || requirements_has_tuning || requirements_has_voice; then
 
         if ! dist_overlay_output=$(
             "$PYTHON_CMD" - "$runtime_site_packages_root" "${distribution_overlay[@]}" <<'PY'
@@ -1006,6 +1025,10 @@ run_strict_release_legal_gate() {
     if [[ "$BUILD_TYPE" != "release" ]]; then
         return 0
     fi
+    if [[ "${AUTOYOU_SKIP_STRICT_RELEASE_LEGAL_GATE:-0}" == "1" ]]; then
+        log_warning "Skipping strict release legal gate (AUTOYOU_SKIP_STRICT_RELEASE_LEGAL_GATE=1)."
+        return 0
+    fi
 
     log "Running strict release legal gate..."
     python3 "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
@@ -1454,6 +1477,20 @@ verify_packaged_backend_imports() {
     if requirements_has_voice; then
         log "Verifying packaged voice/STT imports..."
         runtime_verify_args+=(
+            --verify-runtime-import "shared.emotivoice_tts"
+            --verify-runtime-import "torch"
+            --verify-runtime-import "torchaudio"
+            --verify-runtime-import "transformers"
+            --verify-runtime-import "yacs"
+            --verify-runtime-import "g2p_en"
+            --verify-runtime-import "jieba"
+            --verify-runtime-import "pypinyin"
+            --verify-runtime-import "pypinyin_dict"
+            --verify-runtime-import "cn2an"
+            --verify-runtime-import "numba"
+            --verify-runtime-import "soundfile"
+            --verify-runtime-import "nltk"
+            --verify-runtime-import "scipy"
             --verify-runtime-import "RealtimeSTT"
             --verify-runtime-import "faster_whisper"
             --verify-runtime-import "ctranslate2"

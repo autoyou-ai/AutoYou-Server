@@ -6638,10 +6638,12 @@
             var modelsReady = Boolean(getByPath(emotivoice, "models_ready", false));
             var runtimeAvailable = Boolean(getByPath(emotivoice, "runtime_available", getByPath(emotivoice, "runtime_source_ready", true)));
             var dependencies = getByPath(emotivoice, "missing_dependencies", []);
+            var acceleration = getByPath(emotivoice, "acceleration", {});
+            var selectedDevice = getByPath(acceleration, "selected_device", "cpu");
             var statusNote = !runtimeAvailable
                 ? "EmotiVoice is not included in this build. Install a full voice/connector profile to enable it."
                 : (modelsReady && !dependencies.length
-                    ? "EmotiVoice checkpoints and runtime dependencies are ready on this server."
+                    ? "EmotiVoice checkpoints and runtime dependencies are ready on this server. Accelerator: " + selectedDevice + "."
                     : "Install the full voice profile and download the checkpoints once; restart the voice session after installation.");
             fields.push("<div class=\"ayu-note ayu-note-" + (runtimeAvailable && modelsReady && !dependencies.length ? "green" : "amber") + "\">" + escapeHtml(statusNote) + "</div>");
             fields.push(field("Voice speaker", select("speech.emotivoice_speaker", buildSimpleOptions(getByPath(emotivoice, "speaker_ids", []), getByPath(state.forms, "speech.emotivoice_speaker", "8051"))), "Choose a local EmotiVoice speaker ID."));

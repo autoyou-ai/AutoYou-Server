@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 import threading
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
 
@@ -25,6 +26,7 @@ __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-3a11462fdabfbe95a7c7048e"
 
 
 LOGGER = logging.getLogger(__name__)
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 _MODEL_LOCK = threading.Lock()
 _INFERENCE_LOCK = threading.Lock()  # ponytail: one model/device serializes requests; per-device queues if throughput matters
 _MODEL: tuple[Any, Any, Any, dict[str, int], dict[str, int], Any, Any] | None = None
@@ -32,6 +34,7 @@ _MODEL: tuple[Any, Any, Any, dict[str, int], dict[str, int], Any, Any] | None = 
 _RUNTIME_MODULES = (
     "torch", "transformers", "yacs", "g2p_en", "jieba", "pypinyin",
     "pypinyin_dict", "cn2an", "numba", "soundfile", "nltk",
+    "scipy",
 )
 _DOWNLOAD_MODULES = ("modelscope", "huggingface_hub", "tqdm")
 _EMOTION_WORDS = {
@@ -61,6 +64,63 @@ def conversation_emotion_prompt(context: str) -> str:
     }
     selected = max(matches, key=matches.get)
     return _EMOTION_PROMPTS[selected] if matches[selected] else "Neutral"
+
+
+def _torch_mps_available(torch_module: Any) -> bool:
+    try:
+        return bool(torch_module.backends.mps.is_available())
+    except (AttributeError, RuntimeError):
+        return False
+
+
+def _torch_cuda_available(torch_module: Any) -> bool:
+    try:
+        return bool(torch_module.cuda.is_available())
+    except (AttributeError, RuntimeError):
+        return False
+
+
+def _select_torch_device(torch_module: Any) -> tuple[Any, str]:
+    requested = str(os.getenv("AUTOYOU_EMOTIVOICE_DEVICE", "auto") or "auto").strip().casefold()
+    if requested not in {"auto", "cuda", "mps", "cpu"}:
+        requested = "auto"
+
+    if requested in {"auto", "cuda"} and _torch_cuda_available(torch_module):
+        return torch_module.device("cuda"), "cuda"
+    if requested in {"auto", "mps"} and _torch_mps_available(torch_module):
+        return torch_module.device("mps"), "mps"
+    return torch_module.device("cpu"), "cpu"
+
+
+@lru_cache(maxsize=1)
+def _acceleration_status() -> Dict[str, Any]:
+    if importlib.util.find_spec("torch") is None:
+        return {
+            "selected_device": "unavailable",
+            "torch_mps_available": False,
+            "torch_cuda_available": False,
+            "mlx_available": importlib.util.find_spec("mlx") is not None,
+            "mlx_supported": False,
+        }
+    try:
+        import torch
+    except Exception:
+        return {
+            "selected_device": "unavailable",
+            "torch_mps_available": False,
+            "torch_cuda_available": False,
+            "mlx_available": importlib.util.find_spec("mlx") is not None,
+            "mlx_supported": False,
+        }
+
+    _device, device_name = _select_torch_device(torch)
+    return {
+        "selected_device": device_name,
+        "torch_mps_available": _torch_mps_available(torch),
+        "torch_cuda_available": _torch_cuda_available(torch),
+        "mlx_available": importlib.util.find_spec("mlx") is not None,
+        "mlx_supported": False,
+    }
 
 
 def _runtime_file_exists(relative_path: str) -> bool:
@@ -134,6 +194,7 @@ def status() -> Dict[str, Any]:
         "runtime_available": runtime_available,
         "runtime_source_ready": runtime_available,
         "download_supported": all(importlib.util.find_spec(name) is not None for name in _DOWNLOAD_MODULES),
+        "acceleration": _acceleration_status(),
         "speaker_ids": speakers,
         "model_dir": str(root),
         "model_sources": ["syq163/outputs (ModelScope)", "WangZeJun/simbert-base-chinese (Hugging Face)"],
@@ -191,7 +252,7 @@ def _load_model():
         model_config_data.n_vocab = config.n_symbols
         model_config_data.n_speaker = config.speaker_n_labels
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device, _device_name = _select_torch_device(torch)
         style_encoder = StyleEncoder(config).to(device)
         style_checkpoint = torch.load(config.style_encoder_ckpt, map_location="cpu", weights_only=True)
         style_state = {key[7:]: value for key, value in style_checkpoint["model"].items() if key.startswith("module.")}

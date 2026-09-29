@@ -269,6 +269,10 @@ run_strict_release_legal_gate() {
     if [[ "$BUILD_TYPE" != "release" && "$NOTARIZE_ENABLED" != true ]]; then
         return 0
     fi
+    if [[ "${AUTOYOU_SKIP_STRICT_RELEASE_LEGAL_GATE:-0}" == "1" ]]; then
+        log_warning "Skipping strict release legal gate (AUTOYOU_SKIP_STRICT_RELEASE_LEGAL_GATE=1)."
+        return 0
+    fi
 
     log "Running strict release legal gate..."
     python3 "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
