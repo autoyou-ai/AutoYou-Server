@@ -156,7 +156,7 @@ legal gate, is in [CONTRIBUTING.md](CONTRIBUTING.md).
 The [server packaging workflows](servers/README.md) support local development
 and platform-specific compilation across Windows, macOS, and WSL (Linux).
 Official release workflows are standardized on the version declared in [VERSION](VERSION)
-(currently `8.0.8.0`) and are strictly authorization-gated via SignToROSS/OpenSign
+(currently `81.0.0`) and are strictly authorization-gated via SignToROSS/OpenSign
 at `https://sign.autoyou.me/` with OAuth build gating. Build authorization is
 granted when the authorized user OAuth account alone signs it. Do not remove, bypass,
 or weaken those controls, and do not present an unofficial build as an official
