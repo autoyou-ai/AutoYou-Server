@@ -837,12 +837,6 @@ function focusEditorField() {
       const length = target.value.length;
       target.setSelectionRange(length, length);
     }
-    const isMobile = window.matchMedia("(max-width: 768px)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    if (!isMobile) {
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-    } else {
-      target.scrollIntoView({ block: "nearest", behavior: "auto" });
-    }
   }, 60);
 }
 
@@ -1782,21 +1776,6 @@ document.getElementById("note-modal-content").addEventListener("submit", (event)
   } else {
     void saveActiveNote();
   }
-});
-
-document.getElementById("note-modal-content").addEventListener("focusin", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement) || !target.matches("input, textarea")) {
-    return;
-  }
-  window.setTimeout(() => {
-    const isMobile = window.matchMedia("(max-width: 768px)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    if (!isMobile) {
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-    } else {
-      target.scrollIntoView({ block: "nearest", behavior: "auto" });
-    }
-  }, 120);
 });
 
 document.getElementById("delete-confirm-backdrop").addEventListener("click", () => closeDeleteConfirm({ restoreFocus: true }));

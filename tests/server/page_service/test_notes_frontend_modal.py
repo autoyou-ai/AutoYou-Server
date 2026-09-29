@@ -43,3 +43,9 @@ def test_notes_frontend_renders_modal_detail_experience(monkeypatch):
     assert "overflow-wrap: anywhere;" in styles_response.text
     assert "env(safe-area-inset-bottom)" in styles_response.text
 
+    focus_editor = script_response.text.split("function focusEditorField()", 1)[1].split(
+        "function editorFormMarkup", 1
+    )[0]
+    assert "scrollIntoView" not in focus_editor
+    assert 'note-modal-content").addEventListener("focusin"' not in script_response.text
+

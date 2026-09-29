@@ -2557,8 +2557,11 @@ async def _try_process_direct_reminder(
 def _build_ai_agent_run_state_delta(
     metadata: Any,
     session_control_state: Optional[Dict[str, Any]] = None,
+    authenticated_actor_role: Optional[str] = None,
 ) -> Dict[str, Any]:
     state_delta = _build_autoyou_state_delta_from_metadata(metadata)
+    role = str(authenticated_actor_role or "").strip().lower()
+    state_delta["autoyou_authenticated_actor_role"] = role if role in {"viewer", "editor", "admin"} else ""
     if isinstance(session_control_state, dict):
         state_delta[SESSION_CONTROL_STATE_KEY] = dict(session_control_state)
     return state_delta
@@ -3243,6 +3246,7 @@ async def process_chat_message(
     ai_agent_url: str = None,
     on_chunk: Optional[Callable[[Dict[str, Any]], Any]] = None,
     on_media_reply: Optional[Callable[[List[Dict[str, Any]]], Any]] = None,
+    authenticated_actor_role: Optional[str] = None,
 ) -> ChatResponse:
     """
     Process a chat message using the AI Agent Server and return the response.
@@ -3939,7 +3943,9 @@ async def process_chat_message(
                 ai_agent_url,
                 context=payload_context,
                 metadata=request.metadata,
-                state_delta=_build_ai_agent_run_state_delta(request.metadata, primed_control_state),
+                state_delta=_build_ai_agent_run_state_delta(
+                    request.metadata, primed_control_state, authenticated_actor_role
+                ),
                 on_chunk=on_chunk,
             )
             if agent_response_payload is None and await _recover_local_ai_agent_server_if_possible(
@@ -3986,7 +3992,9 @@ async def process_chat_message(
                     ai_agent_url,
                     context=payload_context,
                     metadata=request.metadata,
-                    state_delta=_build_ai_agent_run_state_delta(request.metadata, primed_control_state),
+                    state_delta=_build_ai_agent_run_state_delta(
+                        request.metadata, primed_control_state, authenticated_actor_role
+                    ),
                     on_chunk=on_chunk,
                 )
             if not _is_missing_ai_agent_session_response(agent_response_payload):
@@ -4048,7 +4056,9 @@ async def process_chat_message(
                 ai_agent_url,
                 context=payload_context,
                 metadata=request.metadata,
-                state_delta=_build_ai_agent_run_state_delta(request.metadata, primed_control_state),
+                state_delta=_build_ai_agent_run_state_delta(
+                    request.metadata, primed_control_state, authenticated_actor_role
+                ),
                 on_chunk=on_chunk,
             )
             if _is_missing_ai_agent_session_response(agent_response_payload):

@@ -503,6 +503,7 @@ body[data-can-manage="0"] .requires-manage {
 }
 
 .brand-tile {
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: 76px;
@@ -512,6 +513,50 @@ body[data-can-manage="0"] .requires-manage {
   background: var(--brand-tile);
   color: #ffffff;
   box-shadow: 0 6px 16px rgba(16, 24, 40, 0.16);
+}
+
+.profile-photo-tools {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.profile-photo-button {
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.profile-photo-button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.profile-photo-edit {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 16px;
+}
+
+.profile-photo-remove {
+  min-height: 44px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .brand-tile .ic {

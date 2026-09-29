@@ -23,9 +23,11 @@ from .page_tool import PageTool
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from shared.session_execution import create_text_llm_response
+from shared.remote_access_policy import normalize_remote_access_role
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+_AUTHENTICATED_ACTOR_ROLE_STATE_KEY = "autoyou_authenticated_actor_role"
 
 # Initialize default PageTool (DB-backed by default). This can be replaced in create_page_agent.
 page_tool = PageTool()
@@ -371,6 +373,44 @@ def list_tags(item_id: int) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Exception listing tags: {e}"}
 
+def _page_photo_actor_role(tool_context: Optional[Any]) -> str:
+    state = getattr(tool_context, "state", None)
+    try:
+        return normalize_remote_access_role(state.get(_AUTHENTICATED_ACTOR_ROLE_STATE_KEY))
+    except Exception:
+        return "viewer"
+
+def get_server_display_photo(tool_context: Optional[Any] = None) -> dict:
+    """Read the current server-owned AutoYou Page photo."""
+    result = page_tool.get_server_display_photo()
+    if result.get("success"):
+        result["message"] = (
+            "The server has a display photo."
+            if result.get("has_photo")
+            else "The server is using the AutoYou mark as its display photo."
+        )
+    return result
+
+def update_server_display_photo(path: str, tool_context: Optional[Any] = None) -> dict:
+    """Set the server-owned Page photo from an image attachment path."""
+    if _page_photo_actor_role(tool_context) not in {"editor", "admin"}:
+        return {"status": "error", "message": "Only an editor or admin can change the server display photo."}
+    result = page_tool.update_server_display_photo_from_path(path)
+    if result.get("success"):
+        return {"status": "success", "message": "Updated the server display photo."}
+    message = result.get("detail") or result.get("error") or "Could not update the server display photo."
+    return {"status": "error", "message": message}
+
+def delete_server_display_photo(tool_context: Optional[Any] = None) -> dict:
+    """Remove the server-owned Page photo; admin access is required."""
+    if _page_photo_actor_role(tool_context) != "admin":
+        return {"status": "error", "message": "Only an admin can remove the server display photo."}
+    result = page_tool.delete_server_display_photo()
+    if result.get("success"):
+        return {"status": "success", "message": "Removed the server display photo; the AutoYou mark is showing again."}
+    message = result.get("detail") or result.get("error") or "Could not remove the server display photo."
+    return {"status": "error", "message": message}
+
 def create_page_agent(model_config, base_url: Optional[str] = None, db_path: Optional[str] = None) -> Agent:
     """Create the Page Agent with provided model config.
 
@@ -393,6 +433,9 @@ def create_page_agent(model_config, base_url: Optional[str] = None, db_path: Opt
         add_tag,
         delete_tag,
         list_tags,
+        get_server_display_photo,
+        update_server_display_photo,
+        delete_server_display_photo,
         get_current_datetime,
     ]
 

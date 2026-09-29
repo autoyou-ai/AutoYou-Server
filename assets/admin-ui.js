@@ -3905,10 +3905,10 @@
             return '<button type="button" class="' + (chat.filter === filter ? "active" : "") + '" data-action="chat-filter:' + filter + '">' + label + '</button>';
         }).join("");
         var messageMarkup = chat.loading && !chat.messages.length
-            ? '<div class="ayu-chat-empty"><div class="ayu-spinner"></div><h2>Opening conversation</h2><p>Loading the server-owned history.</p></div>'
+            ? '<div class="ayu-chat-empty"><div class="ayu-spinner"></div><span>Opening conversation…</span></div>'
             : (chat.messages.length
                 ? chat.messages.map(chatMessageMarkup).join("")
-                : '<div class="ayu-chat-empty"><div class="ayu-chat-empty-icon">✦</div><h2>What would you like to do?</h2><p>Ask AutoYou anything, attach media, leave a voice note, or open a live voice call.</p><div class="ayu-chat-suggestions"><button type="button" data-action="chat-suggestion:Help me get started">Help me get started</button><button type="button" data-action="chat-suggestion:Summarize my server status">Summarize my server status</button></div></div>');
+                : "");
         var composerAttachmentMarkup = chat.attachments.map(function (attachment, index) { return chatAttachmentMarkup(attachment, index); }).join("");
         var recordingMarkup = chat.recording
             ? '<div class="ayu-chat-recording"><span class="ayu-chat-recording-dot"></span><strong>' + (chat.recording.phase === "stopping" ? "Saving voice note…" : "Recording voice note") + '</strong><span>' + Math.max(0, Math.round((Date.now() - chat.recording.startedAt) / 1000)) + 's</span></div>'
@@ -7695,11 +7695,6 @@
                 state.chat.attachments.splice(attachmentIndex, 1);
                 renderApp();
             }
-            return;
-        }
-        if (action.indexOf("chat-suggestion:") === 0) {
-            state.chat.composer = action.slice("chat-suggestion:".length);
-            renderApp();
             return;
         }
         if (action === "modal-copy") {

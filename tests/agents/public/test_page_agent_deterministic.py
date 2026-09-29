@@ -25,6 +25,7 @@ def _llm_request(text: str):
 class _FakePageTool:
     def __init__(self):
         self.urls = []
+        self.photo_calls = []
 
     def add_link(self, *, url, title=None, source=None, item_type=None):
         self.urls.append(url)
@@ -33,6 +34,18 @@ class _FakePageTool:
             "item": {"id": 42, "url": url},
             "message": f"Added {url} to your AutoYou page feed.",
         }
+
+    def update_server_display_photo_from_path(self, path):
+        self.photo_calls.append(("update", path))
+        return {"success": True}
+
+    def delete_server_display_photo(self):
+        self.photo_calls.append(("delete",))
+        return {"success": True}
+
+    def get_server_display_photo(self):
+        self.photo_calls.append(("get",))
+        return {"success": True, "has_photo": True}
 
     def query_feed(
         self,
@@ -102,3 +115,18 @@ async def test_page_agent_deterministically_queries_page_feed(monkeypatch):
     assert "The AutoYou Page feed has 1 item." in text
     assert "Synthetic page item" in text
     assert response.custom_metadata["route_reason"] == "deterministic_page_feed_query"
+
+
+def test_page_photo_agent_tools_enforce_authenticated_roles(monkeypatch):
+    fake_tool = _FakePageTool()
+    monkeypatch.setattr(page_agent, "page_tool", fake_tool)
+    viewer = SimpleNamespace(state={})
+    editor = SimpleNamespace(state={"autoyou_authenticated_actor_role": "editor"})
+    admin = SimpleNamespace(state={"autoyou_authenticated_actor_role": "admin"})
+
+    assert page_agent.get_server_display_photo(viewer)["has_photo"] is True
+    assert page_agent.update_server_display_photo("/tmp/avatar.png", viewer)["status"] == "error"
+    assert page_agent.update_server_display_photo("/tmp/avatar.png", editor)["status"] == "success"
+    assert page_agent.delete_server_display_photo(editor)["status"] == "error"
+    assert page_agent.delete_server_display_photo(admin)["status"] == "success"
+    assert fake_tool.photo_calls == [("get",), ("update", "/tmp/avatar.png"), ("delete",)]

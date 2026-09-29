@@ -49,7 +49,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.remote_access_policy import (
+    REMOTE_BROWSER_HEADER,
     normalize_remote_access_role,
+    remote_access_denial_message,
     remote_http_request_allowed,
 )
 from shared.media_messaging import is_adts_aac
@@ -325,8 +327,8 @@ class PageFeedService:
         return {"name": name, "avatar_url": photo_url or mark_url, "mark_url": mark_url, "has_photo": bool(photo_url)}
 
     def _viewer_access(self, request: Request) -> Dict[str, Any]:
-        """What this browser may do; mirrors remote_browser_write_guard exactly."""
-        if not self._is_webrtc_browser_request(request):
+        """What this browser may do under the shared remote role policy."""
+        if not self._is_remote_browser_request(request):
             return {"role": "owner", "remote": False, "can_add": True, "can_edit": True, "can_delete": True, "can_manage": True}
         role = normalize_remote_access_role(request.headers.get("X-AutoYou-Remote-Access-Role"))
         return {
@@ -875,11 +877,28 @@ class PageFeedService:
             )
         return '<span class="cover-fallback" aria-hidden="true"></span>'
 
-    def _render_avatar(self, profile: Dict[str, Any]) -> str:
+    def _render_avatar(self, profile: Dict[str, Any], access: Dict[str, Any]) -> str:
         variant = "has-photo" if profile.get("has_photo") else "is-mark"
+        image = (
+            f'<img class="avatar-img" src="{self._esc(profile.get("avatar_url"))}" '
+            'alt="" decoding="async">'
+        )
+        if not access.get("can_edit"):
+            return f'<span class="brand-tile {variant}">{image}</span>'
+        label = "Change Page photo" if profile.get("has_photo") else "Upload Page photo"
+        remove = (
+            '<button id="profile-photo-remove" class="profile-photo-remove" type="button"'
+            + ("" if profile.get("has_photo") else " hidden")
+            + ">Remove photo</button>"
+            if access.get("can_delete")
+            else ""
+        )
         return (
-            f'<span class="brand-tile {variant}"><img class="avatar-img" src="{self._esc(profile.get("avatar_url"))}" '
-            'alt="" decoding="async"></span>'
+            '<div class="profile-photo-tools">'
+            f'<button id="profile-photo-select" class="brand-tile profile-photo-button {variant}" type="button" '
+            f'aria-label="{label}" title="{label}">{image}<span class="profile-photo-edit" aria-hidden="true">✎</span></button>'
+            '<input id="profile-photo-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>'
+            f'{remove}</div>'
         )
 
     def _render_home(
@@ -934,7 +953,7 @@ class PageFeedService:
             "__INITIAL_UI_THEME__": esc(theme),
             "__PAGE_TITLE__": esc(f"{owner_name} · AutoYou Page" if owner_name else "AutoYou Page"),
             "__FAVICON_URL__": esc(profile.get("mark_url")),
-            "__PROFILE_AVATAR__": self._render_avatar(profile),
+            "__PROFILE_AVATAR__": self._render_avatar(profile, access),
             "__PROFILE_NAME__": esc(owner_name or "AutoYou Page"),
             "__PROFILE_TAGLINE__": esc("AutoYou Page · saved links, media and files" if owner_name else "Saved links, media and files."),
             "__PAGE_CSS_URL__": f"./assets/page.css?v={_asset_version(PAGE_ASSETS['page.css'][0])}",
@@ -1448,9 +1467,10 @@ class PageFeedService:
         return stored_path, safe_name, safe_mime, "file"
 
     @staticmethod
-    def _is_webrtc_browser_request(request: Request) -> bool:
+    def _is_remote_browser_request(request: Request) -> bool:
         return bool(
-            request.headers.get("X-AutoYou-WebRTC-Session-Id")
+            request.headers.get(REMOTE_BROWSER_HEADER)
+            or request.headers.get("X-AutoYou-WebRTC-Session-Id")
             or request.headers.get("X-AutoYou-WebRTC-Owner-Key")
             or request.headers.get("X-AutoYou-Agent-Frontend")
         )
@@ -1465,7 +1485,8 @@ class PageFeedService:
         if normalized_path == "/api/ui/theme" and normalized_method not in {"GET", "HEAD"}:
             return True
         if normalized_method in {"POST", "PUT", "PATCH", "DELETE", "OPTIONS"} and (
-            normalized_path == "/api/feed"
+            normalized_path == "/api/profile/avatar"
+            or normalized_path == "/api/feed"
             or normalized_path.startswith("/api/feed/")
             or normalized_path == "/api/blob"
             or normalized_path.startswith("/api/item/")
@@ -1477,7 +1498,7 @@ class PageFeedService:
         """Register the page-feed routes on the given FastAPI app."""
         @app.middleware("http")
         async def remote_browser_write_guard(request: Request, call_next):
-            if self._is_webrtc_browser_request(request) and self._is_remote_write_path(
+            if self._is_remote_browser_request(request) and self._is_remote_write_path(
                 request.method,
                 request.url.path,
             ):
@@ -1486,7 +1507,11 @@ class PageFeedService:
                     return JSONResponse(
                         {
                             "success": False,
-                            "error": REMOTE_WRITE_DENIAL_MESSAGE,
+                            "error": (
+                                remote_access_denial_message(role, request.method, request.url.path)
+                                if request.url.path == "/api/profile/avatar"
+                                else REMOTE_WRITE_DENIAL_MESSAGE
+                            ),
                             "remote_access_role": role,
                         },
                         status_code=403,
@@ -2239,6 +2264,55 @@ class PageFeedService:
                     "Cache-Control": "private, max-age=86400" if versioned else "no-cache",
                     "X-Content-Type-Options": "nosniff",
                 },
+            )
+
+        async def save_owner_profile_avatar(request: Request) -> JSONResponse:
+            server_module = sys.modules.get("server")
+            save = getattr(server_module, "_save_admin_profile_image", None)
+            if not callable(save):
+                raise HTTPException(status_code=503, detail="Server profile photo storage is unavailable")
+            try:
+                form = await request.form()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="Invalid image upload form") from exc
+            uploaded = form.get("image")
+            if uploaded is None or not hasattr(uploaded, "read"):
+                raise HTTPException(status_code=400, detail="Profile image file is required")
+            try:
+                payload = await uploaded.read(64 * 1024 + 1)
+            finally:
+                await uploaded.close()
+            try:
+                image_path = await asyncio.to_thread(save, payload)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            webrtc = getattr(server_module, "WEBRTC", None)
+            if webrtc is not None:
+                await webrtc.broadcast_server_profile()
+            return JSONResponse(
+                {
+                    "success": True,
+                    "has_photo": True,
+                    "avatar_url": f"./api/profile/avatar?v={image_path.stat().st_mtime_ns}",
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+
+        app.add_api_route("/api/profile/avatar", save_owner_profile_avatar, methods=["POST", "PUT", "PATCH"])
+
+        @app.delete("/api/profile/avatar")
+        async def delete_owner_profile_avatar() -> JSONResponse:
+            server_module = sys.modules.get("server")
+            delete = getattr(server_module, "_delete_admin_profile_image_files", None)
+            if not callable(delete):
+                raise HTTPException(status_code=503, detail="Server profile photo storage is unavailable")
+            await asyncio.to_thread(delete)
+            webrtc = getattr(server_module, "WEBRTC", None)
+            if webrtc is not None:
+                await webrtc.broadcast_server_profile()
+            return JSONResponse(
+                {"success": True, "has_photo": False},
+                headers={"Cache-Control": "no-store"},
             )
 
         @app.get("/assets/{asset_name}")

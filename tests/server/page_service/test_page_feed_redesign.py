@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
 from page_feed_db import PageFeedDB
+from shared.remote_access_policy import REMOTE_BROWSER_HEADER
 
 VIEWER = {"X-AutoYou-WebRTC-Session-Id": "synthetic-session", "X-AutoYou-Remote-Access-Role": "viewer"}
 EDITOR = {"X-AutoYou-WebRTC-Session-Id": "synthetic-session", "X-AutoYou-Remote-Access-Role": "editor"}
@@ -233,7 +234,7 @@ def test_page_profile_uses_the_admin_photo_and_server_name(feed, tmp_path, monke
 
     assert "<title>AutoYouRocks · AutoYou Page</title>" in html
     assert '<h2 id="hero-title">AutoYouRocks</h2>' in html
-    assert '<span class="brand-tile has-photo">' in html
+    assert '<button id="profile-photo-select" class="brand-tile profile-photo-button has-photo"' in html
     assert (avatar.status_code, avatar.content, avatar.headers["content-type"]) == (200, PNG_BYTES, "image/png")
     assert avatar.headers["cache-control"] == "private, max-age=86400"
     assert viewer_avatar.status_code == 200
@@ -252,11 +253,74 @@ def test_page_profile_falls_back_to_the_autoyou_mark(feed, monkeypatch):
     mark_url = re.search(r'class="avatar-img" src="\./(assets/autoyou-mark\.svg\?v=[0-9a-f]{12})"', html).group(1)
     mark = client.get(mark_url)
 
-    assert '<span class="brand-tile is-mark">' in html
+    assert '<button id="profile-photo-select" class="brand-tile profile-photo-button is-mark"' in html
     assert '<h2 id="hero-title">AutoYou Page</h2>' in html
     assert f'<link rel="icon" type="image/svg+xml" href="./{mark_url}">' in html
     assert mark.status_code == 200 and mark.headers["content-type"].startswith("image/svg+xml")
     assert client.get("/api/profile/avatar").status_code == 404
+
+
+def test_page_profile_photo_write_uses_remote_role_policy(feed, tmp_path, monkeypatch):
+    _, client = feed
+    photo = tmp_path / "server-photo.png"
+
+    def save_profile_image(payload):
+        if not payload.startswith(PNG_BYTES[:8]):
+            raise ValueError("Profile image must be a PNG, JPEG, or WebP file.")
+        photo.write_bytes(payload)
+        return photo
+
+    def delete_profile_image():
+        photo.unlink(missing_ok=True)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "server",
+        SimpleNamespace(
+            _get_admin_profile_image_path=lambda: photo if photo.is_file() else None,
+            _save_admin_profile_image=save_profile_image,
+            _delete_admin_profile_image_files=delete_profile_image,
+            WEBRTC=None,
+        ),
+    )
+    admin = {**EDITOR, "X-AutoYou-Remote-Access-Role": "admin"}
+    image = ("server-photo.png", PNG_BYTES, "image/png")
+    home_network_viewer = {
+        REMOTE_BROWSER_HEADER: "home_network",
+        "X-AutoYou-Remote-Access-Role": "viewer",
+    }
+
+    assert client.get("/api/profile/avatar", headers=VIEWER).status_code == 404
+    assert client.post("/api/profile/avatar", headers=VIEWER, files={"image": image}).status_code == 403
+    assert client.put("/api/profile/avatar", headers=VIEWER, files={"image": image}).status_code == 403
+    assert client.patch("/api/profile/avatar", headers=VIEWER, files={"image": image}).status_code == 403
+    assert client.post("/api/profile/avatar", headers=home_network_viewer, files={"image": image}).status_code == 403
+    assert client.post("/api/profile/avatar", headers=EDITOR, files={"image": image}).status_code == 200
+    assert client.put("/api/profile/avatar", headers=EDITOR, files={"image": image}).status_code == 200
+    assert client.patch("/api/profile/avatar", headers=EDITOR, files={"image": image}).status_code == 200
+    assert client.get("/api/profile/avatar", headers=VIEWER).content == PNG_BYTES
+    assert client.delete("/api/profile/avatar", headers=EDITOR).status_code == 403
+    assert client.delete("/api/profile/avatar", headers=admin).json() == {"success": True, "has_photo": False}
+    assert client.get("/api/profile/avatar", headers=VIEWER).status_code == 404
+
+
+def test_page_profile_photo_controls_follow_browser_role(feed):
+    _, client = feed
+
+    editor = client.get("/", headers=EDITOR).text
+    viewer = client.get("/", headers=VIEWER).text
+    admin = client.get("/", headers={**EDITOR, "X-AutoYou-Remote-Access-Role": "admin"}).text
+    script_path = re.search(r'src="\./(assets/page\.js\?v=[0-9a-f]{12})"', editor).group(1)
+    script = client.get(f"/{script_path}").text
+
+    assert 'id="profile-photo-select"' in editor
+    assert 'accept="image/png,image/jpeg,image/webp"' in editor
+    assert 'id="profile-photo-remove"' not in editor
+    assert 'id="profile-photo-select"' not in viewer
+    assert 'id="profile-photo-select"' in admin
+    assert 'id="profile-photo-remove" class="profile-photo-remove" type="button" hidden' in admin
+    assert '$("profile-photo-select").addEventListener("click"' in script
+    assert '$("profile-photo-input").addEventListener("change"' in script
 
 
 def test_page_ships_the_full_screen_feed_and_photo_viewer(feed):
