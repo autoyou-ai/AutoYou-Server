@@ -4,7 +4,7 @@
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-N-license-7adc370c7e9ed02c6d9daded
 
-"""Small, offline routing hints. Scores never grant permissions or execute tools."""
+"""Small, offline capability-routing hints. Never generate or grade answers."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
@@ -164,4 +164,4 @@ def routing_status() -> dict:
     router = _load(str(model_directory()))
     return {"available": router is not None, "model": "all-MiniLM-L6-v2", "license": "Apache-2.0",
             "offline": True, "generates_replies": False, "max_tokens": 256,
-            "detail": "Ready" if router else "Prepare the verified routing model and install requirements/local-llm.txt."}
+            "detail": "Ready for capability routing only; answers and factual checks use the active language model." if router else "Prepare the verified routing model and install requirements/local-llm.txt."}

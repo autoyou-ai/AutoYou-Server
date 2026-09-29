@@ -72,4 +72,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=SOURCE)
     prepare(parser.parse_args().output)
-    print("Verified local routing model is ready (23 MB, Apache-2.0).")
+    print("Verified local capability-routing helper is ready (23 MB, Apache-2.0; not used for answers).")

@@ -349,10 +349,10 @@ def get_litellm_behavior_kwargs() -> Dict[str, Any]:
     Priority (highest wins):
     1. Advanced per-field overrides stored in config["model_behavior"] (non-None values)
     2. Mode preset params  (e.g. accurate → temperature=0.1)
-    3. Empty dict - no overrides applied, LiteLlm falls back to its own defaults
+    3. Explicit none mode - no overrides applied, LiteLlm falls back to its own defaults
     """
     cfg = _load_model_behavior_config()
-    mode = str(cfg.get("mode", "none")).lower()
+    mode = str(cfg.get("mode", "accurate")).lower()
     params = dict(_build_mode_presets().get(mode, {}))
 
     # Advanced per-field overrides
