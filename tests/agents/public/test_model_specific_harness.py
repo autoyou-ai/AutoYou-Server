@@ -48,6 +48,7 @@ def test_harness_profile_expands_gemma4_family_and_keeps_other_small_models_comp
         "ollama_chat/gemma4:26b",
         "ollama_chat/qwen3:32b",
         "ollama_chat/qwen3.6:27b",
+        "ollama_chat/qwen3.8:27b",
         "ollama_chat/qwen3.6:35b",
     )
 
@@ -82,6 +83,7 @@ def test_root_tool_routing_is_capacity_based_not_callback_harness(monkeypatch):
     assert model_config.model_uses_compact_root_tool_routing("ollama_chat/ministral-3:14b") is False
     assert model_config.model_uses_compact_root_tool_routing("ollama_chat/gemma4:26b") is False
     assert model_config.model_uses_compact_root_tool_routing("ollama_chat/qwen3:32b") is False
+    assert model_config.model_uses_compact_root_tool_routing("ollama_chat/qwen3.8:27b") is False
 
     # The e4b exception is narrow. Other models retain the prior behavior when
     # an operator explicitly selects expanded callbacks.

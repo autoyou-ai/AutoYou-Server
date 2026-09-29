@@ -54,7 +54,14 @@
         info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 16v-4M12 8h.01",
         bolt: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
         copy: "M8 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8l-4-4H8zM14 4v4h4",
-        qr: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 15h2v2h-2zM18 14h2v6h-2zM14 18h2v2h-2z"
+        qr: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 15h2v2h-2zM18 14h2v6h-2zM14 18h2v2h-2z",
+        minus: "M5 12h14",
+        camera: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z",
+        arrowUp: "M12 19V5M5 12l7-7 7 7",
+        arrowDown: "M12 5v14M19 12l-7 7-7-7",
+        arrowLeft: "M19 12H5M12 19l-7-7 7-7",
+        arrowRight: "M5 12h14M12 5l7 7-7 7",
+        center: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 6a4 4 0 100 8 4 4 0 000-8z"
     };
 
     var root = document.getElementById("autoyou-admin-root");
@@ -1746,6 +1753,22 @@
         setByPath(state.forms, "modelBehavior.thinking_level", getByPath(payload, "thinking_level", "") || "");
     }
 
+    function applySelectedOllamaModel(payload, fallbackModel) {
+        var selectedModel = String(getByPath(payload, "selected_model", getByPath(payload, "model", fallbackModel || "")) || "").trim();
+        if (!selectedModel) {
+            return;
+        }
+        if (state.forms) {
+            setByPath(state.forms, "aiProvider.ollama_model", selectedModel);
+        }
+        if (state.bootstrap) {
+            setByPath(state.bootstrap, "config.ollama.model", selectedModel);
+        }
+        if (state.aiLibrary) {
+            setByPath(state.aiLibrary, "local.selected_model", selectedModel);
+        }
+    }
+
     function buildModelBehaviorPayload() {
         var source = getByPath(state.forms, "modelBehavior", {});
         var mode = String(source.mode || getByPath(state.aiLibrary, "behavior.mode", "accurate") || "accurate");
@@ -2794,6 +2817,7 @@
                 frontend_requires_proxy: true,
                 frontend_route_mode: "path_proxy",
                 frontend_stack: "fastapi_static",
+                backend_stack: "python_fastapi",
                 install_after_publish: false,
                 jailbreak_prompt: ""
             },
@@ -3063,6 +3087,7 @@
             state.aiLibrary.behavior = results[0];
             syncModelBehaviorFormFromResponse(results[0]);
             state.aiLibrary.local = results[1];
+            applySelectedOllamaModel(results[1], "");
             state.aiLibrary.downloads = results[2];
             state.aiLibrary.openclawStatus = results[3].ok ? results[3].payload : { running: false, error: results[3].error || "OpenClaw gateway not reachable." };
             state.aiLibrary.hermesStatus = results[4].ok ? results[4].payload : { running: false, error: results[4].error || "Hermes gateway not reachable." };
@@ -3168,7 +3193,8 @@
             state.aiLibrary.local = await requestJson("/api/model-library/local");
             if (modelAvailableLocally(pending.model)) {
                 state.aiLibrary.pendingSelection = null;
-                await postJson("/api/model-library/select", { model: pending.model });
+                var selectionResult = await postJson("/api/model-library/select", { model: pending.model });
+                applySelectedOllamaModel(selectionResult, pending.model);
                 await refreshBootstrap();
                 await ensureAiData(true);
                 setNotice("success", "Model downloaded and selected.");
@@ -4046,6 +4072,7 @@
         setByPath(state.forms, "agentWorkbench.frontend_requires_proxy", getByPath(manifestSource, "requires_proxy_registration", true) !== false);
         setByPath(state.forms, "agentWorkbench.frontend_route_mode", getByPath(selected, "frontend_control.route_mode", getByPath(manifestSource, "route_mode", "path_proxy")));
         setByPath(state.forms, "agentWorkbench.frontend_stack", getByPath(manifestSource, "frontend_stack", "fastapi_static"));
+        setByPath(state.forms, "agentWorkbench.backend_stack", getByPath(manifestSource, "backend_stack", "python_fastapi"));
     }
 
     function applyAgentWorkbenchResponse(response, successMessage) {
@@ -4250,12 +4277,13 @@
         });
     }
 
-    function agentWebsiteStackOptions() {
+    function agentWebsiteFrontendStackOptions() {
         var choices = getByPath(state.bootstrap, "metadata.agent_website_stacks", []);
         if (!Array.isArray(choices) || !choices.length) {
             choices = [
-                { id: "fastapi_static", label: "Simple website starter", description: "Small local website that works without extra frontend setup or an AI model." },
-                { id: "react_typescript", label: "React + TypeScript", description: "Starter for richer browser apps, served by AutoYou after the build step." }
+                { id: "fastapi_static", label: "HTML + JavaScript", description: "Small static frontend with no package install or build step." },
+                { id: "react_typescript", label: "React + TypeScript", description: "Vite starter for richer browser apps, served after the build step." },
+                { id: "angular_typescript", label: "Angular + TypeScript", description: "Angular CLI starter, served after the build step." }
             ];
         }
         return choices.map(function (item) {
@@ -4266,7 +4294,25 @@
         });
     }
 
-    function agentWebsiteStackDescription(stack) {
+    function agentWebsiteBackendStackOptions() {
+        var choices = getByPath(state.bootstrap, "metadata.agent_website_backend_stacks", []);
+        if (!Array.isArray(choices) || !choices.length) {
+            choices = [
+                { id: "python_fastapi", label: "Python + FastAPI", description: "AutoYou-native backend with the shared per-agent session boundary." },
+                { id: "node_typescript", label: "Node + TypeScript", description: "Small Node HTTP server compiled from TypeScript." },
+                { id: "go_http", label: "Go HTTP", description: "Small net/http backend for lightweight compiled deployments." },
+                { id: "rust_axum", label: "Rust + Axum", description: "Axum/Tokio backend for Rust service deployments." }
+            ];
+        }
+        return choices.map(function (item) {
+            return {
+                value: item.id || item.value,
+                label: item.label || item.short_label || prettyLabel(item.id || item.value || "")
+            };
+        });
+    }
+
+    function agentWebsiteFrontendStackDescription(stack) {
         var current = String(stack || "fastapi_static");
         var choices = getByPath(state.bootstrap, "metadata.agent_website_stacks", []);
         var match = Array.isArray(choices)
@@ -4275,9 +4321,28 @@
         if (match && match.description) {
             return match.description;
         }
-        return current === "react_typescript"
-            ? "Creates a React starter. AutoYou serves the built site from the same website route."
-            : "Recommended. Creates a small website that works without extra frontend setup or an AI model.";
+        if (current === "react_typescript") {
+            return "Creates a React starter. AutoYou serves the built site from the same website route.";
+        }
+        if (current === "angular_typescript") {
+            return "Creates an Angular starter. Build before serving it from the website route.";
+        }
+        return "Recommended. Creates a small website that works without extra frontend setup or an AI model.";
+    }
+
+    function agentWebsiteBackendStackDescription(stack) {
+        var current = String(stack || "python_fastapi");
+        var choices = getByPath(state.bootstrap, "metadata.agent_website_backend_stacks", []);
+        var match = Array.isArray(choices)
+            ? choices.find(function (item) { return String(item.id || item.value || "") === current; })
+            : null;
+        if (match && match.description) {
+            return match.description;
+        }
+        if (current === "go_http") return "Creates a Go net/http backend starter.";
+        if (current === "rust_axum") return "Creates a Rust Axum backend starter.";
+        if (current === "node_typescript") return "Creates a Node backend compiled from TypeScript.";
+        return "Recommended. Uses AutoYou's Python/FastAPI website boundary.";
     }
 
     function agentWebsiteRouteModeLabel(mode) {
@@ -4436,11 +4501,15 @@
         var draftExists = Boolean(getByPath(detail, "draft.exists", false));
         var websiteFiles = getByPath(detail, "draft.website_files", []);
         var selectedStack = getByPath(state.forms, "agentWorkbench.frontend_stack", getByPath(liveFrontend, "frontend_stack", "fastapi_static"));
-        var selectedStackLabel = agentWebsiteStackOptions().reduce(function (label, item) {
-            return String(item.value) === String(selectedStack) ? item.label : label;
-        }, selectedStack === "react_typescript" ? "React + TypeScript" : "Simple website starter");
+        var selectedBackendStack = getByPath(state.forms, "agentWorkbench.backend_stack", getByPath(liveFrontend, "backend_stack", "python_fastapi"));
         var liveStack = getByPath(liveFrontend, "frontend_stack", "fastapi_static");
-        var liveStackLabel = liveStack === "react_typescript" ? "React + TypeScript" : "Simple website starter";
+        var liveBackendStack = getByPath(liveFrontend, "backend_stack", "python_fastapi");
+        var liveStackLabel = agentWebsiteFrontendStackOptions().reduce(function (label, item) {
+            return String(item.value) === String(liveStack) ? item.label : label;
+        }, liveStack === "react_typescript" ? "React + TypeScript" : (liveStack === "angular_typescript" ? "Angular + TypeScript" : "HTML + JavaScript"));
+        var liveBackendStackLabel = agentWebsiteBackendStackOptions().reduce(function (label, item) {
+            return String(item.value) === String(liveBackendStack) ? item.label : label;
+        }, liveBackendStack === "go_http" ? "Go HTTP" : (liveBackendStack === "rust_axum" ? "Rust + Axum" : (liveBackendStack === "node_typescript" ? "Node + TypeScript" : "Python + FastAPI")));
         var liveActions = [];
         if (frontendControl) {
             liveActions.push(button(frontendControl.enabled ? "Disable website" : "Enable website", "agent-frontend:" + escapeHtml(detail.agent_name), frontendControl.enabled ? "ghost" : "primary", "bolt", "sm", detail.runtime_blocked ? "disabled" : ""));
@@ -4456,7 +4525,8 @@
             : "";
         var draftIntro = "<div class=\"ayu-note ayu-note-blue\"><strong>Website builder</strong><p style=\"margin:6px 0 0\">Choose a starter, add a title, and create the website files. This step does not need an AI model.</p></div>";
         var draftBody = draftIntro
-            + field("Website type", select("agentWorkbench.frontend_stack", agentWebsiteStackOptions(), draftExists ? "" : "disabled"), agentWebsiteStackDescription(selectedStack))
+            + field("Backend", select("agentWorkbench.backend_stack", agentWebsiteBackendStackOptions(), draftExists ? "" : "disabled"), agentWebsiteBackendStackDescription(selectedBackendStack))
+            + field("Frontend", select("agentWorkbench.frontend_stack", agentWebsiteFrontendStackOptions(), draftExists ? "" : "disabled"), agentWebsiteFrontendStackDescription(selectedStack))
             + field("Website purpose", input("agentWorkbench.frontend_ui_purpose", { placeholder: "What should this website help people do?", extraAttrs: draftExists ? "" : "disabled" }))
             + field("App title", input("agentWorkbench.frontend_app_title", { placeholder: "Agent website", extraAttrs: draftExists ? "" : "disabled" }))
             + field("Local website port", input("agentWorkbench.frontend_local_port", { type: "number", extraAttrs: draftExists ? "" : "disabled" }), draftExists ? "AutoYou uses this port when opening the website locally." : "Clone or create a draft before scaffolding website assets.")
@@ -4472,6 +4542,7 @@
         return "<div class=\"ayu-note\">" + escapeHtml(getByPath(detail, "website_agent_installed", false) ? "Website Builder is installed. You can create simple website files here, then publish when ready." : "Website Builder is not installed, but you can still scaffold and edit draft website assets here.") + "</div><div class=\"ayu-grid-2\">" + panel("Live website", "Current route and launch status.", (liveFrontend ? renderStatusRows([
             { label: "Proxy path", value: liveFrontend.proxy_path || liveFrontend.launch_path || liveFrontend.entry_path || "/", mono: true },
             { label: "Open URL", value: agentFrontendLaunchUrl(detail) || liveFrontend.open_url || liveFrontend.launch_url || liveFrontend.local_url || "", mono: true },
+            { label: "Backend", value: liveBackendStackLabel },
             { label: "Website type", value: liveStackLabel },
             { label: "Route mode", value: getByPath(frontendControl, "route_mode_label", agentWebsiteRouteModeLabel(getByPath(frontendControl, "route_mode", ""))) },
             { label: "Control", value: getByPath(frontendControl, "label", getByPath(frontendControl, "kind", "Website control")) }
@@ -5445,6 +5516,13 @@
             return "<button type=\"button\" class=\"ayu-tab" + (section.variable === selectedVariable ? " active" : "") + "\" data-action=\"instructions-section:" + escapeHtml(section.variable) + "\">" + escapeHtml(section.label) + "</button>";
         }).join("") + "</div><div>" + field(activeSection.label, textarea("agentWorkbench.section_" + activeSection.variable, { rows: 11 }), activeSection.description || "") + "<div class=\"ayu-inline-actions\">" + button("Save section builder", "instructions-save-sections", "primary", "save") + button("Reload prompt", "instructions-reload", "secondary", "refresh") + button("Revert to fallback", "instructions-revert", "danger", "trash") + "</div></div></div>" : "<div class=\"ayu-empty\">Prompt sections are unavailable. Switch to raw prompt mode.</div>";
         var rawEditor = field("Raw AGENT_INSTRUCTION", textarea("agentWorkbench.raw_instructions", { rows: 12, extraClass: "ayu-mono" }), getByPath(instructionPayload, "read_only_notice", "Edit the live root prompt directly.")) + "<div class=\"ayu-inline-actions\">" + button("Save raw prompt", "instructions-save-raw", "primary", "save") + button("Reload", "instructions-reload", "secondary", "refresh") + button("Revert to fallback", "instructions-revert", "danger", "trash") + button("Start runtime", "service:ai:start", "green", "play", "sm") + button("Stop runtime", "service:ai:stop", "secondary", "stop", "sm") + button("Restart runtime", "service:ai:restart", "ghost", "refresh", "sm") + "</div>";
+        var builderSuite = getByPath(listingPayload, "builder_suite", {});
+        var builderSuiteInstalled = Boolean(getByPath(builderSuite, "installed", false));
+        var builderSuiteModel = getByPath(builderSuite, "recommended_ollama_model", "qwen3.8:27b");
+        var builderSuiteNote = "<div class=\"ayu-note\">" + escapeHtml(builderSuiteInstalled ? "Agent Builder, Coding Agent, and Website Builder are installed. Recommended local Ollama model for this workflow: " + builderSuiteModel + "." : "Agent Builder, Coding Agent, and Website Builder can be installed together. Recommended local Ollama model for this workflow: " + builderSuiteModel + ".") + "</div>";
+        var builderSuiteAction = builderSuiteInstalled
+            ? button("Builder suite installed", "agent-install-builder-suite", "green", "check", "sm", "disabled aria-disabled=\"true\"")
+            : button("Install builder suite", "agent-install-builder-suite", "primary", "plus", "sm");
 
         var selectedHasWebsite = Boolean(selectedDetail && (getByPath(selectedDetail, "has_frontend", false) || getByPath(selectedDetail, "frontend", null) || getByPath(selectedDetail, "frontend_manifest", null)));
         var selectedBadges = selectedDetail ? [
@@ -5519,7 +5597,7 @@
 
         var promptMarkup = renderAgentPromptRuntimeControl(instructionPayload) + "<div class=\"ayu-tabs\"><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "sections" ? " active" : "") + "\" data-action=\"instructions-mode:sections\">Section builder</button><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "raw" ? " active" : "") + "\" data-action=\"instructions-mode:raw\">Raw prompt</button></div>" + (state.instructions.loading ? "<div class=\"ayu-empty\">Loading prompt instructions...</div>" : (state.instructions.mode === "sections" ? sectionEditor : rawEditor));
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + "</div>";
     }
 
     function renderPageScreen() {
@@ -6638,13 +6716,16 @@
             var modelsReady = Boolean(getByPath(emotivoice, "models_ready", false));
             var runtimeAvailable = Boolean(getByPath(emotivoice, "runtime_available", getByPath(emotivoice, "runtime_source_ready", true)));
             var dependencies = getByPath(emotivoice, "missing_dependencies", []);
+            var downloadSupported = Boolean(getByPath(emotivoice, "download_supported", false));
             var acceleration = getByPath(emotivoice, "acceleration", {});
             var selectedDevice = getByPath(acceleration, "selected_device", "cpu");
             var statusNote = !runtimeAvailable
-                ? "EmotiVoice is not included in this build. Install a full voice/connector profile to enable it."
+                ? "The compiled EmotiVoice runtime is not included in this server build. Install a full voice build (connector-full or training-full on Windows), then download its model checkpoints here."
+                : (!modelsReady && !downloadSupported
+                    ? "The compiled EmotiVoice runtime is installed, but model-download packages are missing. Install a full voice profile to enable downloads."
                 : (modelsReady && !dependencies.length
                     ? "EmotiVoice checkpoints and runtime dependencies are ready on this server. Accelerator: " + selectedDevice + "."
-                    : "Install the full voice profile and download the checkpoints once; restart the voice session after installation.");
+                    : "The compiled runtime is installed. Download the checkpoints once, then restart the voice session."));
             fields.push("<div class=\"ayu-note ayu-note-" + (runtimeAvailable && modelsReady && !dependencies.length ? "green" : "amber") + "\">" + escapeHtml(statusNote) + "</div>");
             fields.push(field("Voice speaker", select("speech.emotivoice_speaker", buildSimpleOptions(getByPath(emotivoice, "speaker_ids", []), getByPath(state.forms, "speech.emotivoice_speaker", "8051"))), "Choose a local EmotiVoice speaker ID."));
             fields.push(checkbox("speech.emotivoice_conversation_emotion", "Use emotion from this conversation", "AutoYou reads the current user transcript and reply transiently to choose an expressive style."));
@@ -7975,7 +8056,9 @@
         }
         if (action.indexOf("ai-select-local:") === 0 || action.indexOf("ai-select:") === 0) {
             var selectedReference = element ? element.getAttribute("data-model") || element.getAttribute("data-reference") : "";
-            await postJson("/api/model-library/select", { model: selectedReference || action.split(":").slice(1).join(":") });
+            var selectedModel = selectedReference || action.split(":").slice(1).join(":");
+            var selectedResult = await postJson("/api/model-library/select", { model: selectedModel });
+            applySelectedOllamaModel(selectedResult, selectedModel);
             await refreshBootstrap("Model selection updated.");
             await ensureAiData(true);
             return;
@@ -7999,7 +8082,8 @@
             var selectModel = element ? (element.getAttribute("data-model") || element.getAttribute("data-reference") || "") : "";
             var alreadyInstalled = element && element.getAttribute("data-installed") === "1";
             if (alreadyInstalled) {
-                await postJson("/api/model-library/select", { model: selectModel });
+                var detailSelectionResult = await postJson("/api/model-library/select", { model: selectModel });
+                applySelectedOllamaModel(detailSelectionResult, selectModel);
                 await refreshBootstrap("Model selection updated.");
                 await ensureAiData(true);
                 return;
@@ -8046,6 +8130,14 @@
             state.selectedAgentName = installName;
             applyAgentWorkbenchResponse(await postJson("/api/agents/install", { agent_name: installName }));
             await ensureAgentWorkbenchDetail(true, true);
+            return;
+        }
+        if (action === "agent-install-builder-suite") {
+            applyAgentWorkbenchResponse(await postJson("/api/agents/install-builder-suite", { restart_ai: true }), "Builder suite installed.");
+            await refreshBootstrap("Builder suite installed.");
+            if (state.selectedAgentName) {
+                await ensureAgentWorkbenchDetail(true, true);
+            }
             return;
         }
         if (action.indexOf("agent-uninstall:") === 0) {
@@ -8182,7 +8274,8 @@
                 ui_purpose: getByPath(state.forms, "agentWorkbench.frontend_ui_purpose", ""),
                 app_title: getByPath(state.forms, "agentWorkbench.frontend_app_title", ""),
                 local_port: getByPath(state.forms, "agentWorkbench.frontend_local_port", 8094),
-                frontend_stack: getByPath(state.forms, "agentWorkbench.frontend_stack", "fastapi_static")
+                frontend_stack: getByPath(state.forms, "agentWorkbench.frontend_stack", "fastapi_static"),
+                backend_stack: getByPath(state.forms, "agentWorkbench.backend_stack", "python_fastapi")
             }), "Draft website scaffold created.");
             return;
         }
@@ -8193,7 +8286,8 @@
                 entry_path: getByPath(state.forms, "agentWorkbench.frontend_entry_path", "/"),
                 recommended_port: getByPath(state.forms, "agentWorkbench.frontend_recommended_port", ""),
                 requires_proxy_registration: getByPath(state.forms, "agentWorkbench.frontend_requires_proxy", true),
-                frontend_stack: getByPath(state.forms, "agentWorkbench.frontend_stack", "fastapi_static")
+                frontend_stack: getByPath(state.forms, "agentWorkbench.frontend_stack", "fastapi_static"),
+                backend_stack: getByPath(state.forms, "agentWorkbench.backend_stack", "python_fastapi")
             }), "Draft website details saved.");
             return;
         }
@@ -9149,6 +9243,7 @@
             "page.newWebsite.websocket_enabled",
             "page.agentWebsitesSecurity.disable_otp",
             "agentWorkbench.frontend_stack",
+            "agentWorkbench.backend_stack",
             "security.mode",
             "speech.tts_provider",
             "videoCall.audio_microphone",

@@ -426,9 +426,14 @@ class SpeechModelLibraryService:
         return job.to_dict()
 
     def start_emotivoice_download_job(self) -> Dict[str, Any]:
-        from shared.emotivoice_tts import model_root
+        from shared.emotivoice_tts import model_root, status
 
-        if any(importlib.util.find_spec(name) is None for name in ("modelscope", "huggingface_hub", "nltk", "tqdm")):
+        voice_status = status()
+        if not voice_status["runtime_available"]:
+            raise RuntimeError(
+                "EmotiVoice is not included in this server build; install a full voice/connector profile first"
+            )
+        if not voice_status["download_supported"]:
             raise RuntimeError("EmotiVoice downloads need modelscope, huggingface_hub, nltk, and tqdm from the full voice profile")
         model_name = "EmotiVoice models"
         with self._jobs_lock:

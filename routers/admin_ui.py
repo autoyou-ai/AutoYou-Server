@@ -89,6 +89,147 @@ def register_routes(
             return auth_response
         return await server._serve_admin_profile_image_file()
 
+    @admin_app.get("/api/admin/profile-image")
+    async def admin_ui_get_profile_image(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        image_path = server._get_admin_profile_image_path()
+        image_bytes = image_path.read_bytes() if image_path is not None and image_path.is_file() else b""
+        if len(image_bytes) > server._ADMIN_PROFILE_IMAGE_MAX_BYTES:
+            image_bytes = b""
+        import base64
+        return server._json_response_no_store({
+            "profile_user_id": server._get_stable_server_id(),
+            "has_photo": bool(image_bytes),
+            "avatar_url": server._get_admin_profile_image_url() or "",
+            "mime_type": server._get_admin_profile_image_media_type(image_path) if image_path and image_bytes else "",
+            "data_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else "",
+        })
+
+    @admin_app.post("/api/admin/profile-image")
+    async def admin_ui_upload_profile_image(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+
+        uploaded = None
+        try:
+            form = await request.form()
+            uploaded = form.get("image")
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid upload form."})
+
+        if uploaded is None or not hasattr(uploaded, "read"):
+            return JSONResponse(status_code=400, content={"success": False, "error": "Profile image file is required."})
+
+        try:
+            image_payload = await uploaded.read(20 * 1024 * 1024)
+            server._save_admin_profile_image(image_payload)
+            if server.WEBRTC is not None:
+                await server.WEBRTC.broadcast_server_profile()
+            payload = await server._build_admin_ui_bootstrap_payload()
+            return server._json_response_no_store(payload)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_upload_profile_image failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+        finally:
+            close_method = getattr(uploaded, "close", None)
+            if callable(close_method):
+                close_result = close_method()
+                if server.asyncio.iscoroutine(close_result):
+                    await close_result
+
+    @admin_app.delete("/api/admin/profile-image")
+    async def admin_ui_delete_profile_image(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+
+        try:
+            server._delete_admin_profile_image_files()
+            if server.WEBRTC is not None:
+                await server.WEBRTC.broadcast_server_profile()
+            payload = await server._build_admin_ui_bootstrap_payload()
+            return server._json_response_no_store(payload)
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.get("/api/profile/avatar")
+    async def page_agent_get_avatar(request: Request):
+        image_path = server._get_admin_profile_image_path()
+        if image_path is None or not image_path.is_file():
+            return JSONResponse(status_code=404, content={"error": "No profile photo"})
+        try:
+            image_bytes = image_path.read_bytes()
+        except OSError:
+            return JSONResponse(status_code=404, content={"error": "No profile photo"})
+        media_type = server._get_admin_profile_image_media_type(image_path)
+        return Response(
+            content=image_bytes,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=86400" if request.query_params.get("v") else "no-cache",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @admin_app.api_route("/api/profile/avatar", methods=["POST", "PUT", "PATCH"])
+    async def page_agent_save_avatar(request: Request):
+        uploaded = None
+        try:
+            form = await request.form()
+            uploaded = form.get("image")
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid image upload form."})
+
+        if uploaded is None or not hasattr(uploaded, "read"):
+            return JSONResponse(status_code=400, content={"success": False, "error": "Profile image file is required."})
+
+        try:
+            image_payload = await uploaded.read(20 * 1024 * 1024)
+            image_path = server._save_admin_profile_image(image_payload)
+            if server.WEBRTC is not None:
+                await server.WEBRTC.broadcast_server_profile()
+            import time
+            try:
+                version = int(image_path.stat().st_mtime_ns)
+            except OSError:
+                version = int(time.time() * 1_000_000_000)
+            return JSONResponse(
+                {
+                    "success": True,
+                    "has_photo": True,
+                    "avatar_url": f"./api/profile/avatar?v={version}",
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("page_agent_save_avatar failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+        finally:
+            close_method = getattr(uploaded, "close", None)
+            if callable(close_method):
+                close_result = close_method()
+                if server.asyncio.iscoroutine(close_result):
+                    await close_result
+
+    @admin_app.delete("/api/profile/avatar")
+    async def page_agent_delete_avatar():
+        try:
+            server._delete_admin_profile_image_files()
+            if server.WEBRTC is not None:
+                await server.WEBRTC.broadcast_server_profile()
+            return JSONResponse({"success": True, "has_photo": False}, headers={"Cache-Control": "no-store"})
+        except Exception as exc:
+            server.LOGGER.error("page_agent_delete_avatar failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
     @admin_app.get("/LICENSE", response_class=PlainTextResponse)
     @auth_app.get("/LICENSE", response_class=PlainTextResponse)
     async def get_license_file():
@@ -1876,6 +2017,12 @@ def register_routes(
         "admin_favicon_asset": admin_favicon_asset,
         "admin_apple_touch_icon_asset": admin_apple_touch_icon_asset,
         "admin_profile_image_asset": admin_profile_image_asset,
+        "admin_ui_get_profile_image": admin_ui_get_profile_image,
+        "admin_ui_upload_profile_image": admin_ui_upload_profile_image,
+        "admin_ui_delete_profile_image": admin_ui_delete_profile_image,
+        "page_agent_get_avatar": page_agent_get_avatar,
+        "page_agent_save_avatar": page_agent_save_avatar,
+        "page_agent_delete_avatar": page_agent_delete_avatar,
         "get_license_file": get_license_file,
         "get_notice_file": get_notice_file,
         "get_third_party_notices_file": get_third_party_notices_file,

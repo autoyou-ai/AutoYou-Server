@@ -367,13 +367,23 @@ def register_routes(
                     {
                         "success": False,
                         "model": model_name,
+                        "selected_model": model_name,
+                        "provider": cfg["ai_provider"]["provider"],
                         "restarted_ai": False,
                         "error": f"Model was saved, but the AI Agent Server did not restart: {exc}",
                     },
                     status_code=503,
                 )
 
-        return JSONResponse({"success": True, "model": model_name, "restarted_ai": restarted})
+        return JSONResponse(
+            {
+                "success": True,
+                "model": model_name,
+                "selected_model": model_name,
+                "provider": cfg["ai_provider"]["provider"],
+                "restarted_ai": restarted,
+            }
+        )
 
     @admin_app.post("/api/rtc/parse")
     async def admin_parse_rtc_bundle(request: Request):

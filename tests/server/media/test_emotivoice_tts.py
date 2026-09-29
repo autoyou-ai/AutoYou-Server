@@ -14,6 +14,8 @@ import importlib.machinery
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-47b5cf1b72a2d49e2cf81dcb"
@@ -22,6 +24,7 @@ __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-47b5cf1b72a2d49e2cf81dc
 ensure_repo_on_path()
 
 from shared import audio_manager, emotivoice_tts
+from shared.admin_speech_library import SpeechModelLibraryService
 from shared.audio_manager import AudioManager
 
 
@@ -134,6 +137,33 @@ def test_compiled_emotivoice_extensions_are_detected(monkeypatch, tmp_path):
     assert result["runtime_source_ready"] is True
 
 
+def test_emotivoice_download_refuses_build_without_compiled_runtime(monkeypatch, tmp_path):
+    model_root = tmp_path / "models" / "emotivoice"
+    monkeypatch.setattr(emotivoice_tts, "model_root", lambda: model_root)
+    monkeypatch.setattr(emotivoice_tts, "status", lambda: {
+        "runtime_available": False,
+        "download_supported": True,
+    })
+
+    with pytest.raises(RuntimeError, match="not included in this server build"):
+        SpeechModelLibraryService().start_emotivoice_download_job()
+
+    assert not model_root.exists()
+
+
+def test_emotivoice_download_support_requires_nltk(monkeypatch, tmp_path):
+    monkeypatch.setattr(emotivoice_tts, "vendor_root", lambda: tmp_path / "vendor")
+    monkeypatch.setattr(emotivoice_tts, "model_root", lambda: tmp_path / "models")
+    monkeypatch.setattr(emotivoice_tts, "_acceleration_status", lambda: {})
+    monkeypatch.setattr(
+        emotivoice_tts.importlib.util,
+        "find_spec",
+        lambda name: None if name == "nltk" else object(),
+    )
+
+    assert emotivoice_tts.status()["download_supported"] is False
+
+
 def test_admin_emotivoice_download_shows_consent_and_target_path():
     admin_ui = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
     source = admin_ui.read_text(encoding="utf-8")
@@ -143,6 +173,15 @@ def test_admin_emotivoice_download_shows_consent_and_target_path():
     assert "window.confirm(emotivoiceConsent)" in excerpt
     assert "emotivoiceModelDir" in excerpt
     assert "administrator-initiated" in excerpt
+
+
+def test_admin_emotivoice_status_explains_compiled_release_profile():
+    admin_ui = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
+    source = admin_ui.read_text(encoding="utf-8")
+
+    assert "compiled EmotiVoice runtime is not included" in source
+    assert "connector-full or training-full on Windows" in source
+    assert "download its model checkpoints here" in source
 
 
 def test_emotivoice_model_status_requires_all_managed_english_g2p_resources(monkeypatch, tmp_path):

@@ -45,10 +45,13 @@ from .frontend_manifest import (
     write_frontend_manifest,
 )
 from .website_scaffold import (
+    DEFAULT_BACKEND_STACK,
     DEFAULT_FRONTEND_STACK,
+    backend_stack_label,
     build_website_template_context,
     frontend_stack_label,
     iter_template_outputs,
+    normalize_backend_stack,
     normalize_frontend_stack,
 )
 
@@ -805,9 +808,12 @@ def _select_frontend_escaper(template_name: str):
         return _escape_frontend_markdown
     if (
         lower.endswith(".json")
+        or lower.endswith(".go")
         or lower.endswith(".js")
         or lower.endswith(".jsx")
         or lower.endswith(".mjs")
+        or lower.endswith(".rs")
+        or lower.endswith(".toml")
         or lower.endswith(".ts")
         or lower.endswith(".tsx")
     ):
@@ -837,12 +843,14 @@ def scaffold_frontend_draft(
     local_port: int,
     app_title: Optional[str] = None,
     frontend_stack: str = DEFAULT_FRONTEND_STACK,
+    backend_stack: str = DEFAULT_BACKEND_STACK,
     agents_root: Optional[Path] = None,
     app_name: str = "AutoYou",
     anchor: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     normalized = _normalize_agent_name(agent_name)
     stack = normalize_frontend_stack(frontend_stack)
+    backend = normalize_backend_stack(backend_stack)
     draft_dir = get_agent_draft_dir(normalized, agents_root=agents_root, app_name=app_name, anchor=anchor)
     if not draft_dir.is_dir():
         raise FileNotFoundError(f"No workspace draft exists for '{normalized}'.")
@@ -865,11 +873,12 @@ def scaffold_frontend_draft(
         proxy_path=f"/agent/{normalized}/",
         package_name=package_name,
         frontend_stack=stack,
+        backend_stack=backend,
     )
 
     created_files: list[str] = []
     skipped_files: list[str] = []
-    for template_name, output_relative_path in iter_template_outputs(stack):
+    for template_name, output_relative_path in iter_template_outputs(stack, backend):
         output_path = website_root / output_relative_path
         if output_path.exists():
             skipped_files.append(str(output_path.resolve()))
@@ -885,6 +894,7 @@ def scaffold_frontend_draft(
         recommended_port=local_port,
         requires_proxy_registration=True,
         frontend_stack=stack,
+        backend_stack=backend,
     )
     manifest_path = write_frontend_manifest(draft_dir, manifest)
     created_files.append(str(manifest_path.resolve()))
@@ -901,6 +911,8 @@ def scaffold_frontend_draft(
             "description": purpose,
             "frontend_stack": stack,
             "frontend_stack_label": frontend_stack_label(stack),
+            "backend_stack": backend,
+            "backend_stack_label": backend_stack_label(backend),
             "created_files": created_files,
             "skipped_files": skipped_files,
         },
@@ -915,6 +927,8 @@ def scaffold_frontend_draft(
         "manifest_path": str(manifest_path.resolve()),
         "frontend_stack": stack,
         "frontend_stack_label": frontend_stack_label(stack),
+        "backend_stack": backend,
+        "backend_stack_label": backend_stack_label(backend),
         "created_files": created_files,
         "skipped_files": skipped_files,
         "metadata": metadata,
@@ -930,6 +944,7 @@ def save_draft_frontend_manifest(
     recommended_port: Optional[int] = None,
     requires_proxy_registration: bool = True,
     frontend_stack: Optional[str] = None,
+    backend_stack: Optional[str] = None,
     manifest: Optional[Dict[str, Any]] = None,
     agents_root: Optional[Path] = None,
     app_name: str = "AutoYou",
@@ -951,11 +966,17 @@ def save_draft_frontend_manifest(
             requires_proxy_registration,
         )
         frontend_stack = manifest.get("frontend_stack", frontend_stack)
+        backend_stack = manifest.get("backend_stack", backend_stack)
 
     stack = normalize_frontend_stack(
         frontend_stack
         if frontend_stack not in (None, "")
         else existing_manifest.get("frontend_stack", DEFAULT_FRONTEND_STACK)
+    )
+    backend = normalize_backend_stack(
+        backend_stack
+        if backend_stack not in (None, "")
+        else existing_manifest.get("backend_stack", DEFAULT_BACKEND_STACK)
     )
     manifest_title = (
         str(title)
@@ -975,6 +996,7 @@ def save_draft_frontend_manifest(
         recommended_port=recommended_port,
         requires_proxy_registration=requires_proxy_registration,
         frontend_stack=stack,
+        backend_stack=backend,
     )
     if existing_manifest.get("direct_forward_port") not in (None, ""):
         manifest["direct_forward_port"] = existing_manifest.get("direct_forward_port")
@@ -993,6 +1015,8 @@ def save_draft_frontend_manifest(
             "requires_proxy_registration": bool(requires_proxy_registration),
             "frontend_stack": stack,
             "frontend_stack_label": frontend_stack_label(stack),
+            "backend_stack": backend,
+            "backend_stack_label": backend_stack_label(backend),
         },
         agents_root=agents_root,
         app_name=app_name,
@@ -1004,6 +1028,7 @@ def save_draft_frontend_manifest(
         "manifest_path": str(manifest_path.resolve()),
         "manifest": manifest,
         "frontend_stack": stack,
+        "backend_stack": backend,
         "metadata": metadata,
     }
 

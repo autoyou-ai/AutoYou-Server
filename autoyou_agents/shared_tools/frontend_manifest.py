@@ -18,7 +18,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from .website_scaffold import DEFAULT_FRONTEND_STACK, normalize_frontend_stack
+from .website_scaffold import (
+    DEFAULT_BACKEND_STACK,
+    DEFAULT_FRONTEND_STACK,
+    normalize_backend_stack,
+    normalize_frontend_stack,
+)
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-6881e0bbc8d9d66f3d117bb5"
 
@@ -80,6 +85,7 @@ def build_frontend_manifest(
     auth_default: str = "inherit",
     shared_session_eligible: bool = True,
     bypass_global_otp: bool = False,
+    backend_stack: str = DEFAULT_BACKEND_STACK,
 ) -> Dict[str, Any]:
     return {
         "agent_name": str(agent_name).strip(),
@@ -91,6 +97,7 @@ def build_frontend_manifest(
         "websocket_enabled": bool(websocket_enabled),
         "default": bool(default),
         "frontend_stack": normalize_frontend_stack(frontend_stack),
+        "backend_stack": normalize_backend_stack(backend_stack),
         # Declared default OTP posture for this agent website ("open" / "gated"
         # / "inherit"). Read by scheduler_mission_control._get_agent_security_settings()
         # as the fallback when no explicit per-agent admin config override exists.
@@ -166,6 +173,7 @@ def _normalize_frontend_manifest_payload(
         # this website as the browser home.
         "default": bool(payload.get("default", False)),
         "frontend_stack": normalize_frontend_stack(payload.get("frontend_stack")),
+        "backend_stack": normalize_backend_stack(payload.get("backend_stack")),
         "auth_default": _normalize_auth_default(payload.get("auth_default")),
         "shared_session_eligible": bool(payload.get("shared_session_eligible", True)),
         "bypass_global_otp": bool(payload.get("bypass_global_otp", False)),

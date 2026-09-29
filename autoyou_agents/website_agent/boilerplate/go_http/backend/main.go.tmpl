@@ -1,0 +1,54 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"path/filepath"
+)
+
+const defaultPort = {{local_port}}
+
+func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
+	w.Header().Set("content-type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func main() {
+	port := flag.Int("port", defaultPort, "local HTTP port")
+	flag.Parse()
+
+	staticRoot := filepath.Clean(filepath.Join("..", "{{frontend_root_relative}}"))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "ok",
+			"agent_name": "{{agent_name}}",
+			"proxy_path": "{{proxy_path}}",
+			"backend_stack": "{{backend_stack}}",
+			"frontend_stack": "{{frontend_stack}}",
+		})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"agent_name": "{{agent_name}}",
+			"ui_purpose": "{{ui_purpose}}",
+			"backend_stack": "{{backend_stack}}",
+			"backend_stack_label": "{{backend_stack_label}}",
+			"frontend_stack": "{{frontend_stack}}",
+			"frontend_stack_label": "{{frontend_stack_label}}",
+			"recommended_local_port": defaultPort,
+			"proxy_path": "{{proxy_path}}",
+			"runtime_note": "{{runtime_note}}",
+			"backend_security_note": "{{backend_security_note}}",
+		})
+	})
+	mux.Handle("/", http.FileServer(http.Dir(staticRoot)))
+
+	addr := fmt.Sprintf("127.0.0.1:%d", *port)
+	log.Printf("{{app_title}} listening on http://%s", addr)
+	log.Fatal(http.ListenAndServe(addr, mux))
+}

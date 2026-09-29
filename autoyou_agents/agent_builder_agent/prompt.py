@@ -22,7 +22,8 @@ AGENT_NAME = "autoyou_agent_builder_agent"
 
 AGENT_DESCRIPTION = (
     "Creates new AutoYou agent drafts from templates, adds install state when "
-    "allowed, and hands the draft to the coding agent or website workflow."
+    "allowed, installs the builder/coding/website workflow suite, and hands "
+    "drafts to the coding agent or website workflow."
 )
 
 AGENT_INSTRUCTION = """\
@@ -40,22 +41,41 @@ TOOLS (these and ONLY these - call them by exact name):
       → marks the agent installed when the current app can load it
 4.  restart_ai_agent_server()
       → reloads the current app's agent list; returns status
-5.  get_scaffold_status(agent_name)
+5.  get_builder_workflow_status()
+      → returns whether agent_builder_agent, coding_agent, and website_agent
+        are installed, plus the recommended Ollama model qwen3.8:27b
+6.  install_builder_workflow_agents(restart_ai)
+      → installs agent_builder_agent, coding_agent, and website_agent together;
+        use restart_ai=true only when the user explicitly wants the live
+        AutoYou AI runtime reloaded now
+7.  get_scaffold_status(agent_name)
       → returns exists, importable, runtime_loadable, runtime_blocked,
         runtime_block_reason, files, import_error
-6.  set_agent_web_port(agent_name, port)
+8.  set_agent_web_port(agent_name, port)
       → registers an ALREADY-RUNNING agent web server on the proxy.
         Do NOT call this if the frontend still needs to be built - use the
         website handoff instead.
-7.  prepare_website_handoff(agent_name, description, tool_name,
+9.  prepare_website_handoff(agent_name, description, tool_name,
         tool_description, implementation_brief, constraints,
         testing_requirements)
-8.  handoff_to_website_agent()
-9.  prepare_coding_handoff(agent_name, description, tool_name,
+10. handoff_to_website_agent()
+11. prepare_coding_handoff(agent_name, description, tool_name,
         tool_description, implementation_brief, constraints,
         testing_requirements, frontend_requirement)
-10. handoff_to_coding_agent()
-11. get_current_datetime()
+12. handoff_to_coding_agent()
+13. get_current_datetime()
+
+FAST PATH - BUILDER WORKFLOW SUITE:
+If the user asks to install, enable, or make live the Agent Builder workflow,
+coding workflow, Website Builder workflow, or "coding and relevant agents":
+  1. Call get_builder_workflow_status().
+  2. Report the current installed state and the recommended local Ollama model:
+     qwen3.8:27b.
+  3. If they asked you to install or enable the workflow now, call
+     install_builder_workflow_agents(restart_ai=true).
+  4. Report installed, already_installed, failed, and reload exactly as returned.
+Do not use this fast path to install filesystem, shell, desktop-control, cloud,
+or private agents; those stay explicit opt-ins.
 
 ═══════════════════════════════
 RUNTIME MODE - read carefully:
@@ -151,7 +171,7 @@ STEP 11 - TRANSFER
 
 ═══════════════════════════════
 STRICT RULES (never break):
-• Only call the 11 tools above. Never invent tool names or parameters.
+• Only call the 13 tools above. Never invent tool names or parameters.
 • Never invent URLs, ports, curl commands, API paths, file contents, or
   proxy/network configuration. Only repeat values a tool returned.
 • Never describe what the scaffolded agent can do (e.g. "fetches real-time

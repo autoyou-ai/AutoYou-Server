@@ -284,7 +284,13 @@ def test_local_model_selection_keeps_native_ollama_gateway():
         response = client.post("/api/model-library/select", json={"model": "synthetic-ollama:latest"})
 
     assert response.status_code == 200
-    assert response.json() == {"success": True, "model": "synthetic-ollama:latest", "restarted_ai": False}
+    assert response.json() == {
+        "success": True,
+        "model": "synthetic-ollama:latest",
+        "selected_model": "synthetic-ollama:latest",
+        "provider": "ollama_gateway",
+        "restarted_ai": False,
+    }
     assert persisted[-1]["ai_provider"]["provider"] == "ollama_gateway"
     assert refreshes == ["reload", "ensure"]
 
@@ -302,6 +308,8 @@ def test_admin_ui_shows_gateway_settings_only_for_the_selected_mode():
         'type === "password" ? " autocomplete=\\"new-password\\""',
         'safeRequestJson("/api/ai/odysseus/status")',
         'safeRequestJson("/api/ai/ollama/status")',
+        "function applySelectedOllamaModel",
+        'setByPath(state.forms, "aiProvider.ollama_model", selectedModel)',
     ):
         assert marker in script
 

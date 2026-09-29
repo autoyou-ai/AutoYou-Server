@@ -559,6 +559,7 @@ def test_workbench_save_manifest_route_forwards_stack_payload(monkeypatch):
             "recommended_port": 8093,
             "requires_proxy_registration": True,
             "frontend_stack": "react_typescript",
+            "backend_stack": "go_http",
         }
 
     req.json = fake_json
@@ -569,4 +570,5 @@ def test_workbench_save_manifest_route_forwards_stack_payload(monkeypatch):
     assert captured["agent_name"] == "demo_agent"
     assert captured["title"] == "Demo Website"
     assert captured["frontend_stack"] == "react_typescript"
+    assert captured["backend_stack"] == "go_http"
     assert captured["agents_root"] == "test-agents-root"

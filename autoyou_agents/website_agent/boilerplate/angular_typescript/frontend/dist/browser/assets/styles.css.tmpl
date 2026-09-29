@@ -1,0 +1,119 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f4ee;
+  --panel: #fffdfa;
+  --ink: #171717;
+  --muted: #5f6673;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --border: rgba(23, 23, 23, 0.14);
+  --code-bg: #101318;
+  --code-ink: #e7f8f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101419;
+    --panel: #171d24;
+    --ink: #eef4f8;
+    --muted: #a7b4c0;
+    --accent: #2dd4bf;
+    --accent-ink: #08211f;
+    --border: rgba(238, 244, 248, 0.16);
+    --code-bg: #080b0f;
+    --code-ink: #d5f7ef;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.panel {
+  width: min(720px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.summary {
+  margin: 14px 0 22px;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0 0 22px;
+}
+
+.meta div {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+dt {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+pre {
+  margin: 18px 0 0;
+  padding: 16px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 0.9rem/1.45 "SFMono-Regular", Consolas, monospace;
+}

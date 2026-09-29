@@ -1,0 +1,70 @@
+import { Component, signal } from "@angular/core";
+import { bootstrapApplication } from "@angular/platform-browser";
+
+type StatusPayload = {
+  agent_name?: string;
+  ui_purpose?: string;
+  backend_stack_label?: string;
+  frontend_stack_label?: string;
+  recommended_local_port?: number;
+  proxy_path?: string;
+  runtime_note?: string;
+};
+
+@Component({
+  selector: "app-root",
+  standalone: true,
+  template: `
+    <main class="app-shell">
+      <section class="panel">
+        <p class="eyebrow">AutoYou Agent Website</p>
+        <h1>{{ title }}</h1>
+        <p class="summary">{{ purpose }}</p>
+        <div class="status-grid" aria-label="Website status">
+          <div>
+            <span>Backend</span>
+            <strong>{{ status()?.backend_stack_label || "{{backend_stack_label}}" }}</strong>
+          </div>
+          <div>
+            <span>Frontend</span>
+            <strong>{{ status()?.frontend_stack_label || "{{frontend_stack_label}}" }}</strong>
+          </div>
+          <div>
+            <span>Port</span>
+            <strong>{{ status()?.recommended_local_port || {{local_port}} }}</strong>
+          </div>
+        </div>
+        <button type="button" (click)="refreshStatus()">Refresh status</button>
+        @if (error()) {
+          <p class="error">{{ error() }}</p>
+        }
+        @if (status()?.runtime_note) {
+          <p class="hint">{{ status()?.runtime_note }}</p>
+        }
+      </section>
+    </main>
+  `
+})
+class AppComponent {
+  title = "{{app_title}}";
+  purpose = "{{ui_purpose}}";
+  status = signal<StatusPayload | null>(null);
+  error = signal("");
+
+  constructor() {
+    this.refreshStatus();
+  }
+
+  async refreshStatus() {
+    this.error.set("");
+    try {
+      const response = await fetch("./api/status");
+      if (!response.ok) throw new Error(`Status failed: ${response.status}`);
+      this.status.set(await response.json());
+    } catch (err) {
+      this.error.set(err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+bootstrapApplication(AppComponent).catch((err) => console.error(err));
