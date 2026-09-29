@@ -11,6 +11,7 @@ These docs are intentionally limited for the prelaunch period. They cover public
 
 - [Release Model](legal/release-model.md)
 - [Messaging Partners](legal/messaging-partner-policy.md)
+- [Open-Source Commitment](legal/open-source-commitment.md)
 - [Security Contact](legal/security-contact.md)
 - [Third-Party Attributions](legal/third-party-attributions.md)
 

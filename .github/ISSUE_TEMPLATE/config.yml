@@ -6,6 +6,12 @@ contact_links:
   - name: Support and license scope
     url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/SUPPORT.md
     about: Read the repository support and licensing guidance before opening an issue.
+  - name: Product help and account support
+    url: https://www.autoyou.me/support/
+    about: For setup, billing, and account questions, use the support page instead of opening an issue.
+  - name: AutoYou community
+    url: https://www.autoyou.me/community/
+    about: Talk with other users and contributors.
   - name: Contribute and the Contributor Pool
     url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/CONTRIBUTING.md
     about: Find out how to contribute, sign the contribution agreement, and earn a share of the pool.

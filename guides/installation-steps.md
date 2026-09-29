@@ -91,7 +91,7 @@ Open the Admin UI and:
 
 ## 7. Pair a client
 
-Client applications are distributed separately from this repository. See [www.autoyou.me](https://www.autoyou.me/) for the current apps.
+Client applications are distributed separately from this repository. See the [AutoYou ecosystem](https://www.autoyou.me/ecosystem/) for the current apps.
 
 Most people pair through one of these:
 
