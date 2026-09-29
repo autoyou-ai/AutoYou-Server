@@ -14,7 +14,7 @@ __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e4f4f910
 import copy
 
 from scripts import check_release_legal_gates as legal_gates
-from scripts.generate_release_legal_artifacts import load_config
+from scripts.generate_release_legal_artifacts import expand_artifact_profiles, load_config
 
 
 def test_public_legal_gate_defaults_to_a_server_check_with_an_ignored_report() -> None:
@@ -65,6 +65,17 @@ def test_source_profile_records_external_service_terms() -> None:
 
     assert expected <= components.keys()
     assert all(components[name]["source"].startswith("https://") for name in expected)
+
+
+def test_emotivoice_vendor_is_source_only_in_release_profiles() -> None:
+    profiles = {profile["id"]: profile for profile in expand_artifact_profiles(load_config())}
+
+    assert any(
+        item["name"] == "EmotiVoice inference source"
+        for item in profiles["autoyou-server-source-full"]["manualComponents"]
+    )
+    for profile_id in ("autoyou-server-windows-connector-full", "autoyou-server-macos-connector-full"):
+        assert not any(item["name"] == "EmotiVoice inference source" for item in profiles[profile_id]["manualComponents"])
 
 
 def test_generated_bundles_detect_profile_drift() -> None:

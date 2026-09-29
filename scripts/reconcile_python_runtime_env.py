@@ -55,7 +55,6 @@ RETIRED_PACKAGES = (
     "opentelemetry-exporter-gcp-logging",
     "stream2sentence",
     "stanza",
-    "nltk",
     # torchvision belongs to the explicit Fine Tuning profile; leave it alone
     # when that profile is active so the package can be copied into a runtime.
 )
