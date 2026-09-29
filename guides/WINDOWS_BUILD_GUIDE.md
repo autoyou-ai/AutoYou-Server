@@ -195,5 +195,3 @@ python -m autoyou_lite.server --host 127.0.0.1 --port 8099 --auth-port 8098
 - [servers/windows/README.md](../servers/windows/README.md)
 - [installation-steps.md](installation-steps.md)
 - [BUILD_SCRIPT_VALIDATION.md](BUILD_SCRIPT_VALIDATION.md)
-- [Build machine intelligence](../docs/development/build-machine-intelligence.md)
-- [Windows release retry postmortem](../.llm/build/windows-release-2026-08-03-postmortem.md)

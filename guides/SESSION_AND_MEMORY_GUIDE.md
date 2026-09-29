@@ -49,6 +49,3 @@ that provider's API. Local Ollama keeps the model path on the server.
 - Disconnect and revoke a session when a device is lost, replaced, or no longer
   trusted.
 - Keep the server running only when its services are needed.
-
-Detailed maintainer notes live in
-`.llm/private-docs/guides/session-architecture-guide.md`.

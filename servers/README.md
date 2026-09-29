@@ -93,7 +93,6 @@ Do not start here if you only want to:
 For that, go back to:
 
 - [root README](../README.md)
-- [clients/README.md](../clients/README.md)
 
 ## Related docs
 
