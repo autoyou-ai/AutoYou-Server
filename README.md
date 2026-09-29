@@ -7,14 +7,21 @@
 [![GitHub stars](https://img.shields.io/github/stars/autoyou-ai/AutoYou-Server?style=flat)](https://github.com/autoyou-ai/AutoYou-Server)
 -->
 
-**Your own AI computer, reachable from anywhere.** AutoYou Server runs on a
-Windows, macOS, or Linux computer you own. Talk to it by voice or chat from your
-phone, let it browse the web and run agents for you, and reach it from Telegram,
-Signal, or WhatsApp.
-Conversations, files, and settings are stored on your machine, and you choose
-the AI: local models or the provider you configure.
+**AutoYou is a one-of-a-kind, serverless, peer-to-peer inference and web server**
+that does real-time, unlimited human and AI chat, voice, and video calls, and
+gives you your own agentic app store offering remote desktop control, notes, a
+page feed, reminders, and much more. Everything runs merely on your laptop or
+mini PC at home, without modifying your network one bit, while maintaining utmost
+security.
 
-[Quick start](#quick-start) · [Guides](guides/README.md) · [Security](docs/security/encryption.md) · [Contributing](CONTRIBUTING.md) · [License](#license-and-use)
+**You are not the product.** With AutoYou you are the owner of your ecosystem,
+which you can share with your friends and family, or keep for yourself.
+
+AutoYou Server runs on Windows, macOS, and Linux. Conversations, files, and
+settings are stored on your machine, and you choose the AI: local models or the
+provider you configure.
+
+[Quick start](#quick-start) · [Guides](guides/README.md) · [Ecosystem](https://www.autoyou.me/ecosystem/) · [Community](https://www.autoyou.me/community/) · [Support](https://www.autoyou.me/support/) · [Contributing](CONTRIBUTING.md) · [License](#license-and-use)
 
 ## Highlights
 
@@ -52,7 +59,8 @@ optional integrations, tests, and packaging tooling needed to run and evaluate
 the server: the standalone backend, HTTP and WebSocket endpoints, messaging
 connectors (Telegram, Signal, WhatsApp), built-in AI agents, peer linking, local
 intent routing, and the local admin web interface. Client applications and
-hosted account services are distributed separately.
+hosted account services are distributed separately; see the
+[AutoYou ecosystem](https://www.autoyou.me/ecosystem/).
 
 ## License and use
 
@@ -62,6 +70,13 @@ OSI-approved open-source project. Personal use is free for private individual
 use as described in the license; commercial, enterprise, organizational,
 hosted, managed, and distribution uses require separate licensing by working
 directly with [www.autoyou.me](https://www.autoyou.me/).
+
+**Why source-available.** AutoYou commits a percentage of the money it raises to
+the open-source developers credited at
+[www.autoyou.me/attributions](https://www.autoyou.me/attributions/). Keeping the
+source available, but closed to AI training, resale, and hosting by others, is
+what lets it keep that commitment. Read the
+[Open-Source Commitment](docs/legal/open-source-commitment.md).
 
 ## Quick start
 
@@ -204,6 +219,14 @@ checkout can sit beside this repository. Source runs discover its optional
 agents and ignored `private/` overlay; server packages continue to include
 only the built-in agents in this repository.
 
+## Community, support, and sponsorship
+
+- **Community:** join the conversation at [www.autoyou.me/community](https://www.autoyou.me/community/).
+- **Support:** get help at [www.autoyou.me/support](https://www.autoyou.me/support/). GitHub issues are for reproducible defects and proposals.
+- **Ecosystem:** see the apps and components around the server at [www.autoyou.me/ecosystem](https://www.autoyou.me/ecosystem/).
+- **Sponsor:** support AutoYou at [www.autoyou.me/donate](https://www.autoyou.me/donate/). A percentage of the money raised goes to the open-source developers AutoYou is built on, and accepted contributors can share in the [Contributor Pool](docs/contributors/contributor-pool.md).
+- **Website:** [www.autoyou.me](https://www.autoyou.me/).
+
 ## Documentation
 
 - [Setup and pairing guides](guides/README.md)
@@ -215,6 +238,7 @@ only the built-in agents in this repository.
 - [Security policy](SECURITY.md)
 - [Security guidance](docs/security/encryption.md)
 - [Publication boundary](docs/legal/source-publication-manifest.md)
+- [Open-Source Commitment](docs/legal/open-source-commitment.md)
 - [Third-party notices](THIRD-PARTY-NOTICES.md)
 
 <!-- Add the star history chart once the repository has stars worth charting:

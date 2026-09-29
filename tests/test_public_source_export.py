@@ -68,6 +68,7 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("docs/legal/generated/README.md")
     assert exporter.should_publish_path("docs/legal/generated/manifest-summary.json")
     assert exporter.should_publish_path("docs/legal/messaging-partner-policy.md")
+    assert exporter.should_publish_path("docs/legal/open-source-commitment.md")
     assert exporter.should_publish_path("docs/legal/optional-integrations.md")
     assert all(exporter.should_publish_path(path) for path in (
         "docs/images/admin/overview.png",

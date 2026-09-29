@@ -5,6 +5,11 @@ The Contributor Pool is a discretionary program through which OpenStorey LLC
 donations with the people who improve AutoYou Server. It is not an offer, a
 contract, a wage, or a promise of payment.
 
+You can sponsor AutoYou at [www.autoyou.me/donate](https://www.autoyou.me/donate/).
+Separately, OpenStorey commits a percentage of the money it raises to the
+open-source developers AutoYou is built on. See the
+[Open-Source Commitment](../legal/open-source-commitment.md).
+
 ## Current period
 
 These are the only values OpenStorey needs to set. Until OpenStorey announces
@@ -17,9 +22,10 @@ them for a period, the pool for that period is zero.
 | Minimum payout | Not yet announced |
 | Payment platform | Not yet announced |
 
-"Net sponsorship income" means money OpenStorey actually receives through the
-links in [`.github/FUNDING.yml`](../../.github/FUNDING.yml), after platform and
-payment fees, taxes, refunds, and chargebacks. OpenStorey announces each
+"Net sponsorship income" means money OpenStorey actually receives through
+[www.autoyou.me/donate](https://www.autoyou.me/donate/) and the links in
+[`.github/FUNDING.yml`](../../.github/FUNDING.yml), after platform and payment
+fees, taxes, refunds, and chargebacks. OpenStorey announces each
 period's values before the period starts, in a pinned issue, and updates this
 table.
 

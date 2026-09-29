@@ -151,6 +151,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     "docs/legal/security-contact.md",
     "docs/legal/messaging-partner-policy.md",
     "docs/legal/maintainer-release-record.md",
+    "docs/legal/open-source-commitment.md",
     "docs/legal/optional-integrations.md",
     "docs/legal/source-publication-manifest.md",
     "docs/legal/third-party-attributions.md",
