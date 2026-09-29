@@ -13,8 +13,7 @@ under `core_server/`. The lightweight `autoyou-lite` package is a separate
 runtime and does not contain the full agent and partner-service stack.
 
 Public docs intentionally avoid deeper internal component details. For setup,
-start with [Getting Started](/getting-started/overview). For privacy and
-security posture, see [Security Modes](/security/security-modes) and
-[Encryption](/security/encryption). Maintainers should use the repository's
-`.llm/components/core-server.md` source-ownership map rather than treating
-`server.py` as a monolith.
+start with [Getting Started](../../guides/installation-steps.md). For privacy and
+security posture, see [Security Modes](../security/security-modes.md) and
+[Encryption](../security/encryption.md). Maintainers should follow the module
+layout described above rather than treating `server.py` as a monolith.
