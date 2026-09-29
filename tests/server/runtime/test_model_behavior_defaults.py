@@ -79,6 +79,21 @@ class ModelBehaviorDefaultsTest(unittest.TestCase):
         self.assertIsNone(captured.get("repeat_penalty"))
 
 
+    def test_missing_model_behavior_config_uses_accurate_preset(self):
+        import server
+
+        original_config = server.STATE.config
+        try:
+            server.STATE.config = {}
+            behavior = model_config.get_litellm_behavior_kwargs()
+        finally:
+            server.STATE.config = original_config
+
+        self.assertEqual(behavior.get("temperature"), 0.1)
+        self.assertEqual(behavior.get("top_p"), 0.9)
+        self.assertEqual(behavior.get("repeat_penalty"), 1.1)
+
+
 class ShowThinkingResolutionTest(unittest.TestCase):
     def setUp(self):
         import server
