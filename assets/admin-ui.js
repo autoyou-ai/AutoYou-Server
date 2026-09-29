@@ -9765,11 +9765,8 @@
             if (!selectedFile) {
                 return;
             }
-            withPendingAction("profile-image-upload", function () {
-                return uploadProfileImage(selectedFile);
-            }).catch(function (error) {
-                setNotice("error", error.message || String(error));
-            });
+            openProfileCropper(selectedFile);
+
             return;
         }
         if (target.getAttribute("data-role") === "video-file-input") {
@@ -9813,6 +9810,11 @@
             return;
         }
         if (event.key !== "Escape") {
+            return;
+        }
+        if (state.profileCropper) {
+            state.profileCropper = null;
+            renderApp();
             return;
         }
         if (state.modal) {
