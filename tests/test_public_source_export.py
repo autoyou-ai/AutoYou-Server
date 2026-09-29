@@ -71,6 +71,21 @@ def test_public_export_preserves_public_dotfiles() -> None:
     ))
 
 
+def test_public_export_includes_reviewed_vendor_and_runtime_files() -> None:
+    assert all(exporter.should_publish_path(path) for path in (
+        "ai.txt",
+        "robots.txt",
+        "vendor/emotivoice/LICENSE",
+        "vendor/emotivoice/frontend.py",
+        "vendor/emotivoice/models/hifigan/models.py",
+        "autoyou_agents/page_agent/website/frontend/assets/autoyou-mark.svg",
+    ))
+    # The vendored prefix must not bypass the reviewed-asset gate or admit other checkouts.
+    assert not exporter.should_publish_path("vendor/emotivoice/demo/sample.wav")
+    assert not exporter.should_publish_path("vendor/other/module.py")
+    assert not exporter.should_publish_path("autoyou_agents/page_agent/website/frontend/assets/unreviewed.svg")
+
+
 def test_public_export_excludes_private_release_material() -> None:
     private_paths = (
         "AGENTS.md",
