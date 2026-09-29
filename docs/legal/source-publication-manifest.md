@@ -1,6 +1,6 @@
 # AutoYou Source Publication Manifest
 
-Last updated: 2026-09-27
+Last updated: 2026-09-29
 
 This manifest defines the source-publication scope for AutoYou local/self-hosted releases. It is not legal advice, does not publish anything by itself, and does not grant rights beyond the repository `LICENSE`, trademark policy, third-party licenses, or a separate written agreement signed by OpenStorey LLC.
 
@@ -12,6 +12,8 @@ publication set should include:
 - root server source, `core_server/`, `routers/`, shared modules, tests, release scripts, and local run/build scripts needed to build and run the local AutoYou server;
 - `servers/windows/`, `servers/macos/`, and `servers/wsl/` wrapper/build scripts and host source needed to build local server packages;
 - Dockerfiles, Docker Compose files, and server requirements needed for local full-server source builds;
+- the reviewed EmotiVoice inference subset vendored at `vendor/emotivoice/` (Apache-2.0, pinned upstream commit; see `THIRD-PARTY-NOTICES.md`), excluding upstream demo/training entry points and model checkpoints;
+- the root `ai.txt` and `robots.txt` crawler and AI-training opt-out declarations, which the server serves at runtime;
 - reviewed protocol/security documentation and assets, including the three
   synthetic-value admin UI captures named in the exporter allowlist, plus the
   server repository's contributor and legal guidance;

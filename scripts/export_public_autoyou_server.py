@@ -113,6 +113,11 @@ PUBLIC_VENDOR_PATHS = {
     "vendor/INSTRUCTIONS.md",
 }
 
+# Reviewed EmotiVoice inference subset (Apache-2.0); see THIRD-PARTY-NOTICES.md.
+PUBLIC_VENDOR_PREFIXES = (
+    "vendor/emotivoice/",
+)
+
 PUBLIC_CONFIG_PATHS = {"config/donations.example.json"}
 
 PUBLIC_SKILL_PATHS = {".agents/skills/autoyou-server-validate/SKILL.md"}
@@ -422,6 +427,7 @@ REVIEWED_ASSET_PATHS = {
     "assets/logo-alt.png",
     "assets/logo.ico",
     "assets/logo.png",
+    "autoyou_agents/page_agent/website/frontend/assets/autoyou-mark.svg",
     "docs/images/favicon.ico",
     "docs/images/admin/live-view.png",
     "docs/images/admin/overview.png",
@@ -484,6 +490,7 @@ ROOT_EXACT_PATHS = {
     "SUPPORT.md",
     "THIRD-PARTY-NOTICES.md",
     "VERSION",
+    "ai.txt",
     "autoyou_app.py",
     "autoyou_page_service.py",
     "coding_guide.md",
@@ -495,6 +502,7 @@ ROOT_EXACT_PATHS = {
     "pytest.ini",
     "requirements.txt",
     "rest_api.py",
+    "robots.txt",
     "run_autoyou.bat",
     "run_autoyou.sh",
     "server.py",
@@ -564,6 +572,8 @@ def should_publish_path(path: str) -> bool:
     if normalized in PUBLIC_GITHUB_PATHS:
         return True
     if normalized in PUBLIC_VENDOR_PATHS:
+        return True
+    if normalized.startswith(PUBLIC_VENDOR_PREFIXES):
         return True
     if normalized in PUBLIC_CONFIG_PATHS:
         return True
