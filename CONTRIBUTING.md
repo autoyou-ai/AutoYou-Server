@@ -20,8 +20,25 @@ Pull requests that are not linked to an approved issue may be closed without rev
 - Keep the public tree source-available only. Do not add `.llm`, `autoyou-core`, `autoyou_lite`, `autoyou-website`, personal workspaces, runtime profiles, model outputs, voice-training datasets, browser profiles, generated archives, or private docs.
 - Keep client applications and hosted account services outside this server repository. They live in the [AutoYou ecosystem](https://www.autoyou.me/ecosystem/).
 - Source files carry provenance markers (`AUTOYOU-PROVENANCE-*` comment lines and `__debug_provenance_*__` variables). They are maintainer debug traces and do not change your rights or obligations under the [LICENSE](LICENSE). Leave them in place when you edit a file.
-- Submit only material you have the right to license; check employer, third-party, and patent obligations before proposing code or documentation. Identify any third-party code in the pull request with its source and license.
+- Submit only material you have the right to license; check employer, third-party, and patent obligations before proposing code or documentation. Identify any third-party code in the pull request with its source and license. A new file under a different license needs approval first; see [Licensing your files](#licensing-your-files).
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Licensing your files
+
+You keep the copyright in what you write. The [Contributor License Agreement](docs/contributors/CLA.md) does not transfer it; it gives OpenStorey and the people who receive AutoYou Server the permissions they need. You remain free to use your own work anywhere else and to license it to anyone else under any terms you choose.
+
+Inside this repository, contributions are distributed under the [LICENSE](LICENSE), with one exception:
+
+- **A new file you wrote entirely** may carry a different license when all of these are true:
+  - the license is MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, or ISC;
+  - a maintainer approved it in the linked issue before you wrote the file;
+  - the file starts with an SPDX identifier, for example `SPDX-License-Identifier: MIT`.
+
+  The CLA still applies to the file. A file under its own license is not covered by the restrictions in the LICENSE (for example the one on AI training), so a maintainer may decline to approve one. When a maintainer merges it, the file is listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+- **A change to an existing file** stays under that file's license.
+- **Not accepted here:** copyleft licenses (GPL, AGPL, LGPL, MPL, EPL, CC BY-SA), non-commercial or field-of-use terms (for example CC BY-NC), "all rights reserved", and files with no license.
+
+Work that does not fit is welcome as a separate project under the license you choose. What you create with AutoYou itself, such as your own agents, pages, and notes, stays yours under the [Terms](https://www.autoyou.me/terms/); this section is about files you contribute to this repository.
 
 ## AI-assisted contributions
 
