@@ -1,9 +1,3 @@
-// Copyright (c) 2026 OpenStorey LLC. All rights reserved.
-// Licensed under the AutoYou Source-Available License.
-// See LICENSE in the project root for license information.
-// AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-820f076f6a32374260fcf761
-
 const debug = require('debug')('extract-zip')
 // eslint-disable-next-line node/no-unsupported-features/node-builtins
 const { createWriteStream, promises: fs } = require('fs')
