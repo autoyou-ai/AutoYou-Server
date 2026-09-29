@@ -6,9 +6,7 @@ This file is the repository-level notice index for AutoYou. It does not replace 
 
 ## Primary Notice Page
 
-The public attributions page is maintained at:
-
-- `autoyou-website/attributions/index.html`
+The public attributions page is at [www.autoyou.me/attributions](https://www.autoyou.me/attributions/).
 
 ## Release Artifact Requirement
 

@@ -241,7 +241,7 @@ Specialized agent for creating browser pages for AutoYou agents.
 
 ## Related Documentation
 
-- [What is AutoYou?](/user/what-is-autoyou)
-- [Architecture](/technical/architecture)
-- [Security Modes](/security/security-modes)
-- [Getting Started](/getting-started/overview)
+- [What is AutoYou?](../README.md)
+- [Architecture](technical/architecture.md)
+- [Security Modes](security/security-modes.md)
+- [Getting Started](../guides/installation-steps.md)

@@ -34,5 +34,3 @@ Cloud Pair can help your phone find your computer. Cloud AI providers can answer
 - Use Secure or Secure Professional mode on shared or public networks.
 - Keep your operating system and AutoYou app updated.
 - Use full-disk encryption on laptops that travel.
-
-Detailed maintainer notes live in `.llm/private-docs/technical/encryption-and-transport-security.md`.
