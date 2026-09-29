@@ -515,6 +515,7 @@ main() {
     log "Configuration: $CONFIGURATION"
     
     mkdir -p "$BUILD_DIR"
+    BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
     
     local start_time=$(date +%s)
     
