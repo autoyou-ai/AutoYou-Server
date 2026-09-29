@@ -2216,15 +2216,36 @@ class AudioManager:
             
         if not audio_data or not transcript.strip():
             return
-            
+
+        # Resolve the conversation now: the call may start a new thread before
+        # the saver runs, and the clip belongs to the one it was spoken in.
+        conversation: Dict[str, str] = {}
+        provider = getattr(self, "conversation_context_provider", None)
+        if callable(provider):
+            try:
+                resolved = provider()
+                if isinstance(resolved, dict):
+                    conversation = {
+                        key: str(resolved.get(key) or "").strip()
+                        for key in ("user_id", "session_id")
+                        if str(resolved.get(key) or "").strip()
+                    }
+            except Exception as exc:
+                LOGGER.debug("Could not link voice training capture to its conversation: %s", exc)
+
         threading.Thread(
             target=self._save_captured_voice_thread,
-            args=(audio_data, transcript),
+            args=(audio_data, transcript, conversation),
             daemon=True,
             name="VoiceCaptureSaver",
         ).start()
-        
-    def _save_captured_voice_thread(self, audio_data: bytes, transcript: str):
+
+    def _save_captured_voice_thread(
+        self,
+        audio_data: bytes,
+        transcript: str,
+        conversation: Optional[Dict[str, str]] = None,
+    ):
         try:
             import wave
             import uuid
@@ -2286,6 +2307,9 @@ class AudioManager:
                 "quality_warnings": list(quality_warnings),
                 "training_eligible": not bool(quality_warnings),
             }
+            for key, value in (conversation or {}).items():
+                if key in {"user_id", "session_id"} and value:
+                    entry[key] = str(value)
 
             metadata_file = vt_dir / "transcripts.json"
             metadata_file.parent.mkdir(parents=True, exist_ok=True)

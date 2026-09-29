@@ -3267,6 +3267,34 @@ async def process_chat_message(
     voice_note_saved_attachment: Optional[Dict[str, Any]] = None
     media_reply_attachments: List[Dict[str, Any]] = []
     media_reply_delivered = False
+    # Links every server copy of this turn's media (voice note, spoken reply,
+    # generated files) to the persisted turn for the admin Chat & History view.
+    media_turn_id = uuid.uuid4().hex
+    archived_voice_note: Optional[Dict[str, Any]] = None
+
+    def _archive_turn_media(
+        attachment: Optional[Dict[str, Any]],
+        *,
+        role: str,
+        source: str,
+        transcript: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            from shared.conversation_media_store import archive_attachment
+
+            return archive_attachment(
+                get_session_manager(),
+                attachment,
+                user_id=str(request.user_id or ""),
+                session_id=str(request.session_id or ""),
+                turn_id=media_turn_id,
+                role=role,
+                source=source,
+                transcript=transcript,
+            )
+        except Exception as archive_exc:
+            logger.debug("Conversation media copy skipped: %s", archive_exc)
+            return None
 
     def _merge_media_reply_attachments(new_items: Any, *, source: str) -> int:
         nonlocal media_reply_attachments
@@ -3299,6 +3327,7 @@ async def process_chat_message(
                 continue
             seen.add(key)
             media_reply_attachments.append(item)
+            _archive_turn_media(item, role="assistant", source="media_reply")
             added += 1
         return added
 
@@ -3338,6 +3367,22 @@ async def process_chat_message(
             if voice_artifacts and voice_artifacts.has_audio:
                 response.voice_reply_audio_path = voice_artifacts.audio_path
                 response.voice_reply_transcript = voice_note_transcript
+                reply_audio_path = str(voice_artifacts.audio_path or "")
+                reply_extension = os.path.splitext(reply_audio_path)[1].lower()
+                _archive_turn_media(
+                    {
+                        "path": reply_audio_path,
+                        "filename": "spoken-reply" + (reply_extension or ".ogg"),
+                        "mimetype": {
+                            ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg",
+                            ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+                            ".aac": "audio/mp4", ".aiff": "audio/aiff", ".aif": "audio/aiff",
+                        }.get(reply_extension, "audio/ogg"),
+                    },
+                    role="assistant",
+                    source="voice_reply",
+                    transcript=str(response.response or ""),
+                )
                 metadata = dict(response.metadata or {})
                 metadata["voice_note"] = {
                     **_voice_messaging.public_voice_note_metadata(metadata.get("voice_note")),
@@ -3493,6 +3538,12 @@ async def process_chat_message(
                     )
                     if voice_note_transcript.strip():
                         voice_note_active = True
+                        archived_voice_note = _archive_turn_media(
+                            voice_note_saved_attachment or _voice_attachment,
+                            role="user",
+                            source="voice_note",
+                            transcript=voice_note_transcript.strip(),
+                        )
                         request.message = voice_note_transcript.strip()
                         request.context = []
                         request.metadata["voice_note"] = {
@@ -4256,6 +4307,14 @@ async def process_chat_message(
                         })
                 except Exception:
                     sanitized_attachments = []
+                if archived_voice_note:
+                    sanitized_attachments.append({
+                        "filename": archived_voice_note.get("filename"),
+                        "mimetype": archived_voice_note.get("mimetype"),
+                        "size_bytes": archived_voice_note.get("size_bytes"),
+                        "media_id": archived_voice_note.get("media_id"),
+                        "source": "voice_note",
+                    })
 
                 write_ok = await session_manager.add_session_event(
                     user_id=request.user_id,
@@ -4272,6 +4331,7 @@ async def process_chat_message(
                         "invocation_id": invocation_id,
                         "context": request.context or [],
                         "attachments": sanitized_attachments,
+                        "media_turn_id": media_turn_id,
                         "memory_metadata": _build_memory_metadata(
                             request,
                             ai_agent_session_id=ai_agent_session_id,

@@ -213,6 +213,8 @@ docs/legal/generated/windows-connect/NOTICE.txt
 docs/legal/generated/windows-connect/sbom.cdx.json
 shared/voice_training/
 voice_training_storage.json
+# Kept conversation media (voice notes, spoken replies, generated files)
+conversation_media/
 tools/signtosross/
 tools/opensign/
 tools/mike/
