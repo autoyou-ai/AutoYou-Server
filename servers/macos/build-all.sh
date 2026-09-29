@@ -424,9 +424,9 @@ build_backend() {
     [[ "$SKIP_BACKEND_COMPILE" == true ]] && backend_args+=("--skip-nuitka")
     
     if [[ "$VERBOSE" == true ]]; then
-        "${SCRIPT_DIR}/build-backend.sh" "${backend_args[@]}" 2>&1 | tee "$backend_log"
+        bash "${SCRIPT_DIR}/build-backend.sh" "${backend_args[@]}" 2>&1 | tee "$backend_log"
     else
-        "${SCRIPT_DIR}/build-backend.sh" "${backend_args[@]}" > "$backend_log" 2>&1 || {
+        bash "${SCRIPT_DIR}/build-backend.sh" "${backend_args[@]}" > "$backend_log" 2>&1 || {
             log_error "Backend build failed. Check ${backend_log} for details"
             cat "$backend_log" | tail -20
             exit 1
@@ -443,9 +443,9 @@ build_frontend() {
     local frontend_log="${LOG_DIR}/frontend.log"
     
     if [[ "$VERBOSE" == true ]]; then
-        "${SCRIPT_DIR}/build-frontend.sh" --build-dir "$BUILD_DIR" 2>&1 | tee "$frontend_log"
+        bash "${SCRIPT_DIR}/build-frontend.sh" --build-dir "$BUILD_DIR" 2>&1 | tee "$frontend_log"
     else
-        "${SCRIPT_DIR}/build-frontend.sh" --build-dir "$BUILD_DIR" > "$frontend_log" 2>&1 || {
+        bash "${SCRIPT_DIR}/build-frontend.sh" --build-dir "$BUILD_DIR" > "$frontend_log" 2>&1 || {
             log_error "Frontend build failed. Check ${frontend_log} for details"
             cat "$frontend_log" | tail -20
             exit 1
@@ -511,10 +511,11 @@ sign_and_package() {
     log "Signing and packaging application..."
     
     local sign_log="${LOG_DIR}/sign.log"
-    local sign_command=("${SCRIPT_DIR}/sign-and-compress.sh" --build-dir "$BUILD_DIR")
+    local sign_command=(bash "${SCRIPT_DIR}/sign-and-compress.sh" --build-dir "$BUILD_DIR")
 
     if [[ "$SIGN_APP" == true ]]; then
         sign_command=(
+            bash
             "${SCRIPT_DIR}/sign-and-compress.sh"
             --sign
             --certificate "$CERTIFICATE_NAME"
@@ -552,7 +553,7 @@ notarize_app() {
         return 1
     fi
     
-    local notarize_command=("${SCRIPT_DIR}/notarize.sh" "$dmg_path")
+    local notarize_command=(bash "${SCRIPT_DIR}/notarize.sh" "$dmg_path")
     [[ -n "$TEAM_ID" ]] && notarize_command+=(--team-id "$TEAM_ID")
 
     local artifact_profile
