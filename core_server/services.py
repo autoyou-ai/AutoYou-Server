@@ -813,6 +813,12 @@ async def _cloud_sse_listener_loop():
             runtime.STATE.cloud_connected = False
             runtime.STATE.cloud_last_sse_activity_at = 0.0
             return
+        if await runtime._rotate_cloud_server_token_if_due(cloud_cfg, force=runtime._cloud_server_token_expired(cloud_cfg)):
+            cloud_cfg = (runtime.STATE.config or {}).get("cloud", {})
+            server_token = cloud_cfg.get("server_token", "")
+            if not server_token:
+                await runtime.asyncio.sleep(30)
+                continue
         if runtime._cloud_server_token_expired(cloud_cfg):
             runtime.LOGGER.warning(
                 "AutoYou Cloud: saved server token is older than the local max age; re-link Cloud Pair to continue."
@@ -821,12 +827,6 @@ async def _cloud_sse_listener_loop():
             runtime.STATE.cloud_last_sse_activity_at = 0.0
             runtime.STATE.cloud_token_rejected = True
             return
-        if await runtime._rotate_cloud_server_token_if_due(cloud_cfg):
-            cloud_cfg = (runtime.STATE.config or {}).get("cloud", {})
-            server_token = cloud_cfg.get("server_token", "")
-            if not server_token:
-                await runtime.asyncio.sleep(30)
-                continue
         if not _shared_key_registered:
             _shared_key_registered = await runtime._register_shared_device_public_key()
 
