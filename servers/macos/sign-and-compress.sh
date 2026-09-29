@@ -693,6 +693,8 @@ assert_signing_credential() {
 
 main() {
     parse_args "$@"
+    mkdir -p "$BUILD_DIR"
+    BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
 
     case "$(printf '%s' "${AUTOYOU_SKIP_DMG:-}" | tr '[:upper:]' '[:lower:]')" in
         1|true|yes|on)
