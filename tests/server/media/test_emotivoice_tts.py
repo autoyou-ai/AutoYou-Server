@@ -35,6 +35,41 @@ def test_conversation_emotion_prompt_uses_current_turn_text():
     assert emotivoice_tts.conversation_emotion_prompt("Tell me the time") == "Neutral"
 
 
+def test_long_reply_is_split_under_bert_position_limit():
+    # One token per whitespace word keeps the test independent of the real tokenizer.
+    count_tokens = lambda value: len(value.split()) + 2
+    sentence = "word " * 30 + "end."
+    text = " ".join([sentence] * 40)
+
+    chunks = emotivoice_tts.split_for_synthesis(text, count_tokens, budget=100)
+
+    assert len(chunks) > 1
+    assert all(count_tokens(chunk) <= 100 for chunk in chunks)
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_oversized_sentence_falls_back_to_words_and_keeps_decimals():
+    count_tokens = lambda value: len(value.split()) + 2
+    text = "Pi is about 3.14 and " + "very " * 50 + "long."
+
+    chunks = emotivoice_tts.split_for_synthesis(text, count_tokens, budget=20)
+
+    assert all(count_tokens(chunk) <= 20 for chunk in chunks)
+    assert "3.14" in chunks[0]
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_chinese_sentences_split_on_full_width_punctuation():
+    count_tokens = lambda value: len(value) + 2
+    text = "你好世界。" * 30
+
+    chunks = emotivoice_tts.split_for_synthesis(text, count_tokens, budget=30)
+
+    assert len(chunks) > 1
+    assert all(count_tokens(chunk) <= 30 for chunk in chunks)
+    assert "".join(chunks).replace(" ", "") == text
+
+
 def test_emotivoice_model_status_uses_managed_voice_root(monkeypatch, tmp_path):
     monkeypatch.setattr(emotivoice_tts, "model_root", lambda: tmp_path / "models" / "emotivoice")
 
