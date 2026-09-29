@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-09-29T09:00:11+00:00
+Generated: 2026-09-29T21:53:19+00:00
 
 Optional separately approved Windows connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.
 
@@ -15,6 +15,7 @@ This NOTICE file does not grant rights beyond those licenses.
 
 Third-Party Components
 ----------------------
+- AmplitudeJS 5.3.2 [manual] - MIT - https://github.com/521dimensions/amplitudejs; boundary: vendored minified JavaScript in the audio agent website; license included
 - ElevenLabs API service terms external API [manual] - ElevenLabs Terms - https://elevenlabs.io/terms; boundary: external-service
 - EmotiVoice inference code 59f0f36de4db12825f4705dd4e0780d79dd6bb01 [manual] - Apache-2.0 - https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01; boundary: vendored Python source or compiled inference modules; license included
 - Google AI and GenAI API terms external API [manual] - Google API Terms - https://developers.google.com/terms; boundary: external-service
