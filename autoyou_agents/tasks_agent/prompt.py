@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-95b81303aa59b35d1dbe072e"
 AGENT_NAME = "autoyou_tasks_agent"

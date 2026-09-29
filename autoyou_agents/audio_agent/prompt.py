@@ -7,7 +7,7 @@
 """Prompt configuration for the AutoYou Audio Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-859c6e6f64720f8c481c1c35"
 

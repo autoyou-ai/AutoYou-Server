@@ -10,7 +10,7 @@ Contains agent name, description, and instruction prompts for voice cloning oper
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-3124baffaf08cea28cc67d42"
 

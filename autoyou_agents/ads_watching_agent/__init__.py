@@ -7,7 +7,7 @@
 """Ads watching native ad orchestration agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-77daf413eeede3b297a7271d"
 # from __debug_provenance_e__ import pay

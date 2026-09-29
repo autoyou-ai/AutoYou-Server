@@ -12,7 +12,7 @@ TOTP session - downloads it and switches AutoYou to it.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-0ebec10a7c87a1865591a78a"
 

@@ -13,7 +13,7 @@ Disallow-Synthesis: /
 Disallow-Adaptation: /
 Disallow-Embedding: /
 
-# Legal basis: AutoYou Source-Available Personal-Use License v1.3
+# Legal basis: AutoYou Source-Available Personal-Use License v1.4
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 #
 # Unauthorized use of this source code as training data for machine
