@@ -61,7 +61,11 @@
         arrowDown: "M12 5v14M19 12l-7 7-7-7",
         arrowLeft: "M19 12H5M12 19l-7-7 7-7",
         arrowRight: "M5 12h14M12 5l7 7-7 7",
-        center: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 6a4 4 0 100 8 4 4 0 000-8z"
+        center: "M12 2a10 10 0 100 20 10 10 0 000-20zm0 6a4 4 0 100 8 4 4 0 000-8z",
+        edit: "M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z",
+        download: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3",
+        file: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6",
+        wave: "M2 12h2M6 8v8M10 4v16M14 7v10M18 10v4M22 12h0"
     };
 
     var root = document.getElementById("autoyou-admin-root");
@@ -173,6 +177,15 @@
             userId: "",
             sessionId: "",
             messages: [],
+            files: [],
+            training: [],
+            trainingSummary: null,
+            trainingLibrary: null,
+            view: "thread",
+            filesOpen: false,
+            renaming: false,
+            titleDraft: "",
+            pendingTitle: "",
             composer: "",
             attachments: [],
             recording: null,
@@ -3906,17 +3919,40 @@
         return "data:" + String(attachment.mimetype || "application/octet-stream") + ";base64," + attachment.data;
     }
 
+    var CHAT_MEDIA_SOURCE_LABELS = {
+        voice_note: "Voice note",
+        voice_reply: "Spoken reply",
+        media_reply: "Created by AutoYou",
+        voice_call: "Voice call clip",
+        upload: "Uploaded clip"
+    };
+
+    function chatMediaUrl(item, download) {
+        var url = String((item || {}).url || "");
+        if (!url || url.indexOf("/api/chat/") !== 0) return "";
+        return download ? url + (url.indexOf("?") >= 0 ? "&" : "?") + "download=1" : url;
+    }
+
     function chatAttachmentMarkup(attachment, removableIndex) {
         var item = attachment || {};
         var kind = String(item.kind || chatKindForMime(item.mimetype));
+        var serverUrl = item.available === false ? "" : chatMediaUrl(item, false);
+        var source = item.data ? chatDataUrl(item) : serverUrl;
         var preview = "";
-        if (item.data && kind === "image") {
-            preview = "<img class=\"ayu-chat-attachment-preview\" src=\"" + escapeHtml(chatDataUrl(item)) + "\" alt=\"\" loading=\"lazy\">";
-        } else if (item.data && kind === "audio") {
-            preview = "<audio class=\"ayu-chat-audio\" controls preload=\"metadata\" src=\"" + escapeHtml(chatDataUrl(item)) + "\"></audio>";
+        if (source && kind === "image") {
+            preview = "<a class=\"ayu-chat-attachment-link\" href=\"" + escapeHtml(source) + "\" target=\"_blank\" rel=\"noopener\"><img class=\"ayu-chat-attachment-preview\" src=\"" + escapeHtml(source) + "\" alt=\"" + escapeHtml(chatAttachmentLabel(item)) + "\" loading=\"lazy\"></a>";
+        } else if (source && kind === "audio") {
+            preview = "<audio class=\"ayu-chat-audio\" controls preload=\"" + (item.data ? "metadata" : "none") + "\" src=\"" + escapeHtml(source) + "\"></audio>";
+        } else if (source && kind === "video") {
+            preview = "<video class=\"ayu-chat-video\" controls preload=\"none\" src=\"" + escapeHtml(source) + "\"></video>";
         }
+        var sourceLabel = CHAT_MEDIA_SOURCE_LABELS[String(item.source || "")] || "";
+        var meta = [sourceLabel, formatByteSize(item.size_bytes || item.sizeBytes || 0)].filter(Boolean).join(" · ");
+        var transcript = item.transcript && item.source !== "voice_reply" ? "<q class=\"ayu-chat-attachment-transcript\">" + escapeHtml(String(item.transcript).slice(0, 280)) + "</q>" : "";
+        var download = serverUrl ? "<a class=\"ayu-chat-attachment-download\" href=\"" + escapeHtml(chatMediaUrl(item, true)) + "\" download=\"" + escapeHtml(chatAttachmentLabel(item)) + "\" aria-label=\"Download " + escapeHtml(chatAttachmentLabel(item)) + "\" title=\"Download\">" + icon("download") + "</a>" : "";
+        var missing = item.available === false ? "<small class=\"ayu-chat-attachment-missing\">Only the name was kept on this server</small>" : "";
         var remove = removableIndex === undefined || removableIndex === null ? "" : "<button type=\"button\" class=\"ayu-chat-attachment-remove\" data-action=\"chat-discard-attachment:" + removableIndex + "\" aria-label=\"Remove " + escapeHtml(chatAttachmentLabel(item)) + "\">×</button>";
-        return "<div class=\"ayu-chat-attachment\"><div class=\"ayu-chat-attachment-icon\">" + icon(kind === "audio" ? "mic" : (kind === "file" ? "page" : "msg")) + "</div><div class=\"ayu-chat-attachment-copy\"><strong>" + escapeHtml(chatAttachmentLabel(item)) + "</strong><small>" + escapeHtml(formatByteSize(item.size_bytes || item.sizeBytes || 0)) + "</small>" + preview + "</div>" + remove + "</div>";
+        return "<div class=\"ayu-chat-attachment\"><div class=\"ayu-chat-attachment-icon\">" + icon(kind === "audio" ? "mic" : (kind === "video" ? "video" : (kind === "image" ? "page" : "file"))) + "</div><div class=\"ayu-chat-attachment-copy\"><strong>" + escapeHtml(chatAttachmentLabel(item)) + "</strong><small>" + escapeHtml(meta) + "</small>" + missing + transcript + preview + "</div>" + download + remove + "</div>";
     }
 
     function chatMessageMarkup(message) {
@@ -3933,28 +3969,63 @@
         var query = String(state.chat.search || "").trim().toLowerCase();
         var filter = state.chat.filter || "all";
         return (state.chat.sessions || []).filter(function (item) {
-            var haystack = [item.title, item.preview, item.user_id, item.session_id].join(" ").toLowerCase();
+            var haystack = [item.title, item.auto_title, item.preview, item.origin, item.user_id, item.session_id].join(" ").toLowerCase();
             if (query && haystack.indexOf(query) < 0) return false;
             if (filter === "voice" && !item.has_voice) return false;
             if (filter === "files" && !item.has_files) return false;
+            if (filter === "training" && !item.has_training) return false;
             return true;
         });
     }
 
+    function chatEmptyHistoryMarkup() {
+        var filter = state.chat.filter || "all";
+        var copy = {
+            all: ["No conversations yet", "Start a chat, attach a file, or begin a voice note."],
+            voice: ["No voice conversations", "Voice calls, voice notes, and spoken replies from any device appear here."],
+            files: ["No conversations with files", "Photos, documents, and files sent from any device appear here."],
+            training: ["No linked training clips", "With voice-training capture on in Speech settings, clips from calls appear here."]
+        }[filter] || ["No conversations yet", ""];
+        if (String(state.chat.search || "").trim()) copy = ["No matches", "Try a different name, message, or device."];
+        return "<div class=\"ayu-chat-history-empty\"><span>⌁</span><strong>" + escapeHtml(copy[0]) + "</strong><p>" + escapeHtml(copy[1]) + "</p></div>";
+    }
+
+    function chatTrainingLibraryRow() {
+        var summary = state.chat.trainingSummary || {};
+        var count = Number(summary.count || 0);
+        if (!count && state.chat.filter !== "training") return "";
+        var active = state.chat.view === "training";
+        var detail = count
+            ? count + " clip" + (count === 1 ? "" : "s") + (summary.unlinked_count ? " · " + summary.unlinked_count + " not linked to a chat" : "")
+            : (summary.capture_enabled ? "Capture is on · no clips yet" : "Capture is off in Speech settings");
+        return "<button type=\"button\" class=\"ayu-chat-session-row ayu-chat-training-row" + (active ? " active" : "") + "\" data-action=\"chat-open-training\"><span class=\"ayu-chat-session-glyph\">" + icon("wave") + "</span><span class=\"ayu-chat-session-copy\"><strong>Voice training clips</strong><small>" + escapeHtml(detail) + "</small></span></button>";
+    }
+
+    function chatSessionBadges(item) {
+        var badges = [];
+        if (item.voice_count || item.has_voice) badges.push("<span class=\"ayu-chat-session-flag\" title=\"Voice\">" + icon("mic") + (item.voice_count ? escapeHtml(String(item.voice_count)) : "") + "</span>");
+        if (item.file_count || item.has_files) badges.push("<span class=\"ayu-chat-session-flag\" title=\"Files\">" + icon("file") + (item.file_count ? escapeHtml(String(item.file_count)) : "") + "</span>");
+        if (item.training_count) badges.push("<span class=\"ayu-chat-session-flag\" title=\"Voice training clips\">" + icon("wave") + escapeHtml(String(item.training_count)) + "</span>");
+        return badges.join("");
+    }
+
     function chatSessionListMarkup() {
         var sessions = chatVisibleSessions();
+        var library = chatTrainingLibraryRow();
         if (!sessions.length) {
-            return "<div class=\"ayu-chat-history-empty\"><span>⌁</span><strong>No conversations yet</strong><p>Start a chat, attach a file, or begin a voice note.</p></div>";
+            return (library ? "<div class=\"ayu-chat-history-group\">" + library + "</div>" : "") + chatEmptyHistoryMarkup();
         }
         var groups = {};
         sessions.forEach(function (item) {
             var date = String(item.last_activity || item.created_at || "").slice(0, 10) || "Earlier";
             (groups[date] = groups[date] || []).push(item);
         });
-        return Object.keys(groups).map(function (date) {
+        return (library ? "<div class=\"ayu-chat-history-group\">" + library + "</div>" : "") + Object.keys(groups).map(function (date) {
             var rows = groups[date].map(function (item) {
-                var selected = state.chat.selected && state.chat.selected.session_id === item.session_id && state.chat.selected.user_id === item.user_id;
-                return "<button type=\"button\" class=\"ayu-chat-session-row" + (selected ? " active" : "") + "\" data-action=\"chat-open-session\" data-user-id=\"" + escapeHtml(item.user_id) + "\" data-session-id=\"" + escapeHtml(item.session_id) + "\"><span class=\"ayu-chat-session-dot\"></span><span class=\"ayu-chat-session-copy\"><strong>" + escapeHtml(item.title || "Conversation") + "</strong><small>" + escapeHtml(item.preview || "No preview") + "</small><em>" + escapeHtml(item.user_id || "") + "</em></span><span class=\"ayu-chat-session-count\">" + escapeHtml(String(item.message_count || 0)) + "</span></button>";
+                var selected = state.chat.view !== "training" && state.chat.selected && state.chat.selected.session_id === item.session_id && state.chat.selected.user_id === item.user_id;
+                var ids = " data-user-id=\"" + escapeHtml(item.user_id) + "\" data-session-id=\"" + escapeHtml(item.session_id) + "\"";
+                var subtitle = [item.origin, item.custom_title && item.auto_title && item.auto_title !== item.title ? "“" + item.auto_title + "”" : ""].filter(Boolean).join(" · ");
+                return "<div class=\"ayu-chat-session-item" + (selected ? " active" : "") + "\"><button type=\"button\" class=\"ayu-chat-session-row" + (selected ? " active" : "") + "\" data-action=\"chat-open-session\"" + ids + "><span class=\"ayu-chat-session-dot\"></span><span class=\"ayu-chat-session-copy\"><strong>" + escapeHtml(item.title || "Conversation") + (item.custom_title ? "<span class=\"ayu-chat-session-named\" title=\"Named on this server\">" + icon("edit") + "</span>" : "") + "</strong><small>" + escapeHtml(item.preview || "No preview") + "</small><em>" + escapeHtml(subtitle || item.user_id || "") + "</em><span class=\"ayu-chat-session-flags\">" + chatSessionBadges(item) + "</span></span><span class=\"ayu-chat-session-count\">" + escapeHtml(String(item.message_count || 0)) + "</span></button><button type=\"button\" class=\"ayu-chat-session-rename\" data-action=\"chat-rename-session\"" + ids + " aria-label=\"Rename " + escapeHtml(item.title || "conversation") + "\" title=\"Rename\">" + icon("edit") + "</button></div>";
             }).join("");
             return "<div class=\"ayu-chat-history-group\"><div class=\"ayu-chat-history-group-label\">" + escapeHtml(date) + "</div>" + rows + "</div>";
         }).join("");
@@ -3967,8 +4038,13 @@
         state.chat.loading = true;
         renderApp({ passive: true });
         try {
-            var response = await requestJson("/api/chat/sessions?limit=80");
+            var response = await requestJson("/api/chat/sessions?limit=100");
             state.chat.sessions = Array.isArray(response && response.sessions) ? response.sessions : [];
+            state.chat.trainingSummary = (response && response.voice_training) || null;
+            if (state.chat.selected) {
+                var fresh = state.chat.sessions.find(function (item) { return item.user_id === state.chat.selected.user_id && item.session_id === state.chat.selected.session_id; });
+                if (fresh) state.chat.selected = Object.assign({}, state.chat.selected, fresh);
+            }
             state.chat.loaded = true;
         } catch (error) {
             setNotice("error", error.message || "Chat history is unavailable.");
@@ -3980,13 +4056,26 @@
 
     async function loadChatSession(userId, sessionId) {
         state.chat.loading = true;
+        state.chat.view = "thread";
+        state.chat.renaming = false;
+        state.chat.pendingTitle = "";
         state.chat.userId = userId || chatDefaultUserId();
         state.chat.sessionId = sessionId || "";
+        state.chat.messages = [];
+        state.chat.files = [];
+        state.chat.training = [];
         renderApp();
         try {
             var response = await requestJson("/api/chat/session?user_id=" + encodeURIComponent(state.chat.userId) + "&session_id=" + encodeURIComponent(state.chat.sessionId));
             state.chat.messages = Array.isArray(response && response.messages) ? response.messages : [];
-            state.chat.selected = (state.chat.sessions || []).find(function (item) { return item.user_id === state.chat.userId && item.session_id === state.chat.sessionId; }) || { user_id: state.chat.userId, session_id: state.chat.sessionId, title: "Conversation" };
+            state.chat.files = Array.isArray(response && response.files) ? response.files : [];
+            state.chat.training = Array.isArray(response && response.voice_training) ? response.voice_training : [];
+            var listed = (state.chat.sessions || []).find(function (item) { return item.user_id === state.chat.userId && item.session_id === state.chat.sessionId; });
+            state.chat.selected = Object.assign({ user_id: state.chat.userId, session_id: state.chat.sessionId, title: "Conversation" }, listed || {}, {
+                title: (response && response.title) || (listed && listed.title) || "Conversation",
+                auto_title: (response && response.auto_title) || (listed && listed.auto_title) || "",
+                custom_title: Boolean(response && response.custom_title)
+            });
         } catch (error) {
             setNotice("error", error.message || "Conversation could not be opened.");
         } finally {
@@ -3995,11 +4084,75 @@
         }
     }
 
+    async function loadChatTrainingLibrary() {
+        state.chat.view = "training";
+        state.chat.renaming = false;
+        state.chat.loading = true;
+        renderApp();
+        try {
+            state.chat.trainingLibrary = await requestJson("/api/chat/voice-training?limit=300");
+        } catch (error) {
+            setNotice("error", error.message || "Voice training clips are unavailable.");
+        } finally {
+            state.chat.loading = false;
+            renderApp();
+        }
+    }
+
+    function chatStartRename() {
+        if (state.chat.view === "training") return;
+        state.chat.renaming = true;
+        state.chat.titleDraft = state.chat.selected ? String(state.chat.selected.title || "") : String(state.chat.pendingTitle || "");
+        renderApp();
+        window.setTimeout(function () {
+            var input = root && root.querySelector("[data-role=\"chat-title-input\"]");
+            if (input) { input.focus(); input.select(); }
+        }, 0);
+    }
+
+    function chatCancelRename() {
+        state.chat.renaming = false;
+        state.chat.titleDraft = "";
+        renderApp();
+    }
+
+    async function chatSaveTitle(useAutomatic) {
+        var input = root && root.querySelector("[data-role=\"chat-title-input\"]");
+        var title = useAutomatic ? "" : String(input ? input.value : state.chat.titleDraft || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!state.chat.selected) {
+            // Not on the server yet: the name is saved with the first message.
+            state.chat.pendingTitle = title;
+            state.chat.renaming = false;
+            renderApp();
+            return;
+        }
+        var target = state.chat.selected;
+        var response = await postJson("/api/chat/session/title", { user_id: target.user_id, session_id: target.session_id, title: title });
+        var applied = {
+            title: response.title || target.auto_title || "Conversation",
+            custom_title: Boolean(response.custom_title)
+        };
+        state.chat.selected = Object.assign({}, target, applied);
+        state.chat.sessions = (state.chat.sessions || []).map(function (item) {
+            return item.user_id === target.user_id && item.session_id === target.session_id
+                ? Object.assign({}, item, applied, { title: response.title || item.auto_title || "Conversation" })
+                : item;
+        });
+        state.chat.renaming = false;
+        state.chat.titleDraft = "";
+        setNotice("success", applied.custom_title ? "Conversation renamed on this server." : "Automatic name restored.");
+    }
+
     function chatNewConversation() {
         state.chat.userId = chatDefaultUserId();
         state.chat.sessionId = chatUuid("admin-chat");
         state.chat.selected = null;
+        state.chat.view = "thread";
+        state.chat.renaming = false;
+        state.chat.pendingTitle = "";
         state.chat.messages = [];
+        state.chat.files = [];
+        state.chat.training = [];
         state.chat.composer = "";
         state.chat.attachments = [];
         renderApp();
@@ -4249,35 +4402,107 @@
         return "<section class=\"ayu-chat-call-card\"><audio data-role=\"chat-call-audio\" autoplay></audio><div class=\"ayu-chat-call-orb\"><span></span><span></span><span></span></div><div class=\"ayu-chat-call-copy\"><span class=\"ayu-chat-eyebrow\">Voice call · microphone only</span><h2>Talk to AutoYou</h2><p>" + escapeHtml(call.status || "Connecting…") + "</p><div class=\"ayu-chat-call-status\">" + badge(String(call.readiness || "warming"), readinessTone) + "<span>STT + TTS stays on the server</span></div></div><div class=\"ayu-chat-call-controls\">" + button(call.muted ? "Unmute" : "Mute", "chat-call-mute", call.muted ? "secondary" : "ghost", "mic", "sm", "aria-pressed=\"" + String(Boolean(call.muted)) + "\"") + button("Stop talking", "chat-call-stop", "secondary", "stop", "sm") + button("End call", "chat-call-end", "danger", "close", "sm") + "</div></section>";
     }
 
+    function chatTrainingClipMarkup(clip, showConversation) {
+        var item = clip || {};
+        var linked = item.session_id ? (state.chat.sessions || []).find(function (session) { return session.user_id === item.user_id && session.session_id === item.session_id; }) : null;
+        var warnings = (item.quality_warnings || []).map(function (warning) { return badge(String(warning).replace(/_/g, " "), "amber"); }).join("");
+        var status = item.training_eligible ? badge("Ready for training", "green") : "";
+        var open = showConversation && item.session_id
+            ? "<button type=\"button\" class=\"ayu-chat-clip-open\" data-action=\"chat-open-session\" data-user-id=\"" + escapeHtml(item.user_id) + "\" data-session-id=\"" + escapeHtml(item.session_id) + "\">" + escapeHtml(linked ? linked.title : "Open conversation") + "</button>"
+            : (showConversation ? "<span class=\"ayu-chat-clip-unlinked\">Not linked to a conversation</span>" : "");
+        var player = item.available === false
+            ? "<small class=\"ayu-chat-attachment-missing\">Recording file is missing</small>"
+            : "<audio class=\"ayu-chat-audio\" controls preload=\"none\" src=\"" + escapeHtml(chatMediaUrl(item, false)) + "\"></audio>";
+        return "<article class=\"ayu-chat-clip\"><div class=\"ayu-chat-clip-head\"><span class=\"ayu-chat-attachment-icon\">" + icon("wave") + "</span><div><strong>" + escapeHtml(CHAT_MEDIA_SOURCE_LABELS[item.source] || "Voice clip") + "</strong><small>" + escapeHtml(formatTimestamp(item.timestamp)) + (item.duration_seconds ? " · " + escapeHtml(Number(item.duration_seconds).toFixed(1)) + "s" : "") + "</small></div>" + (item.available === false ? "" : "<a class=\"ayu-chat-attachment-download\" href=\"" + escapeHtml(chatMediaUrl(item, true)) + "\" download=\"" + escapeHtml(item.filename || "voice-clip.wav") + "\" title=\"Download\" aria-label=\"Download clip\">" + icon("download") + "</a>") + "</div>" + (item.transcript ? "<q class=\"ayu-chat-attachment-transcript\">" + escapeHtml(item.transcript) + "</q>" : "") + player + "<div class=\"ayu-chat-clip-meta\">" + status + warnings + open + "</div></article>";
+    }
+
+    function chatFilesPanelMarkup() {
+        var chat = state.chat;
+        var files = chat.files || [];
+        var training = chat.training || [];
+        var total = files.length + training.length;
+        if (!total) return "";
+        var audioFiles = files.filter(function (item) { return item.kind === "audio"; }).length;
+        var otherFiles = files.length - audioFiles;
+        var voiceCount = audioFiles + training.length;
+        var summary = [
+            voiceCount ? voiceCount + " voice" : "",
+            otherFiles ? otherFiles + (otherFiles === 1 ? " file" : " files") : ""
+        ].filter(Boolean).join(" · ");
+        var body = chat.filesOpen
+            ? "<div class=\"ayu-chat-files-body\">" + files.map(function (item) {
+                return "<div class=\"ayu-chat-files-row\"><span class=\"ayu-chat-files-when\">" + escapeHtml(item.role === "assistant" ? "AutoYou" : "Sent") + " · " + escapeHtml(formatTimestamp(item.timestamp)) + "</span>" + chatAttachmentMarkup(item) + "</div>";
+            }).join("") + (training.length ? "<div class=\"ayu-chat-files-subhead\">Voice training clips from this conversation</div>" + training.map(function (clip) { return chatTrainingClipMarkup(clip, false); }).join("") : "") + "</div>"
+            : "";
+        return "<section class=\"ayu-chat-files" + (chat.filesOpen ? " open" : "") + "\"><button type=\"button\" class=\"ayu-chat-files-toggle\" data-action=\"chat-files-toggle\" aria-expanded=\"" + String(Boolean(chat.filesOpen)) + "\">" + icon("file") + "<strong>Files &amp; voice</strong><span>" + escapeHtml(summary || String(total)) + "</span><em>" + (chat.filesOpen ? "Hide" : "Show all") + "</em></button>" + body + "</section>";
+    }
+
+    function chatTrainingLibraryMarkup() {
+        var library = state.chat.trainingLibrary || {};
+        var clips = Array.isArray(library.captures) ? library.captures : [];
+        if (state.chat.loading && !clips.length) {
+            return '<div class="ayu-chat-empty"><div class="ayu-spinner"></div><span>Loading voice training clips…</span></div>';
+        }
+        var intro = "<div class=\"ayu-chat-training-intro\">" + (library.capture_enabled
+            ? badge("Capture on", "green") + "<span>Clear phrases from voice calls are kept for the Voice Training app. Clips spoken in a conversation link back to it.</span>"
+            : badge("Capture off", "gray") + "<span>Turn on voice-training capture in Speech settings to collect clips from calls. Existing clips stay listed here.</span>") + "</div>";
+        if (!clips.length) {
+            return intro + '<div class="ayu-chat-empty"><span>No voice training clips yet.</span></div>';
+        }
+        return intro + clips.map(function (clip) { return chatTrainingClipMarkup(clip, true); }).join("");
+    }
+
+    function chatThreadHeadMarkup(serverName) {
+        var chat = state.chat;
+        if (chat.view === "training") {
+            var library = chat.trainingLibrary || {};
+            return '<header class="ayu-chat-thread-head"><div><span class="ayu-chat-eyebrow">Voice training</span><h2>Voice training clips</h2><p>' + escapeHtml(String(library.count || 0)) + ' clip' + (Number(library.count || 0) === 1 ? "" : "s") + ' on this server</p></div><div class="ayu-chat-thread-actions">' + button("Refresh", "chat-open-training", "ghost", "refresh", "sm") + '</div></header>';
+        }
+        var selected = chat.selected;
+        var title = selected && selected.title ? selected.title : (chat.pendingTitle || serverName);
+        var eyebrow = selected ? (selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Ready when you are");
+        var sessionLine = chat.sessionId ? "SessionID " + escapeHtml(chat.sessionId) : "A fresh conversation will be saved automatically";
+        if (selected && selected.custom_title && selected.auto_title && selected.auto_title !== selected.title) {
+            sessionLine = "Started with “" + escapeHtml(selected.auto_title) + "” · " + sessionLine;
+        }
+        var threadBadge = chat.sessionId && chat.messages.length ? badge(String(chat.messages.length) + " messages", "blue") : badge("Private admin session", "gray");
+        var heading;
+        if (chat.renaming) {
+            heading = '<div class="ayu-chat-title-form" role="group" aria-label="Rename conversation"><input data-role="chat-title-input" type="text" maxlength="120" value="' + escapeHtml(chat.titleDraft || "") + '" placeholder="' + escapeHtml((selected && selected.auto_title) || "Name this conversation") + '" aria-label="Conversation name"><div class="ayu-chat-title-actions">' + button("Save", "chat-title-save", "primary", "check", "sm") + button("Cancel", "chat-title-cancel", "ghost", "", "sm") + (selected && selected.custom_title ? button("Use automatic name", "chat-title-reset", "ghost", "refresh", "sm") : "") + '</div></div><p>Names stay on this server; connected devices keep their own.</p>';
+        } else {
+            heading = '<div class="ayu-chat-title-line"><h2>' + escapeHtml(title) + '</h2><button type="button" class="ayu-chat-title-edit" data-action="chat-title-edit" aria-label="Rename conversation" title="Rename conversation">' + icon("edit") + '</button></div><p>' + sessionLine + '</p>';
+        }
+        return '<header class="ayu-chat-thread-head"><div class="ayu-chat-thread-title"><span class="ayu-chat-eyebrow">' + escapeHtml(eyebrow) + '</span>' + heading + '</div><div class="ayu-chat-thread-actions">' + threadBadge + '</div></header>';
+    }
+
     function renderChatHistoryScreen() {
         var chat = state.chat;
         var serverName = firstNonBlank([
             getByPath(state.bootstrap, "admin.server_name", ""),
             getByPath(bootstrapConfig(), "server.name", "")
         ], "AutoYou-Server");
-        var title = chat.selected && chat.selected.title ? chat.selected.title : serverName;
-        var filters = ["all", "voice", "files"].map(function (filter) {
-            var label = filter === "all" ? "All" : (filter === "voice" ? "Voice" : "Files");
+        var filters = ["all", "voice", "files", "training"].map(function (filter) {
+            var label = { all: "All", voice: "Voice", files: "Files", training: "Training" }[filter];
             return '<button type="button" class="' + (chat.filter === filter ? "active" : "") + '" data-action="chat-filter:' + filter + '">' + label + '</button>';
         }).join("");
-        var messageMarkup = chat.loading && !chat.messages.length
-            ? '<div class="ayu-chat-empty"><div class="ayu-spinner"></div><span>Opening conversation…</span></div>'
-            : (chat.messages.length
-                ? chat.messages.map(chatMessageMarkup).join("")
-                : "");
+        var messageMarkup = chat.view === "training"
+            ? chatTrainingLibraryMarkup()
+            : (chat.loading && !chat.messages.length
+                ? '<div class="ayu-chat-empty"><div class="ayu-spinner"></div><span>Opening conversation…</span></div>'
+                : chatFilesPanelMarkup() + (chat.messages.length
+                    ? chat.messages.map(chatMessageMarkup).join("")
+                    : ""));
         var composerAttachmentMarkup = chat.attachments.map(function (attachment, index) { return chatAttachmentMarkup(attachment, index); }).join("");
         var recordingMarkup = chat.recording
             ? '<div class="ayu-chat-recording"><span class="ayu-chat-recording-dot"></span><strong>' + (chat.recording.phase === "stopping" ? "Saving voice note…" : "Recording voice note") + '</strong><span>' + Math.max(0, Math.round((Date.now() - chat.recording.startedAt) / 1000)) + 's</span></div>'
             : "";
         var inputValue = escapeHtml(chat.composer || "");
-        var sessionId = chat.sessionId ? "SessionID " + escapeHtml(chat.sessionId) : "A fresh conversation will be saved automatically";
-        var threadBadge = chat.sessionId ? badge(String(chat.messages.length || 0) + " messages", "blue") : badge("Private admin session", "gray");
         return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>'
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
-            + '</div><div class="ayu-chat-identity"><span class="ayu-chat-identity-avatar">' + escapeHtml(String(chat.userId || chatDefaultUserId()).slice(-2).toUpperCase()) + '</span><span><small>Active UserID</small><strong title="' + escapeHtml(chat.userId || chatDefaultUserId()) + '">' + escapeHtml(chat.userId || chatDefaultUserId()) + '</strong></span></div></aside><section class="ayu-chat-thread"><header class="ayu-chat-thread-head"><div><span class="ayu-chat-eyebrow">' + (chat.sessionId ? "Session" : "Ready when you are") + '</span><h2>' + escapeHtml(title) + '</h2><p>' + sessionId + '</p></div><div class="ayu-chat-thread-actions">' + threadBadge + '</div></header><div class="ayu-chat-transcript">'
-            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"><div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + '</div><div class="ayu-chat-identity"><span class="ayu-chat-identity-avatar">' + escapeHtml(String(chat.userId || chatDefaultUserId()).slice(-2).toUpperCase()) + '</span><span><small>Active UserID</small><strong title="' + escapeHtml(chat.userId || chatDefaultUserId()) + '">' + escapeHtml(chat.userId || chatDefaultUserId()) + '</strong></span></div></aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
+            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '><div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -4298,7 +4523,15 @@
         state.chat.messages.push(userMessage);
         state.chat.composer = "";
         state.chat.attachments = [];
-        state.chat.selected = state.chat.selected || { user_id: state.chat.userId, session_id: state.chat.sessionId, title: text.slice(0, 96) || "Conversation" };
+        var pendingTitle = state.chat.selected ? "" : String(state.chat.pendingTitle || "");
+        state.chat.selected = state.chat.selected || {
+            user_id: state.chat.userId,
+            session_id: state.chat.sessionId,
+            title: pendingTitle || text.slice(0, 96) || "Conversation",
+            auto_title: text.slice(0, 96) || "Conversation",
+            custom_title: Boolean(pendingTitle)
+        };
+        state.chat.pendingTitle = "";
         renderApp();
         try {
             var response = await postJson("/api/chat", {
@@ -4323,6 +4556,13 @@
                 timestamp: response.timestamp || Date.now(),
                 attachments: responseAttachments
             });
+            if (pendingTitle) {
+                try {
+                    await postJson("/api/chat/session/title", { user_id: state.chat.userId, session_id: state.chat.sessionId, title: pendingTitle });
+                } catch (titleError) {
+                    setNotice("error", "The message was sent, but the name was not saved: " + (titleError.message || "try renaming again."));
+                }
+            }
             await ensureChatData(true);
         } catch (error) {
             userMessage.pending = false;
@@ -8173,6 +8413,41 @@
             renderApp();
             return;
         }
+        if (action === "chat-open-training") {
+            await loadChatTrainingLibrary();
+            return;
+        }
+        if (action === "chat-files-toggle") {
+            state.chat.filesOpen = !state.chat.filesOpen;
+            renderApp();
+            return;
+        }
+        if (action === "chat-title-edit") {
+            chatStartRename();
+            return;
+        }
+        if (action === "chat-title-cancel") {
+            chatCancelRename();
+            return;
+        }
+        if (action === "chat-title-save" || action === "chat-title-reset") {
+            try {
+                await chatSaveTitle(action === "chat-title-reset");
+            } catch (error) {
+                setNotice("error", error.message || "The name could not be saved.");
+            }
+            return;
+        }
+        if (action === "chat-rename-session") {
+            var renameUser = element && element.getAttribute("data-user-id");
+            var renameSession = element && element.getAttribute("data-session-id");
+            var alreadyOpen = state.chat.view !== "training" && state.chat.selected && state.chat.selected.user_id === renameUser && state.chat.selected.session_id === renameSession;
+            if (renameUser && renameSession && !alreadyOpen) {
+                await loadChatSession(renameUser, renameSession);
+            }
+            chatStartRename();
+            return;
+        }
         if (action === "chat-open-session" || action.indexOf("chat-open-session:") === 0) {
             var sessionUser = element && element.getAttribute("data-user-id");
             var sessionId = element && element.getAttribute("data-session-id");
@@ -9717,6 +9992,10 @@
             }
             return;
         }
+        if (target.getAttribute("data-role") === "chat-title-input") {
+            state.chat.titleDraft = target.value;
+            return;
+        }
         syncBoundControl(target);
     });
 
@@ -9808,6 +10087,20 @@
                 setNotice("error", error.message || String(error));
             });
             return;
+        }
+        if (event.target && event.target.getAttribute && event.target.getAttribute("data-role") === "chat-title-input" && !event.isComposing) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                withPendingAction("chat-title-save", function () { return chatSaveTitle(false); }).catch(function (error) {
+                    setNotice("error", error.message || "The name could not be saved.");
+                });
+                return;
+            }
+            if (event.key === "Escape") {
+                event.preventDefault();
+                chatCancelRename();
+                return;
+            }
         }
         if (event.key !== "Escape") {
             return;

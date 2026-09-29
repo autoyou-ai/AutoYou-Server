@@ -206,6 +206,7 @@ clients/android/build/
 clients/android/app/build/
 autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 shared/voice_training/
+conversation_media/
 research/.venv/
 tools/signtoross/.git/
 tools/signtoross/.local/

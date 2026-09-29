@@ -2329,6 +2329,43 @@ def _resolve_conversation_identity(identity: Any, *, start_new_thread: bool = Fa
         return identity
 
 
+def _rename_server_conversation(identity: Any, metadata: Any) -> Dict[str, Any]:
+    """Store a client-chosen name for one of that client's own conversations.
+
+    One way only: the server keeps the name for Chat & History and never
+    pushes names back. ``conversation_thread_id`` selects an earlier thread of
+    the same owner; a caller can never reach another owner's conversation.
+    """
+    from shared.session_execution import build_canonical_session_id
+
+    payload = metadata if isinstance(metadata, dict) else {}
+    user_id = str(getattr(identity, "canonical_user_id", "") or "").strip()
+    owner_key = str(getattr(identity, "owner_key", "") or "").strip()
+    session_id = str(getattr(identity, "canonical_session_id", "") or "").strip()
+    raw_thread = payload.get("conversation_thread_id")
+    if raw_thread not in (None, ""):
+        try:
+            thread_id = int(raw_thread)
+        except (TypeError, ValueError):
+            return {"renamed": False, "reason": "invalid_thread"}
+        if thread_id < 1 or thread_id > 1_000_000 or not owner_key:
+            return {"renamed": False, "reason": "invalid_thread"}
+        session_id = build_canonical_session_id(owner_key, thread_id)
+    session_manager = _get_conversation_session_manager()
+    set_title = getattr(session_manager, "set_conversation_title", None) if session_manager else None
+    if not callable(set_title) or not user_id or not session_id:
+        return {"renamed": False, "reason": "unavailable"}
+    stored = set_title(
+        user_id,
+        session_id,
+        payload.get("conversation_title"),
+        source=str(payload.get("client") or "client")[:48],
+    )
+    if stored is None:
+        return {"renamed": False, "reason": "not_saved"}
+    return {"renamed": True, "title": stored, "cleared": not stored}
+
+
 async def _delete_server_conversation_history(identity: Any) -> Dict[str, Any]:
     """Delete one conversation from AutoYou-managed server stores."""
     canonical_session_id = str(getattr(identity, "canonical_session_id", "") or "").strip()
@@ -9932,6 +9969,10 @@ def _build_webrtc_capabilities(
 
     return {
         "host_platform": get_platform(),
+        # Clients may name their conversations on this server (one way; the
+        # server never sends names back). Older servers omit this key, so a
+        # client must not send the rename control without it.
+        "conversation": {"rename": True},
         "audio": audio_payload,
         "video": video_payload,
         "location": {

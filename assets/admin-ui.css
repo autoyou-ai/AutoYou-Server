@@ -3652,6 +3652,391 @@ code,
     gap: 7px;
 }
 
+/* Conversation names, media flags, files panel, and voice training clips */
+.ayu-chat-session-item {
+    position: relative;
+}
+
+.ayu-chat-session-item .ayu-chat-session-row {
+    padding-right: 34px;
+}
+
+.ayu-chat-session-rename {
+    position: absolute;
+    top: 8px;
+    right: 5px;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ayu-faint);
+    background: transparent;
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.ayu-chat-session-item:hover .ayu-chat-session-rename,
+.ayu-chat-session-item.active .ayu-chat-session-rename,
+.ayu-chat-session-rename:focus-visible {
+    opacity: 1;
+}
+
+.ayu-chat-session-rename:hover {
+    color: var(--ayu-primary-strong);
+    background: var(--ayu-surface);
+}
+
+.ayu-chat-session-rename svg,
+.ayu-chat-session-named svg,
+.ayu-chat-session-flag svg,
+.ayu-chat-title-edit svg,
+.ayu-chat-attachment-download svg,
+.ayu-chat-files-toggle svg {
+    width: 13px;
+    height: 13px;
+}
+
+.ayu-chat-session-item:hover .ayu-chat-session-count,
+.ayu-chat-session-item.active .ayu-chat-session-count {
+    visibility: hidden;
+}
+
+.ayu-chat-session-named {
+    display: inline-flex;
+    margin-left: 5px;
+    color: var(--ayu-primary);
+    vertical-align: -1px;
+}
+
+.ayu-chat-session-named svg {
+    width: 10px;
+    height: 10px;
+}
+
+.ayu-chat-session-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ayu-chat-session-flags:empty {
+    display: none;
+}
+
+.ayu-chat-session-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--ayu-faint);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.ayu-chat-session-flag svg {
+    width: 11px;
+    height: 11px;
+}
+
+.ayu-chat-session-glyph {
+    display: grid;
+    place-items: center;
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    color: var(--ayu-primary);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-session-glyph svg {
+    width: 12px;
+    height: 12px;
+}
+
+.ayu-chat-training-row {
+    border: 1px dashed var(--ayu-border-strong);
+}
+
+.ayu-chat-thread-title {
+    min-width: 0;
+    flex: 1;
+}
+
+.ayu-chat-title-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ayu-chat-title-line h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-chat-title-edit {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    margin-top: 5px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--ayu-faint);
+    background: transparent;
+    cursor: pointer;
+}
+
+.ayu-chat-title-edit:hover,
+.ayu-chat-title-edit:focus-visible {
+    color: var(--ayu-primary-strong);
+    border-color: var(--ayu-border);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-title-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.ayu-chat-title-form input {
+    flex: 1 1 240px;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--ayu-primary);
+    border-radius: 11px;
+    outline: 0;
+    color: var(--ayu-text);
+    background: var(--ayu-surface);
+    box-shadow: 0 0 0 3px var(--ayu-primary-soft);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.ayu-chat-title-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ayu-chat-files {
+    flex: 0 0 auto;
+    border: 1px solid var(--ayu-border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ayu-surface) 82%, transparent);
+}
+
+.ayu-chat-files-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 13px;
+    border: 0;
+    border-radius: 14px;
+    color: var(--ayu-muted);
+    background: transparent;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ayu-chat-files-toggle strong {
+    color: var(--ayu-text);
+}
+
+.ayu-chat-files-toggle em {
+    margin-left: auto;
+    color: var(--ayu-primary);
+    font-style: normal;
+    font-weight: 700;
+}
+
+.ayu-chat-files-toggle:hover {
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-files-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 4px 13px 13px;
+}
+
+.ayu-chat-files-row {
+    display: grid;
+    gap: 4px;
+}
+
+.ayu-chat-files-when,
+.ayu-chat-files-subhead {
+    color: var(--ayu-faint);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ayu-chat-files-subhead {
+    flex: 1 0 100%;
+    margin-top: 6px;
+}
+
+.ayu-chat-attachment-link {
+    display: block;
+}
+
+.ayu-chat-video {
+    width: 100%;
+    max-height: 180px;
+    margin-top: 5px;
+    border-radius: 8px;
+    background: #000;
+}
+
+.ayu-chat-attachment-download {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    color: var(--ayu-faint);
+}
+
+.ayu-chat-attachment-download:hover {
+    color: var(--ayu-primary-strong);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-attachment-transcript {
+    display: block;
+    margin-top: 3px;
+    color: var(--ayu-muted);
+    font-size: 10px;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+.ayu-chat-attachment-missing {
+    color: var(--ayu-amber) !important;
+}
+
+.ayu-chat-training-intro {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 13px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 14px;
+    color: var(--ayu-muted);
+    background: var(--ayu-surface);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.ayu-chat-clip {
+    display: grid;
+    gap: 7px;
+    width: min(100%, 560px);
+    padding: 12px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--ayu-surface-strong) 70%, transparent);
+}
+
+.ayu-chat-files-body .ayu-chat-clip {
+    width: min(100%, 320px);
+}
+
+.ayu-chat-clip-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.ayu-chat-clip-head > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.ayu-chat-clip-head strong {
+    color: var(--ayu-text);
+    font-size: 11px;
+}
+
+.ayu-chat-clip-head small {
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-clip .ayu-chat-audio {
+    width: 100%;
+}
+
+.ayu-chat-clip-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.ayu-chat-clip-open {
+    margin-left: auto;
+    max-width: 240px;
+    overflow: hidden;
+    padding: 5px 10px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    color: var(--ayu-primary-strong);
+    background: var(--ayu-surface);
+    font-size: 10px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.ayu-chat-clip-open:hover {
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-chat-clip-unlinked {
+    margin-left: auto;
+    color: var(--ayu-faint);
+    font-size: 10px;
+}
+
+.ayu-chat-composer[hidden] {
+    display: none;
+}
+
+@media (hover: none) {
+    .ayu-chat-session-rename {
+        opacity: 1;
+    }
+    .ayu-chat-session-item .ayu-chat-session-count {
+        visibility: hidden;
+    }
+}
+
 @media (max-width: 1050px) {
     .ayu-chat-workspace {
         grid-template-columns: minmax(205px, 240px) minmax(0, 1fr);
