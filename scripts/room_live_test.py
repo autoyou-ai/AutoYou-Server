@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-Q-payment-50c32806b4a0f03eddb7e7e4
 
-#!/usr/bin/env python3
 """Live Android/iOS Lobby interoperability and Computer-bridge checks."""
 
 from __future__ import annotations

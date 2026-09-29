@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-A-schedule-8e65e7a8b7176ef7eb3c461f
 
-#!/usr/bin/env python3
 """Export the source-available AutoYou Server tree without private payloads."""
 
 from __future__ import annotations
@@ -196,6 +196,7 @@ PRIVATE_EXACT_PATHS = {
     "docs/SAFE_DISTRIBUTION_MIGRATION.md",
     "docs/legal/release-matrix.md",
     "docs/technical/funding-os.md",
+    "docs/technical/peer-relay-social-checkpoint-2026-08-24.md",
     "docs/technical/webrtc-media-mixer.md",
     "guides/PRIVATE_MESSAGING_PAIRING_GUIDE.md",
     "LICENSE_ACKNOWLEDGEMENT",
