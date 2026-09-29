@@ -811,6 +811,60 @@ def test_ensure_runtime_package_chain_precreates_nested_runtime_packages(tmp_pat
         sys.path[:] = original_sys_path
 
 
+def test_prepare_runtime_server_imports_seeds_runtime_package_roots(tmp_path):
+    runtime_modules_root = tmp_path / "runtime_modules"
+    for package_dir in (
+        runtime_modules_root / "autoyou_agents",
+        runtime_modules_root / "clients" / "python",
+        runtime_modules_root / "core_server",
+        runtime_modules_root / "routers",
+        runtime_modules_root / "shared",
+        runtime_modules_root / "v2" / "runtime",
+    ):
+        package_dir.mkdir(parents=True)
+
+    affected_names = [
+        name
+        for name in tuple(sys.modules)
+        if name in {"autoyou_agents", "clients", "core_server", "routers", "shared", "v2"}
+        or name.startswith("clients.")
+        or name.startswith("v2.")
+    ]
+    original_modules = {name: sys.modules[name] for name in affected_names}
+    original_sys_path = list(sys.path)
+    original_pythonpath = os.environ.get("PYTHONPATH")
+    try:
+        for name in affected_names:
+            sys.modules.pop(name, None)
+
+        autoyou_app._prepare_runtime_server_imports(tmp_path)
+
+        assert str((runtime_modules_root / "shared").resolve()) in [
+            str(Path(path).resolve())
+            for path in sys.modules["shared"].__path__
+        ]
+        assert str((runtime_modules_root / "routers").resolve()) in [
+            str(Path(path).resolve())
+            for path in sys.modules["routers"].__path__
+        ]
+        assert str((runtime_modules_root / "v2" / "runtime").resolve()) in [
+            str(Path(path).resolve())
+            for path in sys.modules["v2.runtime"].__path__
+        ]
+    finally:
+        for name in tuple(sys.modules):
+            if name in {"autoyou_agents", "clients", "core_server", "routers", "shared", "v2"}:
+                sys.modules.pop(name, None)
+            elif name.startswith("clients.") or name.startswith("v2."):
+                sys.modules.pop(name, None)
+        sys.modules.update(original_modules)
+        sys.path[:] = original_sys_path
+        if original_pythonpath is None:
+            os.environ.pop("PYTHONPATH", None)
+        else:
+            os.environ["PYTHONPATH"] = original_pythonpath
+
+
 def test_configure_runtime_site_packages_path_adds_pywin32_locations(monkeypatch, tmp_path):
     runtime_site_packages_root = tmp_path / "runtime_site_packages"
     win32_root = runtime_site_packages_root / "win32"
