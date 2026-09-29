@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from .agent import create_location_agent
 
 __debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-b9da92ddedc6d0574c71301f"

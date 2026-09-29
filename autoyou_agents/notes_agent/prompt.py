@@ -10,7 +10,7 @@ Contains agent name, description, and instruction prompts for note-taking operat
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-2061053978f017fe9c27258a"
 

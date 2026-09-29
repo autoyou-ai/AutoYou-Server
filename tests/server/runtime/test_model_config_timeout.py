@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import autoyou_agents.model_config as model_config
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-ff32216c7729212c12dd8ecf"

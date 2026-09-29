@@ -12,7 +12,7 @@ __all__ = ["create_notes_agent"]
 '''
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-46df40f2f90ff1bb6001de52"
 # from __debug_provenance_c__ import subtask

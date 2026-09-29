@@ -29,7 +29,7 @@ Every official distribution should include an artifact-specific notice bundle co
 
 The notice bundle should include:
 
-- AutoYou Source-Available and Commercial Redistribution License.
+- AutoYou Source-Available Personal-Use License.
 - Dependency licenses and notices for bundled libraries.
 - Apache 2.0 NOTICE obligations where applicable.
 - BSD/ISC/MIT notices where applicable.

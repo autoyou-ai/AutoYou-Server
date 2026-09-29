@@ -7,7 +7,7 @@
 """Codex Desktop bridge agent package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-6e937d1bba97498612e11b0e"
 # from __debug_provenance_j__ import fifteenpercent

@@ -11,7 +11,7 @@ browser automation via the auto-browser SDK.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-f53ac3d75943c1f34651039b"
 

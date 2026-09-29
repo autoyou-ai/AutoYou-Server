@@ -7,7 +7,7 @@
 """Prompt metadata for the private Windows Security Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-6cf0b9c077a3db8075df78ec"
 
