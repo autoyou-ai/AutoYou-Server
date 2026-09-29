@@ -1476,19 +1476,64 @@ from shared.client_conversation_contract import (
     get_client_destination_session_id as _shared_get_client_destination_session_id,
 )
 from shared.http_proxy_codec import encode_http_proxy_response
-from shared.remote_access_policy import (
-    REMOTE_ACCESS_VIEWER,
-    REMOTE_ACCESS_ROLES,
-    REMOTE_BROWSER_HEADER,
-    REMOTE_BROWSER_VIA_HOME_NETWORK,
-    DEVICE_OWN,
-    DEVICE_SHARED,
-    normalize_device_ownership,
-    normalize_remote_access_role,
-    remote_access_denial_message,
-    remote_http_request_allowed,
-    server_cloud_action_requires_admin,
-)
+try:
+    from shared.remote_access_policy import (
+        REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_ROLES,
+        REMOTE_BROWSER_HEADER,
+        REMOTE_BROWSER_VIA_HOME_NETWORK,
+        DEVICE_OWN,
+        DEVICE_SHARED,
+        normalize_device_ownership,
+        normalize_remote_access_role,
+        remote_access_denial_message,
+        remote_http_request_allowed,
+        server_cloud_action_requires_admin,
+    )
+except ImportError:
+    _rap_loaded = False
+    try:
+        import importlib.machinery
+        _pkg_dir = Path(__file__).resolve().parent / "shared"
+        for _candidate in _pkg_dir.glob("remote_access_policy*.so"):
+            if _candidate.is_file():
+                _loader = importlib.machinery.ExtensionFileLoader("shared.remote_access_policy", str(_candidate))
+                _mod = _loader.load_module("shared.remote_access_policy")
+                sys.modules["shared.remote_access_policy"] = _mod
+                _rap_loaded = hasattr(_mod, "server_cloud_action_requires_admin")
+                break
+    except Exception:
+        pass
+    if not _rap_loaded:
+        import shared.remote_access_policy as _rap
+        _SERVER_CLOUD_ADMIN_ACTIONS = frozenset({
+            ("GET", "/api/cloud/link-start"),
+            ("GET", "/api/cloud/callback"),
+            ("POST", "/api/cloud/push-client"),
+            ("POST", "/api/cloud/notify-client"),
+            ("POST", "/api/cloud/unregister"),
+            ("POST", "/api/cloud/activate"),
+            ("POST", "/api/cloud/reregister"),
+            ("POST", "/api/cloud/guest-access"),
+        })
+        def server_cloud_action_requires_admin(method: Any, path: Any = "") -> bool:
+            effective_method = _rap.effective_remote_access_method(method, path)
+            normalized_path = ("/" + str(path or "").split("?", 1)[0].lstrip("/")).rstrip("/") or "/"
+            return (effective_method, normalized_path) in _SERVER_CLOUD_ADMIN_ACTIONS
+        _rap.server_cloud_action_requires_admin = server_cloud_action_requires_admin
+    from shared.remote_access_policy import (
+        REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_ROLES,
+        REMOTE_BROWSER_HEADER,
+        REMOTE_BROWSER_VIA_HOME_NETWORK,
+        DEVICE_OWN,
+        DEVICE_SHARED,
+        normalize_device_ownership,
+        normalize_remote_access_role,
+        remote_access_denial_message,
+        remote_http_request_allowed,
+        server_cloud_action_requires_admin,
+    )
 from shared.remote_desktop_keyboard import (
     execute_remote_desktop_keyboard,
     normalize_remote_desktop_keyboard_payload,
