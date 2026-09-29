@@ -7,7 +7,7 @@
 """Remote Desktop Agent sub-agent package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from autoyou_agents.remote_desktop_agent.agent import create_remote_desktop_agent

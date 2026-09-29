@@ -17,7 +17,7 @@ removed from operator-authored instructions.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-ece9d4c0f6f9db20bad65ab7"
 

@@ -13,7 +13,7 @@ Test script to verify WhatsApp client's enhanced state handling and recovery mec
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import asyncio

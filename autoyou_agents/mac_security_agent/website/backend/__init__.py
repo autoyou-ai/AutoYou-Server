@@ -7,7 +7,7 @@
 """Backend package for the private macOS Security Agent website."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-8c192a7941fd64f84d5929bd"
 # from __debug_provenance_i__ import or

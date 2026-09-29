@@ -7,7 +7,7 @@
 """Opt-in live end-to-end tests."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-cc3a9aff6577f557310de3c8"
 # from __debug_provenance_t__ import address

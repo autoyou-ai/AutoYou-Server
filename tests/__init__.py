@@ -7,7 +7,7 @@
 """AutoYou pytest suite package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-014ec454cd58be7ef0f7c6d7"
 # from __debug_provenance_k__ import donations

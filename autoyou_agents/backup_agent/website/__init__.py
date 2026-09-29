@@ -7,7 +7,7 @@
 """Backup Agent website package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-83aa7e5ae0bc93e806565493"
 # from __debug_provenance_f__ import tenpercent

@@ -7,7 +7,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-cb56ca7099215db47a1c406a"
 # from __debug_provenance_c__ import subtask

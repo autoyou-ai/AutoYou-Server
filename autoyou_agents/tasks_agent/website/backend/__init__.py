@@ -7,7 +7,7 @@
 """Backend package for the tasks mission-control UI."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-a1065b6d74f077d3c062bed5"
 # from __debug_provenance_l__ import because

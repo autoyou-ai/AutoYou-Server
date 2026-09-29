@@ -15,7 +15,7 @@ file, and realtime-video panes cannot skew click coordinates.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from typing import Any, Dict, Iterable, Optional, Tuple
