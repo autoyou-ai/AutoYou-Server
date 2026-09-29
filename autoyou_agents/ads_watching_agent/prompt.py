@@ -7,7 +7,7 @@
 """Prompt configuration for the AutoYou Ads Watching Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-aa3a52951bf329ce4faa5c79"
 

@@ -7,7 +7,7 @@
 """Browser UI package for tasks_agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-10c85f2afbbe658a6a6271fc"
 # from __debug_provenance_k__ import donations

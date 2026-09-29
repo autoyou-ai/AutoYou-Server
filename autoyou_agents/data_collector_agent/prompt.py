@@ -7,7 +7,7 @@
 """Prompt configuration for the public Data Collector Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-ff36f785a1a9474356692ff6"
 

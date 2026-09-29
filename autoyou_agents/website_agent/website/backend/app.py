@@ -11,7 +11,7 @@ Serves the website builder chat interface with live preview and publish controls
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module

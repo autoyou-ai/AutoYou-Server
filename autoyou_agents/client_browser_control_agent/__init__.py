@@ -7,7 +7,7 @@
 """Client Browser Control Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from autoyou_agents.client_browser_control_agent.agent import create_client_browser_control_agent

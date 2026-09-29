@@ -7,7 +7,7 @@
 """Public Ed25519 trust anchors embedded in AutoYou release packages."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-edd84217060ad4a785dd2624"
 

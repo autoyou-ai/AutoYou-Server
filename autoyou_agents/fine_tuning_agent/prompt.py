@@ -7,7 +7,7 @@
 """Prompt configuration for the AutoYou Fine Tuning Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-d1f320cc3d78744d2f10599b"
 
