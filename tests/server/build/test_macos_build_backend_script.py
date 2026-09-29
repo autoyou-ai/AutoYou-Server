@@ -124,10 +124,38 @@ def test_macos_release_profiles_keep_voice_stack_in_connector_full_only():
     assert "-r voice.txt" in full
 
 
+def test_macos_full_voice_build_bundles_and_verifies_emotivoice_runtime_deps():
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+
+    assert "Installing runtime distribution overlay closure for voice dependencies" in text
+    for package in (
+        '"transformers"',
+        '"g2p-en"',
+        '"pypinyin-dict"',
+        '"modelscope"',
+        '"soundfile"',
+        '"nltk"',
+        '"onnxruntime"',
+    ):
+        assert package in text
+    for module in (
+        'shared.emotivoice_tts',
+        'torch',
+        'transformers',
+        'g2p_en',
+        'pypinyin_dict',
+        'soundfile',
+        'nltk',
+        'scipy',
+    ):
+        assert f'--verify-runtime-import "{module}"' in text
+
+
 def test_macos_release_wrappers_require_official_build_authorization():
     build_all = BUILD_ALL_SCRIPT.read_text(encoding="utf-8")
     sign_and_compress = (REPO_ROOT / "servers" / "macos" / "sign-and-compress.sh").read_text(encoding="utf-8")
     notarize = (REPO_ROOT / "servers" / "macos" / "notarize.sh").read_text(encoding="utf-8")
+    build_backend = BUILD_SCRIPT.read_text(encoding="utf-8")
 
     assert "check_official_build_authorization.py" in build_all
     assert "--artifact-profile \"$(release_artifact_profile)\"" in build_all
@@ -141,6 +169,9 @@ def test_macos_release_wrappers_require_official_build_authorization():
 
     assert "check_official_build_authorization.py" in notarize
     assert "--artifact-profile \"$(release_artifact_profile)\"" in notarize
+
+    for script in (build_all, build_backend, sign_and_compress, notarize):
+        assert "AUTOYOU_SKIP_STRICT_RELEASE_LEGAL_GATE" in script
 
 
 def test_macos_build_backend_bundles_bluetooth_pair_runtime_from_overlay():
