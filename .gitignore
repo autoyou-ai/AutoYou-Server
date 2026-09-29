@@ -344,3 +344,4 @@ shared/ai_training_detection.py
 shared/source_provenance.py
 tests/test_ai_training_detection.py
 tests/test_source_provenance.py
+scripts/provenance.py
