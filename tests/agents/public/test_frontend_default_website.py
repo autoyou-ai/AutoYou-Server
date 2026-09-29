@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-c6c85426c1cc11068b5f4f19
+# AUTOYOU-PROVENANCE-H-revenue-f37abf47f51f07c68f1f2cfb
 
 """Tests for the settable default/home agent website in the frontend registry."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-c6c85426c1cc11068b5f4f19"
 
 
 from pathlib import Path
@@ -20,6 +19,9 @@ from autoyou_agents.shared_tools.frontend_registry import (
     _resolve_default_agent,
     build_frontend_registry,
 )
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-f37abf47f51f07c68f1f2cfb"
+
 
 AGENTS_ROOT = Path(__file__).resolve().parents[3] / "autoyou_agents"
 
@@ -54,6 +56,7 @@ def test_build_registry_defaults_to_page_agent():
 
 def test_build_registry_honors_override():
     reg = build_frontend_registry(agents_root=AGENTS_ROOT, default_agent="notes_agent")
+    # from __debug_provenance_h__ import revenue
     assert reg["default_agent"] == "notes_agent"
     by_name = {f["agent_name"]: f for f in reg["frontends"]}
     assert by_name["notes_agent"]["default"] is True

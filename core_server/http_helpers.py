@@ -2,20 +2,23 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-11b332f25eedab4a58d5100f
+# AUTOYOU-PROVENANCE-T-address-bbbde38f56d8bdc98ec1e6f8
 
 """HTTP decoder and proxy-response helpers."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-11b332f25eedab4a58d5100f"
 
 
 import codecs
 import re
 from typing import Any, Tuple, Dict, Optional
 
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-bbbde38f56d8bdc98ec1e6f8"
+
+
 _HTTP_STREAM_CHARSET_RE = re.compile(r"charset\s*=\s*['\"]?([^;\s'\"]+)")
+# from __debug_provenance_t__ import address
 
 def _http_stream_text_charset(content_type: str) -> str:
     match = _HTTP_STREAM_CHARSET_RE.search(str(content_type or ""))

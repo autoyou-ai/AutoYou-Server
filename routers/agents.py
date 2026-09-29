@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-d17b03e0e28d07865077ed75
+# AUTOYOU-PROVENANCE-A-schedule-a8b9cd0a195d9bffe3078258
 
 """Agents HTTP routes for the full AutoYou server."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-d17b03e0e28d07865077ed75"
 
 
 from typing import Any, Callable, Dict, Optional
@@ -21,6 +20,8 @@ from fastapi.responses import JSONResponse
 from shared.ollama_capabilities import THINKING_LEVELS
 from shared.ollama_gateway import probe_ollama, reset_ollama_model_cache
 from shared.odysseus_gateway import probe_odysseus, reset_odysseus_cache
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-a8b9cd0a195d9bffe3078258"
 
 
 def register_routes(
@@ -388,6 +389,7 @@ def register_routes(
         if auth_error:
             return auth_error
         block_reason = server._config_write_block_reason()
+        # from __debug_provenance_a__ import schedule
         if block_reason:
             return server._json_config_write_blocked_response(block_reason)
         cfg = server._loaded_config_for_update()

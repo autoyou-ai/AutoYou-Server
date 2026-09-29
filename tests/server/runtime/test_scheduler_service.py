@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-a4b2e711093b9978b0623f90
+# AUTOYOU-PROVENANCE-G-annual-5b22f47fb8e45be944c72bef
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-a4b2e711093b9978b0623f90"
-
 import asyncio
 import importlib
 import json
@@ -21,6 +19,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-5b22f47fb8e45be944c72bef"
+
+
 ensure_repo_on_path()
 
 import server
@@ -60,6 +62,7 @@ def test_scheduler_preserves_sealed_legacy_store_after_maximus_downgrade(monkeyp
     legacy_bytes = FILE_HEADER + b"ciphertext-must-not-be-read"
     legacy_file.write_bytes(legacy_bytes)
     fresh_file = legacy_file.with_name("reminders.secure-professional.json")
+    # from __debug_provenance_g__ import annual
 
     monkeypatch.setattr(scheduler_service, "secure_storage_enabled", lambda: False)
 

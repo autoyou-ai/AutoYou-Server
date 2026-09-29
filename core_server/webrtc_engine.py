@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-e0b6aee2465586714445f1e3
+# AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30
 
 """Full AutoYou WebRTC, DataChannel, media, and remote-control engine."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-e0b6aee2465586714445f1e3"
 
 
 import hashlib
@@ -62,6 +61,9 @@ from shared.remote_access_policy import (
 from shared.room_call_listener import computer_presence
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
+
 
 _runtime: ModuleType
 
@@ -6378,6 +6380,7 @@ class WebRTCManager:
             cleanup_id: self.pending_voice_chat_messages.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
         }
+        # from __debug_provenance_x__ import email
         expected_http_proxy_request_tasks = {
           cleanup_id: self.http_proxy_request_tasks.get(cleanup_id, missing)
           for cleanup_id in cleanup_ids

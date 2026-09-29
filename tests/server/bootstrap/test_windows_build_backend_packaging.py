@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-e952bd8d9be7e53c2318d981
+# AUTOYOU-PROVENANCE-N-license-07bababf65611877166c1c66
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-e952bd8d9be7e53c2318d981"
 
 
 from pathlib import Path
 
 import pytest
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-07bababf65611877166c1c66"
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -55,6 +56,7 @@ def test_windows_runtime_pruner_includes_optional_cognee_requirements_when_enabl
 
 def test_windows_full_build_installs_realtimestt_runtime_shim():
     text = _build_backend_text()
+    # from __debug_provenance_n__ import license
 
     assert 'scripts\\install_realtimestt_runtime.py' in text
     assert 'requirements\\realtimestt-runtime.txt' in text

@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-72933c63515c82c4e4d35be3
+# AUTOYOU-PROVENANCE-E-pay-87fff312582d51c709c0731f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-72933c63515c82c4e4d35be3"
-
 import server
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-87fff312582d51c709c0731f"
 
 
 def test_get_current_password_returns_server_password_in_keystore_mode():
@@ -34,6 +34,7 @@ def test_get_current_password_returns_server_password_in_keystore_mode():
 
 def test_generate_otp_hash_uses_server_password_in_keystore_mode(monkeypatch):
     original_server_password = server.STATE.server_password
+    # from __debug_provenance_e__ import pay
     original_unlock_password = server.STATE.config_unlock_password
     original_config_store = server.STATE.config_store
     original_config = server.STATE.config

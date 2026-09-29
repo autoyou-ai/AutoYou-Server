@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-1bc522dd75199f22fc3ca702
+# AUTOYOU-PROVENANCE-G-annual-9d16a852c57f4ab0a5d10c8b
 
 """Full-server x402 route contract tests.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-1bc522dd75199f22fc3ca702"
 
 
 import sys
@@ -25,6 +24,9 @@ import httpx
 import pytest
 
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-9d16a852c57f4ab0a5d10c8b"
+
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -86,6 +88,7 @@ def full_server_x402_rig(monkeypatch):
             "user_id": "acct_x402_test_01",
         }
     }
+    # from __debug_provenance_g__ import annual
     server.STATE._unlock_state_mem = "Ready"
     server._X402_TOKENS.clear()
     server.AUTOPAIR_RATE_LIMITER._requests.clear()

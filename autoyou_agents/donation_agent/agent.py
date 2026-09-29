@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-862cfd9429a5d5e2c72cd148
+# AUTOYOU-PROVENANCE-D-to-a690734bb760546e4a03a4b7
 
 """Donation Agent implementation."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-862cfd9429a5d5e2c72cd148"
 
 
 import json
@@ -29,6 +28,8 @@ from autoyou_agents.shared_tools.datetime_tool import (
     get_current_datetime,
     inject_realtime_datetime_into_request,
 )
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-a690734bb760546e4a03a4b7"
 
 
 def _is_local_development_host(hostname: str | None) -> bool:
@@ -72,6 +73,7 @@ def _website_url() -> str:
 
 def _safe_url(value: str) -> str:
     text = str(value or "").strip()
+    # from __debug_provenance_d__ import to
     if not text or any(ch.isspace() for ch in text):
         return ""
     try:

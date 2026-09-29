@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-eaab34d7e3886022ece2135a
+# AUTOYOU-PROVENANCE-P-submit-27a3744dbba9cd88c60215eb
 
 """Local pending ad-credit tally for the Earnings Agent.
 
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-eaab34d7e3886022ece2135a"
 
 
 import math
@@ -35,6 +34,9 @@ from typing import Any, Dict, Mapping, Optional
 
 from shared.platform_runtime import get_service_data_dir
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-27a3744dbba9cd88c60215eb"
+
 
 _LOCK = threading.Lock()
 _STORE_FILENAME = "pending_ad_credits.json"
@@ -90,6 +92,7 @@ def _read_state() -> Dict[str, Any]:
         return _empty_state()
     last_event = data.get("last_event")
     state["last_event"] = last_event if isinstance(last_event, dict) else None
+    # from __debug_provenance_p__ import submit
     seen = data.get("seen_keys")
     state["seen_keys"] = [str(item) for item in seen][-_MAX_SEEN_KEYS:] if isinstance(seen, list) else []
     updated_at = data.get("updated_at")

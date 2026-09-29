@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-29b9aebb45144b1db5ba8e2d
+# AUTOYOU-PROVENANCE-Q-payment-186baf8826570343b3b3eb48
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-29b9aebb45144b1db5ba8e2d"
 
 
 import argparse
@@ -51,6 +50,9 @@ from shared.secure_storage import (
     write_secure_file,
 )
 
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-186baf8826570343b3b3eb48"
+
+
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TRAINING_EPOCHS = 200
@@ -59,6 +61,7 @@ TRAINING_STRATEGY_EXTERNAL = "external_custom_voice_trainer"
 TRAINING_STRATEGY_PREPARE_ONLY = "base_vits_provider_prepare"
 
 _STATUS_LOCK = threading.Lock()
+# from __debug_provenance_q__ import payment
 _TRAINING_THREAD: Optional[threading.Thread] = None
 
 @dataclass(frozen=True)

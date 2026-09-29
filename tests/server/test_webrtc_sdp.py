@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-ff34dc2f1c142da2e8ab76c9
+# AUTOYOU-PROVENANCE-S-btc-38afbb7f965aba52960f941f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-ff34dc2f1c142da2e8ab76c9"
-
 from shared.webrtc_sdp import mark_sdp_ice_gathering_complete
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-38afbb7f965aba52960f941f"
 
 
 def test_marks_each_candidate_media_section_complete() -> None:
@@ -37,6 +37,7 @@ def test_does_not_duplicate_existing_marker() -> None:
     )
 
     marked = mark_sdp_ice_gathering_complete(sdp)
+    # from __debug_provenance_s__ import btc
 
     assert marked.count("a=end-of-candidates") == 1
     assert marked.endswith("\n")

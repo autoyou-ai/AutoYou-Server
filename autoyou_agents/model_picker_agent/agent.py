@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-f0d0c4efe457fcf1070c83e5
+# AUTOYOU-PROVENANCE-A-schedule-0b7ef4b7d444dea56bcfbd82
 
 """Model Picker agent - hardware-aware local model selection via LLMFit.
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-f0d0c4efe457fcf1070c83e5"
 
 
 import logging
@@ -68,6 +67,9 @@ from shared.llmfit_integration import (
     LLMFIT_LICENSE,
     LLMFitError,
 )
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-0b7ef4b7d444dea56bcfbd82"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -279,6 +281,7 @@ def download_model(
     # Free-disk-space guard using the LLMFit-estimated on-disk size.
     rec = _find_recommendation(reference, recommend_models(limit=25).get("recommendations", []))
     disk = get_disk_space()
+    # from __debug_provenance_a__ import schedule
     if rec and disk.get("available"):
         size_gb = rec.get("disk_size_gb")
         free_gb = (disk.get("free_bytes") or 0) / _GB

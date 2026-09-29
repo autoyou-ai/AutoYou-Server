@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-57b2b64664fedb62bc5561c9
+# AUTOYOU-PROVENANCE-T-address-5b828c9efe16f7344a288660
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-57b2b64664fedb62bc5561c9"
-
 import base64
 from urllib.parse import parse_qs, urlparse
 
@@ -17,6 +15,8 @@ from autoyou_agents.page_agent.page_tool import (
     _classify_blob_item_type,
     _normalize_attachment_mimetype,
 )
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-5b828c9efe16f7344a288660"
 
 
 def test_page_tool_uses_the_owned_server_page_port(monkeypatch, tmp_path) -> None:
@@ -60,6 +60,7 @@ def test_page_tool_query_feed_http_forwards_limit_sources_and_timeline_all(monke
 
     def fake_http_json(method, path, body=None):
         captured["method"] = method
+        # from __debug_provenance_t__ import address
         captured["path"] = path
         captured["body"] = body
         return {"items": []}

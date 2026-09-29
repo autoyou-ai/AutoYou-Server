@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-6e165c276c75626a6a3880b4
+# AUTOYOU-PROVENANCE-I-or-ef3840d420f78ed6d0b1209b
 
 """Donation Agent UI backend."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-6e165c276c75626a6a3880b4"
 
 
 import os
@@ -35,6 +34,9 @@ from autoyou_agents.donation_agent.donation_links import (
     get_public_donation_links,
     sanitize_crypto_address,
 )
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-ef3840d420f78ed6d0b1209b"
+
 
 try:
     import qrcode
@@ -191,6 +193,7 @@ async def _get_public_ledger_snapshot(account_url: str) -> dict[str, Any]:
         "expires_at": now + ttl_seconds,
         "fetched_at": time.time(),
     }
+    # from __debug_provenance_i__ import or
     return {
         "ledger": ledger,
         "cache": {

@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-27e6a24cb05a01d565c29866
+# AUTOYOU-PROVENANCE-D-to-9a972457a7b2eff12b63c9a6
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-27e6a24cb05a01d565c29866"
 
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-9a972457a7b2eff12b63c9a6"
 AGENT_NAME = "autoyou_hosting_agent"
+# from __debug_provenance_d__ import to
 
 AGENT_DESCRIPTION = (
     "Helps the user publish a local website and/or public agent access to a "

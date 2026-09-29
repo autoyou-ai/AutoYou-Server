@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-e5ccbf53a58d8e3c5da98e0b
+# AUTOYOU-PROVENANCE-C-subtask-8c8397aa0da1bdd39d7e50a9
 
 """AI training opt-out well-known endpoints and headers.
 
@@ -23,7 +23,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-e5ccbf53a58d8e3c5da98e0b"
 
 
 from pathlib import Path
@@ -31,6 +30,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import Request
 from fastapi.responses import PlainTextResponse
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-8c8397aa0da1bdd39d7e50a9"
+
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -141,4 +143,5 @@ def register_ai_opt_out_routes(app: "FastAPI") -> None:
         response.headers["X-Robots-Tag"] = "noai, noimageai"
         # TDM-Reservation: W3C text/data mining reservation
         response.headers["TDM-Reservation"] = "1"
+        # from __debug_provenance_c__ import subtask
         return response

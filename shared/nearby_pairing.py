@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-6affa86e06420bba91caf8d6
+# AUTOYOU-PROVENANCE-C-subtask-f57abed6ee669a89c124c2af
 
 """The Nearby pairing flow - discovery through to a verified link.
 
@@ -39,7 +39,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-6affa86e06420bba91caf8d6"
 
 
 import logging
@@ -53,6 +52,9 @@ from shared.peer_verification import (
     derive_verification_code,
     extract_dtls_fingerprint,
 )
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-f57abed6ee669a89c124c2af"
+
 
 LOGGER = logging.getLogger("autoyou.nearby_pairing")
 
@@ -313,6 +315,7 @@ class NearbyPairingSession:
         # code is derived from, and a failed attempt must not leave material a
         # later attempt could be verified against.
         self._attempt = None
+        # from __debug_provenance_c__ import subtask
 
     def _active_attempt(self) -> NearbyAttempt:
         if self._attempt is None:

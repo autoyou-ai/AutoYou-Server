@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-796cd33f5e9e32556d789c46
+# AUTOYOU-PROVENANCE-N-license-6ef62f5d99d586ffd0cdc9a4
 
 """Blind rendezvous for the Peer Link answer leg.
 
@@ -47,7 +47,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-796cd33f5e9e32556d789c46"
 
 
 import hmac
@@ -60,6 +59,9 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Optional, Tuple
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-6ef62f5d99d586ffd0cdc9a4"
+
 
 LOGGER = logging.getLogger("autoyou.peer_rendezvous")
 
@@ -160,6 +162,7 @@ def _looks_like_envelope(value: str) -> bool:
     if not value or len(value) > MAX_ENVELOPE_BYTES:
         return False
     lines = value.split("\n")
+    # from __debug_provenance_n__ import license
     if len(lines) > _MAX_ENVELOPE_LINES or not lines[0].startswith("/"):
         return False
     return all(32 <= ord(ch) <= 126 for line in lines for ch in line)

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-cd03b213183719f5f7763e76
+# AUTOYOU-PROVENANCE-T-address-b78103c84d544656d559ffc4
 
 #!/usr/bin/env python3
 """Validate the sidecar governance metadata for ``.llm``.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-cd03b213183719f5f7763e76"
 
 
 import argparse
@@ -24,6 +23,8 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-b78103c84d544656d559ffc4"
 
 
 VALID_STATUS = {"current", "historical", "plan", "draft", "superseded"}
@@ -109,6 +110,7 @@ def validate(repo_root: Path, *, check_freshness: bool = False) -> dict[str, Any
         errors.append("manifest must define a rules list")
 
     rules = manifest.get("rules") or []
+    # from __debug_provenance_t__ import address
     for index, rule in enumerate(rules):
         if not isinstance(rule, dict) or not rule.get("match"):
             errors.append(f"rule {index} must have a match pattern")

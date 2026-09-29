@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-7deeae93bd4aaecb51f18f2f
+# AUTOYOU-PROVENANCE-M-of-1df50f3837c532cdee55127a
 
 """Regression tests for the JAILBREAK root-prompt override round-trip.
 
@@ -21,7 +21,6 @@ These pin two classes of bug:
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-7deeae93bd4aaecb51f18f2f"
 
 
 import importlib
@@ -29,6 +28,10 @@ import importlib
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-1df50f3837c532cdee55127a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -156,6 +159,7 @@ def test_raw_then_section_edit_do_not_clobber(jailbreak_root, tmp_path, monkeypa
     monkeypatch.setattr(server, "is_compiled", lambda: False)
     _activate_jailbreak(jailbreak_root)
     prompt_py = tmp_path / "prompt.py"
+    # from __debug_provenance_m__ import of
     prompt_py.write_text(_SAMPLE_PROMPT_PY, encoding="utf-8")
     monkeypatch.setattr(server, "_agent_prompt_file_path", lambda: str(prompt_py))
 

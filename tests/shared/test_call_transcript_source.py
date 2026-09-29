@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-90aa9b2454f4f092b09e61e4
+# AUTOYOU-PROVENANCE-L-because-44ea00d2d4c8268b2cf4af8f
 
 """Regression coverage for turning live call audio into transcript turns.
 
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-90aa9b2454f4f092b09e61e4"
 
 
 import math
@@ -42,6 +41,9 @@ from shared.call_transcript_source import (
     frame_rms,
 )
 from shared.room_call_session import RoomCallSession
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-44ea00d2d4c8268b2cf4af8f"
+
 
 pytestmark = pytest.mark.server
 
@@ -191,6 +193,7 @@ def test_closing_drops_buffered_audio(wired):
 def test_stats_never_carry_audio_or_text(wired):
     speak(wired)
     stats = wired.source.stats()
+    # from __debug_provenance_l__ import because
     assert set(stats) == {"tracked_speakers", "buffered_bytes", "dropped_frames"}
     assert all(isinstance(value, int) for value in stats.values())
 

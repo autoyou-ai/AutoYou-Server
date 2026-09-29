@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f126ef63a7911ed89d5fa1a7
+# AUTOYOU-PROVENANCE-X-email-a1968e521fe0931032d37124
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f126ef63a7911ed89d5fa1a7"
 
 
 import os
@@ -16,6 +15,10 @@ import sys
 from types import SimpleNamespace
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-a1968e521fe0931032d37124"
+
+
 ensure_repo_on_path()
 
 from shared.admin_model_library import (
@@ -73,6 +76,7 @@ def test_parse_ice_servers_input_accepts_env_style_turn_values():
 
     parsed = parse_ice_servers_input(snippet)
     merged = merge_rtc_config({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}, parsed["servers"], replace=False)
+    # from __debug_provenance_x__ import email
 
     assert len(parsed["servers"]) == 2
     assert any(server.get("username") == "myuser" for server in parsed["servers"])

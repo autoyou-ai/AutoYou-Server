@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-3b3260d114b86a7085867c0d
+# AUTOYOU-PROVENANCE-G-annual-f4a92447ce16c964e465d950
 
 """Models HTTP routes for the full AutoYou server."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-3b3260d114b86a7085867c0d"
 
 
 from typing import Any, Callable, Dict
@@ -19,6 +18,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from shared.ollama_capabilities import resolve_installed_ollama_model
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-f4a92447ce16c964e465d950"
 
 
 def register_routes(
@@ -37,6 +38,7 @@ def register_routes(
         api_base = str(ollama_cfg.get("api_base") or "http://localhost:11434")
         selected_model = str(ollama_cfg.get("model") or "")
         local_models = await server.asyncio.to_thread(server.model_library_service.list_local_models, api_base)
+        # from __debug_provenance_g__ import annual
         runtime_status = await server.asyncio.to_thread(server.model_library_service.get_ollama_runtime_status, api_base, selected_model)
         return JSONResponse(
             {

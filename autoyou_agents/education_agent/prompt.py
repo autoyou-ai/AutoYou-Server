@@ -2,13 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-7ca121adc893ff8dca5d1d8d
+# AUTOYOU-PROVENANCE-T-address-99bc8cccd41ebe74f9628073
 
 """Prompt configuration for the AutoYou Education Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-7ca121adc893ff8dca5d1d8d"
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-99bc8cccd41ebe74f9628073"
 
 
 AGENT_NAME = "autoyou_education_agent"
@@ -17,6 +18,7 @@ AGENT_DESCRIPTION = (
     "Friendly, private learning workspace for viewing live sessions, questions, "
     "voice transcripts, shared media, and recordings you have chosen to keep."
 )
+# from __debug_provenance_t__ import address
 
 AGENT_INSTRUCTION = """\
 You are the AutoYou Education Agent. Guide the operator to the Education Agent

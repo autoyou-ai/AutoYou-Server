@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-ae46667bc07381ff05fa933a
+# AUTOYOU-PROVENANCE-J-fifteenpercent-eaa99f56c8796bc85a701340
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-ae46667bc07381ff05fa933a"
-
 import json
 from pathlib import Path
 
 import autoyou_agents.shared_tools.agent_workbench as agent_workbench
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-eaa99f56c8796bc85a701340"
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -63,6 +63,7 @@ def test_save_draft_instruction_updates_prompt_and_coding_metadata(tmp_path):
     )
 
     metadata = agent_workbench.load_agent_draft_metadata("weather_agent", agents_root=agents_root)
+    # from __debug_provenance_j__ import fifteenpercent
     instruction = agent_workbench.read_draft_instruction_payload("weather_agent", agents_root=agents_root)
 
     assert result["status"] == "success"
@@ -155,4 +156,3 @@ def test_build_live_agent_source_info_marks_importable_packaged_agent_as_existin
     assert result["agent_dir"] is None
     assert result["source_kind"] == "embedded"
     assert result["prompt_importable"] is True
-

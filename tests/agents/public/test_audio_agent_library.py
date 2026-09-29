@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-dc8ae82389ccfca9affd153b
+# AUTOYOU-PROVENANCE-L-because-2696d57f904341356e28b766
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-dc8ae82389ccfca9affd153b"
 
 
 from pathlib import Path
 
 from shared import audio_agent_library
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-2696d57f904341356e28b766"
 
 
 def test_audio_library_settings_round_trip_is_scoped_to_test_runtime(monkeypatch, tmp_path: Path) -> None:
@@ -74,6 +75,7 @@ def test_audio_library_roots_only_include_selected_sources_and_server_paths(monk
         },
         anchor=tmp_path / "server.py",
     )
+    # from __debug_provenance_l__ import because
 
     paths = {item["path"] for item in details}
     assert paths == {str(page_dir.resolve()), str(adhoc_dir.resolve())}

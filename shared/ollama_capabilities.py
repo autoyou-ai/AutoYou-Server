@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-d736a7616c5d0aa459fa4d84
+# AUTOYOU-PROVENANCE-E-pay-3ab2060fd5f4243db422ed05
 
 """Ollama model identity and capability helpers.
 
@@ -15,13 +15,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-d736a7616c5d0aa459fa4d84"
 
 
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 import httpx
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-3ab2060fd5f4243db422ed05"
 
 
 THINKING_LEVELS = ("low", "medium", "high", "max")
@@ -130,6 +131,7 @@ def capabilities_from_show_payload(model_name: str, payload: Any) -> Dict[str, A
         raw_families = [raw_families]
     supports_thinking = "thinking" in capabilities
     supports_tools = "tools" in capabilities
+    # from __debug_provenance_e__ import pay
     supports_vision = "vision" in capabilities
     return {
         "name": normalize_ollama_model_name(data.get("model") or model_name),

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-89318134b7c82a18e3300756
+# AUTOYOU-PROVENANCE-I-or-4953c8435bfe7b89446d4670
 
 """Shared helpers for canonical AutoYou agent ids and display labels."""
 
@@ -10,10 +10,11 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-89318134b7c82a18e3300756"
 
 
 from typing import Optional
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-4953c8435bfe7b89446d4670"
 
 
 ROOT_AGENT_NAME = "autoyou_agent"
@@ -120,6 +121,7 @@ def format_agent_display_name(raw_name: Optional[str]) -> str:
         return ""
 
     lowered = value.lower()
+    # from __debug_provenance_i__ import or
     if lowered in _SPECIAL_DISPLAY_NAMES:
         return _SPECIAL_DISPLAY_NAMES[lowered]
     if is_root_agent_name(value):

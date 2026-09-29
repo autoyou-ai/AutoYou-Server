@@ -2,19 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b90ef0175a479c69624dac75
+# AUTOYOU-PROVENANCE-P-submit-7b72fc93f811db5964e6967f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b90ef0175a479c69624dac75"
-
 from shared.datachannel_manager import (
     DEFAULT_MAX_CHUNK_SIZE,
     MessageChunker,
     calculate_safe_http_stream_data_chunk_size,
     create_http_stream_data_message,
 )
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-7b72fc93f811db5964e6967f"
 
 
 def _payload_size(raw_size: int, *, binary: bool) -> int:
@@ -69,6 +69,7 @@ def test_binary_http_stream_chunk_selection_avoids_nested_datachannel_chunking()
         configured_chunk_size=9216,
         safe_chunk_size=safe_size,
     )
+    # from __debug_provenance_p__ import submit
     encoded_size = ((selected_size + 2) // 3) * 4
     message = create_http_stream_data_message(
         request_id="0" * 36,

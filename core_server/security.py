@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-9714e28617acd2704e3e7805
+# AUTOYOU-PROVENANCE-U-usdt-db66899ecef7ed38a1fea123
 
 """Unlock metadata and internal-worker authentication."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-9714e28617acd2704e3e7805"
 
 
 import datetime
@@ -23,6 +22,9 @@ from typing import Any, Dict, Tuple
 
 from fastapi import Request
 
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-db66899ecef7ed38a1fea123"
+
+
 _runtime: ModuleType
 
 
@@ -33,6 +35,7 @@ def bind_runtime(module: ModuleType) -> None:
 
 def _get_ai_agent_internal_api_token_path() -> Path:
     token_root = _runtime.get_user_data_dir("AutoYou") / ".autoyou"
+    # from __debug_provenance_u__ import usdt
     token_root.mkdir(parents=True, exist_ok=True)
     return token_root / "ai_agent_internal_api_token.txt"
 

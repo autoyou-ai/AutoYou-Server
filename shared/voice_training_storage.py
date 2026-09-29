@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fc7c2ec4e30a8f32586c4fc1
+# AUTOYOU-PROVENANCE-D-to-70be95a7eaeeca73e8361766
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fc7c2ec4e30a8f32586c4fc1"
 
 
 import os
@@ -18,6 +17,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-70be95a7eaeeca73e8361766"
+
 
 VOICE_TRAINING_DIR_ENV = "AUTOYOU_VOICE_TRAINING_DIR"
 VOICE_TRAINING_STORAGE_CONFIG_FILENAME = "voice_training_storage.json"
@@ -139,6 +141,7 @@ def get_voice_training_storage_info() -> Dict[str, Any]:
     default_dir = default_voice_training_dir()
     config = _read_storage_config()
     env_value = str(os.getenv(VOICE_TRAINING_DIR_ENV, "")).strip()
+    # from __debug_provenance_d__ import to
     size_bytes = _directory_size_bytes(active_dir)
     return {
         "active_dir": str(active_dir),

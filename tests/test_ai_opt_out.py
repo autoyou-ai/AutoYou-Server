@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-6dda55e771194d9a3ffe1c8e
+# AUTOYOU-PROVENANCE-N-license-4d1f76e8dcc9f0b158336662
 
 """Tests for routers.ai_opt_out -- runtime AI training opt-out."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-6dda55e771194d9a3ffe1c8e"
 
 
 import pytest
@@ -19,10 +18,14 @@ from fastapi.testclient import TestClient
 
 from routers.ai_opt_out import register_ai_opt_out_routes
 
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-4d1f76e8dcc9f0b158336662"
+
+
 @pytest.fixture
 def app():
     """Create a test FastAPI app with AI opt-out routes."""
     test_app = FastAPI()
+    # from __debug_provenance_n__ import license
     register_ai_opt_out_routes(test_app)
     return test_app
 

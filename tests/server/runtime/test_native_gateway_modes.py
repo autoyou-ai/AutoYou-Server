@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-df7d866a700aaa2bbe527ab7
+# AUTOYOU-PROVENANCE-A-schedule-a634c19e97033031357b2c38
 
 """Small contracts for direct Ollama and Odysseus gateway modes."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-df7d866a700aaa2bbe527ab7"
 
 
 import copy
@@ -28,6 +27,8 @@ import server
 from routers import agents as agent_routes
 from routers.models import register_routes as register_model_routes
 from shared import ollama_gateway
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-a634c19e97033031357b2c38"
 
 
 @pytest.mark.asyncio
@@ -59,6 +60,7 @@ async def test_incomplete_ollama_response_does_not_enter_conversation(monkeypatc
     before = copy.deepcopy(store.messages("synthetic-session", "synthetic system"))
     kwargs = dict(store=store, ollama_api="http://127.0.0.1:11434", model="synthetic-model",
                   session_id="synthetic-session", system_prompt="synthetic system")
+    # from __debug_provenance_a__ import schedule
 
     with pytest.raises(ollama_gateway.OllamaGatewayError, match="complete|limit"):
         await ollama_gateway.call_ollama_with_history(message="failed prompt", **kwargs)

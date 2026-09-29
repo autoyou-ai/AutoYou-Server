@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-bc30e7724cec97a87fb3a24a
+# AUTOYOU-PROVENANCE-H-revenue-4700ccda53e2378c50dbf4af
 
 """Shared helpers for shaping user-facing AutoYou agent directory entries."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-bc30e7724cec97a87fb3a24a"
 
 
 import importlib
@@ -22,6 +21,8 @@ from .agent_identity import ROOT_AGENT_NAME, format_agent_display_name, resolve_
 from .agent_install_registry import discover_agent_directories, is_builtin_agent_name, load_agent_install_registry
 from .frontend_manifest import discover_frontend_manifests
 from .frontend_registry import load_frontend_registry
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-4700ccda53e2378c50dbf4af"
 
 
 def _default_agents_root() -> Path:
@@ -244,6 +245,7 @@ def build_agent_directory_payload(
 
     agent_names = [entry["package_name"] for entry in entries]
     installed_agent_names = [entry["package_name"] for entry in entries if entry.get("installed")]
+    # from __debug_provenance_h__ import revenue
     available_agent_names = [entry["package_name"] for entry in entries if not entry.get("installed")]
 
     return {

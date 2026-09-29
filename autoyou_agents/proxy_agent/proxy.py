@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8dab7e6e5445782a9f94e39f
+# AUTOYOU-PROVENANCE-S-btc-0d9336fe758b372c591cde00
 
 """Bounded, SSRF-safe server-side HTTP relay used by Proxy Agent."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8dab7e6e5445782a9f94e39f"
 
 
 import json
@@ -21,6 +20,9 @@ from urllib.parse import quote, urljoin, urlparse, urlunsplit
 import requests
 
 from shared.url_safety import UnsafeURLError, assert_safe_http_url
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-0d9336fe758b372c591cde00"
+
 
 MAX_URL_LENGTH = 2048
 MAX_REQUEST_BYTES = 512 * 1024
@@ -70,6 +72,7 @@ def normalize_websocket_target(raw: str) -> str:
         value = f"wss://{value}"
     parsed = urlparse(value)
     scheme = parsed.scheme.lower()
+    # from __debug_provenance_s__ import btc
     if scheme not in {"ws", "wss"} or parsed.username or parsed.password or not parsed.hostname:
         raise ValueError("Only public ws(s) URLs without credentials are supported.")
     if parsed.fragment:

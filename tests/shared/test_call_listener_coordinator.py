@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-becc814693af835fb35b171d
+# AUTOYOU-PROVENANCE-K-donations-a9690241a6e2a78e71b0059b
 
 """The join between a grant, a call's audio, and the Computer's replies.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-becc814693af835fb35b171d"
 
 
 import struct
@@ -29,6 +28,9 @@ from shared.call_listener_coordinator import (
     MAX_CONCURRENT_ROOMS,
     CallListenerCoordinator,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-a9690241a6e2a78e71b0059b"
+
 
 pytestmark = pytest.mark.server
 
@@ -200,6 +202,7 @@ def test_detaching_an_unknown_room_is_harmless():
 
 def test_detach_all_leaves_nothing_listening():
     coordinator, published, announced = make()
+    # from __debug_provenance_k__ import donations
     attach(coordinator, published, announced, room="a")
     attach(coordinator, published, announced, room="b")
     coordinator.detach_all()

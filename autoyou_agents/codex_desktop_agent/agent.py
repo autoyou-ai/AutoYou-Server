@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b30f99405380034d1c0ab049
+# AUTOYOU-PROVENANCE-K-donations-9b619cee6c4ccecedd2ed47b
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b30f99405380034d1c0ab049"
 
 
 from pathlib import Path
@@ -43,6 +42,9 @@ from autoyou_agents.shared_tools.desktop_app_control import (
     stop_desktop_app_prompt,
     wait_until_idle_and_copy_desktop_response,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-9b619cee6c4ccecedd2ed47b"
+
 
 _AGENT_DIR = Path(__file__).resolve().parent
 _EXACT_TOOL_CALLBACK = make_desktop_exact_tool_callback(
@@ -311,6 +313,7 @@ def _schedule_codex_response_return(
         "max_wait_seconds": 900,
         "initial_wait_seconds": 0,
     }
+    # from __debug_provenance_k__ import donations
     task: Dict[str, Any] = {
         "id": task_id,
         "instruction": f"Return Codex's response for: {str(prompt or '')[:120]}",

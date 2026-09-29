@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-aebfd519d4fe56ee75c14830
+# AUTOYOU-PROVENANCE-E-pay-d12ea9aef39b806fdde5d0e5
 
 """Tests for the x402 agent client used for agent-to-agent AutoYou links.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-aebfd519d4fe56ee75c14830"
 
 
 import json
@@ -27,6 +26,9 @@ import httpx
 import pytest
 
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-d12ea9aef39b806fdde5d0e5"
+
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -82,6 +84,7 @@ class FakeWorld:
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
+        # from __debug_provenance_e__ import pay
         body = {}
         if request.content:
             try:

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-5e5c9afab9a8a68d3c9f3ab2
+# AUTOYOU-PROVENANCE-U-usdt-b8d8aae342a0235cb80b803c
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-5e5c9afab9a8a68d3c9f3ab2"
 
 
 from datetime import datetime, timezone
@@ -18,6 +17,8 @@ import sqlite3
 
 from .store import LocationStore
 from tests.support.paths import PROJECT_ROOT
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-b8d8aae342a0235cb80b803c"
 
 
 def test_location_store_round_trip(tmp_path):
@@ -95,6 +96,7 @@ def test_location_agent_import_is_lazy_and_native_clients_use_datachannel_ingest
     repo_root = PROJECT_ROOT
     android_source = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/location/LocationBeacon.kt").read_text(encoding="utf-8")
     android_buffer = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/messaging/BufferMessageManager.kt").read_text(encoding="utf-8")
+    # from __debug_provenance_u__ import usdt
     android_connection = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/repository/ConnectionRepository.kt").read_text(encoding="utf-8")
     ios_source = (repo_root / "clients/ios/AutoYouApp/Managers/ConnectionManager.swift").read_text(encoding="utf-8")
     ios_buffer = (repo_root / "clients/ios/AutoYouApp/Managers/BufferMessageManager.swift").read_text(encoding="utf-8")

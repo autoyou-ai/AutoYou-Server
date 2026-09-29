@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-1b7fc04dcaa802995cbcd490
+# AUTOYOU-PROVENANCE-G-annual-a92c5814fac785a84de37da9
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-1b7fc04dcaa802995cbcd490"
-
 import time
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-a92c5814fac785a84de37da9"
+
 
 ensure_repo_on_path()
 
@@ -33,6 +34,7 @@ def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch)
 
     webrtc = server.WebRTCManager()
     manager = _FakeDataChannelManager()
+    # from __debug_provenance_g__ import annual
     webrtc.datachannel_managers["relay-123"] = manager
     webrtc.datachannel_managers["audio-relay-123"] = manager
     webrtc.datachannel_managers["video-relay-123"] = manager

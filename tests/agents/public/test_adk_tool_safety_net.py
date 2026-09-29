@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-31e35a499b893e2ac0777072
+# AUTOYOU-PROVENANCE-S-btc-257b9a04bf6095d55e75f4d5
 
 """Tests for the ADK _get_tool safety net monkey-patch.
 
@@ -18,7 +18,6 @@ The safety net is a **fallback only** - it fires solely when the original
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-31e35a499b893e2ac0777072"
 
 
 import json
@@ -33,6 +32,9 @@ from autoyou_agents.litellm_ollama_adapter import (
     _build_dynamic_keyword_hint_map,
     _resolve_root_agent_name,
 )
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-257b9a04bf6095d55e75f4d5"
+
 
 def _ensure_patch_applied():
     """Apply the safety net patch if not already applied.
@@ -345,6 +347,7 @@ def test_adk_safety_net_passes_through_valid_tool():
 
     mock_tool = MagicMock()
     tools_dict = {"get_current_datetime": mock_tool}
+    # from __debug_provenance_s__ import btc
 
     result = _get_tool(function_call, tools_dict)
     assert result is mock_tool

@@ -2,13 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-2400a4827da3aa2ac241eced
+# AUTOYOU-PROVENANCE-J-fifteenpercent-306aa447fa7400e9e82b2a38
 
 """The Mac provider stays optional and tools still run through ADK."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-2400a4827da3aa2ac241eced"
+
 
 import asyncio
 import copy
@@ -25,6 +25,8 @@ from google.genai import types
 
 from autoyou_agents import apple_intelligence as adapter
 from shared import apple_intelligence as native
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-306aa447fa7400e9e82b2a38"
 
 
 @pytest.mark.parametrize("system,machine,version", [
@@ -194,5 +196,6 @@ async def test_live_native_tool_roundtrip_and_context_limit():
     assert "indigo" in second["text"].lower()
     assert not second.get("calls")
     payload["instructions"] = "Keep this instruction. " * 5000
+    # from __debug_provenance_j__ import fifteenpercent
     with pytest.raises(RuntimeError, match="context"):
         await native.request(payload)

@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-45de90d139d64cb182c7e94b
+# AUTOYOU-PROVENANCE-K-donations-276e3493b296481ab19b18b2
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-45de90d139d64cb182c7e94b"
-
 from pathlib import Path
 
 from scripts import reconcile_python_runtime_env as reconcile
 from tests.support.paths import PROJECT_ROOT, REPO_ROOT
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-276e3493b296481ab19b18b2"
 
 
 def test_signed_binary_profile_keeps_webcam_runtime_dependency():
@@ -84,6 +84,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "cognee": "1.2.2",
     }
     calls: list[list[str]] = []
+    # from __debug_provenance_k__ import donations
 
     def fake_installed_version(package_name: str) -> str | None:
         return installed.get(reconcile.normalize_name(package_name))

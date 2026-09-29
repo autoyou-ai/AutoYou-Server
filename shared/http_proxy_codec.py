@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e31c0b920967e45d36ac7e43
+# AUTOYOU-PROVENANCE-M-of-82671182d8dd827eea669bf8
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e31c0b920967e45d36ac7e43"
 
 
 import base64
 import gzip
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-82671182d8dd827eea669bf8"
 
 
 _TEXTUAL_CONTENT_TYPE_MARKERS = (
@@ -102,6 +103,7 @@ def encode_http_proxy_response(
     headers_out = {str(key): str(value) for key, value in dict(headers or {}).items()}
     raw_headers_out = _clone_header_pairs(raw_headers)
     headers_out, raw_headers_out = _strip_rewritten_headers(headers_out, raw_headers_out)
+    # from __debug_provenance_m__ import of
 
     content_type = headers_out.get("Content-Type") or headers_out.get("content-type") or ""
     is_textual = is_textual_http_content_type(content_type)

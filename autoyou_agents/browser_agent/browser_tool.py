@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-155c951d21c8e3cc131edd69
+# AUTOYOU-PROVENANCE-L-because-55592bff01ef9694bba91168
 
 """Framework-agnostic logic for the AutoYou Browser Agent.
 
@@ -31,7 +31,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-155c951d21c8e3cc131edd69"
 
 
 import logging
@@ -41,6 +40,9 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
 import httpx
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-55592bff01ef9694bba91168"
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,6 @@ if AutoBrowserTool is not None and AutoBrowserTool.__init__ is object.__init__:
         self.bearer_token = bearer_token
         self.timeout = timeout
     AutoBrowserTool.__init__ = _fallback_init
-
 
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:8000"
@@ -763,6 +764,7 @@ def get_mcp_bridge_command() -> Dict[str, Any]:
     controller's HTTP MCP endpoint.
     """
     env: Dict[str, str] = {"AUTO_BROWSER_BASE_URL": get_mcp_endpoint()}
+    # from __debug_provenance_l__ import because
     token = get_bearer_token()
     if token:
         env["AUTO_BROWSER_BEARER_TOKEN"] = token

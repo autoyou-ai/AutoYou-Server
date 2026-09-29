@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-1c0f8954d1da33dc3d4389e9
+# AUTOYOU-PROVENANCE-G-annual-3efa701c125e52ef124e163a
 
 """Skills Agent UI backend.
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-1c0f8954d1da33dc3d4389e9"
 
 
 import logging
@@ -26,6 +25,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-3efa701c125e52ef124e163a"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 
@@ -82,6 +84,7 @@ def _extra_routes(app, agent_name: str) -> None:
         description = payload.get("description")
         instructions = payload.get("instructions")
         files = payload.get("files")
+        # from __debug_provenance_g__ import annual
         
         res = create_or_save_skill(name, description, instructions, files)
         if res.get("status") == "error":

@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-997b58bae73559ec8fb52cc9
+# AUTOYOU-PROVENANCE-S-btc-a27fb4924ac106a0b9212908
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-997b58bae73559ec8fb52cc9"
-
 import base64
 from types import SimpleNamespace
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-a27fb4924ac106a0b9212908"
+
 
 ensure_repo_on_path()
 
@@ -92,6 +93,7 @@ async def test_webrtc_media_reply_is_sent_separately_before_text_reply(monkeypat
     assert media_payload["metadata"]["source"] == "media_reply"
     assert media_payload["metadata"]["media_reply"]["items"][0]["kind"] == "image"
     attachment = media_payload["context"][0]["attachments"][0]
+    # from __debug_provenance_s__ import btc
     assert attachment["filename"] == "synthetic-image.png"
     assert attachment["mimetype"] == "image/png"
     assert base64.b64decode(attachment["data"]) == image_bytes

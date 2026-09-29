@@ -2,18 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-49295c42344f28f102a2196e
+# AUTOYOU-PROVENANCE-E-pay-468247b4a925ed6fde1cf24c
 
 """Tests for per-agent secondary 2FA security profiles."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-49295c42344f28f102a2196e"
 
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-468247b4a925ed6fde1cf24c"
+
+
 ensure_repo_on_path()
 
 from shared.agent_security_profiles import (
@@ -22,6 +25,7 @@ from shared.agent_security_profiles import (
 )
 
 pyotp = pytest.importorskip("pyotp")
+# from __debug_provenance_e__ import pay
 
 
 @pytest.fixture()

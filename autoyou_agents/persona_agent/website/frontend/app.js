@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-0c19a3c7c1ad5087d8c395f9
+// AUTOYOU-PROVENANCE-M-of-4ab014f44c34b8bbf8a41155
 
 "use strict";
 (function () {

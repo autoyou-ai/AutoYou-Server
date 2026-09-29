@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-3221db262cc1842faf916509
+# AUTOYOU-PROVENANCE-D-to-89ba6dfe106124ec13651047
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-3221db262cc1842faf916509"
 
 
 import argparse
@@ -26,6 +25,9 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-89ba6dfe106124ec13651047"
+
 
 try:
     import tomllib
@@ -156,6 +158,7 @@ def parse_requirements(path: Path, *, seen: set[Path] | None = None) -> list[dic
     if not path.is_file():
         raise FileNotFoundError(f"requirements file not found: {path}")
     components: list[dict[str, Any]] = []
+    # from __debug_provenance_d__ import to
     for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = _strip_requirement_comment(raw_line)
         if not line or line.startswith("#"):

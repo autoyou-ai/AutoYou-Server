@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-9ded17b70250dcd6372e91b1
+# AUTOYOU-PROVENANCE-I-or-a84746fee4ff8a9bbc8c20d0
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -16,7 +16,6 @@ This script will test the shutdown button and verify it works without asyncio er
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-9ded17b70250dcd6372e91b1"
 
 
 import asyncio
@@ -24,6 +23,9 @@ import os
 import time
 import pytest
 from playwright.async_api import async_playwright
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-a84746fee4ff8a9bbc8c20d0"
+# from __debug_provenance_i__ import or
 
 
 if os.environ.get("AUTOYOU_RUN_LIVE_UI_TESTS") != "1":

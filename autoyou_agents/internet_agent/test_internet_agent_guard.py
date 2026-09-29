@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-ca6d702ac2b043c908cd3812
+# AUTOYOU-PROVENANCE-N-license-afd47b4b8a22ea0efbc22a06
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -13,7 +13,6 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-ca6d702ac2b043c908cd3812"
 
 
 import asyncio
@@ -29,6 +28,8 @@ from autoyou_agents.internet_agent.agent import (
     _internet_before_model_callback,
     _internet_after_tool_callback,
 )
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-afd47b4b8a22ea0efbc22a06"
 
 
 def _context(invocation_id: str = "inv-1"):
@@ -85,6 +86,7 @@ def test_success_clears_a_previous_tool_error():
 def test_later_search_failure_does_not_hide_an_earlier_success():
     context = _context()
     context.state[_INTERNET_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY] = "inv-1"
+    # from __debug_provenance_n__ import license
 
     _run_after_tool(
         _tool("internet_search"),

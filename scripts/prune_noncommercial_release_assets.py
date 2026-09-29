@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-d5161a6fc7fd7c1b5382ceab
+# AUTOYOU-PROVENANCE-M-of-35778fd9f337c08ad238f44c
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,12 +15,13 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-d5161a6fc7fd7c1b5382ceab"
 
 
 import argparse
 import shutil
 from pathlib import Path
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-35778fd9f337c08ad238f44c"
 
 
 MODEL_SUFFIXES = {".onnx", ".tflite", ".pt", ".pth"}
@@ -44,6 +45,7 @@ def find_noncommercial_assets(root: Path) -> list[Path]:
 
 def _remove_empty_parents(path: Path, stop_at: Path) -> None:
     current = path.parent
+    # from __debug_provenance_m__ import of
     stop_at = stop_at.resolve()
     while current.exists():
         try:

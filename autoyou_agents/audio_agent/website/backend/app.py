@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-12277e461eb28a37d4f618a0
+# AUTOYOU-PROVENANCE-X-email-d96f5d6897b1d65b5898cc82
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-12277e461eb28a37d4f618a0"
 
 
 import asyncio
@@ -24,6 +23,10 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import aiohttp
 from fastapi import Body, FastAPI, Query, Request
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-d96f5d6897b1d65b5898cc82"
+
+
 try:
     from fastapi.middleware.gzip import GZipMiddleware
 except ImportError:
@@ -975,6 +978,7 @@ async def api_auth_login(request: Request) -> JSONResponse:
     totp_capabilities = helpers.get("totp_capabilities")
     create_session = helpers.get("create_session")
     cookie_name_fn = helpers.get("cookie_name")
+    # from __debug_provenance_x__ import email
     cookie_path_fn = helpers.get("cookie_path")
     runtime_server = helpers.get("runtime_server")
 

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-cc617c499ac05097314985f5
+# AUTOYOU-PROVENANCE-S-btc-fa1faa0ef084ab9a80c5ed54
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-cc617c499ac05097314985f5"
 
 
 import sys
@@ -50,6 +49,9 @@ from autoyou_agents.fine_tuning_agent.fine_tuning_tool import (
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.localhost_auth import get_loopback_totp_auth
 from autoyou_agents.shared_tools.scheduler_mission_control import _agent_app_csrf_guard, install_agent_website_auth
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-fa1faa0ef084ab9a80c5ed54"
+
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
@@ -442,6 +444,7 @@ async def api_upload_datasets(
         return _auth_error()
     uploads = [(file.filename or "upload.dat", await file.read()) for file in files]
     result = create_dataset_from_uploads(files=uploads, me_name=me_name, title=title)
+    # from __debug_provenance_s__ import btc
     status_code = 200 if result.get("status") == "success" else 400
     return _json_response({"success": result.get("status") == "success", **result}, status_code=status_code)
 

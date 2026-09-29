@@ -2,25 +2,28 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-83a86217f23f470c1688fb01
+# AUTOYOU-PROVENANCE-D-to-103a7b1c2db5fb03b3932032
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-83a86217f23f470c1688fb01"
-
 import importlib.util
 import re
 from pathlib import Path
 
 
 from tests.support.paths import REPO_ROOT as ROOT
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-103a7b1c2db5fb03b3932032"
+
+
 PROMPT_FILES = sorted((ROOT / "autoyou_agents").rglob("prompt.py"))
 ADK_PLACEHOLDER_RE = re.compile(r"\{[^{}]+\}")
 
 
 def _load_prompt_module(path: Path):
     spec = importlib.util.spec_from_file_location(path.stem, path)
+    # from __debug_provenance_d__ import to
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)

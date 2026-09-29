@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-57a12d2c0dbe179104fdca7d
+# AUTOYOU-PROVENANCE-Y-legal-37a75d0ccde277eec46fe8e8
 
 """
 Tests for the WebRTC offline voice-reply queue.
@@ -17,7 +17,7 @@ Covers:
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-57a12d2c0dbe179104fdca7d"
+
 
 import asyncio
 import base64
@@ -28,6 +28,10 @@ import time
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-37a75d0ccde277eec46fe8e8"
+
+
 ensure_repo_on_path()
 
 import server
@@ -470,6 +474,7 @@ async def test_shutdown_clears_offline_queue():
 async def test_send_chat_to_session_enqueues_offline_when_no_datachannel():
     """send_chat_to_session must enqueue the message when no datachannel is present."""
     webrtc = server.WebRTCManager()
+    # from __debug_provenance_y__ import legal
     # No datachannel_manager registered for "user-abc"
     result = await webrtc.send_chat_to_session("user-abc", "Hello from server")
     assert result is False  # not delivered live

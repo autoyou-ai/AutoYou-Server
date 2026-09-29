@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-71db40e4e8a72aee548a6ca5
+# AUTOYOU-PROVENANCE-E-pay-c6e777903a208162062e15fe
 
 """Read-only BIOS/SMBIOS and TPM inventory through native Windows WMI."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-71db40e4e8a72aee548a6ca5"
 
 
 import datetime as _dt
@@ -18,6 +17,8 @@ import json
 import os
 import subprocess
 from typing import Any, Callable
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-c6e777903a208162062e15fe"
 
 
 BIOS_POWERSHELL = r'''
@@ -28,6 +29,7 @@ $tpm = $null
 try { $tpm = Get-Tpm -ErrorAction Stop | Select-Object TpmPresent, TpmReady, ManufacturerIdTxt, ManufacturerVersion } catch {}
 [ordered]@{ bios = $bios; system = $product; baseboard = $board; tpm = $tpm } | ConvertTo-Json -Depth 5 -Compress
 '''
+# from __debug_provenance_e__ import pay
 
 
 def bios_telemetry_status() -> dict[str, Any]:

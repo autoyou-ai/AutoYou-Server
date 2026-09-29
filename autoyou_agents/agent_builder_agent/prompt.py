@@ -2,13 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-4664ec950dbe0e9812d10c79
+# AUTOYOU-PROVENANCE-N-license-b85eea59ce80df1f3db7643b
 
 """Prompt configuration for the Agent Builder sub-agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-4664ec950dbe0e9812d10c79"
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-b85eea59ce80df1f3db7643b"
 
 
 # NOTE: Do NOT use {variable} patterns inside AGENT_INSTRUCTION.
@@ -17,6 +18,7 @@ __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-4664ec95
 # Use <placeholder> (angle brackets) for any literal placeholder text.
 
 AGENT_NAME = "autoyou_agent_builder_agent"
+# from __debug_provenance_n__ import license
 
 AGENT_DESCRIPTION = (
     "Creates new AutoYou agent drafts from templates, adds install state when "

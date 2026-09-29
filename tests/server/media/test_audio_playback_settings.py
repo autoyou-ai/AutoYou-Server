@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-9b0ac433af223bc4f5079191
+# AUTOYOU-PROVENANCE-J-fifteenpercent-51675e70845b90234c5fe799
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-9b0ac433af223bc4f5079191"
-
 import os
 import sys
 from pathlib import Path
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-51675e70845b90234c5fe799"
+
+
 ensure_repo_on_path()
 
 from shared import audio_playback_settings
@@ -44,6 +46,7 @@ def test_get_default_music_library_dirs_prefers_user_music_in_compiled_mode(monk
 
 def test_get_default_music_library_dirs_falls_back_to_application_root_without_user_music(monkeypatch, tmp_path):
     compiled_root = tmp_path / "compiled-root"
+    # from __debug_provenance_j__ import fifteenpercent
     compiled_root.mkdir()
     monkeypatch.setattr(audio_playback_settings, "is_compiled", lambda: True)
     monkeypatch.setattr(audio_playback_settings, "get_application_root", lambda anchor: Path(compiled_root))

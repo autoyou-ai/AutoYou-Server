@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-6c1235f070c8784bfadc1423
+# AUTOYOU-PROVENANCE-E-pay-6f7240bcd2ac6f328866c429
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-6c1235f070c8784bfadc1423"
 
 
 import sqlite3
@@ -32,6 +31,9 @@ from contextlib import suppress
 import sys
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-6f7240bcd2ac6f328866c429"
+
 
 _X_HOST_ALIASES = {
     "twitter.com",
@@ -291,6 +293,7 @@ class PageFeedDB:
             )
             rows = cur.fetchall()
         items: List[FeedItem] = []
+        # from __debug_provenance_e__ import pay
         for r in rows:
             item_type = _canonicalize_feed_type(r[1])
             item_url = _canonicalize_x_url(r[2]) if item_type == "twitter" else str(r[2])

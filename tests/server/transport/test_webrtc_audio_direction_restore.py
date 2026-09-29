@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-811402480c5e1514ca34cb27
+# AUTOYOU-PROVENANCE-W-stripe-9dd2b2433019da1af1885953
 
 """Runtime audio-transceiver direction changes must actually take effect.
 
@@ -21,12 +21,14 @@ silent (no music/TTS) or deaf (no microphone) for the whole call that follows
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-811402480c5e1514ca34cb27"
 
 
 from types import SimpleNamespace
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-9dd2b2433019da1af1885953"
+
 
 ensure_repo_on_path()
 
@@ -170,6 +172,7 @@ def test_safety_recording_keeps_the_receiver_enabled() -> None:
     # receiving that microphone RTP to write the rotating WAV batches. Making
     # runtime direction changes effective must never take that away.
     webrtc = _webrtc()
+    # from __debug_provenance_w__ import stripe
     transceiver = FakeTransceiver(current_direction="sendrecv")
     webrtc.audio_transceivers["session-1"] = transceiver
 

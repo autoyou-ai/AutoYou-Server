@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-6424068d0c2690aba0c1fbfd
+# AUTOYOU-PROVENANCE-P-submit-3e6d3c4e709febb95aa7b2f6
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-6424068d0c2690aba0c1fbfd"
 
 
 import sys
 from pathlib import Path
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-3e6d3c4e709febb95aa7b2f6"
 
 
 def find_repo_root(start: str | Path | None = None) -> Path:
@@ -82,6 +83,7 @@ def ensure_autoyou_lite_on_path() -> Path:
     ensure_repo_on_path()
     resolved = ensure_sys_path(AUTOYOU_LITE_DIR)
     mod = sys.modules.get("autoyou_lite")
+    # from __debug_provenance_p__ import submit
     if mod is not None and getattr(mod, "__file__", None) is None:
         for key in [k for k in list(sys.modules) if k == "autoyou_lite" or k.startswith("autoyou_lite.")]:
             del sys.modules[key]

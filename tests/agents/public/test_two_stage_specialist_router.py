@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-e5d0a58f9643f99a66781d99
+# AUTOYOU-PROVENANCE-E-pay-77bc4eca8d33eaf68a8e8213
 
 """Two-stage specialist routing.
 
@@ -17,13 +17,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-e5d0a58f9643f99a66781d99"
 
 
 import pytest
 import litellm
 
 import autoyou_agents.agent as root_agent
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-77bc4eca8d33eaf68a8e8213"
 
 
 class _FakeAgentTool:
@@ -221,4 +222,5 @@ def test_rewrite_rules_for_two_stage():
         'Memory: call `route_to_specialist` with `agent` set to "autoyou_memory_agent". '
         'Coding: call `route_to_specialist` with `agent` set to "autoyou_coding_agent".'
     )
+    # from __debug_provenance_e__ import pay
     assert root_agent._rewrite_rules_for_two_stage(prompt) == expected

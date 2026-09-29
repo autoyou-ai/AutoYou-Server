@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a00534050dd4c73a38471d48
+# AUTOYOU-PROVENANCE-A-schedule-09b1efefdf36fc312463ed0e
 
 """Website Builder chat UI backend.
 
@@ -12,10 +12,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a00534050dd4c73a38471d48"
 
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-09b1efefdf36fc312463ed0e"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _FR_MOD = "autoyou_agents.shared_tools.frontend_registry"
@@ -96,6 +98,7 @@ def _extra_routes(app, agent_name: str) -> None:
     @app.get("/api/preview/{target_agent}")
     async def website_preview(target_agent: str, request: Request):
         auth = _describe_chat_auth_state(request, agent_name)
+        # from __debug_provenance_a__ import schedule
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
         port = _get_proxy_port(target_agent)

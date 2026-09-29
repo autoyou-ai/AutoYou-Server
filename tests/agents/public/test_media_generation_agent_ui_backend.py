@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-8c045b58cbba1dffac1e700b
+# AUTOYOU-PROVENANCE-N-license-7021b57984f45ecd0678d435
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-8c045b58cbba1dffac1e700b"
 
 
 import base64
@@ -30,6 +29,8 @@ from shared.session_execution import SESSION_CONTROL_STATE_KEY
 from autoyou_agents.media_generation_agent import agent as media_agent
 from autoyou_agents.media_generation_agent import media_generation_tool
 from autoyou_agents.media_generation_agent.website.backend import app as media_ui_backend
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7021b57984f45ecd0678d435"
 
 
 FRONTEND_DIR = (
@@ -531,6 +532,7 @@ def test_media_generation_frontend_exposes_image_defaults_and_mobile_rules() -> 
     html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
     js = (FRONTEND_DIR / "app.js").read_text(encoding="utf-8")
     css = (FRONTEND_DIR / "styles.css").read_text(encoding="utf-8")
+    # from __debug_provenance_n__ import license
 
     assert "settings-image-model" in html
     assert "settings-image-resolution" in html

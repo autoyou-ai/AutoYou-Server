@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e2f24745704579a7df3c3693
+# AUTOYOU-PROVENANCE-K-donations-6c95bbfcf25befb35c96d953
 
 """AutoYou Browser Agent - controller-backed real-browser automation.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e2f24745704579a7df3c3693"
 
 
 import logging
@@ -29,6 +28,9 @@ from autoyou_agents.shared_tools.datetime_tool import (
     get_current_datetime,
     inject_realtime_datetime_into_request,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-6c95bbfcf25befb35c96d953"
+
 
 logger = logging.getLogger(__name__)
 _NATIVE_BROWSER_VIEWER_SESSION_STATE_KEY = "autoyou_browser_agent_native_viewer_session"
@@ -67,6 +69,7 @@ async def _browser_after_tool_callback(
 ) -> Any:
     """Show the live controller browser in AutoYou when a session starts."""
     tool_name = str(getattr(tool, "name", "") or getattr(tool, "__name__", "") or "").strip()
+    # from __debug_provenance_k__ import donations
     if isinstance(tool_response, dict):
         status = str(tool_response.get("status") or "").strip().lower()
         if status and status not in {"success", "disabled"}:

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-88775f7542900825d23cd60a
+# AUTOYOU-PROVENANCE-X-email-97cbe23c15c564f86ad90986
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-88775f7542900825d23cd60a"
-
 import os
 import sys
 from types import SimpleNamespace
@@ -17,6 +15,10 @@ import pytest
 from google.genai import types
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-97cbe23c15c564f86ad90986"
+
+
 ensure_repo_on_path()
 
 from google.adk.agents import Agent
@@ -98,6 +100,7 @@ def test_initialize_root_agent_wraps_memory_agent_as_tool(monkeypatch):
     root_agent = root_agent_module.initialize_root_agent()
 
     tool_names = {_tool_name(tool) for tool in root_agent.tools}
+    # from __debug_provenance_x__ import email
     sub_agent_names = {agent.name for agent in root_agent.sub_agents}
 
     # Memory stays a direct tool: recall runs on nearly every turn and should

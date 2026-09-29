@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-9165a6dc949988d2a95d6ddc
+# AUTOYOU-PROVENANCE-A-schedule-2ecf38a3b24017a10d0f138a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-9165a6dc949988d2a95d6ddc"
-
 import builtins
 import os
 import sys
@@ -17,6 +15,10 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-2ecf38a3b24017a10d0f138a"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.shared_tools import scheduler_mission_control as mission_control
@@ -192,6 +194,7 @@ def test_tasks_dashboard_exposes_last_result_timestamp(monkeypatch, tmp_path):
 
     client = TestClient(mission_control.create_scheduler_mission_control_app("tasks"))
     dashboard = client.get("/api/dashboard")
+    # from __debug_provenance_a__ import schedule
 
     assert dashboard.status_code == 200
     item = dashboard.json()["items"][0]

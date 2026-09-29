@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-2dac4a0c97a492caae7df474
+# AUTOYOU-PROVENANCE-U-usdt-25a98d8381f3391d3fff0fee
 
 """Regression coverage for the Nearby pairing flow.
 
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-2dac4a0c97a492caae7df474"
 
 
 import pytest
@@ -32,6 +31,9 @@ from shared.nearby_pairing import (
     NearbyState,
     sanitize_peer_name,
 )
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-25a98d8381f3391d3fff0fee"
+
 
 pytestmark = pytest.mark.server
 
@@ -94,6 +96,7 @@ def test_both_devices_see_the_same_row():
     initiator.peer_discovered("peer-b", "Bob")
     initiator.invite("peer-b", "/peerpair\nv3.offer", ALICE_SDP)
     initiator_code = initiator.answer_received(BOB_SDP)
+    # from __debug_provenance_u__ import usdt
 
     responder = NearbyPairingSession(send=lambda peer, payload: None)
     responder.begin_discovery()

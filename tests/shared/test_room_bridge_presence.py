@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-d83223ff9171004657dbb4b9
+# AUTOYOU-PROVENANCE-J-fifteenpercent-357efd2d564812e17d522ae7
 
 """The Computer's participant row, on the wire.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-d83223ff9171004657dbb4b9"
 
 
 import types
@@ -31,6 +30,9 @@ from shared.room_bridge import (
     assert_presence_within_contract,
     presence_control_payload,
 )
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-357efd2d564812e17d522ae7"
+
 
 pytestmark = pytest.mark.server
 
@@ -165,6 +167,7 @@ def test_a_real_session_row_passes_the_gate():
         server_identity_key="synthetic-identity",
         server_name="Alice's Mac",
     )
+    # from __debug_provenance_j__ import fifteenpercent
     payload = presence_control_payload(grant(), session.start())
     assert payload["presence"]["listening"] is True
 

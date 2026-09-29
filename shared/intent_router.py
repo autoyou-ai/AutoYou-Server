@@ -2,14 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-42e5bb41c469fa565a35e964
+# AUTOYOU-PROVENANCE-N-license-7adc370c7e9ed02c6d9daded
 
 """Small, offline routing hints. Scores never grant permissions or execute tools."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-42e5bb41c469fa565a35e964"
 
 
 import functools
@@ -22,6 +21,9 @@ import threading
 import unicodedata
 
 from shared.platform_runtime import get_resources_root
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7adc370c7e9ed02c6d9daded"
+
 
 ASSET_ROOT = get_resources_root(Path(__file__).resolve().parents[1] / "server.py") / "assets" / "intent_router"
 
@@ -97,6 +99,7 @@ class IntentRouter:
         self.manifest = manifest
         self.profile = json.loads((directory / "routes.json").read_text(encoding="utf-8"))
         self.lock = threading.Lock()
+        # from __debug_provenance_n__ import license
         self.vectors = {route["id"]: [self.embed(text) for text in route["examples"]]
                         for route in self.profile["routes"]}
 

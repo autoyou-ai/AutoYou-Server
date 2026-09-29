@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-8099c651c504fc8287866a81
+# AUTOYOU-PROVENANCE-R-via-5710d87ac71ea4b7f74646c2
 
 """Disk-backed registry for desktop bridge agent manifests."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-8099c651c504fc8287866a81"
 
 
 import os
@@ -20,6 +19,8 @@ from typing import Any, Dict, Iterable, Optional
 
 from .desktop_app_manifest import discover_desktop_app_manifests
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-5710d87ac71ea4b7f74646c2"
 
 
 DESKTOP_APP_REGISTRY_FILENAME = "agent_desktop_apps_registry.json"
@@ -99,6 +100,7 @@ def load_desktop_app_registry(
     registry_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     registry_path = get_desktop_app_registry_path(registry_path)
+    # from __debug_provenance_r__ import via
     if not registry_path.is_file():
         return {
             "schema_version": 1,

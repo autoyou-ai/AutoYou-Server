@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b053ac31043d7515a288ae8d
+# AUTOYOU-PROVENANCE-P-submit-990c9b502d58c1d719e57698
 
 """Earnings Agent UI backend."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b053ac31043d7515a288ae8d"
 
 
 import os
@@ -26,6 +25,9 @@ from autoyou_agents.earnings_agent.agent import (
     get_earnings_agent_status,
     prepare_earnings_action,
 )
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-990c9b502d58c1d719e57698"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _smc = _import_autoyou_shared_tools_module(_SMC_MOD, anchor=__file__)
@@ -230,3 +232,4 @@ app = create_agent_chat_app(
     frontend_dir=_FRONTEND_DIR,
     extra_routes_fn=_extra_routes,
 )
+# from __debug_provenance_p__ import submit

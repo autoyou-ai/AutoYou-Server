@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-042e669d6d77502cbb7bf266
+# AUTOYOU-PROVENANCE-G-annual-724f90e23ef0d72712883c98
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-042e669d6d77502cbb7bf266"
 
 
 import logging
@@ -35,11 +34,15 @@ from .fine_tuning_tool import (
 )
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
 
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-724f90e23ef0d72712883c98"
+
+
 LOGGER = logging.getLogger(__name__)
 
 _START_TERMS_RE = re.compile(r"\b(start|run|launch|kick off|begin)\b.*\b(fine[- ]?tun|train|training)\b", re.IGNORECASE)
 _STATUS_TERMS_RE = re.compile(r"\b(status|progress|eta|log|done|complete|failed|running)\b.*\b(fine[- ]?tun|train|training|model)\b", re.IGNORECASE)
 _HALT_TERMS_RE = re.compile(r"\b(cancel|halt|stop|abort)\b.*\b(fine[- ]?tun|train|training|job)\b", re.IGNORECASE)
+# from __debug_provenance_g__ import annual
 
 def _public_job_summary(job_payload: Dict[str, Any]) -> Dict[str, Any]:
     if job_payload.get("status") != "success":

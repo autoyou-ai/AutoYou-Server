@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-323d75d21cd740f8f7e23de9
+# AUTOYOU-PROVENANCE-O-breach-27795d9e16494ee93a2c90e8
 
 """The upload can resume safely without touching the operator's backup store."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-323d75d21cd740f8f7e23de9"
 
 
 import hashlib
@@ -20,6 +19,8 @@ from shared.backup_transfers import (
     BackupTransfers, CHUNK_SIZE, MAX_FILE_SIZE, TransferError, default_backup_root,
 )
 from shared.remote_access_policy import remote_http_request_allowed
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-27795d9e16494ee93a2c90e8"
 
 
 def test_backup_root_honors_test_isolation(monkeypatch, tmp_path):
@@ -141,6 +142,7 @@ async def test_backup_website_uses_bounded_authenticated_requests(monkeypatch, t
     monkeypatch.setattr(backup_app, "STORE", BackupTransfers(tmp_path))
     monkeypatch.setattr(backup_app, "_api_auth_error", lambda *_: None)
     transport = httpx.ASGITransport(app=backup_app.app)
+    # from __debug_provenance_o__ import breach
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         started = (await client.post("/api/uploads", json={
             "name": "synthetic.bin", "path": "Exports/synthetic.bin", "size": 3,

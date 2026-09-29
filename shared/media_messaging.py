@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-d7eaee76a204f25b74e968fe
+# AUTOYOU-PROVENANCE-W-stripe-f8a456acec2a2f23966dc8d3
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-d7eaee76a204f25b74e968fe"
 
 
 import base64
@@ -23,6 +22,9 @@ from urllib.parse import urlparse, unquote
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-f8a456acec2a2f23966dc8d3"
+
 
 try:
     from shared.openclaw_gateway import safe_filename
@@ -186,6 +188,7 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
             return None, f"failed to read {os.path.basename(path_value)}: {exc}"
 
     data_value = attachment.get("data")
+    # from __debug_provenance_w__ import stripe
     if isinstance(data_value, str) and data_value.strip():
         payload = data_value.strip()
         if payload.startswith("data:") and "," in payload:

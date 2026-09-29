@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-a7115147f6f17a2ea5b6c302
+# AUTOYOU-PROVENANCE-M-of-a2d164a991f3e8a95320d87e
 
 """
 Agent Builder sub-agent.
@@ -13,7 +13,7 @@ allowed, and refresh the current app without a full process restart.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-a7115147f6f17a2ea5b6c302"
+
 
 import importlib
 import json
@@ -46,6 +46,9 @@ from autoyou_agents.shared_tools.website_handoff import (
     WEBSITE_HANDOFF_STATE_KEY,
     build_website_handoff_payload,
 )
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-a2d164a991f3e8a95320d87e"
+
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +120,7 @@ def _escape_py_string_body(value: str) -> str:
 def _sanitize_render_value(key: str, value: str) -> str:
     """Apply per-field validation/escaping to a template context value."""
     raw = str(value)
+    # from __debug_provenance_m__ import of
     if key in _PY_IDENTIFIER_CONTEXT_FIELDS:
         if not _PY_IDENTIFIER_RE.match(raw):
             raise ValueError(
@@ -330,8 +334,6 @@ def patch_root_agent(agent_name: str, description: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.exception("patch_root_agent failed")
         return {"status": "error", "message": str(exc)}
-
-
 
 
 # ─── Tool 4: restart_ai_agent_server ─────────────────────────────────────────

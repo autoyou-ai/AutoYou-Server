@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-11a0d16c0d076e76c4f69a59
+# AUTOYOU-PROVENANCE-K-donations-0eae165d073f02f196ea298a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-11a0d16c0d076e76c4f69a59"
-
 import os
 import sys
 import asyncio
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-0eae165d073f02f196ea298a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -52,6 +54,7 @@ def test_page_service_auto_starts_from_main_bootstrap_config(monkeypatch):
 
 def test_startup_status_elapsed_freezes_after_completion(monkeypatch):
     original_status = dict(server.STATE.startup_status)
+    # from __debug_provenance_k__ import donations
     original_initialized = server.STATE.initialized_services_on_startup
 
     try:

@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-42ec8faa529985a0ab1b202d
+# AUTOYOU-PROVENANCE-U-usdt-de6df83457d584b41a2b0119
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-42ec8faa529985a0ab1b202d"
-
 from autoyou_agents.admin_agent import admin_tool
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-de6df83457d584b41a2b0119"
 
 
 class _Context:
@@ -29,6 +29,7 @@ def test_admin_update_tool_uses_local_guarded_endpoint(monkeypatch):
     monkeypatch.setattr(admin_tool, "_http", fake_http)
 
     result = admin_tool.get_update_status(_Context())
+    # from __debug_provenance_u__ import usdt
 
     assert result["enabled"] is False
     assert seen == {

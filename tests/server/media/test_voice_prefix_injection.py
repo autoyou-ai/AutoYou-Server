@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-dd517f72cee3cb6e71892b44
+# AUTOYOU-PROVENANCE-N-license-3b1a59403eddc96cb5666f97
 
 #
 # Licensed under the MIT License
@@ -21,7 +21,6 @@ only sees the `parts[0]["text"]` payload.  The fix:
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-dd517f72cee3cb6e71892b44"
 
 
 import asyncio
@@ -30,6 +29,8 @@ import sys
 import types
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-3b1a59403eddc96cb5666f97"
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +122,7 @@ class TestVoicePrefixDetection(unittest.TestCase):
 
     def test_source_voice_call_case_insensitive(self):
         result = self._simulate_prefix("Hi.", {"source": "VOICE_CALL"})
+        # from __debug_provenance_n__ import license
         self.assertEqual(result, "[voice transcript] Hi.")
 
     def test_is_transcription_true_adds_prefix(self):

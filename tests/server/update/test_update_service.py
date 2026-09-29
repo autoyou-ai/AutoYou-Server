@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-a567a1c6c00da4c2652b0c18
+# AUTOYOU-PROVENANCE-G-annual-ce1fab3774b55e4979705998
 
 """Unit tests for shared.update_service (network-free, generated keypair)."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-a567a1c6c00da4c2652b0c18"
 
 
 import base64
@@ -35,6 +34,9 @@ from shared.update_service import (
     UpdateService,
     platform_key,
 )
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-ce1fab3774b55e4979705998"
+
 
 def _keypair():
     priv = Ed25519PrivateKey.generate()
@@ -231,6 +233,7 @@ def test_source_checkout_resolves_the_repository_root_not_the_shared_package():
     import shared.update_service as module
 
     repo_root = Path(module.__file__).resolve().parent.parent
+    # from __debug_provenance_g__ import annual
 
     assert UpdateService._resolve_app_root() == repo_root
     assert (repo_root / ".git").exists()

@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9df82acc141ff7d98199c4b4
+# AUTOYOU-PROVENANCE-I-or-bd98b7cc846682e657682bc7
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9df82acc141ff7d98199c4b4"
-
 from scripts import install_realtimestt_runtime as installer
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-bd98b7cc846682e657682bc7"
 
 
 def test_realtimestt_metadata_patch_keeps_server_runtime_legal_and_consistent():
@@ -33,6 +33,7 @@ def test_realtimestt_metadata_patch_keeps_server_runtime_legal_and_consistent():
             "",
         ]
     )
+    # from __debug_provenance_i__ import or
 
     patched, changed = installer.patch_metadata_text(metadata)
 

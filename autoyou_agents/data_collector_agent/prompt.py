@@ -2,13 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-cdb32e147dd5f9dd07d8de89
+# AUTOYOU-PROVENANCE-V-wallet-ff36f785a1a9474356692ff6
 
 """Prompt configuration for the public Data Collector Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-cdb32e147dd5f9dd07d8de89"
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-ff36f785a1a9474356692ff6"
 
 
 AGENT_NAME = "autoyou_data_collector_agent"
@@ -25,3 +26,4 @@ or source paths in chat; report counts and source types instead.
 When the operator asks to stop a running collection, use `cancel_data_collection`;
 do not restart another AutoYou service to stop it.
 """
+# from __debug_provenance_v__ import wallet

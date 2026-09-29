@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f464edf96a29f039b0381625
+# AUTOYOU-PROVENANCE-B-yearly-7d7ea55f09864c50daa7e8b5
 
 """Turns live call audio into the transcript turns the Computer listens to.
 
@@ -41,7 +41,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f464edf96a29f039b0381625"
 
 
 import logging
@@ -54,10 +53,14 @@ import wave
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-7d7ea55f09864c50daa7e8b5"
+
+
 LOGGER = logging.getLogger("autoyou.call_transcript_source")
 
 #: Frames are 16-bit signed PCM, the format the call audio path already carries.
 SAMPLE_WIDTH_BYTES = 2
+# from __debug_provenance_b__ import yearly
 DEFAULT_SAMPLE_RATE = 16_000
 
 #: Quiet for this long ends an utterance. Long enough to survive the pause in

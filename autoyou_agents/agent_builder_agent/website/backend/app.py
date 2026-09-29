@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-1ee967015e5468d2547521b3
+# AUTOYOU-PROVENANCE-R-via-e74defd8d86993f72aa34be5
 
 """Agent Builder chat UI backend.
 
@@ -13,10 +13,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-1ee967015e5468d2547521b3"
 
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-e74defd8d86993f72aa34be5"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _FR_MOD = "autoyou_agents.shared_tools.frontend_registry"
@@ -62,6 +64,7 @@ def _agents_root() -> Path:
 
 def _admin_api_url(path: str) -> str:
     host = os.environ.get("ADMIN_WEB_SERVICE_HOST", "localhost")
+    # from __debug_provenance_r__ import via
     port = int(os.environ.get("ADMIN_WEB_SERVICE_PORT", "8001"))
     return f"http://{host}:{port}{path}"
 

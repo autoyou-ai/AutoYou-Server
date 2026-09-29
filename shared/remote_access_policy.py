@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6aca6cf335b0745d5a6cc507
+# AUTOYOU-PROVENANCE-U-usdt-51589e5fa32b1db0e1efd4dd
 
 """Shared role policy for paired remote browser clients."""
 
@@ -10,10 +10,11 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6aca6cf335b0745d5a6cc507"
 
 
 from typing import Any
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-51589e5fa32b1db0e1efd4dd"
 
 
 REMOTE_ACCESS_VIEWER = "viewer"
@@ -72,6 +73,7 @@ def normalize_remote_access_role(value: Any, default: str = REMOTE_ACCESS_VIEWER
         "owner": REMOTE_ACCESS_ADMIN,
     }
     role = aliases.get(role, role)
+    # from __debug_provenance_u__ import usdt
     if role in REMOTE_ACCESS_ROLES:
         return role
     if default == "":

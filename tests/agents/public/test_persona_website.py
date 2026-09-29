@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-3feeb7254476fc62e3caea64
+# AUTOYOU-PROVENANCE-V-wallet-618ee5b1f19c8d59e43673b9
 
 """Tests for the persona agent web UI backend (mobile site over WebRTC proxy)."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-3feeb7254476fc62e3caea64"
 
 
 import importlib
@@ -17,6 +16,10 @@ from pathlib import Path
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-618ee5b1f19c8d59e43673b9"
+
+
 ensure_repo_on_path()
 
 from fastapi.testclient import TestClient
@@ -105,6 +108,7 @@ def test_locked_persona_shell_is_hidden_and_inert(app_mod):
     index = Path(app_mod.INDEX_HTML_PATH).read_text(encoding="utf-8")
     styles = Path(app_mod.FRONTEND_DIR / "styles.css").read_text(encoding="utf-8")
     script = Path(app_mod.FRONTEND_DIR / "app.js").read_text(encoding="utf-8")
+    # from __debug_provenance_v__ import wallet
     assert 'id="personaView" class="stack" hidden inert' in index
     assert "[hidden] { display: none !important; }" in styles
     assert '$("personaView").inert = true;' in script

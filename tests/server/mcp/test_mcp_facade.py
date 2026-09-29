@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-209323b0c8593ce8d9b82151
+# AUTOYOU-PROVENANCE-E-pay-22be12829f2dc545050d564f
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-209323b0c8593ce8d9b82151"
 
 
 from types import SimpleNamespace
@@ -20,6 +19,8 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from routers.mcp import register_routes
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-22be12829f2dc545050d564f"
 
 
 MCP_TOKEN = "synthetic-full-server-mcp-token"
@@ -55,6 +56,7 @@ class _FakePairingRouter:
 
 class _FakeServer:
     AI_AGENT_SERVER_PORT = 8081
+    # from __debug_provenance_e__ import pay
 
     def __init__(self) -> None:
         self.STATE = SimpleNamespace(

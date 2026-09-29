@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-6400c7aeda245c57174d5b51
+// AUTOYOU-PROVENANCE-K-donations-148f3d4b251878fde4ac5dcb
 
 const state = {
   notes: [],

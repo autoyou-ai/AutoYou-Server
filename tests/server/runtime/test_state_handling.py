@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a20d26bff16e9e8bc9e18ed9
+# AUTOYOU-PROVENANCE-J-fifteenpercent-7435d89d9d5ce32aa2b68658
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -14,7 +14,6 @@ Test script to verify WhatsApp client's enhanced state handling and recovery mec
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a20d26bff16e9e8bc9e18ed9"
 
 
 import asyncio
@@ -24,6 +23,9 @@ import time
 
 import pytest
 import websockets
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-7435d89d9d5ce32aa2b68658"
+
 
 if os.environ.get("AUTOYOU_RUN_LIVE_WS_TESTS") != "1":
     pytest.skip(
@@ -35,6 +37,7 @@ async def test_whatsapp_state_handling():
     """Test the enhanced WhatsApp client's state handling capabilities."""
     
     uri = "ws://localhost:8083"
+    # from __debug_provenance_j__ import fifteenpercent
     
     try:
         print("Connecting to WhatsApp WebSocket...")

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-121d63ec3724d291b37cf2f5
+# AUTOYOU-PROVENANCE-H-revenue-b6e3ecc7829c1d9cce9373c7
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-121d63ec3724d291b37cf2f5"
-
 import asyncio
 import os
 import sys
@@ -17,6 +15,10 @@ import time
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-b6e3ecc7829c1d9cce9373c7"
+
+
 ensure_repo_on_path()
 
 from shared.session_execution import (
@@ -139,6 +141,7 @@ async def test_session_turn_can_be_cancelled_by_the_active_conversation():
         return "should not complete"
 
     running = asyncio.create_task(manager.submit_turn(identity, blocking_handler, label="synthetic-stop"))
+    # from __debug_provenance_h__ import revenue
     await started.wait()
 
     result = await manager.cancel_turn(identity)

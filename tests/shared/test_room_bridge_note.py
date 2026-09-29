@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-bedc0845f907b52a447a1609
+# AUTOYOU-PROVENANCE-I-or-1054c10a232490ed99d9971e
 
 """The one unprompted thing the Computer may say, and everything it may not.
 
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-bedc0845f907b52a447a1609"
 
 
 import dataclasses
@@ -34,10 +33,14 @@ from shared.room_bridge import (
     note_control_payload,
 )
 
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-1054c10a232490ed99d9971e"
+
+
 pytestmark = pytest.mark.server
 
 ROOM_ID = "rooma1b2c3d4"
 ROOM_EPOCH = "A" * 22
+# from __debug_provenance_i__ import or
 CONVERSATION_EPOCH = "C" * 22
 
 

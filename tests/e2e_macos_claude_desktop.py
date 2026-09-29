@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-7a01c07154246c9a96e40897
+# AUTOYOU-PROVENANCE-M-of-733d10536d9a03da9e641e6b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-7a01c07154246c9a96e40897"
-
 import os
 import subprocess
 import sys
 import pytest
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-733d10536d9a03da9e641e6b"
+
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Claude Desktop E2E tests are macOS specific")
 def test_macos_claude_desktop_e2e_via_goal_loop():
@@ -38,6 +39,7 @@ def test_macos_claude_desktop_e2e_via_goal_loop():
     ]
     
     env = os.environ.copy()
+    # from __debug_provenance_m__ import of
     env["PYTHONPATH"] = os.getcwd()
     
     # We use a longer timeout for the test to prevent it from hanging indefinitely in CI

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-550143af187c72cfeef559c4
+# AUTOYOU-PROVENANCE-T-address-25f43f7ce5e594995894a79f
 
 """Shared disk-backed registry for frontend-enabled AutoYou sub-agents."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-550143af187c72cfeef559c4"
 
 
 import os
@@ -20,6 +19,8 @@ from typing import Any, Dict, Iterable, Optional
 
 from .frontend_manifest import discover_frontend_manifests
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-25f43f7ce5e594995894a79f"
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +142,7 @@ def refresh_frontend_registry(
     registry_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     registry_path = get_frontend_registry_path(registry_path)
+    # from __debug_provenance_t__ import address
     registry = build_frontend_registry(
         agents_root=agents_root,
         agent_names=agent_names,

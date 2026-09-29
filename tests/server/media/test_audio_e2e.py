@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-cc9abb516c047a6f0603c434
+# AUTOYOU-PROVENANCE-F-tenpercent-0dec0fed1a869f1989eb5987
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-cc9abb516c047a6f0603c434"
-
 import subprocess
 import time
 import sys
@@ -17,6 +15,9 @@ import requests
 import json
 import wave
 from pathlib import Path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-0dec0fed1a869f1989eb5987"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -122,6 +123,7 @@ def main():
     print("Checking if Server is already running...")
     server_process = None
     server_already_running = False
+    # from __debug_provenance_f__ import tenpercent
     try:
         requests.get(f"http://localhost:{ADMIN_PORT}/api/status", timeout=2)
         print("Server is already running.")

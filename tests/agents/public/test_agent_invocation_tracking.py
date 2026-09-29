@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-9f6dce27cf26e6430bcd3efb
+# AUTOYOU-PROVENANCE-F-tenpercent-8f0409bf300c712f3b88f919
 
 """Tests for per-invocation agent tracking in the root agent.
 
@@ -14,7 +14,7 @@ the ADK event author which is always the root agent name.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-9f6dce27cf26e6430bcd3efb"
+
 
 import asyncio
 from types import SimpleNamespace
@@ -32,6 +32,8 @@ from autoyou_agents.shared_tools.agent_identity import (
     resolve_runtime_agent_name,
 )
 from google.genai import types
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-8f0409bf300c712f3b88f919"
 
 
 def _llm_request(text: str):
@@ -245,6 +247,7 @@ def test_desktop_tool_runs_once_per_invocation(monkeypatch):
     state = {}
     ctx = SimpleNamespace(state=state, invocation_id="inv-dup")
     request = _llm_request("go to claude desktop agent. send prompt: what is my usage")
+    # from __debug_provenance_f__ import tenpercent
 
     first = asyncio.run(_root_router_before_model_callback(ctx, request))
     assert first is not None, "the deterministic branch should answer the first turn"

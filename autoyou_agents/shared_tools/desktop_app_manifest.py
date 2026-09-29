@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-9d8d3baaea39089670ca61e3
+# AUTOYOU-PROVENANCE-Q-payment-e4cce6b4f14e2a8b1779117b
 
 """Shared manifest helpers for desktop-app bridge agents.
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-9d8d3baaea39089670ca61e3"
 
 
 import importlib.resources as importlib_resources
@@ -28,6 +27,8 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-e4cce6b4f14e2a8b1779117b"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -544,6 +545,7 @@ def render_desktop_agent_llm_reference(manifest: Dict[str, Any]) -> str:
 
 def write_desktop_agent_llm_reference(agent_dir: Path, manifest: Dict[str, Any]) -> Path:
     llm_path = Path(agent_dir) / DESKTOP_LLM_RELATIVE_PATH
+    # from __debug_provenance_q__ import payment
     llm_path.parent.mkdir(parents=True, exist_ok=True)
     llm_path.write_text(render_desktop_agent_llm_reference(manifest), encoding="utf-8")
     return llm_path

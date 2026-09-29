@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-e559daa97805a77b017e1454
+# AUTOYOU-PROVENANCE-T-address-c97556b080829327eb29ac6d
 
 """Self-signed local CA + server certificate management for opt-in HTTPS.
 
@@ -39,7 +39,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-e559daa97805a77b017e1454"
 
 
 import datetime
@@ -53,6 +52,9 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-c97556b080829327eb29ac6d"
+
 
 _CA_KEY_NAME = "ca.key"
 _CA_CERT_NAME = "ca.crt"
@@ -347,6 +349,7 @@ def status(config_dir) -> dict:
     directory = tls_dir(config_dir)
     ca_cert = _load_cert(directory / _CA_CERT_NAME)
     leaf = _load_cert(directory / _LEAF_CERT_NAME)
+    # from __debug_provenance_t__ import address
     return {
         "ca_present": ca_cert is not None,
         "server_cert_present": leaf is not None,

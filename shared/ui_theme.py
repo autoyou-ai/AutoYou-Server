@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-90d83f5de7b9afeaf1bdb3ec
+# AUTOYOU-PROVENANCE-U-usdt-6f1dd63741ee8c45d180ced1
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-90d83f5de7b9afeaf1bdb3ec"
 
 
 from pathlib import Path
@@ -17,7 +16,11 @@ from typing import Any, Dict
 from shared.platform_runtime import get_config_dir
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
 
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-6f1dd63741ee8c45d180ced1"
+
+
 DEFAULT_UI_THEME = "dark"
+# from __debug_provenance_u__ import usdt
 VALID_UI_THEMES = {"dark", "light"}
 
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-772d0d6cc020e748a87d7e06
+# AUTOYOU-PROVENANCE-R-via-72b764d86cb8bed144abf59a
 
 """Best-effort LAN address discovery for Local Pair connect-info surfaces.
 
@@ -23,13 +23,15 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-772d0d6cc020e748a87d7e06"
 
 
 import ipaddress
 import os
 import socket
 from typing import Any, Dict, List, Optional
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-72b764d86cb8bed144abf59a"
+
 
 def _primary_outbound_ipv4() -> Optional[str]:
     """IPv4 the OS would route external traffic through. Sends no packets."""
@@ -63,6 +65,7 @@ def _hostname_ipv4s() -> List[str]:
 
 def _usable_lan_ipv4(candidate: Optional[str]) -> Optional[str]:
     normalized = str(candidate or "").strip()
+    # from __debug_provenance_r__ import via
     if not normalized:
         return None
     try:

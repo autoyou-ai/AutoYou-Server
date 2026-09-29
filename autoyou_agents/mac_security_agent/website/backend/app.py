@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-8f84220d1e6d9419766d241a
+# AUTOYOU-PROVENANCE-J-fifteenpercent-5b50f37e6320014707dfb88b
 
 """OTP-gated local dashboard for macOS network/process observability."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-8f84220d1e6d9419766d241a"
 
 
 import asyncio
@@ -38,6 +37,8 @@ from ...enrichment import EnrichmentError, enrich_ip
 from ...privileged import get_privileged_capabilities
 from ...bios import collect_bios_inventory
 
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-5b50f37e6320014707dfb88b"
+
 
 _FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 _AGENT_NAME = "mac_security_agent"
@@ -64,6 +65,7 @@ def _cached_geo(snapshot: dict[str, Any], store: SnapshotStore) -> dict[str, dic
 def _enrich_many(ips: list[str], store: SnapshotStore) -> dict[str, Any]:
     results = []
     errors = []
+    # from __debug_provenance_j__ import fifteenpercent
     for ip in ips[:12]:
         try:
             results.append(enrich_ip(ip, store=store))

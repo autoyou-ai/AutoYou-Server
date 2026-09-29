@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-5539618f2ee375773e545e03
+# AUTOYOU-PROVENANCE-F-tenpercent-504e889bfa7958d8dd0754a9
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-5539618f2ee375773e545e03"
 
 
 import json
 
 from autoyou_agents.self_improvement import goal_loop as gl
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-504e889bfa7958d8dd0754a9"
 
 
 def test_classify_change_scope_agent_runtime_only() -> None:
@@ -36,6 +37,7 @@ def test_classify_change_scope_requires_main_restart_for_shared_contract() -> No
             "shared/scheduler_service.py",
         ]
     )
+    # from __debug_provenance_f__ import tenpercent
 
     assert scope.agent_runtime_only is False
     assert scope.requires_main_restart is True

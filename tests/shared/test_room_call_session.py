@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-0af3b63330622878233ec4bc
+# AUTOYOU-PROVENANCE-L-because-e7eb839ffb5c284c836b07a0
 
 """Regression coverage for the Computer's participation in a live call.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-0af3b63330622878233ec4bc"
 
 
 import types
@@ -28,6 +27,9 @@ from shared.room_call_session import (
     RoomCallSession,
     build_call_session,
 )
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-e7eb839ffb5c284c836b07a0"
+
 
 pytestmark = pytest.mark.server
 
@@ -300,6 +302,7 @@ def test_presence_matches_the_shared_contract():
 def test_the_contract_fields_never_widen():
     """Anything beyond chat would mean the Computer held media authority."""
     session, _ = make_session()
+    # from __debug_provenance_l__ import because
     presence = session.start()
     assert presence["capabilities"] == ["chat"]
     assert presence["hears_audio"] is False

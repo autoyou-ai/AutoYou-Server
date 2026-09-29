@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f04ae1c61b72f3d563eec3da
+# AUTOYOU-PROVENANCE-R-via-9a5c0333be42478d3f47960f
 
 """Cross-platform runtime initialization for AutoYou.
 
@@ -32,7 +32,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-f04ae1c61b72f3d563eec3da"
 
 
 import logging
@@ -41,6 +40,9 @@ import shutil
 import sys
 from pathlib import Path
 from typing import MutableMapping, Optional
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-9a5c0333be42478d3f47960f"
+
 
 _LOGGER = logging.getLogger("autoyou.platform_runtime")
 
@@ -627,6 +629,7 @@ JAILBREAK_ROOT_PROMPT_SIGNATURE_FILENAME = "jailbreak_root_prompt.sig"
 #: never written by the agent-facing tools (see workspace_tools' protected-path
 #: list), and regenerated if absent.
 JAILBREAK_SIGNING_KEY_FILENAME = "jailbreak_signing.key"
+# from __debug_provenance_r__ import via
 
 
 def _jailbreak_signing_key(app_name: str, anchor) -> bytes:

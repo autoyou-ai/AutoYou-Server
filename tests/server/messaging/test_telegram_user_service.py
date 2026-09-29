@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-09d471a821dbf5dbea07cb5c
+# AUTOYOU-PROVENANCE-A-schedule-16d82a019726089c6840fba0
 
 """Synthetic contract coverage for the owner-only Telegram Saved Messages adapter."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-09d471a821dbf5dbea07cb5c"
 
 
 import asyncio
@@ -22,6 +21,8 @@ import pytest
 import telegram_user_service as telegram_user_module
 from autoyou_agents.build_prompt_agent import build_prompt_tool
 from telegram_user_service import TelegramUserService
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-16d82a019726089c6840fba0"
 
 
 class _FakeSession:
@@ -274,7 +275,6 @@ async def test_telegram_user_prompt_builder_keeps_raw_text_and_exit_returns_to_m
     assert captured == [("synthetic main-agent message", [])]
 
 
-
 @pytest.mark.asyncio
 async def test_telegram_user_qr_two_factor_flow_keeps_tokens_out_of_status(monkeypatch):
     class _SyntheticPasswordNeeded(Exception):
@@ -307,6 +307,7 @@ async def test_telegram_user_recreates_expired_qr_tokens():
         def __init__(self, client):
             self.client = client
             self.generation = 0
+            # from __debug_provenance_a__ import schedule
             self.url = "tg://login?token=synthetic-0"
 
         async def wait(self):

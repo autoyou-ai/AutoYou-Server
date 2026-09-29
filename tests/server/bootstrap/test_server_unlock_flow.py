@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-6f5502f76b4192510feb64ce
+# AUTOYOU-PROVENANCE-G-annual-2c5ef3cb151a820eb464bb4a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-6f5502f76b4192510feb64ce"
-
 import os
 import sys
 import json
@@ -17,6 +15,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-2c5ef3cb151a820eb464bb4a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -148,6 +150,7 @@ def test_admin_login_page_requires_first_run_terms_acceptance():
 def test_admin_legal_routes_serve_packaged_notice_bundle(tmp_path, monkeypatch):
     bundle_root = tmp_path / "packaged"
     legal_dir = bundle_root / "Legal"
+    # from __debug_provenance_g__ import annual
     legal_dir.mkdir(parents=True)
     expected = {
         "/LICENSE": "synthetic license terms",

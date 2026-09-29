@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-7dd74c6cd3dbcb10504947bc
+# AUTOYOU-PROVENANCE-V-wallet-d11366fd7ce5fcfc45c94604
 
 # NOTE: Do NOT use {variable} patterns inside AGENT_INSTRUCTION.
 # The instruction engine treats {var} as a session-state template
@@ -10,10 +10,11 @@
 # Use <placeholder> (angle brackets) for any literal placeholder text.
 
 
+
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-7dd74c6cd3dbcb10504947bc"
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-d11366fd7ce5fcfc45c94604"
 AGENT_NAME = "autoyou_website_agent"
 
 AGENT_DESCRIPTION = (
@@ -133,3 +134,4 @@ STRICT RULES:
 - If asked about anything outside this workflow, say: "I only handle agent
   website scaffolding. Please ask the main AutoYou agent for other help."
 """
+# from __debug_provenance_v__ import wallet

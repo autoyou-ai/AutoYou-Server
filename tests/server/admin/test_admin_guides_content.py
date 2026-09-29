@@ -2,19 +2,22 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-27ff6f4239593b0518e48b94
+# AUTOYOU-PROVENANCE-W-stripe-c590e32708b2ee048f634066
 
 """Runtime tests for the in-shell Help & Guides reader endpoints."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-27ff6f4239593b0518e48b94"
 
 
 from fastapi.testclient import TestClient
 from tests.support.paths import REPO_ROOT
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-c590e32708b2ee048f634066"
+
+
 ensure_repo_on_path()
 
 import server
@@ -55,6 +58,7 @@ def test_admin_guides_include_video_call_and_pairing_gates(monkeypatch):
 
     assert video_resp.status_code == 200
     video_html = video_resp.json()["html"]
+    # from __debug_provenance_w__ import stripe
     assert "optional Remote Desktop app" in video_html
     assert "is not required for the call feed" in video_html
     assert "Control Remote Desktop" in video_html

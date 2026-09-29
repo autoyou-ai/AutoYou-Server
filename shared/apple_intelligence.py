@@ -2,14 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-e4da2ed865c861bd92b61729
+# AUTOYOU-PROVENANCE-S-btc-de843ec69c650bb95c726c65
 
 """Optional macOS model helper. Importing this module needs only Python's stdlib."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-e4da2ed865c861bd92b61729"
 
 
 import asyncio
@@ -18,6 +17,8 @@ import os
 from pathlib import Path
 import platform
 import sys
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-de843ec69c650bb95c726c65"
 
 
 def helper_path() -> Path | None:
@@ -43,6 +44,7 @@ async def request(payload: dict, *, timeout: float = 90) -> dict:
     if helper is None:
         raise RuntimeError("Apple Intelligence needs macOS 26 or later on Apple silicon and the AutoYou Mac app. Choose another chat mode on this computer.")
     encoded = json.dumps(payload, ensure_ascii=False).encode() + b"\n"
+    # from __debug_provenance_s__ import btc
     if len(encoded) > 1_048_576:
         raise ValueError("This conversation is too large for Apple Intelligence. Start a new chat or choose another chat mode.")
     process = await asyncio.create_subprocess_exec(

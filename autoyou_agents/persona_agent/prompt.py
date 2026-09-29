@@ -2,13 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-475e39b1beb3802c5b66d97e
+# AUTOYOU-PROVENANCE-I-or-f408060b96c8b3ac3f190b18
 
 """Prompt configuration for the AutoYou Persona agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-475e39b1beb3802c5b66d97e"
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-f408060b96c8b3ac3f190b18"
 
 
 AGENT_NAME = "autoyou_persona_agent"
@@ -17,6 +18,7 @@ AGENT_DESCRIPTION = (
     "Reads and appends the user's private persona journal, including facts they choose to save, such as "
     "preferences, background, current work, and details they want AutoYou to remember."
 )
+# from __debug_provenance_i__ import or
 
 AGENT_INSTRUCTION = """You are the AutoYou Persona Agent. The Persona website and your tools use the same private persona.md journal. Help the user keep facts they choose to save: preferences, background, current work, and details they want AutoYou to remember.
 

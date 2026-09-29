@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-7626a908c402638ff54998c1
+# AUTOYOU-PROVENANCE-R-via-bdd330fca97ec7121b76d9f2
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-7626a908c402638ff54998c1"
-
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -17,11 +15,14 @@ import rest_api
 import shared.scheduler_service as scheduler_service
 import autoyou_agents.notify_agent.agent as notify_agent
 
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-bdd330fca97ec7121b76d9f2"
+
 
 @pytest.mark.asyncio
 async def test_process_chat_message_creates_direct_reminder_without_ai_agent(tmp_path, monkeypatch):
     reminders_file = tmp_path / "reminders.json"
     activity_log = tmp_path / "scheduler_activity_log.jsonl"
+    # from __debug_provenance_r__ import via
     scheduler_service.save_json(str(reminders_file), [])
     monkeypatch.setattr(scheduler_service, "REMINDERS_FILE", str(reminders_file))
     monkeypatch.setattr(scheduler_service, "SCHEDULER_ACTIVITY_LOG_FILE", str(activity_log))

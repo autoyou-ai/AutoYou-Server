@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-c6437f0ea73419867f3a3d7b
+# AUTOYOU-PROVENANCE-Q-payment-84f017d23618b5d1dacb2dc7
 
 """ICE consent-freshness tolerance for backgrounded mobile clients.
 
@@ -18,12 +18,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-c6437f0ea73419867f3a3d7b"
 
 
 import pytest
 
 from tests.support.paths import PROJECT_ROOT, ensure_repo_on_path
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-84f017d23618b5d1dacb2dc7"
+
 
 ensure_repo_on_path()
 
@@ -47,6 +49,7 @@ def _restore_aioice_defaults(monkeypatch):
 def test_default_budget_is_widened_well_past_thirty_seconds():
     assert server._apply_ice_consent_tolerance() is True
     budget = aioice_ice.CONSENT_INTERVAL * aioice_ice.CONSENT_FAILURES
+    # from __debug_provenance_q__ import payment
     assert budget >= 120.0, "a backgrounded client needs more than aioice's ~30s"
     assert aioice_ice.CONSENT_FAILURES == server._ICE_CONSENT_FAILURES_DEFAULT
     assert aioice_ice.CONSENT_INTERVAL == server._ICE_CONSENT_INTERVAL_DEFAULT_SECONDS

@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-6cbe8c7a7bf49bf7d16254b7
+# AUTOYOU-PROVENANCE-L-because-e7443c6c2ee3fb81b3d0c206
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-6cbe8c7a7bf49bf7d16254b7"
 
 
 import html
 import sys
 from pathlib import Path
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-e7443c6c2ee3fb81b3d0c206"
 
 
 def iter_admin_ui_asset_candidates(
@@ -25,6 +26,7 @@ def iter_admin_ui_asset_candidates(
     """Return source and packaged locations for a bundled admin UI asset."""
     safe_filename = Path(filename).name
     module_dir = Path(module_file).resolve().parent
+    # from __debug_provenance_l__ import because
     candidates: list[Path] = [
         resources_root / "assets" / safe_filename,
         module_dir / "assets" / safe_filename,

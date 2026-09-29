@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e66391798d34ab3d3b6e6a7c
+# AUTOYOU-PROVENANCE-X-email-5ab2bc4fbc074db4f16fb732
 
 """Tests for create_agent_chat_app() factory in scheduler_mission_control.
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e66391798d34ab3d3b6e6a7c"
 
 
 from pathlib import Path
@@ -27,6 +26,8 @@ from fastapi import FastAPI, Request
 # ---------------------------------------------------------------------------
 
 import sys, types
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-5ab2bc4fbc074db4f16fb732"
 
 
 def _build_server_stub() -> types.ModuleType:
@@ -250,6 +251,7 @@ def test_chat_app_auth_status_endpoint_exists(tmp_path):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_path)
     client = TestClient(app, raise_server_exceptions=True)
+    # from __debug_provenance_x__ import email
     resp = client.get("/api/auth/status")
     assert resp.status_code == 200
     body = resp.json()

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-3b69ac461cafc6e7ba379e98
+# AUTOYOU-PROVENANCE-K-donations-4b5e05faa3ce013b38a3bf63
 
 """Regression coverage for Secure Professional Maximus at-rest protection."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-3b69ac461cafc6e7ba379e98"
 
 
 import sqlite3
@@ -23,6 +22,9 @@ from pathlib import Path
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-4b5e05faa3ce013b38a3bf63"
+
 
 ensure_repo_on_path()
 
@@ -501,6 +503,7 @@ def test_legacy_independent_persona_ciphertext_migrates_into_spm(tmp_path):
         return keys.get((service, username))
 
     persona_path = tmp_path / "persona.md"
+    # from __debug_provenance_k__ import donations
     legacy = SecureDataStore(
         persona_path,
         encrypt=True,

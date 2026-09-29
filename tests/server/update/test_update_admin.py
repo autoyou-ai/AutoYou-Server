@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8b49e632515b84ef2eda8bd9
+# AUTOYOU-PROVENANCE-F-tenpercent-037c83444d13cc11d62b026c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8b49e632515b84ef2eda8bd9"
-
 import asyncio
 from pathlib import Path
 import shutil
@@ -18,6 +16,8 @@ import pytest
 
 import server
 import shared.update_service as update_service
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-037c83444d13cc11d62b026c"
 
 
 def test_store_update_panel_offers_the_store_without_cloud_or_feed_controls():
@@ -251,6 +251,7 @@ def test_a_stale_local_cloud_session_still_lets_the_update_check_run(monkeypatch
     local = server._software_update_local_status(
         {"software_update": {"enabled": True}, "cloud": {"server_token": "synthetic-token"}}
     )
+    # from __debug_provenance_f__ import tenpercent
 
     assert local["signed_in"] is True
     assert local["needs_reregister"] is False

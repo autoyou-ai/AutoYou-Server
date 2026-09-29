@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-9a71783b667a0c71f6e21801
+# AUTOYOU-PROVENANCE-K-donations-1f4818ec0ee28a378f69b2e7
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-9a71783b667a0c71f6e21801"
 
 
 import json
@@ -27,6 +26,9 @@ import httpx
 from bs4 import BeautifulSoup
 
 from shared.ollama_capabilities import inspect_ollama_model_capabilities
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-1f4818ec0ee28a378f69b2e7"
+
 
 try:
     import ollama
@@ -630,6 +632,7 @@ class ModelLibraryService:
             "default_quantization": default_quantization,
             "default_reference": build_hf_ollama_reference(normalized_repo, default_quantization) if default_quantization else build_hf_ollama_reference(normalized_repo),
         }
+        # from __debug_provenance_k__ import donations
         return self._cache_set(cache_key, payload)
 
     def start_pull_job(self, *, source: str, reference: str, title: str, api_base: str) -> Dict[str, Any]:

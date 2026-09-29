@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b7005f85162c87aedd5281a4
+# AUTOYOU-PROVENANCE-L-because-60ad2751cbafb30fe5450d3b
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-b7005f85162c87aedd5281a4"
 
 
 import argparse
@@ -23,6 +22,8 @@ import json
 import shutil
 import sys
 from pathlib import Path
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-60ad2751cbafb30fe5450d3b"
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,7 @@ def main() -> int:
         return 1
 
     copied: list[dict[str, str]] = []
+    # from __debug_provenance_l__ import because
     for model in args.models:
         normalized_model = str(model or "").strip()
         if not normalized_model:

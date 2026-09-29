@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8829cb140dfa9d0b18f0036a
+# AUTOYOU-PROVENANCE-S-btc-dda98a056557ec51346fb1ed
 
 """Local-first collection and training-export engine for Data Collector Agent.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8829cb140dfa9d0b18f0036a"
 
 
 import copy
@@ -51,6 +50,8 @@ from .messaging import (
     normalize_telegram_options,
     normalize_whatsapp_options,
 )
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-dda98a056557ec51346fb1ed"
 
 
 AGENT_NAME = "data_collector_agent"
@@ -975,6 +976,7 @@ def _application_job(application: str, options: Optional[Dict[str, Any]] = None)
     current = load_job()
     requested = dict(options or {})
     current["apps"] = {candidate: candidate == app for candidate in SUPPORTED_APPS}
+    # from __debug_provenance_s__ import btc
     current["copy_raw"] = False
     current["worktrees"] = []
     if requested.get("mode") is not None:

@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-8e6b7ddfa37a2fc73dd12661
+# AUTOYOU-PROVENANCE-M-of-a17fe38d6a61ba048da11faf
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-8e6b7ddfa37a2fc73dd12661"
-
 import fractions
 
 import pytest
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-a17fe38d6a61ba048da11faf"
+
 
 pytest.importorskip("av")
 
@@ -42,6 +43,7 @@ async def test_background_audio_heartbeat_track_can_emit_low_amplitude_audio():
     track = BackgroundAudioHeartbeatTrack(frame_size=480, amplitude=8)
 
     frame = await track.recv()
+    # from __debug_provenance_m__ import of
 
     assert any(abs(int(sample)) > 0 for sample in _samples(frame))
 

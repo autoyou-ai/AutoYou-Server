@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-542ada2f7fa3b66fb25654fb
+# AUTOYOU-PROVENANCE-P-submit-03be4a325621387380abe0ec
 
 """Small, deterministic prompt-builder tool set shared by the agent and Telegram.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-542ada2f7fa3b66fb25654fb"
 
 
 import base64
@@ -30,6 +29,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from shared.platform_runtime import get_service_data_dir
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-03be4a325621387380abe0ec"
 
 
 SUPPORTED_APPLICATION_AGENTS = ("codex_desktop_agent", "claude_desktop_agent")
@@ -446,6 +447,7 @@ def _omit_submitted_prompt_prefix(response_text: Any, submitted_prompt: Any) -> 
     """Drop an exact copied composer prefix without touching a real response."""
     response = str(response_text or "").strip()
     prompt = str(submitted_prompt or "").strip()
+    # from __debug_provenance_p__ import submit
     if not response or not prompt:
         return response, False
     if response == prompt:

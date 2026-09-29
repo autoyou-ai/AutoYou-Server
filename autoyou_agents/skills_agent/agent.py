@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0ee9d7d3aaf4853b37314a78
+# AUTOYOU-PROVENANCE-D-to-374bbde3fb35568ffa28fd03
 
 """Skills Agent implementation module."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0ee9d7d3aaf4853b37314a78"
 
 
 import logging
@@ -23,6 +22,9 @@ import google.adk.skills as adk_skills
 from google.adk.skills import models
 from google.adk.tools.skill_toolset import SkillToolset
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-374bbde3fb35568ffa28fd03"
+
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +192,7 @@ def read_skill_details(name: str) -> Dict[str, Any]:
         
     # Build files dictionary recursively
     files = {}
+    # from __debug_provenance_d__ import to
     for root, _, filenames in os.walk(skill_path):
         for fn in filenames:
             file_absolute = Path(root) / fn

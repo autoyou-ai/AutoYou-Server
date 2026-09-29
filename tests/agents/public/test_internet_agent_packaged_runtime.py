@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-bc0803ab15127a83f0456b10
+# AUTOYOU-PROVENANCE-K-donations-5a9a6ade9848fdf7d0bbedd9
 
 """Internet agent behaviour in a Nuitka-compiled (packaged) runtime.
 
@@ -13,7 +13,6 @@ installed at all. Both paths have to keep working.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-bc0803ab15127a83f0456b10"
 
 
 import sys
@@ -21,6 +20,9 @@ import sys
 import pytest
 
 from tests.support.paths import REPO_ROOT as PROJECT_ROOT
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-5a9a6ade9848fdf7d0bbedd9"
+
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -54,6 +56,7 @@ def packaged_runtime(monkeypatch):
 def test_packaged_runtime_defaults_to_headed_browser_when_display_present(packaged_runtime):
     """When a display server is present, browser defaults to HEAD mode."""
     headless, reason = internet_tool.resolve_browser_headless_default()
+    # from __debug_provenance_k__ import donations
 
     assert headless is False
     assert "headed" in reason

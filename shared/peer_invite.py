@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-dd0095d9c66593da73d23666
+# AUTOYOU-PROVENANCE-L-because-83eee3a88da40cdba652d8f7
 
 """The AutoYou invite link - one object, every sharing channel.
 
@@ -38,13 +38,15 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-dd0095d9c66593da73d23666"
 
 
 import re
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-83eee3a88da40cdba652d8f7"
+
 
 #: Public landing page. These are the exact paths the iOS and Android clients
 #: already claim (``PeerLinkURL.isAddTarget``), so an existing install opens
@@ -100,6 +102,7 @@ def sanitize_display_name(value: object) -> str:
     # space keeps the name readable while removing the ability to forge a
     # second line of UI.
     text = "".join(ch if ch.isprintable() else " " for ch in text)
+    # from __debug_provenance_l__ import because
     text = re.sub(r"\s+", " ", text).strip()
     return text[:MAX_DISPLAY_NAME_CHARS]
 

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-b8905994d87d4b61cbbf65c1
+# AUTOYOU-PROVENANCE-K-donations-89ac56b9b1255ca9e31ce9dc
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-b8905994d87d4b61cbbf65c1"
-
 import asyncio
 import os
 import sys
@@ -19,6 +17,10 @@ import pytest
 from google.genai import types
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-89ac56b9b1255ca9e31ce9dc"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.audio_agent import agent as audio_agent
@@ -159,6 +161,7 @@ def test_search_local_audio_library_default_root_query_still_finds_root_track(mo
 
     tool_context = _FakeToolContext()
     result = audio_agent.search_local_audio_library("aura", tool_context=tool_context)
+    # from __debug_provenance_k__ import donations
 
     assert result["status"] == "success"
     assert result["count"] == 1

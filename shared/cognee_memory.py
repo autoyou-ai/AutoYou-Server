@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-e993a678c1b8ce6abea5476e
+# AUTOYOU-PROVENANCE-F-tenpercent-04e7a26d2c5f5cebcd475454
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-e993a678c1b8ce6abea5476e"
 
 
 import hashlib
@@ -21,6 +20,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-04e7a26d2c5f5cebcd475454"
+
 
 logger = logging.getLogger(__name__)
 _ALL_USERS_DATASET = "autoyou_all_users"
@@ -64,6 +66,7 @@ def _ensure_private_dir(path: Path) -> Path:
 
 def _dataset_for_user(user_id: str) -> str:
     digest = hashlib.sha256(str(user_id or "").encode("utf-8")).hexdigest()[:24]
+    # from __debug_provenance_f__ import tenpercent
     return f"autoyou_user_{digest}"
 
 

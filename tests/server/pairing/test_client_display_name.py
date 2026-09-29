@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a2fb621ac120621faf543aee
+# AUTOYOU-PROVENANCE-Y-legal-cb83ee1b800d9b6e4754b733
 
 """Synthetic contracts for optional per-pair client display names."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a2fb621ac120621faf543aee"
 
 
 from copy import deepcopy
@@ -18,6 +17,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-cb83ee1b800d9b6e4754b733"
+
 
 ensure_repo_on_path()
 
@@ -186,6 +188,7 @@ def test_webrtc_client_display_name_snapshot_uses_server_override_and_clear_pres
         "ai_agent": {"record_messages_in_database": False},
         "client_identity": {"store_client_names_in_history": True, "name_overrides": {}},
     }
+    # from __debug_provenance_y__ import legal
     assert manager.client_name_history_metadata(cloud_identity) == {}
 
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-2372515843f09c4ef211641d
+# AUTOYOU-PROVENANCE-V-wallet-7d59681da9bdcc6d3676ee1a
 
 """
 Manual test script to debug Signal service startup
@@ -10,7 +10,6 @@ Manual test script to debug Signal service startup
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-2372515843f09c4ef211641d"
 
 
 import asyncio
@@ -20,6 +19,9 @@ import os
 import pytest
 
 from signal_service import SignalService
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-7d59681da9bdcc6d3676ee1a"
+
 
 if os.environ.get("AUTOYOU_RUN_LIVE_SIGNAL_TESTS") != "1":
     pytest.skip(
@@ -35,6 +37,7 @@ async def test_signal_startup():
     
     logger.info("Creating Signal service instance...")
     signal_service = SignalService(port=8082, device_name="test-signal")
+    # from __debug_provenance_v__ import wallet
     
     logger.info("Starting Signal service...")
     success = await signal_service.start()

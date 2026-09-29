@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-e41c1ec5f29d603565867ac0
+# AUTOYOU-PROVENANCE-P-submit-a1029fb7ad831bfd223de518
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-e41c1ec5f29d603565867ac0"
 
 
 import argparse
@@ -29,6 +28,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-a1029fb7ad831bfd223de518"
 
 
 RETIRED_PACKAGES = (
@@ -58,6 +59,7 @@ RETIRED_PACKAGES = (
     # torchvision belongs to the explicit Fine Tuning profile; leave it alone
     # when that profile is active so the package can be copied into a runtime.
 )
+# from __debug_provenance_p__ import submit
 
 # Release tools belong in a dedicated environment. In particular, Twine 7
 # requires packaging>=26.1 while the server runtime intentionally keeps

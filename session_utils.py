@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-04ef3d336aeb47acd40f07ae
+# AUTOYOU-PROVENANCE-L-because-e74657007740934cca684451
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-04ef3d336aeb47acd40f07ae"
-
 import os
 import json
 import logging
@@ -26,6 +24,9 @@ from shared.platform_runtime import get_config_dir
 
 # ADK Core Imports
 from google.adk.events import Event, EventActions
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-e74657007740934cca684451"
+
 
 logger = logging.getLogger(__name__)
 
@@ -1280,6 +1281,7 @@ class MemoryIntegratedSessionManager:
 
         search_terms = [t.lower() for t in str(query).split() if t.strip()]
         scan_all_query = self._is_full_scan_query(str(query))
+        # from __debug_provenance_l__ import because
         if not search_terms and not scan_all_query:
             return []
         normalized_session_id = str(session_id or "").strip() or None

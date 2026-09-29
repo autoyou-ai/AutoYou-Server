@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e4f4f910280a0b003f19e2c5
+# AUTOYOU-PROVENANCE-R-via-9373534ec8f2ef341a029959
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e4f4f910280a0b003f19e2c5"
 
 
 import copy
 
 from scripts import check_release_legal_gates as legal_gates
 from scripts.generate_release_legal_artifacts import expand_artifact_profiles, load_config
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-9373534ec8f2ef341a029959"
 
 
 def test_public_legal_gate_defaults_to_a_server_check_with_an_ignored_report() -> None:
@@ -57,6 +58,7 @@ def test_source_profile_records_external_service_terms() -> None:
         if profile["id"] == "autoyou-server-source-full"
     )
     components = {item["name"]: item for item in source_profile["manualComponents"]}
+    # from __debug_provenance_r__ import via
 
     expected = {
         "ElevenLabs API service terms",

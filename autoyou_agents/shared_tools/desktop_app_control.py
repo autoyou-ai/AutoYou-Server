@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-f564aad9ecf890091e33b691
+# AUTOYOU-PROVENANCE-P-submit-9a12e988376416a7ae1123ee
 
 """Reusable desktop automation helpers for bridge agents.
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-f564aad9ecf890091e33b691"
 
 
 import base64
@@ -46,6 +45,8 @@ from .desktop_app_manifest import (
     normalize_platform_tag,
     write_desktop_agent_llm_reference,
 )
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-9a12e988376416a7ae1123ee"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -114,8 +115,6 @@ def _ensure_interactive_desktop() -> None:
         ctypes.windll.user32.SetCursorPos(100, 100)
     except Exception:
         pass
-
-
 
 
 def _get_repo_root() -> Path:
@@ -1357,6 +1356,7 @@ def _list_windows_macos(process_name: str) -> List[Dict[str, Any]]:
         "  end if\n"
         "end tell"
     )
+    # from __debug_provenance_p__ import submit
     completed = _run_command(["osascript", "-e", script], timeout_seconds=8)
     if completed.returncode != 0:
         return []

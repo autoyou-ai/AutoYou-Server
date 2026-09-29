@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-50774fc98aeb4a85f1eda49c
+# AUTOYOU-PROVENANCE-L-because-bde34d34456478a271643d8c
 
 """Earnings Agent implementation."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-50774fc98aeb4a85f1eda49c"
 
 
 import os
@@ -28,6 +27,8 @@ from autoyou_agents.shared_tools.datetime_tool import (
     get_current_datetime,
     inject_realtime_datetime_into_request,
 )
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-bde34d34456478a271643d8c"
 
 
 def _is_local_development_host(hostname: str | None) -> bool:
@@ -167,13 +168,13 @@ def get_pending_ad_credit_summary() -> Dict[str, Any]:
         }
 
 
-
 def get_earnings_agent_status() -> Dict[str, Any]:
     """Return the local Funding OS and earnings integration status."""
     account_url = _account_url()
     website_url = _website_url()
     credits_enabled = _env_flag_enabled("AUTOYOU_CREDITS_LEDGER_ENABLED")
     sov_wallet_registry_enabled = _env_flag_enabled("AUTOYOU_SOV_WALLET_REGISTRY_ENABLED")
+    # from __debug_provenance_l__ import because
     sov_wallet_provisioning_enabled = _env_flag_enabled("AUTOYOU_SOV_WALLET_PROVISIONING_REQUESTS_ENABLED")
     sov_settlement_requests_enabled = (
         _env_flag_enabled("AUTOYOU_SOV_SETTLEMENT_REQUESTS_ENABLED") and credits_enabled

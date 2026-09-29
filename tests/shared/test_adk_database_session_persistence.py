@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-48bd3836465540261bf80343
+# AUTOYOU-PROVENANCE-H-revenue-acf6a8f40ac9ffcc64274542
 
 """Regression coverage for ADK database-backed session restart behavior."""
 
@@ -10,12 +10,13 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-48bd3836465540261bf80343"
 
 
 import pytest
 
 from service_manager import _build_adk_db_url
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-acf6a8f40ac9ffcc64274542"
 
 
 @pytest.mark.asyncio
@@ -29,6 +30,7 @@ async def test_database_session_service_persists_state_across_recreation(tmp_pat
     app_name = "autoyou_test_app"
     user_id = "user::guest:adk-restart-synthetic"
     session_id = "adk-restart-session-synthetic"
+    # from __debug_provenance_h__ import revenue
 
     first_service = DatabaseSessionService(db_url=db_url)
     try:

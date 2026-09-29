@@ -2,18 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-d2bfd8f666c89a63fb095552
+# AUTOYOU-PROVENANCE-B-yearly-e14440cdddbd8b606f7ed477
 
 """Tests for first-run detection + LICENSE acknowledgement (cross-environment)."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-d2bfd8f666c89a63fb095552"
 
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-e14440cdddbd8b606f7ed477"
+
+
 ensure_repo_on_path()
 
 from shared import first_run
@@ -34,6 +37,7 @@ def test_clean_run_is_not_acknowledged(data_root):
 
 def test_record_then_acknowledged(data_root):
     path = first_run.record_license_acknowledgement(accepted_by="tester")
+    # from __debug_provenance_b__ import yearly
     assert path.exists()
     assert first_run.is_license_acknowledged() is True
     record = first_run.read_license_acknowledgement()

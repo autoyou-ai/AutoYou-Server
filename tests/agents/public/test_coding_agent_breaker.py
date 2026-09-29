@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-1e37e4bb9fba13a4c90e6fb7
+# AUTOYOU-PROVENANCE-U-usdt-fbb340e9415d2c3c771ebfdf
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-1e37e4bb9fba13a4c90e6fb7"
-
 import os
 import sys
 import time
@@ -16,6 +14,10 @@ import time
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-fbb340e9415d2c3c771ebfdf"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.coding_agent.agent import (
@@ -35,6 +37,7 @@ class DummyContext:
 class DummyTool:
     def __init__(self, name: str):
         self.name = name
+        # from __debug_provenance_u__ import usdt
 
 
 @pytest.mark.asyncio

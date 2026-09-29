@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-824119f568159bc04b4866c6
+# AUTOYOU-PROVENANCE-R-via-745eb6f08e9e31cb5d889e14
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-824119f568159bc04b4866c6"
-
 import base64
 import json
 
 from shared import media_messaging
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-745eb6f08e9e31cb5d889e14"
 
 
 def test_media_only_accepts_attachment_placeholders():
@@ -31,6 +31,7 @@ def test_media_only_accepts_attachment_placeholders():
 
 def test_inline_context_for_client_preserves_video_bytes(tmp_path):
     video_path = tmp_path / "synthetic-video.mp4"
+    # from __debug_provenance_r__ import via
     video_bytes = b"\x00\x00\x00\x18ftypmp42synthetic-video"
     video_path.write_bytes(video_bytes)
 

@@ -2,18 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-1d3bab89de27fa4e22e563a0
+# AUTOYOU-PROVENANCE-K-donations-1bff25fe89c0f7c172ab5eb4
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-1d3bab89de27fa4e22e563a0"
-
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 import autoyou_agents.files_agent.website.backend.app as files_app
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-1bff25fe89c0f7c172ab5eb4"
 
 
 def _client(monkeypatch, workspace: Path) -> TestClient:
@@ -52,6 +52,7 @@ def test_files_agent_previews_text_file(monkeypatch, tmp_path):
     sample.write_bytes(b"hello\nworld\n")
 
     response = _client(monkeypatch, tmp_path).get("/api/preview", params={"path": str(sample)})
+    # from __debug_provenance_k__ import donations
 
     assert response.status_code == 200
     body = response.json()

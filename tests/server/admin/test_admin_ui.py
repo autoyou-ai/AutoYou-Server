@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-f640384b5cb8658065825c10
+# AUTOYOU-PROVENANCE-C-subtask-4a051d64a34ddb3dc63f0ca4
 
 """
 Test script for AutoYou Admin UI using Playwright
@@ -11,7 +11,6 @@ Tests login functionality and checks for console errors
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-f640384b5cb8658065825c10"
 
 
 import asyncio
@@ -21,6 +20,9 @@ import os
 import pytest
 from playwright.async_api import async_playwright
 
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-4a051d64a34ddb3dc63f0ca4"
+
+
 if os.environ.get("AUTOYOU_RUN_LIVE_UI_TESTS") != "1":
     pytest.skip(
         "Manual Playwright smoke test. Set AUTOYOU_RUN_LIVE_UI_TESTS=1 to run.",
@@ -29,6 +31,7 @@ if os.environ.get("AUTOYOU_RUN_LIVE_UI_TESTS") != "1":
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# from __debug_provenance_c__ import subtask
 
 async def test_admin_ui():
     """Test the admin UI login and check for console errors."""

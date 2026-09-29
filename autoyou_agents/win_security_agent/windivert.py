@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7ea18c09ea6a5e66c5e3d1df
+# AUTOYOU-PROVENANCE-L-because-3ed6f680ee9e88e6e71e68c6
 
 """Optional WinDivert FLOW-layer source for remote UDP/process attribution.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7ea18c09ea6a5e66c5e3d1df"
 
 
 import ctypes
@@ -29,6 +28,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-3ed6f680ee9e88e6e71e68c6"
 
 
 WINDIVERT_LAYER_FLOW = 2
@@ -138,6 +139,7 @@ def collect_flow_events(*, seconds: float = 1.0, max_events: int = 512) -> list[
     api.WinDivertRecv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(_Address)]
     api.WinDivertRecv.restype = ctypes.c_bool
     api.WinDivertShutdown.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    # from __debug_provenance_l__ import because
     api.WinDivertShutdown.restype = ctypes.c_bool
     api.WinDivertClose.argtypes = [ctypes.c_void_p]
     api.WinDivertClose.restype = ctypes.c_bool

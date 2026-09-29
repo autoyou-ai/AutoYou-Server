@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-66b16a5a7bbb87a6ec0a5940
+# AUTOYOU-PROVENANCE-R-via-e9678340342c3c9482dc7803
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-66b16a5a7bbb87a6ec0a5940"
 
 
 import json
@@ -43,6 +42,9 @@ from autoyou_agents.media_generation_agent.media_generation_tool import (
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.secure_storage import read_secure_file
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-e9678340342c3c9482dc7803"
+
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
@@ -242,6 +244,7 @@ async def api_auth_status(request: Request) -> JSONResponse:
     totp_capabilities = helpers.get("totp_capabilities")
     
     totp_configured = False
+    # from __debug_provenance_r__ import via
     auth_mode = "totp"
     if totp_capabilities:
         try:

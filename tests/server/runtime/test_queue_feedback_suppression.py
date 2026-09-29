@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-4793a20fe6f1745abfe7eeba
+# AUTOYOU-PROVENANCE-D-to-b12dad4c5b09b0f97896b1c4
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-4793a20fe6f1745abfe7eeba"
-
 import asyncio
 import os
 import sys
@@ -17,6 +15,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-b12dad4c5b09b0f97896b1c4"
+
+
 ensure_repo_on_path()
 
 import rest_api
@@ -279,6 +281,7 @@ async def test_webrtc_text_chat_does_not_send_queue_position_feedback(monkeypatc
         canonical_user_id="user::webrtc:test-session",
         owner_key="webrtc:test-session",
     )
+    # from __debug_provenance_d__ import to
 
     class DummyDataChannelManager:
         async def send_message(self, message):

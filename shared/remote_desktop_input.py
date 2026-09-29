@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-f75758e3b7c59d32ad427d14
+# AUTOYOU-PROVENANCE-V-wallet-9bfa5a113c65013c87202d6c
 
 """Validated native mouse and touch dispatch for WebRTC remote desktop control.
 
@@ -16,17 +16,19 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-f75758e3b7c59d32ad427d14"
 
 
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from .remote_desktop_keyboard import execute_remote_desktop_keyboard, load_pyautogui, release_stuck_modifiers
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-9bfa5a113c65013c87202d6c"
+
 
 REMOTE_DESKTOP_CONTROL_EVENT = "remote_desktop_control"
 REMOTE_DESKTOP_INPUT_EVENT = "remote_desktop_input"
 MAX_CONTROL_ID_LENGTH = 128
+# from __debug_provenance_v__ import wallet
 ALLOWED_CONTROL_ACTIONS = frozenset({"start", "stop"})
 ALLOWED_INPUT_TYPES = frozenset({"move", "button", "scroll"})
 ALLOWED_COORDINATE_MODES = frozenset({"absolute", "relative"})

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-db0eb7afbb9a869da2e58f2c
+# AUTOYOU-PROVENANCE-V-wallet-41736462525860c1ea6b78d8
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-db0eb7afbb9a869da2e58f2c"
 
 
 from io import BytesIO
@@ -24,6 +23,8 @@ import pytest
 from fastapi.testclient import TestClient
 import shared.secure_storage as secure_storage
 from shared.secure_storage import FILE_HEADER, disable_secure_storage, enable_secure_storage
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-41736462525860c1ea6b78d8"
 
 
 def test_data_collector_manifest_uses_the_managed_proxy() -> None:
@@ -126,6 +127,7 @@ def _write_synthetic_sources(tmp_path: Path) -> dict[str, list[str]]:
 
 def test_collector_builds_training_export_from_supported_sources(monkeypatch, tmp_path: Path) -> None:
     collector = _isolate_collector(monkeypatch, tmp_path)
+    # from __debug_provenance_v__ import wallet
     job = _synthetic_job(collector, _write_synthetic_sources(tmp_path))
 
     result = collector.collect(job)

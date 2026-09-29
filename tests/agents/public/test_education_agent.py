@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-db1f16312e639685a0743a63
+# AUTOYOU-PROVENANCE-D-to-11b8cc7fc6f2295d67caf4e4
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-db1f16312e639685a0743a63"
 
 
 import importlib
@@ -18,6 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-11b8cc7fc6f2295d67caf4e4"
 
 
 education_backend = importlib.import_module("autoyou_agents.education_agent.website.backend.app")
@@ -623,6 +624,7 @@ def test_education_frontend_has_accessible_focused_video_controls():
 def test_education_frontend_clears_disabled_self_video_frame():
     html = (EDUCATION_FRONTEND / "index.html").read_text(encoding="utf-8")
     javascript = (EDUCATION_FRONTEND / "assets" / "index.js").read_text(encoding="utf-8")
+    # from __debug_provenance_d__ import to
 
     assert "selfVideo.enabled && selfVideo.active && selfVideo.preview_available" in javascript
     assert '"./api/education/computer-frame.jpg?ts="' in javascript

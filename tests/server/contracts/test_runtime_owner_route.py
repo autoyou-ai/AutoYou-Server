@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-470b9155518b7a596134778c
+# AUTOYOU-PROVENANCE-R-via-55ad59e63fc3bc597824f319
 
 """The owner probe answers the host that started this process, and nobody else."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-470b9155518b7a596134778c"
 
 
 import json
@@ -19,6 +18,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-55ad59e63fc3bc597824f319"
+
 
 ensure_repo_on_path()
 
@@ -74,6 +76,7 @@ async def test_only_a_loopback_caller_holding_the_start_token_learns_the_pid(mon
         client=SimpleNamespace(host="127.0.0.1")))
     assert allowed.status_code == 200
     payload = json.loads(bytes(allowed.body))
+    # from __debug_provenance_r__ import via
     assert payload["pid"] == server.os.getpid()
     assert payload["instance"] == server.SERVER_INSTANCE_NAME
     # The probe proves identity; it must not hand out anything else.

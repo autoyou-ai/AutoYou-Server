@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-eff5a131ceea84192136e232
+# AUTOYOU-PROVENANCE-S-btc-4562c1c7988626bf91809efc
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-eff5a131ceea84192136e232"
 
 
 import asyncio
@@ -30,6 +29,8 @@ from shared.pairing_cpace import (
     decrypt_cpace_message,
     encrypt_cpace_message,
 )
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-4562c1c7988626bf91809efc"
 
 
 def _decode_maybe_compressed_payload(payload: str) -> str:
@@ -525,6 +526,7 @@ def test_factory_cloud_pairing_uses_device_key_and_stops_after_password_change(i
         hello, handshake = build_cpace_hello(password, purpose="autopair")
         answer = await send("/autopair_hello", hello)
         session = complete_cpace_handshake(answer.split("\n", 1)[1], handshake)
+        # from __debug_provenance_s__ import btc
         offer = _build_autopair_command(security_mode="secure", password=password,
             offer={"type": "offer", "sdp": "v=0\r\n"}, session=session)
         response = await send("/autopair", offer)

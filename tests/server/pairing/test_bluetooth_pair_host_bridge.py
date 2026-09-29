@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-7fb85c97dc35039245845485
+# AUTOYOU-PROVENANCE-W-stripe-2c10ba6b6474134304403ffe
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-7fb85c97dc35039245845485"
-
 import base64
 import json
 import zlib
@@ -16,6 +14,9 @@ import zlib
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-2c10ba6b6474134304403ffe"
+
 
 ensure_repo_on_path()
 
@@ -27,6 +28,7 @@ def test_bridge_forwards_plaintext_autopair_body_as_bluetooth_json():
         '/autopair\n{"hash":"abc","offer":{"type":"offer","sdp":"v=0"}}',
         client_id="ios-synthetic-client",
     )
+    # from __debug_provenance_w__ import stripe
 
     payload = json.loads(body)
     assert content_type == "application/json"

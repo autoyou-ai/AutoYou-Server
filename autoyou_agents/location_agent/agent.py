@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-601438152e0e3288a305492c
+# AUTOYOU-PROVENANCE-R-via-b842ac40dc429dedb05f85a5
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-601438152e0e3288a305492c"
 
 
 from functools import lru_cache
@@ -20,6 +19,9 @@ from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
 from .store import LocationStore
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-b842ac40dc429dedb05f85a5"
+
 
 @lru_cache(maxsize=1)
 def _store() -> LocationStore:
@@ -49,6 +51,7 @@ def record_location(
             "source": "agent_tool",
         }]
     )
+    # from __debug_provenance_r__ import via
     return {"status": "ok", "recorded": count, "summary": _store().summary()}
 
 

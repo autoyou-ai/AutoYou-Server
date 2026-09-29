@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-b05d64ab293ae16ab99abcce
+# AUTOYOU-PROVENANCE-X-email-ccfd8f0ffd439bbf538ab61a
 
 """End-to-end tests for the Hermes Agent provider integration.
 
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-b05d64ab293ae16ab99abcce"
 
 
 import asyncio
@@ -48,6 +47,10 @@ from fastapi.responses import JSONResponse
 # ── Repo root on sys.path ─────────────────────────────────────────────────────
 
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-ccfd8f0ffd439bbf538ab61a"
+
+
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -286,6 +289,7 @@ class TestHermesChatFastPath:
                 return await process_chat_message(req)
 
         response = asyncio.run(_run())
+        # from __debug_provenance_x__ import email
         assert response.agent_name, "Expected non-empty agent_name in Hermes response"
 
     def test_hermes_gateway_unavailable_returns_error(self, hermes_env):

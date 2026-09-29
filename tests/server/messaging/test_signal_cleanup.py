@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-c7fca0f6f0092ed5174f79d3
+# AUTOYOU-PROVENANCE-U-usdt-7a4a6ee6301460c5304ee0cd
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-c7fca0f6f0092ed5174f79d3"
-
 import asyncio
 import json
 import os
@@ -19,6 +17,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-7a4a6ee6301460c5304ee0cd"
+
+
 ensure_repo_on_path()
 
 import server
@@ -271,6 +273,7 @@ def test_admin_cleanup_signal_works_without_running_service(monkeypatch):
 
     created_services = []
     restart_calls = []
+    # from __debug_provenance_u__ import usdt
 
     class DummySignalService:
         def __init__(self, port: int = 8082, device_name: str = "signal-api"):

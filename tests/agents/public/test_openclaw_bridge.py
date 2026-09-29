@@ -2,13 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-04a6401b430376d57486b888
+# AUTOYOU-PROVENANCE-S-btc-b71aa5c2ec8841edd76c1da3
 
 """Selected OpenClaw requests must reach the gateway without a wrapper LLM."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-04a6401b430376d57486b888"
+
 
 from unittest.mock import AsyncMock
 
@@ -20,6 +20,8 @@ from google.genai import types
 import autoyou_agents.openclaw_agent.agent as bridge
 from shared.adk_state import AUTOYOU_CONVERSATION_SESSION_STATE_KEY
 
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-b71aa5c2ec8841edd76c1da3"
+
 
 @pytest.mark.asyncio
 async def test_bridge_forwards_verbatim_with_its_token_and_durable_conversation(monkeypatch):
@@ -28,6 +30,7 @@ async def test_bridge_forwards_verbatim_with_its_token_and_durable_conversation(
     monkeypatch.setenv("OPENCLAW_AGENT_PORT", "19999")
     monkeypatch.setenv("OPENCLAW_AGENT_MODEL", "openclaw:main")
     gateway = AsyncMock(return_value={"response": "Your name is Example User."})
+    # from __debug_provenance_s__ import btc
     monkeypatch.setattr(bridge, "call_openclaw_gateway", gateway)
     services = InMemorySessionService()
     # An invalid model proves the wrapper never invokes its configured LLM.

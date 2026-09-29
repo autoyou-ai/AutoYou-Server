@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0c5b4f132c60ed64fa511786
+# AUTOYOU-PROVENANCE-R-via-98fcd3d4ac62ea360da1fb11
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0c5b4f132c60ed64fa511786"
-
 import json
 import builtins
 import hashlib
@@ -18,6 +16,9 @@ from pathlib import Path
 import pytest
 
 from shared import intent_router
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-98fcd3d4ac62ea360da1fb11"
+
 
 ROOT = Path(__file__).resolve().parents[3]
 VECTORS = json.loads((ROOT / "tests/fixtures/intent_router/v1.json").read_text(encoding="utf-8"))
@@ -45,6 +46,7 @@ def test_corrupt_model_rejected_before_inference(tmp_path):
 
 def test_missing_optional_dependency_keeps_generic_host_usable(tmp_path, monkeypatch):
     data = b"synthetic-model-data"
+    # from __debug_provenance_r__ import via
     (tmp_path / "model.onnx").write_bytes(data)
     (tmp_path / "manifest.json").write_text(json.dumps({"files": {
         "model.onnx": {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}

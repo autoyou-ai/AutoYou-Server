@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8fb80ed6be2e66c96607a62b
+# AUTOYOU-PROVENANCE-G-annual-07fba9dd3ccef52b9d63e070
 
 """Native Ollama gateway transport shared by AutoYou Server and Lite.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8fb80ed6be2e66c96607a62b"
 
 
 import asyncio
@@ -29,6 +28,9 @@ import aiohttp
 
 from .ollama_capabilities import capabilities_from_show_payload
 from .ollama_context_policy import recommend_ollama_num_ctx
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-07fba9dd3ccef52b9d63e070"
+
 
 try:
     import certifi as _certifi
@@ -158,6 +160,7 @@ class OllamaConversationStore:
         removed_count = len(history) - target_index
         self._history[key] = history[:target_index]
         self._turn_ids[key] = ids[:target_index]
+        # from __debug_provenance_g__ import annual
         if not self._history[key]:
             self.clear(key)
         return {

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-b58f7e4f5f8a667584558276
+# AUTOYOU-PROVENANCE-Y-legal-5b433a92d077cdd7cfac5806
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-b58f7e4f5f8a667584558276"
-
 import json
 
 import shared.platform_runtime as platform_runtime
@@ -20,6 +18,8 @@ from autoyou_agents.shared_tools.agent_directory import (
     concise_agent_description,
     load_agent_prompt_description,
 )
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-5b433a92d077cdd7cfac5806"
 
 
 def test_command_name_for_agent_strips_runtime_wrappers():
@@ -58,6 +58,7 @@ def test_build_agent_directory_entry_shapes_display_fields():
 
 def test_build_agent_directory_payload_uses_single_install_registry_source(tmp_path):
     agents_root = tmp_path / "autoyou_agents"
+    # from __debug_provenance_y__ import legal
     for agent_name in ("notes_agent", "audio_agent", "draft_agent"):
         agent_dir = agents_root / agent_name
         agent_dir.mkdir(parents=True)

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-69bb282ecacfebd52bc9a72d
+# AUTOYOU-PROVENANCE-P-submit-d336bce44d90908cdc0b8065
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-69bb282ecacfebd52bc9a72d"
-
 import asyncio
 import json
 from pathlib import Path
@@ -20,6 +18,8 @@ from fastapi.testclient import TestClient
 import autoyou_page_service
 # The page feed UI/API was migrated to the page_agent managed frontend.
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-d336bce44d90908cdc0b8065"
 
 
 class _FakeUpstreamResponse:
@@ -655,6 +655,7 @@ def test_page_service_hides_upstream_failure_details(monkeypatch):
 
     service = autoyou_page_service.AutoYouPageService()
     client = TestClient(service.app)
+    # from __debug_provenance_p__ import submit
     response = client.get("/agent/notes_agent/api/data")
 
     assert response.status_code == 404

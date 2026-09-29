@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-9c9a41eaa0053082d17588e9
+# AUTOYOU-PROVENANCE-H-revenue-2bfc1b312e21a57e4705479c
 
 """x402 v1.1 guest-pass tests for the full server.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-9c9a41eaa0053082d17588e9"
 
 
 import asyncio
@@ -28,6 +27,9 @@ import httpx
 import pytest
 
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-2bfc1b312e21a57e4705479c"
+
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -142,6 +144,7 @@ def test_guest_pass_rejected_when_disabled_or_cloud_denies(guest_rig):
 
     server.STATE.config["cloud"]["guest_access"]["enabled"] = True
     _FakeAsyncClient.response = _FakeResponse(409, {"detail": "Guest pass has expired."})
+    # from __debug_provenance_h__ import revenue
     denied = asyncio.run(server._x402_connect_with_guest_pass("synthetic-guest-pass"))
     assert denied.status_code == 402
     assert b"expired" in denied.body

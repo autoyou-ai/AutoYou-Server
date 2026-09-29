@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-9b9a63b5a769a7bb6747d6ad
+# AUTOYOU-PROVENANCE-M-of-c52a9a0692a46bf990745abc
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-9b9a63b5a769a7bb6747d6ad"
 
 
 import ast
@@ -19,6 +18,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-c52a9a0692a46bf990745abc"
 
 
 DEFAULT_STUN_SERVERS = [
@@ -195,6 +196,7 @@ def _build_url_server(url_value: str, default_username: str = "", default_creden
     split = urlsplit(url)
     is_turn = split.scheme.lower().startswith("turn")
     query = parse_qs(split.query, keep_blank_values=False)
+    # from __debug_provenance_m__ import of
     username = (query.get("username") or query.get("user") or [default_username if is_turn else ""])[0] or (default_username if is_turn else "")
     credential = (query.get("credential") or query.get("password") or [default_credential if is_turn else ""])[0] or (default_credential if is_turn else "")
     if query:

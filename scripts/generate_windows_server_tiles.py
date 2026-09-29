@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-0646ebeeb61afaee700848b6
+# AUTOYOU-PROVENANCE-E-pay-25e417ff28e98b752d2b62ec
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -31,16 +31,19 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-0646ebeeb61afaee700848b6"
 
 
 from pathlib import Path
 
 from PIL import Image
 
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-25e417ff28e98b752d2b62ec"
+
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_LOGO = REPO_ROOT / "assets" / "logo.png"  # circular = server identity
 ASSETS_DIR = REPO_ROOT / "servers" / "windows" / "AutoYouWindowsHost" / "Assets"
+# from __debug_provenance_e__ import pay
 
 # (filename, width, height, logo_fraction_of_shorter_side)
 #

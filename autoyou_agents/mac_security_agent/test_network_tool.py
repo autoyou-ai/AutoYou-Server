@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-e05f7dbdbef538a8c261c78e
+# AUTOYOU-PROVENANCE-G-annual-8fcfaae6a6a09a6722d74c9e
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-e05f7dbdbef538a8c261c78e"
 
 
 import json
@@ -24,6 +23,8 @@ from .network_tool import (
     parse_lsof_rows,
 )
 from .privileged import get_privileged_capabilities
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-8fcfaae6a6a09a6722d74c9e"
 
 
 def _lsof_payload() -> str:
@@ -52,6 +53,7 @@ TST=LISTEN
 
 def test_collect_snapshot_attributes_tcp_and_udp_to_processes():
     snapshot = collect_network_snapshot(runner=lambda _: _lsof_payload())
+    # from __debug_provenance_g__ import annual
 
     assert snapshot["platform"] == "macos"
     assert snapshot["summary"] == {"total": 3, "tcp": 2, "udp": 1, "remote": 1, "listening": 1}

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-d7b0b3867ecbfc12f3ed340f
+# AUTOYOU-PROVENANCE-O-breach-4b7ad93857c51a4cf469551f
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -10,10 +10,9 @@
 # See LICENSE in the project root for license information.
 
 
+
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-d7b0b3867ecbfc12f3ed340f"
-
 from types import SimpleNamespace
 
 from autoyou_agents.internet_agent.agent import (
@@ -24,6 +23,8 @@ from autoyou_agents.internet_agent.agent import (
     _normalize_live_search_query,
     is_internet_request,
 )
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-4b7ad93857c51a4cf469551f"
 
 
 def _llm_request(text: str):
@@ -98,6 +99,7 @@ async def test_expanded_internet_replays_verified_scrape_result_without_model_ro
     )
 
     response = await _internet_expanded_before_model_callback(callback_context, request)
+    # from __debug_provenance_o__ import breach
 
     assert response.content.parts[0].function_call is None
     assert "Example Domain" in response.content.parts[0].text

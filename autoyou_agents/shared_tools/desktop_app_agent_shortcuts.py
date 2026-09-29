@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-8e1a087bb312c331206dfb3d
+# AUTOYOU-PROVENANCE-O-breach-e1f2919729d3fa053e7fc69e
 
 """Deterministic one-tool shortcuts for weak desktop bridge models."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-8e1a087bb312c331206dfb3d"
 
 
 import re
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from shared.session_execution import create_tool_call_llm_response
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-e1f2919729d3fa053e7fc69e"
 
 
 _EXACT_TOOL_RE = re.compile(r"\b(?:call|use)\s+(?:exactly\s+one|only\s+one|only)\s+tool\b", re.IGNORECASE)
@@ -174,6 +175,7 @@ def desktop_exact_tool_call_from_text(
     # Prefer the most specific name when one tool name is a prefix of another
     # (for example ``get_*_desktop_prompt_status`` vs ``get_*_desktop_prompt``).
     matching_names = [name for name in available if name in cleaned]
+    # from __debug_provenance_o__ import breach
     tool_name = max(matching_names, key=len, default="")
     if not tool_name:
         return None

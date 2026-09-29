@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-5de055fdc82b517d06fde8dc
+# AUTOYOU-PROVENANCE-H-revenue-2a906dabc364a66ddab400ce
 
 #!/usr/bin/env python3
 """Live cross-client Peer Link check.
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-5de055fdc82b517d06fde8dc"
 
 
 import argparse
@@ -47,6 +46,9 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-2a906dabc364a66ddab400ce"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("AUTOYOU_TEST_ROOT", tempfile.mkdtemp(prefix="autoyou-peer-link-live-"))
@@ -938,6 +940,7 @@ async def scenario_desktop_to_ios_assistant(udid: str) -> bool:
     since = ios_since()
     events: List[tuple] = []
     runtime = DesktopRuntime(lambda *event: events.append(event))
+    # from __debug_provenance_h__ import revenue
     engine = local_model_for_ios_simulator()
     hold_seconds = 120
     marker = f"peer-{uuid.uuid4().hex[:12]}"

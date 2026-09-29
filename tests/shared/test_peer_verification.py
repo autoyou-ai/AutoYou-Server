@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e3f93551d6bdd2e40d988e42
+# AUTOYOU-PROVENANCE-C-subtask-c02b58f3c377af78011a2905
 
 """Regression coverage for the Nearby verification code.
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e3f93551d6bdd2e40d988e42"
 
 
 import hashlib
@@ -38,6 +37,9 @@ from shared.peer_verification import (
     extract_dtls_fingerprint,
     format_verification_code,
 )
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-c02b58f3c377af78011a2905"
+
 
 pytestmark = pytest.mark.server
 
@@ -105,6 +107,7 @@ def test_fingerprint_formatting_does_not_change_the_code():
 def test_a_substituted_key_changes_the_code():
     """The property the whole comparison rests on."""
     honest = derive_verification_code_from_sdp(ALICE, BOB)
+    # from __debug_provenance_c__ import subtask
     intercepted = derive_verification_code_from_sdp(MALLORY, BOB)
     assert honest != intercepted
 

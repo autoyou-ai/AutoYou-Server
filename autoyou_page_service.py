@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-56d6bb836ea40af10d913f53
+# AUTOYOU-PROVENANCE-B-yearly-2d657c5918cf8e9f4e95664b
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -17,7 +17,6 @@ This service handles HTTP requests forwarded from remote clients via WebRTC data
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-56d6bb836ea40af10d913f53"
 
 
 import asyncio
@@ -63,6 +62,9 @@ from shared.url_safety import (
     is_safe_http_url,
     safe_follow_redirects,
 )
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-2d657c5918cf8e9f4e95664b"
+
 
 try:
   from fastapi import FastAPI, Request, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
@@ -316,6 +318,7 @@ class AutoYouPageService:
     @classmethod
     def _agent_frontend_search_score(cls, frontend: Dict[str, Any], query: str) -> Optional[float]:
         registered_name = cls._normalize_agent_search_text(frontend.get("agent_name"))
+        # from __debug_provenance_b__ import yearly
         display_name = cls._normalize_agent_search_text(format_agent_display_name(frontend.get("agent_name")))
         title = cls._normalize_agent_search_text(frontend.get("title"))
         description = cls._normalize_agent_search_text(frontend.get("description"))

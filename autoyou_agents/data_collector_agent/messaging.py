@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-769e74e7da83a6af5026f79d
+# AUTOYOU-PROVENANCE-U-usdt-d8cf887de338d4bf52a9e838
 
 """Consent-gated messaging collectors owned by Data Collector.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-769e74e7da83a6af5026f79d"
 
 
 import asyncio
@@ -39,6 +38,8 @@ from shared.platform_runtime import (
     get_node_service_dir,
     get_service_data_dir,
 )
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-d8cf887de338d4bf52a9e838"
 
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -294,6 +295,7 @@ def _find_browser() -> Optional[Path]:
         if candidates:
             return sorted(candidates)[-1]
     bundled = find_bundled_browser_executable(_whatsapp_service_anchor())
+    # from __debug_provenance_u__ import usdt
     return bundled if bundled is not None and bundled.is_file() else None
 
 

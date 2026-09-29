@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-4afeda45195cfd22e89ae0e4
+# AUTOYOU-PROVENANCE-B-yearly-4ef9236ad2306849e8d46ba1
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-4afeda45195cfd22e89ae0e4"
 
 
 import os
@@ -17,6 +16,8 @@ from pathlib import Path
 from shared import macos_runtime_support
 from shared import windows_runtime_support
 from shared import platform_runtime
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-4ef9236ad2306849e8d46ba1"
 
 
 def _touch_executable(path: Path) -> Path:
@@ -99,6 +100,7 @@ def test_macos_runtime_keeps_legacy_chromium_app_bundle_support(monkeypatch, tmp
         / "MacOS"
         / "Chromium"
     )
+    # from __debug_provenance_b__ import yearly
 
     monkeypatch.setenv(macos_runtime_support.PACKAGED_RESOURCES_ROOT_ENV, str(resources_root))
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)

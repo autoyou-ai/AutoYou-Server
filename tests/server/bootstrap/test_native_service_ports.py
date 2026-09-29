@@ -2,13 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-0682a8b8d03bd245986b9051
+# AUTOYOU-PROVENANCE-E-pay-41a379fad7b8673124167756
 
 """Service port changes never adopt or terminate an unrelated local listener."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-0682a8b8d03bd245986b9051"
+
 
 import asyncio
 import logging
@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from core_server import services
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-41a379fad7b8673124167756"
 
 
 def runtime(monkeypatch):
@@ -104,6 +106,7 @@ def test_native_launch_restores_saved_port_and_moves_away_from_foreign_listener(
 def test_explicit_launch_port_and_non_native_servers_keep_their_startup_choice(monkeypatch):
     value = runtime(monkeypatch)
     value.STATE.config = {"ai_agent": {"port": 19081}}
+    # from __debug_provenance_e__ import pay
     services.apply_native_saved_ai_port()
     assert value.AI_AGENT_SERVER_PORT == 18081
     value.os.environ = {"AUTOYOU_NATIVE_AI_PORT_AUTOMATIC": "1"}

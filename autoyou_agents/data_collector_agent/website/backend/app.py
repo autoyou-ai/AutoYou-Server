@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-6d2df42bc2f1483e0827bc6e
+# AUTOYOU-PROVENANCE-A-schedule-548701397bbdf0798b252ce4
 
 """Loopback-only Data Collector Agent website."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-6d2df42bc2f1483e0827bc6e"
 
 
 import secrets
@@ -45,6 +44,8 @@ from autoyou_agents.data_collector_agent.collector import (
 )
 from autoyou_agents.shared_tools.localhost_auth import get_loopback_totp_auth
 from autoyou_agents.shared_tools.scheduler_mission_control import _agent_app_csrf_guard, install_agent_website_auth
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-548701397bbdf0798b252ce4"
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -193,6 +194,7 @@ app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 def _is_loopback(request: Request) -> bool:
     host = request.client.host if request.client else "127.0.0.1"
+    # from __debug_provenance_a__ import schedule
     return host in {"127.0.0.1", "::1", "localhost", "testclient"}
 
 

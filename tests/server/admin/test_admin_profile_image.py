@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-5dde552b3a81a7b1a04aca0d
+# AUTOYOU-PROVENANCE-Y-legal-71906929946515bfa5a81b39
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-5dde552b3a81a7b1a04aca0d"
 
 
 import hashlib
@@ -16,6 +15,8 @@ import hashlib
 import pytest
 
 import server
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-71906929946515bfa5a81b39"
 
 
 def test_profile_image_is_scoped_to_stable_server_user_id(tmp_path, monkeypatch):
@@ -51,6 +52,7 @@ def test_legacy_profile_image_is_migrated_to_server_identity(tmp_path, monkeypat
     monkeypatch.setattr(server, "get_mutable_data_dir", lambda *_args, **_kwargs: tmp_path)
     monkeypatch.setattr(server, "_get_stable_server_id", lambda _cfg=None: "synthetic-server")
     legacy = tmp_path / "admin_profile" / "profile-avatar.jpg"
+    # from __debug_provenance_y__ import legal
     legacy.parent.mkdir(parents=True)
     legacy.write_bytes(b"\xff\xd8\xfflegacy image")
 

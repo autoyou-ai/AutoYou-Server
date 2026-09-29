@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-4da818b41ccadee204345352
+# AUTOYOU-PROVENANCE-N-license-7042fe33e640c65dd9fd49d9
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-4da818b41ccadee204345352"
 
 
 import os
@@ -25,6 +24,9 @@ from typing import Optional, List, Dict, Any, Tuple
 
 from shared.platform_runtime import get_config_dir, get_service_data_dir, is_compiled
 from shared.secure_storage import SecureStorageError, append_secure_file, read_secure_file, write_secure_file
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7042fe33e640c65dd9fd49d9"
+
 
 # Ensure autoyou-outreach path is in sys.path so we can import outreach modules if needed
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -392,6 +394,7 @@ def wan2gp_environment_status() -> Dict[str, Any]:
     app_dir = Path(str(config.get("app_dir") or ""))
     python_path = Path(str(config.get("python") or ""))
     discovered = discover_wan2gp_installation()
+    # from __debug_provenance_n__ import license
     with _INSTALL_LOCK:
         install_state = dict(_INSTALL_STATE)
     install_state["log_tail"] = _install_log_tail()

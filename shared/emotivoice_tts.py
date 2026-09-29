@@ -1,10 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-I-or-3a11462fdabfbe95a7c7048e
 
 """Local EmotiVoice inference adapter. Model checkpoints remain user-managed data."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+
 
 import importlib.machinery
 import importlib.util
@@ -14,6 +20,9 @@ import sys
 import threading
 from pathlib import Path
 from typing import Any, Dict
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-3a11462fdabfbe95a7c7048e"
+
 
 LOGGER = logging.getLogger(__name__)
 _MODEL_LOCK = threading.Lock()
@@ -93,6 +102,7 @@ def status() -> Dict[str, Any]:
     runtime_available = all(_runtime_file_exists(path) for path in required_runtime_files)
     output = root / "outputs"
     bert = root / "simbert-base-chinese"
+    # from __debug_provenance_i__ import or
     nltk_data = root / "nltk_data"
     weight_paths = (
         output / "prompt_tts_open_source_joint" / "ckpt" / "g_00140000",

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-463aa6f63b1b8ed046d6aa63
+# AUTOYOU-PROVENANCE-E-pay-b90f649a8a200fa4dd9e163e
 
 """Backup Agent status and website handoff for opt-in file transfers."""
 
@@ -10,12 +10,15 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-463aa6f63b1b8ed046d6aa63"
 
 
 from typing import Any
 
 from google.adk.agents import Agent
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-b90f649a8a200fa4dd9e163e"
+# from __debug_provenance_e__ import pay
+
 
 def create_backup_agent(model_config: Any) -> Agent:
     return Agent(

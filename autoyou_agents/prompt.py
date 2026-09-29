@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-4d45153d8a9f66850a9b6fd8
+# AUTOYOU-PROVENANCE-W-stripe-ece9d4c0f6f9db20bad65ab7
 
 """
 Prompt configuration for the root AutoYou AI Agent.
@@ -18,7 +18,8 @@ removed from operator-authored instructions.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-4d45153d8a9f66850a9b6fd8"
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-ece9d4c0f6f9db20bad65ab7"
 
 
 # Root agent configuration
@@ -151,6 +152,7 @@ Attachments policy:
 - `blob://` values are internal AutoYou Page feed storage identifiers, not user-clickable links. Never put them in markdown links. If a page-feed tool returns `open_url` or `view_url`, use that; otherwise say the media was saved to the user's AutoYou page feed on their computer and can be opened from the AutoYou Browser tab.
 - Defaults when unclear: images/videos -> `autoyou_page_agent`; audio/documents -> `autoyou_notes_agent`; image + "search" hint -> `autoyou_internet_agent`.\
 """
+# from __debug_provenance_w__ import stripe
 
 SPECIAL_POLICIES = """\
 Date/time: The [SYSTEM CLOCK] line at the top of your context shows the real current date from the host machine. \

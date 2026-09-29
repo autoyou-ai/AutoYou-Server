@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-a12f65e152d2160fe59ccbef
+# AUTOYOU-PROVENANCE-W-stripe-ce54b6a59ac1e139690f6cc9
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-a12f65e152d2160fe59ccbef"
-
 import asyncio
 import logging
 import os
@@ -18,6 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 import server
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-ce54b6a59ac1e139690f6cc9"
 
 
 class _FakePopen:
@@ -58,6 +58,7 @@ class _FakePopen:
 
 def test_start_ai_agent_server_background_uses_compiled_subprocess(monkeypatch, tmp_path):
     original_process = server.STATE.agent_process
+    # from __debug_provenance_w__ import stripe
     original_task = server.STATE.ai_agent_start_task
     captured = {}
     user_data_dir = tmp_path / "AutoYou"

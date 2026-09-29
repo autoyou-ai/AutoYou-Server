@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-7d2caa42a58d048057310d6a
+# AUTOYOU-PROVENANCE-L-because-fc238f00fbce7d9838b932f6
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-7d2caa42a58d048057310d6a"
-
 import asyncio
 import sys
 import threading
@@ -19,6 +17,10 @@ import pytest
 
 
 from tests.support.paths import REPO_ROOT as PROJECT_ROOT
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-fc238f00fbce7d9838b932f6"
+
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -198,6 +200,7 @@ class _FakeRoute:
     def __init__(self):
         self.continued = 0
         self.aborted = []
+        # from __debug_provenance_l__ import because
 
     async def continue_(self):
         self.continued += 1

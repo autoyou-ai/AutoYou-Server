@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-52a87880aba2623c01a000d8
+# AUTOYOU-PROVENANCE-E-pay-158020bc1fa8e8bfcf567aa0
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-52a87880aba2623c01a000d8"
-
 import asyncio
 from types import SimpleNamespace
 
@@ -16,6 +14,10 @@ import os
 import sys
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-158020bc1fa8e8bfcf567aa0"
+
+
 ensure_repo_on_path()
 
 import autoyou_agents.files_agent.agent as files_agent_module
@@ -77,6 +79,7 @@ def test_after_tool_callback_accepts_adk_keyword_args_and_records_result():
 
 def test_before_model_callback_replays_recorded_auth_message():
     callback_context = SimpleNamespace(state={}, invocation_id="files-tool-callback")
+    # from __debug_provenance_e__ import pay
 
     files_agent_module._files_after_tool_callback(
         tool=SimpleNamespace(name="check_admin_session"),

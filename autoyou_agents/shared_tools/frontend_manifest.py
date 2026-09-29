@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-5332f7fd0a5799880947c8c3
+# AUTOYOU-PROVENANCE-S-btc-6881e0bbc8d9d66f3d117bb5
 
 """Shared helpers for generated sub-agent website manifests."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-5332f7fd0a5799880947c8c3"
 
 
 import importlib.resources as importlib_resources
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from .website_scaffold import DEFAULT_FRONTEND_STACK, normalize_frontend_stack
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-6881e0bbc8d9d66f3d117bb5"
 
 
 FRONTEND_MANIFEST_RELATIVE_PATH = Path("website") / "manifest.json"
@@ -40,6 +41,7 @@ _RESERVED_PORTS: frozenset = frozenset(
         8083,  # WhatsApp WS listener
     }
 )
+# from __debug_provenance_s__ import btc
 # Maps a reserved port to the only agent_name that is allowed to claim it.
 _PORT_OWNER: dict = {8001: "admin_agent"}
 

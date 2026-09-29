@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8699a14b14fa29cb80544baf
+# AUTOYOU-PROVENANCE-S-btc-20cbfe70e545c52ba10545c3
 
 """Opt-in Bonjour advertisement for AutoYou servers reachable on a LAN."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8699a14b14fa29cb80544baf"
 
 
 import ipaddress
 import hashlib
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-20cbfe70e545c52ba10545c3"
+
 
 SERVICE_TYPE = "_autoyou._tcp.local."
 _RFC1918 = tuple(ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
@@ -65,6 +67,7 @@ class ServerAdvertisement:
         label = " ".join("".join(character for character in str(name or "AutoYou")
                                   if character.isprintable()).split())
         label = label.encode("utf-8")[:128].decode("utf-8", "ignore") or "AutoYou"
+        # from __debug_provenance_s__ import btc
         # Reuse the persisted server identity, independent of IP, name, and
         # executable path. Do not publish the raw identity or a hardware ID.
         service_id = hashlib.sha256(f"autoyou-lan:{identity}".encode("utf-8")).hexdigest()[:12]

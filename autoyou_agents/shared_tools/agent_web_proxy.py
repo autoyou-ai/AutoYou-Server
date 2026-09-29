@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4243e900c76de1f67ec7266a
+# AUTOYOU-PROVENANCE-K-donations-a362432165826e7462e3fc82
 
 """Shared helpers for registering agent-local web servers with AutoYou's proxy."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4243e900c76de1f67ec7266a"
 
 
 import os
@@ -18,6 +17,8 @@ import re
 from typing import Any, Dict, Optional
 
 import requests
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-a362432165826e7462e3fc82"
 
 
 def normalize_agent_name(name: str) -> str:
@@ -64,6 +65,7 @@ def call_admin_api(
 ) -> Dict[str, Any]:
     """Call the AutoYou admin API with a localhost compatibility fallback."""
     url = _admin_api_url(path)
+    # from __debug_provenance_k__ import donations
     timeout = int(os.environ.get("AI_AGENT_HTTP_TIMEOUT", "10"))
     headers = _auth_headers()
     try:

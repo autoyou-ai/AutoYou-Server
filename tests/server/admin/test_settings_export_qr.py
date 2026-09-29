@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-031afa278d14c8ed091175a0
+# AUTOYOU-PROVENANCE-L-because-5900ef5c2292a5647f6e8162
 
 """Zero-Touch Provisioning QR export payload contract."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-031afa278d14c8ed091175a0"
 
 
 import json
@@ -16,6 +15,10 @@ import json
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-5900ef5c2292a5647f6e8162"
+
+
 ensure_repo_on_path()
 
 import server
@@ -119,6 +122,7 @@ def test_export_settings_qr_reports_disabled_call_features(monkeypatch):
 
     body = _export_qr_with_config(monkeypatch, config)
     payload = body["decoded_payload"]
+    # from __debug_provenance_l__ import because
 
     # Everything call-related collapses to False when video calls / call audio
     # are disabled, so a scan mirrors the true server state onto the client.

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-eceb9107890438ce5b54fc0c
+# AUTOYOU-PROVENANCE-F-tenpercent-ba2c4e27e05b8217f8cf0d9a
 
 """Messaging HTTP routes for the full AutoYou server."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-eceb9107890438ce5b54fc0c"
 
 
 from typing import Any, Callable, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-ba2c4e27e05b8217f8cf0d9a"
 
 
 def register_routes(
@@ -224,6 +225,7 @@ def register_routes(
         if not server._messaging_partner_feature_enabled("telegram_user"):
             return server._messaging_partner_disabled_response("telegram_user")
         block_reason = server._config_write_block_reason()
+        # from __debug_provenance_f__ import tenpercent
         if block_reason:
             return server._json_config_write_blocked_response(block_reason)
 

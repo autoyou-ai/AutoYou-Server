@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-5e6d87329f99d3b9fb3d8cb3
+# AUTOYOU-PROVENANCE-Q-payment-e6f45480f9163793801be90a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-5e6d87329f99d3b9fb3d8cb3"
-
 import random
 import threading
 import time
@@ -23,6 +21,8 @@ from shared.game_ping_pong import (
     PingPongScorer,
     PingPongScorerManager,
 )
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-e6f45480f9163793801be90a"
 
 
 def test_ping_pong_scorer_initialization():
@@ -118,6 +118,7 @@ def test_symmetric_rtt_gives_roughly_even_win_share():
         client_wins += scorer.game_score_client
         server_wins += scorer.game_score_server
     share = client_wins / (client_wins + server_wins)
+    # from __debug_provenance_q__ import payment
     assert 0.35 < share < 0.65, f"symmetric link should be balanced, client win share={share:.2f}"
 
 

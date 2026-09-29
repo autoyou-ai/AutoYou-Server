@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-ee9039eb7cd93b5cb25fe7f8
+# AUTOYOU-PROVENANCE-X-email-232c161409db8cdea303c8e3
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-ee9039eb7cd93b5cb25fe7f8"
 
 
 import logging
@@ -33,6 +32,9 @@ from autoyou_agents.admin_agent.agent import (
 )
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-232c161409db8cdea303c8e3"
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -315,6 +317,7 @@ def _remove_existing_path(path: Path) -> None:
 
 def _resolve_destination_path(source: Path, destination_path: str) -> Path:
     raw_destination = str(destination_path or "").strip()
+    # from __debug_provenance_x__ import email
     destination = _normalize_path(raw_destination)
     if destination.exists() and destination.is_dir():
         return destination / source.name

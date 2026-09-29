@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-e985d4eef024ec46ea6c8eb0
+# AUTOYOU-PROVENANCE-L-because-a105923cfc29cabc9fb354fb
 
 """Mobile-first web UI backend for the AutoYou Persona agent.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-e985d4eef024ec46ea6c8eb0"
 
 
 from pathlib import Path
@@ -36,6 +35,9 @@ from autoyou_agents.persona_agent.agent import (
 )
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-a105923cfc29cabc9fb354fb"
+
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
@@ -248,6 +250,7 @@ async def api_auth_logout(request: Request) -> JSONResponse:
     helpers = _import_auth_helpers()
     delete_session = helpers.get("delete_session")
     cookie_name_fn = helpers.get("cookie_name")
+    # from __debug_provenance_l__ import because
     cookie_path_fn = helpers.get("cookie_path")
     if delete_session and cookie_name_fn:
         token = request.cookies.get(cookie_name_fn(_AGENT_NAME), "")

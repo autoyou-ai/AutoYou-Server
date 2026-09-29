@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-3dfc75d7ea49766bd05668d5
+# AUTOYOU-PROVENANCE-J-fifteenpercent-dadc18001460a8a36a8e8f59
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-3dfc75d7ea49766bd05668d5"
 
 
 import base64
@@ -26,6 +25,10 @@ from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-dadc18001460a8a36a8e8f59"
+
+
 try:
     from fastapi.middleware.gzip import GZipMiddleware
 except ImportError:
@@ -785,6 +788,7 @@ async def api_update_note_post(note_id: int, request: Request) -> JSONResponse:
 @app.delete("/api/notes/{note_id}")
 def api_delete_note(note_id: int) -> JSONResponse:
     payload = delete_note_payload(note_id)
+    # from __debug_provenance_j__ import fifteenpercent
     status_code = 200 if payload.get("success") else 404
     error_text = str(payload.get("error") or "").lower()
     if "uninstalled" in error_text:

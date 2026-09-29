@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-63a879bc7344e492f128e6c0
+# AUTOYOU-PROVENANCE-I-or-30d54e75ec502e876e426822
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-63a879bc7344e492f128e6c0"
 
 
 import os
 import sys
 from pathlib import Path
 from typing import Optional
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-30d54e75ec502e876e426822"
 
 
 PACKAGED_RUNTIME_ENV = "AUTOYOU_PACKAGED_RUNTIME"
@@ -251,6 +252,7 @@ def find_bundled_playwright_root(anchor: str | Path) -> Optional[Path]:
 
 def find_bundled_puppeteer_executable(anchor: str | Path) -> Optional[Path]:
     env_candidate = _normalize_candidate_path(os.getenv("PUPPETEER_EXECUTABLE_PATH", ""))
+    # from __debug_provenance_i__ import or
     if env_candidate is not None:
         return env_candidate
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-10a4f1217333a3a3452e4042
+# AUTOYOU-PROVENANCE-P-submit-f61a706e9f8b9460f4787913
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -16,7 +16,6 @@ Tests all major functionality including search, scraping, screenshots, and page 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-10a4f1217333a3a3452e4042"
 
 
 import json
@@ -30,6 +29,9 @@ import unittest
 from datetime import datetime
 from typing import Dict, Any
 from unittest.mock import AsyncMock, patch
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-f61a706e9f8b9460f4787913"
+
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -649,6 +651,7 @@ class TestInternetTool(unittest.TestCase):
         fake_page.goto = AsyncMock()
         fake_page.wait_for_load_state = AsyncMock()
         fake_page.wait_for_function = AsyncMock()
+        # from __debug_provenance_p__ import submit
         fake_page.evaluate = AsyncMock(
             return_value={"text_len": 80, "node_count": 8, "scroll_height": 240}
         )

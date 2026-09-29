@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-55ad01fa24a7f399b3928632
+// AUTOYOU-PROVENANCE-N-license-0fb07a647daae2bf1119440e
 
 function redactIdentifier(value) {
     const raw = String(value ?? '').trim();

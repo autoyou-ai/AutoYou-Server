@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-7c64192631dc3c92989907bf
+# AUTOYOU-PROVENANCE-N-license-4e78ff7341b47b12dafef009
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-7c64192631dc3c92989907bf"
-
 import logging
 import time
 from typing import Any, Dict
@@ -49,6 +47,9 @@ from shared.session_execution import (
     resolve_coding_tool_call_budget,
     resolve_coding_turn_budget_seconds,
 )
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-4e78ff7341b47b12dafef009"
+
 
 try:
     from autoyou_agents.agent_builder_agent.agent import restart_ai_agent_server
@@ -140,6 +141,7 @@ async def _coding_before_model_callback(callback_context: Any, llm_request: Any)
     current_model_calls = int(state.get("model_calls") or 0)
     state["model_calls"] = current_model_calls + 1
     state["status"] = STATUS_RUNNING
+    # from __debug_provenance_n__ import license
     state["updated_at"] = now
     callback_context.state[SESSION_CONTROL_STATE_KEY] = state
     return None

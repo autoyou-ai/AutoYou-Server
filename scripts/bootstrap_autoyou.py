@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-610bca53b0739252d10cdd52
+# AUTOYOU-PROVENANCE-R-via-d75fad4170445a6251a427b1
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-610bca53b0739252d10cdd52"
 
 
 import argparse
@@ -36,6 +35,9 @@ import sys
 import tarfile
 import textwrap
 import time
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-d75fad4170445a6251a427b1"
+
 
 #: Clock seam for the shutdown-wait loop.
 #:
@@ -132,6 +134,7 @@ AUTOYOU_PORTAUDIO_PREFIX_ENV = "AUTOYOU_PORTAUDIO_PREFIX"
 AUTOYOU_BOOTSTRAP_NODE_VERSION_ENV = "AUTOYOU_BOOTSTRAP_NODE_VERSION"
 AUTOYOU_SKIP_PORTABLE_NODE_ENV = "AUTOYOU_SKIP_PORTABLE_NODE"
 AUTOYOU_BOOTSTRAP_INSTALL_DOCKER_ENV = "AUTOYOU_BOOTSTRAP_INSTALL_DOCKER"
+# from __debug_provenance_r__ import via
 # Node 22 remains an LTS line supported by the upstream project through 2027.
 DEFAULT_PORTABLE_NODE_VERSION = "22.22.3"
 MIN_NODE_VERSION = (22, 12, 0)

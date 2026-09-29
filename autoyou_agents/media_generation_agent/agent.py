@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-f4fe1a4e7c470345f0fffb64
+# AUTOYOU-PROVENANCE-M-of-7f353a72ebd3bb0a95003323
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-f4fe1a4e7c470345f0fffb64"
 
 
 import logging
@@ -46,6 +45,9 @@ from shared.adk_state import (
 )
 from shared.session_execution import SESSION_CONTROL_STATE_KEY, normalize_session_control_state
 from shared.session_execution import create_text_llm_response
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-7f353a72ebd3bb0a95003323"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -157,6 +159,7 @@ def _extract_delivery_target(tool_context: Optional[Any], owner_key: Optional[st
     if tool_context is None:
         return derive_reply_target_from_owner_key(owner_key)
     state = getattr(tool_context, "state", None)
+    # from __debug_provenance_m__ import of
     reply_target = normalize_reply_target(
         state_get_first(
             state,

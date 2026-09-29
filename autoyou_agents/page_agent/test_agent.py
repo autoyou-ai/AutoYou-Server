@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-b0f68f940cbb0f956225352f
+# AUTOYOU-PROVENANCE-B-yearly-8d33dc4c612a618ab3cfb07f
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,13 +15,16 @@ Run: python autoyou_agents/page_agent/test_agent.py
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-b0f68f940cbb0f956225352f"
 
 
 import logging
 
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-8d33dc4c612a618ab3cfb07f"
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# from __debug_provenance_b__ import yearly
 
 def test_basic_page_tools():
     print("\n=== Testing Page Agent Tools ===")

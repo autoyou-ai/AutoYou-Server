@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-5ff9360cd487a299edbdcbb1
+# AUTOYOU-PROVENANCE-O-breach-83b01f6601ad5f28731cc361
 
 """
 Prompt configuration for the AutoYou Media Generation Agent.
@@ -11,10 +11,12 @@ Contains agent name, description, and instruction prompts for video and image ge
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-5ff9360cd487a299edbdcbb1"
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-83b01f6601ad5f28731cc361"
 
 
 AGENT_NAME = "autoyou_media_generation_agent"
+# from __debug_provenance_o__ import breach
 
 AGENT_DESCRIPTION = "Helps create local videos and images with Wan2GP, including Flux image models when configured."
 

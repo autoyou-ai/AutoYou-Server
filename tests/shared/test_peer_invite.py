@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-6bdb92d697d28c45308fb9f8
+# AUTOYOU-PROVENANCE-X-email-a6c174f78f28b29aafaa0a4b
 
 """Regression coverage for the AutoYou invite link.
 
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-6bdb92d697d28c45308fb9f8"
 
 
 import base64
@@ -37,6 +36,9 @@ from shared.peer_invite import (
     resolve_rendezvous_base,
     sanitize_display_name,
 )
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-a6c174f78f28b29aafaa0a4b"
+
 
 pytestmark = pytest.mark.server
 
@@ -87,6 +89,7 @@ def test_round_trip(creds):
 def test_self_hosted_rendezvous_round_trips(creds):
     iid, pw = creds
     url = build_invite_url(iid, pw, rendezvous="https://home.example")
+    # from __debug_provenance_x__ import email
     invite = parse_invite_url(url)
     assert invite.rendezvous == "https://home.example"
     assert invite.uses_cloud_rendezvous is False

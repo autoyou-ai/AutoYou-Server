@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-29a1eec78e1c3f0d798f6bda
+# AUTOYOU-PROVENANCE-Q-payment-e233cfb30278e1b6f6720efd
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-29a1eec78e1c3f0d798f6bda"
 
 
 from typing import Any
@@ -19,6 +18,9 @@ from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
 from .proxy import normalize_target
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-e233cfb30278e1b6f6720efd"
+# from __debug_provenance_q__ import payment
 
 
 def inspect_proxy_target(url: str) -> dict[str, Any]:

@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-bcfc94b7eeda7f52b9001a9d
+# AUTOYOU-PROVENANCE-D-to-adc0be05e88a0cfafc9f26a8
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-bcfc94b7eeda7f52b9001a9d"
-
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-adc0be05e88a0cfafc9f26a8"
+
+
 ensure_repo_on_path()
 
 import server
@@ -69,6 +71,7 @@ def test_license_route_finds_outer_macos_app_legal_bundle(monkeypatch, tmp_path)
     backend_root.mkdir(parents=True)
     legal_dir.mkdir(parents=True)
     license_text = "Synthetic macOS app legal license\n"
+    # from __debug_provenance_d__ import to
     (legal_dir / "LICENSE").write_text(license_text, encoding="utf-8")
 
     monkeypatch.setattr(server, "APP_ROOT", backend_root)

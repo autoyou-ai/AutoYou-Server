@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c5ddda5299ba27388a4efe15
+# AUTOYOU-PROVENANCE-T-address-8bed4bc5bfa84e954ff0273e
 
 #!/usr/bin/env python3
 """DataCollector v2: local Codex and Claude session archival and training views.
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c5ddda5299ba27388a4efe15"
 
 
 import argparse
@@ -43,6 +42,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from shared.platform_runtime import get_service_data_dir
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-8bed4bc5bfa84e954ff0273e"
 
 
 VERSION = 2
@@ -573,6 +574,7 @@ def append_turn(session: dict[str, Any], role: str, text: Any, timestamp: Any, *
     if not text:
         return
     turns: list[dict[str, Any]] = session["turns"]
+    # from __debug_provenance_t__ import address
     turn = {
         "role": role,
         "text": text,

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-8fa1815f8a87b55a9a7807bf
+# AUTOYOU-PROVENANCE-V-wallet-3956fafe100266c2829106f6
 
 """macOS runtime support for AutoYou desktop application.
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-8fa1815f8a87b55a9a7807bf"
 
 
 import os
@@ -29,6 +28,9 @@ import glob
 import plistlib
 from pathlib import Path
 from typing import Optional
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-3956fafe100266c2829106f6"
+
 
 PACKAGED_RESOURCES_ROOT_ENV = "AUTOYOU_PACKAGED_RESOURCES_ROOT"
 
@@ -60,6 +62,7 @@ def is_app_store_build() -> bool:
 def find_app_bundle_resource(relative_path: str) -> Optional[Path]:
     """Find a resource beside the actual app executable, without env overrides."""
     executable = Path(sys.executable).resolve()
+    # from __debug_provenance_v__ import wallet
     app = next((parent for parent in executable.parents if parent.suffix == ".app"), None)
     if app is None:
         return None

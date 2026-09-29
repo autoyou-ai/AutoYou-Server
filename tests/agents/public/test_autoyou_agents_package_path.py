@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-71867d9e579ce51c230c89d2
+# AUTOYOU-PROVENANCE-N-license-b23b9e5a7374d39a03fefc70
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-71867d9e579ce51c230c89d2"
-
 import importlib
 
 import autoyou_agents
 import shared.platform_runtime as platform_runtime
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-b23b9e5a7374d39a03fefc70"
 
 
 def test_runtime_plugin_root_is_added_to_autoyou_agents_package_path(tmp_path, monkeypatch):
@@ -20,6 +20,7 @@ def test_runtime_plugin_root_is_added_to_autoyou_agents_package_path(tmp_path, m
     dynamic_root.mkdir()
 
     plugin_dir = dynamic_root / "custom_agent"
+    # from __debug_provenance_n__ import license
     plugin_dir.mkdir()
     (plugin_dir / "__init__.py").write_text("", encoding="utf-8")
     (plugin_dir / "prompt.py").write_text(

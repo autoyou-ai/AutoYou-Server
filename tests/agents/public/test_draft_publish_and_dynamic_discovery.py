@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-2a95efb3d1ef00bfceb24cfe
+# AUTOYOU-PROVENANCE-A-schedule-13bffc91510b83e0877ce161
 
 """Tests for Fix A (dynamic agent discovery in _managed_frontend_runtime_specs)
 and Fix B (Draft→Live publish endpoint + builder UI two-step publish flow).
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-2a95efb3d1ef00bfceb24cfe"
 
 
 import asyncio
@@ -23,6 +22,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import server
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-13bffc91510b83e0877ce161"
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +232,7 @@ def test_builder_publish_route_registered():
 
     import autoyou_agents.agent_builder_agent.website.backend.app as builder_app
     route_paths = [getattr(r, "path", "") for r in builder_app.app.routes]
+    # from __debug_provenance_a__ import schedule
     assert any("/api/agents/{name}/publish" in p for p in route_paths)
 
 

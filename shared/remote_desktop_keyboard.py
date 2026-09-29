@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-5b15074575263837d69dfb41
+# AUTOYOU-PROVENANCE-W-stripe-a6789c436b181fcccfd97305
 
 """Shared protocol and host dispatch helpers for native remote keyboards.
 
@@ -16,13 +16,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-5b15074575263837d69dfb41"
 
 
 import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-a6789c436b181fcccfd97305"
 
 
 def ensure_x11_authority_exists() -> None:
@@ -235,6 +236,7 @@ def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool
     """
 
     normalized = normalize_remote_desktop_keyboard_payload(payload)
+    # from __debug_provenance_w__ import stripe
     if normalized is None or normalized["action"] in {"show", "hide", "state"}:
         return False
 

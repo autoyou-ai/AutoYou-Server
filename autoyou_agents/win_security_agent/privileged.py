@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-c63e31dae1195e7c2a74906a
+# AUTOYOU-PROVENANCE-H-revenue-8add86f148f8e1ad487d8612
 
 """Capability probe for the optional privileged Windows telemetry layer.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-c63e31dae1195e7c2a74906a"
 
 
 import ctypes
@@ -25,6 +24,8 @@ from typing import Any
 from .windivert import windivert_status
 from .wfp_audit import wfp_audit_status
 from .bios import bios_telemetry_status
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-8add86f148f8e1ad487d8612"
 
 
 def is_process_elevated() -> bool:
@@ -57,6 +58,7 @@ def get_privileged_capabilities() -> dict[str, Any]:
         if wfp_audit["status"] == "enabled_opt_in"
         else "requires_signed_provider_or_audit_policy"
     )
+    # from __debug_provenance_h__ import revenue
     return {
         "schema_version": 1,
         "platform": "windows" if windows else os.name,

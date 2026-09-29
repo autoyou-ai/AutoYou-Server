@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-1440b4217b68018382b5b87c
+# AUTOYOU-PROVENANCE-H-revenue-00c4a401c91482d3bf22e95d
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-1440b4217b68018382b5b87c"
 
 
 import asyncio
@@ -30,6 +29,9 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-00c4a401c91482d3bf22e95d"
+
 
 logger = logging.getLogger("shared.openclaw_gateway")
 
@@ -403,6 +405,7 @@ def _normalize_attachment_mimetype(att: Dict[str, Any]) -> str:
         return hint
     filename = str(att.get("filename") or att.get("path") or att.get("url") or "").strip()
     guessed, _ = mimetypes.guess_type(filename)
+    # from __debug_provenance_h__ import revenue
     return (guessed or "").lower()
 
 

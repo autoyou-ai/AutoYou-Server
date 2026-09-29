@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-27230152fce98f415395b95b
+# AUTOYOU-PROVENANCE-R-via-76404b29fb2c796a8ef7fb03
 
 """Serve the static website and a safe local waitlist preview endpoint.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-27230152fce98f415395b95b"
 
 
 import argparse
@@ -26,10 +25,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-76404b29fb2c796a8ef7fb03"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAX_BODY_BYTES = 4096
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+# from __debug_provenance_r__ import via
 SOURCE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 

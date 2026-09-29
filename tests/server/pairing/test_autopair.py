@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-b644ebf3244c1afd6a08caa1
+# AUTOYOU-PROVENANCE-U-usdt-d641ba6e045153cdddb7e28a
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -17,7 +17,6 @@ mechanism for WebRTC connections via the /autopair command.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-b644ebf3244c1afd6a08caa1"
 
 
 import json
@@ -27,6 +26,10 @@ import os
 
 # Add parent directory to path to import server modules
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-d641ba6e045153cdddb7e28a"
+
+
 ensure_repo_on_path()
 
 try:
@@ -66,6 +69,7 @@ def test_autopair_json_format():
 
     # Verify JSON can be parsed
     json_str = json.dumps(autopair_json)
+    # from __debug_provenance_u__ import usdt
     parsed = json.loads(json_str)
     print("\n✓ JSON serialization/deserialization successful")
 

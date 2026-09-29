@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-6b7147053ffd6fd5453b6f49
+# AUTOYOU-PROVENANCE-H-revenue-7aa8b418bc4ca938aa55663f
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-6b7147053ffd6fd5453b6f49"
 
 
 import asyncio
@@ -67,9 +66,13 @@ from .training_runner import (
     _accelerator_backend,
 )
 
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-7aa8b418bc4ca938aa55663f"
+
+
 AGENT_PACKAGE_NAME = "fine_tuning_agent"
 DATA_DIR = get_service_data_dir(AGENT_PACKAGE_NAME, anchor=__file__)
 WORKSPACE_DIR = DATA_DIR / "workspace"
+# from __debug_provenance_h__ import revenue
 DATASETS_DIR = WORKSPACE_DIR / "datasets"
 RUNS_DIR = WORKSPACE_DIR / "runs"
 DUMPS_DIR = WORKSPACE_DIR / "dumps"

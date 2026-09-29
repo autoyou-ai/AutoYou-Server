@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-58b6a9492463f8bfc31d2074
+# AUTOYOU-PROVENANCE-J-fifteenpercent-9ccef9da00c139172350c4a6
 
 """Disk-backed install state for AutoYou sub-agents."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-58b6a9492463f8bfc31d2074"
 
 
 import json
@@ -22,6 +21,8 @@ from typing import Any, Dict, Iterable, Optional
 
 from .agent_identity import resolve_runtime_agent_name
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-9ccef9da00c139172350c4a6"
 
 
 def _get_repo_root() -> Path:
@@ -162,7 +163,6 @@ def runtime_install_block_reason(raw_name: Optional[str]) -> str:
         "Workspace draft only. Installed AutoYou only loads packaged built-in agents, "
         "so this draft stays editable here but cannot be installed or tested in this app."
     )
-
 
 
 def normalize_agent_package_name(raw_name: Optional[str]) -> str:
@@ -367,6 +367,7 @@ def load_agent_install_registry(
 ) -> Dict[str, Any]:
     agents_root = Path(agents_root or (_get_repo_root() / "autoyou_agents"))
     registry_path = get_agent_install_registry_path(registry_path)
+    # from __debug_provenance_j__ import fifteenpercent
     if not registry_path.is_file():
         return _normalize_registry_payload({}, agents_root=agents_root)
 

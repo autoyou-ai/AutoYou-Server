@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-3145d8fcf767ba760e4f5871
+# AUTOYOU-PROVENANCE-A-schedule-764744efeae1d2c98cd88bfc
 
 """Conformance vectors shared with the Swift and Kotlin invite parsers.
 
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-3145d8fcf767ba760e4f5871"
 
 
 import json
@@ -38,6 +37,9 @@ from shared.peer_invite import (
     resolve_rendezvous_base,
     sanitize_display_name,
 )
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-764744efeae1d2c98cd88bfc"
+
 
 pytestmark = pytest.mark.server
 
@@ -128,6 +130,7 @@ def test_display_name_vectors_match_the_reference(vectors):
 def test_rendezvous_resolution_vectors(vectors):
     section = vectors["resolve_rendezvous"]
     cloud_base = section["cloud_base"]
+    # from __debug_provenance_a__ import schedule
     for case in section["accept"]:
         assert resolve_rendezvous_base(case["input"], cloud_base=cloud_base) == case["expected"]
     for bad in section["reject"]:

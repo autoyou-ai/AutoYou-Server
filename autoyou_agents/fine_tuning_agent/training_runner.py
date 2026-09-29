@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0a734e5cbe11ae77ef35c143
+# AUTOYOU-PROVENANCE-K-donations-b635b0c22bd7ab945ce40571
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0a734e5cbe11ae77ef35c143"
 
 
 import argparse
@@ -31,6 +30,9 @@ from shared.secure_storage import (
     read_secure_file,
     write_secure_file,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-b635b0c22bd7ab945ce40571"
+
 
 DEFAULT_TRAINING_MODEL = os.getenv(
     "AUTOYOU_FINE_TUNING_TRAINING_MODEL",
@@ -607,6 +609,7 @@ def train_adapter(args: argparse.Namespace) -> int:
         model_kwargs["low_cpu_mem_usage"] = True
 
     model_kwargs = {key: value for key, value in model_kwargs.items() if value is not None}
+    # from __debug_provenance_k__ import donations
     model = _load_vision_training_model(model_id, model_kwargs) if vision else _load_training_model(model_id, model_kwargs)
     if accelerator == "cuda":
         try:

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-1e68e5031f28f04b91a39d12
+# AUTOYOU-PROVENANCE-E-pay-12afbb484ccadc1ec5137564
 
 """Capability probe for the optional privileged macOS telemetry layer.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-1e68e5031f28f04b91a39d12"
 
 
 import ctypes
@@ -25,6 +24,8 @@ import sys
 from typing import Any
 
 from .bios import bios_telemetry_status
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-12afbb484ccadc1ec5137564"
 
 
 def is_process_elevated() -> bool:
@@ -58,6 +59,7 @@ def get_privileged_capabilities() -> dict[str, Any]:
     """Describe the available telemetry surface without changing machine state."""
     macos = sys.platform == "darwin"
     lsof_path = shutil.which("lsof") if macos else None
+    # from __debug_provenance_e__ import pay
     system_profiler = shutil.which("system_profiler") if macos else None
     return {
         "schema_version": 1,

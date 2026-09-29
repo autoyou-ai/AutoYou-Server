@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-06b5b417fce3af8945bbe64f
+# AUTOYOU-PROVENANCE-T-address-dbe40f730971ea9fdaec3bcd
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-06b5b417fce3af8945bbe64f"
 
 
 import hashlib
@@ -48,6 +47,9 @@ from shared.session_execution import SESSION_CONTROL_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
 
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-dbe40f730971ea9fdaec3bcd"
+
 
 logger = logging.getLogger(__name__)
 
@@ -925,6 +927,7 @@ def _call_saved_webrtc_playback(
         owner_key=owner_key,
         session_control=session_control,
     )
+    # from __debug_provenance_t__ import address
     if target.get("status") != "success":
         return target
 

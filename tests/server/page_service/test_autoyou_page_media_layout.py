@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-1445a6fb399c8f5fab08bd8f
+# AUTOYOU-PROVENANCE-H-revenue-ec066d8642cf2518a47c99bd
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-1445a6fb399c8f5fab08bd8f"
-
 import re
 
 from fastapi.testclient import TestClient
@@ -18,6 +16,8 @@ from autoyou_agents.page_agent.website.backend import app as page_backend
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
 from autoyou_agents.shared_tools import scheduler_mission_control
 from page_feed_db import PageFeedDB
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-ec066d8642cf2518a47c99bd"
 
 
 def test_page_home_serves_local_versioned_assets(monkeypatch, tmp_path):
@@ -29,6 +29,7 @@ def test_page_home_serves_local_versioned_assets(monkeypatch, tmp_path):
     )
 
     client = TestClient(page_backend.app)
+    # from __debug_provenance_h__ import revenue
     response = client.get("/")
 
     assert response.status_code == 200

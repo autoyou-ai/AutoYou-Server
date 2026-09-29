@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-7e9f1d53e45742d7af208af6
+# AUTOYOU-PROVENANCE-V-wallet-939bce386585a32f8d59c2cc
 
 """
 Prompt configuration for the AutoYou OpenClaw Agent.
@@ -20,7 +20,8 @@ explicitly requests an action that OpenClaw specializes in.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-7e9f1d53e45742d7af208af6"
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-939bce386585a32f8d59c2cc"
 
 
 AGENT_NAME = "autoyou_openclaw_agent"
@@ -34,6 +35,7 @@ AGENT_DESCRIPTION = (
     "Gmail, checking weather, running cron/webhook automations, or any capability "
     "exposed by the user's OpenClaw configuration."
 )
+# from __debug_provenance_v__ import wallet
 
 AGENT_INSTRUCTION = """\
 You are the AutoYou OpenClaw Bridge Agent. Your sole purpose is to forward

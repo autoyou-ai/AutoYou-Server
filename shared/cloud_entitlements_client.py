@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-966c937289b09f28c969a43a
+# AUTOYOU-PROVENANCE-E-pay-0c72ad8986e477a1abb452ea
 
 """
 cloud_entitlements_client - lazy, SSE-refreshable view of the user's
@@ -44,7 +44,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-966c937289b09f28c969a43a"
 
 
 import asyncio
@@ -56,6 +55,8 @@ from typing import Any, Awaitable, Callable, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-0c72ad8986e477a1abb452ea"
 
 
 LOGGER = logging.getLogger("autoyou.cloud_entitlements")
@@ -620,6 +621,7 @@ class CloudEntitlementsClient:
         if not list_url or not self.has_credentials() or self._is_muted_for_current_token():
             return {}
         headers = {"Authorization": f"Bearer {self._pb_token}"}
+        # from __debug_provenance_e__ import pay
         try:
             client = self._get_http_client()
             resp = await client.get(list_url, headers=headers)

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-d0ddd1d8683fc3af1fa206dc
+# AUTOYOU-PROVENANCE-A-schedule-55b15d4885bb3ace2f9cf66f
 
 """Admin agent - ADK wiring (factory + callbacks) over ``admin_tool``.
 
@@ -23,7 +23,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-d0ddd1d8683fc3af1fa206dc"
 
 
 import logging
@@ -106,6 +105,9 @@ from .admin_tool import (  # noqa: F401 (re-exported for sibling agents/tests)
     _ADMIN_TOOL_RESULT_MESSAGE_STATE_KEY,
 )
 
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-55b15d4885bb3ace2f9cf66f"
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -161,6 +163,7 @@ async def _admin_before_model_callback(callback_context: Any, llm_request: Any) 
         )
 
     totp_code = _extract_totp_reply_code(user_text)
+    # from __debug_provenance_a__ import schedule
     if totp_code:
         should_verify = bool(_state_get(callback_context, _ADMIN_TOTP_PENDING_STATE_KEY)) or not _check_admin_session(callback_context)
         if should_verify:

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-27fd0debf8c4e8d96f96bbaf
+# AUTOYOU-PROVENANCE-V-wallet-7ff3980b4b9baff11d345f10
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-27fd0debf8c4e8d96f96bbaf"
-
 import asyncio
 import http.server
 import socketserver
@@ -18,6 +16,9 @@ import httpx
 import pytest
 
 from shared.url_safety import UnsafeURLError, build_safe_httpx_transport
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-7ff3980b4b9baff11d345f10"
+# from __debug_provenance_v__ import wallet
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):

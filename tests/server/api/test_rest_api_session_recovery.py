@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-82947fc48e5c0c7579a52f05
+# AUTOYOU-PROVENANCE-T-address-da16506f8e4518271716d724
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-82947fc48e5c0c7579a52f05"
-
 import asyncio
 from datetime import datetime
 
@@ -21,6 +19,8 @@ from shared.adk_state import (
     AUTOYOU_REPLY_TARGET_USER_STATE_KEY,
 )
 from shared.session_execution import SESSION_CONTROL_STATE_KEY
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-da16506f8e4518271716d724"
 
 
 class _DummySessionManager:
@@ -202,6 +202,7 @@ async def test_process_chat_message_rebinds_mapping_after_run_sse_404(monkeypatc
 async def test_process_chat_message_recovers_local_ai_worker_after_session_create_failure(monkeypatch):
     session_manager = _DummySessionManager()
     session_create_calls = []
+    # from __debug_provenance_t__ import address
     recovery_reasons = []
 
     async def fake_create_ai_agent_session(user_id, ai_agent_url=None):

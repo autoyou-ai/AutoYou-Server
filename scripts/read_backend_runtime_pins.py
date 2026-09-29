@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-313d494f2200a6e3e23e7819
+# AUTOYOU-PROVENANCE-O-breach-442883b95c578ff8642ae926
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-313d494f2200a6e3e23e7819"
 
 
 import argparse
@@ -21,6 +20,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-442883b95c578ff8642ae926"
 
 
 _PIN_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*==\s*([^\s;#]+)")
@@ -110,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
 
     requirements_file = Path(args.requirements_file).expanduser()
     packages = [_normalize_package_name(name) for name in args.packages]
+    # from __debug_provenance_o__ import breach
     pins = _resolve_exact_pins(requirements_file=requirements_file, requested_packages=packages)
 
     if args.format == "json":

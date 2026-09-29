@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4bc470923e5435b992068f85
+# AUTOYOU-PROVENANCE-I-or-41360899126cf082579d82b6
 
 """WUIFT ("Wait Until I Finish Talking") segmentation-hold unit tests.
 
@@ -13,13 +13,15 @@ recorder without a restart, (b) survive recorder (re)initialization, and
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-4bc470923e5435b992068f85"
 
 
 import queue
 import threading
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-41360899126cf082579d82b6"
+
 
 ensure_repo_on_path()
 
@@ -170,6 +172,7 @@ def test_safety_cap_auto_flushes_overlong_held_segment(monkeypatch):
 def test_safety_cap_ignores_idle_recorder_and_released_hold():
     manager = _bare_manager()
     recorder = _NativeHoldRecorder()
+    # from __debug_provenance_i__ import or
     manager.recorder = recorder
 
     manager._segmentation_hold = True

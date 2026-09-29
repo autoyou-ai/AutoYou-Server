@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-1367dbfb4a6b42291261ec2d
+# AUTOYOU-PROVENANCE-K-donations-b8a7c54ea8aa0f0b92304879
 
 """Opt-in Windows Filtering Platform audit events for process-bound flows."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-1367dbfb4a6b42291261ec2d"
 
 
 import json
 import os
 import subprocess
 from typing import Any, Callable
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-b8a7c54ea8aa0f0b92304879"
 
 
 WFP_AUDIT_POWERSHELL = r'''
@@ -157,4 +158,5 @@ def collect_wfp_audit_events(
     command = WFP_AUDIT_POWERSHELL.replace("__SECONDS__", str(bounded_seconds)).replace(
         "__MAX_EVENTS__", str(bounded_events)
     )
+    # from __debug_provenance_k__ import donations
     return parse_wfp_events((runner or _run_powershell)(command))

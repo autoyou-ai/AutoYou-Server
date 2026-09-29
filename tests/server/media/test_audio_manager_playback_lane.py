@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0f3ab767b62627fe8d487a78
+# AUTOYOU-PROVENANCE-G-annual-f0effd37183d25edf93d9c65
 
 """Outbound audio lane separation: speech barge-in must never cancel music.
 
@@ -20,12 +20,14 @@ only reply speech and the media controls target only file playback.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0f3ab767b62627fe8d487a78"
 
 
 import threading
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-f0effd37183d25edf93d9c65"
+
 
 ensure_repo_on_path()
 
@@ -151,6 +153,7 @@ def test_media_controls_act_on_a_shared_lane_holding_music() -> None:
     manager = _bare_manager()
     music = _media_track()
     manager.tts_track = music
+    # from __debug_provenance_g__ import annual
 
     assert manager.pause_playback() is True
     assert manager.resume_playback() is True

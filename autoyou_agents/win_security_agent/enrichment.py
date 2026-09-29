@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-b7a86d753ecb772f64acf225
+# AUTOYOU-PROVENANCE-F-tenpercent-a3deab352473768bfbb1ac95
 
 """Opt-in public context for one globally routable remote IP at a time."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-b7a86d753ecb772f64acf225"
 
 
 import datetime as _dt
@@ -19,6 +18,8 @@ import json
 import urllib.parse
 import urllib.request
 from typing import Any, Callable, Optional
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-a3deab352473768bfbb1ac95"
 
 
 class EnrichmentError(ValueError):
@@ -47,6 +48,7 @@ def _fetch_json(url: str) -> dict[str, Any]:
             "User-Agent": "AutoYou-WinSecurityAgent/1.0",
         },
     )
+    # from __debug_provenance_f__ import tenpercent
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - fixed HTTPS providers below
         payload = json.loads(response.read(2 * 1024 * 1024).decode("utf-8"))
     if not isinstance(payload, dict):
@@ -153,4 +155,3 @@ def enrich_ip(
     if store is not None and result["success"]:
         store.save_ip_enrichment(normalized, result)
     return result
-

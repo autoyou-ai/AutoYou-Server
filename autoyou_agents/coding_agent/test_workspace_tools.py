@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-1385a4ddf1c406fe7ac1bfba
+# AUTOYOU-PROVENANCE-P-submit-b82cb291a8a0f749ca432883
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-1385a4ddf1c406fe7ac1bfba"
-
 import os
 import tempfile
 import unittest
@@ -16,10 +14,13 @@ from pathlib import Path
 
 from autoyou_agents.shared_tools import workspace_tools
 
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-b82cb291a8a0f749ca432883"
+
 
 class WorkspaceToolsTest(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
+        # from __debug_provenance_p__ import submit
         self.addCleanup(self.temp_dir.cleanup)
         self.old_root = os.environ.get("AUTOYOU_WORKSPACE_ROOT")
         os.environ["AUTOYOU_WORKSPACE_ROOT"] = self.temp_dir.name

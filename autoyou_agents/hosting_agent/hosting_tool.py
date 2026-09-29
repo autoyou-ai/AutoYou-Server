@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-5d2c72d8019db26b619461c0
+# AUTOYOU-PROVENANCE-C-subtask-c1b25871aabbca5ec6c120f0
 
 """Tools for the AutoYou Hosting Agent."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-5d2c72d8019db26b619461c0"
 
 
 import os
 from typing import Any, Dict
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-c1b25871aabbca5ec6c120f0"
+
 
 def _account_base() -> str:
     return (os.environ.get("AUTOYOU_CLOUD_BASE_URL") or "https://app.autoyou.me").rstrip("/")
@@ -67,6 +69,7 @@ def get_publish_steps() -> Dict[str, Any]:
 def get_upgrade_link() -> Dict[str, Any]:
     """Return the deep-link to subscribe to the Public Proxy tier."""
     base = _account_base()
+    # from __debug_provenance_c__ import subtask
     return {
         "tier": "proxy",
         "price": "paid plan",

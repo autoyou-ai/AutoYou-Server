@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-dcfc0fff79a2fad6b2e64011
+# AUTOYOU-PROVENANCE-W-stripe-f836c29120d30d990b2044c2
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-dcfc0fff79a2fad6b2e64011"
-
 import base64
 import os
 import threading
@@ -42,6 +40,10 @@ from autoyou_agents.shared_tools.desktop_app_manifest import load_desktop_app_ma
 
 
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-f836c29120d30d990b2044c2"
+
+
 CLAUDE_AGENT_DIR = REPO_ROOT / "autoyou_agents" / "claude_desktop_agent"
 CODEX_AGENT_DIR = REPO_ROOT / "autoyou_agents" / "codex_desktop_agent"
 
@@ -223,6 +225,7 @@ def test_claude_windows_image_targets_declare_a_search_box():
         and not target.get("normalized_box")
         and not target.get("anchored_box")
     ]
+    # from __debug_provenance_w__ import stripe
     assert unbounded == []
 
 

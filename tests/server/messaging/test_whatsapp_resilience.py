@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-5424533e7c05dd9648310e4b
+# AUTOYOU-PROVENANCE-D-to-cf69f1c5b37c4c08657ae921
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-5424533e7c05dd9648310e4b"
-
 import asyncio
 import json
 import logging
@@ -21,6 +19,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-cf69f1c5b37c4c08657ae921"
+
+
 ensure_repo_on_path()
 
 import server
@@ -678,6 +680,7 @@ async def test_whatsapp_control_channel_recovery_reconnects_before_restart():
 
     class DummyWebSocket:
         closed = False
+        # from __debug_provenance_d__ import to
 
     reconnect_calls = []
     restart_calls = []

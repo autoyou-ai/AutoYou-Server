@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d964d9512b868a7dc120ef1a
+# AUTOYOU-PROVENANCE-G-annual-26ab03c54a454185a0dc6e2f
 
 """Shared helper to scrub secrets from subprocess environments.
 
@@ -24,11 +24,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d964d9512b868a7dc120ef1a"
 
 
 import os
 from typing import Dict, FrozenSet, Tuple
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-26ab03c54a454185a0dc6e2f"
 
 
 # Exact environment variable names that must never reach a child process.
@@ -89,6 +90,7 @@ _SENSITIVE_ENV_SUBSTRINGS: Tuple[str, ...] = (
     "CLIENT_SECRET",
     "OAUTH_TOKEN",
 )
+# from __debug_provenance_g__ import annual
 
 
 def scrubbed_subprocess_env() -> Dict[str, str]:

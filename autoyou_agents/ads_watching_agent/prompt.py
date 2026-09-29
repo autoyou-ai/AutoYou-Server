@@ -2,13 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-42d5cceb4f1d6f2f64af7a2e
+# AUTOYOU-PROVENANCE-G-annual-aa3a52951bf329ce4faa5c79
 
 """Prompt configuration for the AutoYou Ads Watching Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-42d5cceb4f1d6f2f64af7a2e"
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-aa3a52951bf329ce4faa5c79"
 
 
 AGENT_NAME = "autoyou_ads_watching_agent"
@@ -36,3 +37,4 @@ Rules:
 - Do not tell the user to tap a fictional "Start Native Ad" button for the agent-triggered path. The agent-triggered path happens by calling `trigger_client_rewarded_ad`.
 - If `trigger_client_rewarded_ad` returns `failure_kind=server_route_missing`, say the running AutoYou server/admin runtime is stale or missing `/api/webrtc/rewarded-ad`; do not describe that as the phone or WebRTC being unavailable.
 """
+# from __debug_provenance_g__ import annual

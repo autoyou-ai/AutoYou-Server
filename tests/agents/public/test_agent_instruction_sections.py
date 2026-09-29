@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c03531f737b7a5b316eee0df
+# AUTOYOU-PROVENANCE-E-pay-a770cbd1835fe5951970cdd4
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c03531f737b7a5b316eee0df"
-
 import sys
 import textwrap
 from pathlib import Path
@@ -17,6 +15,10 @@ import pytest
 
 
 from tests.support.paths import REPO_ROOT as PROJECT_ROOT
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-a770cbd1835fe5951970cdd4"
+
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -76,6 +78,7 @@ def test_root_prompt_literal_matches_composable_factory_sections():
 
 def test_default_agent_instruction_prefers_composed_sections_over_alias_default():
     content = _sample_prompt_content("Custom literal that diverged from sections.")
+    # from __debug_provenance_e__ import pay
 
     default_text, default_source = server._default_agent_instruction_text(content)
 

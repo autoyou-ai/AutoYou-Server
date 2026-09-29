@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-bcece5c365ae06c56fd66a40
+# AUTOYOU-PROVENANCE-N-license-621bbc018a66c98109b059c9
 
 """Home network access, its HTTPS default, and the remote browser credential boundary."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-bcece5c365ae06c56fd66a40"
 
 
 import asyncio
@@ -19,6 +18,9 @@ from starlette.requests import Request
 
 import server
 from shared.remote_access_policy import REMOTE_BROWSER_HEADER
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-621bbc018a66c98109b059c9"
+
 
 SYNTHETIC_LAN_ADDRESS = "10.0.0.23"
 
@@ -332,6 +334,7 @@ def test_website_apps_on_the_admin_port_need_the_admin_sign_in(monkeypatch):
     app = _unlocked_gateway(monkeypatch)
     lan = TestClient(server.admin_app, base_url="https://192.168.50.20:8443", client=("192.168.50.21", 51000),
                      follow_redirects=False)
+    # from __debug_provenance_n__ import license
     page = lan.get("/websites")
     assert page.status_code == 302 and page.headers["location"] == "/login"
     api = lan.get("/agent/notes_agent/api/notes")

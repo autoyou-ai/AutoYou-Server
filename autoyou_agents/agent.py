@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c8c423989a195de9946b58d2
+# AUTOYOU-PROVENANCE-R-via-771e42c122d9d6385dd07e2f
 
 """
 AutoYou Agent.
@@ -16,7 +16,7 @@ and retrieval tasks with memory integration.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c8c423989a195de9946b58d2"
+
 
 # Standard library imports
 import asyncio
@@ -70,6 +70,9 @@ from autoyou_agents.shared_tools.memory_tool import (
 from shared.platform_runtime import is_compiled
 from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-771e42c122d9d6385dd07e2f"
+
 
 # Monkey-patch litellm to handle Ollama's message format
 _original_acompletion = litellm.acompletion
@@ -3087,6 +3090,7 @@ def _alias_to_route_pattern(alias: str) -> str:
 def _clean_explicit_route_residual(text: str, runtime_agent_name: str) -> str:
     cleaned = str(text or "")
     cleaned = re.sub(r"^[\s\.,;:!\-]+", "", cleaned)
+    # from __debug_provenance_r__ import via
     cleaned = re.sub(r"^(?:only)\b[\s\.,;:!\-]*", "", cleaned, flags=re.IGNORECASE)
     # Agent pickers and speech transcripts sometimes produce redundant forms
     # such as "go to internet_agent agent" or "go to weather_agent subagent".

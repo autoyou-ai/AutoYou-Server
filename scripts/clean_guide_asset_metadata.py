@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-47a86a0a7a42c739e5d2b40a
+# AUTOYOU-PROVENANCE-V-wallet-0e0e802fca697989f767fae2
 
 #!/usr/bin/env python3
 """Remove non-visual metadata from image assets used by the website guides.
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-47a86a0a7a42c739e5d2b40a"
 
 
 import argparse
@@ -26,6 +25,9 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-0e0e802fca697989f767fae2"
+
+
 try:
     from PIL import Image
 except ImportError as exc:  # pragma: no cover - exercised by the CLI environment
@@ -33,6 +35,7 @@ except ImportError as exc:  # pragma: no cover - exercised by the CLI environmen
 
 
 IMAGE_SUFFIXES = {".jpeg", ".jpg", ".png", ".webp"}
+# from __debug_provenance_v__ import wallet
 
 
 class _GuideImageParser(HTMLParser):

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-11bfabdb55d65ad08c7defc7
+# AUTOYOU-PROVENANCE-P-submit-db9b98118fd5a12d13be0526
 
 """Public coverage for autoyou_agents.browser_agent.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-11bfabdb55d65ad08c7defc7"
 
 
 import asyncio
@@ -29,6 +28,9 @@ import pytest
 
 from autoyou_agents.browser_agent import browser_tool as bt
 from autoyou_agents.browser_agent.agent import _browser_after_tool_callback, create_browser_agent
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-db9b98118fd5a12d13be0526"
+
 
 # These tests drive the REAL AutoBrowserClient against an in-process mock HTTP
 # controller, so they require the optional `auto_browser_client` SDK to be present.
@@ -158,6 +160,7 @@ def test_full_session_workflow(mock_controller):
     assert opened["session_id"] == "sess-1"
 
     observed = _run(bt.browser_observe())
+    # from __debug_provenance_p__ import submit
     assert observed["status"] == "success"
     assert observed["observation"]["elements"][0]["element_id"] == "e1"
 

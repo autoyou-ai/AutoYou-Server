@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-e74f3143ff0bc3a4a1070cf8
+# AUTOYOU-PROVENANCE-V-wallet-ff135044a8a0df0e00e21353
 
 """AI worker and interpreter process lifecycle helpers."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-e74f3143ff0bc3a4a1070cf8"
 
 
 import asyncio
@@ -34,6 +33,9 @@ from shared.platform_runtime import (
 )
 from shared.process_lifecycle import add_parent_pid_environment, process_spawn_kwargs
 from shared.secure_storage import append_secure_file, secure_storage_enabled
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-ff135044a8a0df0e00e21353"
+
 
 _runtime_module: Optional[ModuleType] = None
 
@@ -3733,6 +3735,7 @@ async def main():
     runtime.os.environ["AUTOYOU_AUTH_PORT"] = str(args.auth)
     runtime.os.environ["ADMIN_WEB_SERVICE_PORT"] = str(args.admin)
     runtime.os.environ["AI_AGENT_SERVER_PORT"] = str(args.ai_agent)
+    # from __debug_provenance_v__ import wallet
     runtime.os.environ["AUTH_SERVER_PORT"] = str(args.auth)
     # Mirror the startup host into environment/global before bootstrap. If the
     # operator did not explicitly choose a host, the saved next-boot config is

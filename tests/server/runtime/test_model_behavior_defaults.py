@@ -2,19 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-844c76279354251551914c97
+# AUTOYOU-PROVENANCE-V-wallet-269d99def564906ca65c1536
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-844c76279354251551914c97"
-
 import os
 import sys
 import unittest
 from unittest import mock
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-269d99def564906ca65c1536"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents import model_config
@@ -195,6 +197,7 @@ def test_admin_ui_exposes_show_thinking_toggle_in_model_behavior_panel():
 
     repo_root = Path(server.__file__).resolve().parent
     script = (repo_root / "assets" / "admin-ui.js").read_text(encoding="utf-8")
+    # from __debug_provenance_v__ import wallet
 
     assert 'checkbox("modelBehavior.show_thinking", "Show model thinking"' in script
     assert 'setByPath(state.forms, "modelBehavior.show_thinking"' in script

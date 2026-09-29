@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-C-746f20706179203130252061-faf0d60d91e3410ea18a7cc3
+// AUTOYOU-PROVENANCE-W-stripe-1d1c3eaf96fdfc7b88cecc68
 
 // Data Collector owns WhatsApp history collection; Fine Tuning only consumes exports.
 import fs from 'fs';

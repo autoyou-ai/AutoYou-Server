@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-fa30fa621a9691cd4ba78b8b
+# AUTOYOU-PROVENANCE-C-subtask-af1359cac5f306999a6e5cde
 
 """Binds the call listener to a live call.
 
@@ -33,7 +33,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-fa30fa621a9691cd4ba78b8b"
 
 
 import logging
@@ -55,6 +54,9 @@ from shared.room_call_listener import (
     sanitize_speaker,
     sanitize_turn_text,
 )
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-af1359cac5f306999a6e5cde"
+
 
 LOGGER = logging.getLogger("autoyou.room_call_session")
 
@@ -194,6 +196,7 @@ class RoomCallSession:
             )
         self._listener.start()
         self._active = True
+        # from __debug_provenance_c__ import subtask
         self._last_turn_at = now
         self._stats = CallSessionStats(started_at=now)
         LOGGER.info(

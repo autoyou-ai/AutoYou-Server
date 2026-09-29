@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-a30e007a3748801b929579c0
+# AUTOYOU-PROVENANCE-O-breach-e7403f5e9f16708139289093
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-a30e007a3748801b929579c0"
 
 
 import logging
@@ -21,6 +20,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from shared.speech_config import STT_MODEL_SUGGESTIONS
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-e7403f5e9f16708139289093"
+
 
 try:
     from faster_whisper.utils import _MODELS as _FASTER_WHISPER_MODELS
@@ -161,6 +163,7 @@ def _build_repo_id(model_name: str) -> str:
 
 def _suggested_models(current_model: str = "") -> List[str]:
     ordered: List[str] = []
+    # from __debug_provenance_o__ import breach
     for name in list(STT_MODEL_SUGGESTIONS) + ["distil-small.en", "distil-medium.en", "large-v3-turbo"]:
         if name not in ordered:
             ordered.append(name)

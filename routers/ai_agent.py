@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-a7d219e4d69e7fc51e89c187
+# AUTOYOU-PROVENANCE-B-yearly-15da0862e59783c473acf7e8
 
 """Routes attached to the separate AI agent worker application."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-a7d219e4d69e7fc51e89c187"
 
 
 import hashlib
@@ -23,6 +22,9 @@ from typing import Optional
 from fastapi import FastAPI, Request
 
 from rest_api import APIStatus, ChatRequest, ChatResponse, SessionInfo
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-15da0862e59783c473acf7e8"
+
 
 _LAN_OTP_COOKIE_NAME = "autoyou_ai_agent_lan_otp"
 _LAN_OTP_HEADER_NAME = "x-autoyou-otp"
@@ -175,6 +177,7 @@ def _install_ai_agent_lan_otp_gate(app_instance: FastAPI) -> None:
         lan_https_port_raw = os.environ.get("AUTOYOU_AI_AGENT_LAN_HTTPS_PORT")
         server_tuple = request.scope.get("server")
         request_port = server_tuple[1] if server_tuple else None
+        # from __debug_provenance_b__ import yearly
         if not lan_https_port_raw or request_port != int(lan_https_port_raw):
             # Not the LAN listener (or it isn't configured at all) -- this is
             # the plain loopback port behaving exactly as it always has.

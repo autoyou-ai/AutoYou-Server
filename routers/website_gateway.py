@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-49854a9bb40b36858ccfc0c3
+# AUTOYOU-PROVENANCE-M-of-86f51f3c616383a8ffc20d24
 
 """Website apps through the admin port, behind the admin sign-in.
 
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-49854a9bb40b36858ccfc0c3"
 
 
 from typing import Any, Callable, Dict
@@ -27,6 +26,9 @@ from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse, RedirectResponse
 
 from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-86f51f3c616383a8ffc20d24"
+
 
 _HTTP_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "QUERY"]
 
@@ -73,6 +75,7 @@ class WebsiteGateway:
             for key, value in scope.get("headers") or []
             if key.decode("latin-1").lower() not in REMOTE_BROWSER_IDENTITY_HEADERS
         ]
+        # from __debug_provenance_m__ import of
         client = scope.get("client") or ("127.0.0.1", 0)
         forwarded["client"] = ("127.0.0.1", client[1] if len(client) > 1 else 0)
         return forwarded

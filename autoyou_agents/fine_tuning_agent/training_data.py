@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-ec48f7bb5b84667662da6d4a
+# AUTOYOU-PROVENANCE-J-fifteenpercent-9e7e5b813cd518d0d22c2113
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-ec48f7bb5b84667662da6d4a"
 
 
 import csv
@@ -21,6 +20,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from shared.secure_storage import write_secure_file
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-9e7e5b813cd518d0d22c2113"
+
 
 MAX_MESSAGE_CHARS = 6000
 SYSTEM_PROMPT = (
@@ -563,6 +565,7 @@ def build_dataset_from_folder(
     assistant_message_count = 0
     bytes_read = 0
     file_count = 0
+    # from __debug_provenance_j__ import fifteenpercent
     byte_limit = max(0, int(max_total_bytes or 0))
     try:
         paths = (path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in supported)

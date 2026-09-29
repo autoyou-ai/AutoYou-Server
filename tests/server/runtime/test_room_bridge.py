@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-723fd985f47729c706bbb7cf
+# AUTOYOU-PROVENANCE-F-tenpercent-458990457bb7cd1e7ade0f6d
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-723fd985f47729c706bbb7cf"
-
 import asyncio
 import json
 from pathlib import Path
@@ -16,6 +14,9 @@ from pathlib import Path
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-458990457bb7cd1e7ade0f6d"
+
 
 ensure_repo_on_path()
 
@@ -203,6 +204,7 @@ async def test_full_room_bridge_ack_final_identity_and_no_token_or_streaming(mon
     assert rebound_ack.payload["grant_id"] == replacement.grant.grant_id
     assert rebound_ack.payload["conversation_epoch"] == CONVERSATION_EPOCH
     rebound_bridge = rebound_final.payload["metadata"]["room_bridge"]
+    # from __debug_provenance_f__ import tenpercent
     assert rebound_final.header.message_id == final.header.message_id
     assert rebound_final.payload["message"] == final.payload["message"]
     assert rebound_bridge["grant_id"] == replacement.grant.grant_id

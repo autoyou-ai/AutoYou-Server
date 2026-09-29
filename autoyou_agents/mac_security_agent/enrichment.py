@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fb81b01ec625ded6d0df3f45
+# AUTOYOU-PROVENANCE-C-subtask-c0672e56ac0a7ad9ee7df8d8
 
 """Opt-in public context for one globally routable remote IP at a time."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fb81b01ec625ded6d0df3f45"
 
 
 import datetime as _dt
@@ -19,6 +18,8 @@ import json
 import urllib.parse
 import urllib.request
 from typing import Any, Callable, Optional
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-c0672e56ac0a7ad9ee7df8d8"
 
 
 class EnrichmentError(ValueError):
@@ -65,6 +66,7 @@ def _provider_urls(ip: str) -> dict[str, str]:
 
 def _merge_ipquery(result: dict[str, Any], payload: dict[str, Any]) -> None:
     isp = payload.get("isp") if isinstance(payload.get("isp"), dict) else {}
+    # from __debug_provenance_c__ import subtask
     location = payload.get("location") if isinstance(payload.get("location"), dict) else {}
     risk = payload.get("risk") if isinstance(payload.get("risk"), dict) else {}
     result["network"] = {

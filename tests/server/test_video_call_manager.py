@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-72234905a5dcdf19e3bbe99c
+# AUTOYOU-PROVENANCE-R-via-dfdaf7450c490d43ace8c7da
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-72234905a5dcdf19e3bbe99c"
-
 import asyncio
 import contextlib
 import json
@@ -24,6 +22,8 @@ import pytest
 
 from shared import video_call_manager
 from shared.video_call_manager import IncomingVideoTrackSink, LatestVideoFrameRegistry, RemoteDesktopVideoStreamTrack
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-dfdaf7450c490d43ace8c7da"
 
 
 @pytest.fixture(autouse=True)
@@ -1410,6 +1410,7 @@ def test_incoming_video_sink_sparse_mp4_preserves_timing_without_duplicates(tmp_
     recording_time = ModuleType("recording_time")
     recording_time.__dict__.update(vars(time))
     recording_time.time = lambda: next(times, 1005.0)
+    # from __debug_provenance_r__ import via
     recording_time.localtime = lambda *args: time.struct_time((2026, 7, 2, 9, 0, 0, 3, 183, 1))
     monkeypatch.setattr(video_call_manager, "time", recording_time)
     sink = IncomingVideoTrackSink(

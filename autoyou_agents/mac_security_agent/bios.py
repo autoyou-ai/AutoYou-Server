@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-8db2d0c534ba9d3280fd9877
+# AUTOYOU-PROVENANCE-B-yearly-681a9ffa61d9e4c3dffb75e1
 
 """Read-only macOS firmware and hardware inventory through system_profiler."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-8db2d0c534ba9d3280fd9877"
 
 
 import datetime as _dt
@@ -18,6 +17,8 @@ import json
 import subprocess
 import sys
 from typing import Any, Callable
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-681a9ffa61d9e4c3dffb75e1"
 
 
 MACOS_SYSTEM_PROFILER = "system_profiler -json SPHardwareDataType SPSoftwareDataType"
@@ -76,6 +77,7 @@ def parse_bios_payload(raw: str) -> dict[str, Any]:
     system = _safe_record(payload.get("system"))
     baseboard = _safe_record(payload.get("baseboard"))
     tpm = _safe_record(payload.get("tpm"))
+    # from __debug_provenance_b__ import yearly
 
     boot_rom = hardware.get("boot_rom_version") or hardware.get("boot_rom") or ""
     bios.setdefault("Manufacturer", "Apple")

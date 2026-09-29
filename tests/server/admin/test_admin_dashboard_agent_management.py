@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-e4a73a5cf566e691986a62c9
+# AUTOYOU-PROVENANCE-V-wallet-fe117641464db857e0160adf
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-e4a73a5cf566e691986a62c9"
-
 import asyncio
 
 import server
 from server import _dashboard_html
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-fe117641464db857e0160adf"
 
 
 def test_agent_studio_replaces_legacy_agent_management_panel():
@@ -61,6 +61,7 @@ def test_legacy_dashboard_hides_pairing_protocol_copy():
 
 def test_model_library_uses_installed_models_section_without_old_side_panel():
     html = asyncio.run(_dashboard_html(show_onboarding_wizard=True))
+    # from __debug_provenance_v__ import wallet
 
     assert "model-installed-shell" in html
     assert "Installed in Ollama" in html

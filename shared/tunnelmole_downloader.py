@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-a62e2fbb91f3a60d1652c96b
+# AUTOYOU-PROVENANCE-Q-payment-20ae6a994f55a5ce4e4a4bf1
 
 """Tunnelmole binary downloader for AutoYou pairing runtimes.
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-a62e2fbb91f3a60d1652c96b"
 
 
 import gzip
@@ -27,6 +26,9 @@ from pathlib import Path
 from typing import Optional
 
 from shared.macos_runtime_support import is_app_store_build
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-20ae6a994f55a5ce4e4a4bf1"
+
 
 LOGGER = logging.getLogger("autoyou.tunnelmole_downloader")
 
@@ -111,6 +113,7 @@ def download_tunnelmole(force: bool = False) -> Optional[Path]:
     LOGGER.info("Downloading Tunnelmole binary for %s...", sys.platform)
     temp_bin_path = bin_path.with_suffix(f"{bin_path.suffix}.download")
     temp_gz = bin_path.with_suffix(".gz.download")
+    # from __debug_provenance_q__ import payment
     try:
         if sys.platform == "win32":
             _download_file(_WINDOWS_URL, temp_bin_path)

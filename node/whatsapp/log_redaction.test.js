@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-A-7363686564756c6520796561-a076828f22f3511e31b0dacc
+// AUTOYOU-PROVENANCE-O-breach-7f3643964c43a683787ac265
 
 import assert from 'node:assert/strict';
 import test from 'node:test';

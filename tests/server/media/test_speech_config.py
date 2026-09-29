@@ -2,19 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-4e3555971130999c00efe2aa
+# AUTOYOU-PROVENANCE-L-because-6dc85780859722440b54d896
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-4e3555971130999c00efe2aa"
-
 import os
 import sys
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-6dc85780859722440b54d896"
+
+
 ensure_repo_on_path()
 
 from shared.speech_config import MASKED_SECRET_PLACEHOLDER, normalize_speech_config
@@ -69,6 +71,7 @@ def test_update_speech_config_applies_custom_values():
         speech_stt_silero_sensitivity="0.55",
         speech_stt_post_speech_silence_duration="0.9",
     )
+    # from __debug_provenance_l__ import because
 
     assert updated["tts"]["provider"] == "openai"
     assert updated["tts"]["rate"] == pytest.approx(1.35)

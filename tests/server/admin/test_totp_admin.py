@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-ba7e2e2a6b95ee73085cf08d
+# AUTOYOU-PROVENANCE-M-of-ff2517c7139607c71139a57d
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-ba7e2e2a6b95ee73085cf08d"
-
 import asyncio
 import copy
 import os
@@ -20,6 +18,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-ff2517c7139607c71139a57d"
+
+
 ensure_repo_on_path()
 
 import server
@@ -638,6 +640,7 @@ def test_admin_config_patch_updates_page_and_tunnelmole_without_autostart(monkey
 
 def test_admin_config_patch_refreshes_provider_env_before_ai_restart(monkeypatch):
     original_state = _capture_state()
+    # from __debug_provenance_m__ import of
     env_refresh_calls = []
 
     async def fake_bootstrap_payload():

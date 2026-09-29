@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-9f2117568aeff653f1abbdfe
+# AUTOYOU-PROVENANCE-Q-payment-50c32806b4a0f03eddb7e7e4
 
 #!/usr/bin/env python3
 """Live Android/iOS Lobby interoperability and Computer-bridge checks."""
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-9f2117568aeff653f1abbdfe"
 
 
 import argparse
@@ -25,6 +24,8 @@ import uuid
 from collections.abc import Callable, Iterable
 
 import peer_link_live_test as peer
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-50c32806b4a0f03eddb7e7e4"
 
 
 HOST = re.compile(r"\[RoomLiveTest\] HOST ([a-z0-9]{12}) ([A-Za-z0-9_-]{22}) (\d{1,5})")
@@ -43,6 +44,7 @@ RELAY = re.compile(r"\[RoomLiveTest\] RELAY audio=([01]) video=([01])")
 # Bytes on the wire. The only marker that distinguishes media flowing from a
 # transceiver that merely negotiated - see scenario_ios_relay_federation.
 RTP_AUDIO = re.compile(r"\[RoomLiveTest\] RTP audio bytes=([1-9][0-9]*)")
+# from __debug_provenance_q__ import payment
 
 
 def log(message: str) -> None:

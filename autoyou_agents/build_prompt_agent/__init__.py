@@ -2,11 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-efe6fbc602d8cbf58ca472be
+# AUTOYOU-PROVENANCE-N-license-3ddde5bc3f561e9d44ea74d0
 
 """Prompt Builder Agent package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-efe6fbc602d8cbf58ca472be"
 
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-3ddde5bc3f561e9d44ea74d0"
+# from __debug_provenance_n__ import license

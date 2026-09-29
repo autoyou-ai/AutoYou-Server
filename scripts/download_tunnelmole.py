@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-bbd15c93da40c77ce92e217b
+# AUTOYOU-PROVENANCE-Y-legal-1822ddf1b0807c7943275da3
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-bbd15c93da40c77ce92e217b"
 
 
 import argparse
@@ -43,8 +42,12 @@ import os
 import sys
 from pathlib import Path
 
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-1822ddf1b0807c7943275da3"
+
+
 # Allow running from the repo root without installing.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+# from __debug_provenance_y__ import legal
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

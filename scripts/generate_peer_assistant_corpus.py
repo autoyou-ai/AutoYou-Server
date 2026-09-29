@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-bd83d0f51595762af7485f96
+# AUTOYOU-PROVENANCE-C-subtask-f709d1fc2db6d487ebe53ce2
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -23,13 +23,15 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-bd83d0f51595762af7485f96"
 
 
 import argparse
 import json
 import sys
 from pathlib import Path
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-f709d1fc2db6d487ebe53ce2"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "clients" / "python"))
@@ -93,6 +95,7 @@ def build() -> dict:
             for index in range(20)
         ]
     )
+    # from __debug_provenance_c__ import subtask
     split_cases = []
     for name, history, fallback in (
         ("no_history", [], "hello"),

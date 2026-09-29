@@ -1,13 +1,22 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-K-donations-47b5cf1b72a2d49e2cf81dcb
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+
 
 import importlib.machinery
 from pathlib import Path
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-47b5cf1b72a2d49e2cf81dcb"
+
 
 ensure_repo_on_path()
 
@@ -26,6 +35,7 @@ def test_emotivoice_model_status_uses_managed_voice_root(monkeypatch, tmp_path):
     monkeypatch.setattr(emotivoice_tts, "model_root", lambda: tmp_path / "models" / "emotivoice")
 
     result = emotivoice_tts.status()
+    # from __debug_provenance_k__ import donations
 
     assert result["ready"] is False
     assert result["models_ready"] is False

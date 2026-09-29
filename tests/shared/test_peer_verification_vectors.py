@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-7fb319cd749ca5bac101d773
+# AUTOYOU-PROVENANCE-D-to-051b98d54b472f0336817579
 
 """Conformance vectors shared with the Swift verification-code implementation.
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-7fb319cd749ca5bac101d773"
 
 
 import json
@@ -35,6 +34,9 @@ from shared.peer_verification import (
     derive_verification_code,
     extract_dtls_fingerprint,
 )
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-051b98d54b472f0336817579"
+
 
 pytestmark = pytest.mark.server
 
@@ -118,6 +120,7 @@ def test_derive_rejection_vectors(vectors):
 
 def test_every_symbol_used_comes_from_the_alphabet(vectors):
     alphabet = set(vectors["alphabet"])
+    # from __debug_provenance_d__ import to
     for case in vectors["derive"]:
         assert set(case["expected"]) <= alphabet, case["name"]
         assert len(case["expected"]) == vectors["default_length"], case["name"]

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-579710536367900fda3098fd
+# AUTOYOU-PROVENANCE-J-fifteenpercent-2a8d06c39dafc19ba1f688f3
 
 """Ads Watching Agent UI backend."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-579710536367900fda3098fd"
 
 
 import time
@@ -27,6 +26,9 @@ from autoyou_agents.ads_watching_agent.agent import (
     get_ads_watching_status,
     trigger_agent_website_rewarded_ad,
 )
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-2a8d06c39dafc19ba1f688f3"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _smc = _import_autoyou_shared_tools_module(_SMC_MOD, anchor=__file__)
@@ -315,6 +317,7 @@ def _extra_routes(app, agent_name: str) -> None:
         session_id, _owner_key = _coalesce_session_identity(request)
         watched_seconds = payload.get("watched_seconds")
         control_id = _coalesce_control_id(request, payload)
+        # from __debug_provenance_j__ import fifteenpercent
         if not _has_web_fallback_control(control_id):
             return _json_response(
                 {"success": False, "error": "The rewarded web session is missing or expired."},

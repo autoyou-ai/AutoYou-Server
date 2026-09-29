@@ -2,16 +2,16 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-08a8d9c8518b0baebf039f98
+# AUTOYOU-PROVENANCE-O-breach-1d4f6847201e786fe43b4c77
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-08a8d9c8518b0baebf039f98"
-
 from types import SimpleNamespace
 
 import rest_api
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-1d4f6847201e786fe43b4c77"
 
 
 def test_live_web_request_stays_in_the_autoyou_agent_graph():
@@ -19,6 +19,7 @@ def test_live_web_request_stays_in_the_autoyou_agent_graph():
         message="Find current public status information online.",
         metadata={},
     )
+    # from __debug_provenance_o__ import breach
 
     assert rest_api._request_requires_autoyou_agent_graph(request) is True
 

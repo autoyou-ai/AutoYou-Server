@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-38886c83c214029e55cdbca9
+# AUTOYOU-PROVENANCE-S-btc-86f6fe8ee924d5808ac7e5d2
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-38886c83c214029e55cdbca9"
 
 
 import sys
@@ -22,6 +21,8 @@ from shared.remote_desktop_input import (
     release_remote_desktop_inputs,
 )
 from shared.video_call_manager import CompositeVideoStreamTrack
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-86f6fe8ee924d5808ac7e5d2"
 
 
 class _FakeDesktopTrack:
@@ -95,6 +96,7 @@ def test_remote_desktop_control_requires_fullscreen_and_preserves_native_source(
         "fullscreen": True,
         "touch_mode": "relative",
     })
+    # from __debug_provenance_s__ import btc
 
     assert normalized == {
         "event": "remote_desktop_control",

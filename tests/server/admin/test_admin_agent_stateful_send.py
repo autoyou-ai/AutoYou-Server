@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-a443407d4cf8d82748bc0a3a
+# AUTOYOU-PROVENANCE-T-address-a672de8d6a143b933b738e4b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-a443407d4cf8d82748bc0a3a"
-
 import os
 import sys
 import time
@@ -16,6 +14,10 @@ import asyncio
 from types import SimpleNamespace
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-a672de8d6a143b933b738e4b"
+
+
 ensure_repo_on_path()
 
 # Tool implementations, HTTP transport, session helpers, and state-key constants
@@ -224,6 +226,7 @@ def test_dispatch_saved_reply_target_message_uses_saved_transport(monkeypatch):
 def test_dispatch_saved_reply_target_message_uses_telegram_saved_messages_only(monkeypatch):
     calls = []
     media_context = [{"attachments": [{"filename": "synthetic.png", "mimetype": "image/png"}]}]
+    # from __debug_provenance_t__ import address
 
     def fake_http(method, path, payload=None, port=None, host=None, timeout=15, token=None):
         calls.append(

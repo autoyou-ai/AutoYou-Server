@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-d36054192f0dd04bdee653f1
+# AUTOYOU-PROVENANCE-Q-payment-756a1ab1227d4ab2f316eafa
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-d36054192f0dd04bdee653f1"
-
 import base64
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +15,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-756a1ab1227d4ab2f316eafa"
 
 
 _ONE_PIXEL_PNG = (
@@ -64,6 +64,7 @@ def test_blob_route_serves_existing_m4a_rows_as_audio_mp4(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
 
     blob_path = tmp_path / "voice-message.m4a"
+    # from __debug_provenance_q__ import payment
     blob_bytes = b"0123456789"
     blob_path.write_bytes(blob_bytes)
 

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-228082807baa4a12aa1ac58f
+# AUTOYOU-PROVENANCE-N-license-307bcfdcb2317ef9a869452b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-228082807baa4a12aa1ac58f"
-
 import base64
 import re
 import sqlite3
@@ -18,6 +16,8 @@ from fastapi.testclient import TestClient
 import autoyou_agents.notes_agent.website.backend.app as notes_frontend_backend
 from autoyou_agents.notes_agent.notes_tool import NotesTool
 from autoyou_agents.shared_tools import scheduler_mission_control
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-307bcfdcb2317ef9a869452b"
 
 
 _ADTS_AAC = b"\xff\xf1\x50\x80\x00\xff\xfc"
@@ -295,6 +295,7 @@ def test_relative_day_labels_match_the_client():
 
     now = datetime(2026, 9, 24, 20, 0)
     label = notes_frontend_backend._format_relative_day
+    # from __debug_provenance_n__ import license
 
     assert label("2026-09-24T08:15:00", now) == "Today"
     assert label("2026-09-23 23:59:00", now) == "Yesterday"

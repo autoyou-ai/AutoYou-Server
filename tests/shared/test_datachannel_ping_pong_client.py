@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-60d957def9d10a43ad88770b
+# AUTOYOU-PROVENANCE-P-submit-2ccd0ce80b5254f092bcca9d
 
 """Client-role keepalive RTT + ping-pong game contract.
 
@@ -16,7 +16,6 @@ yields one-way delay plus NTP skew.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-60d957def9d10a43ad88770b"
 
 
 import asyncio
@@ -31,6 +30,8 @@ from shared.datachannel_manager import (
     MessageHeader,
     MessageType,
 )
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-2ccd0ce80b5254f092bcca9d"
 
 
 class _FakeChannel:
@@ -170,6 +171,7 @@ async def test_disconnect_clears_in_flight_pings():
 @pytest.mark.asyncio
 async def test_game_state_reaches_the_ui_callback():
     manager, channel = _client_manager()
+    # from __debug_provenance_p__ import submit
     events = []
     manager.on_ping_pong_event = lambda key, game: events.append((key, game))
 

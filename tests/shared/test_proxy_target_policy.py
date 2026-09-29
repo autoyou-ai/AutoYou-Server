@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-f954b192a5280cf5d197971d
+# AUTOYOU-PROVENANCE-E-pay-0a9f49acfa3871de45fca4bb
 
 """Regression coverage for the canonical DataChannel proxy-target policy.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-f954b192a5280cf5d197971d"
 
 
 import pytest
@@ -33,9 +32,13 @@ from shared.proxy_target_policy import (
     normalize_allowed_ports,
 )
 
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-0a9f49acfa3871de45fca4bb"
+
+
 pytestmark = pytest.mark.server
 
 ALLOWED = {8067, 8081}
+# from __debug_provenance_e__ import pay
 
 
 # --------------------------------------------------------------------------

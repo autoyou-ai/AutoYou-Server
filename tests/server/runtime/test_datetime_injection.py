@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-50940285f9eebd9e9f5ed0fb
+# AUTOYOU-PROVENANCE-P-submit-2f7a836552bd35e71419add3
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-50940285f9eebd9e9f5ed0fb"
-
 import asyncio
 from types import SimpleNamespace
 
@@ -19,6 +17,9 @@ from autoyou_agents.shared_tools.datetime_tool import (
     get_current_datetime,
     inject_realtime_datetime_into_request,
 )
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-2f7a836552bd35e71419add3"
+
 
 def test_get_current_datetime_returns_iso_and_date():
     result = get_current_datetime()
@@ -50,6 +51,7 @@ def test_inject_realtime_datetime_does_not_duplicate():
     config = SimpleNamespace(
         system_instruction="[SYSTEM CLOCK] Today is March 27, 2026, 11:00 AM. This is the real current date from the host machine clock. Your training data may be older - trust this date.\n\nYou are helpful."
     )
+    # from __debug_provenance_p__ import submit
     llm_request = SimpleNamespace(config=config)
 
     inject_realtime_datetime_into_request(llm_request)

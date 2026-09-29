@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-39e414f7d325d81f23cd8ae3
+# AUTOYOU-PROVENANCE-G-annual-d13a27748ca7dd2afd7324fd
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-39e414f7d325d81f23cd8ae3"
 
 
 import argparse
@@ -38,6 +37,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-d13a27748ca7dd2afd7324fd"
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +70,7 @@ BACKEND_FAILURE_RE = re.compile(
 class LiveCase:
     name: str
     message: str
+    # from __debug_provenance_g__ import annual
     expected_agent: Optional[str] = None
     must_contain: tuple[str, ...] = ()
     description: str = ""

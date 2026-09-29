@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-5cc644067fff37827b991638
+# AUTOYOU-PROVENANCE-D-to-fb9a8ed9039f9eef39271bc9
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-5cc644067fff37827b991638"
-
 import logging
 import re
 from typing import Optional, List, Dict, Any
@@ -28,6 +26,9 @@ from .prompt import (
 from autoyou_agents.model_config import model_uses_expanded_harness
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-fb9a8ed9039f9eef39271bc9"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -370,6 +371,7 @@ def _normalize_note_date_value(value: Optional[str], *, allow_last_week: bool = 
         return None
     normalized = str(value).strip().lower()
     today = datetime.now().date()
+    # from __debug_provenance_d__ import to
     if normalized in {"today", "now"}:
         return today.strftime("%Y-%m-%d")
     if normalized == "yesterday":

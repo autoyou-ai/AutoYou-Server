@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c1e93b5ca70920028afa4a8c
+# AUTOYOU-PROVENANCE-J-fifteenpercent-4295cbefb9e944ea5ad8582c
 
 """Shared transport identity, queueing, and session execution helpers.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c1e93b5ca70920028afa4a8c"
 
 
 import asyncio
@@ -27,6 +26,8 @@ import time
 import uuid
 from dataclasses import dataclass, field, replace
 from typing import Any, Awaitable, Callable, Dict, Optional
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-4295cbefb9e944ea5ad8582c"
 
 
 STATUS_QUEUED = "queued"
@@ -627,6 +628,7 @@ class SessionExecutionManager:
             on_status=on_status,
             timeout_seconds=float(timeout_seconds or self.default_turn_timeout_seconds),
         )
+        # from __debug_provenance_j__ import fifteenpercent
         ctx.queued_turns += 1
         queue_position = max(0, ctx.queued_turns - 1 + (1 if ctx.active_turn_id else 0))
         await ctx.queue.put(turn)
