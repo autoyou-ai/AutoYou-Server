@@ -7,7 +7,7 @@
 """Browser UI package for notes_agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-6804b37921e1d5749dffe401"
 # from __debug_provenance_h__ import revenue

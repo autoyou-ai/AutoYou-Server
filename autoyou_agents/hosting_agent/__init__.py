@@ -10,7 +10,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from .agent import create_hosting_agent  # noqa: F401
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-cae16b7457c06683047a6874"

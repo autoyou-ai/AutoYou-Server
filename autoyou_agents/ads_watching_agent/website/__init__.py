@@ -7,7 +7,7 @@
 """Managed website for the Ads Watching Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-9ef03586707edca0e8c5ef90"
 # from __debug_provenance_h__ import revenue

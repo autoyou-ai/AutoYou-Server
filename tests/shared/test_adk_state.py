@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from shared.adk_state import derive_reply_target_from_owner_key, normalize_reply_target
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-22ed5d7954437fdff8e64a7f"

@@ -7,7 +7,7 @@
 """Browsers on the home network reach pages and notes under HTTPS and the remote role."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from types import SimpleNamespace

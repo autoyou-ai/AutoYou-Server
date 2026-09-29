@@ -7,7 +7,7 @@
 """Prompt configuration for the Skills Agent sub-agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-8142a5ef5e82ae06e21cec95"
 

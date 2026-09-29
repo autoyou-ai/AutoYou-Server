@@ -7,7 +7,7 @@
 """Managed Website Builder frontend package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from autoyou_agents.shared_tools.website_scaffold import (

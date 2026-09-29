@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from shared.webrtc_sdp import mark_sdp_ice_gathering_complete
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-38afbb7f965aba52960f941f"

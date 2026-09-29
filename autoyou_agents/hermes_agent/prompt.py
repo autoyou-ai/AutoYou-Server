@@ -26,7 +26,7 @@ Two distinct Hermes integration modes:
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-2b95506c31a21a6ef8877c4c"
 

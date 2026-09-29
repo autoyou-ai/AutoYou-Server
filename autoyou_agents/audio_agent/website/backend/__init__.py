@@ -7,7 +7,7 @@
 """Audio agent UI backend package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-640842b426a21146264e798e"
 # from __debug_provenance_w__ import stripe

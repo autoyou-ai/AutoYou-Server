@@ -10,7 +10,7 @@ Focuses on concise hyperlink processing and feed management with minimal tokens.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-2f394b47a0f6469cfbffe94b"
 
