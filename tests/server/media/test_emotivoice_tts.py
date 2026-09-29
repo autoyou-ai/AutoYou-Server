@@ -12,6 +12,7 @@ __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
 
 import importlib.machinery
 from pathlib import Path
+from types import SimpleNamespace
 
 from tests.support.paths import ensure_repo_on_path
 
@@ -42,6 +43,41 @@ def test_emotivoice_model_status_uses_managed_voice_root(monkeypatch, tmp_path):
     assert result["runtime_source_ready"] is True
     assert Path(result["model_dir"]) == tmp_path / "models" / "emotivoice"
     assert "8051" in result["speaker_ids"]
+    assert "selected_device" in result["acceleration"]
+
+
+def test_emotivoice_auto_device_prefers_mps_when_available(monkeypatch):
+    class FakeTorch:
+        cuda = SimpleNamespace(is_available=lambda: False)
+        backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True))
+
+        @staticmethod
+        def device(name):
+            return name
+
+    monkeypatch.delenv("AUTOYOU_EMOTIVOICE_DEVICE", raising=False)
+
+    device, name = emotivoice_tts._select_torch_device(FakeTorch)
+
+    assert device == "mps"
+    assert name == "mps"
+
+
+def test_emotivoice_device_override_can_force_cpu(monkeypatch):
+    class FakeTorch:
+        cuda = SimpleNamespace(is_available=lambda: True)
+        backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True))
+
+        @staticmethod
+        def device(name):
+            return name
+
+    monkeypatch.setenv("AUTOYOU_EMOTIVOICE_DEVICE", "cpu")
+
+    device, name = emotivoice_tts._select_torch_device(FakeTorch)
+
+    assert device == "cpu"
+    assert name == "cpu"
 
 
 def test_compiled_runtime_without_vendor_source_reports_provider_unavailable(monkeypatch, tmp_path):
