@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 from pathlib import Path
 
 from tests.support.paths import ensure_repo_on_path
@@ -41,6 +42,61 @@ def test_compiled_runtime_without_vendor_source_reports_provider_unavailable(mon
 
     assert result["runtime_source_ready"] is False
     assert result["ready"] is False
+
+
+def test_compiled_emotivoice_extensions_are_detected(monkeypatch, tmp_path):
+    monkeypatch.setattr(emotivoice_tts, "vendor_root", lambda: tmp_path)
+    monkeypatch.setattr(emotivoice_tts, "model_root", lambda: tmp_path / "models")
+    module_paths = (
+        "frontend.py",
+        "frontend_cn.py",
+        "frontend_en.py",
+        "models/prompt_tts_modified/jets.py",
+        "models/prompt_tts_modified/model_open_source.py",
+        "models/prompt_tts_modified/simbert.py",
+        "models/prompt_tts_modified/modules/alignment.py",
+        "models/prompt_tts_modified/modules/encoder.py",
+        "models/prompt_tts_modified/modules/initialize.py",
+        "models/prompt_tts_modified/modules/variance.py",
+        "models/hifigan/models.py",
+        "models/hifigan/get_random_segments.py",
+        "config/joint/config.py",
+    )
+    for relative_path in module_paths:
+        source = tmp_path / relative_path
+        module = source.with_suffix("")
+        compiled = module.with_name(module.name + importlib.machinery.EXTENSION_SUFFIXES[0])
+        compiled.parent.mkdir(parents=True, exist_ok=True)
+        compiled.touch()
+    for relative_path in (
+        "config/joint/config.yaml",
+        "lexicon/librispeech-lexicon.txt",
+        "data/youdao/text/emotion",
+        "data/youdao/text/energy",
+        "data/youdao/text/pitch",
+        "data/youdao/text/speaker2",
+        "data/youdao/text/speed",
+        "data/youdao/text/tokenlist",
+    ):
+        asset = tmp_path / relative_path
+        asset.parent.mkdir(parents=True, exist_ok=True)
+        asset.write_text("8051\n", encoding="utf-8")
+
+    result = emotivoice_tts.status()
+
+    assert result["runtime_available"] is True
+    assert result["runtime_source_ready"] is True
+
+
+def test_admin_emotivoice_download_shows_consent_and_target_path():
+    admin_ui = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
+    source = admin_ui.read_text(encoding="utf-8")
+    action = source.index('if (action === "speech-download-emotivoice")')
+    excerpt = source[action:action + 1100]
+
+    assert "window.confirm(emotivoiceConsent)" in excerpt
+    assert "emotivoiceModelDir" in excerpt
+    assert "administrator-initiated" in excerpt
 
 
 def test_emotivoice_model_status_requires_all_managed_english_g2p_resources(monkeypatch, tmp_path):

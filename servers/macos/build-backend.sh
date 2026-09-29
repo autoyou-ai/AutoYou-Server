@@ -269,6 +269,9 @@ build_runtime_modules_bundle() {
     else
         desktop_args+=(--include-sibling-agents)
     fi
+    if requirements_has_voice; then
+        desktop_args+=(--include-emotivoice)
+    fi
     "$PYTHON_CMD" "$RUNTIME_MODULE_BUILDER" \
         --repo-root "$PROJECT_ROOT" \
         --bundle-root "$resources_root" \
@@ -3944,6 +3947,13 @@ verify_artifacts() {
             [[ -d "$backend_root/runtime_site_packages" ]] || missing+=("runtime_site_packages")
         fi
         if requirements_has_voice; then
+            compgen -G "$backend_root/runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets*.so" >/dev/null || missing+=("compiled EmotiVoice JETS module")
+            compgen -G "$backend_root/runtime_modules/vendor/emotivoice/config/joint/config*.so" >/dev/null || missing+=("compiled EmotiVoice configuration module")
+            [[ -f "$backend_root/runtime_modules/vendor/emotivoice/config/joint/config.yaml" ]] || missing+=("EmotiVoice config.yaml")
+            [[ -f "$backend_root/runtime_modules/vendor/emotivoice/data/youdao/text/tokenlist" ]] || missing+=("EmotiVoice tokenlist")
+            [[ -f "$backend_root/runtime_modules/vendor/emotivoice/data/youdao/text/speaker2" ]] || missing+=("EmotiVoice speaker data")
+            [[ -f "$backend_root/runtime_modules/vendor/emotivoice/lexicon/librispeech-lexicon.txt" ]] || missing+=("EmotiVoice pronunciation lexicon")
+            [[ -f "$backend_root/runtime_modules/vendor/emotivoice/LICENSE" ]] || missing+=("EmotiVoice license")
             if [[ ! -x "$backend_root/runtime/whisper/whisper-cli" && ! -x "$backend_root/runtime/whisper/whisper" && ! -x "$backend_root/runtime/whisper/main" ]]; then
                 missing+=("runtime/whisper/{whisper-cli,whisper,main}")
             fi

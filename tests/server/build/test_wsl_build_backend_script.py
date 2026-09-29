@@ -21,6 +21,9 @@ def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():
     assert "--verify-server-imports" in text
     assert "--nofollow-imports" in text
     assert "--include-sibling-agents" in text
+    assert "--include-emotivoice" in text
+    assert "runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets*.so" in text
+    assert "runtime_modules/vendor/emotivoice/LICENSE" in text
     assert "--unofficial" in text
     assert "UNOFFICIAL_BUILD" in text
 

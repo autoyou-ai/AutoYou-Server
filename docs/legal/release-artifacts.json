@@ -300,7 +300,7 @@
     {
       "id": "autoyou-server-source-full",
       "displayName": "AutoYou Server source/full profile",
-      "description": "Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge.",
+      "description": "Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge; WSL full-profile builds compile the EmotiVoice inference modules.",
       "sources": [
         {
           "type": "requirements",
@@ -322,10 +322,10 @@
       "manualComponents": [
         {
           "type": "library",
-          "name": "EmotiVoice inference source",
+          "name": "EmotiVoice inference code",
           "version": "59f0f36de4db12825f4705dd4e0780d79dd6bb01",
           "license": "Apache-2.0",
-          "distributionBoundary": "vendored source; license included",
+          "distributionBoundary": "vendored Python source or compiled inference modules; license included",
           "source": "https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01"
         },
         {
@@ -676,9 +676,8 @@
     {
       "id": "autoyou-server-windows-connector-full",
       "displayName": "AutoYou Server Windows connector-full build",
-      "description": "Optional separately approved Windows connector build with the full server dependency profile. EmotiVoice source is Python-bootstrap-only and is excluded from this compiled artifact.",
+      "description": "Optional separately approved Windows connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.",
       "inherits": "autoyou-server-source-full",
-      "excludeManualComponents": ["EmotiVoice inference source"],
       "releaseProfile": "connector-full",
       "dependencyProfile": "full",
       "legalBundle": "Legal",
@@ -702,9 +701,8 @@
     {
       "id": "autoyou-server-macos-connector-full",
       "displayName": "AutoYou Server macOS connector-full build",
-      "description": "Optional separately approved macOS connector build with the full server dependency profile. EmotiVoice source is Python-bootstrap-only and is excluded from this compiled artifact.",
+      "description": "Optional separately approved macOS connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.",
       "inherits": "autoyou-server-source-full",
-      "excludeManualComponents": ["EmotiVoice inference source"],
       "releaseProfile": "connector-full",
       "dependencyProfile": "full",
       "legalBundle": "Contents/Resources/Legal",

@@ -78,7 +78,10 @@ RUN groupadd --gid 1000 autoyou \
 
 # Copy the rest of the application source code with correct ownership
 COPY --chown=autoyou:autoyou . .
-RUN python scripts/prepare_intent_router.py
+RUN test -f vendor/emotivoice/LICENSE \
+    && test -f vendor/emotivoice/frontend.py \
+    && test -f requirements/voice.txt \
+    && python scripts/prepare_intent_router.py
 
 # Pre-cache the standalone tunnelmole binary used by the /pair auth tunnel.
 # Baking it into the image layer means /pair works immediately at runtime

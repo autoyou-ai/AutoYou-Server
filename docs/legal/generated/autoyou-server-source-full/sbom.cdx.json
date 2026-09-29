@@ -36,7 +36,7 @@
           }
         }
       ],
-      "name": "EmotiVoice inference source",
+      "name": "EmotiVoice inference code",
       "properties": [
         {
           "name": "autoyou:ecosystem",
@@ -48,7 +48,7 @@
         },
         {
           "name": "autoyou:distributionBoundary",
-          "value": "vendored source; license included"
+          "value": "vendored Python source or compiled inference modules; license included"
         }
       ],
       "type": "library",
@@ -1864,11 +1864,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "nltk>=3.9.2,<4"
+          "value": "nltk>=3.10.3,<4"
         },
         {
           "name": "specifier",
-          "value": ">=3.9.2,<4"
+          "value": ">=3.10.3,<4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3748,7 +3748,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T00:28:28+00:00",
+    "timestamp": "2026-09-29T01:53:39+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3757,7 +3757,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:05444ba7-eed2-4288-8b5f-c2bc3c6d71aa",
+  "serialNumber": "urn:uuid:2e0d886d-e103-4974-bb9d-bea8bd94aecd",
   "specVersion": "1.5",
   "version": 1
 }

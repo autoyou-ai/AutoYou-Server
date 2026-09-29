@@ -71,6 +71,11 @@ If your main `.venv` uses Python 3.13, the Windows backend build automatically p
 
 The preferred compiler is Visual Studio 2022 integrated LLVM/Clang. A standalone LLVM installation is not sufficient for Nuitka's Windows ClangCL mode. When Python 3.12 is active and the integrated component is unavailable, the build falls back to Nuitka's supported MinGW64 toolchain.
 
+The full connector profile compiles EmotiVoice inference modules into the
+server backend; the default profile omits the optional voice runtime. Model
+checkpoints are not bundled. An administrator can approve their download from
+Admin → Speech, where they are saved in the managed voice-model directory.
+
 ### Machine-specific preflight
 
 Collect a privacy-safe machine-class profile once, then refresh it after major

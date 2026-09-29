@@ -71,6 +71,10 @@ If you plan to build the full connector-capable stack with voice features, insta
 brew install sox portaudio node
 ```
 
+The full connector profile includes EmotiVoice inference compiled for the
+target Mac. The default server profile omits its optional voice runtime. Model
+checkpoints are never bundled; approve their download from Admin → Speech.
+
 ### Fast unsigned build
 
 ```bash

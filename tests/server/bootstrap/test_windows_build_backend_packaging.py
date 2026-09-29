@@ -167,6 +167,15 @@ def test_windows_v2_publish_stages_the_compiled_desktop_worker():
     assert "packaged_sibling_agents.json" in publish
 
 
+def test_windows_full_voice_profile_compiles_emotivoice_runtime():
+    backend = _build_backend_text()
+
+    assert '$requirementsIncludesVoice = $Requirements -in @("full", "source-full", "connector-full", "training-full")' in backend
+    assert '$runtimeModuleBuildArguments += "--include-emotivoice"' in backend
+    assert 'vendor\\\\emotivoice\\\\models\\\\prompt_tts_modified\\\\jets*.pyd' in backend
+    assert "vendor\\\\emotivoice\\\\data\\\\youdao\\\\text\\\\tokenlist" in backend
+
+
 def test_windows_backend_build_never_terminates_an_unrelated_autoyou_app():
     assert 'Stop-Process -Name "AutoYou"' not in _build_backend_text()
 

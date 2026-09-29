@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import logging
 import os
@@ -53,22 +54,43 @@ def conversation_emotion_prompt(context: str) -> str:
     return _EMOTION_PROMPTS[selected] if matches[selected] else "Neutral"
 
 
+def _runtime_file_exists(relative_path: str) -> bool:
+    path = vendor_root() / relative_path
+    if path.is_file():
+        return True
+    module_path = path.with_suffix("")
+    return any(
+        module_path.with_name(module_path.name + suffix).is_file()
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES
+    )
+
+
 def status() -> Dict[str, Any]:
     root = model_root()
-    source = vendor_root()
-    required_source_files = (
-        source / "frontend.py",
-        source / "frontend_cn.py",
-        source / "frontend_en.py",
-        source / "models" / "prompt_tts_modified" / "jets.py",
-        source / "models" / "prompt_tts_modified" / "simbert.py",
-        source / "config" / "joint" / "config.py",
-        source / "config" / "joint" / "config.yaml",
-        source / "lexicon" / "librispeech-lexicon.txt",
-        source / "data" / "youdao" / "text" / "tokenlist",
-        source / "data" / "youdao" / "text" / "speaker2",
+    required_runtime_files = (
+        "frontend.py",
+        "frontend_cn.py",
+        "frontend_en.py",
+        "models/prompt_tts_modified/jets.py",
+        "models/prompt_tts_modified/model_open_source.py",
+        "models/prompt_tts_modified/simbert.py",
+        "models/prompt_tts_modified/modules/alignment.py",
+        "models/prompt_tts_modified/modules/encoder.py",
+        "models/prompt_tts_modified/modules/initialize.py",
+        "models/prompt_tts_modified/modules/variance.py",
+        "models/hifigan/models.py",
+        "models/hifigan/get_random_segments.py",
+        "config/joint/config.py",
+        "config/joint/config.yaml",
+        "lexicon/librispeech-lexicon.txt",
+        "data/youdao/text/emotion",
+        "data/youdao/text/energy",
+        "data/youdao/text/pitch",
+        "data/youdao/text/speaker2",
+        "data/youdao/text/speed",
+        "data/youdao/text/tokenlist",
     )
-    runtime_source_ready = all(path.is_file() for path in required_source_files)
+    runtime_available = all(_runtime_file_exists(path) for path in required_runtime_files)
     output = root / "outputs"
     bert = root / "simbert-base-chinese"
     nltk_data = root / "nltk_data"
@@ -96,10 +118,11 @@ def status() -> Dict[str, Any]:
     except OSError:
         speakers = []
     return {
-        "ready": model_ready and not missing_modules and runtime_source_ready,
+        "ready": model_ready and not missing_modules and runtime_available,
         "models_ready": model_ready,
         "missing_dependencies": missing_modules,
-        "runtime_source_ready": runtime_source_ready,
+        "runtime_available": runtime_available,
+        "runtime_source_ready": runtime_available,
         "download_supported": all(importlib.util.find_spec(name) is not None for name in _DOWNLOAD_MODULES),
         "speaker_ids": speakers,
         "model_dir": str(root),
@@ -184,8 +207,8 @@ def _load_model():
 
 def synthesize(text: str, output_path: str, settings: Dict[str, Any], context: str = "") -> None:
     voice_status = status()
-    if not voice_status["runtime_source_ready"]:
-        raise RuntimeError("EmotiVoice is available in the Python source server, not compiled server bundles")
+    if not voice_status["runtime_available"]:
+        raise RuntimeError("EmotiVoice is not included in this server build; install a full voice profile")
     if not voice_status["ready"]:
         raise RuntimeError("EmotiVoice is not ready; install its voice models and runtime dependencies first")
     torch, np, sf, token_to_id, speaker_to_id, models, frontend = _load_model()

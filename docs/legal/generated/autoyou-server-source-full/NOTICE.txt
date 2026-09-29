@@ -4,9 +4,9 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server source/full profile (autoyou-server-source-full)
 Release profile: source-full
 Dependency profile: full
-Generated: 2026-09-29T00:28:28+00:00
+Generated: 2026-09-29T01:53:39+00:00
 
-Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge.
+Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge; WSL full-profile builds compile the EmotiVoice inference modules.
 
 AutoYou License
 ---------------
@@ -16,7 +16,7 @@ This NOTICE file does not grant rights beyond those licenses.
 Third-Party Components
 ----------------------
 - ElevenLabs API service terms external API [manual] - ElevenLabs Terms - https://elevenlabs.io/terms; boundary: external-service
-- EmotiVoice inference source 59f0f36de4db12825f4705dd4e0780d79dd6bb01 [manual] - Apache-2.0 - https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01; boundary: vendored source; license included
+- EmotiVoice inference code 59f0f36de4db12825f4705dd4e0780d79dd6bb01 [manual] - Apache-2.0 - https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01; boundary: vendored Python source or compiled inference modules; license included
 - Google AI and GenAI API terms external API [manual] - Google API Terms - https://developers.google.com/terms; boundary: external-service
 - PortAudio 19.7.0 native runtime via PyAudio/PyAudioWPatch [manual] - MIT - https://github.com/PortAudio/portaudio/tree/v19.7.0; boundary: native-library/wheel-transitive
 - libsndfile transitive/native via soundfile wheels [manual] - LGPL-2.1-or-later - https://libsndfile.github.io/libsndfile/; boundary: native-library/wheel-transitive

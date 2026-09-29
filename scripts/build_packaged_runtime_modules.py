@@ -61,6 +61,32 @@ STATIC_RUNTIME_FILES = (
 STATIC_RUNTIME_DIRECTORIES = (
     Path("shared") / "native" / "libsodium",
 )
+EMOTIVOICE_RUNTIME_MODULES = tuple(Path(path) for path in (
+    "vendor/emotivoice/config/joint/config.py",
+    "vendor/emotivoice/frontend.py",
+    "vendor/emotivoice/frontend_cn.py",
+    "vendor/emotivoice/frontend_en.py",
+    "vendor/emotivoice/models/hifigan/get_random_segments.py",
+    "vendor/emotivoice/models/hifigan/models.py",
+    "vendor/emotivoice/models/prompt_tts_modified/jets.py",
+    "vendor/emotivoice/models/prompt_tts_modified/model_open_source.py",
+    "vendor/emotivoice/models/prompt_tts_modified/modules/alignment.py",
+    "vendor/emotivoice/models/prompt_tts_modified/modules/encoder.py",
+    "vendor/emotivoice/models/prompt_tts_modified/modules/initialize.py",
+    "vendor/emotivoice/models/prompt_tts_modified/modules/variance.py",
+    "vendor/emotivoice/models/prompt_tts_modified/simbert.py",
+))
+EMOTIVOICE_RUNTIME_FILES = tuple(Path(path) for path in (
+    "vendor/emotivoice/LICENSE",
+    "vendor/emotivoice/config/joint/config.yaml",
+    "vendor/emotivoice/data/youdao/text/emotion",
+    "vendor/emotivoice/data/youdao/text/energy",
+    "vendor/emotivoice/data/youdao/text/pitch",
+    "vendor/emotivoice/data/youdao/text/speaker2",
+    "vendor/emotivoice/data/youdao/text/speed",
+    "vendor/emotivoice/data/youdao/text/tokenlist",
+    "vendor/emotivoice/lexicon/librispeech-lexicon.txt",
+))
 AGENT_SIDECAR_FILENAMES = frozenset(
     {
         "whatsapp_history_dump.mjs",
@@ -309,12 +335,20 @@ def _iter_static_runtime_files(repo_root: Path) -> Iterator[Path]:
 
 def build_runtime_module_plan(
     repo_root: Path, *, desktop: bool = False, include_sibling_agents: bool = False,
+    include_emotivoice: bool = False,
 ) -> RuntimeModulePlan:
     if desktop and include_sibling_agents:
         raise ValueError("Native v2 runtime cannot include sibling agents")
     compile_specs = tuple(ModuleBuildSpec(relative_path) for relative_path in _iter_python_module_sources(repo_root))
     asset_files = tuple(_iter_agent_asset_files(repo_root))
     static_files = tuple(_iter_static_runtime_files(repo_root))
+    if include_emotivoice:
+        required_paths = (*EMOTIVOICE_RUNTIME_MODULES, *EMOTIVOICE_RUNTIME_FILES)
+        missing = [path for path in required_paths if not (repo_root / path).is_file()]
+        if missing:
+            raise FileNotFoundError(f"Missing EmotiVoice runtime files: {', '.join(path.as_posix() for path in missing)}")
+        compile_specs += tuple(ModuleBuildSpec(path) for path in EMOTIVOICE_RUNTIME_MODULES)
+        static_files += EMOTIVOICE_RUNTIME_FILES
     bridge_stubs = set(BRIDGE_STUBS)
     source_overrides: dict[Path, Path] = {}
     sibling_agent_names: set[str] = set()
@@ -548,9 +582,11 @@ def build_packaged_runtime_modules(
     extra_nuitka_args: Iterable[str],
     desktop: bool = False,
     include_sibling_agents: bool = False,
+    include_emotivoice: bool = False,
 ) -> dict[str, object]:
     plan = build_runtime_module_plan(
         repo_root, desktop=desktop, include_sibling_agents=include_sibling_agents,
+        include_emotivoice=include_emotivoice,
     )
     output_root = bundle_root / RUNTIME_MODULES_DIRNAME
     if output_root.exists():
@@ -612,6 +648,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nuitka-arg", action="append", default=[])
     parser.add_argument("--desktop", action="store_true", help="Include the native v2 client bridge and headless desktop engine")
     parser.add_argument("--include-sibling-agents", action="store_true", help="Include adjacent public and private agents in server builds")
+    parser.add_argument("--include-emotivoice", action="store_true", help="Compile the optional EmotiVoice inference runtime and copy its non-model data")
     return parser.parse_args(argv)
 
 
@@ -629,6 +666,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_nuitka_args=tuple(args.nuitka_arg),
         desktop=args.desktop,
         include_sibling_agents=args.include_sibling_agents,
+        include_emotivoice=args.include_emotivoice,
     )
     print(f"Packaged runtime modules ready under {bundle_root / RUNTIME_MODULES_DIRNAME}")
     return 0

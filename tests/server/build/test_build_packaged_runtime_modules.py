@@ -38,6 +38,13 @@ def _populate_required_runtime_sources(repo_root: Path) -> None:
             _write_text(repo_root / relative_directory / "sidecar.bin", "sidecar\n")
 
 
+def _populate_emotivoice_runtime_sources(repo_root: Path) -> None:
+    for relative_path in runtime_builder.EMOTIVOICE_RUNTIME_MODULES:
+        _write_text(repo_root / relative_path, "VALUE = 1\n")
+    for relative_path in runtime_builder.EMOTIVOICE_RUNTIME_FILES:
+        _write_text(repo_root / relative_path, "vendor runtime data\n")
+
+
 def test_runtime_module_plan_excludes_autoyou_lite_from_main_bundle(tmp_path):
     _populate_required_runtime_sources(tmp_path)
     _write_text(tmp_path / "shared" / "platform_runtime.py")
@@ -178,14 +185,50 @@ def test_runtime_module_plan_includes_agent_directory_shared_logic(tmp_path):
     assert "autoyou_agents/shared_tools/desktop_app_registry.py" in compiled_paths
 
 
-def test_compiled_runtime_keeps_emotivoice_python_source_out_of_bundle():
-    repo_root = Path(__file__).resolve().parents[3]
-    plan = runtime_builder.build_runtime_module_plan(repo_root)
+def test_emotivoice_modules_are_profile_gated_in_runtime_plan(tmp_path):
+    _populate_required_runtime_sources(tmp_path)
+    _populate_emotivoice_runtime_sources(tmp_path)
 
-    compiled_paths = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
-    static_paths = {path.as_posix() for path in plan.static_files}
-    assert "shared/emotivoice_tts.py" in compiled_paths
-    assert not any(path.startswith("vendor/emotivoice/") for path in compiled_paths | static_paths)
+    default_plan = runtime_builder.build_runtime_module_plan(tmp_path)
+    voice_plan = runtime_builder.build_runtime_module_plan(tmp_path, include_emotivoice=True)
+    default_compiled = {spec.source_relative_path.as_posix() for spec in default_plan.compile_specs}
+    voice_compiled = {spec.source_relative_path.as_posix() for spec in voice_plan.compile_specs}
+    voice_static = {path.as_posix() for path in voice_plan.static_files}
+
+    assert not any(path.startswith("vendor/emotivoice/") for path in default_compiled)
+    assert set(path.as_posix() for path in runtime_builder.EMOTIVOICE_RUNTIME_MODULES) <= voice_compiled
+    assert set(path.as_posix() for path in runtime_builder.EMOTIVOICE_RUNTIME_FILES) <= voice_static
+    assert "vendor/emotivoice/models/prompt_tts_modified/jets.py" not in default_compiled
+
+
+def test_packaged_runtime_compiles_emotivoice_modules_and_copies_data(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    bundle_root = tmp_path / "bundle"
+    _populate_required_runtime_sources(repo_root)
+    _populate_emotivoice_runtime_sources(repo_root)
+
+    def fake_run_nuitka_module_build(*, output_root, spec, **_kwargs):
+        destination = output_root / spec.destination_relative_dir / f"{spec.source_stem}.cp313-linux_x86_64.so"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"compiled-module")
+        return destination
+
+    monkeypatch.setattr(runtime_builder, "_run_nuitka_module_build", fake_run_nuitka_module_build)
+    manifest = runtime_builder.build_packaged_runtime_modules(
+        repo_root=repo_root,
+        bundle_root=bundle_root,
+        build_root=tmp_path / "build",
+        job_count=1,
+        extra_nuitka_args=(),
+        include_emotivoice=True,
+    )
+
+    module_path = bundle_root / "runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets.cp313-linux_x86_64.so"
+    token_path = bundle_root / "runtime_modules/vendor/emotivoice/data/youdao/text/tokenlist"
+    assert module_path.read_bytes() == b"compiled-module"
+    assert token_path.read_text(encoding="utf-8") == "vendor runtime data\n"
+    assert "runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets.cp313-linux_x86_64.so" in manifest["files"]
+    assert "runtime_modules/vendor/emotivoice/LICENSE" in manifest["files"]
 
 
 def test_build_packaged_runtime_modules_copies_static_runtime_sidecars(tmp_path, monkeypatch):

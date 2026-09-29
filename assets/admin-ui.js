@@ -6636,18 +6636,19 @@
         } else if (provider === "emotivoice") {
             var emotivoice = getByPath(state.speechLibrary, "status.emotivoice", {});
             var modelsReady = Boolean(getByPath(emotivoice, "models_ready", false));
-            var sourceReady = Boolean(getByPath(emotivoice, "runtime_source_ready", true));
+            var runtimeAvailable = Boolean(getByPath(emotivoice, "runtime_available", getByPath(emotivoice, "runtime_source_ready", true)));
             var dependencies = getByPath(emotivoice, "missing_dependencies", []);
-            var statusNote = !sourceReady
-                ? "EmotiVoice runs from the vendored source in the Python bootstrap server; compiled server bundles do not include that source."
+            var statusNote = !runtimeAvailable
+                ? "EmotiVoice is not included in this build. Install a full voice/connector profile to enable it."
                 : (modelsReady && !dependencies.length
                     ? "EmotiVoice checkpoints and runtime dependencies are ready on this server."
-                    : "Download the checkpoints once and restart the voice session after the full voice profile is installed.");
-            fields.push("<div class=\"ayu-note ayu-note-" + (sourceReady && modelsReady && !dependencies.length ? "green" : "amber") + "\">" + escapeHtml(statusNote) + "</div>");
+                    : "Install the full voice profile and download the checkpoints once; restart the voice session after installation.");
+            fields.push("<div class=\"ayu-note ayu-note-" + (runtimeAvailable && modelsReady && !dependencies.length ? "green" : "amber") + "\">" + escapeHtml(statusNote) + "</div>");
             fields.push(field("Voice speaker", select("speech.emotivoice_speaker", buildSimpleOptions(getByPath(emotivoice, "speaker_ids", []), getByPath(state.forms, "speech.emotivoice_speaker", "8051"))), "Choose a local EmotiVoice speaker ID."));
             fields.push(checkbox("speech.emotivoice_conversation_emotion", "Use emotion from this conversation", "AutoYou reads the current user transcript and reply transiently to choose an expressive style."));
-            if (sourceReady && !modelsReady && getByPath(emotivoice, "download_supported", false)) {
+            if (runtimeAvailable && !modelsReady && getByPath(emotivoice, "download_supported", false)) {
                 fields.push("<div class=\"ayu-inline-actions\">" + button("Download EmotiVoice models", "speech-download-emotivoice", "primary", "download") + "</div>");
+                fields.push("<div class=\"ayu-hint\">Model data will be saved under <code>" + escapeHtml(getByPath(emotivoice, "model_dir", "the configured voice-model workspace")) + "</code>.</div>");
                 fields.push("<div class=\"ayu-note ayu-note-amber\">" + escapeHtml(getByPath(emotivoice, "model_license_note", "Review upstream model terms before use.")) + "</div>");
             }
             if (dependencies.length) {
@@ -8783,6 +8784,12 @@
             return;
         }
         if (action === "speech-download-emotivoice") {
+            var emotivoiceStatus = getByPath(state.speechLibrary, "status.emotivoice", {});
+            var emotivoiceModelDir = getByPath(emotivoiceStatus, "model_dir", "the configured voice-model workspace");
+            var emotivoiceConsent = "Download the EmotiVoice checkpoints and pronunciation data to " + emotivoiceModelDir + "?\n\nThe checkpoints are not bundled with AutoYou. Their model cards do not clearly state redistribution terms; review those terms before continuing. This download is administrator-initiated.";
+            if (!window.confirm(emotivoiceConsent)) {
+                return;
+            }
             await postJson("/api/speech-models/download", { model: "emotivoice" });
             await refreshSpeechDownloads(true);
             setNotice("success", "EmotiVoice model download started. It may take several minutes.");

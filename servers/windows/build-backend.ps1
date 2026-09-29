@@ -1749,6 +1749,9 @@ if ($DesktopV2) {
 } else {
     $runtimeModuleBuildArguments += "--include-sibling-agents"
 }
+if ($requirementsIncludesVoice) {
+    $runtimeModuleBuildArguments += "--include-emotivoice"
+}
 if ($NuitkaDiagnostics) {
     foreach ($argument in @("--show-progress", "--verbose")) {
         $runtimeModuleBuildArguments += @("--nuitka-arg=$argument")
@@ -1768,6 +1771,21 @@ $requiredRuntimeModulePatterns = @(
 )
 if ($DesktopV2) {
     $requiredRuntimeModulePatterns += (Join-Path $runtimeModulesRoot "v2\\runtime\\worker*.pyd")
+}
+if ($requirementsIncludesVoice) {
+    $requiredRuntimeModulePatterns += @(
+        (Join-Path $runtimeModulesRoot "vendor\\emotivoice\\models\\prompt_tts_modified\\jets*.pyd"),
+        (Join-Path $runtimeModulesRoot "vendor\\emotivoice\\config\\joint\\config*.pyd")
+    )
+    foreach ($relativeAsset in @(
+        "vendor\\emotivoice\\config\\joint\\config.yaml",
+        "vendor\\emotivoice\\data\\youdao\\text\\tokenlist",
+        "vendor\\emotivoice\\data\\youdao\\text\\speaker2",
+        "vendor\\emotivoice\\lexicon\\librispeech-lexicon.txt",
+        "vendor\\emotivoice\\LICENSE"
+    )) {
+        $requiredRuntimeModulePatterns += Join-Path $runtimeModulesRoot $relativeAsset
+    }
 }
 foreach ($pattern in $requiredRuntimeModulePatterns) {
     if (-not (Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1)) {

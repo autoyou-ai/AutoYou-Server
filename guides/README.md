@@ -9,6 +9,7 @@ They were refreshed against the current bootstrap scripts, packaging scripts, pa
 | Guide | Best for |
 | --- | --- |
 | [installation-steps.md](installation-steps.md) | Installing and running the full AutoYou server from source |
+| [installation-steps.md](installation-steps.md#8-optional-integrations) | Enabling local EmotiVoice speech and downloading its models |
 | [user-journey.md](user-journey.md) | Understanding the end-to-end user flow from setup to daily use |
 
 ## Interactive deployment guides
