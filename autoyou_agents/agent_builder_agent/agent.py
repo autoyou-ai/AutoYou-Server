@@ -42,6 +42,11 @@ from autoyou_agents.shared_tools.coding_handoff import (
     CODING_HANDOFF_STATE_KEY,
     build_coding_handoff_payload,
 )
+from autoyou_agents.shared_tools.builder_suite import (
+    DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+    builder_suite_status,
+    install_builder_suite_agents,
+)
 from autoyou_agents.shared_tools.website_handoff import (
     WEBSITE_HANDOFF_STATE_KEY,
     build_website_handoff_payload,
@@ -358,7 +363,49 @@ def restart_ai_agent_server() -> Dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 5: get_scaffold_status ─────────────────────────────────────────────
+# ─── Tool 5: get_builder_workflow_status ─────────────────────────────────────
+
+def get_builder_workflow_status() -> Dict[str, Any]:
+    """Return install and model status for the agent-builder workflow suite."""
+    try:
+        status = builder_suite_status(agents_root=_EMBEDDED_AGENTS_ROOT)
+        return {
+            "status": "success",
+            "recommended_ollama_model": DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+            **status,
+        }
+    except Exception as exc:
+        logger.exception("get_builder_workflow_status failed")
+        return {"status": "error", "message": str(exc)}
+
+
+# ─── Tool 6: install_builder_workflow_agents ─────────────────────────────────
+
+def install_builder_workflow_agents(restart_ai: bool = False) -> Dict[str, Any]:
+    """Install the builder, coding, and website agents as one workflow suite.
+
+    Args:
+        restart_ai: When true, call the Admin API to reload the running agent graph
+            after installation succeeds.
+
+    Returns:
+        dict with installed/already_installed/failed agents and optional reload result.
+    """
+    try:
+        result = install_builder_suite_agents(
+            agents_root=_EMBEDDED_AGENTS_ROOT,
+            source="agent_builder_suite",
+        )
+        result["recommended_ollama_model"] = DEFAULT_BUILDER_SUITE_OLLAMA_MODEL
+        if restart_ai and result.get("status") in {"success", "partial"} and not result.get("failed"):
+            result["reload"] = restart_ai_agent_server()
+        return result
+    except Exception as exc:
+        logger.exception("install_builder_workflow_agents failed")
+        return {"status": "error", "message": str(exc)}
+
+
+# ─── Tool 7: get_scaffold_status ─────────────────────────────────────────────
 
 def get_scaffold_status(agent_name: str) -> Dict[str, Any]:
     """Check whether a scaffolded agent directory exists and is importable.
@@ -412,7 +459,7 @@ def get_scaffold_status(agent_name: str) -> Dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 6: set_agent_web_port ──────────────────────────────────────────────
+# ─── Tool 8: set_agent_web_port ──────────────────────────────────────────────
 
 def set_agent_web_port(agent_name: str, port: int) -> Dict[str, Any]:
     """Register a dynamic HTTP port-forward for an agent's web server.
@@ -434,7 +481,7 @@ def set_agent_web_port(agent_name: str, port: int) -> Dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 7: prepare_website_handoff ─────────────────────────────────────────
+# ─── Tool 9: prepare_website_handoff ─────────────────────────────────────────
 
 def prepare_website_handoff(
     agent_name: str,
@@ -476,7 +523,7 @@ def prepare_website_handoff(
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 8: handoff_to_website_agent ───────────────────────────────────────
+# ─── Tool 10: handoff_to_website_agent ──────────────────────────────────────
 
 def handoff_to_website_agent(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Transfer control to autoyou_website_agent after a handoff has been prepared."""
@@ -503,7 +550,7 @@ def handoff_to_website_agent(tool_context: Optional[ToolContext] = None) -> Dict
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 9: prepare_coding_handoff ──────────────────────────────────────────
+# ─── Tool 11: prepare_coding_handoff ─────────────────────────────────────────
 
 def prepare_coding_handoff(
     agent_name: str,
@@ -548,7 +595,7 @@ def prepare_coding_handoff(
         return {"status": "error", "message": str(exc)}
 
 
-# ─── Tool 10: handoff_to_coding_agent ────────────────────────────────────────
+# ─── Tool 12: handoff_to_coding_agent ────────────────────────────────────────
 
 def handoff_to_coding_agent(tool_context: Optional[ToolContext] = None) -> Dict[str, Any]:
     """Transfer control to coding_agent after a handoff brief has been prepared."""
@@ -591,6 +638,8 @@ def create_agent_builder_agent(model_config):
         scaffold_agent,
         patch_root_agent,
         restart_ai_agent_server,
+        get_builder_workflow_status,
+        install_builder_workflow_agents,
         get_scaffold_status,
         set_agent_web_port,
         prepare_website_handoff,

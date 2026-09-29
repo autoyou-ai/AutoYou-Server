@@ -36,7 +36,7 @@ _RUNTIME_MODULES = (
     "pypinyin_dict", "cn2an", "numba", "soundfile", "nltk",
     "scipy",
 )
-_DOWNLOAD_MODULES = ("modelscope", "huggingface_hub", "tqdm")
+_DOWNLOAD_MODULES = ("modelscope", "huggingface_hub", "nltk", "tqdm")
 _EMOTION_WORDS = {
     "angry": ("angry", "anger", "furious", "mad", "annoyed", "frustrated", "生气", "愤怒", "烦死", "讨厌"),
     "sad": ("sad", "sorry", "grief", "lonely", "unhappy", "悲伤", "难过", "伤心", "遗憾", "抱歉"),

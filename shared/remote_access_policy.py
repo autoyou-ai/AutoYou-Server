@@ -59,6 +59,16 @@ _READ_METHODS = {"GET", "HEAD", "OPTIONS", "QUERY"}
 _EDITOR_METHODS = _READ_METHODS | {"POST", "PUT", "PATCH"}
 _DELETE_CLASS_GET_PATHS = {"/api/feed/clear", "/api/feed/refresh"}
 _DELETE_CLASS_PATH_SUFFIXES = ("/delete",)
+_SERVER_CLOUD_ADMIN_ACTIONS = frozenset({
+    ("GET", "/api/cloud/link-start"),
+    ("GET", "/api/cloud/callback"),
+    ("POST", "/api/cloud/push-client"),
+    ("POST", "/api/cloud/notify-client"),
+    ("POST", "/api/cloud/unregister"),
+    ("POST", "/api/cloud/activate"),
+    ("POST", "/api/cloud/reregister"),
+    ("POST", "/api/cloud/guest-access"),
+})
 
 
 def normalize_remote_access_role(value: Any, default: str = REMOTE_ACCESS_VIEWER) -> str:
@@ -94,6 +104,12 @@ def effective_remote_access_method(method: Any, path: Any = "") -> str:
     return normalized_method
 
 
+def server_cloud_action_requires_admin(method: Any, path: Any = "") -> bool:
+    normalized_path = ("/" + str(path or "").split("?", 1)[0].lstrip("/")).rstrip("/") or "/"
+    effective_method = effective_remote_access_method(method, normalized_path)
+    return (effective_method, normalized_path) in _SERVER_CLOUD_ADMIN_ACTIONS
+
+
 def remote_http_request_allowed(
     role: Any,
     method: Any,
@@ -104,6 +120,8 @@ def remote_http_request_allowed(
     normalized_role = normalize_remote_access_role(role)
     if normalized_role == REMOTE_ACCESS_ADMIN:
         return True
+    if server_cloud_action_requires_admin(method, path):
+        return False
     if websocket:
         return False
     effective_method = effective_remote_access_method(method, path)
@@ -114,6 +132,8 @@ def remote_http_request_allowed(
 
 def remote_access_denial_message(role: Any, method: Any, path: Any = "", *, websocket: bool = False) -> str:
     normalized_role = normalize_remote_access_role(role)
+    if server_cloud_action_requires_admin(method, path):
+        return f"Remote access is set to {normalized_role}; changing this server's Cloud Pair requires admin access."
     if websocket:
         return f"Remote access is set to {normalized_role}; live app connections require admin access."
     effective_method = effective_remote_access_method(method, path)

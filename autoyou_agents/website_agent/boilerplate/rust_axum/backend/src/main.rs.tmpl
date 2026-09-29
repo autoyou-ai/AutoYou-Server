@@ -1,0 +1,56 @@
+use axum::{response::Json, routing::get, Router};
+use serde_json::json;
+use std::{env, net::SocketAddr, path::PathBuf};
+use tower_http::services::{ServeDir, ServeFile};
+
+const DEFAULT_PORT: u16 = {{local_port}};
+
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "agent_name": "{{agent_name}}",
+        "proxy_path": "{{proxy_path}}",
+        "backend_stack": "{{backend_stack}}",
+        "frontend_stack": "{{frontend_stack}}"
+    }))
+}
+
+async fn status() -> Json<serde_json::Value> {
+    Json(json!({
+        "agent_name": "{{agent_name}}",
+        "ui_purpose": "{{ui_purpose}}",
+        "backend_stack": "{{backend_stack}}",
+        "backend_stack_label": "{{backend_stack_label}}",
+        "frontend_stack": "{{frontend_stack}}",
+        "frontend_stack_label": "{{frontend_stack_label}}",
+        "recommended_local_port": DEFAULT_PORT,
+        "proxy_path": "{{proxy_path}}",
+        "runtime_note": "{{runtime_note}}",
+        "backend_security_note": "{{backend_security_note}}"
+    }))
+}
+
+fn port_from_args() -> u16 {
+    let args: Vec<String> = env::args().collect();
+    args.windows(2)
+        .find(|pair| pair[0] == "--port")
+        .and_then(|pair| pair[1].parse::<u16>().ok())
+        .or_else(|| env::var("PORT").ok().and_then(|value| value.parse::<u16>().ok()))
+        .unwrap_or(DEFAULT_PORT)
+}
+
+#[tokio::main]
+async fn main() {
+    let port = port_from_args();
+    let static_root = PathBuf::from("..").join("{{frontend_root_relative}}");
+    let index = static_root.join("index.html");
+    let app = Router::new()
+        .route("/health", get(health))
+        .route("/api/status", get(status))
+        .fallback_service(ServeDir::new(static_root).not_found_service(ServeFile::new(index)));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    println!("{{app_title}} listening on http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("bind listener");
+    axum::serve(listener, app).await.expect("serve website");
+}

@@ -489,6 +489,9 @@ def register_routes(
             security_mode = None
             if include_security:
                 security_mode = str((recipe.get("security_patch") or {}).get("mode") or "").strip().lower() or None
+            remote_error = server._remote_browser_config_change_error(request, config_payload)
+            if remote_error:
+                return remote_error
             bootstrap = await server._apply_admin_ui_config_update(config_payload, security_mode=security_mode)
             refreshed_recipe = server.compile_setup_recipe(
                 answers,
@@ -1051,7 +1054,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": "Profile image file is required."})
 
         try:
-            image_payload = await uploaded.read(server._ADMIN_PROFILE_IMAGE_MAX_BYTES + 1)
+            image_payload = await uploaded.read(20 * 1024 * 1024)
             server._save_admin_profile_image(image_payload)
             if server.WEBRTC is not None:
                 await server.WEBRTC.broadcast_server_profile()

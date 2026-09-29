@@ -956,6 +956,55 @@ def register_routes(
             "payload": result,
         }
 
+    @admin_app.post("/api/agents/install-builder-suite")
+    async def admin_install_builder_suite(request: Request):
+        """Install the conservative Agent Builder workflow suite in one call."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        payload = payload if isinstance(payload, dict) else {}
+
+        install_result = server.install_builder_suite_agents(
+            agents_root=server._AUTOYOU_AGENTS_ROOT,
+            source="admin_builder_suite",
+        )
+        await server.sync_managed_frontend_backends()
+        result = server._build_agent_builder_listing_payload()
+        server._sync_frontend_registry_from_builder_payload(result)
+
+        reload_result = None
+        if bool(payload.get("restart_ai", False)) and not install_result.get("failed"):
+            reload_result = await admin_restart_ai_agent(request)
+            if isinstance(reload_result, JSONResponse):
+                try:
+                    import json as _json
+
+                    reload_result = _json.loads(reload_result.body.decode("utf-8"))
+                except Exception:
+                    reload_result = {"success": False, "error": "AI reload failed."}
+
+        failed = install_result.get("failed") or []
+        status_code = 409 if failed else 200
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "success": not bool(failed),
+                "suite": "agent_builder",
+                "agent_names": list(server.BUILDER_SUITE_AGENT_NAMES),
+                "installed": install_result.get("installed", []),
+                "already_installed": install_result.get("already_installed", []),
+                "failed": failed,
+                "requires_restart": bool(install_result.get("requires_restart")),
+                "recommended_ollama_model": server.DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+                "reload": reload_result,
+                "payload": result,
+            },
+        )
+
     @admin_app.post("/api/agents/uninstall")
     async def admin_uninstall_agent(request: Request):
         """Mark an agent uninstalled without removing its source files."""
@@ -1218,6 +1267,9 @@ def register_routes(
         frontend_stack = server.normalize_frontend_stack(
             (payload or {}).get("frontend_stack") or server.DEFAULT_FRONTEND_STACK
         )
+        backend_stack = server.normalize_backend_stack(
+            (payload or {}).get("backend_stack") or server.DEFAULT_BACKEND_STACK
+        )
         try:
             result = server.scaffold_frontend_draft(
                 agent_name,
@@ -1225,6 +1277,7 @@ def register_routes(
                 app_title=app_title,
                 local_port=local_port,
                 frontend_stack=frontend_stack,
+                backend_stack=backend_stack,
                 agents_root=server._workspace_agents_root(),
             )
             return server._build_agent_workbench_success_response(
@@ -1258,6 +1311,7 @@ def register_routes(
                 recommended_port=payload.get("recommended_port"),
                 requires_proxy_registration=bool(payload.get("requires_proxy_registration", True)),
                 frontend_stack=payload.get("frontend_stack"),
+                backend_stack=payload.get("backend_stack"),
                 agents_root=server._workspace_agents_root(),
             )
             return server._build_agent_workbench_success_response(
@@ -1767,6 +1821,7 @@ def register_routes(
         "admin_discard_agent_draft": admin_discard_agent_draft,
         "admin_publish_agent_draft": admin_publish_agent_draft,
         "admin_install_agent": admin_install_agent,
+        "admin_install_builder_suite": admin_install_builder_suite,
         "admin_uninstall_agent": admin_uninstall_agent,
         "admin_builder_register_agent_port": admin_builder_register_agent_port,
         "admin_workbench_get_detail": admin_workbench_get_detail,

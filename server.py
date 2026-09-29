@@ -1284,6 +1284,12 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     runtime_install_block_reason,
     set_agent_installed,
 )
+from autoyou_agents.shared_tools.builder_suite import (
+    DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+    BUILDER_SUITE_AGENT_NAMES,
+    builder_suite_status,
+    install_builder_suite_agents,
+)
 from autoyou_agents.shared_tools.agent_directory import (
     load_agent_prompt_description,
     package_agent_name,
@@ -1311,7 +1317,10 @@ from autoyou_agents.shared_tools.agent_workbench import (
     scaffold_frontend_draft,
 )
 from autoyou_agents.shared_tools.website_scaffold import (
+    DEFAULT_BACKEND_STACK,
     DEFAULT_FRONTEND_STACK,
+    backend_stack_choices_payload,
+    normalize_backend_stack,
     frontend_stack_choices_payload,
     normalize_frontend_stack,
 )
@@ -1478,6 +1487,7 @@ from shared.remote_access_policy import (
     normalize_remote_access_role,
     remote_access_denial_message,
     remote_http_request_allowed,
+    server_cloud_action_requires_admin,
 )
 from shared.remote_desktop_keyboard import (
     execute_remote_desktop_keyboard,
@@ -2041,10 +2051,43 @@ def _detect_admin_profile_image_type(payload: bytes) -> tuple[str, str]:
         return ".webp", "image/webp"
     raise ValueError("Profile image must be a PNG, JPEG, or WebP file.")
 
+def _compress_profile_image_payload(payload: bytes, max_bytes: int = _ADMIN_PROFILE_IMAGE_MAX_BYTES) -> bytes:
+    if not payload or len(payload) <= max_bytes:
+        return payload
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(payload)) as img:
+            width, height = img.size
+            if width != height:
+                min_dim = min(width, height)
+                left = (width - min_dim) // 2
+                top = (height - min_dim) // 2
+                img = img.crop((left, top, left + min_dim, top + min_dim))
+            if img.width > 256 or img.height > 256:
+                img = img.resize((256, 256), Image.Resampling.LANCZOS)
+            for fmt, q in [("WEBP", 82), ("WEBP", 70), ("JPEG", 75), ("JPEG", 60)]:
+                buf = io.BytesIO()
+                if fmt == "JPEG" and img.mode in ("RGBA", "LA", "P"):
+                    rgb_img = Image.new("RGB", img.size, (16, 25, 43))
+                    rgb_img.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+                    rgb_img.save(buf, format=fmt, quality=q, optimize=True)
+                else:
+                    img.save(buf, format=fmt, quality=q, optimize=True)
+                compressed = buf.getvalue()
+                if len(compressed) <= max_bytes:
+                    return compressed
+    except Exception:
+        pass
+    return payload
+
+
 def _save_admin_profile_image(payload: bytes) -> Path:
     image_bytes = bytes(payload or b"")
     if not image_bytes:
         raise ValueError("Profile image file is empty.")
+    if len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
+        image_bytes = _compress_profile_image_payload(image_bytes, _ADMIN_PROFILE_IMAGE_MAX_BYTES)
     if len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
         raise ValueError("Profile image is too large. Keep the optimized avatar under 64 KB.")
 
@@ -8026,6 +8069,10 @@ REMOTE_BROWSER_CREDENTIAL_DENIAL = (
     "computer, or in an HTTPS admin session opened directly on it - not from a "
     "connected device's browser."
 )
+REMOTE_BROWSER_CLOUD_CONFIG_DENIAL = (
+    "Server Cloud Pair settings must be changed through the authenticated Cloud controls, "
+    "not by editing server configuration from a connected device."
+)
 
 
 def _request_via_remote_browser_proxy(request: Request) -> bool:
@@ -8055,6 +8102,8 @@ def _remote_browser_credential_denied() -> JSONResponse:
 def _remote_browser_config_change_error(request: Request, payload: Any) -> Optional[JSONResponse]:
     if not isinstance(payload, dict) or not _request_via_remote_browser_proxy(request):
         return None
+    if "cloud" in payload:
+        return JSONResponse(status_code=403, content={"success": False, "error": REMOTE_BROWSER_CLOUD_CONFIG_DENIAL})
     for section, keys in _REMOTE_BROWSER_PROTECTED_CONFIG.items():
         value = payload.get(section)
         if value is None:
@@ -8066,12 +8115,23 @@ def _remote_browser_config_change_error(request: Request, payload: Any) -> Optio
 
 @admin_app.middleware("http")
 async def _admin_remote_browser_credential_guard(request: Request, call_next):
-    if request.method.upper() in _CSRF_PROTECTED_METHODS and _request_via_remote_browser_proxy(request):
+    if _request_via_remote_browser_proxy(request):
         raw_path = (request.url.path or "").rstrip("/") or "/"
-        if raw_path in _REMOTE_BROWSER_CREDENTIAL_PATHS or any(
-            pattern.match(raw_path) for pattern in _REMOTE_BROWSER_CREDENTIAL_PATH_PATTERNS
-        ):
-            return _remote_browser_credential_denied()
+        if server_cloud_action_requires_admin(request.method, raw_path):
+            role = normalize_remote_access_role(request.headers.get("X-AutoYou-Remote-Access-Role"))
+            if not remote_http_request_allowed(role, request.method, raw_path):
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "success": False,
+                        "error": remote_access_denial_message(role, request.method, raw_path),
+                    },
+                )
+        if request.method.upper() in _CSRF_PROTECTED_METHODS:
+            if raw_path in _REMOTE_BROWSER_CREDENTIAL_PATHS or any(
+                pattern.match(raw_path) for pattern in _REMOTE_BROWSER_CREDENTIAL_PATH_PATTERNS
+            ):
+                return _remote_browser_credential_denied()
     return await call_next(request)
 
 
@@ -10713,6 +10773,22 @@ def _build_agent_builder_listing_payload() -> Dict[str, Any]:
     if context.get("status") != "success":
         return context
 
+    try:
+        suite_payload = builder_suite_status(
+            agents_root=_AUTOYOU_AGENTS_ROOT,
+            selected_model=_configured_ollama_model_for_behavior(),
+        )
+    except Exception as exc:
+        LOGGER.warning("Failed to build agent-builder suite status: %s", exc)
+        suite_payload = {
+            "suite": "agent_builder",
+            "agent_names": list(BUILDER_SUITE_AGENT_NAMES),
+            "installed": False,
+            "recommended_ollama_model": DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+            "selected_ollama_model": _configured_ollama_model_for_behavior(),
+            "agents": [],
+        }
+
     agent_details = {
         agent_name: _build_agent_summary_detail(agent_name, context)
         for agent_name in context["all_agents"]
@@ -10804,6 +10880,7 @@ def _build_agent_builder_listing_payload() -> Dict[str, Any]:
             "coding_agent": {"installed": context["coding_installed"]},
             "website_agent": {"installed": context["website_agent_installed"]},
         },
+        "builder_suite": suite_payload,
         "agent_overview": overview_entries,
         "agent_details": agent_details,
     }
@@ -12356,6 +12433,7 @@ async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
                 agents_payload,
                 api_route_count=_admin_setup_api_route_count(),
             ),
+            "agent_website_backend_stacks": backend_stack_choices_payload(),
             "agent_website_stacks": frontend_stack_choices_payload(),
         },
     }

@@ -106,17 +106,19 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
 
             manifest_text = (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8")
             self.assertIn('"frontend_stack": "fastapi_static"', manifest_text)
+            self.assertIn('"backend_stack": "python_fastapi"', manifest_text)
 
             html_text = (agent_dir / "website" / "frontend" / "index.html").read_text(encoding="utf-8")
             self.assertIn('<base href="./">', html_text)
 
-            js_text = (agent_dir / "website" / "frontend" / "app.js").read_text(encoding="utf-8")
+            js_text = (agent_dir / "website" / "frontend" / "assets" / "app.js").read_text(encoding="utf-8")
             self.assertIn("./api/status", js_text)
 
             readme_text = (agent_dir / "website" / "README.md").read_text(encoding="utf-8")
             self.assertIn("/agent/demo_agent/", readme_text)
             self.assertIn("8091", readme_text)
-            self.assertIn("Simple website starter", readme_text)
+            self.assertIn("HTML + JavaScript", readme_text)
+            self.assertIn("Python + FastAPI", readme_text)
 
             discovered = discover_frontend_manifests(
                 agents_root=Path(tmp_dir),
@@ -161,19 +163,99 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "success")
             self.assertEqual(result["frontend_stack"], "react_typescript")
+            self.assertEqual(result["backend_stack"], "python_fastapi")
             self.assertTrue((agent_dir / "website" / "frontend" / "package.json").exists())
             self.assertTrue((agent_dir / "website" / "frontend" / "src" / "App.tsx").exists())
             self.assertTrue((agent_dir / "website" / "frontend" / "dist" / "index.html").exists())
             backend_text = (agent_dir / "website" / "backend" / "app.py").read_text(encoding="utf-8")
             self.assertIn("create_agent_website_app", backend_text)
-            self.assertIn('index_path=DIST_DIR / "index.html"', backend_text)
+            self.assertIn('index_path=FRONTEND_DIR / "index.html"', backend_text)
+            self.assertIn('FRONTEND_DIR = APP_ROOT / "frontend/dist"', backend_text)
             self.assertIn(
                 '"frontend_stack": "react_typescript"',
                 (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
             )
             self.assertIn(
+                '"backend_stack": "python_fastapi"',
+                (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
                 '"build": "tsc --noEmit && vite build"',
                 (agent_dir / "website" / "frontend" / "package.json").read_text(encoding="utf-8"),
+            )
+
+    def test_scaffold_website_split_creates_go_backend_and_angular_frontend(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._force_source_runtime_for_test()
+            original_root = website_agent._AGENTS_ROOT
+            website_agent._AGENTS_ROOT = Path(tmp_dir)
+            self.addCleanup(setattr, website_agent, "_AGENTS_ROOT", original_root)
+            original_registry_path = os.environ.get("AUTOYOU_FRONTEND_REGISTRY_PATH")
+            registry_path = str(Path(tmp_dir) / "agent_frontends_registry.json")
+            os.environ["AUTOYOU_FRONTEND_REGISTRY_PATH"] = registry_path
+            if original_registry_path is None:
+                self.addCleanup(os.environ.pop, "AUTOYOU_FRONTEND_REGISTRY_PATH", None)
+            else:
+                self.addCleanup(os.environ.__setitem__, "AUTOYOU_FRONTEND_REGISTRY_PATH", original_registry_path)
+
+            agent_dir = Path(tmp_dir) / "demo_agent"
+            agent_dir.mkdir(parents=True)
+            (agent_dir / "agent.py").write_text("# test scaffold marker\n", encoding="utf-8")
+
+            result = website_agent.scaffold_website_split(
+                agent_name="demo",
+                ui_purpose="Show an Angular app backed by Go.",
+                local_port=8096,
+                app_title="Demo Angular UI",
+                frontend_stack="angular",
+                backend_stack="go",
+            )
+
+            self.assertEqual(result["status"], "success")
+            self.assertEqual(result["frontend_stack"], "angular_typescript")
+            self.assertEqual(result["backend_stack"], "go_http")
+            self.assertTrue((agent_dir / "website" / "backend" / "go.mod").exists())
+            self.assertTrue((agent_dir / "website" / "backend" / "main.go").exists())
+            self.assertTrue((agent_dir / "website" / "frontend" / "angular.json").exists())
+            self.assertTrue((agent_dir / "website" / "frontend" / "dist" / "browser" / "index.html").exists())
+            manifest_text = (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8")
+            self.assertIn('"frontend_stack": "angular_typescript"', manifest_text)
+            self.assertIn('"backend_stack": "go_http"', manifest_text)
+
+    def test_scaffold_website_split_creates_rust_backend(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._force_source_runtime_for_test()
+            original_root = website_agent._AGENTS_ROOT
+            website_agent._AGENTS_ROOT = Path(tmp_dir)
+            self.addCleanup(setattr, website_agent, "_AGENTS_ROOT", original_root)
+            original_registry_path = os.environ.get("AUTOYOU_FRONTEND_REGISTRY_PATH")
+            registry_path = str(Path(tmp_dir) / "agent_frontends_registry.json")
+            os.environ["AUTOYOU_FRONTEND_REGISTRY_PATH"] = registry_path
+            if original_registry_path is None:
+                self.addCleanup(os.environ.pop, "AUTOYOU_FRONTEND_REGISTRY_PATH", None)
+            else:
+                self.addCleanup(os.environ.__setitem__, "AUTOYOU_FRONTEND_REGISTRY_PATH", original_registry_path)
+
+            agent_dir = Path(tmp_dir) / "demo_agent"
+            agent_dir.mkdir(parents=True)
+            (agent_dir / "agent.py").write_text("# test scaffold marker\n", encoding="utf-8")
+
+            result = website_agent.scaffold_website_split(
+                agent_name="demo",
+                ui_purpose="Show an HTML app backed by Rust.",
+                local_port=8097,
+                app_title="Demo Rust UI",
+                backend_stack="rust",
+            )
+
+            self.assertEqual(result["status"], "success")
+            self.assertEqual(result["frontend_stack"], "fastapi_static")
+            self.assertEqual(result["backend_stack"], "rust_axum")
+            self.assertTrue((agent_dir / "website" / "backend" / "Cargo.toml").exists())
+            self.assertTrue((agent_dir / "website" / "backend" / "src" / "main.rs").exists())
+            self.assertIn(
+                '"backend_stack": "rust_axum"',
+                (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
             )
 
     def test_agent_studio_draft_scaffold_preserves_frontend_stack(self):
@@ -193,12 +275,15 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
                 local_port=8093,
                 app_title="Demo React",
                 frontend_stack="react",
+                backend_stack="node",
                 agents_root=agents_root,
             )
 
             draft_dir = agents_root / ".drafts" / "demo_agent"
             self.assertEqual(scaffold_result["frontend_stack"], "react_typescript")
+            self.assertEqual(scaffold_result["backend_stack"], "node_typescript")
             self.assertTrue((draft_dir / "website" / "frontend" / "package.json").exists())
+            self.assertTrue((draft_dir / "website" / "backend" / "package.json").exists())
 
             saved = save_draft_frontend_manifest(
                 "demo",
@@ -206,12 +291,18 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
                 description="Updated manifest description.",
                 recommended_port=8093,
                 frontend_stack="react_typescript",
+                backend_stack="node_typescript",
                 agents_root=agents_root,
             )
 
             self.assertEqual(saved["manifest"]["frontend_stack"], "react_typescript")
+            self.assertEqual(saved["manifest"]["backend_stack"], "node_typescript")
             self.assertIn(
                 '"frontend_stack": "react_typescript"',
+                (draft_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                '"backend_stack": "node_typescript"',
                 (draft_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
             )
 

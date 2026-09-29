@@ -31,6 +31,11 @@ from autoyou_agents.shared_tools.coding_handoff import (
     CODING_HANDOFF_STATE_KEY,
     build_coding_handoff_payload,
 )
+from autoyou_agents.shared_tools.builder_suite import (
+    DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+    builder_suite_status,
+    install_builder_suite_agents,
+)
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from autoyou_agents.shared_tools.frontend_manifest import (
     build_frontend_manifest,
@@ -46,10 +51,13 @@ from autoyou_agents.shared_tools.website_handoff import (
     WEBSITE_HANDOFF_STATE_KEY,
 )
 from autoyou_agents.shared_tools.website_scaffold import (
+    DEFAULT_BACKEND_STACK,
     DEFAULT_FRONTEND_STACK,
+    backend_stack_label,
     build_website_template_context,
     frontend_stack_label,
     iter_template_outputs,
+    normalize_backend_stack,
     normalize_frontend_stack,
 )
 
@@ -124,9 +132,12 @@ def _select_escaper(template_name: str) -> Callable[[str], str]:
         return _escape_for_markdown
     if (
         lower.endswith(".json")
+        or lower.endswith(".go")
         or lower.endswith(".js")
         or lower.endswith(".jsx")
         or lower.endswith(".mjs")
+        or lower.endswith(".rs")
+        or lower.endswith(".toml")
         or lower.endswith(".ts")
         or lower.endswith(".tsx")
     ):
@@ -183,21 +194,53 @@ def get_pending_website_handoff(tool_context: ToolContext) -> Dict[str, Any]:
         "handoff": payload,
     }
 
+def get_builder_workflow_status() -> Dict[str, Any]:
+    """Return install and model status for the agent-builder workflow suite."""
+    try:
+        status = builder_suite_status(agents_root=_AGENTS_ROOT)
+        return {
+            "status": "success",
+            "recommended_ollama_model": DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
+            **status,
+        }
+    except Exception as exc:
+        logger.exception("get_builder_workflow_status failed")
+        return {"status": "error", "message": str(exc)}
+
+def install_builder_workflow_agents(restart_ai: bool = False) -> Dict[str, Any]:
+    """Install the builder/coding/website workflow suite from the website agent."""
+    try:
+        result = install_builder_suite_agents(
+            agents_root=_AGENTS_ROOT,
+            source="website_agent_suite",
+        )
+        result["recommended_ollama_model"] = DEFAULT_BUILDER_SUITE_OLLAMA_MODEL
+        if restart_ai and result.get("status") in {"success", "partial"} and not result.get("failed"):
+            from autoyou_agents.agent_builder_agent.agent import restart_ai_agent_server
+
+            result["reload"] = restart_ai_agent_server()
+        return result
+    except Exception as exc:
+        logger.exception("install_builder_workflow_agents failed")
+        return {"status": "error", "message": str(exc)}
+
 def scaffold_website_split(
     agent_name: str,
     ui_purpose: str,
     local_port: int = DEFAULT_WEBSITE_LOCAL_PORT,
     app_title: Optional[str] = None,
     frontend_stack: str = DEFAULT_FRONTEND_STACK,
+    backend_stack: str = DEFAULT_BACKEND_STACK,
 ) -> Dict[str, Any]:
     """Create a lightweight website split for an agent website.
 
-    The simple starter is the default. React creates a frontend build while
-    preserving the same small local website server.
+    Python/FastAPI plus HTML/JS is the default. Other backend and frontend
+    stacks create local HTTP starters that can be registered through AutoYou.
     """
     try:
         normalized_name = normalize_agent_name(agent_name)
         stack = normalize_frontend_stack(frontend_stack)
+        backend = normalize_backend_stack(backend_stack)
         agent_dir = _resolve_agent_dir(normalized_name)
         if not agent_dir.is_dir():
             return {
@@ -224,11 +267,12 @@ def scaffold_website_split(
             proxy_path=proxy_path,
             package_name=package_name,
             frontend_stack=stack,
+            backend_stack=backend,
         )
 
         created_files: List[str] = []
         skipped_files: List[str] = []
-        for template_name, output_relative_path in iter_template_outputs(stack):
+        for template_name, output_relative_path in iter_template_outputs(stack, backend):
             output_path = website_root / output_relative_path
             if output_path.exists():
                 skipped_files.append(str(output_path))
@@ -252,6 +296,7 @@ def scaffold_website_split(
                 recommended_port=local_port,
                 requires_proxy_registration=True,
                 frontend_stack=stack,
+                backend_stack=backend,
             )
             created_manifest_path = write_frontend_manifest(agent_dir, manifest)
             created_files.append(str(created_manifest_path))
@@ -274,10 +319,13 @@ def scaffold_website_split(
             "proxy_path": proxy_path,
             "frontend_stack": stack,
             "frontend_stack_label": frontend_stack_label(stack),
+            "backend_stack": backend,
+            "backend_stack_label": backend_stack_label(backend),
             "created_files": created_files,
             "skipped_files": skipped_files,
             "message": (
-                f"Scaffolded {frontend_stack_label(stack)} website/backend split for {normalized_name}. "
+                f"Scaffolded {backend_stack_label(backend)} + {frontend_stack_label(stack)} "
+                f"website/backend split for {normalized_name}. "
                 f"Recommended local port: {local_port}."
             ),
         }
@@ -385,6 +433,8 @@ def create_website_agent(model_config):
     """Create the website agent."""
     tools = [
         get_pending_website_handoff,
+        get_builder_workflow_status,
+        install_builder_workflow_agents,
         list_existing_agents,
         get_scaffold_status,
         scaffold_website_split,

@@ -186,12 +186,19 @@ def test_remote_browser_cannot_widen_access_through_config():
         {"ai_agent": {"lan_access_enabled": True}},
         {"tunnelmole": {"enabled": True}},
         {"mcp": {"api_token": "synthetic-token-0123456789"}},
+        {"cloud": {"server_token": "synthetic-cloud-server-token"}},
+        {"cloud": None},
     ):
         response = server._remote_browser_config_change_error(proxied, payload)
         assert response is not None and response.status_code == 403, payload
     # Ordinary settings still save from a connected device.
     assert server._remote_browser_config_change_error(proxied, {"server": {"name": "Synthetic"}}) is None
     assert server._remote_browser_config_change_error(proxied, {"autoyou_page": {"auto_start": True}}) is None
+    cloud_error = server._remote_browser_config_change_error(
+        proxied, {"cloud": {"server_token": "synthetic-cloud-server-token"}}
+    )
+    assert cloud_error is not None
+    assert server.REMOTE_BROWSER_CLOUD_CONFIG_DENIAL in cloud_error.body.decode("utf-8")
     # This computer is never restricted.
     assert server._remote_browser_config_change_error(_request(), {"autoyou_page": {"remote_access_role": "admin"}}) is None
 
@@ -214,6 +221,26 @@ def test_remote_browser_cannot_change_credentials_whatever_its_role(monkeypatch)
         response = client.post(path, headers=headers, json={})
         assert response.status_code == 403, path
         assert response.json()["error"] == server.REMOTE_BROWSER_CREDENTIAL_DENIAL, path
+
+
+def test_remote_editor_cannot_start_or_mutate_server_cloud_pair(monkeypatch):
+    monkeypatch.setattr(server, "_has_loaded_config_session", lambda: True)
+    monkeypatch.setattr(server.STATE, "config", {"server": {"name": "Synthetic"}})
+    client = TestClient(server.admin_app)
+    headers = {
+        REMOTE_BROWSER_HEADER: "webrtc",
+        "X-AutoYou-Remote-Access-Role": "editor",
+        "Origin": "http://testserver",
+    }
+
+    response = client.get("/api/cloud/link-start", headers=headers)
+    assert response.status_code == 403
+    assert "requires admin access" in response.json()["error"]
+
+    for path in ("/api/cloud/unregister", "/api/cloud/guest-access"):
+        response = client.post(path, headers=headers, json={})
+        assert response.status_code == 403, path
+        assert "requires admin access" in response.json()["error"], path
 
 
 def test_credential_boundary_leaves_this_computer_alone():

@@ -10,6 +10,7 @@ __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
 from shared.remote_access_policy import (
     effective_remote_access_method,
     normalize_remote_access_role,
+    remote_access_denial_message,
     remote_http_request_allowed,
 )
 
@@ -35,3 +36,16 @@ def test_remote_access_policy_role_matrix():
     assert remote_http_request_allowed("admin", "DELETE", "/api/feed/1")
     assert remote_http_request_allowed("admin", "GET", "/ws", websocket=True)
     assert effective_remote_access_method("GET", "/api/feed/clear") == "DELETE"
+
+
+def test_server_cloud_pair_changes_require_remote_admin_role():
+    assert remote_http_request_allowed("viewer", "GET", "/api/cloud/status")
+    assert remote_http_request_allowed("editor", "GET", "/api/cloud/guest-access")
+    assert not remote_http_request_allowed("viewer", "GET", "/api/cloud/link-start")
+    assert not remote_http_request_allowed("editor", "GET", "/api/cloud/link-start")
+    assert not remote_http_request_allowed("editor", "GET", "/api/cloud/callback")
+    assert not remote_http_request_allowed("editor", "POST", "/api/cloud/unregister")
+    assert not remote_http_request_allowed("editor", "POST", "/api/cloud/guest-access")
+    assert remote_http_request_allowed("admin", "GET", "/api/cloud/link-start")
+    assert remote_http_request_allowed("admin", "POST", "/api/cloud/unregister")
+    assert "requires admin access" in remote_access_denial_message("editor", "GET", "/api/cloud/link-start")

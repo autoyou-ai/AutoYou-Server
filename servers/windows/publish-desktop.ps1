@@ -274,6 +274,55 @@ function Assert-NativeRemoteDesktopBackendCurrent {
     }
 }
 
+function Assert-EmotiVoiceRuntimePresent {
+    param(
+        [string]$BundleRoot
+    )
+
+    if ($releaseSettings.Requirements -notin @("full", "source-full", "connector-full", "training-full")) {
+        return
+    }
+
+    $vendorRoot = Join-Path $BundleRoot "runtime_modules\vendor\emotivoice"
+    foreach ($module in @(
+        "frontend",
+        "frontend_cn",
+        "frontend_en",
+        "models\prompt_tts_modified\jets",
+        "models\prompt_tts_modified\model_open_source",
+        "models\prompt_tts_modified\simbert",
+        "models\prompt_tts_modified\modules\alignment",
+        "models\prompt_tts_modified\modules\encoder",
+        "models\prompt_tts_modified\modules\initialize",
+        "models\prompt_tts_modified\modules\variance",
+        "models\hifigan\models",
+        "models\hifigan\get_random_segments",
+        "config\joint\config"
+    )) {
+        $modulePattern = Join-Path $vendorRoot ($module + "*.pyd")
+        if (-not (Get-ChildItem -Path $modulePattern -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+            throw "Windows release is missing compiled EmotiVoice module '$modulePattern'."
+        }
+    }
+
+    foreach ($relativeAsset in @(
+        "config\joint\config.yaml",
+        "data\youdao\text\emotion",
+        "data\youdao\text\energy",
+        "data\youdao\text\pitch",
+        "data\youdao\text\speaker2",
+        "data\youdao\text\speed",
+        "data\youdao\text\tokenlist",
+        "lexicon\librispeech-lexicon.txt",
+        "LICENSE"
+    )) {
+        $assetPath = Join-Path $vendorRoot $relativeAsset
+        if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+            throw "Windows release is missing EmotiVoice runtime asset '$assetPath'."
+        }
+    }
+}
+
 function Copy-ReleaseLegalBundle {
     param(
         [string]$ArtifactId,
@@ -404,6 +453,7 @@ if (-not (Test-Path $backendRoot)) {
 
 Assert-NativeRemoteDesktopBackendCurrent -BundleRoot $backendRoot
 Assert-AdkBrowserAssetsPresent -BundleRoot $backendRoot
+Assert-EmotiVoiceRuntimePresent -BundleRoot $backendRoot
 
 Write-Host "Publishing AutoYou tray host..."
 Remove-Item -LiteralPath $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -527,6 +577,7 @@ if (-not $hostPublishSucceeded) {
 }
 Assert-NativeRemoteDesktopBackendCurrent -BundleRoot $publishedBackendRoot
 Assert-AdkBrowserAssetsPresent -BundleRoot $publishedBackendRoot
+Assert-EmotiVoiceRuntimePresent -BundleRoot $publishedBackendRoot
 
 $backendExe = Resolve-BackendExecutablePath -BackendRoot $publishedBackendRoot
 if (-not $backendExe) {
