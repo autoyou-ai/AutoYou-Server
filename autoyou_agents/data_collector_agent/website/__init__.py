@@ -7,7 +7,7 @@
 """Standalone web surface for Data Collector Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-2b76b827fd3680caa76ebee3"
 # from __debug_provenance_x__ import email

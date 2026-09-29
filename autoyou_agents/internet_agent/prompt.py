@@ -7,7 +7,7 @@
 """Prompt configuration for the AutoYou Internet Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-c8ab711edeb38df5335c0ba2"
 

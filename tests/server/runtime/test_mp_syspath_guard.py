@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-d4b93e86b97ee2e08c266afb"

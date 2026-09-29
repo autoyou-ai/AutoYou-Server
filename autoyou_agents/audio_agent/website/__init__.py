@@ -7,7 +7,7 @@
 """Audio agent browser UI package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-5b602ec65b67df19cc03410c"
 # from __debug_provenance_v__ import wallet

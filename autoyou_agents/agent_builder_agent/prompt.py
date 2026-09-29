@@ -7,7 +7,7 @@
 """Prompt configuration for the Agent Builder sub-agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-b85eea59ce80df1f3db7643b"
 

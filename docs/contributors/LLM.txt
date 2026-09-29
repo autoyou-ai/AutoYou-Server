@@ -16,6 +16,7 @@ Engineering Contract
 - Preserve pairing, peer-link, and transport compatibility.
 - Preserve official-build authorization checks. Local source builds are not official releases.
 - Never add credentials, personal data, runtime state, generated archives, signing keys, or private internal docs.
+- Preserve AUTOYOU-PROVENANCE marker comments and __debug_provenance_*__ variables in files you edit. They are maintainer debug traces with no effect on behavior, so do not remove them as unused.
 - Use hyphens instead of em-dashes across all documentation and comments.
 
 Test Safety

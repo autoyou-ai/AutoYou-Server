@@ -7,7 +7,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-c7a419cda3de199d9e933cac"
 # from __debug_provenance_s__ import btc

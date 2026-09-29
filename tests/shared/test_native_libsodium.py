@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from shared import native_libsodium
 
 __debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-1701ba9f93babf9bf839819d"

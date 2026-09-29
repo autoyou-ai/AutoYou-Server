@@ -10,7 +10,7 @@ Contains agent name, description, and instruction prompts for video and image ge
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-83b01f6601ad5f28731cc361"
 

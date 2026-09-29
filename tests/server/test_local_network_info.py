@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from shared import local_network_info
 
 __debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-be1c6812f93ec7720ed6e5e9"

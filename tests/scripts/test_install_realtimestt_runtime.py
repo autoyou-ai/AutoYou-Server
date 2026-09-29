@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from scripts import install_realtimestt_runtime as installer
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-bd98b7cc846682e657682bc7"

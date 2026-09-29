@@ -7,7 +7,7 @@
 """Prompt metadata for the private macOS Security Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-80ff1e62bde4820d1ba85688"
 
