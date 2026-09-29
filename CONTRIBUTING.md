@@ -1,17 +1,39 @@
 # Contributing to AutoYou Server
 
-AutoYou Server is source-available under the [LICENSE](LICENSE). It is not an OSI-approved open-source project; personal-use and commercial-use restrictions apply.
+AutoYou Server is source-available under the [LICENSE](LICENSE). It is not an OSI-approved open-source project; personal-use and commercial-use restrictions apply. Contributions are welcome, and accepted contributions can earn a share of the [Contributor Pool](docs/contributors/contributor-pool.md).
 
-## Before you start
+## How to contribute
 
-- Read [LICENSE](LICENSE) and [SECURITY.md](SECURITY.md).
-- For a non-trivial change, open an issue first so a maintainer can confirm that the work is in scope.
+1. **Find or open an issue.** Look for issues labeled `good first issue` or `help wanted`, or open one that describes the defect or proposal. For a non-trivial change, wait for a maintainer to confirm that the work is in scope.
+2. **Claim it.** Comment on the issue. A maintainer assigns it to you. Work linked to an assigned issue is what earns Contributor Pool points.
+3. **Agree to the contribution terms.** Read the [Contributor License Agreement](docs/contributors/CLA.md). You agree by checking its box in the pull request template and signing off every commit with `git commit -s`, which also certifies the [Developer Certificate of Origin](https://developercertificate.org/).
+4. **Fork, branch, and make the change.** Run the [local checks](#local-checks) before you push.
+5. **Open a pull request** linked to the issue (for example `Closes #123`) and fill in the template, including the AI assistance section.
+6. **Review.** A maintainer reviews the pull request. Merged contributions are recorded for the pool.
+
+Pull requests that are not linked to an approved issue may be closed without review.
+
+## Rules for every contribution
+
+- Read [LICENSE](LICENSE) and [SECURITY.md](SECURITY.md). Report vulnerabilities privately as SECURITY.md describes, never in an issue or pull request.
 - Never submit secrets, credentials, signing material, non-release logs, user data, generated binaries, or unreleased planning material.
 - Keep the public tree source-available only. Do not add `.llm`, `autoyou-core`, `autoyou_lite`, `autoyou-website`, personal workspaces, runtime profiles, model outputs, voice-training datasets, browser profiles, generated archives, or private docs.
 - Keep client applications and hosted account services outside this server repository.
 - Source files carry provenance markers (`AUTOYOU-PROVENANCE-*` comment lines and `__debug_provenance_*__` variables). They are maintainer debug traces and do not change your rights or obligations under the [LICENSE](LICENSE). Leave them in place when you edit a file.
-- Submit only material you have the right to license; check employer, third-party, and patent obligations before proposing code or documentation.
-- External code contributions require a maintainer request and the applicable written contribution agreement. Do not open a pull request until that has been arranged.
+- Submit only material you have the right to license; check employer, third-party, and patent obligations before proposing code or documentation. Identify any third-party code in the pull request with its source and license.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## AI-assisted contributions
+
+AI tools are welcome as helpers. A person must review every line, understand it, take responsibility for it, and say in the pull request which tools were used. A pull request from an autonomous agent with no responsible person, or a bulk of AI-generated changes, will be closed and earns nothing from the Contributor Pool.
+
+For Codex, Claude, and other AI-assisted work, use the public guidance in
+[docs/contributors/](docs/contributors/README.md). It includes the validation
+contract and the opt-in live-server test procedure.
+
+## Contributor Pool
+
+OpenStorey sets aside a share of the money it receives from sponsorships and donations for contributors. The pool is discretionary and depends on funding. [docs/contributors/contributor-pool.md](docs/contributors/contributor-pool.md) explains who is eligible, how points work, and how payouts and taxes are handled.
 
 ## Local checks
 
@@ -46,10 +68,6 @@ python scripts/export_public_autoyou_server.py --worktree --check
 ```
 
 Tests must use synthetic data and must not modify live AutoYou configuration, credential stores, or local services.
-
-For Codex, Claude, and other AI-assisted work, use the public guidance in
-[docs/contributors/](docs/contributors/README.md). It includes the validation
-contract and the opt-in live-server test procedure.
 
 ## Issues
 
