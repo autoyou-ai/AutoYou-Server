@@ -6,6 +6,32 @@
       "licenses": [
         {
           "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "AmplitudeJS",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/521dimensions/amplitudejs"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "vendored minified JavaScript in the audio agent website; license included"
+        }
+      ],
+      "type": "library",
+      "version": "5.3.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "name": "Apple SDK License"
           }
         }
@@ -3770,7 +3796,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T09:00:11+00:00",
+    "timestamp": "2026-09-29T21:53:19+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3779,7 +3805,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:f875f40c-3475-443a-bbb3-547ce2ad885e",
+  "serialNumber": "urn:uuid:d2aac26b-8a94-4869-94ec-0c1c57cf1310",
   "specVersion": "1.5",
   "version": 1
 }

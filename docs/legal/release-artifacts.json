@@ -329,6 +329,14 @@
           "source": "https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01"
         },
         {
+          "type": "library",
+          "name": "AmplitudeJS",
+          "version": "5.3.2",
+          "license": "MIT",
+          "distributionBoundary": "vendored minified JavaScript in the audio agent website; license included",
+          "source": "https://github.com/521dimensions/amplitudejs"
+        },
+        {
           "type": "service",
           "name": "signal-cli",
           "version": "optional external service",
