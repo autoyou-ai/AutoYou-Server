@@ -2777,8 +2777,8 @@ def _cloud_server_token_rotation_due(cloud_cfg: Mapping[str, Any], *, now: Optio
     return saved_at > 0 and ((time.time() if now is None else now) - saved_at) >= rotate_after
 
 
-async def _rotate_cloud_server_token_if_due(cloud_cfg: Mapping[str, Any]) -> bool:
-    if not _cloud_server_token_rotation_due(cloud_cfg):
+async def _rotate_cloud_server_token_if_due(cloud_cfg: Mapping[str, Any], *, force: bool = False) -> bool:
+    if not force and not _cloud_server_token_rotation_due(cloud_cfg):
         return False
     server_token = str(cloud_cfg.get("server_token") or "").strip()
     server_id = str(cloud_cfg.get("server_id") or "").strip()
@@ -17016,7 +17016,7 @@ async def _build_cloud_status_snapshot(
                 "token_rejected": token_rejected,
                 "needs_reregister": needs_reregister,
                 "needs_activation": needs_activation,
-                "activate_url": "/api/cloud/activate" if cloud_pair_entitlement_verified and cloud_pair_enabled and enrolled and server_id and is_active is False and not token_rejected else None,
+                "activate_url": "/api/cloud/activate" if cloud_pair_entitlement_verified and cloud_pair_enabled and enrolled and server_id and is_active is not True and not token_rejected else None,
                 "reregister_url": "/api/cloud/link-start" if needs_reregister else None,
                 "status_message": status_message,
         }
@@ -17044,8 +17044,12 @@ async def _activate_current_cloud_server_registration() -> Dict[str, Any]:
   if not server_token or not server_id:
     raise HTTPException(status_code=409, detail="This server is not actively enrolled with AutoYou Cloud.")
   if _cloud_server_token_expired(cloud_cfg):
-    STATE.cloud_token_rejected = True
-    raise HTTPException(status_code=409, detail="Saved cloud session expired. Re-link Cloud Pair to continue.")
+    if not await _rotate_cloud_server_token_if_due(cloud_cfg, force=True):
+      STATE.cloud_token_rejected = True
+      raise HTTPException(status_code=409, detail="Saved cloud session expired. Re-link Cloud Pair to continue.")
+    cloud_cfg = (STATE.config or {}).get("cloud", {})
+    server_token = str(cloud_cfg.get("server_token", "") or "").strip()
+    server_id = str(cloud_cfg.get("server_id", "") or "").strip()
   if httpx is None:
     raise HTTPException(status_code=500, detail="httpx is required for AutoYou Cloud activation.")
 

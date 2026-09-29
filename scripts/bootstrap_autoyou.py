@@ -812,7 +812,7 @@ def create_venv(python_executable: str) -> Path:
         success("Using existing virtual environment at .venv")
     else:
         info("Creating virtual environment...")
-        run_command([python_executable, "-m", "venv", str(target)])
+        run_command([python_executable, "-m", "venv", "--system-site-packages", str(target)])
         success("Created virtual environment")
 
     venv_python = venv_python_path()

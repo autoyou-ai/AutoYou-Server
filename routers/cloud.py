@@ -304,6 +304,12 @@ def register_routes(
             status_code=409,
           )
 
+        cloud_cfg = ((server.STATE.config or {}).get("cloud", {}) or {})
+        if snapshot.get("token_rejected") or server._cloud_server_token_expired(cloud_cfg):
+          if await server._rotate_cloud_server_token_if_due(cloud_cfg, force=True):
+            server.STATE.cloud_token_rejected = False
+            snapshot = await server._build_cloud_status_snapshot()
+
         if snapshot.get("token_rejected"):
           return JSONResponse(
             {
