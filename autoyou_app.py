@@ -699,6 +699,16 @@ def _reload_runtime_site_packages_modules(app_root: Path, module_names: tuple[st
 
 def _prepare_runtime_server_imports(app_root: Path) -> None:
     _configure_runtime_import_paths(app_root)
+    runtime_modules_root = app_root / RUNTIME_MODULES_DIRNAME
+    for module_name in (
+        "autoyou_agents.__runtime_package__",
+        "clients.python.__runtime_package__",
+        "core_server.__runtime_package__",
+        "routers.__runtime_package__",
+        "shared.__runtime_package__",
+        "v2.runtime.__runtime_package__",
+    ):
+        _ensure_runtime_package_chain(module_name, runtime_modules_root)
     _reload_runtime_stdlib_modules(app_root, ("http", "http.cookies"))
     _reload_runtime_site_packages_modules(app_root, RUNTIME_SITE_PACKAGE_OVERRIDES)
 

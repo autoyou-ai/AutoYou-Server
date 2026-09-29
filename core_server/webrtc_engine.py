@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
 
 
 import hashlib
+import inspect
 import json
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
@@ -66,6 +67,21 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
 
 _runtime: ModuleType
+
+
+def _speak_audio_manager(audio_manager: Any, message: str, *, context: str = "") -> None:
+    speak = getattr(audio_manager, "speak")
+    if context:
+        try:
+            parameters = inspect.signature(speak).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if "context" in parameters or any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+        ):
+            speak(message, context=context)
+            return
+    speak(message)
 
 
 def bind_runtime(module: ModuleType) -> None:
@@ -7976,7 +7992,7 @@ class WebRTCManager:
                         session_id,
                     )
             elif session_id in _runtime.STATE.audio_managers:
-                _runtime.STATE.audio_managers[session_id].speak(reply, context=text)
+                _speak_audio_manager(_runtime.STATE.audio_managers[session_id], reply, context=text)
             else:
                 _runtime.LOGGER.warning(f"AudioManager missing for {session_id}, cannot speak response")
 

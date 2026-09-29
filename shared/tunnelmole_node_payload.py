@@ -27,22 +27,19 @@ LAUNCHER_FILENAME = "tunnelmole_node_launcher.mjs"
 # LF form only (normalize CRLF first) - a checkout with core.autocrlf=true will
 # otherwise bake Windows line endings in here and desync it from the repo file
 # on every other platform. .gitattributes pins *.mjs to LF to prevent that.
-LAUNCHER_SHA256 = "eeb0b4aa7f3c01d3084ac724f33572380f25aec08ecb005001a6b44e38ebd82d"
+LAUNCHER_SHA256 = "a3c71e27f8880c39b9891b6ca314227db58c550e8135b0e7d65c0aadb02e6c57"
 _COMPRESSED_LAUNCHER_BASE64 = (
-    "eNqlVm1v4kYQ/s6vmFjVyZaCMXBNyqVUQuBcUcCgQFpFVcUZex02tXfd3XVyOY7/3lnbgKGkba58MJ7dmWfn9Vk3GtDn6YugDysF"
-    "ZmBBy2ldwCQlbKa4IC8wGvVt6MUx5CoSBJFEPJHQrjUaMKIBYZKEkLGQCFArAr1M8XuewYxnIiD13pNPY38Zk61ubjcjKA/7rjdz"
-    "gbLcLhX8kQQKBOcKIi4gLvRxH6XEV5Sz3LY3bIxHoIRPGWUPkMncdkWXVKEjz1SteKbgWVClCAM/Q1nQL7k9mKUTMGvbHauAu5tP"
-    "7id39ent5BfX63l9t96vX76/iFrOpXPRvOy0nHaz7bS+b6FUDy6cVvOHZavzvt1uNju+E/gdZ0matRpNUi4UpL5aQSR4AgbjIfmg"
-    "ZeNqu7vO9+f8msbk7nYEm6pqJmLUrAWcSY0T/OE/kAEV0IWZEhiqiWEGREqbsCe7dHsxv/M8dzSejNyFNxm4i2mvf9P76C4Gw1v4"
-    "+hUMw7LRODGtqxL4WbosTDll6m3Av84WrjeYTobe/DTwSqn026B/ns+n/wLup/QGm/FNsL3pcHHj3p8GDHmCDfQ2wMFk3Bt6p/Hy8"
-    "nbBy5IlEXbqC0mGTJlvqdzktgjeMaxzaDrWrhciHCHENhOEwJ44ByIEFxZ0f4J1DfCn1XhM7Hzd/PSbyhgjcYJLdd1Z9djPWLAi4"
-    "nf4bl2CbD4hvralEZi5Hbx7B+olJTwq8KHb7YLBl3oqDb1pSIVNaeiB3RnkL3a+YZXO/N2hMglV3fLwDZBYj/jWh/+GsbPOn7vc"
-    "fqbKbOLWBhOnEc8qM4R5Pat0vhYP+lUvlD2mX8syUnmNJKOIqatr6Z28zD92wdl6qmtjGmMqpSYjQf7MqEAakiSO6isuNSXtqwHb"
-    "QgA2AhWcJYQp29A+H839VNNIN2cLGxmXx0/oxC4c3RpKvFSqr/Qzog9jHmZILSIujXdUY+ZQjxisWTniHIyQSmXgf2FvP0rDsuy"
-    "VINFVBVziXYAm344uRaD/8m5MiZDb5QL3lVP3ifvfB1O8nz4fHFM5Zw0hifwsVh/KLGJfdsF/9qmCgrjNo+xarybn2PA4c9Y/BX"
-    "hsfCIB1t5zXS7dYjRFXtnx7r7Lr04oHpF0VSyBCwcO3Lb1EMyKFbNCG2eHWqVUneFiOub7ASh1IKQhMLzoNTL1Y/qF5GOwn+qT0L"
-    "YkaqhIYhrFrGJlixfroJ481Ze9xPjWxcBu9j4XvF/1sdS2dzdC8bJ1ppKU43LY+wWzRDnHD5OM6IGGwFfB6ojXinxc41PzAscof"
-    "XRPf/68QhhBTHOK2HI+Av8FYKww3g=="
+    "eNqlVm1v4kYQ/s6vmFjVyZaCIUlLdZdSCRGnRQGDgLSKqooz9jje1Pa6u2tyOY7/3lnbgKGkba58MN7dmWefnZdn3WpBn2cvgj1GCkzfgsv2ZQfGGaYzxQW+"
+    "wHDYt6EXx1CYSBAoUawwsButFgyZj6nEAPI0QAEqQujlij/wHGY8Fz42eyuPxd4yxq1t4TdDGg/6jjtzgKWFXyb4E/oKBOcKQi4gLu1pnUaJpxhPC9/eoDUa"
+    "ghIeS1n6CLksfCO2ZIqIPDMV8VzBs2BKYQpeTmPBPhf+YFYkYHZlv7dKuPv5+GF835xMx784bs/tO81pc8W8ZoBX7/1vL75b+mHw/RV2Li47Hb/TDhsNlmRc"
+    "KMg8FUEoeAJGygP8oMfG9XZ1XazP+S2L8X46hE3dNBcxWTZ8nkqN4//hPeINE9CFmRJ0KpNO5KOUNqYru2K4mN+7rjMcjYfOwh3fOItJr3/X+8lZ3Aym8OUL"
+    "GIZlk3NiWtcV8LN00iDjLFVvA/51tnDcm8l44M5PA0dKZV8H/fN8PvkXcC9jd1R3b4LtTQaLO+fhNGDAE6qVtwHejEe9gXsar0hvF9w8WaKwM09IHKTKfEvm"
+    "xtPy8G3DOoeLtrWrhZC6hbDNhCCoJs4BheDCgu6PsG4A/bQZj9Eu5s2Pv6k8TTFOaKqpK6sZe3nqRyh+h2/WFcjmI+FrXxaCWfjBu3egXjLkYYkP3W4XDL7U"
+    "DWjoRUMqKkpD9+bOoXixiwWrIvN3QlUQ6rbV5hvAWHfzlsN/w9h5F89dbD8xZV7Q0oYCpxHPaj1EcT2rVb4eHtSrnqhqTL9WaWTylvREoamza+mVIs0/dKG9"
+    "ZapzYxojJqXWHYF/5kyQ4kiMw2bEpVaffTZgmwigQmCCpwmmyjY056O+n2gZ6RZqYZO48nhFJHbH0aWhxEst+0o/Q/Y44kFO0iLiynknNWYB9USHNWtbnIMR"
+    "MKkM+i/97SdpWJYdCQyva+CSZJ9cvh5dCl//FdWYoZDb6RL3lV33gfvfGzO6ij4dbFPbZw0Bhl4eqw9VFKkuu+A9e0xBKdzmUXStV4Nz7HgcOeufDnjsfCIA"
+    "1p65TpcuMZaRrux0d1/l1ycMj0S6PqyASwIHtG3dBLNyxqzJxtmhVTWq93DZHfN9A1Q2ELAAUrrTNTLzYvYZizbYd/VJaFuiGihMTKPsVcps+WId5JNn+l6X"
+    "dL512bCbPedS9+scK2t7dyOUL1sytaAcp8PeT5gVyjl9g+SoGxp8T/nRka6V8bilp9YFTqf0iJ7+0nlFMPyYFRKx1XytFH8B0tAt3w=="
 )
 
 
