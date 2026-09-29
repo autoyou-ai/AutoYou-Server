@@ -597,6 +597,336 @@
         return response;
     }
 
+    async function openProfileCropper(file) {
+        if (!file) return;
+        if (String(file.type || "").indexOf("image/") !== 0 && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || "")) {
+            setNotice("error", "Please select an image file.");
+            return;
+        }
+        try {
+            var img = await loadImageFromFile(file);
+            var naturalW = Number(img.naturalWidth || img.width || 300) || 300;
+            var naturalH = Number(img.naturalHeight || img.height || 300) || 300;
+            var cropSize = 240;
+            var baseScale = Math.max(cropSize / naturalW, cropSize / naturalH);
+            state.profileCropper = {
+                file: file,
+                image: img,
+                naturalWidth: naturalW,
+                naturalHeight: naturalH,
+                cropSize: cropSize,
+                viewportSize: 320,
+                baseScale: baseScale,
+                zoom: 1.0,
+                minZoom: 0.5,
+                maxZoom: 5.0,
+                offsetX: 0,
+                offsetY: 0,
+                isDragging: false,
+                dragStartX: 0,
+                dragStartY: 0,
+                startOffsetX: 0,
+                startOffsetY: 0,
+                saving: false
+            };
+            state.profileMenuOpen = false;
+            renderApp();
+        } catch (err) {
+            setNotice("error", err.message || "Failed to load image.");
+        }
+    }
+
+    function renderProfileCropperModal() {
+        var c = state.profileCropper;
+        if (!c) return "";
+        var zoomPct = Math.round(c.zoom * 100) + "%";
+        var saveLabel = c.saving ? "Saving..." : "Save Profile Picture";
+        var saveDisabled = c.saving ? " disabled aria-busy=\"true\"" : "";
+
+        return "<div class=\"ayu-modal\" role=\"presentation\">" +
+            "<button type=\"button\" class=\"ayu-modal-dismiss\" data-action=\"cropper-cancel\" aria-label=\"Cancel\"></button>" +
+            "<div class=\"ayu-modal-card ayu-cropper-card\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Edit Profile Picture\">" +
+                "<div class=\"ayu-modal-head\">" +
+                    "<div>" +
+                        "<h2>Edit Profile Picture</h2>" +
+                        "<p>Drag to reposition, zoom in/out, and center to crop your circular profile photo.</p>" +
+                    "</div>" +
+                    button("Close", "cropper-cancel", "secondary", "close", "sm") +
+                "</div>" +
+                "<div class=\"ayu-cropper-body\">" +
+                    "<div class=\"ayu-cropper-workspace\">" +
+                        "<div class=\"ayu-cropper-canvas-wrap\">" +
+                            "<canvas class=\"ayu-cropper-canvas\" width=\"" + c.viewportSize + "\" height=\"" + c.viewportSize + "\"></canvas>" +
+                            "<div class=\"ayu-cropper-guide-hint\">Drag to reposition &bull; Scroll to zoom</div>" +
+                        "</div>" +
+                        "<div class=\"ayu-cropper-side\">" +
+                            "<div class=\"ayu-cropper-preview-card\">" +
+                                "<div class=\"ayu-hint\">Live Preview</div>" +
+                                "<div class=\"ayu-cropper-preview-avatar\">" +
+                                    "<canvas class=\"ayu-cropper-preview-canvas\" width=\"80\" height=\"80\"></canvas>" +
+                                "</div>" +
+                            "</div>" +
+                            "<div class=\"ayu-cropper-nudge-pad\">" +
+                                "<div class=\"ayu-hint\">Nudge</div>" +
+                                "<div class=\"ayu-cropper-dpad\">" +
+                                    button("", "cropper-nudge-up", "secondary", "arrowUp", "sm", "title=\"Move Up\" aria-label=\"Move Up\"") +
+                                    "<div class=\"ayu-cropper-dpad-row\">" +
+                                        button("", "cropper-nudge-left", "secondary", "arrowLeft", "sm", "title=\"Move Left\" aria-label=\"Move Left\"") +
+                                        button("Center", "cropper-center", "ghost", "center", "sm", "title=\"Reset Center\" aria-label=\"Reset Center\"") +
+                                        button("", "cropper-nudge-right", "secondary", "arrowRight", "sm", "title=\"Move Right\" aria-label=\"Move Right\"") +
+                                    "</div>" +
+                                    button("", "cropper-nudge-down", "secondary", "arrowDown", "sm", "title=\"Move Down\" aria-label=\"Move Down\"") +
+                                "</div>" +
+                            "</div>" +
+                        "</div>" +
+                    "</div>" +
+                    "<div class=\"ayu-cropper-toolbar\">" +
+                        "<div class=\"ayu-cropper-zoom-controls\">" +
+                            button("", "cropper-zoom-out", "secondary", "minus", "sm", "title=\"Zoom Out\" aria-label=\"Zoom Out\"") +
+                            "<input type=\"range\" class=\"ayu-cropper-zoom-slider\" min=\"0.5\" max=\"5.0\" step=\"0.05\" value=\"" + c.zoom + "\" data-action=\"cropper-zoom-slider\" aria-label=\"Zoom\">" +
+                            button("", "cropper-zoom-in", "secondary", "plus", "sm", "title=\"Zoom In\" aria-label=\"Zoom In\"") +
+                            "<span class=\"ayu-cropper-zoom-badge\">" + zoomPct + "</span>" +
+                            button("Fit", "cropper-reset", "ghost", "refresh", "sm", "title=\"Fit / Reset\" aria-label=\"Fit / Reset\"") +
+                        "</div>" +
+                    "</div>" +
+                "</div>" +
+                "<div class=\"ayu-cropper-footer\">" +
+                    button("Choose another file", "cropper-choose-other", "ghost", "plus", "sm") +
+                    "<div class=\"ayu-inline-actions\">" +
+                        button("Cancel", "cropper-cancel", "secondary", "close", "sm") +
+                        "<button type=\"button\" class=\"ayu-btn ayu-btn-primary ayu-btn-sm\" data-action=\"cropper-save\"" + saveDisabled + ">" +
+                            (c.saving ? "<span class=\"ayu-btn-spinner\"></span>" : icon("check")) +
+                            "<span>" + escapeHtml(saveLabel) + "</span>" +
+                        "</button>" +
+                    "</div>" +
+                "</div>" +
+            "</div>" +
+        "</div>";
+    }
+
+    function drawCropperCanvas() {
+        var c = state.profileCropper;
+        if (!c || !c.image) return;
+        var rootEl = root || document;
+        var canvas = rootEl.querySelector(".ayu-cropper-canvas");
+        var previewCanvas = rootEl.querySelector(".ayu-cropper-preview-canvas");
+        if (!canvas) return;
+
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        var W = c.viewportSize;
+        var H = c.viewportSize;
+        var R = c.cropSize / 2;
+        var cx = W / 2;
+        var cy = H / 2;
+
+        var scale = c.baseScale * c.zoom;
+        var drawW = c.naturalWidth * scale;
+        var drawH = c.naturalHeight * scale;
+        var drawX = cx + c.offsetX - drawW / 2;
+        var drawY = cy + c.offsetY - drawH / 2;
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(c.image, drawX, drawY, drawW, drawH);
+
+        ctx.save();
+        ctx.fillStyle = "rgba(7, 11, 20, 0.72)";
+        ctx.beginPath();
+        ctx.rect(0, 0, W, H);
+        ctx.arc(cx, cy, R, 0, Math.PI * 2, true);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 6]);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cx - 8, cy);
+        ctx.lineTo(cx + 8, cy);
+        ctx.moveTo(cx, cy - 8);
+        ctx.lineTo(cx, cy + 8);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.restore();
+
+        if (previewCanvas) {
+            var pctx = previewCanvas.getContext("2d");
+            if (pctx) {
+                var pSize = previewCanvas.width;
+                pctx.clearRect(0, 0, pSize, pSize);
+                pctx.save();
+                pctx.fillStyle = "#10192b";
+                pctx.fillRect(0, 0, pSize, pSize);
+                pctx.beginPath();
+                pctx.arc(pSize / 2, pSize / 2, pSize / 2, 0, Math.PI * 2);
+                pctx.clip();
+
+                var pScale = pSize / (2 * R);
+                pctx.imageSmoothingEnabled = true;
+                pctx.imageSmoothingQuality = "high";
+                pctx.drawImage(
+                    c.image,
+                    (drawX - (cx - R)) * pScale,
+                    (drawY - (cy - R)) * pScale,
+                    drawW * pScale,
+                    drawH * pScale
+                );
+                pctx.restore();
+            }
+        }
+    }
+
+    function updateCropperZoomUi() {
+        var c = state.profileCropper;
+        if (!c) return;
+        var rootEl = root || document;
+        var slider = rootEl.querySelector(".ayu-cropper-zoom-slider");
+        if (slider) slider.value = String(c.zoom);
+        var badge = rootEl.querySelector(".ayu-cropper-zoom-badge");
+        if (badge) badge.textContent = Math.round(c.zoom * 100) + "%";
+    }
+
+    function syncCropper() {
+        var c = state.profileCropper;
+        if (!c) return;
+        var rootEl = root || document;
+        var canvas = rootEl.querySelector(".ayu-cropper-canvas");
+        if (!canvas) return;
+
+        drawCropperCanvas();
+
+        if (canvas._cropperBound) return;
+        canvas._cropperBound = true;
+
+        canvas.addEventListener("pointerdown", function (event) {
+            if (!state.profileCropper) return;
+            var cropper = state.profileCropper;
+            try { canvas.setPointerCapture(event.pointerId); } catch (e) {}
+            cropper.isDragging = true;
+            cropper.dragStartX = event.clientX;
+            cropper.dragStartY = event.clientY;
+            cropper.startOffsetX = cropper.offsetX;
+            cropper.startOffsetY = cropper.offsetY;
+            canvas.style.cursor = "grabbing";
+        });
+
+        canvas.addEventListener("pointermove", function (event) {
+            if (!state.profileCropper) return;
+            var cropper = state.profileCropper;
+            if (!cropper.isDragging) return;
+            var dx = event.clientX - cropper.dragStartX;
+            var dy = event.clientY - cropper.dragStartY;
+            cropper.offsetX = cropper.startOffsetX + dx;
+            cropper.offsetY = cropper.startOffsetY + dy;
+            drawCropperCanvas();
+        });
+
+        var stopDrag = function (event) {
+            if (!state.profileCropper) return;
+            var cropper = state.profileCropper;
+            cropper.isDragging = false;
+            canvas.style.cursor = "grab";
+            try { canvas.releasePointerCapture(event.pointerId); } catch (e) {}
+        };
+        canvas.addEventListener("pointerup", stopDrag);
+        canvas.addEventListener("pointercancel", stopDrag);
+
+        canvas.addEventListener("wheel", function (event) {
+            if (!state.profileCropper) return;
+            event.preventDefault();
+            var cropper = state.profileCropper;
+            var factor = event.deltaY < 0 ? 1.08 : 0.92;
+            cropper.zoom = Math.max(cropper.minZoom, Math.min(cropper.maxZoom, cropper.zoom * factor));
+            updateCropperZoomUi();
+            drawCropperCanvas();
+        }, { passive: false });
+    }
+
+    async function saveCroppedProfileImage() {
+        var c = state.profileCropper;
+        if (!c || c.saving) return;
+        c.saving = true;
+        renderApp();
+
+        try {
+            var scale = c.baseScale * c.zoom;
+            var R = c.cropSize / 2;
+            var cx = c.viewportSize / 2;
+            var cy = c.viewportSize / 2;
+
+            var drawW = c.naturalWidth * scale;
+            var drawH = c.naturalHeight * scale;
+            var drawX = cx + c.offsetX - drawW / 2;
+            var drawY = cy + c.offsetY - drawH / 2;
+
+            var srcX = ((cx - R) - drawX) / scale;
+            var srcY = ((cy - R) - drawY) / scale;
+            var srcSize = (2 * R) / scale;
+
+            var targetSize = 256;
+            var outCanvas = document.createElement("canvas");
+            outCanvas.width = targetSize;
+            outCanvas.height = targetSize;
+            var outCtx = outCanvas.getContext("2d");
+            if (!outCtx) throw new Error("Canvas context unavailable.");
+
+            outCtx.fillStyle = "#10192b";
+            outCtx.fillRect(0, 0, targetSize, targetSize);
+            outCtx.imageSmoothingEnabled = true;
+            outCtx.imageSmoothingQuality = "high";
+            outCtx.drawImage(c.image, srcX, srcY, srcSize, srcSize, 0, 0, targetSize, targetSize);
+
+            var formats = [
+                { type: "image/webp", quality: 0.84 },
+                { type: "image/webp", quality: 0.74 },
+                { type: "image/jpeg", quality: 0.78 },
+                { type: "image/jpeg", quality: 0.65 }
+            ];
+            var bestBlob = null;
+            for (var i = 0; i < formats.length; i++) {
+                var blob = await canvasToBlob(outCanvas, formats[i].type, formats[i].quality);
+                if (blob && blob.size) {
+                    if (!bestBlob || blob.size < bestBlob.size) {
+                        bestBlob = blob;
+                    }
+                    if (blob.size <= 56 * 1024) {
+                        bestBlob = blob;
+                        break;
+                    }
+                }
+            }
+            if (!bestBlob) throw new Error("Failed to encode cropped profile image.");
+
+            var ext = avatarBlobExtension(bestBlob.type);
+            var form = new FormData();
+            form.append("image", bestBlob, "profile-avatar." + ext);
+
+            var response = await requestJson("/api/admin/profile-image", {
+                method: "POST",
+                body: form
+            });
+
+            state.profileCropper = null;
+            applyBootstrap(response.bootstrap ? response.bootstrap : response);
+            setNotice("success", "Profile picture updated successfully.");
+        } catch (err) {
+            if (c) c.saving = false;
+            renderApp();
+            setNotice("error", err.message || "Failed to save profile picture.");
+        }
+    }
+
     function uploadVideoFileWithProgress(form, onProgress) {
         return new Promise(function (resolve, reject) {
             var xhr = new XMLHttpRequest();
@@ -7417,6 +7747,9 @@
     }
 
     function renderModal() {
+        if (state.profileCropper) {
+            return renderProfileCropperModal();
+        }
         if (!state.modal) {
             return "";
         }
@@ -7479,6 +7812,7 @@
         root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
         restoreActiveControl(activeSnapshot);
         syncBootSweepUi();
+        syncCropper();
         syncTelegramSenderPolling();
         if (state.screen === "guides") {
             ensureBootSweepScores(false).catch(function () {});
@@ -7697,6 +8031,84 @@
             var profileInput = root ? root.querySelector('[data-role="profile-image-input"]') : null;
             if (profileInput) {
                 profileInput.click();
+            }
+            return;
+        }
+        if (action === "cropper-cancel") {
+            state.profileCropper = null;
+            renderApp();
+            return;
+        }
+        if (action === "cropper-choose-other") {
+            var profileInput = root ? root.querySelector('[data-role="profile-image-input"]') : null;
+            if (profileInput) {
+                profileInput.click();
+            }
+            return;
+        }
+        if (action === "cropper-save") {
+            saveCroppedProfileImage();
+            return;
+        }
+        if (action === "cropper-center") {
+            if (state.profileCropper) {
+                state.profileCropper.offsetX = 0;
+                state.profileCropper.offsetY = 0;
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-reset") {
+            if (state.profileCropper) {
+                state.profileCropper.zoom = 1.0;
+                state.profileCropper.offsetX = 0;
+                state.profileCropper.offsetY = 0;
+                updateCropperZoomUi();
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-zoom-in") {
+            if (state.profileCropper) {
+                state.profileCropper.zoom = Math.min(state.profileCropper.maxZoom, Number((state.profileCropper.zoom + 0.15).toFixed(2)));
+                updateCropperZoomUi();
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-zoom-out") {
+            if (state.profileCropper) {
+                state.profileCropper.zoom = Math.max(state.profileCropper.minZoom, Number((state.profileCropper.zoom - 0.15).toFixed(2)));
+                updateCropperZoomUi();
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-nudge-up") {
+            if (state.profileCropper) {
+                state.profileCropper.offsetY -= 14;
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-nudge-down") {
+            if (state.profileCropper) {
+                state.profileCropper.offsetY += 14;
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-nudge-left") {
+            if (state.profileCropper) {
+                state.profileCropper.offsetX -= 14;
+                drawCropperCanvas();
+            }
+            return;
+        }
+        if (action === "cropper-nudge-right") {
+            if (state.profileCropper) {
+                state.profileCropper.offsetX += 14;
+                drawCropperCanvas();
             }
             return;
         }
@@ -9295,6 +9707,14 @@
         if (target.getAttribute("data-role") === "chat-search") {
             state.chat.search = target.value;
             renderApp({ passive: true });
+            return;
+        }
+        if (target.getAttribute("data-action") === "cropper-zoom-slider") {
+            if (state.profileCropper) {
+                state.profileCropper.zoom = Math.max(state.profileCropper.minZoom, Math.min(state.profileCropper.maxZoom, parseFloat(target.value) || 1.0));
+                updateCropperZoomUi();
+                drawCropperCanvas();
+            }
             return;
         }
         syncBoundControl(target);
