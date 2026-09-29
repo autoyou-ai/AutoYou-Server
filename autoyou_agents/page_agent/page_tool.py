@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional
 import base64
 import uuid
 import os
+import urllib.error
 
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file, write_secure_file
 
@@ -277,8 +278,15 @@ class PageTool:
             except Exception:
                 return {}
 
-    def _http_upload_blob(self, filename: str, data_bytes: bytes, mimetype: Optional[str] = None) -> Dict[str, Any]:
-        """Upload bytes to /api/blob using multipart/form-data."""
+    def _http_upload_multipart(
+        self,
+        path: str,
+        field_name: str,
+        filename: str,
+        data_bytes: bytes,
+        mimetype: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Upload one file through the authenticated local Page API."""
         if not self.base_url:
             raise RuntimeError("HTTP mode not enabled: base_url is None")
         boundary = f"----AutoYouFormBoundary{uuid.uuid4().hex}"
@@ -287,14 +295,15 @@ class PageTool:
         parts: List[bytes] = []
         # file part
         parts.append(f"--{boundary}\r\n".encode("utf-8"))
-        parts.append(f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n".encode("utf-8"))
+        disposition = f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
+        parts.append(disposition.encode("utf-8"))
         parts.append(f"Content-Type: {ct}\r\n\r\n".encode("utf-8"))
         parts.append(data_bytes)
         parts.append(b"\r\n")
         # end
         parts.append(f"--{boundary}--\r\n".encode("utf-8"))
         body = b"".join(parts)
-        url = f"{self.base_url}/api/blob"
+        url = f"{self.base_url}{path}"
         headers = _internal_page_tool_headers()
         headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
         req = urllib.request.Request(url=url, data=body, headers=headers, method="POST")
@@ -304,6 +313,57 @@ class PageTool:
                 return json.loads(raw.decode("utf-8", errors="ignore"))
             except Exception:
                 return {}
+
+    def _http_upload_blob(self, filename: str, data_bytes: bytes, mimetype: Optional[str] = None) -> Dict[str, Any]:
+        """Upload a Page feed file blob, preserving the existing helper contract."""
+        return self._http_upload_multipart("/api/blob", "file", filename, data_bytes, mimetype)
+
+    def get_server_display_photo(self) -> Dict[str, Any]:
+        """Check whether the server-owned Page avatar exists."""
+        if not self.base_url:
+            return {"success": False, "error": "The Page photo service is unavailable."}
+        url = f"{self.base_url}/api/profile/avatar"
+        try:
+            request = urllib.request.Request(url, headers=_internal_page_tool_headers())
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                response.read(64 * 1024 + 1)
+                return {
+                    "success": True,
+                    "has_photo": True,
+                    "mime_type": response.headers.get_content_type(),
+                }
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return {"success": True, "has_photo": False}
+            return {"success": False, "error": f"Page photo request failed (HTTP {exc.code})."}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def update_server_display_photo_from_path(self, path: str) -> Dict[str, Any]:
+        """Replace the server-owned Page avatar with a local image attachment."""
+        try:
+            raw_path = os.path.normpath(str(path or "").strip().strip('"').strip("'"))
+            with open(raw_path, "rb") as source:
+                raw = source.read(128 * 1024 + 1)
+            if len(raw) > 128 * 1024:
+                return {"success": False, "error": "Use a non-empty PNG, JPEG, or WebP image under 64 KB."}
+            payload = read_secure_file(raw_path) if raw.startswith(SPM_FILE_HEADER) else raw
+            if not payload or len(payload) > 64 * 1024:
+                return {"success": False, "error": "Use a non-empty PNG, JPEG, or WebP image under 64 KB."}
+            return self._http_upload_multipart(
+                "/api/profile/avatar", "image", "profile-photo", payload
+            )
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    def delete_server_display_photo(self) -> Dict[str, Any]:
+        """Remove the server-owned Page avatar through the Page API."""
+        if not self.base_url:
+            return {"success": False, "error": "The Page photo service is unavailable."}
+        try:
+            return self._http_json("DELETE", "/api/profile/avatar")
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
 
     def _user_facing_url_for_item(self, item: Optional[Dict[str, Any]]) -> str:
         if not isinstance(item, dict):

@@ -28,6 +28,8 @@ AGENT_INSTRUCTION = (
     "Data-backed items are registered via save_blob (HTTP uploads create internal blob://UUID entries with source Local), URL-only items via add_link. "
     "Never show blob:// values as links to the user; use tool-provided open_url/view_url links when present, otherwise say the item was saved on their computer and can be opened from the AutoYou Browser Page Feed. "
     "Use list_feed and query_feed to fetch items, set_favourite to star items, and add_tag/delete_tag to manage tags. "
+    "Use get_server_display_photo to check the Page avatar and update_server_display_photo with a supplied image attachment path when asked to change it. "
+    "Only an authenticated editor or admin may update the photo; only an authenticated admin may delete it. Ask for an image attachment if none was supplied. "
     "Use source filters (e.g., source=Local) with types to focus on local media (video, audio, image, document, text, others). "
     "Only perform network fetches when necessary; avoid heavy content fetching. "
     "Return compact summaries (counts, IDs, titles) rather than long prose. "

@@ -37,6 +37,20 @@ def test_admin_ui_does_not_restore_chat_draft_after_send_clears_it():
     assert 'snapshot.role === "chat-input" && state.chat.composer !== snapshot.value' in restore
 
 
+def test_empty_chat_keeps_the_conversation_space_for_history_and_composer():
+    script = _admin_ui_script()
+    styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
+    chat_renderer = script.split("function renderChatHistoryScreen()", 1)[1].split(
+        "async function sendChatTurn()", 1
+    )[0]
+
+    assert "What would you like to do?" not in chat_renderer
+    assert "chat-suggestion:" not in script
+    assert "ayu-chat-history" in chat_renderer and "ayu-chat-composer" in chat_renderer
+    assert "min-height: 320px" not in styles
+    assert "max-height: 190px" in styles
+
+
 def test_admin_ui_live_pollers_request_passive_renders():
     script = _admin_ui_script()
 

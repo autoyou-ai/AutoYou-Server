@@ -54,6 +54,7 @@
     targetTimer: null,
   };
   const photo = { open: false, zoomed: false, trigger: null, lastTap: 0 };
+  const profilePhoto = { uploading: false };
   // History entries added by open overlays, innermost last.
   const overlayHistory = [];
   const afterPop = [];
@@ -1082,6 +1083,61 @@
     } catch (error) {
       return { ok: false, status: 0, error: "Your AutoYou server can't be reached." };
     }
+  }
+
+  function applyProfilePhoto(hasPhoto, avatarUrl) {
+    profile.has_photo = hasPhoto;
+    profile.avatar_url = avatarUrl || profile.mark_url;
+    const avatar = document.querySelector(".brand-tile .avatar-img");
+    if (avatar) {
+      avatar.src = safeUrl(profile.avatar_url);
+      avatar.parentElement.classList.toggle("has-photo", hasPhoto);
+      avatar.parentElement.classList.toggle("is-mark", !hasPhoto);
+    }
+    const select = $("profile-photo-select");
+    if (select) {
+      select.setAttribute("aria-label", hasPhoto ? "Change Page photo" : "Upload Page photo");
+    }
+    const remove = $("profile-photo-remove");
+    if (remove) remove.hidden = !hasPhoto;
+  }
+
+  async function uploadProfilePhoto(file) {
+    if (!file || !access.can_edit || profilePhoto.uploading) return;
+    profilePhoto.uploading = true;
+    const select = $("profile-photo-select");
+    if (select) select.disabled = true;
+    const form = new FormData();
+    form.append("image", file, file.name || "profile-photo");
+    try {
+      const response = await fetch("./api/profile/avatar", { method: "POST", body: form, cache: "no-store" });
+      const payload = await readJson(response);
+      if (!response.ok || !payload.success) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+      applyProfilePhoto(true, payload.avatar_url);
+      toast("Page photo updated");
+    } catch (error) {
+      toast(error.message || "Page photo could not be updated");
+    } finally {
+      profilePhoto.uploading = false;
+      if (select) select.disabled = false;
+      $("profile-photo-input").value = "";
+    }
+  }
+
+  function confirmRemoveProfilePhoto() {
+    if (!access.can_delete || !profile.has_photo) return;
+    openConfirm({
+      title: "Remove the Page photo?",
+      message: "This removes the server profile photo from the AutoYou Page and connected clients.",
+      confirmLabel: "Remove photo",
+      onConfirm: async () => {
+        const result = await sendJson("./api/profile/avatar", "DELETE");
+        if (!result.ok) return result.error;
+        applyProfilePhoto(false, profile.mark_url);
+        toast("Page photo removed");
+        return "";
+      },
+    });
   }
 
   // A favourite changes at once and changes back if the server refuses.
@@ -2654,6 +2710,16 @@
     });
     $("all-websites-link").addEventListener("click", () => setMenuOpen(false));
     $("menu-delete-all").addEventListener("click", confirmDeleteAll);
+
+    if ($("profile-photo-select")) {
+      $("profile-photo-select").addEventListener("click", () => $("profile-photo-input").click());
+      $("profile-photo-input").addEventListener("change", (event) => {
+        void uploadProfilePhoto(event.target.files && event.target.files[0]);
+      });
+    }
+    if ($("profile-photo-remove")) {
+      $("profile-photo-remove").addEventListener("click", confirmRemoveProfilePhoto);
+    }
 
     ["add-open", "fab-add", "link-open"].forEach((id) => {
       $(id).addEventListener("click", (event) => openAdd(event.currentTarget));

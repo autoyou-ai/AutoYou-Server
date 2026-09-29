@@ -140,6 +140,29 @@ def test_page_tool_http_blob_upload_links_to_page_feed_for_user_display(monkeypa
     assert captured["feed"]["body"]["url"] == "blob://blob-1"
 
 
+def test_page_tool_updates_server_photo_through_avatar_api(monkeypatch, tmp_path) -> None:
+    captured = {}
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"synthetic-avatar"
+    image_path = tmp_path / "synthetic-avatar.png"
+    image_path.write_bytes(image_bytes)
+    tool = PageTool(base_url="http://127.0.0.1:8067")
+
+    def fake_upload(path, field_name, filename, data_bytes, mimetype=None):
+        captured.update(path=path, field_name=field_name, filename=filename, data=data_bytes)
+        return {"success": True, "has_photo": True}
+
+    monkeypatch.setattr(tool, "_http_upload_multipart", fake_upload)
+    result = tool.update_server_display_photo_from_path(str(image_path))
+
+    assert result["success"] is True
+    assert captured == {
+        "path": "/api/profile/avatar",
+        "field_name": "image",
+        "filename": "profile-photo",
+        "data": image_bytes,
+    }
+
+
 def test_page_tool_delete_tag_http_escapes_path_segment(monkeypatch) -> None:
     captured = {}
 

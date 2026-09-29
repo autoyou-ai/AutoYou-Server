@@ -137,7 +137,11 @@ def register_routes(
         }
         try:
             chat_request = server.ChatRequest(**payload)
-            response = await server.process_chat_message(chat_request, f"http://127.0.0.1:{server.AI_AGENT_SERVER_PORT}")
+            response = await server.process_chat_message(
+                chat_request,
+                f"http://127.0.0.1:{server.AI_AGENT_SERVER_PORT}",
+                authenticated_actor_role="admin",
+            )
             return server._json_response_no_store(_chat_response_payload(response))
         except Exception as exc:
             server.LOGGER.error("admin_chat_message failed: %s", exc, exc_info=True)

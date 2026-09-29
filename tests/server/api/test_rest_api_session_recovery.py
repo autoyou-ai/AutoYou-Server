@@ -63,7 +63,6 @@ class _DummySessionManager:
         current.update(dict(session_data or {}))
         self.sessions[(user_id, session_id)] = current
         return current
-
     async def add_session_event(self, user_id, session_id, event_type, event_data, external_session_id=None):
         self.event_writes.append((user_id, session_id, event_type, external_session_id, dict(event_data or {})))
         current = dict(self.sessions.get((user_id, session_id), {}))
@@ -77,6 +76,18 @@ class _DummySessionManager:
     async def get_user_session(self, user_id, session_id):
         session_data = self.sessions.get((user_id, session_id))
         return dict(session_data) if isinstance(session_data, dict) else None
+
+
+def test_ai_run_role_comes_from_server_auth_context_not_chat_metadata():
+    client_spoof = rest_api._build_ai_agent_run_state_delta(
+        {"autoyou_authenticated_actor_role": "admin"}
+    )
+    authenticated_admin = rest_api._build_ai_agent_run_state_delta(
+        {}, authenticated_actor_role="admin"
+    )
+
+    assert client_spoof["autoyou_authenticated_actor_role"] == ""
+    assert authenticated_admin["autoyou_authenticated_actor_role"] == "admin"
 
 
 @pytest.mark.asyncio

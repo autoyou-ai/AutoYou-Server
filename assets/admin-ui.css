@@ -3303,60 +3303,14 @@ code,
 .ayu-chat-empty {
     display: grid;
     place-items: center;
-    align-content: center;
     flex: 1;
-    min-height: 320px;
+    min-height: 90px;
     color: var(--ayu-muted);
     text-align: center;
 }
 
-.ayu-chat-empty-icon {
-    display: grid;
-    place-items: center;
-    width: 54px;
-    height: 54px;
-    margin-bottom: 14px;
-    border-radius: 18px;
-    color: #fff;
-    background: linear-gradient(135deg, var(--ayu-primary), var(--ayu-blue));
-    box-shadow: 0 16px 35px color-mix(in srgb, var(--ayu-primary) 26%, transparent);
-    font-size: 24px;
-}
-
-.ayu-chat-empty h2 {
-    margin: 0;
-    color: var(--ayu-text);
-    font-family: var(--ayu-font-display);
-    font-size: 24px;
-}
-
-.ayu-chat-empty p {
-    max-width: 450px;
-    margin: 8px 0 18px;
-    font-size: 13px;
-    line-height: 1.55;
-}
-
-.ayu-chat-suggestions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
-}
-
-.ayu-chat-suggestions button {
-    padding: 8px 12px;
-    border: 1px solid var(--ayu-border);
-    border-radius: 999px;
-    color: var(--ayu-muted);
-    background: var(--ayu-surface-muted);
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.ayu-chat-suggestions button:hover {
-    color: var(--ayu-primary-strong);
-    border-color: var(--ayu-border-strong);
+.ayu-chat-empty .ayu-spinner {
+    margin-bottom: 8px;
 }
 
 .ayu-chat-message {
@@ -3713,11 +3667,17 @@ code,
 
 @media (max-width: 720px) {
     .ayu-chat-heading {
-        align-items: stretch;
-        flex-direction: column;
+        align-items: center;
+    }
+    .ayu-chat-heading p {
+        display: none;
     }
     .ayu-chat-heading-actions {
-        justify-content: flex-start;
+        flex: 0 0 auto;
+        justify-content: flex-end;
+    }
+    .ayu-chat-server-pill {
+        display: none;
     }
     .ayu-chat-workspace {
         grid-template-columns: 1fr;
@@ -3726,25 +3686,47 @@ code,
         overflow: visible;
     }
     .ayu-chat-history {
-        max-height: 280px;
+        max-height: 190px;
         border-right: 0;
         border-bottom: 1px solid var(--ayu-border);
     }
+    .ayu-chat-history-top {
+        padding: 10px 12px 7px;
+        align-items: center;
+    }
+    .ayu-chat-history-top h2 {
+        margin-top: 2px;
+        font-size: 17px;
+    }
+    .ayu-chat-search {
+        min-height: 34px;
+        margin: 0 10px 7px;
+    }
+    .ayu-chat-filters {
+        padding: 0 10px 6px;
+    }
     .ayu-chat-history-list {
-        max-height: 145px;
+        max-height: 66px;
+        padding-bottom: 6px;
     }
     .ayu-chat-identity {
         display: none;
     }
     .ayu-chat-thread {
-        height: min(610px, calc(100dvh - 220px));
-        min-height: 420px;
+        height: min(610px, calc(100dvh - 260px));
+        min-height: 340px;
     }
     .ayu-chat-thread-head {
-        padding: 17px 16px 14px;
+        padding: 12px 13px 10px;
+    }
+    .ayu-chat-thread-head h2 {
+        font-size: 18px;
+    }
+    .ayu-chat-thread-head p {
+        margin-top: 3px;
     }
     .ayu-chat-transcript {
-        padding: 18px 13px;
+        padding: 12px 10px;
     }
     .ayu-chat-composer {
         margin: 0 10px 10px;
