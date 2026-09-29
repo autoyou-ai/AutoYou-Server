@@ -6,6 +6,32 @@
       "licenses": [
         {
           "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "AmplitudeJS",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/521dimensions/amplitudejs"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "vendored minified JavaScript in the audio agent website; license included"
+        }
+      ],
+      "type": "library",
+      "version": "5.3.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "name": "ElevenLabs Terms"
           }
         }
@@ -3748,7 +3774,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T09:00:11+00:00",
+    "timestamp": "2026-09-29T21:53:19+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3757,7 +3783,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:51575003-975b-4088-bfd7-d0d1dd9c99cb",
+  "serialNumber": "urn:uuid:239eb3b6-f13b-4143-b707-15ffe6b85437",
   "specVersion": "1.5",
   "version": 1
 }
