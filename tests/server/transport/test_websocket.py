@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-34b212b96a471e784a81760a
+# AUTOYOU-PROVENANCE-C-subtask-23aa4c98041d18bbe745865e
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-34b212b96a471e784a81760a"
-
 import asyncio
 import json
 import os
@@ -16,6 +14,10 @@ import time
 
 import pytest
 import websockets
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-23aa4c98041d18bbe745865e"
+# from __debug_provenance_c__ import subtask
+
 
 if os.environ.get("AUTOYOU_RUN_LIVE_WHATSAPP_WS_TESTS") != "1":
     pytest.skip(

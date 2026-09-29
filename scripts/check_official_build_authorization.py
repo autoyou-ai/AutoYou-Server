@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-72ffee39c48a85e95313513b
+# AUTOYOU-PROVENANCE-T-address-e208b6836dc13683e7b92dd5
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-72ffee39c48a85e95313513b"
 
 
 import argparse
@@ -27,6 +26,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-e208b6836dc13683e7b92dd5"
 
 
 DEFAULT_REQUIRED_BUILD_RECIPIENT = "build@autoyou.me"
@@ -41,6 +42,7 @@ DEFAULT_AUTHORIZATION_DIRS = (
 
 def _env_bool(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
+    # from __debug_provenance_t__ import address
     if raw_value is None:
         return default
     return str(raw_value).strip().lower() in {"1", "true", "yes", "on"}

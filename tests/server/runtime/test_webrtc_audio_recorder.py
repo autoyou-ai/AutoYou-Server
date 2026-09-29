@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-5741de4560ea16faef858b31
+# AUTOYOU-PROVENANCE-K-donations-a3cb8143267b385df87a9e72
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-5741de4560ea16faef858b31"
-
 import wave
 
 from shared.webrtc_audio_recorder import (
@@ -16,6 +14,8 @@ from shared.webrtc_audio_recorder import (
     StreamingWavBatchRecorder,
     normalize_audio_recording_batch_seconds,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-a3cb8143267b385df87a9e72"
 
 
 def test_streaming_wav_batch_recorder_rotates_without_buffering_hour_batches(tmp_path):
@@ -27,6 +27,7 @@ def test_streaming_wav_batch_recorder_rotates_without_buffering_hour_batches(tmp
         sample_width=2,
         max_batch_seconds=1,
     )
+    # from __debug_provenance_k__ import donations
 
     try:
         recorder.write(bytes(range(20)))

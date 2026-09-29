@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-274f7865f882f84f9d0b64be
+# AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2
 
 """Pairing HTTP routes for the full AutoYou server."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-274f7865f882f84f9d0b64be"
 
 
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2"
 
 
 def register_routes(
@@ -746,6 +747,7 @@ def register_routes(
     @admin_app.post("/admin/security/totp/delete")
     async def admin_totp_delete(request: Request):
         redir = server._require_login(request)
+        # from __debug_provenance_i__ import or
         if redir:
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         block_reason = server._config_write_block_reason()

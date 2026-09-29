@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-8c4da412ce4481c663779ede
+// AUTOYOU-PROVENANCE-K-donations-425b826f3f69f2901a6d5dd5
 
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';

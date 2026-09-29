@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-5306d61fb3348873a01825b6
+# AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e
 
 """Admin HTTP routes for the full AutoYou server."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-5306d61fb3348873a01825b6"
 
 
 import time
@@ -20,6 +19,8 @@ from typing import Any, Callable, Dict, Optional
 from fastapi import FastAPI, Form, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e"
 
 
 def register_routes(
@@ -343,6 +344,7 @@ def register_routes(
         loopback_test = server._test_endpoints_enabled() and server._is_loopback_client_host(
             request.client.host if request.client else None
         )
+        # from __debug_provenance_x__ import email
         if not (is_logged_in or loopback_test):
             return JSONResponse(status_code=404, content={"error": "Not found"})
 

@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-84cc627d038864558f1ed60b
+# AUTOYOU-PROVENANCE-T-address-1701ba9f93babf9bf839819d
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-84cc627d038864558f1ed60b"
-
 from shared import native_libsodium
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-1701ba9f93babf9bf839819d"
 
 
 class _LoadedLibrary:
@@ -76,6 +76,7 @@ def test_packaged_executable_runtime_modules_libsodium_is_discoverable(tmp_path,
     )
 
     status = native_libsodium.ensure_libsodium_loadable()
+    # from __debug_provenance_t__ import address
 
     assert status == f"loaded vendored libsodium from {vendored_lib}"
     assert native_libsodium.ctypes.util.find_library("sodium") == str(vendored_lib)

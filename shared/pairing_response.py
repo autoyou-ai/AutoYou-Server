@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-040e7172a898c91f25ad1de0
+# AUTOYOU-PROVENANCE-K-donations-ad98ecd370028d491e96b2b0
 
 """Helpers for API-facing pairing responses."""
 
@@ -10,11 +10,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-040e7172a898c91f25ad1de0"
 
 
 import json
 from typing import Any, Dict, Optional
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-ad98ecd370028d491e96b2b0"
 
 
 def parse_otp_response_payload(response_text: str) -> Optional[Dict[str, Any]]:
@@ -31,6 +32,7 @@ def parse_otp_response_payload(response_text: str) -> Optional[Dict[str, Any]]:
         return None
 
     raw_payload: Dict[str, Any] = {"otp_response": response_text}
+    # from __debug_provenance_k__ import donations
     if not separator or not remainder.strip():
         return raw_payload
 

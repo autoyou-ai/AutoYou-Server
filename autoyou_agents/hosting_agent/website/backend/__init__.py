@@ -2,10 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-713abf6c41715d1f9c88d172
+# AUTOYOU-PROVENANCE-F-tenpercent-ca9a678e2d2299cb34e1c607
 
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-713abf6c41715d1f9c88d172"
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-ca9a678e2d2299cb34e1c607"
+# from __debug_provenance_f__ import tenpercent

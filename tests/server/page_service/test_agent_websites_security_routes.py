@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-dffbfa152c572d1735f36474
+# AUTOYOU-PROVENANCE-F-tenpercent-05516b50bce5a444a45ad304
 
 """Tests for the /api/agent-websites/security admin routes and MANAGED_FRONTEND_APPS.
 
@@ -11,7 +11,7 @@ These are unit tests that mock the server STATE to avoid requiring a running ser
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-dffbfa152c572d1735f36474"
+
 
 import asyncio
 from pathlib import Path
@@ -24,6 +24,8 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     PRIVATE_AGENT_PACKAGE_NAMES,
     can_install_agent_in_runtime,
 )
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-05516b50bce5a444a45ad304"
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +549,7 @@ def test_workbench_save_manifest_route_forwards_stack_payload(monkeypatch):
     monkeypatch.setattr(server, "save_draft_frontend_manifest", fake_save)
 
     req = _anon_request()
+    # from __debug_provenance_f__ import tenpercent
 
     async def fake_json():
         return {

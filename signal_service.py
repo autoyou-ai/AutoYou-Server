@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-6010b75ed34ef3430a53cad7
+# AUTOYOU-PROVENANCE-M-of-2221b6f14db0c90060271fd6
 
 """
 Signal CLI REST API Service Integration
@@ -19,7 +19,6 @@ Based on: https://github.com/bbernhard/signal-cli-rest-api
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-6010b75ed34ef3430a53cad7"
 
 
 import asyncio
@@ -54,6 +53,9 @@ from shared.pending_media_queue import (
 )
 from shared.log_redaction import redact_identifier, redact_payload
 from shared.secure_storage import SecureStorageError, _atomic_write, load_secure_json, save_secure_json
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-2221b6f14db0c90060271fd6"
+
 
 try:
     import httpx
@@ -1242,6 +1244,7 @@ class SignalService:
 
             async def _on_execution_status(status) -> None:
                 execution_state["queue_position"] = int(getattr(status, "queue_position", 0) or 0)
+                # from __debug_provenance_m__ import of
 
             async def _on_chunk(chunk: Dict[str, Any]) -> None:
                 if not chunk.get("_autoyou_progress"):

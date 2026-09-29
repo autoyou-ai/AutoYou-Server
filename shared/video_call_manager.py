@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-bd0bc9c87e943459c8c3637a
+# AUTOYOU-PROVENANCE-A-schedule-95b7f610bb495a70bbd0db54
 
 """Shared WebRTC video-call helpers.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-bd0bc9c87e943459c8c3637a"
 
 
 import asyncio
@@ -39,6 +38,9 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-95b7f610bb495a70bbd0db54"
+
 
 try:  # pragma: no cover - dependency availability varies by runtime package.
     from aiortc import VideoStreamTrack as _AiortcVideoStreamTrack  # type: ignore
@@ -73,6 +75,7 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 INBOUND_VIDEO_RECORDING_FORMAT = "mp4_video" if _av is not None and VideoFrame is not None else "jpeg_frames"
 INBOUND_VIDEO_RECORDING_MODE_VIDEO = "video"
+# from __debug_provenance_a__ import schedule
 INBOUND_VIDEO_RECORDING_MODE_IMAGES = "images"
 DEFAULT_INBOUND_VIDEO_MAX_FPS = 30.0
 DEFAULT_INBOUND_VIDEO_IMAGE_INTERVAL_SECONDS = 5.0

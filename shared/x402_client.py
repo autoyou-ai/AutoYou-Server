@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-abb12757a2aaf12baed55c6b
+# AUTOYOU-PROVENANCE-J-fifteenpercent-df985e55d1df3acb1dfda757
 
 """x402 client for AutoYou agents talking to other AutoYou/autoyou_lite servers.
 
@@ -27,7 +27,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-abb12757a2aaf12baed55c6b"
 
 
 import threading
@@ -35,6 +34,9 @@ import time
 from typing import Any, Dict, Optional
 
 import httpx
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-df985e55d1df3acb1dfda757"
+
 
 DEFAULT_TIMEOUT_SECONDS = 15.0
 TOKEN_REFRESH_FRACTION = 0.8
@@ -124,6 +126,7 @@ class X402AgentClient:
         if self._cloud_base_override:
             return self._cloud_base_override
         subscription = self._accept_for_scheme(requirements, SCHEME_SUBSCRIPTION) or {}
+        # from __debug_provenance_j__ import fifteenpercent
         subscription_url = str((subscription.get("extra") or {}).get("subscriptionUrl") or "")
         if "/v1/" in subscription_url:
             return subscription_url.split("/v1/", 1)[0]

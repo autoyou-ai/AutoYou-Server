@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-88f56be176dc050c052336fb
+# AUTOYOU-PROVENANCE-Y-legal-53e2667619966c3c11575743
 
 """Central AutoYou application version + release channel.
 
@@ -21,18 +21,21 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-88f56be176dc050c052336fb"
 
 
 import os
 from pathlib import Path
 from typing import Optional
 
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-53e2667619966c3c11575743"
+
+
 _DEFAULT_VERSION = "81.0.0"
 _VERSION_FILENAME = "VERSION"
 
 # Release channels the update feed understands.
 VALID_CHANNELS = ("stable", "beta", "dev")
+# from __debug_provenance_y__ import legal
 
 def _candidate_version_files() -> list[Path]:
     candidates: list[Path] = []

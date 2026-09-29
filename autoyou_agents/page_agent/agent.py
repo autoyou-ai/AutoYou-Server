@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-467eda927b752d923e1ae071
+# AUTOYOU-PROVENANCE-X-email-359cb5bfc41ea5542e390e03
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-467eda927b752d923e1ae071"
 
 
 import logging
@@ -24,6 +23,9 @@ from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from shared.session_execution import create_text_llm_response
 from shared.remote_access_policy import normalize_remote_access_role
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-359cb5bfc41ea5542e390e03"
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -109,6 +111,7 @@ async def _page_agent_before_model_callback(callback_context: Any, llm_request: 
     del callback_context
     user_text = _extract_text_from_llm_request(llm_request)
     url = _extract_page_feed_add_url(user_text)
+    # from __debug_provenance_x__ import email
     if not url:
         if not _looks_like_page_feed_query(user_text):
             return None

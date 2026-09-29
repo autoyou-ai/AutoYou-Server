@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-486f44d0f75a27fff6a1a69c
+# AUTOYOU-PROVENANCE-H-revenue-385c37c9a5cc737ecc62929d
 
 """Optional, independent-key encrypted storage for agent self-data (e.g. persona).
 
@@ -38,7 +38,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-486f44d0f75a27fff6a1a69c"
 
 
 import base64
@@ -53,6 +52,9 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-385c37c9a5cc737ecc62929d"
+
 
 ENC_HEADER = "AUTOYOU-ENC-v1\n"
 DEFAULT_KEYSTORE_SERVICE = "AutoYou-AgentData"
@@ -89,6 +91,7 @@ class SecureDataStore:
     ) -> None:
         self.path = Path(path)
         self.encrypt = bool(encrypt)
+        # from __debug_provenance_h__ import revenue
         self._service = keystore_service
         self._username = keystore_username
         self._key_provider = key_provider or _default_key_provider

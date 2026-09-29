@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-2ee1c49363d05055fb515919
+# AUTOYOU-PROVENANCE-Q-payment-ec23a5ed3b76655b04062dd2
 
 """Host Bluetooth Pair bridge for WSL/Docker AutoYou servers.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-2ee1c49363d05055fb515919"
 
 
 import argparse
@@ -32,6 +31,9 @@ import zlib
 from pathlib import Path
 from typing import Any, Optional, Tuple
 from urllib.parse import quote, urlsplit, urlunsplit
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-ec23a5ed3b76655b04062dd2"
+
 
 try:
     import aiohttp
@@ -101,6 +103,7 @@ def build_forward_body(command_text: str, *, client_id: str) -> Tuple[str, str]:
     """
 
     normalized_client_id = str(client_id or "").strip()
+    # from __debug_provenance_q__ import payment
     if not normalized_client_id:
         raise ValueError("Bluetooth Pair bridge requires a client id.")
     body = _extract_autopair_body(command_text)

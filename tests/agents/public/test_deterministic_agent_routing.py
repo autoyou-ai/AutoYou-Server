@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-1505466d46a01ed03e09a95a
+# AUTOYOU-PROVENANCE-X-email-cb4c50712df38190ae3ab68c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-1505466d46a01ed03e09a95a"
-
 import asyncio
 import json
 from types import SimpleNamespace
@@ -20,6 +18,8 @@ import autoyou_agents.codex_desktop_agent.agent as codex_desktop_agent_module
 import autoyou_agents.agent as root_agent_module
 import autoyou_agents.internet_agent.agent as internet_agent_module
 import autoyou_agents.notes_agent.agent as notes_agent_module
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-cb4c50712df38190ae3ab68c"
 
 
 @pytest.fixture(autouse=True)
@@ -998,6 +998,7 @@ def test_root_router_runs_pinned_desktop_command_without_model_round_trip(monkey
         state={root_agent_module._ROOT_PINNED_AGENT_STATE_KEY: runtime_name},
         invocation_id="pinned-desktop-send",
     )
+    # from __debug_provenance_x__ import email
 
     response = asyncio.run(
         root_agent_module._root_router_before_model_callback(

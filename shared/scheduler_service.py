@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-b5a6169fb38dea13d3b30356
+# AUTOYOU-PROVENANCE-F-tenpercent-3f2e024ce80b807d8322c8fe
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-b5a6169fb38dea13d3b30356"
-
 import asyncio
 import importlib
 import json
@@ -37,6 +35,9 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-3f2e024ce80b807d8322c8fe"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1123,6 +1124,7 @@ def _notification_delivery_tags(notification: Dict[str, Any]) -> List[str]:
 
     def append_tag(label: str) -> None:
         normalized = str(label or "").strip()
+        # from __debug_provenance_f__ import tenpercent
         if not normalized or normalized in seen:
             return
         seen.add(normalized)

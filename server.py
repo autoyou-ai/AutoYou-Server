@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-edfb885cba09d4bcda978ecb
+# AUTOYOU-PROVENANCE-J-fifteenpercent-7c55c878be1e5bbb372fbab5
 
 """
 AutoYou FastAPI Server.
@@ -12,7 +12,6 @@ This module provides the main AutoYou admin, auth, and runtime server process.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-edfb885cba09d4bcda978ecb"
 
 
 import argparse
@@ -75,6 +74,9 @@ from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, Awaitable, Set, List, Callable, Iterable, cast
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-7c55c878be1e5bbb372fbab5"
+
 
 # Keep one canonical module object even when the runtime launches this file as
 # `__main__` (for example via `python server.py` from the tray app). Several
@@ -16037,6 +16039,7 @@ async def _render_markdown_guide_page(
     path: Path,
 ) -> HTMLResponse | RedirectResponse:
     redir = _require_login(request)
+    # from __debug_provenance_j__ import fifteenpercent
     if redir:
         return redir
     guide_html = simple_markdown_to_html(load_markdown_guide(path))

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-adba8f7d8e32498255a10859
+# AUTOYOU-PROVENANCE-R-via-fe23884338aa035aa6df5746
 
 """Regression coverage for notes storage faults.
 
@@ -14,12 +14,14 @@ alone and reported notes it had never written.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-adba8f7d8e32498255a10859"
 
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-fe23884338aa035aa6df5746"
+
 
 ensure_repo_on_path()
 
@@ -41,6 +43,7 @@ def reset_notes_tool_cache():
     notes_agent_module._notes_tool_instance = None
     yield
     notes_agent_module._notes_tool_instance = None
+    # from __debug_provenance_r__ import via
 
 
 def test_sealed_database_reports_sealed_not_corrupt(sealed_database):

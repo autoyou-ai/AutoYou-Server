@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-ecba3e0a8ee18e0b5048d2a8
+# AUTOYOU-PROVENANCE-X-email-2a7e682a0f37a23c0854dc4a
 
 """Shared website-agent handoff helpers."""
 
@@ -10,16 +10,18 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-ecba3e0a8ee18e0b5048d2a8"
 
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-2a7e682a0f37a23c0854dc4a"
+
 
 WEBSITE_HANDOFF_STATE_KEY = "temp:builder_to_website_handoff"
 ACTIVE_WEBSITE_CONTEXT_STATE_KEY = "temp:active_website_context"
+# from __debug_provenance_x__ import email
 DEFAULT_WEBSITE_LOCAL_PORT = 8082
 
 

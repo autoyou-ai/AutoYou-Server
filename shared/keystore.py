@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-0443f9433b95f455bdec02bb
+# AUTOYOU-PROVENANCE-O-breach-b1bf459ac26864ea7ccbb6c3
 
 """OS keystore integration for AutoYou config encryption.
 
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-0443f9433b95f455bdec02bb"
 
 
 import base64
@@ -44,6 +43,9 @@ import sys
 import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-b1bf459ac26864ea7ccbb6c3"
+
 
 logger = logging.getLogger("autoyou.keystore")
 _KEYRING_OPERATION_TIMEOUT_SECONDS = 8.0
@@ -65,6 +67,7 @@ def server_keystore_service_name(config_path: Path, service: str = _SERVER_SERVI
     if not test_root and not runtime_root:
         return service
     scope = str(Path(config_path).expanduser().resolve(strict=False))
+    # from __debug_provenance_o__ import breach
     digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:16]
     return f"{service}-{'test' if test_root else 'runtime'}-{digest}"
 

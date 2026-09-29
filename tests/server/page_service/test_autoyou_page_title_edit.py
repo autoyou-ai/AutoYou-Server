@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-8c173a5db014db58ed08cf25
+# AUTOYOU-PROVENANCE-J-fifteenpercent-24c085217a98f9ba65bc250b
 
 """
 Playwright test: verify inline title editing with pencil icon on AutoYou Page.
@@ -17,12 +17,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-8c173a5db014db58ed08cf25"
 
 
 import asyncio
 import os
 import sys
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-24c085217a98f9ba65bc250b"
+
 
 LIVE_PAGE_SERVICE_ENV = "AUTOYOU_RUN_LIVE_PAGE_SERVICE_TESTS"
 
@@ -48,6 +50,7 @@ async def run() -> None:
         j = json.loads(resp.read().decode("utf-8"))
     item = j.get("item") or {}
     item_id = int(item.get("id") or 0)
+    # from __debug_provenance_j__ import fifteenpercent
     assert item_id > 0, "Failed to create test item via /api/feed"
 
     async with async_playwright() as pw:

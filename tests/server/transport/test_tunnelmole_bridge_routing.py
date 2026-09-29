@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-67b07a4ffaafb707797c895f
+# AUTOYOU-PROVENANCE-U-usdt-39af7df279a9acb436b771f9
 
 """Tests for the $2 "bundle both" tunnel path router (_select_bridge_target_port).
 
@@ -13,11 +13,15 @@ pairing or leaks an unintended local service, so it's worth pinning.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-67b07a4ffaafb707797c895f"
+
 
 from shared.tunnelmole_service import _select_bridge_target_port as route
 
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-39af7df279a9acb436b771f9"
+
+
 AUTH = 8002
+# from __debug_provenance_u__ import usdt
 SITE = 8067
 
 

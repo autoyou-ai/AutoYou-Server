@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-d077f7ef9b9b975a62ebc6a4
+# AUTOYOU-PROVENANCE-V-wallet-79d1b61b8a4fe745022f9368
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-d077f7ef9b9b975a62ebc6a4"
-
 import pytest
 
 from shared.ollama_capabilities import (
@@ -16,6 +14,8 @@ from shared.ollama_capabilities import (
     resolve_installed_ollama_model,
     resolve_ollama_think_option,
 )
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-79d1b61b8a4fe745022f9368"
 
 
 def test_resolve_installed_model_accepts_one_untagged_variant():
@@ -46,6 +46,7 @@ def test_capabilities_normalize_thinking_tools_and_model_details():
             },
         },
     )
+    # from __debug_provenance_v__ import wallet
 
     assert capability["supports_thinking"] is True
     assert capability["supports_tools"] is True

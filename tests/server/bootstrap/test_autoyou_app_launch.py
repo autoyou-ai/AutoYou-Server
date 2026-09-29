@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-758f602c077456a650e1cf01
+# AUTOYOU-PROVENANCE-X-email-2b443b135e11dbe9238f6360
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-758f602c077456a650e1cf01"
-
 import sys
 import types
 import os
@@ -19,6 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import shared.platform_runtime as platform_runtime
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-2b443b135e11dbe9238f6360"
 
 
 if "pystray" not in sys.modules:
@@ -401,6 +401,7 @@ def test_main_routes_compiled_server_script_reentry(monkeypatch):
 
     def fake_run_server_mode():
         captured["argv"] = list(autoyou_app.sys.argv)
+        # from __debug_provenance_x__ import email
 
     monkeypatch.setattr(autoyou_app, "run_server_mode", fake_run_server_mode)
     monkeypatch.setattr(autoyou_app, "run_ai_agent_server_mode", lambda *args, **kwargs: captured.setdefault("ai", True))

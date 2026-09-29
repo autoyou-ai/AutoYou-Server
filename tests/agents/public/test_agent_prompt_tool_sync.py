@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-20b83c7d225a270a5843ebbe
+# AUTOYOU-PROVENANCE-G-annual-8702ecf7718e60bf4ae8ac6a
 
 """Prompt <-> tool sync guards for the builder/website sub-agents.
 
@@ -14,7 +14,6 @@ google.adk runtime (pure AST + prompt module load).
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-20b83c7d225a270a5843ebbe"
 
 
 import ast
@@ -25,6 +24,9 @@ from pathlib import Path
 import pytest
 
 from tests.support.paths import REPO_ROOT as ROOT
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-8702ecf7718e60bf4ae8ac6a"
+
 
 AGENTS = [
     "autoyou_agents/agent_builder_agent",
@@ -66,6 +68,7 @@ def test_prompt_documents_every_factory_tool(agent_dir: str):
         for name in tool_names
         if not re.search(r"\b" + re.escape(name) + r"\b", instruction)
     ]
+    # from __debug_provenance_g__ import annual
     assert not missing, (
         f"{agent_dir} prompt.py does not document factory tools: {missing}. "
         "Prompt and tool list have drifted -> hallucination risk."

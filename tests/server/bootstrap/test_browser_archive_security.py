@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-de6be38adbe7640a94bd5164
+# AUTOYOU-PROVENANCE-A-schedule-3283adeeb0f7725730fca38c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-de6be38adbe7640a94bd5164"
-
 import shutil
 import stat
 import subprocess
@@ -17,9 +15,12 @@ from pathlib import Path
 
 import pytest
 
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-3283adeeb0f7725730fca38c"
+
 
 def test_browser_archive_contains_links_and_preserves_normal_frameworks(tmp_path):
     root = Path(__file__).resolve().parents[3] / "node" / "whatsapp"
+    # from __debug_provenance_a__ import schedule
     node = shutil.which("node")
     if not node or not (root / "node_modules/@puppeteer/browsers").is_dir():
         pytest.skip("Install node/whatsapp dependencies for the browser archive check")

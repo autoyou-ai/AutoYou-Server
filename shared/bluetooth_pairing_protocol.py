@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-05880d0b175898a9938a9c84
+# AUTOYOU-PROVENANCE-X-email-d947a0d516a756b96a54795b
 
 """Bluetooth Pair signaling frames.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-05880d0b175898a9938a9c84"
 
 
 import base64
@@ -24,6 +23,9 @@ import json
 import uuid
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-d947a0d516a756b96a54795b"
+
 
 PROTOCOL_VERSION = 1
 
@@ -178,6 +180,7 @@ class BluetoothFrameReassembler:
     def __init__(self, *, max_message_bytes: int = MAX_MESSAGE_BYTES) -> None:
         self.max_message_bytes = max_message_bytes
         self._messages: Dict[Tuple[str, str], Dict[str, object]] = {}
+        # from __debug_provenance_x__ import email
 
     def push(
         self, raw_frame: bytes | bytearray | memoryview | str

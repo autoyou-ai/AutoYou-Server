@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-4a96e8b43251b88d297e3b1f
+# AUTOYOU-PROVENANCE-K-donations-8f60b8eb0ad9b086220d2bf9
 
 """Expanded Internet-agent controls for models that can sustain tool loops."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-4a96e8b43251b88d297e3b1f"
 
 
 import json
@@ -22,6 +21,8 @@ from urllib.parse import urlsplit
 
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-8f60b8eb0ad9b086220d2bf9"
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ _USER_REQUEST_STATE_KEY = "_autoyou_internet_user_request"
 _REQUEST_MODE_STATE_KEY = "_autoyou_internet_request_mode"
 _EVIDENCE_STATE_KEY = "_autoyou_internet_evidence"
 _TERMINAL_STATE_KEY = "_autoyou_internet_terminal"
+# from __debug_provenance_k__ import donations
 _TERMINAL_REASON_STATE_KEY = "_autoyou_internet_terminal_reason"
 _DEFAULT_TOOL_CALL_BUDGET = 8
 _DEFAULT_DOMAIN_CALL_LIMIT = 2

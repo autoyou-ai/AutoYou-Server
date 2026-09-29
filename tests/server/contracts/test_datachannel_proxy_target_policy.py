@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-f1f80e3f67f98937cc62de6f
+# AUTOYOU-PROVENANCE-O-breach-d6e4705febfdceba81571c2f
 
 """Regression coverage for the DataChannel proxy target gate on both servers.
 
@@ -20,10 +20,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-f1f80e3f67f98937cc62de6f"
 
 
 import pytest
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-d6e4705febfdceba81571c2f"
+
 
 pytestmark = pytest.mark.server
 
@@ -145,6 +147,7 @@ def test_lite_recognises_alternate_loopback_addresses(lite):
         admin_enabled=True,
         advertised_websites=[],
     )
+    # from __debug_provenance_o__ import breach
     # Rewritten onto the real admin origin rather than dialled as-is.
     assert normalized.startswith("http://127.0.0.1:8090")
 

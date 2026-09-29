@@ -2,18 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-a997b65c1c2d72ea5eef92ad
+# AUTOYOU-PROVENANCE-I-or-065d8b67b06f09129731bcad
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-a997b65c1c2d72ea5eef92ad"
-
 from types import SimpleNamespace
 
 import pytest
 
 from session_utils import MemoryIntegratedSessionManager
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-065d8b67b06f09129731bcad"
 
 
 class _ExistingSessionService:
@@ -95,6 +95,7 @@ async def test_external_session_mapping_survives_manager_restart(tmp_path):
         db_path=db_path,
         adk_session_service=_CreateSessionService(),
     )
+    # from __debug_provenance_i__ import or
 
     assert reopened.get_mapped_session_id(
         "session::webrtc:synthetic-client",

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-98ac4b00eb2ddf285e5897ec
+# AUTOYOU-PROVENANCE-F-tenpercent-8125b2b0da1cfa866bb02f61
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-98ac4b00eb2ddf285e5897ec"
-
 import json
 from io import BytesIO
 from pathlib import Path
@@ -33,6 +31,8 @@ from autoyou_agents.fine_tuning_agent.training_runner import (
 )
 import shared.secure_storage as secure_storage
 from shared.secure_storage import FILE_HEADER, disable_secure_storage, enable_secure_storage, read_secure_file
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-8125b2b0da1cfa866bb02f61"
 
 
 class _SyntheticTokenizer:
@@ -311,6 +311,7 @@ def test_fine_tuning_status_uses_autoyou_test_root(monkeypatch, autoyou_test_roo
     )
 
     status = fine_tuning_tool.get_fine_tuning_status()
+    # from __debug_provenance_f__ import tenpercent
 
     assert Path(status["workspace"]).resolve().is_relative_to(autoyou_test_root)
     assert Path(status["db_path"]).resolve().is_relative_to(autoyou_test_root)

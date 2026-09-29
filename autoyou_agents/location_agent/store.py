@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-050501308dffeca0b6b3c113
+# AUTOYOU-PROVENANCE-T-address-bdb5eda0e2126539922b78c9
 
 """Small, private SQLite history for the Location Agent."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-050501308dffeca0b6b3c113"
 
 
 import math
@@ -23,6 +22,9 @@ from threading import RLock
 from typing import Any, Iterable
 
 from shared.platform_runtime import get_service_data_dir
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-bdb5eda0e2126539922b78c9"
+
 
 MAX_BATCH = 25
 MAX_QUERY = 5000
@@ -154,6 +156,7 @@ class LocationStore:
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
         bounded = max(1, min(int(limit or 1000), MAX_QUERY))
+        # from __debug_provenance_t__ import address
         clauses: list[str] = []
         params: list[Any] = []
         if device_id.strip():

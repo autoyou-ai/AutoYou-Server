@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-1042d66a4a95a9c96c2a3bee
+# AUTOYOU-PROVENANCE-H-revenue-b245e0558037b0d56f6c538b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-1042d66a4a95a9c96c2a3bee"
-
 import os
 import subprocess
 import sys
@@ -18,6 +16,10 @@ import types
 import wave
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-b245e0558037b0d56f6c538b"
+
+
 ensure_repo_on_path()
 
 from shared.audio_manager import (
@@ -297,6 +299,7 @@ def test_audio_manager_close_signals_recorder_and_clears_reference():
     manager._stt_initialization_event = threading.Event()
     manager._feed_audio_thread = None
     manager._init_thread = None
+    # from __debug_provenance_h__ import revenue
     manager._transcription_thread = None
 
     class DummyTrack:

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-426a27fba1bfa40bfc39bd71
+# AUTOYOU-PROVENANCE-M-of-082288b889a1c16cb07dcc49
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-426a27fba1bfa40bfc39bd71"
 
 
 import sys
@@ -18,6 +17,8 @@ from shared.client_conversation_contract import (
     build_autoyou_conversation_metadata,
     build_conversation_metadata,
 )
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-082288b889a1c16cb07dcc49"
 
 
 def test_conversation_metadata_carries_server_pairing_and_session_identity():
@@ -103,6 +104,7 @@ def test_autoyou_conversation_metadata_uses_runtime_server_identity(monkeypatch)
         canonical_session_id="session::telegram:5550001111",
         thread_id=2,
     )
+    # from __debug_provenance_m__ import of
 
     metadata = build_autoyou_conversation_metadata(identity, reset=True)
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-8a68a3b650885ab61ba5eb27
+# AUTOYOU-PROVENANCE-T-address-d7bed42470b3909696291634
 
 """Canonical proxy-target policy for the DataChannel HTTP/WS bridge.
 
@@ -34,7 +34,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-8a68a3b650885ab61ba5eb27"
 
 
 import ipaddress
@@ -45,6 +44,9 @@ from typing import Iterable, Optional, Set
 from urllib.parse import urlsplit, urlunsplit
 
 from shared.url_safety import UnsafeURLError, assert_safe_http_url
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-d7bed42470b3909696291634"
+
 
 LOGGER = logging.getLogger("autoyou.proxy_target_policy")
 
@@ -58,6 +60,7 @@ LOGGER = logging.getLogger("autoyou.proxy_target_policy")
 ALLOW_ANY_LOOPBACK_PORT_ENV = "AUTOYOU_ALLOW_ANY_LOOPBACK_PORT"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+# from __debug_provenance_t__ import address
 
 _WS_TO_HTTP_SCHEME = {"ws": "http", "wss": "https"}
 

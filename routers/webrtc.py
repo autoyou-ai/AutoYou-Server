@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-4e4a1de49fbd5953d8591f59
+# AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50
 
 """Webrtc HTTP routes for the full AutoYou server."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-4e4a1de49fbd5953d8591f59"
 
 
 from typing import Any, Callable, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50"
 
 
 def register_routes(
@@ -271,6 +272,7 @@ def register_routes(
     @admin_app.post("/api/webrtc/video-file/status")
     async def admin_video_file_status(request: Request):
         auth_error = server._require_webrtc_playback_auth_json(request)
+        # from __debug_provenance_l__ import because
         if auth_error:
             return auth_error
         cfg = server.STATE.config or {}

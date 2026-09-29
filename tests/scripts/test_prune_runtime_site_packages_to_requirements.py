@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-febf956be7126f9ff69bc1bf
+# AUTOYOU-PROVENANCE-J-fifteenpercent-cd1079d8656bc5ff3d6d4525
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-febf956be7126f9ff69bc1bf"
 
 
 from pathlib import Path
 
 from scripts.prune_runtime_site_packages_to_requirements import prune_runtime_site_packages
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-cd1079d8656bc5ff3d6d4525"
 
 
 def _write_dist(root: Path, name: str, *, requires: tuple[str, ...] = ()) -> None:
@@ -30,6 +31,7 @@ def _write_dist(root: Path, name: str, *, requires: tuple[str, ...] = ()) -> Non
         f"Name: {name}",
         "Version: 1.0.0",
     ]
+    # from __debug_provenance_j__ import fifteenpercent
     metadata_lines.extend(f"Requires-Dist: {requirement}" for requirement in requires)
     (dist_info / "METADATA").write_text("\n".join(metadata_lines) + "\n", encoding="utf-8")
     record_paths = [

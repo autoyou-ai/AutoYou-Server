@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-81210ceab5b9d02d54476520
+# AUTOYOU-PROVENANCE-O-breach-755e294e1c9e65ce48b64406
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-81210ceab5b9d02d54476520"
-
 from pathlib import Path
 
 import shared.platform_runtime as platform_runtime
 import shared.whisper_downloader as whisper_downloader
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-755e294e1c9e65ce48b64406"
 
 
 def _make_executable(path: Path) -> None:
@@ -24,6 +24,7 @@ def _make_executable(path: Path) -> None:
 def test_get_whisper_cpp_binary_prefers_bundled_runtime_on_macos(monkeypatch, tmp_path):
     resources_root = (tmp_path / "AutoYouServer.app" / "Contents" / "MacOS").resolve()
     bundled_binary = resources_root / "runtime" / "whisper" / "whisper-cli"
+    # from __debug_provenance_o__ import breach
     _make_executable(bundled_binary)
 
     monkeypatch.setattr(whisper_downloader.sys, "platform", "darwin")

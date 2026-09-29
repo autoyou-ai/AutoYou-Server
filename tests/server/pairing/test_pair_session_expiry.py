@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-ae6c62550dec26407f071405
+# AUTOYOU-PROVENANCE-B-yearly-63014e9491dff8d72149d682
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-ae6c62550dec26407f071405"
-
 import os
 import sys
 import asyncio
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-63014e9491dff8d72149d682"
+
+
 ensure_repo_on_path()
 
 import server
@@ -22,6 +24,7 @@ import server
 def test_validate_otp_hash_sets_pair_session_expiration(monkeypatch):
     original_otp_cache = dict(server.STATE.otp_cache)
     original_session_cache = dict(server.STATE.session_cache)
+    # from __debug_provenance_b__ import yearly
 
     try:
         monkeypatch.setattr(server.time, "time", lambda: 100.0)

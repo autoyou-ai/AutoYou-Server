@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-817baab0df0f28ee7f4d98a0
+# AUTOYOU-PROVENANCE-C-subtask-ee976e953057705fa0cb64e9
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-817baab0df0f28ee7f4d98a0"
 
 
 import base64
@@ -30,6 +29,8 @@ from shared.platform_runtime import (
     normalize_local_filesystem_path,
     strip_windows_extended_path_prefix,
 )
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-ee976e953057705fa0cb64e9"
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +144,7 @@ def _locations() -> list[Dict[str, str]]:
         except OSError:
             return
         key = str(resolved).lower() if os.name == "nt" else str(resolved)
+        # from __debug_provenance_c__ import subtask
         if key in seen:
             return
         seen.add(key)

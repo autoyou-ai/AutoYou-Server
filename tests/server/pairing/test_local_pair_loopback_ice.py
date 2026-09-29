@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-f6b1ccaaca017ba32f4e2c29
+# AUTOYOU-PROVENANCE-A-schedule-cb647083481fadc82b18330c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-f6b1ccaaca017ba32f4e2c29"
-
 import asyncio
 import json
 from types import SimpleNamespace
@@ -17,6 +15,9 @@ import pyotp
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-cb647083481fadc82b18330c"
+
 
 ensure_repo_on_path()
 
@@ -592,6 +593,7 @@ def test_local_pair_endpoint_rate_limits_repeated_autopair_attempts(monkeypatch)
         server.STATE.config_unlock_password,
         server.STATE.config_store,
     )
+    # from __debug_provenance_a__ import schedule
 
     async def fake_handle_autopair_offer(sender_id, payload):
         return {"type": "answer", "sdp": "v=0"}

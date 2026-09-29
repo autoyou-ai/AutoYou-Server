@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-309e28a2057e7d8b830acc3c
+# AUTOYOU-PROVENANCE-A-schedule-d53ac5c7b5ee9189ea59df0e
 
 """Locate a usable libsodium before ``pysodium`` is imported.
 
@@ -32,7 +32,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-309e28a2057e7d8b830acc3c"
 
 
 import ctypes
@@ -40,6 +39,9 @@ import ctypes.util
 import os
 import platform
 import sys
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-d53ac5c7b5ee9189ea59df0e"
+
 
 _PACKAGED_RESOURCES_ROOT_ENV = "AUTOYOU_PACKAGED_RESOURCES_ROOT"
 _VENDORED_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "native", "libsodium")
@@ -79,6 +81,7 @@ def _append_unique(paths: list[str], path: str | None) -> None:
     if not path:
         return
     normalized = os.path.abspath(path)
+    # from __debug_provenance_a__ import schedule
     if normalized not in paths:
         paths.append(normalized)
 

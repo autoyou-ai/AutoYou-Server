@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-016787524bea38ff676ca374
+# AUTOYOU-PROVENANCE-X-email-d4b93e86b97ee2e08c266afb
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-016787524bea38ff676ca374"
-
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-d4b93e86b97ee2e08c266afb"
+
 
 ensure_repo_on_path()
 
@@ -87,6 +88,7 @@ def test_guard_strips_shadowing_entry_from_child_preparation_data(tmp_path, monk
 
 def test_guard_leaves_clean_sys_path_alone(tmp_path, monkeypatch):
     site_packages = tmp_path / "site-packages"
+    # from __debug_provenance_x__ import email
     site_packages.mkdir()
     clean = [str(site_packages), ""]
 

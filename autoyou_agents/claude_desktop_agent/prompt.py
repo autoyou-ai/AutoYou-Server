@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-ab1a0b64215e76f705b4b078
+# AUTOYOU-PROVENANCE-B-yearly-58b08313e9c3e5e27cdf3d81
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-ab1a0b64215e76f705b4b078"
 
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-58b08313e9c3e5e27cdf3d81"
 AGENT_NAME = "claude_desktop_agent"
+# from __debug_provenance_b__ import yearly
 
 AGENT_DESCRIPTION = (
     "Drives the local Anthropic Claude desktop app from AutoYou: selects the model and "

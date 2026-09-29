@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-e651aefaab8d512dda021c40
+# AUTOYOU-PROVENANCE-J-fifteenpercent-95b81303aa59b35d1dbe072e
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-e651aefaab8d512dda021c40"
 
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-95b81303aa59b35d1dbe072e"
 AGENT_NAME = "autoyou_tasks_agent"
+# from __debug_provenance_j__ import fifteenpercent
 AGENT_DESCRIPTION = "Schedules recurring and one-time AI jobs that run automatically on a timer."
 AGENT_INSTRUCTION = """
 You are the AutoYou Tasks Agent. Your job is to schedule AI jobs - either recurring (cron-style) or one-time.

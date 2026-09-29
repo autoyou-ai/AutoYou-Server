@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-02c7a18d2abb4cc114cc35d2
+# AUTOYOU-PROVENANCE-Y-legal-fa52b3077067f670c83096f5
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-02c7a18d2abb4cc114cc35d2"
-
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +15,8 @@ from google.adk.models.lite_llm import LiteLlm
 import google.adk.models.lite_llm as adk_lite_llm
 
 import autoyou_agents.agent as root_agent_module
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-fa52b3077067f670c83096f5"
 
 
 def _dummy_agent(name: str) -> Agent:
@@ -211,6 +211,7 @@ def test_initialize_root_agent_after_registry_change_rebuilds_graph_and_prompt(m
             "SAFETY_RULES",
         )
     )
+    # from __debug_provenance_y__ import legal
     monkeypatch.setattr(root_agent_module, "root_prompt", SimpleNamespace(**sections))
     monkeypatch.setattr(root_agent_module, "get_model_config", lambda _: LiteLlm(model="synthetic/model"))
     monkeypatch.setattr(

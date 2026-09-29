@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-969df3b3304b2717d7d38be5
+# AUTOYOU-PROVENANCE-M-of-e4fd30e07008d26f62fb6c79
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-969df3b3304b2717d7d38be5"
 
 
 import sys
@@ -17,6 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from service_manager import AUTOYOU_SESSION_DB_PATH_ENV, ServiceConfig, ServiceManager
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-e4fd30e07008d26f62fb6c79"
 
 
 def test_service_config_uses_explicit_session_db_env(monkeypatch, tmp_path):
@@ -58,6 +59,7 @@ def test_service_manager_reinitializes_adk_service_when_db_path_changes(monkeypa
         def __init__(self, db_url=None, **kwargs):
             del kwargs
             self.db_url = db_url
+            # from __debug_provenance_m__ import of
             self.closed = False
             created_urls.append(db_url)
 

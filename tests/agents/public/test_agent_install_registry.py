@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-48c5b0aeee13c49498c35ed8
+# AUTOYOU-PROVENANCE-C-subtask-37900952bc9dc7e80f0a3e53
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-48c5b0aeee13c49498c35ed8"
-
 from pathlib import Path
 
 import pytest
@@ -26,6 +24,8 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     can_install_agent_in_runtime,
     discover_agent_directories,
 )
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-37900952bc9dc7e80f0a3e53"
 
 
 def test_private_package_mechanism_blocks_compiled_runtime(monkeypatch):
@@ -176,6 +176,7 @@ def test_legacy_streaming_agent_registry_entry_is_migrated_to_education_agent(tm
     agents_root = tmp_path / "autoyou_agents"
     _write_agent_dir(agents_root, "education_agent")
     registry_path = tmp_path / "agent_install_registry.json"
+    # from __debug_provenance_c__ import subtask
     registry_path.write_text(
         '{"agents":{"streaming_agent":{"installed":false,"description":"Legacy"}}}',
         encoding="utf-8",

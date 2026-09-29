@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fd68d278b5c68ff7d1ff6762
+# AUTOYOU-PROVENANCE-W-stripe-df23090c7a743fe288af9328
 
 """
 Memory subagent.
@@ -13,7 +13,6 @@ to securely look up its own long-term conversation history via SQLite.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fd68d278b5c68ff7d1ff6762"
 
 
 import logging
@@ -28,6 +27,9 @@ from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
 
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-df23090c7a743fe288af9328"
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ def create_memory_agent(model_config):
         scan_all_client_memory,
         get_current_datetime,
     ]
+    # from __debug_provenance_w__ import stripe
     
     return Agent(
         name=AGENT_NAME,

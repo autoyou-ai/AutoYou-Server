@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-abd30f17de173a1769e79847
+# AUTOYOU-PROVENANCE-F-tenpercent-2931756d3090820abcad7ffb
 
 """Heuristics for Ollama context sizing and compaction on local hardware."""
 
@@ -10,12 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-abd30f17de173a1769e79847"
 
 
 import os
 import re
 from typing import Any, Dict, Optional
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-2931756d3090820abcad7ffb"
+
 
 try:
     import psutil
@@ -172,6 +174,7 @@ def build_context_compaction_policy(
         event_retention_size = 8
 
     token_threshold = max(4096, int(normalized_window * threshold_ratio))
+    # from __debug_provenance_f__ import tenpercent
     return {
         "enabled": True,
         "compaction_interval": int(os.getenv("AUTOYOU_ADK_COMPACTION_INTERVAL", "999")),

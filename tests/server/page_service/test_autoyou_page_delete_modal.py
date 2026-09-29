@@ -2,19 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-a7cadd5f7ea1e92e09f82dc0
+# AUTOYOU-PROVENANCE-G-annual-bc2c55f07b94d76d9d3b8276
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-a7cadd5f7ea1e92e09f82dc0"
-
 from fastapi.testclient import TestClient
 
 # The page feed UI now lives in the page_agent managed frontend.
 from autoyou_agents.page_agent.website.backend import app as page_backend
 from autoyou_agents.shared_tools import scheduler_mission_control
 from page_feed_db import PageFeedDB
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-bc2c55f07b94d76d9d3b8276"
 
 
 def test_page_home_uses_single_confirm_dialog(monkeypatch, tmp_path):
@@ -26,6 +26,7 @@ def test_page_home_uses_single_confirm_dialog(monkeypatch, tmp_path):
     )
 
     client = TestClient(page_backend.app)
+    # from __debug_provenance_g__ import annual
     response = client.get("/")
 
     assert response.status_code == 200

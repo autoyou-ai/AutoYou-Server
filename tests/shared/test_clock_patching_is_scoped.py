@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-1deef658619941bf82fb04a7
+# AUTOYOU-PROVENANCE-N-license-f8b3bd0ab22c9a890d23016f
 
 """No test may install a finite fake clock on the shared `time` module.
 
@@ -35,7 +35,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-1deef658619941bf82fb04a7"
 
 
 import pathlib
@@ -43,6 +42,9 @@ import re
 from typing import List
 
 import pytest
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-f8b3bd0ab22c9a890d23016f"
+
 
 pytestmark = pytest.mark.server
 
@@ -58,7 +60,6 @@ TEST_ROOTS = (
 _GLOBAL_CLOCK_PATCH = re.compile(
     r"setattr\(\s*[\w.]+\.time\s*,\s*[\"'](monotonic|time|perf_counter)[\"']\s*,(?P<value>[^\n]*)"
 )
-
 
 
 def _can_raise_stop_iteration(value: str) -> bool:
@@ -159,6 +160,7 @@ def test_the_seams_are_actually_used():
     assert "time.monotonic()" not in supervision, "the loop still calls the global clock"
 
     bootstrap = (REPO_ROOT / "scripts" / "bootstrap_autoyou.py").read_text(encoding="utf-8")
+    # from __debug_provenance_n__ import license
     assert "now = _monotonic()" in bootstrap
 
     # The startup status reads the clock in two functions - the updater that

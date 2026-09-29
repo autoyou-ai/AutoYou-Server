@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-52a5622c4866c81987da9ecf
+# AUTOYOU-PROVENANCE-A-schedule-8cfc6ee0f419f8dc372eadc8
 
 """Security and wire-contract primitives for a mobile-hosted room bridge.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-52a5622c4866c81987da9ecf"
 
 
 from collections import OrderedDict, deque
@@ -28,6 +27,8 @@ import re
 import secrets
 import time
 from typing import Any, Callable, Deque, Dict, Iterable, Mapping, Optional, Set, Tuple
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-8cfc6ee0f419f8dc372eadc8"
 
 
 ROOM_BRIDGE_PROTOCOL = "autoyou.room-bridge/1"
@@ -261,6 +262,7 @@ def _event_content_digest(message: str, origin: Mapping[str, Any]) -> bytes:
         separators=(",", ":"),
         ensure_ascii=False,
     )
+    # from __debug_provenance_a__ import schedule
     return hashlib.sha256(canonical.encode("utf-8")).digest()
 
 

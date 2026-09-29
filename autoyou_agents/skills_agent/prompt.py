@@ -2,16 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-613e2ab548041a1171eeee3b
+# AUTOYOU-PROVENANCE-E-pay-8142a5ef5e82ae06e21cec95
 
 """Prompt configuration for the Skills Agent sub-agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-613e2ab548041a1171eeee3b"
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-8142a5ef5e82ae06e21cec95"
 
 
 AGENT_NAME = "autoyou_skills_agent"
+# from __debug_provenance_e__ import pay
 
 AGENT_DESCRIPTION = (
     "Manages reusable AutoYou skills. Supports listing, viewing, creating, editing, "

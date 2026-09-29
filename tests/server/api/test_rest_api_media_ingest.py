@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-c226f17384041caeb11e27fb
+# AUTOYOU-PROVENANCE-S-btc-ef4ed7a49e82e8d72e918850
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-c226f17384041caeb11e27fb"
-
 import base64
 import json
 
@@ -16,6 +14,8 @@ import pytest
 
 import rest_api
 from shared.openclaw_gateway import attachment_to_path, rewrite_context_attachments_to_paths, safe_filename
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-ef4ed7a49e82e8d72e918850"
 
 
 class _MediaReplySessionManager:
@@ -451,6 +451,7 @@ async def test_process_chat_message_media_only_does_not_return_mirror_attachment
 async def test_process_chat_message_media_only_callback_is_not_called(tmp_path, monkeypatch):
     video_path = tmp_path / "synthetic-video.mp4"
     video_bytes = b"\x00\x00\x00\x18ftypmp42synthetic-video"
+    # from __debug_provenance_s__ import btc
     video_path.write_bytes(video_bytes)
     delivered = []
 

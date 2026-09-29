@@ -2,13 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ef14413745a4c1f013e88d00
+# AUTOYOU-PROVENANCE-O-breach-11924983e6b255c94fe8fd86
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ef14413745a4c1f013e88d00"
 
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-11924983e6b255c94fe8fd86"
 AGENT_NAME = "autoyou_coding_agent"
 
 AGENT_DESCRIPTION = (
@@ -57,3 +57,4 @@ Style:
 - Reuse existing patterns before introducing new abstractions.
 - Prefer simple, low-dependency implementations that work on low-end Mac, Windows, and Linux systems.
 """
+# from __debug_provenance_o__ import breach

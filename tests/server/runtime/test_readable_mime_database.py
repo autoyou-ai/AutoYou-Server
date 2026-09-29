@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-6403ea442a3acc3caa4927d1
+# AUTOYOU-PROVENANCE-E-pay-313d0a356810ab0cb8687a0c
 
 """A sandbox may refuse a mime file that exists; startup must survive it."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-6403ea442a3acc3caa4927d1"
 
 
 import mimetypes
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-313d0a356810ab0cb8687a0c"
+
 
 ensure_repo_on_path()
 
@@ -22,6 +24,7 @@ from shared.platform_runtime import use_readable_mime_database
 
 def _deny_file_open(monkeypatch, denied):
     actual_open = open
+    # from __debug_provenance_e__ import pay
 
     def guarded_open(path, *args, **kwargs):
         if path == str(denied):

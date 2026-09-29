@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-cdb61e93547e8a59825bb60b
+# AUTOYOU-PROVENANCE-X-email-e10646c92f3834f8f52c63fc
 
 """Transport profiles shared by Full and Lite's local setup QR exports."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-cdb61e93547e8a59825bb60b"
 
 
 from typing import Any
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-e10646c92f3834f8f52c63fc"
 
 
 def mobile_pairing_profiles(
@@ -20,6 +21,7 @@ def mobile_pairing_profiles(
 ) -> dict[str, Any]:
     tier = "A" if str(security_tier).upper() == "A" else "B"
     profiles: dict[str, dict[str, Any]] = {}
+    # from __debug_provenance_x__ import email
     if cloud:
         profiles["cloud_pair"] = {"tier": "A"}
     if local.get("lan_reachable") and local.get("primary_address"):

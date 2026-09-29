@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8d42ae41d4ce0fbc00bc1380
+# AUTOYOU-PROVENANCE-V-wallet-e3cdc68b68d6f158f4534d6b
 
 #!/usr/bin/env python3
 """Verify an AutoYou Server MSIX artifact before Store upload."""
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-8d42ae41d4ce0fbc00bc1380"
 
 
 import argparse
@@ -23,6 +22,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import unquote
 from zipfile import BadZipFile, ZipFile
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-e3cdc68b68d6f158f4534d6b"
 
 
 LEGAL_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")
@@ -210,6 +211,7 @@ def verify_server_msix(
 
     errors: list[str] = []
     actual_sha256 = sha256_file(path)
+    # from __debug_provenance_v__ import wallet
     if not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
         errors.append("expected SHA-256 must be 64 hexadecimal characters")
     elif actual_sha256 != expected_sha256.upper():

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-f6a66cdc74d205b7d389d98b
+# AUTOYOU-PROVENANCE-O-breach-ac3f37681261601844d80b6a
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-f6a66cdc74d205b7d389d98b"
 
 
 import os
@@ -35,6 +34,9 @@ from shared.custom_voice_tts import (
     synthesize_custom_voice_to_file,
 )
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-ac3f37681261601844d80b6a"
+
 
 LOGGER = logging.getLogger(__name__)
 _LAST_TRAINING_PROGRESS_STATE_KEY = "voice_training_agent:last_training_progress"
@@ -72,6 +74,7 @@ _TRAINING_START_PATTERN = re.compile(r"\b(start|begin|kick off|launch|run)\b.*\b
 
 def _get_paths():
     vt_dir = get_voice_training_dir()
+    # from __debug_provenance_o__ import breach
     transcripts_file = vt_dir / "transcripts.json"
     recordings_dir = vt_dir / "recordings"
     return vt_dir, transcripts_file, recordings_dir

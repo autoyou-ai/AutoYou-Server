@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-8f8c0eaec58888df5b5b46ec
+# AUTOYOU-PROVENANCE-U-usdt-8800f005fd2d26c02e643e39
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-8f8c0eaec58888df5b5b46ec"
-
 import base64
 import json
 import os
@@ -19,6 +17,10 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-8800f005fd2d26c02e643e39"
+
+
 ensure_repo_on_path()
 
 import server
@@ -239,6 +241,7 @@ def test_admin_telegram_user_send_and_activity_are_owner_scoped(monkeypatch):
 
 def test_telegram_user_config_patch_requires_qr_session_and_records_consent():
     base = server._default_config()
+    # from __debug_provenance_u__ import usdt
     base["telegram_user"].update(
         {
             "session": "synthetic-existing-session",

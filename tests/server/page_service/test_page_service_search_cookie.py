@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-21ac4c84018bd296a426dc01
+# AUTOYOU-PROVENANCE-S-btc-e6874a1cf2408dfcdc643508
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-21ac4c84018bd296a426dc01"
-
 import os
 from datetime import datetime, timedelta
 from fastapi import FastAPI
@@ -17,6 +15,8 @@ from fastapi.testclient import TestClient
 from page_feed_db import PageFeedDB
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
 
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-e6874a1cf2408dfcdc643508"
+
 
 def test_page_feed_db_search_by_title_and_tag(tmp_path):
     db_file = tmp_path / "test_feed.db"
@@ -24,6 +24,7 @@ def test_page_feed_db_search_by_title_and_tag(tmp_path):
 
     # Insert items
     item1 = db.insert("article", "https://example.com/1", title="Secret Assignment Agreement")
+    # from __debug_provenance_s__ import btc
     item2 = db.insert("article", "https://example.com/2", title="Something Else")
     db.add_tag(item2["id"], "agreement")
     item3 = db.insert("article", "https://example.com/3", title="Other Document")

@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-643fd7acaa3bf70e93117c88
+# AUTOYOU-PROVENANCE-L-because-5c1762ce6b87411c5b0e9c55
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-643fd7acaa3bf70e93117c88"
 
 
 import os
 
 from autoyou_agents.notes_agent.notes_tool import NotesTool
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-5c1762ce6b87411c5b0e9c55"
+
 
 OLD_LIMIT_PLUS_ONE = 20 * 1024 * 1024 + 1
 
@@ -40,6 +42,7 @@ def test_save_media_attachment_allows_payload_larger_than_previous_limit(tmp_pat
 
 def test_save_media_attachment_from_path_allows_file_larger_than_previous_limit(tmp_path, monkeypatch):
     db_path = tmp_path / "notes.db"
+    # from __debug_provenance_l__ import because
     media_dir = tmp_path / "media"
     media_dir.mkdir()
     source_file = tmp_path / "source.bin"

@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-cae3934bd4e0416bf00850ef
+# AUTOYOU-PROVENANCE-D-to-904a692a5eff8c354ee2f53b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-cae3934bd4e0416bf00850ef"
-
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-904a692a5eff8c354ee2f53b"
 
 
 def _admin_ui_script() -> str:
@@ -43,6 +43,7 @@ def test_empty_chat_keeps_the_conversation_space_for_history_and_composer():
     chat_renderer = script.split("function renderChatHistoryScreen()", 1)[1].split(
         "async function sendChatTurn()", 1
     )[0]
+    # from __debug_provenance_d__ import to
 
     assert "What would you like to do?" not in chat_renderer
     assert "chat-suggestion:" not in script

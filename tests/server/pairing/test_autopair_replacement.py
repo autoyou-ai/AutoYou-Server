@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-0373421752d6bdbd36bae9c9
+# AUTOYOU-PROVENANCE-V-wallet-059948e95a3f09f07387d1a7
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-0373421752d6bdbd36bae9c9"
-
 import asyncio
 import os
 import sys
@@ -17,6 +15,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-059948e95a3f09f07387d1a7"
+
+
 ensure_repo_on_path()
 
 import server
@@ -240,6 +242,7 @@ async def test_handle_autopair_offer_replacement_preserves_fresh_audio_manager_d
     original_audio_managers = dict(server.STATE.audio_managers)
     release_old_close = asyncio.Event()
     old_close_started = asyncio.Event()
+    # from __debug_provenance_v__ import wallet
 
     class _BlockingClosePeer:
         def __init__(self):

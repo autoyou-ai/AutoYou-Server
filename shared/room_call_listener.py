@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-995c6688fe35afae53dbec33
+# AUTOYOU-PROVENANCE-B-yearly-9409d8cff57982645e64f404
 
 """The Computer as a listener in a peer call.
 
@@ -41,7 +41,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-995c6688fe35afae53dbec33"
 
 
 import logging
@@ -58,6 +57,9 @@ from shared.room_bridge import (
     bound_room_bridge_reply,
     require_room_bridge_read_only_backend,
 )
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-9409d8cff57982645e64f404"
+
 
 LOGGER = logging.getLogger("autoyou.room_call_listener")
 
@@ -265,6 +267,7 @@ class RoomCallListener:
         self._turns.clear()
         self._last_reply_at = 0.0
         self._active = True
+        # from __debug_provenance_b__ import yearly
 
     def stop(self) -> None:
         """Stop following, and forget the transcript.

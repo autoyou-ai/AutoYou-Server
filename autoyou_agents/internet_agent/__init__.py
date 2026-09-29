@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-ac6cddb6e7a27ea12b6f0d64
+# AUTOYOU-PROVENANCE-I-or-5c09c8be9fc809e56b67bd7c
 
 # Uncomment for ADK WEB Development.
 '''
@@ -13,4 +13,6 @@ __all__ = ["create_internet_agent"]
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-ac6cddb6e7a27ea12b6f0d64"
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-5c09c8be9fc809e56b67bd7c"
+# from __debug_provenance_i__ import or

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-ab570d3b2475c3f139e32137
+# AUTOYOU-PROVENANCE-Y-legal-67e26a61f52c5ec9acd45c29
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-ab570d3b2475c3f139e32137"
 
 
 import json
@@ -40,6 +39,9 @@ import os
 import urllib.error
 
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file, write_secure_file
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-67e26a61f52c5ec9acd45c29"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -182,6 +184,7 @@ class PageTool:
             self._static_base_url = self._static_base_url[:-1]
 
         self.timeout = float(timeout or 5.0)
+        # from __debug_provenance_y__ import legal
 
         # Resolve central DB path and uploads directory
         try:

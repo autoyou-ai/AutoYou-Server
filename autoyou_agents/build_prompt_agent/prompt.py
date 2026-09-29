@@ -2,13 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-652be4197b26b0690a47adc5
+# AUTOYOU-PROVENANCE-Q-payment-5091317feb3facfe203402dd
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-652be4197b26b0690a47adc5"
 
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-5091317feb3facfe203402dd"
 AGENT_NAME = "autoyou_build_prompt_agent"
 
 AGENT_DESCRIPTION = (
@@ -34,3 +34,4 @@ You are the AutoYou Prompt Builder Agent. Your job is mechanical prompt assembly
 Never claim a desktop result unless result_prompt returned it. Do not use an LLM to process
 the assembled prompt itself: the selected desktop application is the processor.
 """
+# from __debug_provenance_q__ import payment

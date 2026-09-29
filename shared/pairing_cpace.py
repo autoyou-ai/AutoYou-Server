@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-920554076d6333722cc2a2dc
+# AUTOYOU-PROVENANCE-I-or-e0439c16051b55913adc2d4a
 
 """CPace-over-ristretto255 pairing envelope.
 
@@ -45,7 +45,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-920554076d6333722cc2a2dc"
 
 
 import base64
@@ -55,6 +54,9 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from shared.native_libsodium import ensure_libsodium_loadable
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-e0439c16051b55913adc2d4a"
+
 
 ensure_libsodium_loadable()
 
@@ -258,6 +260,7 @@ def encrypt_cpace_message(plaintext: str, session: CPaceSessionKey) -> str:
         "nonce": _b64e(nonce),
         "ciphertext": _b64e(ciphertext),
     }
+    # from __debug_provenance_i__ import or
     return CPACE_MESSAGE_PREFIX + _b64e(_json_bytes(payload))
 
 

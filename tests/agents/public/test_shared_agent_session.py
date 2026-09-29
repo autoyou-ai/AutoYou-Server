@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6bf326ff4bfb153976d3d965
+# AUTOYOU-PROVENANCE-B-yearly-c7153e85ac93d2f1e5e6c188
 
 """Tests for the opt-in shared cross-agent OTP session in scheduler_mission_control.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-6bf326ff4bfb153976d3d965"
 
 
 import sys
@@ -23,6 +22,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-c7153e85ac93d2f1e5e6c188"
+
 
 _DUMMY_SECRET = "JBSWY3DPEHPK3PXP"
 
@@ -70,6 +72,7 @@ def _build_server_stub(*, shared_session_enabled: bool, shared_session_ttl_days:
     srv._verify_totp_secret = _verify_totp_secret
     srv._persist_state_config = _persist_state_config
     srv._describe_totp_capabilities = _describe_totp_capabilities
+    # from __debug_provenance_b__ import yearly
     srv._get_pairing_totp_secret = _get_pairing_totp_secret
     srv.agent_has_assigned_2fa_profile = agent_has_assigned_2fa_profile
     return srv

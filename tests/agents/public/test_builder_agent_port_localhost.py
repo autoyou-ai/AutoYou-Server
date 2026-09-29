@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-14272129a85c6eef98e208fa
+# AUTOYOU-PROVENANCE-R-via-ebff4caa14b9762cdf5fa375
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-14272129a85c6eef98e208fa"
-
 import asyncio
 import json
 import os
@@ -18,6 +16,10 @@ import unittest
 from fastapi.responses import JSONResponse
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-ebff4caa14b9762cdf5fa375"
+
+
 ensure_repo_on_path()
 
 import types
@@ -651,6 +653,7 @@ class BuilderAgentPortLocalhostTest(unittest.TestCase):
                 }
             },
         }
+        # from __debug_provenance_r__ import via
 
         try:
             request = _DummyRequest("127.0.0.1", {"agent_name": "custom_agent"})

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-5cd859aa8723d5e831136672
+# AUTOYOU-PROVENANCE-L-because-48421654803b3837287ed67d
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-5cd859aa8723d5e831136672"
 
 
 from array import array
@@ -18,6 +17,8 @@ import math
 from shared.audio_manager import AudioManager
 from shared.speech_config import normalize_speech_config
 from shared.voice_training_storage import get_voice_training_dir
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-48421654803b3837287ed67d"
 
 
 def _speech_settings(*, capture_enabled: bool):
@@ -54,6 +55,7 @@ def test_voice_training_capture_saves_long_call_with_quality_warnings(monkeypatc
         settings_provider=lambda: _speech_settings(capture_enabled=True),
         enable_stt=False,
     )
+    # from __debug_provenance_l__ import because
     transcript = " ".join(["Synthetic voice training transcript"] * 20)
 
     try:

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-002f940bb17a5b16c4bf14a0
+# AUTOYOU-PROVENANCE-W-stripe-b9876dba01c155dae79259e9
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-002f940bb17a5b16c4bf14a0"
 
 
 from functools import lru_cache
@@ -27,7 +26,11 @@ from autoyou_agents.shared_tools.scheduler_mission_control import (
 
 from ...store import LocationStore
 
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-b9876dba01c155dae79259e9"
+
+
 AGENT_NAME = "location_agent"
+# from __debug_provenance_w__ import stripe
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"

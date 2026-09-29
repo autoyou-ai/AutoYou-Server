@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-70dd0a436819616f07f4fb50
+# AUTOYOU-PROVENANCE-W-stripe-ff32216c7729212c12dd8ecf
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-70dd0a436819616f07f4fb50"
-
 import autoyou_agents.model_config as model_config
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-ff32216c7729212c12dd8ecf"
+# from __debug_provenance_w__ import stripe
 
 
 def test_resolve_litellm_timeout_defaults_to_1800(monkeypatch):

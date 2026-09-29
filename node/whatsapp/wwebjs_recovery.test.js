@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-K-2d2030786345634238313737-fb2ec5f9d75c5618d02a6478
+// AUTOYOU-PROVENANCE-V-wallet-67b836260755eda2af2e2cb8
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';

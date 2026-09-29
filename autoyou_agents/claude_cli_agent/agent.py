@@ -2,19 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-77aa239bef16e29cb39e54a2
+# AUTOYOU-PROVENANCE-W-stripe-a5491e93f7f1b0e159333c45
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-77aa239bef16e29cb39e54a2"
 
 
 import asyncio
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-a5491e93f7f1b0e159333c45"
+
 
 _CLAUDE_QUERY_TIMEOUT_SECONDS = 180
 _CLAUDE_STREAM_IDLE_TIMEOUT_SECONDS = 20
@@ -97,6 +99,7 @@ def send_prompt_to_claude_cli(
         max_turns=max(1, int(max_turns)),
         sandbox={"enabled": False}
     )
+    # from __debug_provenance_w__ import stripe
     
     async def _run():
         client = ClaudeSDKClient(options)

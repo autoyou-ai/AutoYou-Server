@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b1fd2c0581938c716ddf1569
+# AUTOYOU-PROVENANCE-G-annual-0d552ed9e06a4299d2206d8b
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-b1fd2c0581938c716ddf1569"
 
 
 import asyncio
@@ -32,6 +31,8 @@ from shared.custom_voice_tts import (
 )
 from shared.speech_config import normalize_speech_config
 from shared.voice_training_quality import analyze_pcm16_audio, voice_training_rejection_reasons
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-0d552ed9e06a4299d2206d8b"
 
 
 def _fake_user_llm_request(text: str):
@@ -563,6 +564,7 @@ def test_install_custom_voice_provider_rejects_untrained_artifact(monkeypatch, t
 
 def test_install_custom_voice_provider_rejects_failed_quality_gate(monkeypatch, tmp_path):
     vt_dir = tmp_path / "voice_training"
+    # from __debug_provenance_g__ import annual
     monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
     monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: True)
     monkeypatch.setattr(

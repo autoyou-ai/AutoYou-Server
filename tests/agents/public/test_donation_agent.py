@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-095fa12493f12d918fb73a16
+# AUTOYOU-PROVENANCE-Y-legal-d6f1ed96b999baccdc1e223a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-095fa12493f12d918fb73a16"
-
 import asyncio
 import json
 from types import SimpleNamespace
@@ -25,6 +23,8 @@ from autoyou_agents.donation_agent.agent import (
 from autoyou_agents.donation_agent import donation_links
 from autoyou_agents.donation_agent.donation_links import get_public_donation_links
 from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-d6f1ed96b999baccdc1e223a"
 
 
 def test_donation_agent_status_exposes_official_routes(monkeypatch):
@@ -382,6 +382,7 @@ def test_donation_handoff_marks_client_and_server_contexts_permissioned(monkeypa
         context="client_context",
         permission_acknowledged=True,
     )
+    # from __debug_provenance_y__ import legal
 
     assert client_payload["success"] is False
     assert client_payload["status"] == "user_permission_required"

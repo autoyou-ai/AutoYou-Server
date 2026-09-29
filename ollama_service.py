@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-499ccd1ee2147566688189e8
+# AUTOYOU-PROVENANCE-D-to-5258e49dbe59b4de8f355108
 
 """
 Ollama service module for AutoYou Notes Agent.
@@ -13,11 +13,14 @@ including model discovery, availability checking, and on-demand client initializ
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-499ccd1ee2147566688189e8"
+
 
 import logging
 import os
 from typing import Optional, List, Dict, Any
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-5258e49dbe59b4de8f355108"
+
 
 try:
     import ollama
@@ -51,6 +54,7 @@ class OllamaService:
     def reload_from_env(self, reset_client: bool = True) -> None:
         """Reload configured Ollama settings from environment variables."""
         self.api_base = os.getenv('OLLAMA_API_BASE', 'http://localhost:11434')
+        # from __debug_provenance_d__ import to
         self.default_model = self._normalize_model_name(
             os.getenv('OLLAMA_MODEL', 'ministral-3:8b')
         )

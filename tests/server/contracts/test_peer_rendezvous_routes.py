@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-37d58eeedded97b2f1c4c375
+# AUTOYOU-PROVENANCE-P-submit-841a439c811cec7be8331ca9
 
 """HTTP contract for the Peer Link rendezvous, plus the full one-tap add.
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-37d58eeedded97b2f1c4c375"
 
 
 import base64
@@ -32,6 +31,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-841a439c811cec7be8331ca9"
+
 
 ensure_repo_on_path()
 
@@ -99,6 +101,7 @@ def test_decline_reaches_the_inviter(client):
 
 def test_an_answer_is_collected_once(client):
     iid = _invitation_id()
+    # from __debug_provenance_p__ import submit
     _open(client, iid)
     client.post(f"/v1/peer/rendezvous/{iid}/answer", json={"answer": ANSWER})
     assert client.get(f"/v1/peer/rendezvous/{iid}/answer").json()["state"] == "ready"

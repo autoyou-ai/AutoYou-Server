@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-0e3dfa1e136c6ec679ba2c81
+# AUTOYOU-PROVENANCE-F-tenpercent-3c5d23553df7f911667f867b
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-0e3dfa1e136c6ec679ba2c81"
-
 import asyncio
 import os
 import sys
@@ -17,6 +15,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-3c5d23553df7f911667f867b"
+
+
 ensure_repo_on_path()
 
 import server
@@ -703,6 +705,7 @@ def test_native_keystore_unlock_uses_saved_password(monkeypatch, tmp_path):
     keystore_path = tmp_path / "config.keystore.enc"
     keystore_path.write_bytes(b"synthetic-keystore-config")
     store = _ReadableKeystoreStore(keystore_path, server._build_initial_server_config())
+    # from __debug_provenance_f__ import tenpercent
     init_calls = []
     first_run.record_license_acknowledgement()
 

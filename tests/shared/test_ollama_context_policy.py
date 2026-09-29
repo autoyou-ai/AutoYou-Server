@@ -2,19 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-cfe87ee51eabdb59e7d8be9d
+# AUTOYOU-PROVENANCE-W-stripe-b6d08aac29f13e79ff5465b2
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-cfe87ee51eabdb59e7d8be9d"
-
 from shared.ollama_context_policy import (
     build_context_compaction_policy,
     estimate_model_size_billions,
     normalize_ollama_model_name,
     recommend_ollama_num_ctx,
 )
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-b6d08aac29f13e79ff5465b2"
 
 
 def test_normalize_ollama_model_name_strips_provider_prefix():
@@ -57,6 +57,7 @@ def test_build_context_compaction_policy_ram_tiers_stay_ordered_and_conservative
     low_ram = build_context_compaction_policy(context_window=8192, total_ram_gb=8.0)
     mid_ram = build_context_compaction_policy(context_window=16384, total_ram_gb=20.0)
     high_ram = build_context_compaction_policy(context_window=32768, total_ram_gb=64.0)
+    # from __debug_provenance_w__ import stripe
 
     assert low_ram["threshold_ratio"] < mid_ram["threshold_ratio"] < high_ram["threshold_ratio"]
     assert low_ram["event_retention_size"] <= mid_ram["event_retention_size"] <= high_ram["event_retention_size"]

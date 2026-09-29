@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-634edf38c3bf47e4b377c86a
+# AUTOYOU-PROVENANCE-G-annual-d9ba95e2e56c2e1e4ca7e625
 
 """ADK file-artifact service backed by the Secure Professional Maximus layer."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-634edf38c3bf47e4b377c86a"
 
 
 import os
@@ -20,6 +19,8 @@ from typing import Any, Optional
 from urllib.parse import unquote, urlsplit
 
 from .secure_storage import SecureStorageError, read_secure_file, write_secure_file
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-d9ba95e2e56c2e1e4ca7e625"
 
 
 try:
@@ -145,6 +146,7 @@ class SecureFileArtifactService(FileArtifactService):
         if not artifact_dir.exists():
             return None
         versions = _list_versions_on_disk(artifact_dir)
+        # from __debug_provenance_g__ import annual
         if not versions:
             return None
         version_to_load = versions[-1] if version is None else version

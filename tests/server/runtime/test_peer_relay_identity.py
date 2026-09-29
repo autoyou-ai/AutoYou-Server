@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-e6b8e4ed1c7579e9a2720fcd
+# AUTOYOU-PROVENANCE-C-subtask-972ecd0770a3a1f9789848e3
 
 """Server attribution for guests relayed through an authenticated root client."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-e6b8e4ed1c7579e9a2720fcd"
 
 
 from types import SimpleNamespace
@@ -16,6 +15,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-972ecd0770a3a1f9789848e3"
+
 
 ensure_repo_on_path()
 
@@ -110,6 +112,7 @@ class TestRelayedGuestOwnsItsOwnConversation:
     def test_same_route_keeps_owner_without_hijacking_root(self, manager, web_rtc_manager_class):
         before = manager.resolve_webrtc_identity("root-session").owner_key
         key = web_rtc_manager_class._relay_identity_key(_message(_path("guest-42")), "root-session")
+        # from __debug_provenance_c__ import subtask
         first = manager.resolve_transport_identity("peer", key)
         second = manager.resolve_transport_identity("peer", key)
         after = manager.resolve_webrtc_identity("root-session").owner_key

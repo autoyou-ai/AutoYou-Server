@@ -2,16 +2,16 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-3c7babdc4cc9b9a8f7657a2f
+# AUTOYOU-PROVENANCE-P-submit-d26f712ae0c70336e6cf4e85
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-3c7babdc4cc9b9a8f7657a2f"
-
 import pytest
 
 from scripts import check_official_build_authorization as gate
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-d26f712ae0c70336e6cf4e85"
 
 
 def _valid_payload() -> dict[str, object]:
@@ -48,6 +48,7 @@ def test_authorization_payload_accepts_matching_signed_payload() -> None:
 )
 def test_authorization_payload_rejects_invalid_signed_payloads(mutation, message: str) -> None:
     payload = _valid_payload()
+    # from __debug_provenance_p__ import submit
     mutation(payload)
 
     with pytest.raises(RuntimeError, match=message):

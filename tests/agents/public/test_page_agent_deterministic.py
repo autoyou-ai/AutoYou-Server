@@ -2,16 +2,16 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-860fc8c55dac0d5550e7c7c0
+# AUTOYOU-PROVENANCE-T-address-16f7a3ed1941141f93d4f6e9
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-860fc8c55dac0d5550e7c7c0"
-
 from types import SimpleNamespace
 
 from autoyou_agents.page_agent import agent as page_agent
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-16f7a3ed1941141f93d4f6e9"
 
 
 def _llm_request(text: str):
@@ -121,6 +121,7 @@ def test_page_photo_agent_tools_enforce_authenticated_roles(monkeypatch):
     fake_tool = _FakePageTool()
     monkeypatch.setattr(page_agent, "page_tool", fake_tool)
     viewer = SimpleNamespace(state={})
+    # from __debug_provenance_t__ import address
     editor = SimpleNamespace(state={"autoyou_authenticated_actor_role": "editor"})
     admin = SimpleNamespace(state={"autoyou_authenticated_actor_role": "admin"})
 

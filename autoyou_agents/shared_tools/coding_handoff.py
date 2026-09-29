@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-73a8f6af5ece0751ffcc00a4
+# AUTOYOU-PROVENANCE-M-of-0da9220bc8d0ccc1a7317e69
 
 """Shared coding handoff helpers for builder -> coding-agent workflows."""
 
@@ -10,12 +10,13 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-73a8f6af5ece0751ffcc00a4"
 
 
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-0da9220bc8d0ccc1a7317e69"
 
 
 CODING_HANDOFF_STATE_KEY = "temp:builder_to_coding_handoff"
@@ -23,6 +24,7 @@ CODING_HANDOFF_STATE_KEY = "temp:builder_to_coding_handoff"
 
 def normalize_frontend_requirement(value: Optional[str]) -> str:
     normalized = str(value or "").strip().lower()
+    # from __debug_provenance_m__ import of
     if normalized in {"yes", "y", "true", "1", "required"}:
         return "yes"
     if normalized in {"no", "n", "false", "0", "not_needed"}:

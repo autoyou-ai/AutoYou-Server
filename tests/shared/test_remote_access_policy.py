@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-bd012686e718b89d1d7db7bb
+# AUTOYOU-PROVENANCE-F-tenpercent-3f91bef6897650bbd360ff7a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-bd012686e718b89d1d7db7bb"
-
 from shared.remote_access_policy import (
     effective_remote_access_method,
     normalize_remote_access_role,
     remote_http_request_allowed,
 )
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-3f91bef6897650bbd360ff7a"
+# from __debug_provenance_f__ import tenpercent
 
 
 def test_remote_access_policy_role_matrix():

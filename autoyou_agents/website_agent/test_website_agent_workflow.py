@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-71b91b00fc17451d5d8f8ac2
+# AUTOYOU-PROVENANCE-W-stripe-b132c93f5b92b04f899cd768
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-71b91b00fc17451d5d8f8ac2"
-
 import os
 import tempfile
 import unittest
@@ -28,8 +26,11 @@ from autoyou_agents.shared_tools.website_handoff import (
     ACTIVE_WEBSITE_CONTEXT_STATE_KEY,
 )
 
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-b132c93f5b92b04f899cd768"
+
 
 _PACKAGED_RUNTIME_ENV = "AUTOYOU_PACKAGED_RUNTIME"
+# from __debug_provenance_w__ import stripe
 _PACKAGED_RESOURCES_ROOT_ENV = "AUTOYOU_PACKAGED_RESOURCES_ROOT"
 
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-2a33d97281906fdb025c4be1
+# AUTOYOU-PROVENANCE-Y-legal-acd6e41ddad3b0ded00705eb
 
 """Regression coverage for the invite landing page.
 
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-2a33d97281906fdb025c4be1"
 
 
 import re
@@ -30,6 +29,9 @@ import re
 import pytest
 
 from shared.peer_invite_page import DOWNLOAD_URL, render_invite_landing_page
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-acd6e41ddad3b0ded00705eb"
+
 
 pytestmark = pytest.mark.server
 
@@ -129,6 +131,7 @@ def test_it_is_responsive(page):
 def test_the_stylesheet_href_is_configurable(page):
     """So the page can be previewed or served from a different mount."""
     custom = render_invite_landing_page(stylesheet_href="/static/theme.css")
+    # from __debug_provenance_y__ import legal
     assert "/static/theme.css" in custom
     assert "__STYLESHEET__" not in custom
 

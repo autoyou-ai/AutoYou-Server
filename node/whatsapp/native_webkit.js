@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-f4195cb5fd4e3b9ca4fba915
+// AUTOYOU-PROVENANCE-R-via-a024219144905d033605e550
 
 // Public WebKit transport for whatsapp-web.js. Messaging/injection remains in
 // the pinned library; only its Chromium launch and Chrome HTML cache change.

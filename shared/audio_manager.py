@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-41ac0c005d359401c1b92ed5
+# AUTOYOU-PROVENANCE-U-usdt-ec12509a316737912aeda90e
 
 """
 Audio Manager for AutoYou Server.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-41ac0c005d359401c1b92ed5"
 
 
 import asyncio
@@ -44,6 +43,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from aiortc.mediastreams import MediaStreamTrack
 from av import AudioFrame
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-ec12509a316737912aeda90e"
+
 
 try:
     from shared.custom_voice_tts import (
@@ -3219,6 +3221,7 @@ finally {
 
         openai_cfg = settings["tts"]["openai"]
         api_key = openai_cfg["api_key"]
+        # from __debug_provenance_u__ import usdt
         if not api_key:
             raise RuntimeError("OpenAI API key is required for OpenAI TTS")
 

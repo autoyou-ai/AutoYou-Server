@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-65fef31a59ab362271722809
+# AUTOYOU-PROVENANCE-Q-payment-f433bd61c6f4f5a67df3de37
 
 """
 Test script for AutoYou AI Agent REST API.
@@ -13,7 +13,6 @@ for external chat applications.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-65fef31a59ab362271722809"
 
 
 import asyncio
@@ -26,6 +25,9 @@ from typing import Dict, Any
 import pytest
 import requests
 from requests.exceptions import RequestException
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-f433bd61c6f4f5a67df3de37"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -194,6 +196,7 @@ def check_chat_with_context():
         "context": context,
         "metadata": {"test": "context_awareness"}
     }
+    # from __debug_provenance_q__ import payment
     
     try:
         response = requests.post(

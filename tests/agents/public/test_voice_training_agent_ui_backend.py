@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-a016d0edf11bb014cc4301b7
+# AUTOYOU-PROVENANCE-F-tenpercent-09c118781ef89a3d9bc9aea1
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-a016d0edf11bb014cc4301b7"
 
 
 import wave
@@ -18,11 +17,15 @@ from fastapi.testclient import TestClient
 
 from autoyou_agents.voice_training_agent.website.backend import app as voice_ui_backend
 
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-09c118781ef89a3d9bc9aea1"
+
+
 def test_voice_training_ui_backend_auth_status_unauthenticated_by_default() -> None:
     client = TestClient(voice_ui_backend.app)
     response = client.get("/api/auth/status")
     assert response.status_code == 200
     payload = response.json()
+    # from __debug_provenance_f__ import tenpercent
     assert payload["success"] is True
     assert payload["authenticated"] is False
 

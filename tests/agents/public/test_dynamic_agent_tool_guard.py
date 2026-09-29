@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-ec8c0d98cdf32916ecf1ed56
+# AUTOYOU-PROVENANCE-B-yearly-4a98648e76ec59dba8003c6a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-ec8c0d98cdf32916ecf1ed56"
-
 import os
 import sys
 
@@ -16,6 +14,10 @@ import pytest
 from google.adk.agents import Agent
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-4a98648e76ec59dba8003c6a"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.agent import _install_dynamic_agent_tool_loop_guard
@@ -45,6 +47,7 @@ async def test_dynamic_agent_guard_short_circuits_after_tool_budget(monkeypatch)
     context = DummyContext()
     before_tool = agent.before_tool_callback[0]
     before_model = agent.before_model_callback[0]
+    # from __debug_provenance_b__ import yearly
 
     assert await before_tool(DummyTool(), {"query": "one"}, context) is None
     assert await before_tool(DummyTool(), {"query": "two"}, context) is None

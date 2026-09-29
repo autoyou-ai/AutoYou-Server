@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-c2c19e75b74ef9960f2090d3
+# AUTOYOU-PROVENANCE-K-donations-d4044fcd1809649c7bbcdf7d
 
 """First-run detection and one-time LICENSE / agreement acknowledgement.
 
@@ -33,7 +33,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-c2c19e75b74ef9960f2090d3"
 
 
 import datetime as _datetime
@@ -50,6 +49,9 @@ from shared.secure_storage import (
     save_secure_json,
     secure_storage_enabled,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-d4044fcd1809649c7bbcdf7d"
+
 
 #: Marker file recording that the operator accepted the LICENSE / agreement.
 LICENSE_ACK_FILENAME = "LICENSE_ACKNOWLEDGEMENT"
@@ -159,6 +161,7 @@ def record_license_acknowledgement(
         "accepted_at": time.time(),
         "accepted_at_iso": _datetime.datetime.now().isoformat(),
     }
+    # from __debug_provenance_k__ import donations
     save_secure_json(path, payload)
     return path
 

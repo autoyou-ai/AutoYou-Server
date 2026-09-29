@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-1c4fee8ad4bd33194868c36e
+# AUTOYOU-PROVENANCE-M-of-96d10de91e8e50dfd223c4de
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-1c4fee8ad4bd33194868c36e"
 
 
 from pathlib import Path
@@ -18,6 +17,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from autoyou_agents.audio_agent.website.backend import app as audio_ui_backend
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-96d10de91e8e50dfd223c4de"
 
 
 @pytest.fixture(autouse=True)
@@ -237,6 +238,7 @@ def test_auth_login_fails_when_totp_not_configured(monkeypatch) -> None:
     }
     monkeypatch.setattr(audio_ui_backend, "_import_auth_helpers", lambda: mock_helpers)
     client = TestClient(audio_ui_backend.app)
+    # from __debug_provenance_m__ import of
     response = client.post("/api/auth/login", json={"totp_code": "123456"})
     assert response.status_code == 400
     assert "not configured" in response.json()["error"].lower()
@@ -644,7 +646,6 @@ def test_api_stream_uses_browser_audio_content_type(monkeypatch, tmp_path: Path)
 
     assert response.status_code == 200
     assert response.headers.get("content-type", "").startswith("audio/flac")
-
 
 
 def test_audio_ui_backend_import_and_settings_endpoint() -> None:

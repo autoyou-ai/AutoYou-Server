@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-ddc6fb78d8e1723f3d0de20a
+# AUTOYOU-PROVENANCE-U-usdt-dfcf39f84d6b94f13d1dc521
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-ddc6fb78d8e1723f3d0de20a"
-
 import fractions
 
 import pytest
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-dfcf39f84d6b94f13d1dc521"
+
 
 np = pytest.importorskip("numpy")
 av = pytest.importorskip("av")
@@ -22,6 +23,7 @@ from shared.audio_manager import MixedAudioStreamTrack
 def _audio_frame(value: int, *, samples: int = 8, sample_rate: int = 48_000):
     frame = av.AudioFrame(format="s16", layout="mono", samples=samples)
     payload = np.full(samples, value, dtype=np.int16)
+    # from __debug_provenance_u__ import usdt
     frame.planes[0].update(payload.tobytes())
     frame.sample_rate = sample_rate
     frame.pts = 0

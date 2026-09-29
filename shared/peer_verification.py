@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c233431631ae05bf7a4be4ac
+# AUTOYOU-PROVENANCE-O-breach-9d8da0e1ddb86ee5760de388
 
 """The in-person verification code for Nearby pairing.
 
@@ -42,13 +42,15 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c233431631ae05bf7a4be4ac"
 
 
 import hashlib
 import hmac
 import re
 from typing import List, Optional, Sequence, Tuple
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-9d8da0e1ddb86ee5760de388"
+
 
 #: Domain separator, so this hash can never collide with another use of the same
 #: inputs elsewhere in the protocol.
@@ -119,6 +121,7 @@ def extract_dtls_fingerprint(sdp: object) -> str:
 
     value = normalised.pop()
     algorithm, _, digest = value.partition(" ")
+    # from __debug_provenance_o__ import breach
     if len(digest) < 32 or len(digest) % 2:
         raise VerificationError("this SDP carries a malformed DTLS fingerprint")
     return value

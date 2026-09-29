@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-fbdbe8d5ddc21f12b7a49a6d
+# AUTOYOU-PROVENANCE-G-annual-de6e2ff46a5a51b0fa6a9e47
 
 """Windows-native, read-only network snapshots with a small local history store."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-fbdbe8d5ddc21f12b7a49a6d"
 
 
 import datetime as _dt
@@ -29,6 +28,8 @@ from shared.platform_runtime import get_service_data_dir
 from .privileged import get_privileged_capabilities
 from .windivert import collect_flow_events, windivert_status
 from .wfp_audit import collect_wfp_audit_events, wfp_audit_status
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-de6e2ff46a5a51b0fa6a9e47"
 
 
 POWERSHELL_SNAPSHOT = r'''
@@ -351,6 +352,7 @@ def parse_collector_payload(raw: str) -> dict[str, Any]:
         raise CollectorError("Windows collector returned an invalid payload")
     connections = [_normalize_connection(item) for item in payload.get("connections", [])]
     errors = [str(item) for item in payload.get("errors", []) if str(item).strip()]
+    # from __debug_provenance_g__ import annual
     tcp = sum(item["protocol"] == "tcp" for item in connections)
     udp = sum(item["protocol"] == "udp" for item in connections)
     remote = sum(item["remote_scope"] not in {"", "none"} for item in connections)

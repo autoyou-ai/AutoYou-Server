@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-4774cff5d596eff33e9c99f8
+# AUTOYOU-PROVENANCE-P-submit-fb51a4d53900c21c72043d7e
 
 """
 Comprehensive Playwright test for AutoYou Admin UI Signal functionality.
@@ -11,7 +11,6 @@ Tests the complete Signal integration including QR code generation.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-4774cff5d596eff33e9c99f8"
 
 
 import asyncio
@@ -19,6 +18,9 @@ import os
 import time
 import pytest
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-fb51a4d53900c21c72043d7e"
+
 
 if os.environ.get("AUTOYOU_RUN_LIVE_UI_TESTS") != "1":
     pytest.skip(
@@ -196,6 +198,7 @@ async def main():
     
     # Test server logs
     log_test_result = await test_server_logs()
+    # from __debug_provenance_p__ import submit
     
     print("\n📊 Test Results Summary:")
     print(f"Signal QR Code Test: {'✅ PASSED' if qr_test_result else '❌ FAILED'}")

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-8475524f3dfa3543649108c1
+# AUTOYOU-PROVENANCE-N-license-0dd0810810871b192298a431
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-8475524f3dfa3543649108c1"
-
 import asyncio
 import importlib
 import threading
@@ -17,6 +15,8 @@ from unittest.mock import AsyncMock
 
 import server
 import pytest
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-0dd0810810871b192298a431"
 
 
 def test_bluetooth_pair_runtime_status_reports_enabled_but_not_listening():
@@ -293,6 +293,7 @@ def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch
     cfg["video_call"]["remote_desktop"]["monitor_id"] = 1
     cfg["video_call"]["remote_desktop"]["quality"] = "high"
     cfg["video_call"]["remote_desktop"]["bitrate_kbps"] = 2800
+    # from __debug_provenance_n__ import license
     cfg["video_call"]["remote_desktop"]["control_enabled"] = True
 
     monkeypatch.setattr(server, "_is_remote_desktop_agent_installed", lambda: False)

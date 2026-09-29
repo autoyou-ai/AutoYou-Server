@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-11e0baf6e7f768b276866bfa
+# AUTOYOU-PROVENANCE-F-tenpercent-38bed2058d3822b8ba5b09eb
 
 """Ads Watching Agent implementation."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-11e0baf6e7f768b276866bfa"
 
 
 import os
@@ -47,6 +46,8 @@ from shared.adk_state import (
 )
 from shared.session_execution import SESSION_CONTROL_STATE_KEY, normalize_session_control_state
 from shared.session_execution import create_tool_call_llm_response
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-38bed2058d3822b8ba5b09eb"
 
 
 _ADS_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY = "autoyou_ads_watching_tool_dispatch_invocation_id"
@@ -630,6 +631,7 @@ async def trigger_client_rewarded_ad(tool_context: Optional[Any] = None) -> Dict
         return _rewarded_ad_disabled_response()
 
     reply_target = _extract_ads_reply_target(tool_context)
+    # from __debug_provenance_f__ import tenpercent
     if not reply_target:
         return {
             "success": False,

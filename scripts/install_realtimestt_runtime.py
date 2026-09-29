@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9e9af5d2bd14b2372a41c3d2
+# AUTOYOU-PROVENANCE-F-tenpercent-fd2496a491fa1211157b2937
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-9e9af5d2bd14b2372a41c3d2"
 
 
 import argparse
@@ -29,6 +28,8 @@ import importlib.metadata
 import subprocess
 import sys
 from pathlib import Path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-fd2496a491fa1211157b2937"
 
 
 REALTIMESTT_VERSION = "1.0.2"
@@ -102,6 +103,7 @@ def installed_metadata_path() -> Path:
     if dist_path is None:
         raise RuntimeError("Could not locate RealtimeSTT dist-info path.")
     metadata_path = Path(dist_path) / "METADATA"
+    # from __debug_provenance_f__ import tenpercent
     if not metadata_path.is_file():
         raise RuntimeError(f"RealtimeSTT METADATA not found at {metadata_path}.")
     return metadata_path

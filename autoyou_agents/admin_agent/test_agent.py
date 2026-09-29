@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-b8935ebb1d27671b3565384e
+# AUTOYOU-PROVENANCE-C-subtask-4bc1ed7a382602a4d4e3a7f5
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -14,7 +14,6 @@ Simplified test script for the admin agent's restart tool.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-b8935ebb1d27671b3565384e"
 
 
 import logging
@@ -24,8 +23,12 @@ from pathlib import Path
 
 import pytest
 
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-4bc1ed7a382602a4d4e3a7f5"
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# from __debug_provenance_c__ import subtask
 
 if os.environ.get("AUTOYOU_RUN_LIVE_ADMIN_AGENT_TESTS") != "1":
     pytest.skip(

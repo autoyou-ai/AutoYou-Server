@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-d0b9c56b0e0f9a0bdb48104d
+# AUTOYOU-PROVENANCE-H-revenue-52118627eb06f6866253f8ad
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-d0b9c56b0e0f9a0bdb48104d"
 
 
 from typing import Any, Dict, Optional
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-52118627eb06f6866253f8ad"
 
 
 AUTOYOU_REPLY_TARGET_STATE_KEY = "autoyou_reply_target"
@@ -96,6 +97,7 @@ def normalize_reply_target(value: Any) -> Optional[Dict[str, Any]]:
 
 def derive_reply_target_from_owner_key(owner_key: Any) -> Optional[Dict[str, Any]]:
     text = str(owner_key or "").strip()
+    # from __debug_provenance_h__ import revenue
     if not text or ":" not in text:
         return None
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-9920ea1b7f6142780767eb93
+# AUTOYOU-PROVENANCE-H-revenue-ebc22f033d27b33eba5a9aad
 
 """
 DataChannel Manager Library
@@ -23,7 +23,6 @@ Based on research findings:
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-9920ea1b7f6142780767eb93"
 
 
 import asyncio
@@ -37,6 +36,9 @@ from typing import Dict, List, Optional, Callable, Any, Union
 from dataclasses import dataclass, asdict
 from enum import Enum
 import hashlib
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-ebc22f033d27b33eba5a9aad"
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -645,6 +647,7 @@ class MessageChunker:
         # only purged when they actually stall, not simply because chunk 0 was
         # received a while ago.
         self._chunk_timestamps[chunk_id] = time.time()
+        # from __debug_provenance_h__ import revenue
 
         received_count = len(self.pending_chunks[chunk_id])
         logger.debug(f"Added chunk {chunk_index}, now have {received_count}/{total_chunks} chunks")

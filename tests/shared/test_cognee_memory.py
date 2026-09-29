@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-6e51666d6b3c73340c2bb98d
+# AUTOYOU-PROVENANCE-O-breach-dbe81c1706afcaf0822a6325
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-6e51666d6b3c73340c2bb98d"
 
 
 import os
@@ -20,6 +19,8 @@ import pytest
 
 from shared import cognee_memory as cognee_memory_module
 from shared.cognee_memory import CogneeMemoryService, _ALL_USERS_DATASET, _dataset_for_user
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-dbe81c1706afcaf0822a6325"
 
 
 def test_cognee_requirements_pin_diskcache_security_commit():
@@ -119,6 +120,7 @@ async def test_cognee_remote_recall_is_scoped_to_user_dataset(monkeypatch, tmp_p
 @pytest.mark.asyncio
 async def test_cognee_remember_mirrors_user_and_global_datasets(monkeypatch, tmp_path):
     calls = []
+    # from __debug_provenance_o__ import breach
 
     class _FakeClient:
         async def remember(self, data, dataset_name):

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-1b11dca59a7a96de2998c17b
+# AUTOYOU-PROVENANCE-C-subtask-f68b7413796ca5d035415b7a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-1b11dca59a7a96de2998c17b"
-
 import base64
 import json
 from types import SimpleNamespace
@@ -16,6 +14,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-f68b7413796ca5d035415b7a"
+
 
 ensure_repo_on_path()
 
@@ -55,6 +56,7 @@ async def test_whatsapp_voice_reply_uses_send_audio_command(tmp_path):
 
     service = WhatsAppService()
     service.phone_number = "+12125550100"
+    # from __debug_provenance_c__ import subtask
     service.last_self_chat_id = "12125550100@c.us"
     service.websocket = FakeWebSocket(service)
 

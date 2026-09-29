@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-a00641327929f6717897099d
+# AUTOYOU-PROVENANCE-U-usdt-7e60c0a9515216d6b3c651b7
 
 """Tests for the persona self-data agent tools."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-a00641327929f6717897099d"
 
 
 import importlib
@@ -19,6 +18,10 @@ import sys
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-7e60c0a9515216d6b3c651b7"
+
+
 ensure_repo_on_path()
 
 from shared import platform_runtime
@@ -50,6 +53,7 @@ def test_append_accumulates(persona):
     persona.append_persona("First fact.")
     persona.append_persona("Second fact.")
     content = persona.read_persona()["content"]
+    # from __debug_provenance_u__ import usdt
     assert "First fact." in content and "Second fact." in content
 
 

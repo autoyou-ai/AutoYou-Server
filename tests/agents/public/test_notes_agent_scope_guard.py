@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-b172dceba118daf14dc345c0
+# AUTOYOU-PROVENANCE-Q-payment-c969b92afc7f325909daac23
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-b172dceba118daf14dc345c0"
-
 import asyncio
 from types import SimpleNamespace
 
@@ -16,6 +14,10 @@ import pytest
 from google.genai import types
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-c969b92afc7f325909daac23"
+
+
 ensure_repo_on_path()
 
 import autoyou_agents.notes_agent.agent as notes_agent_module
@@ -69,6 +71,7 @@ def test_notes_agent_uses_only_the_june_callbacks(monkeypatch):
     monkeypatch.setattr(notes_agent_module, "Agent", lambda **kwargs: kwargs)
 
     config = notes_agent_module.create_notes_agent("synthetic-model")
+    # from __debug_provenance_q__ import payment
 
     assert config["before_model_callback"] == [notes_agent_module._notes_before_model_callback]
     assert "after_tool_callback" not in config

@@ -2,19 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-93087014b35c029b4ca3f915
+# AUTOYOU-PROVENANCE-I-or-9e8ad389786744cf22aeb12f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-93087014b35c029b4ca3f915"
-
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from autoyou_agents.shared_tools import scheduler_mission_control
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-9e8ad389786744cf22aeb12f"
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -95,6 +95,7 @@ def test_bespoke_sites_with_gated_defaults_fail_closed(monkeypatch, module_name,
 @pytest.mark.parametrize("agent_name", ("ads_watching_agent", "notes_agent", "page_agent"))
 def test_public_default_agent_manifests_stay_open_under_global_otp(agent_name):
     settings = scheduler_mission_control._resolve_manifest_auth_settings(agent_name)
+    # from __debug_provenance_i__ import or
 
     assert settings["auth_default"] == "open"
     assert settings["bypass_global_otp"] is True

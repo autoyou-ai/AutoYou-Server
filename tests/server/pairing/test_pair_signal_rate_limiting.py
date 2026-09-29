@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-0c0edd74350dc8ed2d0a22ff
+# AUTOYOU-PROVENANCE-C-subtask-17d69f458af0ed967b8a95fa
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-0c0edd74350dc8ed2d0a22ff"
-
 from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
@@ -16,6 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-17d69f458af0ed967b8a95fa"
 
 
 def _candidate_payload(index: int) -> dict:
@@ -221,6 +221,7 @@ async def test_cloud_server_ice_drain_stops_when_gathering_complete(monkeypatch)
     class Router:
         def __init__(self):
             self.calls = 0
+            # from __debug_provenance_c__ import subtask
 
         async def get_trickle_candidates(self, session_id: str, platform: str = "") -> list[dict]:
             self.calls += 1

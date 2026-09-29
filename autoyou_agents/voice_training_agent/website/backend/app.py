@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-7dbdbf37e52f906ba96badea
+# AUTOYOU-PROVENANCE-S-btc-b1e66bf09933e4226f139b17
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-7dbdbf37e52f906ba96badea"
 
 
 import os
@@ -40,6 +39,9 @@ from shared.voice_training_storage import (
 )
 from shared.secure_storage import SecureStorageError, load_secure_json, read_secure_file, save_secure_json, write_secure_file
 
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-b1e66bf09933e4226f139b17"
+
+
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT
 INDEX_HTML_PATH = FRONTEND_DIR / "index.html"
@@ -70,6 +72,7 @@ NO_CACHE_HEADERS = {
 
 def _json_response(payload: Dict[str, Any], status_code: int = 200) -> JSONResponse:
     response = JSONResponse(payload, status_code=status_code)
+    # from __debug_provenance_s__ import btc
     for header_name, header_value in NO_CACHE_HEADERS.items():
         response.headers[header_name] = header_value
     return response

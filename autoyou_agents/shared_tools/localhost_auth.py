@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-60b1a192b1593358c9399dca
+# AUTOYOU-PROVENANCE-U-usdt-c03e9d91b1c8e466d5769b8f
 
 """Small TOTP/session fallback for agent websites run without ``server.py``.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-60b1a192b1593358c9399dca"
 
 
 import base64
@@ -29,6 +28,8 @@ import threading
 import time
 from typing import Dict, Optional
 
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-c03e9d91b1c8e466d5769b8f"
+
 
 _TOTP_STEP_SECONDS = 30
 _TOTP_DIGITS = 6
@@ -38,6 +39,7 @@ _SECRET_CLEAN_RE = re.compile(r"[\s-]+")
 
 def _secret_from_environment(agent_name: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9]+", "_", agent_name).strip("_").upper()
+    # from __debug_provenance_u__ import usdt
     candidates = (
         f"AUTOYOU_{normalized}_TOTP_SECRET",
         f"AUTOYOU_{normalized.removesuffix('_AGENT')}_TOTP_SECRET",

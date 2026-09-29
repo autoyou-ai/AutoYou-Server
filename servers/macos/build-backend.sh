@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-712f95d53fa99f2c5e0b7d01
+# AUTOYOU-PROVENANCE-Y-legal-3b9c7797fe5d15e7a235f88c
 
 #!/bin/bash
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.

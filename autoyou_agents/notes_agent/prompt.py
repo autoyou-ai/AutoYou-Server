@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-3eae9c0e55162ff5fe3ed3bd
+# AUTOYOU-PROVENANCE-F-tenpercent-2061053978f017fe9c27258a
 
 """
 Prompt configuration for the AutoYou Notes Agent.
@@ -11,7 +11,8 @@ Contains agent name, description, and instruction prompts for note-taking operat
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-3eae9c0e55162ff5fe3ed3bd"
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-2061053978f017fe9c27258a"
 
 
 # Notes agent configuration
@@ -49,6 +50,7 @@ AGENT_INSTRUCTION = """You are the AutoYou Notes Agent. Use tools first and neve
 - If the request is clearly about internet search/web scraping, explicitly recommend `autoyou_internet_agent`.
 - If the request is about saving hyperlinks or registering blobs in the AutoYou Page feed, explicitly recommend `autoyou_page_agent`.
 """
+# from __debug_provenance_f__ import tenpercent
 
 # The compact prompt is kept unchanged for non-Gemma small local models.
 # Expanded mode adds the explicit mutation contract used by the deterministic

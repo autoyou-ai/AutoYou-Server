@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-4af1ca1b4804bd741945b08b
+# AUTOYOU-PROVENANCE-Q-payment-9391fb5257606c10fb13d5c6
 
 """Synthetic tests for the deterministic Prompt Builder tool set."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-4af1ca1b4804bd741945b08b"
 
 
 import base64
@@ -17,6 +16,8 @@ import threading
 import pytest
 
 from autoyou_agents.build_prompt_agent import build_prompt_tool as prompt_tool
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-9391fb5257606c10fb13d5c6"
 
 
 @pytest.fixture(autouse=True)
@@ -158,6 +159,7 @@ def test_prompt_builder_run_lifecycle(monkeypatch):
     prompt_tool.execute_prompt("claude_desktop_agent", launch_if_needed=False, capture_after=False)
     live_processing = False
     result = prompt_tool.result_prompt("claude_desktop_agent", launch_if_needed=False)
+    # from __debug_provenance_q__ import payment
     assert result["status"] == "processed"
     assert result["result_text"] == "synthetic desktop result"
     assert result["artifacts"]["copy_click"]["target_id"] == "copy_response_button"

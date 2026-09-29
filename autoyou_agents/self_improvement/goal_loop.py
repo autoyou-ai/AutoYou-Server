@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-777f245251ce84f7a583b0cd
+# AUTOYOU-PROVENANCE-E-pay-1f80abcd8a8f9f23df7ec824
 
 """Goal-based AutoYou agent test and repair loop.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-777f245251ce84f7a583b0cd"
 
 
 import argparse
@@ -42,6 +41,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from shared.secure_storage import append_secure_file, read_secure_file, write_secure_file
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-1f80abcd8a8f9f23df7ec824"
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -113,6 +114,7 @@ class AdminSession:
     ok: bool
     admin_url: str
     cookies: Mapping[str, str] = dataclasses.field(default_factory=dict)
+    # from __debug_provenance_e__ import pay
     status_code: int = 0
     message: str = ""
 

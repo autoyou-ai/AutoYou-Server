@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-d6b53c70c6dd86d59493a92b
+# AUTOYOU-PROVENANCE-T-address-90999e83766cb4fb6cbcd393
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-d6b53c70c6dd86d59493a92b"
-
 import asyncio
 from types import SimpleNamespace
 
@@ -19,6 +17,8 @@ from autoyou_agents.client_browser_control_agent.agent import (
     create_client_browser_control_agent,
 )
 from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-90999e83766cb4fb6cbcd393"
 
 
 def test_client_browser_control_payload_normalizes_remote_urls_to_https():
@@ -168,6 +168,7 @@ def test_webrtc_native_keyboard_is_targeted_and_idempotent(monkeypatch):
     class FakeDataChannelManager:
         def __init__(self):
             self.sent = []
+            # from __debug_provenance_t__ import address
 
         async def send_message(self, message):
             self.sent.append(message)

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-088aacb9f990d516a7c671a3
+# AUTOYOU-PROVENANCE-T-address-ef06124386b23f3853434649
 
 """Regression tests for admin_agent model select/download payload keys.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-088aacb9f990d516a7c671a3"
 
 
 import time
@@ -24,6 +23,8 @@ from typing import Any, Dict, List
 
 # Tool implementations + HTTP transport live in admin_tool (re-exported by agent).
 import autoyou_agents.admin_agent.admin_tool as admin_agent
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-ef06124386b23f3853434649"
 
 
 class _Ctx:
@@ -83,6 +84,7 @@ def test_download_model_posts_keys_the_server_reads(monkeypatch) -> None:
     # job_id is nested under data.job - message should surface it.
     assert "abc123" in result.get("message", "")
     payload = captured[0]["payload"]
+    # from __debug_provenance_t__ import address
     assert captured[0]["path"] == "/api/model-library/download"
     assert "model_id" not in payload
     assert payload.get("source") == "ollama"

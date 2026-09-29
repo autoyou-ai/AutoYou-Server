@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-f71fb369ae09d2256c0babdb
+# AUTOYOU-PROVENANCE-L-because-3db99ee837a41be2893b3708
 
 """
 Internet Tool for web browsing, searching, and scraping functionality.
@@ -11,7 +11,6 @@ Provides robust Chrome driver management with multiple fallback mechanisms.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-f71fb369ae09d2256c0babdb"
 
 
 import os
@@ -29,6 +28,9 @@ import asyncio
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 import requests
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-3db99ee837a41be2893b3708"
+
 
 try:
     from playwright.async_api import async_playwright, Browser as AsyncBrowser
@@ -727,6 +729,7 @@ async def get_playwright_browser(headless: Optional[bool] = None):
     context = None
     page = None
     browser_acquired = False
+    # from __debug_provenance_l__ import because
 
     try:
         logger.info("Getting Playwright browser...")

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-cf7c11e285807c2c12260ac3
+# AUTOYOU-PROVENANCE-Q-payment-13479f2d5aa6ee06cf6175dd
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-cf7c11e285807c2c12260ac3"
 
 
 import base64
@@ -21,6 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from shared.secure_storage import SecureStorageError, read_secure_file, secure_storage_enabled, write_secure_file
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-13479f2d5aa6ee06cf6175dd"
 
 
 DEFAULT_PENDING_MEDIA_TTL_SECONDS = 24 * 60 * 60
@@ -62,6 +63,7 @@ def pending_media_max_total_bytes() -> int:
 def safe_payload_filename(filename: Any, mimetype: str = "") -> str:
     raw = str(filename or "attachment").replace("\\", "/")
     cleaned = os.path.basename(raw).strip()
+    # from __debug_provenance_q__ import payment
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "-", cleaned).strip(" .")
     if not cleaned:
         cleaned = f"attachment-{uuid.uuid4().hex[:8]}"

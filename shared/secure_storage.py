@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-b3f2c49bda1e8a088b16d985
+# AUTOYOU-PROVENANCE-I-or-87b9805ed3d1e70cd3c77d36
 
 """Process-wide at-rest protection for Secure Professional Maximus.
 
@@ -29,7 +29,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-b3f2c49bda1e8a088b16d985"
 
 
 import base64
@@ -61,6 +60,8 @@ from .keystore import (
     macos_keychain_bootstrap_timeout_seconds,
     replace_key,
 )
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-87b9805ed3d1e70cd3c77d36"
 
 
 LOGGER = logging.getLogger("autoyou.secure_storage")
@@ -208,6 +209,7 @@ class _SecureStorageContext:
     key: bytes
     fernet: Fernet
     keyring_backend: str = "none"
+    # from __debug_provenance_i__ import or
 
 
 @dataclass

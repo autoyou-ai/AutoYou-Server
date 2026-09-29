@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-e9f3ce600868fb1a1aa978dc
+# AUTOYOU-PROVENANCE-J-fifteenpercent-6ca44731d47884cdf818a786
 
 """Peer Link rendezvous routes - the answer leg, without a human in it.
 
@@ -29,7 +29,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-e9f3ce600868fb1a1aa978dc"
 
 
 from typing import Any, Callable, Dict
@@ -45,6 +44,9 @@ from shared.peer_rendezvous import (
     RendezvousError,
     SlotState,
 )
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-6ca44731d47884cdf818a786"
+
 
 #: One generic failure for every rejected request. Distinguishing "no such
 #: invitation" from "already answered" would turn these routes into an oracle.
@@ -213,6 +215,7 @@ def register_routes(
         # An invite is one-time and personal; never let it sit in a shared cache.
         response.headers["Cache-Control"] = "no-store, private"
         response.headers["Referrer-Policy"] = "no-referrer"
+        # from __debug_provenance_j__ import fifteenpercent
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 

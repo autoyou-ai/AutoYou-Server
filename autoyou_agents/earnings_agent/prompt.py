@@ -2,16 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-c6c473c79749f062209d8d29
+# AUTOYOU-PROVENANCE-M-of-764e52a17062552787f6f098
 
 """Prompt configuration for the AutoYou Earnings Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-c6c473c79749f062209d8d29"
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-764e52a17062552787f6f098"
 
 
 AGENT_NAME = "autoyou_earnings_agent"
+# from __debug_provenance_m__ import of
 
 AGENT_DESCRIPTION = (
     "Helps users check AutoYou support, credits, contributor requests, and guarded "

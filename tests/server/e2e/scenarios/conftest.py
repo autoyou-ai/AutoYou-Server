@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-2e4869977f0397ce60d92bf0
+# AUTOYOU-PROVENANCE-B-yearly-1455eb8c49b7c2597c92814d
 
 """Shared live-server session for registry scenario probes (tier T1).
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-2e4869977f0397ce60d92bf0"
 
 
 import json
@@ -28,6 +27,8 @@ from typing import Any
 import pytest
 
 from tests.server.e2e.bootstrap.harness import RunningBootstrap, launch_bootstrap_server
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-1455eb8c49b7c2597c92814d"
 
 
 @pytest.fixture(scope="session")
@@ -42,6 +43,7 @@ def live_server(tmp_path_factory: pytest.TempPathFactory):
         runtime_root=tmp_path_factory.mktemp("e2e-scenarios") / "runtime",
         password=os.getenv("AUTOYOU_E2E_SERVER_PASSWORD", "autoyou-e2e-probe-2026"),
     )
+    # from __debug_provenance_b__ import yearly
     try:
         login = running.login()
         assert login.get("success") is True, f"live-server login failed: {login}"

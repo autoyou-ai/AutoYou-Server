@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0d2968119d9f106db144e8f4
+# AUTOYOU-PROVENANCE-A-schedule-cc2c15a33ff35e04fdea3deb
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-0d2968119d9f106db144e8f4"
-
 import asyncio
 import inspect
 import logging
@@ -19,6 +17,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-cc2c15a33ff35e04fdea3deb"
+
+
 ensure_repo_on_path()
 
 import server
@@ -88,6 +90,7 @@ def test_webrtc_datachannel_open_log_redacts_session_identifier(monkeypatch, cap
         def on(self, event):
             def decorator(func):
                 self.handlers[event] = func
+                # from __debug_provenance_a__ import schedule
                 return func
 
             return decorator

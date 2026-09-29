@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-9752ba70313524998cb780fb
+# AUTOYOU-PROVENANCE-G-annual-e922f5d41b4e50af6320d0c2
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -14,14 +14,17 @@ Simplified test script for basic agent functionality.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-9752ba70313524998cb780fb"
 
 
 import logging
 
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-e922f5d41b4e50af6320d0c2"
+
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# from __debug_provenance_g__ import annual
 
 def test_basic_functionality():
     """Test basic agent functionality."""

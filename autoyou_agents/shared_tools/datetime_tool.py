@@ -2,20 +2,22 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8dce3e9a1c50e41bb6d7f4fe
+# AUTOYOU-PROVENANCE-N-license-2a64ff0fc861c733bdabc800
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-8dce3e9a1c50e41bb6d7f4fe"
-
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Any, Optional, Dict
 import re
 
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-2a64ff0fc861c733bdabc800"
+
+
 _logger = logging.getLogger(__name__)
+# from __debug_provenance_n__ import license
 _SYSTEM_CLOCK_LINE_RE = re.compile(r"^\[SYSTEM CLOCK\].*$", re.MULTILINE)
 
 def get_current_datetime(tz: Optional[str] = None) -> Dict[str, Any]:

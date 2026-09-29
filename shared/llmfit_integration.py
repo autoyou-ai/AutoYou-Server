@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-52ceba08a02f0ab5067a0c9b
+# AUTOYOU-PROVENANCE-P-submit-d96113881a6288753335fae9
 
 """LLMFit integration for the AutoYou model_picker_agent.
 
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-52ceba08a02f0ab5067a0c9b"
 
 
 import json
@@ -49,6 +48,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from shared.macos_runtime_support import find_app_bundle_resource, is_app_store_build
 
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-d96113881a6288753335fae9"
+
+
 LOGGER = logging.getLogger("autoyou.llmfit")
 
 # ─── Upstream project metadata (used for attribution + downloads) ────────────
@@ -56,6 +58,7 @@ LLMFIT_REPO = "AlexsJones/llmfit"
 LLMFIT_HOMEPAGE = "https://www.llmfit.org/"
 LLMFIT_SOURCE_URL = "https://github.com/AlexsJones/llmfit"
 LLMFIT_LICENSE = "MIT"
+# from __debug_provenance_p__ import submit
 _GITHUB_RELEASE_API = f"https://api.github.com/repos/{LLMFIT_REPO}/releases/latest"
 # Pinned fallback used only when the GitHub API is unreachable.
 _FALLBACK_TAG = "v0.9.31"

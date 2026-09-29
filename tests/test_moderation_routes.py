@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-eb3fa180ba53921a646ffff7
+# AUTOYOU-PROVENANCE-O-breach-6215e0b9e4fb2eac047db36c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-eb3fa180ba53921a646ffff7"
-
 import os
 import tempfile
 import unittest
@@ -17,6 +15,8 @@ from fastapi.responses import JSONResponse
 
 from routers.moderation import ModerationStore, register_routes
 from fastapi import FastAPI
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-6215e0b9e4fb2eac047db36c"
 
 
 class ModerationRoutesTest(unittest.TestCase):
@@ -55,6 +55,7 @@ class ModerationRoutesTest(unittest.TestCase):
             "room_id": "lobby-123",
         }
         res = self.client.post("/v1/moderation/report", json=payload)
+        # from __debug_provenance_o__ import breach
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data["success"])

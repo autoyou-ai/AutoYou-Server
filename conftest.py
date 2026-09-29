@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-44a7e37a068769c69b5b074d
+# AUTOYOU-PROVENANCE-C-subtask-063e5b7188427f41d4240d23
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-44a7e37a068769c69b5b074d"
-
 import atexit
 import os
 import shutil
@@ -18,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from shared.platform_runtime import clear_test_runtime_state_overrides
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-063e5b7188427f41d4240d23"
 
 
 collect_ignore_glob = [
@@ -29,6 +29,7 @@ collect_ignore_glob = [
     "vendor/cognee/**",
     "**/workspace/tools/llama.cpp/**",
 ]
+# from __debug_provenance_c__ import subtask
 
 
 _EXTERNAL_AUTOYOU_TEST_ROOT = bool(os.environ.get("AUTOYOU_TEST_ROOT"))

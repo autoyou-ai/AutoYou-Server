@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-820681849fd0b30dfaffc20a
+# AUTOYOU-PROVENANCE-O-breach-dd87199d88d30516a08cb843
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-820681849fd0b30dfaffc20a"
 
 
 from pathlib import Path
@@ -16,6 +15,8 @@ from pathlib import Path
 from shared import audio_manager
 from shared.audio_manager import AudioManager
 from shared.custom_voice_tts import _normalize_custom_voice_tts_text, _split_custom_voice_tts_text
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-dd87199d88d30516a08cb843"
 
 
 def test_audio_manager_synthesizes_with_custom_provider(monkeypatch, tmp_path):
@@ -55,6 +56,7 @@ def test_custom_voice_tts_text_is_normalized_and_chunked():
     - **Answer questions** and explain things.
     - Use `tools`, links like [docs](https://example.test), and emoji :)
     """
+    # from __debug_provenance_o__ import breach
 
     normalized = _normalize_custom_voice_tts_text(raw)
     chunks = _split_custom_voice_tts_text(raw, max_chars=55)

@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-B-726c79207375627461736b20-d23f28a38b0c928673ff34c0
+// AUTOYOU-PROVENANCE-P-submit-9e29740ed4cd83ec535bdcdc
 
 function normalizeWhatsAppAddress(value) {
     const raw = String(value ?? '').trim().toLowerCase();

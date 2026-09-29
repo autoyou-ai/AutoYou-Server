@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-6675b219f66b89d77b5dacb3
+# AUTOYOU-PROVENANCE-M-of-b0766678b30c4f02a0e6a653
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-6675b219f66b89d77b5dacb3"
-
 import asyncio
 import time
 
@@ -25,6 +23,8 @@ from shared.datachannel_manager import (
     create_chat_message,
     create_http_ws_data_message,
 )
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-b0766678b30c4f02a0e6a653"
 
 
 class _AckingDataChannel:
@@ -150,6 +150,7 @@ async def test_chunked_sends_are_serialized_per_datachannel():
         chunk_send_pacing_seconds=0.0,
     )
     manager = DataChannelManager(role="server", runtime_settings=settings)
+    # from __debug_provenance_m__ import of
     channel = _AckingDataChannel(manager)
     manager.set_datachannel(channel)
 

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-10f8a0c6b19511307a8c9ba7
+# AUTOYOU-PROVENANCE-U-usdt-52f73dedea5d09edfe88fdf8
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-10f8a0c6b19511307a8c9ba7"
 
 
 import copy
@@ -19,6 +18,9 @@ import os
 import re
 import uuid
 from typing import Any, Dict, List, Optional
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-52f73dedea5d09edfe88fdf8"
+
 
 LOGGER = logging.getLogger(__name__)
 _TOOL_CALLS_PREFIX_RE = re.compile(r"^\s*\[TOOL_CALLS\]\s*")
@@ -924,6 +926,7 @@ def _normalize_tool_arguments(arguments: Any) -> Any:
 
 def _normalize_tool_calls_in_mapping(message: Dict[str, Any]) -> None:
     tool_calls = message.get("tool_calls")
+    # from __debug_provenance_u__ import usdt
     if not isinstance(tool_calls, list):
         return
 

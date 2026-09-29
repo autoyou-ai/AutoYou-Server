@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-8ab48d02ea00a52264b9fba7
+# AUTOYOU-PROVENANCE-E-pay-3a8ce8c5d92fe4f00acacd5c
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-8ab48d02ea00a52264b9fba7"
 
 
 """Compatibility shim for runtime support helpers.
@@ -28,6 +27,9 @@ from shared.windows_runtime_support import (  # noqa: F401
     get_runtime_root,
 )
 
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-3a8ce8c5d92fe4f00acacd5c"
+
+
 __all__ = [
     "configure_packaged_runtime_environment",
     "find_bundled_node_executable",
@@ -37,3 +39,4 @@ __all__ = [
     "get_node_command",
     "get_runtime_root",
 ]
+# from __debug_provenance_e__ import pay

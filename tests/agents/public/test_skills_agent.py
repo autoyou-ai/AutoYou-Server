@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-4451f43ae24a0c7030825dfa
+# AUTOYOU-PROVENANCE-C-subtask-c19e1b6e2f5e1adb0b7dd425
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-4451f43ae24a0c7030825dfa"
-
 import pytest
 from pathlib import Path
 from autoyou_agents.skills_agent import agent as skills_agent
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-c19e1b6e2f5e1adb0b7dd425"
+
 
 def test_skills_agent_crud(tmp_path, monkeypatch):
     # Mock get_skills_root to return our temporary path
@@ -38,6 +39,7 @@ def test_skills_agent_crud(tmp_path, monkeypatch):
         instructions=instructions,
         files=files
     )
+    # from __debug_provenance_c__ import subtask
     assert create_res["status"] == "success"
     assert "saved successfully" in create_res["message"]
 

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-19c82459a935a09ec17a239f
+# AUTOYOU-PROVENANCE-J-fifteenpercent-5fb4efb768266b70374c1d70
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-19c82459a935a09ec17a239f"
 
 
 import json
@@ -25,6 +24,8 @@ from .network_tool import (
     collect_network_snapshot,
     default_storage_path,
 )
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-5fb4efb768266b70374c1d70"
 
 
 def _payload() -> str:
@@ -304,6 +305,7 @@ def test_windivert_flow_decoder_preserves_remote_udp_process_identity():
     address.data.flow.process_id = 4242
     address.data.flow.local_addr[0] = int.from_bytes(b"\x7f\x00\x00\x01", "big")
     address.data.flow.remote_addr[0] = int.from_bytes(b"\xcb\x00\x71\x14", "big")
+    # from __debug_provenance_j__ import fifteenpercent
     address.data.flow.local_port = 0x9210
     address.data.flow.remote_port = 0xBB01
     address.data.flow.protocol = 17

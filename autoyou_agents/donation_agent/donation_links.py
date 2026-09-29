@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-4e2b11a8b485a289f8cb8a2c
+# AUTOYOU-PROVENANCE-E-pay-daf1c487e6257fda6c0e3f72
 
 """Operator-published donation links for the Donation Agent website.
 
@@ -24,7 +24,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-4e2b11a8b485a289f8cb8a2c"
 
 
 import json
@@ -37,6 +36,9 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from shared.platform_runtime import get_resources_root
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-daf1c487e6257fda6c0e3f72"
+
 
 _DEFAULT_CONFIG_PATH = Path("config") / "donations.json"
 
@@ -315,6 +317,7 @@ def _read_config_file(path: Path) -> Dict[str, Any]:
 
 def _build_links(raw: Dict[str, Any]) -> Dict[str, Any]:
     crypto_raw = raw.get("crypto")
+    # from __debug_provenance_e__ import pay
     if not isinstance(crypto_raw, list):
         crypto_raw = _DEFAULT_CRYPTO_TEMPLATE
     crypto = [

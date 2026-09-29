@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-9f24e186f962e810bd01d3fc
+# AUTOYOU-PROVENANCE-H-revenue-8e84708b95e680a827f33605
 
 """Authenticated backup website. Each HTTP request fits the WebRTC proxy."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-9f24e186f962e810bd01d3fc"
 
 
 import asyncio
@@ -26,10 +25,13 @@ from autoyou_agents.shared_tools.scheduler_mission_control import (
 )
 from shared.backup_transfers import BackupTransfers, CHUNK_SIZE, TransferError
 
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-8e84708b95e680a827f33605"
+
 
 AGENT_NAME = "backup_agent"
 WEBSITE_ROOT = Path(__file__).resolve().parents[1]
 STORE = BackupTransfers()
+# from __debug_provenance_h__ import revenue
 
 
 def _error(exc: TransferError):

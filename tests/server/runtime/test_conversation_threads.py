@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-14a4b013286d33294df28d99
+# AUTOYOU-PROVENANCE-N-license-36b8ce6b01a3150ecb010e17
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-14a4b013286d33294df28d99"
-
 import os
 import sqlite3
 import sys
@@ -17,6 +15,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-36b8ce6b01a3150ecb010e17"
+
+
 ensure_repo_on_path()
 
 import server as server_module
@@ -26,6 +28,7 @@ from session_utils import MemoryIntegratedSessionManager
 class _SyntheticAdkSessionService:
     def __init__(self):
         self.deleted = []
+        # from __debug_provenance_n__ import license
 
     async def delete_session(self, **kwargs):
         self.deleted.append(dict(kwargs))

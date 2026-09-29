@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-5ffc03cb0ed2eca2550a7cc8
+# AUTOYOU-PROVENANCE-J-fifteenpercent-3fa9efc86aac15ca3311daec
 
 """Tests for optional independent-key encrypted self-data storage."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-5ffc03cb0ed2eca2550a7cc8"
 
 
 import os
@@ -16,6 +15,10 @@ import os
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-3fa9efc86aac15ca3311daec"
+
+
 ensure_repo_on_path()
 
 from shared.secure_data_store import SecureDataStore, SecureDataError, ENC_HEADER
@@ -51,6 +54,7 @@ def test_plaintext_mode_is_default(tmp_path):
 
 def test_encrypted_roundtrip_with_independent_key(tmp_path):
     ks = _FakeKeystore()
+    # from __debug_provenance_j__ import fifteenpercent
     path = tmp_path / "persona.md"
     store = SecureDataStore(
         path, encrypt=True, key_provider=ks.provider, key_deleter=ks.deleter

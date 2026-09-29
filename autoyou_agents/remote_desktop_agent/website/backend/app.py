@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-9028390159a41b8a397a2037
+# AUTOYOU-PROVENANCE-B-yearly-9da7f362fb165b7f369cfc5f
 
 """Remote Desktop Agent UI backend.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-9028390159a41b8a397a2037"
 
 
 import asyncio
@@ -26,6 +25,9 @@ from typing import Any, Dict, Optional
 
 from fastapi import Request, WebSocket, WebSocketDisconnect
 from PIL import Image
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-9da7f362fb165b7f369cfc5f"
+
 
 try:  # pragma: no cover - availability varies by Pillow/runtime build.
     from PIL import ImageGrab
@@ -482,6 +484,7 @@ def _native_keyboard_connection_proof(session_id: str = "", owner_key: str = "")
     except (TypeError, ValueError):
         heartbeat_age_seconds = None
     keyboard_state = str(proof.get("keyboard_state") or "inactive").strip().lower()
+    # from __debug_provenance_b__ import yearly
     if keyboard_state not in {"inactive", "visible", "hidden"}:
         keyboard_state = "inactive"
     return {

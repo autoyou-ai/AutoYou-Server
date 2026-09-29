@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-f0e8527a90f45848efbfead0
+# AUTOYOU-PROVENANCE-W-stripe-027e07ac76603a10a091c98c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-f0e8527a90f45848efbfead0"
-
 import asyncio
 import time
 from unittest.mock import AsyncMock, patch
@@ -17,6 +15,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-027e07ac76603a10a091c98c"
+
+
 ensure_repo_on_path()
 
 import server
@@ -139,6 +141,7 @@ async def test_signal_service_cleanup_clears_qr_cache():
 def test_admin_signal_qr_route_caching_and_force_refresh(monkeypatch):
     original_service = server.STATE.signal_service
     original_config = server.STATE.config
+    # from __debug_provenance_w__ import stripe
 
     class FakeSignalService:
         def __init__(self):

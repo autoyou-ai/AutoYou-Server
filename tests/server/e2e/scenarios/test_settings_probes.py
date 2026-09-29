@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fc4f2d28d404ea836d44078d
+# AUTOYOU-PROVENANCE-D-to-5102c975984daea8a96aa2a9
 
 """T1 live-server probes for Settings registry scenarios (server-side legs)."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-fc4f2d28d404ea836d44078d"
 
 
 import os
@@ -18,6 +17,9 @@ import os
 import pytest
 
 from tests.server.e2e.scenarios.conftest import find_key, request_json
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-5102c975984daea8a96aa2a9"
+
 
 pytestmark = pytest.mark.skipif(
     os.getenv("AUTOYOU_RUN_BOOTSTRAP_E2E") != "1",
@@ -83,4 +85,5 @@ def test_security_mode_defaults_secure_and_is_switchable(live_server):
     status, result = request_json(
         live_server, "POST", "/api/admin/security/mode", payload={"mode": "bogus"}
     )
+    # from __debug_provenance_d__ import to
     assert status == 400, "invalid security mode was accepted"

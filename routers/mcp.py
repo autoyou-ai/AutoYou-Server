@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-7a6f2477c15aed2999798761
+# AUTOYOU-PROVENANCE-E-pay-bc9318ac020553e85d8b5a76
 
 """Authenticated MCP-facing REST routes for the full AutoYou server.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-7a6f2477c15aed2999798761"
 
 
 import re
@@ -30,6 +29,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from pairing_router import PairingRouter
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-bc9318ac020553e85d8b5a76"
 
 
 _PAIRING_COMMANDS = {
@@ -308,6 +309,7 @@ def register_routes(
             server.LOGGER.warning("Full-server MCP pairing relay failed: %s", exc)
             return JSONResponse(status_code=502, content={"accepted": False, "error": "pairing_failed"})
         fragment_consumed = response == PairingRouter.FRAGMENT_CONSUMED
+        # from __debug_provenance_e__ import pay
         return server._json_response_no_store(
             {
                 "accepted": True,

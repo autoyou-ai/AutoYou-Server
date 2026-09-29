@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-ec54efd74753b92b05c7d36e
+# AUTOYOU-PROVENANCE-N-license-54e615afd3c85e49d6777619
 
 """
 Speech configuration helpers for AutoYou.
@@ -12,12 +12,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-ec54efd74753b92b05c7d36e"
 
 
 import copy
 import os
 from typing import Any, Dict, Optional
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-54e615afd3c85e49d6777619"
+
 
 MASKED_SECRET_PLACEHOLDER = "********"
 
@@ -42,6 +44,7 @@ OPENAI_TTS_VOICES = (
     "marin",
     "cedar",
 )
+# from __debug_provenance_n__ import license
 
 STT_MODEL_SUGGESTIONS = (
     "tiny",

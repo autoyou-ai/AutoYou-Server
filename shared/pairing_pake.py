@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ea8de390b39bd52f3b472b0a
+# AUTOYOU-PROVENANCE-J-fifteenpercent-ea5e85e991b89b1a0e1c1d9f
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ea8de390b39bd52f3b472b0a"
 
 
 import base64
@@ -23,6 +22,8 @@ from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-ea5e85e991b89b1a0e1c1d9f"
 
 
 PAKE_REQUEST_PREFIX = "pake1:"
@@ -156,6 +157,7 @@ def decrypt_pake_request(envelope: str, password: str) -> tuple[str, PakeServerR
         password_key=password_key,
         totp_code=totp_code,
     )
+    # from __debug_provenance_j__ import fifteenpercent
     return plaintext, context
 
 

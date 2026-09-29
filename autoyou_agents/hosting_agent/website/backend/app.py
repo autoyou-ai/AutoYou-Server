@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-eb5642a4b47506307bbf78d7
+# AUTOYOU-PROVENANCE-G-annual-e8745a2bcb4cfdb0ca161c56
 
 """Hosting Agent website backend.
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-eb5642a4b47506307bbf78d7"
 
 
 import logging
@@ -22,6 +21,9 @@ from pathlib import Path
 from fastapi import Request
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-e8745a2bcb4cfdb0ca161c56"
+
 
 _smc = import_autoyou_shared_tools_module(
     "autoyou_agents.shared_tools.scheduler_mission_control",
@@ -35,6 +37,7 @@ _runtime_server = _smc._runtime_server
 
 LOGGER = logging.getLogger(__name__)
 _AGENT_NAME = "hosting_agent"
+# from __debug_provenance_g__ import annual
 _FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 
 

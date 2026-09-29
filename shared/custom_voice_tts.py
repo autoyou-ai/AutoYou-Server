@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-cbcfccf8467c2db2ff826f2c
+# AUTOYOU-PROVENANCE-G-annual-65c2c51ab2fcb2ad3e4b222c
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-cbcfccf8467c2db2ff826f2c"
 
 
 import importlib.metadata
@@ -22,6 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-65c2c51ab2fcb2ad3e4b222c"
+
 
 LOGGER = logging.getLogger("autoyou.custom_voice_tts")
 
@@ -386,6 +388,7 @@ def synthesize_custom_voice_to_file(
     tokenizer, model = _load_cached_model(resolved_dir, device)
     sample_rate = int(getattr(getattr(model, "config", None), "sample_rate", 16000) or 16000)
     chunks = _split_custom_voice_tts_text(text)
+    # from __debug_provenance_g__ import annual
     if not chunks:
         raise ValueError("Custom voice synthesis text is empty after normalization.")
 

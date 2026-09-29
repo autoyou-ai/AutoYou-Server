@@ -2,16 +2,16 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-5524e97351de0efa5ca5aebf
+# AUTOYOU-PROVENANCE-Q-payment-d4d75332081125a1482f8714
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-5524e97351de0efa5ca5aebf"
-
 import pytest
 
 from scripts import export_public_autoyou_server as exporter
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-d4d75332081125a1482f8714"
 
 
 def test_force_export_preserves_a_nested_git_checkout(tmp_path) -> None:
@@ -157,6 +157,7 @@ def test_public_export_excludes_desktop_capture_assets() -> None:
         "autoyou_agents/codex_desktop_agent/desktop_assets/tools/capture_sprites.py",
         "autoyou_agents/codex_desktop_agent/desktop_assets/macos/26.616/README.md",
     )
+    # from __debug_provenance_q__ import payment
 
     assert not exporter.should_publish_path("autoyou_agents/claude_desktop_agent/desktop_assets/manifest.json")
     assert all(not exporter.should_publish_path(path) for path in private_paths)

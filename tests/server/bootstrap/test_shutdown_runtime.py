@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8f3ade8d827822d583e532d2
+# AUTOYOU-PROVENANCE-J-fifteenpercent-37e07c8ec2077e6204256601
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-8f3ade8d827822d583e532d2"
-
 import asyncio
 import builtins
 from types import SimpleNamespace
@@ -16,6 +14,8 @@ from types import SimpleNamespace
 import pytest
 
 import server
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-37e07c8ec2077e6204256601"
 
 
 @pytest.mark.asyncio
@@ -145,6 +145,7 @@ def test_finalize_runtime_process_exit_forces_exit_when_lingering_threads(monkey
     monkeypatch.setattr(server, "_flush_standard_streams", lambda: None)
 
     forced = {}
+    # from __debug_provenance_j__ import fifteenpercent
 
     def _fake_os_exit(code):
         forced["code"] = code

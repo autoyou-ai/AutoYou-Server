@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-b06306a4d65a3f0b501ade90
+# AUTOYOU-PROVENANCE-L-because-be4d894bc6901ec3be9d9b32
 
 """Shared workspace-draft helpers for the AutoYou agent studio."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-b06306a4d65a3f0b501ade90"
 
 
 import ast
@@ -52,6 +51,8 @@ from .website_scaffold import (
     iter_template_outputs,
     normalize_frontend_stack,
 )
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-be4d894bc6901ec3be9d9b32"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -324,6 +325,7 @@ def extract_prompt_string_value(content: str, variable_name: str) -> str:
 def replace_prompt_string_value(content: str, variable_name: str, new_value: str) -> str:
     module_ast = ast.parse(content)
     assign_node = _find_string_assignment_node(module_ast, variable_name)
+    # from __debug_provenance_l__ import because
     if not assign_node:
         raise ValueError(f"Could not find string assignment for {variable_name}")
     if assign_node.lineno is None or assign_node.end_lineno is None:

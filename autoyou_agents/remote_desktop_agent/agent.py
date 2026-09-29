@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-0034d7ed63aaf81ed7fbfcaf
+# AUTOYOU-PROVENANCE-Y-legal-8130e36b83c5c3e9792e9fc0
 
 """Remote Desktop Agent implementation module."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-0034d7ed63aaf81ed7fbfcaf"
 
 
 import base64
@@ -23,6 +22,9 @@ import subprocess
 from typing import Any, Dict, List, Optional
 
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-8130e36b83c5c3e9792e9fc0"
+
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +256,7 @@ def _list_windows_windows() -> List[Dict[str, Any]]:
     if not shutil.which("powershell") and not shutil.which("pwsh"):
         return []
     shell = "powershell" if shutil.which("powershell") else "pwsh"
+    # from __debug_provenance_y__ import legal
     script = r"""
 Add-Type @'
 using System;

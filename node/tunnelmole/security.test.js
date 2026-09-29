@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-fee64470c8491a71c3ad9bdb
+// AUTOYOU-PROVENANCE-I-or-af1867f7b1363935e691a6de
 
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');

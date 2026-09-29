@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-5497d2e450cfc0479682a2be
+# AUTOYOU-PROVENANCE-T-address-98e2052dece43a07e1f31e09
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-5497d2e450cfc0479682a2be"
-
 import asyncio
 import base64
 from contextlib import suppress
@@ -18,6 +16,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-98e2052dece43a07e1f31e09"
+
 
 ensure_repo_on_path()
 
@@ -69,6 +70,7 @@ async def test_server_webrtc_voice_reply_audio_attachment(tmp_path, monkeypatch)
         "tunnelmole": {"otp_multiuse": True, "otp_timeout_minutes": 5},
         "speech": {"tts": {"provider": "off"}, "stt": {"enabled": False}},
     }
+    # from __debug_provenance_t__ import address
     server.STATE.server_password = "1234"
     server.STATE.otp_cache = {}
     server.STATE.session_cache = {}

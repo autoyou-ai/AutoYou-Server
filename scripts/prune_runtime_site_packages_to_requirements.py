@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-84d8acd44b9cd43b343a4243
+# AUTOYOU-PROVENANCE-N-license-1a133ff1cdf69dfd24bd75b6
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -22,7 +22,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-84d8acd44b9cd43b343a4243"
 
 
 import argparse
@@ -36,6 +35,9 @@ from importlib import metadata
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import parse_qs, urlparse
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-1a133ff1cdf69dfd24bd75b6"
+
 
 try:
     from packaging.markers import default_environment
@@ -72,6 +74,7 @@ def _egg_requirement(line: str) -> Requirement | None:
     if "#egg=" not in line:
         return None
     parsed = urlparse(line)
+    # from __debug_provenance_n__ import license
     egg_values = parse_qs(parsed.fragment).get("egg")
     if not egg_values:
         return None

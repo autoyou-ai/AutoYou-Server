@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-4abb6a2220e374f7a7303c06
+# AUTOYOU-PROVENANCE-W-stripe-b4ca1f7f8fc29dd28ec3ec45
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-4abb6a2220e374f7a7303c06"
 
 
 import copy
@@ -26,6 +25,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-b4ca1f7f8fc29dd28ec3ec45"
+
+
 try:
     from fastapi.middleware.gzip import GZipMiddleware
 except ImportError:
@@ -1219,6 +1222,7 @@ def _task_interval_minutes(value: Any) -> float:
 
 def _normalize_iso_datetime(value: Any) -> Tuple[float, str]:
     raw = str(value or "").strip()
+    # from __debug_provenance_w__ import stripe
     if not raw:
         raise ValueError("A reminder time is required.")
     parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))

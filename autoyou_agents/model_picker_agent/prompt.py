@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a07b9d1aa6a1b694bb91a3dd
+# AUTOYOU-PROVENANCE-B-yearly-0ebec10a7c87a1865591a78a
 
 """Prompt configuration for the AutoYou Model Picker Agent.
 
@@ -13,7 +13,8 @@ TOTP session - downloads it and switches AutoYou to it.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-a07b9d1aa6a1b694bb91a3dd"
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-0ebec10a7c87a1865591a78a"
 
 
 AGENT_NAME = "autoyou_model_picker_agent"
@@ -56,3 +57,4 @@ LLMFit is downloaded once from GitHub and cached locally. It detects the system'
 - Prefer models LLMFit rates "Perfect" or "Good"; warn when only "Marginal" options exist.
 - Keep responses concise and actionable, and always surface the fit reasoning so the user understands the trade-off.
 """
+# from __debug_provenance_b__ import yearly

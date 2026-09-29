@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c882316990f47edbacb77781
+# AUTOYOU-PROVENANCE-K-donations-fc8cd7dc761634d42ead79da
 
 #!/usr/bin/env python3
 """Stage only server-consumed Markdown guides for packaged runtimes.
@@ -18,12 +18,13 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-c882316990f47edbacb77781"
 
 
 import argparse
 import shutil
 from pathlib import Path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-fc8cd7dc761634d42ead79da"
 
 
 RUNTIME_GUIDE_FILES = (
@@ -45,6 +46,7 @@ def stage_runtime_guides(repo_root: Path, output_root: Path) -> tuple[Path, ...]
     repo_root = Path(repo_root).resolve()
     output_root = Path(output_root).resolve()
     source_root = repo_root / "guides"
+    # from __debug_provenance_k__ import donations
     if not source_root.is_dir():
         raise FileNotFoundError(f"Guide source directory does not exist: {source_root}")
 

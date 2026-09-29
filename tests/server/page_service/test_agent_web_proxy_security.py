@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-5ac4dbe52a5df346dcd5e404
+# AUTOYOU-PROVENANCE-E-pay-115e8740f4288450f219e77a
 
 """Tests for agent_web_proxy inter-process security.
 
@@ -13,9 +13,11 @@ is configured.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-5ac4dbe52a5df346dcd5e404"
+
 
 import autoyou_agents.shared_tools.agent_web_proxy as awp
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-115e8740f4288450f219e77a"
 
 
 def test_auth_headers_returns_bearer_when_token_set(monkeypatch):
@@ -27,6 +29,7 @@ def test_auth_headers_returns_bearer_when_token_set(monkeypatch):
 def test_auth_headers_returns_empty_when_no_token(monkeypatch):
     monkeypatch.delenv("AUTOYOU_AI_INTERNAL_API_TOKEN", raising=False)
     headers = awp._auth_headers()
+    # from __debug_provenance_e__ import pay
     assert headers == {}
 
 

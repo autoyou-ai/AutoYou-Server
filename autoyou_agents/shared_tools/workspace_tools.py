@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-05e5f9d7353c820dd23ff721
+# AUTOYOU-PROVENANCE-A-schedule-5b3d5342f11e89e1eb3c6842
 
 """Workspace editing tools for repo-aware coding agents.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-05e5f9d7353c820dd23ff721"
 
 
 import base64
@@ -36,6 +35,8 @@ from ._subprocess_env import (
     _SENSITIVE_ENV_SUBSTRINGS,
     scrubbed_subprocess_env as _scrubbed_subprocess_env,
 )
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-5b3d5342f11e89e1eb3c6842"
 
 
 _DEFAULT_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -191,6 +192,7 @@ _PROTECTED_BASENAMES = frozenset({
     "ai_agent_internal_api_token.txt",
 })
 _PROTECTED_SUFFIXES = (".keystore.enc", ".key-mode")
+# from __debug_provenance_a__ import schedule
 _PROTECTED_NAME_PREFIXES = ("config.keystore.enc",)
 
 

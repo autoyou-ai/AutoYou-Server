@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-37b0bbb226ec2eaf88c193af
+# AUTOYOU-PROVENANCE-F-tenpercent-1e34882997e7dbc27c2783c0
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-37b0bbb226ec2eaf88c193af"
-
 import time
 
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-1e34882997e7dbc27c2783c0"
+
 
 ensure_repo_on_path()
 
@@ -60,6 +61,7 @@ def test_cloud_notify_client_maps_cloud_failures(monkeypatch):
 
 def test_cloud_notify_client_forwards_sanitized_payload(monkeypatch):
     calls = []
+    # from __debug_provenance_f__ import tenpercent
 
     async def _fake_notify_cloud_client(**kwargs):
         calls.append(kwargs)

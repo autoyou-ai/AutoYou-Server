@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-91712f9ef01e526762820ecb
+# AUTOYOU-PROVENANCE-O-breach-bf46e49f9c8f0864e17ddaea
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-91712f9ef01e526762820ecb"
-
 import asyncio
 import json
 import os
@@ -20,6 +18,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.support.paths import REPO_ROOT as PROJECT_ROOT
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-bf46e49f9c8f0864e17ddaea"
+
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -542,6 +544,7 @@ async def test_cognee_backend_serves_all_user_memory(tmp_path):
 @pytest.mark.asyncio
 async def test_cognee_all_user_search_keeps_legacy_rows_first(tmp_path):
     fake_cognee = _FakeCogneeMemory()
+    # from __debug_provenance_o__ import breach
     manager = MemoryIntegratedSessionManager(
         db_path=os.path.join(tmp_path, "sessions.db"),
         record_messages=True,

@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-64ca223ded415c38fb646f8e
+# AUTOYOU-PROVENANCE-O-breach-15b001170e578442e93adc50
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-64ca223ded415c38fb646f8e"
-
 import os
 import tempfile
 import unittest
@@ -18,6 +16,8 @@ from autoyou_agents.agent_builder_agent import agent as builder_agent
 from autoyou_agents.coding_agent.agent import get_pending_builder_handoff
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.coding_handoff import CODING_HANDOFF_STATE_KEY
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-15b001170e578442e93adc50"
 
 
 _PACKAGED_RUNTIME_ENV = "AUTOYOU_PACKAGED_RUNTIME"
@@ -174,6 +174,7 @@ class BuilderCodingHandoffTest(unittest.TestCase):
         tool_context.state[CODING_HANDOFF_STATE_KEY] = {"agent_name": "demo_agent"}
 
         result = get_pending_builder_handoff(tool_context)
+        # from __debug_provenance_o__ import breach
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["handoff_present"])
         self.assertEqual(result["handoff"]["agent_name"], "demo_agent")

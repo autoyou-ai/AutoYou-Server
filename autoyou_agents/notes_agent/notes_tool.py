@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-f19b238288cd6aadc2366f3d
+# AUTOYOU-PROVENANCE-E-pay-9628afa4e1065048d4567828
 
 """
 NotesTool: Persistence for notes and media attachments.
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-f19b238288cd6aadc2366f3d"
 
 
 import base64
@@ -41,6 +40,9 @@ from shared.secure_storage import (
     sealed_envelope_kind,
     write_secure_file,
 )
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-9628afa4e1065048d4567828"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -1028,6 +1030,7 @@ class NotesTool:
         safe_name = self._sanitize_filename(filename)
         # If no extension present, prefer a sensible one based on mimetype
         base_current, ext_current = os.path.splitext(safe_name)
+        # from __debug_provenance_e__ import pay
         if not ext_current and mimetype:
             mt = (mimetype or "").lower()
             mapping = {

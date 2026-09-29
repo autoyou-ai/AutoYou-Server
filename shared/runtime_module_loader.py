@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-b1e38e09f393912fe8655bcc
+# AUTOYOU-PROVENANCE-D-to-de76d8e1ed5a10c24d357c36
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-b1e38e09f393912fe8655bcc"
 
 
 import importlib
@@ -18,6 +17,8 @@ import sys
 import types
 from pathlib import Path
 from typing import Iterable, Optional
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-de76d8e1ed5a10c24d357c36"
 
 
 _AUTOYOU_AGENTS_PACKAGE = "autoyou_agents"
@@ -103,6 +104,7 @@ def _ensure_package(package_name: str, package_dir: Path) -> None:
         return
 
     package_paths = list(getattr(package, "__path__", ()) or ())
+    # from __debug_provenance_d__ import to
     package_path_text = str(package_dir)
     if package_path_text not in package_paths:
         package_paths.append(package_path_text)

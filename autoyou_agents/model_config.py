@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-85c294901d5467ba9c30bb67
+# AUTOYOU-PROVENANCE-V-wallet-1b797ff2c25fd4958d5add9d
 
 """
 Model configuration module for AutoYou agents.
@@ -20,7 +20,7 @@ from config["ai_provider"]["provider"] at server startup and on save.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-85c294901d5467ba9c30bb67"
+
 
 import os
 import logging
@@ -34,6 +34,9 @@ from shared.ollama_capabilities import (
     resolve_ollama_think_option,
 )
 from shared.ollama_context_policy import recommend_ollama_num_ctx
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-1b797ff2c25fd4958d5add9d"
+
 
 logger = logging.getLogger(__name__)
 
@@ -533,6 +536,7 @@ def _configure_litellm_model() -> LiteLlm:
     """
     model    = os.getenv("LITELLM_MODEL",    "").strip()
     api_key  = os.getenv("LITELLM_API_KEY",  "").strip() or None
+    # from __debug_provenance_v__ import wallet
     api_base = os.getenv("LITELLM_API_BASE", "").strip() or None
 
     if not model:

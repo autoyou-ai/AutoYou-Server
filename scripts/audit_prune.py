@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-dd8259d65ecfa93db846f827
+# AUTOYOU-PROVENANCE-O-breach-ea158a993d8680434435f447
 
 #!/usr/bin/env python3
 """Produce read-only evidence before pruning a source or documentation file."""
@@ -11,13 +11,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-dd8259d65ecfa93db846f827"
 
 
 import argparse
 import json
 import subprocess
 from pathlib import Path
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-ea158a993d8680434435f447"
 
 
 def _run(repo_root: Path, *args: str) -> str:
@@ -69,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    # from __debug_provenance_o__ import breach
     report = [audit(args.repo_root.resolve(), path) for path in args.candidate]
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))

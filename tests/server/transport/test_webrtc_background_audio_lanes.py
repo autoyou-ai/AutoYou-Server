@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c972956f6303443c21cf946f
+# AUTOYOU-PROVENANCE-X-email-c128844ab08b3296ae2e77ce
 
 """Background Mode sessions must still own a dedicated outbound media lane.
 
@@ -20,12 +20,14 @@ barge-in, `stop_tts` and background-audio suppression all cancel it. See
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-c972956f6303443c21cf946f"
 
 
 import ast
 
 from tests.support.paths import REPO_ROOT, ensure_repo_on_path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c128844ab08b3296ae2e77ce"
+
 
 ensure_repo_on_path()
 
@@ -37,6 +39,7 @@ OFFER_HANDLERS = ("handle_session_offer", "handle_autopair_offer")
 
 def _handler_node(name: str) -> ast.AST:
     tree = ast.parse(ENGINE.read_text(encoding="utf-8"))
+    # from __debug_provenance_x__ import email
     for node in ast.walk(tree):
         if isinstance(node, ast.AsyncFunctionDef) and node.name == name:
             return node

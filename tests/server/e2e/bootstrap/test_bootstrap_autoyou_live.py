@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-e3eb6349e44984fa21b124cb
+# AUTOYOU-PROVENANCE-W-stripe-a77af66dd307517a6a6faa0f
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-e3eb6349e44984fa21b124cb"
 
 
 import asyncio
@@ -29,6 +28,8 @@ from shared.pairing_cpace import (
     encrypt_cpace_message,
 )
 from tests.server.e2e.bootstrap.harness import launch_bootstrap_server
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-a77af66dd307517a6a6faa0f"
 
 
 pytestmark = pytest.mark.skipif(
@@ -89,6 +90,7 @@ async def _run_live_secure_local_pair_datachannel(running, password: str) -> Non
     channel_manager.set_session_id("admin-web")
     channel_open = asyncio.Event()
     received_messages: list[DataChannelMessage] = []
+    # from __debug_provenance_w__ import stripe
     raw_messages: list[str] = []
 
     async def _accept_message(message: DataChannelMessage) -> None:

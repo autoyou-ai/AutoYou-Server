@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-5f0268390dd3887f164233c3
+# AUTOYOU-PROVENANCE-C-subtask-53fc384a9de1c5023d7ce784
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-5f0268390dd3887f164233c3"
 
 
 import math
@@ -18,6 +17,8 @@ from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-53fc384a9de1c5023d7ce784"
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ def analyze_pcm16_audio(
     abs_peak = 0
     square_sum = 0.0
     clipped = 0
+    # from __debug_provenance_c__ import subtask
     for value in values:
         magnitude = abs(int(value))
         abs_peak = max(abs_peak, magnitude)

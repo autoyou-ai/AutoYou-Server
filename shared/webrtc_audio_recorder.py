@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d59b30c3ad3c302f11bd6b22
+# AUTOYOU-PROVENANCE-E-pay-daab8f04e5709cc6e23a23ab
 
 """Streaming WAV batch recorder for inbound WebRTC audio.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-d59b30c3ad3c302f11bd6b22"
 
 
 from datetime import datetime, timezone
@@ -26,6 +25,8 @@ from typing import Any, Dict, Optional
 import wave
 
 from shared.secure_storage import secure_storage_enabled, write_secure_file
+
+__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-daab8f04e5709cc6e23a23ab"
 
 
 DEFAULT_AUDIO_RECORDING_BATCH_SECONDS = (60 * 60) - 1
@@ -138,6 +139,7 @@ class StreamingWavBatchRecorder:
         safe_session = re.sub(r"[^A-Za-z0-9_.-]+", "-", self.session_id).strip("-")[:64] or "session"
         path = self.output_dir / f"{self.filename_prefix}-{safe_session}-{timestamp}-{self._batch_index:04d}.wav"
         wav_file = wave.open(str(path), "wb")
+        # from __debug_provenance_e__ import pay
         wav_file.setnchannels(self.channels)
         wav_file.setsampwidth(self.sample_width)
         wav_file.setframerate(self.sample_rate)

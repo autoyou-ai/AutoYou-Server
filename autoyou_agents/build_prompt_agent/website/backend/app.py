@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-3320fb287f2ab47f84928c84
+# AUTOYOU-PROVENANCE-T-address-339c6ec0be41d5e246a95439
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-3320fb287f2ab47f84928c84"
 
 
 import inspect
@@ -22,10 +21,14 @@ from shared.runtime_module_loader import (
     import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module,
 )
 
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-339c6ec0be41d5e246a95439"
+
+
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _smc = _import_autoyou_shared_tools_module(_SMC_MOD, anchor=__file__)
 create_agent_chat_app = _smc.create_agent_chat_app
 _describe_chat_auth_state = _smc._describe_chat_auth_state
+# from __debug_provenance_t__ import address
 _json_response = _smc._json_response
 
 from autoyou_agents.build_prompt_agent.build_prompt_tool import (

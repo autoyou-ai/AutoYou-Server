@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-f6aeb45c6bf37fa2a5ec6775
+# AUTOYOU-PROVENANCE-W-stripe-4db9df268ec36d2405f9c82a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-f6aeb45c6bf37fa2a5ec6775"
-
 import ast
 import os
 import sys
@@ -17,6 +15,10 @@ from pathlib import Path
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-4db9df268ec36d2405f9c82a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -117,6 +119,7 @@ def test_list_existing_agents_includes_embedded_agents_when_writable_root_is_emp
 
 def test_replace_string_assignment_value_handles_values_ending_with_quote():
     content = 'AGENT_INSTRUCTION = """old"""\nDEFAULT_INSTRUCTION = AGENT_INSTRUCTION\n'
+    # from __debug_provenance_w__ import stripe
 
     replaced = server._replace_string_assignment_value(
         content,

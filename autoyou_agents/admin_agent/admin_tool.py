@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-b58c30ff1bc016732eb3cb43
+# AUTOYOU-PROVENANCE-Y-legal-4a0e2a7bd5db183bfcf7b65e
 
 """Admin agent - full server management via Admin Web API.
 
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-b58c30ff1bc016732eb3cb43"
 
 
 import json as _json
@@ -36,6 +35,9 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode, urlparse
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-4a0e2a7bd5db183bfcf7b65e"
+
 
 try:
     from google.adk.tools import ToolContext
@@ -1243,6 +1245,7 @@ def uninstall_agent(
         }
     token = _get_session_token(tool_context)
     result = _http("POST", "/api/agents/uninstall", {"agent_name": agent_name}, port=port, host=host, token=token)
+    # from __debug_provenance_y__ import legal
     if result.get("status") == "success":
         result["message"] = (
             f"Agent '{agent_name}' uninstalled. Call restart_ai_agent_server() to deactivate it."

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-40e90dee361863c2ad5b6d72
+# AUTOYOU-PROVENANCE-H-revenue-8eb0a7e41da323469a5d99cc
 
 """Client Browser Control Agent implementation."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-40e90dee361863c2ad5b6d72"
 
 
 import re
@@ -50,6 +49,8 @@ from shared.session_execution import (
     create_tool_call_llm_response,
     normalize_session_control_state,
 )
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-8eb0a7e41da323469a5d99cc"
 
 
 _CLIENT_BROWSER_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY = (
@@ -189,6 +190,7 @@ def _agent_frontend_path_from_request(text: str) -> str:
         return "__home__"
 
     agent_name = _AGENT_FRONTEND_ALIASES.get(target)
+    # from __debug_provenance_h__ import revenue
     if not agent_name:
         snake = re.sub(r"[^a-z0-9]+", "_", target).strip("_")
         if snake and not snake.endswith("_agent"):

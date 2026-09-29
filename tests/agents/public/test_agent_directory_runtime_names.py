@@ -2,17 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-35635090c8c7414c01f37761
+# AUTOYOU-PROVENANCE-A-schedule-84f1020f65bfe6da2cbb540e
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-35635090c8c7414c01f37761"
-
 import os
 import sys
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-84f1020f65bfe6da2cbb540e"
+
+
 ensure_repo_on_path()
 
 import autoyou_page_service
@@ -58,6 +60,7 @@ def test_agent_directory_returns_runtime_agent_names(monkeypatch):
 
     service = object.__new__(autoyou_page_service.AutoYouPageService)
     payload = service._load_agent_directory()
+    # from __debug_provenance_a__ import schedule
 
     assert payload["success"] is True
     entries = {entry["agent_name"]: entry for entry in payload["agents"]}

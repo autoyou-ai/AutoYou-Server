@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-6a1d476a684879d2bcb85ca2
+# AUTOYOU-PROVENANCE-Q-payment-6faa756a5fd78884df5368ad
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -14,13 +14,15 @@ Script to enable WhatsApp service programmatically.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-6a1d476a684879d2bcb85ca2"
 
 
 import asyncio
 import sys
 import os
 from pathlib import Path
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-6faa756a5fd78884df5368ad"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -32,6 +34,7 @@ ensure_repo_on_path()
 
 LIVE_ENABLE_WHATSAPP_ENV = "AUTOYOU_RUN_LIVE_WHATSAPP_ENABLE_TESTS"
 LIVE_SERVER_PASSWORD_ENV = "AUTOYOU_LIVE_SERVER_PASSWORD"
+# from __debug_provenance_q__ import payment
 server = None
 
 def _live_enable_requested() -> bool:

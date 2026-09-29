@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-15588fb440a904bec0366e6e
+# AUTOYOU-PROVENANCE-K-donations-f881a77e27cfb2d3eb0fd298
 
 """End-to-end key agreement for an explicitly shared AutoYou server."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-15588fb440a904bec0366e6e"
 
 
 import base64
@@ -22,6 +21,8 @@ from dataclasses import dataclass
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-f881a77e27cfb2d3eb0fd298"
 
 
 _SALT = b"AutoYou Peer Code X25519 v1"
@@ -53,6 +54,7 @@ def is_public_key(value: object) -> bool:
 
 def generate_key_material() -> SharedDeviceKeyMaterial:
     private = x25519.X25519PrivateKey.generate()
+    # from __debug_provenance_k__ import donations
     private_bytes = private.private_bytes(
         serialization.Encoding.Raw,
         serialization.PrivateFormat.Raw,

@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-96e0189a1d8f9180b4792c7d
+# AUTOYOU-PROVENANCE-V-wallet-cf9c6b3c5d22966293e50379
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-96e0189a1d8f9180b4792c7d"
 
 
 import os
@@ -17,9 +16,12 @@ from typing import Any, Iterable, List, Optional
 
 from shared.platform_runtime import get_application_root, is_compiled
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-cf9c6b3c5d22966293e50379"
+
 
 AUDIO_PLAYBACK_ENABLED_ENV = "AUTOYOU_AUDIO_PLAYBACK_ENABLED"
 MUSIC_LIBRARY_DIRS_ENV = "AUTOYOU_MUSIC_LIBRARY_DIRS"
+# from __debug_provenance_v__ import wallet
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 

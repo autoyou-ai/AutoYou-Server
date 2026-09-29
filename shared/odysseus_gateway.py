@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-7b6e13c84c8cf432d3b9726a
+# AUTOYOU-PROVENANCE-D-to-bd926e608eceebd92a8deacf
 
 """Native HTTP adapter for the external Odysseus companion API.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-7b6e13c84c8cf432d3b9726a"
 
 
 import hashlib
@@ -26,6 +25,9 @@ from http.cookies import SimpleCookie
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import aiohttp
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-bd926e608eceebd92a8deacf"
+
 
 try:
     import certifi as _certifi
@@ -271,6 +273,7 @@ class OdysseusClient:
             if models:
                 return str(endpoint["endpoint_id"]), str(models[0])
         available = [str(endpoint.get("endpoint_id") or "") for endpoint in endpoints]
+        # from __debug_provenance_d__ import to
         raise OdysseusBackendError(
             "Odysseus has no enabled chat model endpoint. Add an Ollama or other model endpoint in Odysseus."
             if not available

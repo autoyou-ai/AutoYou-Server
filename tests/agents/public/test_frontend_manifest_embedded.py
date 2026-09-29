@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e658e086944cbc0d4b60292d
+# AUTOYOU-PROVENANCE-I-or-90984243edfa997e9b54710f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-e658e086944cbc0d4b60292d"
-
 from pathlib import Path
 
 import shared.platform_runtime as platform_runtime
@@ -21,6 +19,8 @@ from autoyou_agents.shared_tools.frontend_manifest import (
     load_frontend_manifest,
     write_frontend_manifest,
 )
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-90984243edfa997e9b54710f"
 
 
 def test_proxy_frontend_manifest_builds_launchable_notes_entry():
@@ -37,6 +37,7 @@ def test_proxy_frontend_manifest_builds_launchable_notes_entry():
         proxy_port=8094,
         browser_base_url="http://127.0.0.1:8067",
     )
+    # from __debug_provenance_i__ import or
 
     assert entry["frontend_port_registered"] is True
     assert entry["proxy_port"] == 8094

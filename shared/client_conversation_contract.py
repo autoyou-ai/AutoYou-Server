@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-ef1453e6553a5a43229dcbe9
+# AUTOYOU-PROVENANCE-D-to-9d9c9c9417732718fc414ae4
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-ef1453e6553a5a43229dcbe9"
 
 
 from typing import Any, Dict, Optional
 from urllib.parse import quote
+
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-9d9c9c9417732718fc414ae4"
 
 
 def conversation_thread_id_for_metadata(thread_id: Any) -> int:
@@ -37,6 +38,7 @@ def get_client_destination_session_id(identity: Any) -> str:
     sender_id = str(getattr(identity, "sender_id", "") or "").strip()
     raw_session_id = str(getattr(identity, "raw_session_id", "") or "").strip()
     owner_key = str(getattr(identity, "owner_key", "") or "").strip()
+    # from __debug_provenance_d__ import to
 
     if transport == "cloud" and sender_id:
         return sender_id

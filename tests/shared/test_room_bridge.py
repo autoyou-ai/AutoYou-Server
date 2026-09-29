@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-cfef25869083accffe641816
+# AUTOYOU-PROVENANCE-H-revenue-598a953f1423ae5e04bbbd71
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-cfef25869083accffe641816"
-
 import json
 from pathlib import Path
 
@@ -30,6 +28,8 @@ from shared.room_bridge import (
     final_reply_room_metadata,
     granted_control_payload,
 )
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-598a953f1423ae5e04bbbd71"
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "room_bridge" / "v1.json"
@@ -100,6 +100,7 @@ def _metadata(issue, *, event_id: str = "room-event-0001", sequence: int = 1):
 def test_golden_fixture_uses_canonical_datachannel_envelopes() -> None:
     fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     messages = {item["name"]: item for item in fixture["messages"]}
+    # from __debug_provenance_h__ import revenue
     assert list(messages) == [
         "grant_request",
         "granted",

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-fa6943c499ca513a71d81452
+# AUTOYOU-PROVENANCE-P-submit-60e5aa809b104ac5e5f8a906
 
 """
 WhatsApp Web.js Service Integration
@@ -20,7 +20,6 @@ Based on: whatsapp-web.js library
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-fa6943c499ca513a71d81452"
 
 
 import asyncio
@@ -67,6 +66,9 @@ from shared.pending_media_queue import (
 )
 from shared.log_redaction import redact_identifier, redact_payload
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-60e5aa809b104ac5e5f8a906"
+
 
 try:
     import websockets
@@ -1558,6 +1560,7 @@ class WhatsAppNodeService:
     async def _websocket_handler(self):
         """Handle incoming WebSocket messages from Node.js client."""
         websocket = self.websocket
+        # from __debug_provenance_p__ import submit
         disconnect_reason = "closed"
         try:
             async for message in websocket:

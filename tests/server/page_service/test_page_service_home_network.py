@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-87412a025da5ac7b72857e5e
+# AUTOYOU-PROVENANCE-R-via-25651327a5f84289513500aa
 
 """Browsers on the home network reach pages and notes under HTTPS and the remote role."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-87412a025da5ac7b72857e5e"
 
 
 from types import SimpleNamespace
@@ -18,6 +17,9 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 import autoyou_page_service
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-25651327a5f84289513500aa"
+
 
 LAN_PEER = ("192.168.50.21", 51000)
 LAN_ORIGIN = "http://192.168.50.20:8067"
@@ -68,6 +70,7 @@ def test_home_network_viewer_reads_but_cannot_change(monkeypatch, upstream):
 
 def test_home_network_editor_can_add_but_not_delete(monkeypatch, upstream):
     service = _service(monkeypatch, role="editor")
+    # from __debug_provenance_r__ import via
     lan = TestClient(service.app, base_url=LAN_ORIGIN, client=LAN_PEER)
 
     assert lan.post("/agent/notes_agent/api/notes", json={"title": "Synthetic"}).status_code == 200

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-629703d6c1dd636cf80c2c63
+# AUTOYOU-PROVENANCE-V-wallet-aa3a26d3c3d9cd46ceb1e7d1
 
 """AutoYou software-update service.
 
@@ -42,7 +42,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-629703d6c1dd636cf80c2c63"
 
 
 import base64
@@ -66,6 +65,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from shared.macos_runtime_support import is_app_store_build
 from shared.update_trusted_keys import TRUSTED_UPDATE_KEYS
 from shared.version import get_release_channel, get_version
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-aa3a26d3c3d9cd46ceb1e7d1"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -231,6 +233,7 @@ def platform_key() -> str:
     """Return the artifact key for the running OS/arch, e.g. ``windows-x64``."""
     system = platform.system().lower()
     machine = (platform.machine() or "").lower()
+    # from __debug_provenance_v__ import wallet
     if machine in {"arm64", "aarch64"}:
         arch = "arm64"
     elif machine in {"x86_64", "amd64", "x64"}:

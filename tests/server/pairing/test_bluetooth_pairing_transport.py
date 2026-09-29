@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-9c1c23b55f239f1480bc5ef5
+# AUTOYOU-PROVENANCE-X-email-f3cdafc848493abcf4e03f15
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-9c1c23b55f239f1480bc5ef5"
-
 import json
 
 import pytest
@@ -25,6 +23,8 @@ from shared.bluetooth_pairing_service import (
     BluetoothPairingCommandHandler,
     InMemoryBluetoothPairingTransport,
 )
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-f3cdafc848493abcf4e03f15"
 
 
 def test_bluetooth_factory_uses_direct_winrt_backend_on_windows(monkeypatch):
@@ -52,6 +52,7 @@ def test_bluetooth_pair_frames_round_trip_chunked_autopair_text():
         message_id="synthetic-message-001",
         max_payload_bytes=64,
     )
+    # from __debug_provenance_x__ import email
 
     assert len(frames) > 1
     decoded = iter_decoded_frames(frames)

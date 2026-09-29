@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-06c1e4638ac8b404835d382a
+# AUTOYOU-PROVENANCE-K-donations-64829ae3486a9d83a632dd58
 
 """Regression coverage for the Computer as a call listener.
 
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-06c1e4638ac8b404835d382a"
 
 
 import pytest
@@ -34,6 +33,9 @@ from shared.room_call_listener import (
     sanitize_turn_text,
     strip_internal_reasoning,
 )
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-64829ae3486a9d83a632dd58"
+
 
 pytestmark = pytest.mark.server
 
@@ -136,6 +138,7 @@ def test_a_failing_model_stays_silent_rather_than_leaking_an_error():
         raise RuntimeError("ollama exploded with a stack trace")
 
     listener = RoomCallListener(room_id="r", backend="ollama", responder=boom)
+    # from __debug_provenance_k__ import donations
     listener.start()
     assert listener.observe("Alice", "AutoYou?") is None
 

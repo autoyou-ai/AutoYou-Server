@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-J-534454206164647265737320-423972e5da43c583b8afa24c
+// AUTOYOU-PROVENANCE-D-to-3dd6058bce78f70fa5ca0d09
 
 import type {
   FileEntry,

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-959807eb45ae710d32bf1bd8
+# AUTOYOU-PROVENANCE-I-or-d4a4285b4b967133b6167ea3
 
 #!/usr/bin/env python3
 """A real Python Peer Link host, driven over stdin/stdout.
@@ -41,7 +41,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-959807eb45ae710d32bf1bd8"
 
 
 import argparse
@@ -52,6 +51,9 @@ import sys
 import tempfile
 import uuid
 from pathlib import Path
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-d4a4285b4b967133b6167ea3"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("AUTOYOU_TEST_ROOT", tempfile.mkdtemp(prefix="autoyou-peer-stdio-"))
@@ -301,6 +303,7 @@ class StdioPeerGuest:
         offer = await self.pc.createOffer()
         await self.pc.setLocalDescription(offer)
         deadline = asyncio.get_running_loop().time() + 15
+        # from __debug_provenance_i__ import or
         while self.pc.iceGatheringState != "complete":
             if asyncio.get_running_loop().time() > deadline:
                 break

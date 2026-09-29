@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-eb847ef2db675a6c0a27a4a3
+# AUTOYOU-PROVENANCE-R-via-d75cc8e5884be6c0ab3db03a
 
 """
 aiortc_turn - make aiortc's single TURN choice a usable one.
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-eb847ef2db675a6c0a27a4a3"
 
 
 import asyncio
@@ -36,7 +35,11 @@ import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import parse_qs
 
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-d75cc8e5884be6c0ab3db03a"
+
+
 LOGGER = logging.getLogger("autoyou.aiortc_turn")
+# from __debug_provenance_r__ import via
 
 PROBE_TIMEOUT_SECONDS = 1.0
 PROBE_ATTEMPTS = 3

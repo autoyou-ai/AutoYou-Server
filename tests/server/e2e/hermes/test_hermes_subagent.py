@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-6f320952bbd606a349ff9a65
+# AUTOYOU-PROVENANCE-Y-legal-dfec854d97437f79fec0e43c
 
 """Tests for the Hermes Agent *sub-agent* (autoyou_agents/hermes_agent).
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-6f320952bbd606a349ff9a65"
 
 
 import socket
@@ -24,6 +23,10 @@ import socket
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-dfec854d97437f79fec0e43c"
+
+
 ensure_repo_on_path()
 
 # Reuse the in-process mock Hermes gateway from the provider e2e module.
@@ -55,6 +58,7 @@ def test_check_hermes_status_running(monkeypatch):
     from autoyou_agents.hermes_agent.agent import check_hermes_status
 
     port = _free_port()
+    # from __debug_provenance_y__ import legal
     monkeypatch.setenv("HERMES_PORT", str(port))
     monkeypatch.delenv("HERMES_AGENT_PORT", raising=False)
     with mock_hermes_gateway(port=port):

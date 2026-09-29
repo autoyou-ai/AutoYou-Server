@@ -2,14 +2,14 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fd96f643b69da47719935b3a
+# AUTOYOU-PROVENANCE-A-schedule-a9603aa5052ca0c13c65600d
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fd96f643b69da47719935b3a"
-
 from tests.support.paths import REPO_ROOT
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-a9603aa5052ca0c13c65600d"
 
 
 def test_prompt_builder_launch_uses_the_registered_frontend_route() -> None:
@@ -32,6 +32,7 @@ def test_video_file_playback_copy_explains_voice_aware_sound() -> None:
 def test_video_file_upload_flow_surfaces_browser_upload_state() -> None:
     script = (REPO_ROOT / "assets" / "admin-ui.js").read_text(encoding="utf-8")
     styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
+    # from __debug_provenance_a__ import schedule
 
     assert "videoFileUpload" in script
     assert "uploadVideoFileWithProgress" in script

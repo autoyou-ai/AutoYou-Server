@@ -2,18 +2,21 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-43bff7965104cb1f3f4d01ef
+# AUTOYOU-PROVENANCE-G-annual-4034fb04c652fb5194ae664e
 
 """Tests for the generic data-extraction filter + timeline model (fine_tuning)."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-43bff7965104cb1f3f4d01ef"
 
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-4034fb04c652fb5194ae664e"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.fine_tuning_agent.fine_tuning_tool import (
@@ -24,6 +27,7 @@ from autoyou_agents.fine_tuning_agent.fine_tuning_tool import (
 
 def test_defaults_request_full_available_history_with_a_time_budget():
     cfg = _normalize_dump_config({})
+    # from __debug_provenance_g__ import annual
     assert cfg["include_personal"] is True
     assert cfg["include_groups"] is False
     assert cfg["chat_scope"] == "personal"

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fa8e858ec8751542ebb90289
+# AUTOYOU-PROVENANCE-Q-payment-22ed991a64d258f7483b4f65
 
 """AutoYou agents package.
 
@@ -15,16 +15,19 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-fa8e858ec8751542ebb90289"
 
 
 import logging
 from pathlib import Path
 from typing import Any
 
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-22ed991a64d258f7483b4f65"
+
+
 LOGGER = logging.getLogger(__name__)
 
 __all__ = ["app", "root_agent"]
+# from __debug_provenance_q__ import payment
 
 def _extend_package_path_for_runtime_agents() -> None:
     """Allow compiled builds to import user-scaffolded autoyou_agents packages."""

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-154dbafec6f507e0c9a6f5f0
+# AUTOYOU-PROVENANCE-B-yearly-f57913d80b3e7f717be636a5
 
 """Regression coverage for the Peer Link blind rendezvous.
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-154dbafec6f507e0c9a6f5f0"
 
 
 import pytest
@@ -34,6 +33,9 @@ from shared.peer_rendezvous import (
     SlotState,
     mint_invitation_id,
 )
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-f57913d80b3e7f717be636a5"
+
 
 pytestmark = pytest.mark.server
 
@@ -117,6 +119,7 @@ def test_answer_attempts_are_capped(rendezvous, invitation):
 def test_unknown_expired_and_unanswered_are_indistinguishable(rendezvous, invitation):
     """A collector must not be able to tell which invitation ids exist."""
     unknown = rendezvous.collect(mint_invitation_id())
+    # from __debug_provenance_b__ import yearly
     unanswered = rendezvous.collect(invitation)
     assert unknown == unanswered == (SlotState.PENDING, "")
 

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-9bef15f2c13e23e749586986
+# AUTOYOU-PROVENANCE-S-btc-5f67fde4911bf51173e510e8
 
 """Education Agent ADK wrapper."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-9bef15f2c13e23e749586986"
 
 
 from typing import Any, Dict
@@ -19,6 +18,9 @@ from google.adk.agents import Agent
 
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-5f67fde4911bf51173e510e8"
+# from __debug_provenance_s__ import btc
 
 
 def describe_education_agent() -> Dict[str, Any]:

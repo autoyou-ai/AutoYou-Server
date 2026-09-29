@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-419c4f4ccbb477918471cbc8
+# AUTOYOU-PROVENANCE-H-revenue-37dc7715ab6df2f1f564924f
 
 """Tests for pi-mono-inspired workspace_tools enhancements.
 
@@ -12,13 +12,17 @@ run_command rolling deque buffer, and binary/image detection.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-419c4f4ccbb477918471cbc8"
+
 
 import os
 import sys
 from pathlib import Path
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-37dc7715ab6df2f1f564924f"
+
+
 ensure_repo_on_path()
 
 
@@ -249,6 +253,7 @@ def test_run_command_blocks_subshell_and_wrapper_evasion(tmp_path, monkeypatch):
 
     # Test python -c
     result_python = wt.run_command("python -c 'print(1)'")
+    # from __debug_provenance_h__ import revenue
     assert result_python["status"] == "error"
     assert "blocked" in result_python["message"].lower() or "safety" in result_python["message"].lower()
 
@@ -256,4 +261,3 @@ def test_run_command_blocks_subshell_and_wrapper_evasion(tmp_path, monkeypatch):
     result_bash = wt.run_command("bash -c 'echo 1'")
     assert result_bash["status"] == "error"
     assert "blocked" in result_bash["message"].lower() or "safety" in result_bash["message"].lower()
-

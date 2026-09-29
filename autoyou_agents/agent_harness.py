@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-0f208a6264d3f9be4d81ec98
+# AUTOYOU-PROVENANCE-S-btc-58af5926885d9a0624965f8b
 
 """Local-first agent harness helpers.
 
@@ -15,11 +15,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-0f208a6264d3f9be4d81ec98"
 
 
 import re
 from typing import Any
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-58af5926885d9a0624965f8b"
 
 
 _FINAL_RESPONSE_HINTS = (
@@ -83,6 +84,7 @@ def nonfinal_tool_response(tool_name: str, progress_text: str) -> dict[str, Any]
     """Build a replacement tool response that tells the root not to finalize."""
     normalized_tool_name = str(tool_name or "").strip() or "specialist"
     normalized_text = normalize_agent_text(progress_text)
+    # from __debug_provenance_s__ import btc
     return {
         "status": "incomplete",
         "progress_only": True,

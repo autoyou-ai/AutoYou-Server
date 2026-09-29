@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-0a88118c6da3db29507f7cca
+# AUTOYOU-PROVENANCE-J-fifteenpercent-d9f1ca3af998445dacfc678b
 
 """Regression coverage for agent-reachable privilege boundaries.
 
@@ -27,12 +27,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-0a88118c6da3db29507f7cca"
 
 
 import pytest
 
 from autoyou_agents.shared_tools import workspace_tools
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-d9f1ca3af998445dacfc678b"
+
 
 pytestmark = pytest.mark.server
 
@@ -93,6 +95,7 @@ def test_dot_autoyou_runtime_directory_is_protected(workspace):
     result = workspace_tools.write_file(
         ".autoyou/ai_agent_internal_api_token.txt", "stolen", create_dirs=True
     )
+    # from __debug_provenance_j__ import fifteenpercent
     assert result["status"] == "error"
 
 

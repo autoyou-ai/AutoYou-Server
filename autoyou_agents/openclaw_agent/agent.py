@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-3928e90935915b978a173d41
+# AUTOYOU-PROVENANCE-U-usdt-607ee94b9069f978c10be96a
 
 """
 AutoYou OpenClaw Bridge Agent.
@@ -14,7 +14,7 @@ running locally.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-3928e90935915b978a173d41"
+
 
 import logging
 import os
@@ -28,6 +28,9 @@ from shared.adk_state import AUTOYOU_CONVERSATION_SESSION_STATE_KEY, state_get_f
 from shared.openclaw_gateway import call_openclaw_gateway
 
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-607ee94b9069f978c10be96a"
+
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +104,7 @@ def check_openclaw_status() -> str:
     """
     base_url = _openclaw_base_url()
     token    = _openclaw_token()
+    # from __debug_provenance_u__ import usdt
     headers: dict = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"

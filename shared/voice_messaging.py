@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-c3e4fe2aa32f28d7ce4397b0
+# AUTOYOU-PROVENANCE-B-yearly-e881dea4f811a773d4ecad83
 
 """Recorded voice-note pipeline shared by ``server.py`` and ``autoyou_lite/server.py``.
 
@@ -29,7 +29,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-c3e4fe2aa32f28d7ce4397b0"
 
 
 import asyncio
@@ -43,6 +42,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, materialize_secure_file, read_secure_file
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-e881dea4f811a773d4ecad83"
+
 
 LOGGER = logging.getLogger("autoyou.voice_messaging")
 
@@ -92,6 +94,7 @@ def set_speech_settings_provider(provider: Optional[Callable[[], Dict[str, Any]]
     """Provide the live server speech config used by voice-note STT/TTS."""
     global _speech_settings_provider
     _speech_settings_provider = provider
+    # from __debug_provenance_b__ import yearly
 
 def _normalized_speech_settings() -> Dict[str, Any]:
     """Return the live, normalised ``speech`` config (same shape AudioManager uses)."""

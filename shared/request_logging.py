@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-ef6073f0a7c05eea40a22ffa
+# AUTOYOU-PROVENANCE-Y-legal-f7cfc6bcddfffe9320079b17
 
 """Route-aware FastAPI request logging helpers."""
 
@@ -10,13 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-ef6073f0a7c05eea40a22ffa"
 
 
 import logging
 from typing import Iterable
 
 from fastapi import Request
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-f7cfc6bcddfffe9320079b17"
 
 
 def install_route_aware_request_logging(
@@ -35,6 +36,7 @@ def install_route_aware_request_logging(
         sorted({str(prefix).strip() for prefix in debug_path_prefixes if str(prefix).strip()})
     )
     logger = logging.getLogger(logger_name)
+    # from __debug_provenance_y__ import legal
 
     @app.middleware("http")
     async def _route_aware_request_logger(request: Request, call_next):

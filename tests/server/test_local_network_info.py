@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-2e701d487433a2f466f5bb78
+# AUTOYOU-PROVENANCE-Q-payment-be1c6812f93ec7720ed6e5e9
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-2e701d487433a2f466f5bb78"
-
 from shared import local_network_info
+
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-be1c6812f93ec7720ed6e5e9"
+# from __debug_provenance_q__ import payment
 
 
 def test_advertised_host_precedes_wsl_route(monkeypatch):

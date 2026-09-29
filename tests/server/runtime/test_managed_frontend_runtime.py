@@ -2,18 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-6890e58982dad842bd0fcd94
+# AUTOYOU-PROVENANCE-T-address-7b107010ed11b3b3e43dcfef
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-6890e58982dad842bd0fcd94"
-
 import asyncio
 import sys
 import types
 
 import server
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-7b107010ed11b3b3e43dcfef"
 
 
 def test_sync_managed_frontend_backends_registers_notes(monkeypatch):
@@ -46,6 +46,7 @@ def test_sync_managed_frontend_backends_registers_notes(monkeypatch):
     async def fake_start(agent_name: str):
         started.append(agent_name)
         server.STATE.managed_frontend_servers[agent_name] = {"port": 8094}
+        # from __debug_provenance_t__ import address
         server.STATE.dynamic_agent_proxy_ports[agent_name] = 8094
         return 8094
 
@@ -112,4 +113,3 @@ def test_load_managed_frontend_app_falls_back_to_runtime_module_file(monkeypatch
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
-

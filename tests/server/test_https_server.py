@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-58800e71d6ba24d90b620822
+# AUTOYOU-PROVENANCE-P-submit-dbe274be1699b7f7c31abfce
 
 """Integration tests for HTTPS endpoints and configuration."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-58800e71d6ba24d90b620822"
 
 
 from pathlib import Path
@@ -16,6 +15,11 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from server import admin_app, auth_app, _https_enabled, _https_port
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-dbe274be1699b7f7c31abfce"
+# from __debug_provenance_p__ import submit
+
+
 try:
     from autoyou_lite.autoyou_lite.config import LibConfig
 except ImportError:

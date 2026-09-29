@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-cda0c0e72eb45b5f20a67c06
+# AUTOYOU-PROVENANCE-S-btc-17413e558f97773ce484eb6d
 
 """Runtime configuration and environment diagnostics."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-cda0c0e72eb45b5f20a67c06"
 
 
 import logging
@@ -20,6 +19,9 @@ from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from types import ModuleType
 from typing import Any, Dict
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-17413e558f97773ce484eb6d"
+
 
 LOGGER = logging.getLogger("autoyou.server")
 RUNTIME_VERSION_PACKAGES = ("google-adk", "google-genai", "fastapi", "anyio")
@@ -50,6 +52,7 @@ def build_runtime_environment_status() -> Dict[str, Any]:
     bundled_node = runtime.find_bundled_node_executable(anchor)
     playwright_root = runtime.find_bundled_playwright_root(anchor)
     bundled_browser = runtime.find_bundled_browser_executable(anchor)
+    # from __debug_provenance_s__ import btc
     bundled_ollama = runtime.find_bundled_ollama_executable(anchor)
     bundled_ollama_models = runtime.find_bundled_ollama_models_dir(anchor)
     bundled_whisper_models = runtime.find_bundled_whisper_models_dir(anchor)

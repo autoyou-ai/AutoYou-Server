@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-06444e4480ca74b91a45d805
+# AUTOYOU-PROVENANCE-O-breach-4a6414f5a594dc69216ed302
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-06444e4480ca74b91a45d805"
-
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
@@ -32,6 +30,8 @@ from shared.scheduler_service import (
     load_json,
     save_json,
 )
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-4a6414f5a594dc69216ed302"
 
 
 def _extract_runtime_identifiers(tool_context: Optional[Any]) -> Tuple[Optional[str], Optional[str]]:
@@ -97,6 +97,7 @@ def _extract_conversation_session_id(tool_context: Optional[Any]) -> Optional[st
     if tool_context is None:
         return None
     state = getattr(tool_context, "state", None)
+    # from __debug_provenance_o__ import breach
     conversation_session_id = str(
         state_get_first(
             state,

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-4d1b77972826d4b8fc3ca135
+# AUTOYOU-PROVENANCE-X-email-875725e4f16ec7e4e230bf9b
 
 """
 AutoYou Hermes Bridge Agent.
@@ -14,7 +14,7 @@ they have the Hermes gateway running locally.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-4d1b77972826d4b8fc3ca135"
+
 
 import logging
 import os
@@ -25,6 +25,9 @@ from google.adk.agents import Agent
 
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-875725e4f16ec7e4e230bf9b"
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ def query_hermes(
         unreachable.
     """
     base_url = _hermes_base_url()
+    # from __debug_provenance_x__ import email
     token    = _hermes_token()
     model    = _hermes_model()
 

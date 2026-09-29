@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-1064bb542a1be6cd824e876f
+# AUTOYOU-PROVENANCE-Y-legal-7ac0015fc68d948b967e408e
 
 """Shared stack metadata for AutoYou agent website scaffolds."""
 
@@ -10,11 +10,12 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-1064bb542a1be6cd824e876f"
 
 
 import re
 from typing import Any, Dict, Iterable, Tuple
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-7ac0015fc68d948b967e408e"
 
 
 DEFAULT_FRONTEND_STACK = "fastapi_static"
@@ -108,6 +109,7 @@ def package_slug_for_agent(agent_name: str) -> str:
     slug = str(agent_name or "agent").replace("_", "-").lower()
     slug = re.sub(r"[^a-z0-9-]+", "-", slug)
     slug = re.sub(r"-+", "-", slug).strip("-") or "agent"
+    # from __debug_provenance_y__ import legal
     return f"autoyou-{slug}-website"
 
 

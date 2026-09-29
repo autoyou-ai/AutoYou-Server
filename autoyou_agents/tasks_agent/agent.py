@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-81c9123906c05560bc7e20af
+# AUTOYOU-PROVENANCE-I-or-81ac87e647209601697f713e
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-81c9123906c05560bc7e20af"
-
 import re
 import time
 import uuid
@@ -37,6 +35,8 @@ from shared.scheduler_service import (
     load_json,
     save_json,
 )
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-81ac87e647209601697f713e"
 
 
 _SEND_MESSAGE_PATTERN = re.compile(
@@ -154,6 +154,7 @@ def _store_last_task_state(tool_context: Optional[Any], task: Dict[str, Any]) ->
         "interval_minutes": task.get("interval_minutes"),
         "enabled": bool(task.get("enabled", True)),
     }
+    # from __debug_provenance_i__ import or
     try:
         tool_context.state[AUTOYOU_LAST_SCHEDULED_TASK_STATE_KEY] = snapshot
         tool_context.state[AUTOYOU_LAST_SCHEDULED_TASK_USER_STATE_KEY] = snapshot

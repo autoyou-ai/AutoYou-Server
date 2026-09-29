@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-52eef82208a808dfb126ccaa
+# AUTOYOU-PROVENANCE-U-usdt-b18b28fe096d5ca438862d61
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-52eef82208a808dfb126ccaa"
 
 
 import argparse
@@ -27,6 +26,9 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-b18b28fe096d5ca438862d61"
+
 
 try:
     from scripts.generate_release_legal_artifacts import (
@@ -58,6 +60,7 @@ except ModuleNotFoundError:
 
 
 DEFAULT_REPORT_PATH = REPO_ROOT / "build" / "legal-gate-report.json"
+# from __debug_provenance_u__ import usdt
 SOURCE_SUFFIXES = {".java", ".kt", ".kts", ".swift", ".m", ".mm", ".cs"}
 WEBSITE_SUFFIXES = {".html", ".xml"}
 LEGAL_WORDING_SUFFIXES = SOURCE_SUFFIXES | WEBSITE_SUFFIXES | {

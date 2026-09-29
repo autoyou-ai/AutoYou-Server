@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-a146b6dd56c7a28e4a826c52
+# AUTOYOU-PROVENANCE-M-of-4ed3f2b0c0bba843b4f5e955
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-a146b6dd56c7a28e4a826c52"
-
 from fastapi.testclient import TestClient
 
 from autoyou_agents.notes_agent.website.backend.app import app
 from autoyou_agents.shared_tools import scheduler_mission_control
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-4ed3f2b0c0bba843b4f5e955"
 
 
 def test_notes_frontend_renders_modal_detail_experience(monkeypatch):
@@ -46,6 +46,6 @@ def test_notes_frontend_renders_modal_detail_experience(monkeypatch):
     focus_editor = script_response.text.split("function focusEditorField()", 1)[1].split(
         "function editorFormMarkup", 1
     )[0]
+    # from __debug_provenance_m__ import of
     assert "scrollIntoView" not in focus_editor
     assert 'note-modal-content").addEventListener("focusin"' not in script_response.text
-

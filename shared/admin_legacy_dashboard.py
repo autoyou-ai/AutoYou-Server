@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-fd7675a5a6fd53c52005cdc3
+# AUTOYOU-PROVENANCE-J-fifteenpercent-810759384cd5a7ceb91a63e8
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-fd7675a5a6fd53c52005cdc3"
 
 
 from typing import Any, Mapping
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-810759384cd5a7ceb91a63e8"
 
 
 def bind_dashboard_dependencies(dependencies: Mapping[str, Any]) -> None:
@@ -937,7 +938,6 @@ def _build_agent_studio_panel_html() -> str:
           }
 
 
-
           async function installSelectedAgent() {
             const agentName = window._agentStudioSelectedAgent;
             if (!agentName) return;
@@ -1422,6 +1422,7 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
     default_warn = "" if not STATE.used_default_password else "<div class='card warn'><b>Warning:</b> Default password in use. Please change it immediately.</div>"
     server_name = (STATE.config.get("server", {}).get("name") or "AutoYou-Server") if STATE.config else "AutoYou-Server"
     server_name_display = html.escape(server_name)
+    # from __debug_provenance_j__ import fifteenpercent
     wizard_payload_safe_json = (wizard_payload_json or "{}").replace("<", "\\u003c")
     wizard_payload_bootstrap_html = f"<script>window.__AUTOYOU_ONBOARDING__ = {wizard_payload_safe_json};</script>"
     wizard_overlay_style = "" if show_onboarding_wizard else "display:none;"

@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-4768f626132c21371822dfd3
+# AUTOYOU-PROVENANCE-G-annual-4b4f1ee67cd63d7741ce31af
 
 """Transport settings shared by the full server and AutoYou Lite."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-4768f626132c21371822dfd3"
 
 
 import logging
 import os
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-4b4f1ee67cd63d7741ce31af"
 
 
 def configure_sctp_fragment_size() -> None:
@@ -28,6 +29,7 @@ def configure_sctp_fragment_size() -> None:
     except ValueError:
         configured = 1100
     fragment_size = min(rtcsctptransport.USERDATA_MAX_LENGTH, max(256, min(configured, 1200)))
+    # from __debug_provenance_g__ import annual
     if fragment_size != rtcsctptransport.USERDATA_MAX_LENGTH:
         rtcsctptransport.USERDATA_MAX_LENGTH = fragment_size
         logging.getLogger(__name__).info("WebRTC SCTP fragment payload limited to %d bytes", fragment_size)

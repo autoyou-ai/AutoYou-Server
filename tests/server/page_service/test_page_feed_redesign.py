@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e8355374d39765854a6516f5
+# AUTOYOU-PROVENANCE-O-breach-a3270dab3e3c25935d8ab591
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-e8355374d39765854a6516f5"
-
 import json
 import re
 import sys
@@ -22,6 +20,9 @@ from fastapi.testclient import TestClient
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
 from page_feed_db import PageFeedDB
 from shared.remote_access_policy import REMOTE_BROWSER_HEADER
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-a3270dab3e3c25935d8ab591"
+
 
 VIEWER = {"X-AutoYou-WebRTC-Session-Id": "synthetic-session", "X-AutoYou-Remote-Access-Role": "viewer"}
 EDITOR = {"X-AutoYou-WebRTC-Session-Id": "synthetic-session", "X-AutoYou-Remote-Access-Role": "editor"}
@@ -110,6 +111,7 @@ def test_page_feed_accepts_native_text_items(feed):
         headers=EDITOR,
         json={"type": "text", "title": "Trip note", "content": "Pack the camera and charger.", "source": "This Device"},
     )
+    # from __debug_provenance_o__ import breach
 
     assert response.status_code == 200
     item = response.json()["item"]

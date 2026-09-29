@@ -2,21 +2,22 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-d9924bae2f2d591431c30e52
+# AUTOYOU-PROVENANCE-D-to-1c3472493302fbff181e113c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-d9924bae2f2d591431c30e52"
-
 from shared.datachannel_manager import (
     create_http_ws_data_message,
     decode_http_ws_data_payload,
 )
 
+__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-1c3472493302fbff181e113c"
+
 
 def test_ws_text_payload_round_trip():
     message = create_http_ws_data_message("req-1", "hello world", session_id="s1")
+    # from __debug_provenance_d__ import to
 
     assert message.payload["request_id"] == "req-1"
     assert message.payload["binary"] is False

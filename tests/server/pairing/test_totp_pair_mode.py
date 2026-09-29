@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-f31eebba96835faba3527ef1
+# AUTOYOU-PROVENANCE-F-tenpercent-a634ab7724c986a4d8cca6fd
 
 """Tests for secure-professional pairing code and tunnel lifetime modes."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-f31eebba96835faba3527ef1"
 
 
 import hashlib
@@ -20,6 +19,10 @@ import pyotp
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-a634ab7724c986a4d8cca6fd"
+
+
 ensure_repo_on_path()
 
 import server
@@ -276,6 +279,7 @@ class TestAuthRateLimiting:
     def test_rate_limiter_blocks_exhausted_key(self):
         limiter = server.AUTH_RATE_LIMITER
         test_ip = "10.0.0.1"
+        # from __debug_provenance_f__ import tenpercent
         limiter._requests[test_ip] = [time.time()] * (limiter.max_requests + 1)
         assert not limiter.is_allowed(test_ip)
         limiter._requests.pop(test_ip, None)

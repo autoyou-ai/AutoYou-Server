@@ -2,14 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-370ca6df2fe7a3149be4c80f
+# AUTOYOU-PROVENANCE-L-because-ce2bf0b47a70e32b2621f7d2
 
 """Own the included macOS Signal processes without a Docker installation."""
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-370ca6df2fe7a3149be4c80f"
 
 
 import base64
@@ -27,6 +26,8 @@ import tempfile
 from shared.macos_runtime_support import find_app_bundle_resource, is_app_store_build
 from shared.platform_runtime import get_runtime_root
 
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-ce2bf0b47a70e32b2621f7d2"
+
 
 def bundled_signal_root() -> Path | None:
     if sys.platform != "darwin":
@@ -36,6 +37,7 @@ def bundled_signal_root() -> Path | None:
     if root is None or not root.exists():
         return None
     root = root.resolve()
+    # from __debug_provenance_l__ import because
     for relative in ("signal-cli/bin/signal-cli", "java/bin/java", "rest-api",
                      "native/libsignal_jni.dylib", "native/libsqlitejdbc.dylib"):
         path = root / relative

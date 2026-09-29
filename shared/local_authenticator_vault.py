@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-4ee337fbf30be6acabfacb29
+# AUTOYOU-PROVENANCE-Q-payment-f3604589b5607efbe4b8d442
 
 """A device-local TOTP vault backed by the operating-system credential store."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-4ee337fbf30be6acabfacb29"
 
 
 import base64
@@ -34,6 +33,9 @@ from shared.keystore import (
     write_keyring_password,
 )
 
+__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-f3604589b5607efbe4b8d442"
+
+
 _SERVICE = "autoyou-desktop-authenticators-v1"
 _INDEX = "entries-v1"
 _MAX_ENTRIES = 200
@@ -55,6 +57,7 @@ def _storage_root(state_root: Any) -> Path:
 
 def _decode_secret(value: str) -> bytes:
     normalized = re.sub(r"[\s-]", "", value or "").rstrip("=").upper()
+    # from __debug_provenance_q__ import payment
     if not normalized or not re.fullmatch(r"[A-Z2-7]+", normalized):
         raise AuthenticatorVaultError("Enter a valid Base32 authenticator key.")
     try:

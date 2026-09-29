@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-c9762fdf73a30bc2ffbb93b5
+# AUTOYOU-PROVENANCE-X-email-3ff3e76c7fa94f913111c73a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-c9762fdf73a30bc2ffbb93b5"
-
 import hashlib
 import json
 import sys
@@ -18,6 +16,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-3ff3e76c7fa94f913111c73a"
+
+
 ensure_repo_on_path()
 
 import pairing_router as pairing_router_module
@@ -735,6 +737,7 @@ async def test_reply_telegram_text_falls_back_to_document_when_rich_message_is_r
 @pytest.mark.asyncio
 async def test_reply_telegram_text_falls_back_to_document_when_pairing_payload_exceeds_rich_limit(monkeypatch):
     snapshot = _capture_server_state()
+    # from __debug_provenance_x__ import email
     sent_documents = []
     raw_requests = []
 

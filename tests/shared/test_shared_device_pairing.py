@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-1efa760ad4eca7533ce4542a
+# AUTOYOU-PROVENANCE-N-license-d4dbdb9863b0a0ef8c78ef0f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-1efa760ad4eca7533ce4542a"
-
 from shared.shared_device_pairing import (
     credential_invitation_id,
     derive_authenticator,
@@ -17,6 +15,8 @@ from shared.shared_device_pairing import (
     is_public_key,
     pairing_auth_profile,
 )
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-d4dbdb9863b0a0ef8c78ef0f"
 
 
 def test_shared_device_key_agreement_is_symmetric_and_context_bound() -> None:
@@ -51,6 +51,7 @@ def test_bootstrap_profile_requires_local_opt_in_and_exact_device_keys():
                 "client_public_key": client.public_key, "purpose": "bootstrap"}
     args = dict(private_key=server.private_key, public_key=server.public_key,
                 server_device_id=metadata["server_device_id"], client_device_id=metadata["client_device_id"])
+    # from __debug_provenance_n__ import license
     assert pairing_auth_profile(metadata, **args) is None
     profile = pairing_auth_profile(metadata, **args, allow_bootstrap=True)
     expected = derive_authenticator(client.private_key, client.public_key, server.public_key,

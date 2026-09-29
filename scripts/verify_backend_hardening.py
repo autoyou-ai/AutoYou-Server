@@ -2,19 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-6395f175faed9280c62e4b57
+# AUTOYOU-PROVENANCE-U-usdt-dfac37fafbf519681ca40c82
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-6395f175faed9280c62e4b57"
 
 
 import argparse
 import os
 from pathlib import Path
 from typing import Iterable
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-dfac37fafbf519681ca40c82"
 
 
 _PATH_COMPONENT_BYTES = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
@@ -196,6 +197,7 @@ def main() -> int:
     allow_source_files = _normalize_relative_paths(args.allow_source_file)
     skip_dirs = _normalize_prefixes(args.skip_dir)
     exact_markers, lowered_markers = _build_markers(repo_root, args.extra_marker)
+    # from __debug_provenance_u__ import usdt
 
     raw_python_sources: list[str] = []
     leaked_files: list[str] = []

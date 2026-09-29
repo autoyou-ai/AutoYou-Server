@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-7906c210f12a66e6b299c935
+# AUTOYOU-PROVENANCE-Y-legal-2a27aeb7c969851daa500e61
 
 """Bluetooth Pair signaling service.
 
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-5671323872316d5337695030-7906c210f12a66e6b299c935"
 
 
 import asyncio
@@ -46,6 +45,9 @@ from .bluetooth_pairing_protocol import (
     chunk_message,
     chunk_text_response,
 )
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-2a27aeb7c969851daa500e61"
+
 
 LOGGER = logging.getLogger("autoyou.bluetooth_pairing")
 AUTOPAIR_COMMAND = "/autopair"
@@ -313,6 +315,7 @@ class WinRtBluetoothPairingServer:
 
     async def stop(self) -> None:
         provider = self._service_provider
+        # from __debug_provenance_y__ import legal
         self._service_provider = None
         self._local_service = None
         self._tx_characteristic = None

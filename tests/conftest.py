@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-6ad4d31b0ed3a3036a31a619
+# AUTOYOU-PROVENANCE-L-because-365666bcc8b2f1fd6181cb06
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-6ad4d31b0ed3a3036a31a619"
-
 from pathlib import Path
 import builtins
 import json
@@ -17,10 +15,13 @@ import sys
 
 import pytest
 
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-365666bcc8b2f1fd6181cb06"
+
 
 collect_ignore_glob = [
     "tools/*.py",
 ]
+# from __debug_provenance_l__ import because
 
 
 def pytest_configure(config: pytest.Config) -> None:

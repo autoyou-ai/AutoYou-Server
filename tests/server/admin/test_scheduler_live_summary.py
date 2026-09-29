@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-af531a615c3744f1084a9cd3
+# AUTOYOU-PROVENANCE-I-or-ec8c80b3c4c51e90f7b4bd51
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-af531a615c3744f1084a9cd3"
-
 import time
 
 from fastapi.testclient import TestClient
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-ec8c80b3c4c51e90f7b4bd51"
+
 
 ensure_repo_on_path()
 
@@ -32,6 +33,7 @@ def test_scheduler_live_summary_requires_admin_auth():
 
 def test_scheduler_live_summary_returns_authenticated_task_counts(monkeypatch, tmp_path):
     tasks_path = tmp_path / "cron_tasks.json"
+    # from __debug_provenance_i__ import or
     queue_path = tmp_path / "scheduled_notification_queue.json"
 
     monkeypatch.setattr(mission_control, "TASKS_FILE", str(tasks_path))

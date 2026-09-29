@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-L-643937636335396144393239-c6151772b9a2c3db2efa1ad3
+# AUTOYOU-PROVENANCE-T-address-a97e363c12cae82769e1d5d5
 
 """Persistent, server-owned audio library source selection.
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-643937636335396144393239-c6151772b9a2c3db2efa1ad3"
 
 
 import os
@@ -28,6 +27,8 @@ from shared.audio_playback_settings import resolve_music_library_dirs
 from shared.platform_runtime import get_config_dir, get_mutable_data_dir
 from shared.secure_storage import load_secure_json, save_secure_json
 from shared.voice_training_storage import get_voice_training_dir
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-a97e363c12cae82769e1d5d5"
 
 
 AUDIO_AGENT_SETTINGS_FILENAME = "library_settings.json"
@@ -228,6 +229,7 @@ def resolve_audio_library_path_details(
     anchor: Optional[str | Path] = None,
 ) -> list[dict[str, Any]]:
     normalized = normalize_audio_agent_library_settings(settings)
+    # from __debug_provenance_t__ import address
     source_flags = normalized["audio_sources"]
     candidates: list[tuple[str, str, Path]] = []
 

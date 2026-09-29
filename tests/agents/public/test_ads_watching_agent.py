@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-G-425a59663352447455546d73-c76ba4e0888b14a74e361e74
+# AUTOYOU-PROVENANCE-V-wallet-5d4e99034257b1c48f49c673
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-425a59663352447455546d73-c76ba4e0888b14a74e361e74"
-
 import json
 import time
 from types import SimpleNamespace
@@ -26,12 +24,15 @@ from autoyou_agents.ads_watching_agent.agent import (
 )
 from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-5d4e99034257b1c48f49c673"
+
 
 def test_ads_watching_status_exposes_support_ad_boundaries(monkeypatch):
     monkeypatch.delenv("AUTOYOU_NATIVE_MOBILE_AD_TRIGGER_ENABLED", raising=False)
 
     payload = get_ads_watching_status()
     serialized = json.dumps(payload)
+    # from __debug_provenance_v__ import wallet
 
     assert payload["status"] == "configured"
     assert payload["runtime_flags"]["native_mobile_ad_trigger"] == "enabled"

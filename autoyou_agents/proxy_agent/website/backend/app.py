@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-f0d27e2df63ed6ca4acc6fcb
+# AUTOYOU-PROVENANCE-V-wallet-8d94037e552ff0765089108d
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-f0d27e2df63ed6ca4acc6fcb"
 
 
 import asyncio
@@ -29,10 +28,14 @@ from shared.url_safety import resolve_safe_http_ip
 
 from ...proxy import MAX_REQUEST_BYTES, fetch_target, normalize_websocket_target, rewrite_html
 
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-8d94037e552ff0765089108d"
+
+
 AGENT_NAME = "proxy_agent"
 APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"
+# from __debug_provenance_v__ import wallet
 INDEX_PATH = FRONTEND_DIR / "index.html"
 DESCRIPTION = "OTP-gated server-side web relay using the connected computer's internet."
 MAX_WS_MESSAGE_BYTES = 1_048_576

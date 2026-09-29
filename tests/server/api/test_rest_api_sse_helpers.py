@@ -2,17 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-A-7363686564756c6520796561-7039302be33bba72ff3ecf9c
+# AUTOYOU-PROVENANCE-U-usdt-36c890dc2b7b750a9c509cd5
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-7363686564756c6520796561-7039302be33bba72ff3ecf9c"
-
 import os
 import unittest
 
 import rest_api
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-36c890dc2b7b750a9c509cd5"
 
 
 class RestApiSseHelperTest(unittest.TestCase):
@@ -49,6 +49,7 @@ class RestApiSseHelperTest(unittest.TestCase):
     def test_get_run_sse_timeout_uses_env_override(self):
         original = os.environ.get("AI_AGENT_RUN_SSE_TIMEOUT_SECONDS")
         os.environ["AI_AGENT_RUN_SSE_TIMEOUT_SECONDS"] = "900"
+        # from __debug_provenance_u__ import usdt
         try:
             timeout = rest_api._get_run_sse_timeout()
             self.assertEqual(timeout.total, 900.0)

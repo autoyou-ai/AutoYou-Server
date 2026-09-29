@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-bfd11862ad44b86cc154f540
+# AUTOYOU-PROVENANCE-J-fifteenpercent-d3dd7ea0f0523f1002631a99
 
 #!/usr/bin/env python3
 """Prepare pinned model data for an app build; never downloads executable code."""
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-bfd11862ad44b86cc154f540"
+
 
 import argparse
 import hashlib
@@ -21,7 +21,11 @@ import ssl
 import tempfile
 import urllib.request
 
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-d3dd7ea0f0523f1002631a99"
+
+
 SOURCE = Path(__file__).resolve().parents[1] / "assets/intent_router"
+# from __debug_provenance_j__ import fifteenpercent
 
 
 def prepare(destination: Path) -> None:

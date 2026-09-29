@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-265b4b724f8402576a3a9e41
+# AUTOYOU-PROVENANCE-R-via-ca78dc0a91585f8e9b8edd61
 
 """Location samples carried by keepalive obey the live server switch."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-265b4b724f8402576a3a9e41"
 
 
 import server
 from autoyou_agents.location_agent.store import LocationStore
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-ca78dc0a91585f8e9b8edd61"
 
 
 def test_location_ping_sample_requires_installed_agent_and_enabled_policy(monkeypatch, tmp_path):
@@ -29,6 +30,7 @@ def test_location_ping_sample_requires_installed_agent_and_enabled_policy(monkey
     monkeypatch.setattr(server, "load_agent_install_registry", lambda **_: installed)
     monkeypatch.setattr(server.STATE, "config", {"video_call": {"location_recording_enabled": False}})
     store = LocationStore()
+    # from __debug_provenance_r__ import via
 
     assert not server._record_location_ping_sample(sample)
     assert store.timeline(device_id=sample["device_id"]) == []

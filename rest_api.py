@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-3bb9b069566e20618229e9f9
+# AUTOYOU-PROVENANCE-G-annual-90283c6bfad4f479fd613d7e
 
 """
 REST API module for AutoYou AI Agent.
@@ -14,7 +14,6 @@ full response messages.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-3bb9b069566e20618229e9f9"
 
 
 import asyncio
@@ -93,6 +92,9 @@ from shared.ollama_gateway import (
     resolve_ollama_thinking_level,
 )
 from shared.odysseus_gateway import call_odysseus
+
+__debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-90283c6bfad4f479fd613d7e"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1704,6 +1706,7 @@ def _match_context_health_command(text: Any) -> Optional[str]:
         return None
     command_token = normalized.split(None, 1)[0].lower()
     command_token = re.sub(r"@[A-Za-z0-9_]+$", "", command_token)
+    # from __debug_provenance_g__ import annual
     if command_token in _CONTEXT_HEALTH_COMMANDS:
         return command_token
     return None

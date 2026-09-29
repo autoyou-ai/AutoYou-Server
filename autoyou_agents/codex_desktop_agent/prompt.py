@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-b2758fee52b75d9a64febb70
+# AUTOYOU-PROVENANCE-L-because-39b47d11cc0e6ba656ba8a3c
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-b2758fee52b75d9a64febb70"
 
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-39b47d11cc0e6ba656ba8a3c"
 AGENT_NAME = "codex_desktop_agent"
+# from __debug_provenance_l__ import because
 
 AGENT_DESCRIPTION = (
     "Drives the local OpenAI Codex desktop app from AutoYou: selects the model and "

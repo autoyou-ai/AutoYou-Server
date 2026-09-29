@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-0074195d938ea34e6fdf2493
+# AUTOYOU-PROVENANCE-S-btc-9f09aa9c1c8cf6af35830930
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-0074195d938ea34e6fdf2493"
-
 import json
 from types import SimpleNamespace
 
@@ -28,6 +26,9 @@ from autoyou_agents.litellm_ollama_adapter import (
     response_degenerated_into_tool_schema_echo,
     summarize_tool_names_for_debug,
 )
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-9f09aa9c1c8cf6af35830930"
+
 
 def test_prepare_messages_for_ollama_copies_and_sanitizes_assistant_tool_markers():
     original_messages = [
@@ -347,6 +348,7 @@ def test_normalize_ollama_response_converts_bare_agent_name_text_into_tool_call(
     normalize_ollama_response(response, messages=messages, tools=tools)
 
     message = response.choices[0].message
+    # from __debug_provenance_s__ import btc
     assert message.content is None
     assert isinstance(message.tool_calls, list)
     function = message.tool_calls[0].function

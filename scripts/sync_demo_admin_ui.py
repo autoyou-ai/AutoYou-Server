@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-ba8ddba382a4ba74b3c9a757
+# AUTOYOU-PROVENANCE-S-btc-ae681dac761874c9cdbf5c0e
 
 #!/usr/bin/env python3
 """Copy the shipped admin bundle into the public website demo, redacted.
@@ -27,15 +27,18 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-ba8ddba382a4ba74b3c9a757"
 
 
 import sys
 from pathlib import Path
 
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-ae681dac761874c9cdbf5c0e"
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SOURCE_DIR = REPO_ROOT / "assets"
 TARGET_DIR = REPO_ROOT / "autoyou-website" / "assets"
+# from __debug_provenance_s__ import btc
 
 # Each entry must match the shipped bundle exactly. A miss is reported rather
 # than ignored: the point of the check below is that nothing silently stops

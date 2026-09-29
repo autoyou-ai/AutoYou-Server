@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-e96ae981629e49c4a9830bf9
+# AUTOYOU-PROVENANCE-H-revenue-7ec41d7a5ad022624c877659
 
 """AutoYou Persona agent - user-authored self-data profile (Markdown).
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-e96ae981629e49c4a9830bf9"
 
 
 import datetime as _datetime
@@ -34,6 +33,9 @@ from google.adk.agents import Agent
 
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-7ec41d7a5ad022624c877659"
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +149,7 @@ def append_persona(text: str, heading: str = "") -> Dict[str, Any]:
         heading: Optional short section heading for the new entry.
     """
     body = str(text or "").strip()
+    # from __debug_provenance_h__ import revenue
     if not body:
         return {"status": "error", "message": "Nothing to append - provide the personal detail to record."}
     try:

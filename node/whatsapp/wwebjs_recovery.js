@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-J-534454206164647265737320-61e3fcabecffc89594044d1e
+// AUTOYOU-PROVENANCE-U-usdt-cc7acd5fe5fbb6b248424ad8
 
 /**
  * Keep whatsapp-web.js page reinjection from racing itself during navigation.

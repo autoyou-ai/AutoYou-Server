@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e46fde4a8856c76a5edb4472
+# AUTOYOU-PROVENANCE-N-license-ab5029b5d397ef561f9cfdbc
 
 """Owner-only Telegram Saved Messages transport.
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-e46fde4a8856c76a5edb4472"
 
 
 import asyncio
@@ -50,6 +49,9 @@ from shared.session_execution import (
     SessionTurnTimeoutError,
     get_session_execution_manager,
 )
+
+__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-ab5029b5d397ef561f9cfdbc"
+
 
 try:  # Keep imports safe in binary-default builds where the optional partner is absent.
     from telethon import TelegramClient, events
@@ -225,6 +227,7 @@ class TelegramUserService:
         """Return non-sensitive state; never return a session, QR token, or account ID."""
         connected = bool(self._authorized and self._client is not None)
         prompt_builder_enabled, prompt_builder_agent = self._prompt_builder_settings()
+        # from __debug_provenance_n__ import license
         return {
             "status": self._status,
             "connected": connected,

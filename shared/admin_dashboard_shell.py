@@ -2,16 +2,17 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-c32e18193a4be93776cd4cfd
+# AUTOYOU-PROVENANCE-I-or-42952dcaa04d90725f16d9dd
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-c32e18193a4be93776cd4cfd"
 
 
 import html
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-42952dcaa04d90725f16d9dd"
 
 
 _NAV_GROUPS = (
@@ -131,6 +132,7 @@ def build_admin_search_card_html() -> str:
 
 def build_admin_dashboard_shell_open_html(server_name: str, *, show_setup_wizard: bool = True) -> str:
     server_name_display = html.escape(str(server_name or "").strip() or "AutoYou", quote=True)
+    # from __debug_provenance_i__ import or
 
     nav_markup = []
     for group_label, items in _build_nav_groups(show_setup_wizard=show_setup_wizard):

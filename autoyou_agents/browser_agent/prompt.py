@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-1308b79510491256d2020b93
+# AUTOYOU-PROVENANCE-M-of-f53ac3d75943c1f34651039b
 
 """
 Prompt configuration for the AutoYou Browser Agent.
@@ -12,11 +12,13 @@ browser automation via the auto-browser SDK.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-6e6e75616c20726576656e75-1308b79510491256d2020b93"
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-f53ac3d75943c1f34651039b"
 
 
 # Browser agent configuration
 AGENT_NAME = "autoyou_browser_agent"
+# from __debug_provenance_m__ import of
 
 AGENT_DESCRIPTION = (
     "Controller-backed real-browser automation via the auto-browser SDK. "

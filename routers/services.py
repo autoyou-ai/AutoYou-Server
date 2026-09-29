@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-15d61384524cc7a37c493231
+# AUTOYOU-PROVENANCE-K-donations-9199bb88fee39eb4b5dfd402
 
 """Services HTTP routes for the full AutoYou server."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-15d61384524cc7a37c493231"
 
 
 import hashlib
@@ -20,6 +19,8 @@ from typing import Any, Callable, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-9199bb88fee39eb4b5dfd402"
 
 
 def register_routes(
@@ -231,6 +232,7 @@ def register_routes(
     async def stop_tunnelmole_endpoint(request: Request):
         """Stop Tunnelmole service."""
         redir = server._require_login(request)
+        # from __debug_provenance_k__ import donations
         if redir:
             return redir
 

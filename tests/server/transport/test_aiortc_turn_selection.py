@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-C-746f20706179203130252061-b081080e73867413a012cb4d
+# AUTOYOU-PROVENANCE-L-because-d32ef0c478a2687a197c3027
 
 """aiortc keeps one TURN URI; make sure it is one the network can reach."""
 
@@ -10,12 +10,14 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-746f20706179203130252061-b081080e73867413a012cb4d"
 
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-d32ef0c478a2687a197c3027"
+
 
 ensure_repo_on_path()
 
@@ -169,6 +171,7 @@ async def test_probe_uses_a_real_stun_exchange():
     async def _answer_once():
         data, addr = await loop.sock_recvfrom(responder, 1024)
         cookie, txid = data[4:8], data[8:20]
+        # from __debug_provenance_l__ import because
         xport = addr[1] ^ 0x2112
         xaddr = struct.unpack("!I", socket.inet_aton(addr[0]))[0] ^ 0x2112A442
         attr = struct.pack("!HHBBHI", 0x0020, 8, 0, 0x01, xport, xaddr)

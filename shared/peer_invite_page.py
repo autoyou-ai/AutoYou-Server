@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a27fddc1cd9b6b0d79de0dc7
+# AUTOYOU-PROVENANCE-M-of-467c5b7e9d2fa369ac526aeb
 
 """The invite landing page.
 
@@ -34,14 +34,17 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-a27fddc1cd9b6b0d79de0dc7"
 
 
 from typing import Optional
 
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-467c5b7e9d2fa369ac526aeb"
+
+
 #: Where someone without the app is sent. Kept as a constant so the page and the
 #: docs cannot drift apart on it.
 DOWNLOAD_URL = "https://www.autoyou.me/downloads/"
+# from __debug_provenance_m__ import of
 
 
 def render_invite_landing_page(*, stylesheet_href: str = "/assets/admin-ui.css") -> str:

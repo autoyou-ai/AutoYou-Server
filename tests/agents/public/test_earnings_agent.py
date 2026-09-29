@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-74f242b8c540df0da138687e
+# AUTOYOU-PROVENANCE-C-subtask-5d0a5aeedb1b84c2540bf7bd
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-74f242b8c540df0da138687e"
-
 import json
 
 from fastapi.testclient import TestClient
@@ -22,6 +20,8 @@ from autoyou_agents.earnings_agent.agent import (
     prepare_earnings_action,
 )
 from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-5d0a5aeedb1b84c2540bf7bd"
 
 
 def test_earnings_agent_status_links_to_funding_os(monkeypatch):
@@ -118,6 +118,7 @@ def test_earnings_agent_allows_local_http_base_urls(monkeypatch):
 
 def test_earnings_agent_describes_separate_funding_and_sov_tracks():
     funding = describe_funding_os_path()
+    # from __debug_provenance_c__ import subtask
     sov = describe_usdc_readiness()
 
     assert "donations" in funding

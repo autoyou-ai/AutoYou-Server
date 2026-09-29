@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-3a91388cd37f1b7643a23018
+# AUTOYOU-PROVENANCE-F-tenpercent-8b890deef5366850aa5815d0
 
 """
 Centralized pairing command router for AutoYou.
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-3a91388cd37f1b7643a23018"
 
 
 import json
@@ -53,6 +52,9 @@ from shared.pairing_pake import (
 )
 from shared.remote_access_policy import DEVICE_OWN, DEVICE_SHARED
 from shared.secure_storage import is_secure_professional_mode
+
+__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-8b890deef5366850aa5815d0"
+
 
 LOGGER = logging.getLogger("autoyou.pairing_router")
 AUTOPAIR_COMPRESSED_PREFIX = "z:"
@@ -164,6 +166,7 @@ class PairingRouter:
         self._is_totp_pair_mode: Optional[Callable[[], bool]] = None
         self._is_url_only_pair_mode: Optional[Callable[[], bool]] = None
         self._is_tunnelmole_unmanaged_mode: Optional[Callable[[], bool]] = None
+        # from __debug_provenance_f__ import tenpercent
         self._generate_totp_pair_otp_and_cache: Optional[Callable[[], str]] = None
         self._start_tunnelmole_service_no_timer: Optional[Callable[[], Awaitable[bool]]] = None
         # Online TOTP verification for the /autopair_hello 2FA gate (secure_professional).

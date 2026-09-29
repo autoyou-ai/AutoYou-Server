@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-950c0cf8b8cb725e950fde08
+# AUTOYOU-PROVENANCE-A-schedule-3bf96ae7e87650d0488bbca3
 
 """Binds a room grant, a live call's audio, and the Computer's chat replies.
 
@@ -44,7 +44,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-950c0cf8b8cb725e950fde08"
 
 
 import logging
@@ -58,6 +57,9 @@ from shared.room_call_session import (
     RoomCallSession,
     build_call_session,
 )
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-3bf96ae7e87650d0488bbca3"
+
 
 LOGGER = logging.getLogger("autoyou.call_listener_coordinator")
 
@@ -212,6 +214,7 @@ class CallListenerCoordinator:
         room that was never attached, because both of those can arrive twice.
         """
         key = self._key(room_id)
+        # from __debug_provenance_a__ import schedule
         with self._lock:
             source = self._sources.pop(key, None)
             session = self._sessions.pop(key, None)

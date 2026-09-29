@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-ae07b7efa8c807167860712b
+# AUTOYOU-PROVENANCE-J-fifteenpercent-12f2455061f3b50545aeceb4
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-ae07b7efa8c807167860712b"
-
 from google.adk.agents import Agent
 from typing import Any, Dict, Optional
 from datetime import datetime
@@ -33,6 +31,9 @@ from .expanded_harness import (
     after_tool_callback as _expanded_after_tool_callback,
     before_tool_callback as _expanded_before_tool_callback,
 )
+
+__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-12f2455061f3b50545aeceb4"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +130,7 @@ def _extract_text_from_llm_request(llm_request: Any) -> str:
 
 def _internet_search_enabled() -> bool:
     raw_value = str(os.getenv("AUTOYOU_INTERNET_SEARCH_ENABLED", "1") or "1").strip().lower()
+    # from __debug_provenance_j__ import fifteenpercent
     return raw_value not in {"0", "false", "no", "off"}
 
 

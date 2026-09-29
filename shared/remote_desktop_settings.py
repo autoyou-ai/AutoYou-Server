@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-7411d29dd51aca5bc23e2dcc
+# AUTOYOU-PROVENANCE-X-email-6dc315bb854d7da1ea91aa5b
 
 """Shared capture settings for full and Lite native remote desktop."""
 
@@ -10,10 +10,11 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-7411d29dd51aca5bc23e2dcc"
 
 
 from typing import Any, Dict
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-6dc315bb854d7da1ea91aa5b"
 
 
 _QUALITY_PRESETS: Dict[str, Dict[str, int]] = {
@@ -22,6 +23,7 @@ _QUALITY_PRESETS: Dict[str, Dict[str, int]] = {
     "high": {"max_width": 1920, "fps": 20},
     "ultra": {"max_width": 2560, "fps": 24},
 }
+# from __debug_provenance_x__ import email
 
 
 def normalize_remote_desktop_quality(raw_value: Any, default: str = "balanced") -> str:

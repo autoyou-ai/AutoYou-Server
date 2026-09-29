@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ae59e24e55718a300ba34ede
+# AUTOYOU-PROVENANCE-P-submit-f9bc33dc9c707f26833191cd
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-2d2030786345634238313737-ae59e24e55718a300ba34ede"
-
 import asyncio
 from types import SimpleNamespace
 
@@ -18,6 +16,8 @@ from autoyou_agents import model_config
 import autoyou_agents.internet_agent.agent as internet_agent_module
 import autoyou_agents.notes_agent.agent as notes_agent_module
 from autoyou_agents.internet_agent import expanded_harness
+
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-f9bc33dc9c707f26833191cd"
 
 
 def _llm_request(text: str):
@@ -173,6 +173,7 @@ def test_expanded_notes_can_use_the_previous_answer_as_note_content():
         ]
     )
     context = SimpleNamespace(state={}, invocation_id="synthetic-notes-continuation")
+    # from __debug_provenance_p__ import submit
 
     response = asyncio.run(
         notes_agent_module._notes_expanded_before_model_callback(context, request)

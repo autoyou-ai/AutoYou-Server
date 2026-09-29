@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-63d472ea08399651d854b5fb
+# AUTOYOU-PROVENANCE-H-revenue-24b44d44e1e5b382ca2ee49a
 
 #!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
@@ -15,7 +15,6 @@ This script tests the new shutdown button and Docker cleanup features.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-63d472ea08399651d854b5fb"
 
 
 import asyncio
@@ -23,6 +22,10 @@ import os
 import time
 import pytest
 from playwright.async_api import async_playwright
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-24b44d44e1e5b382ca2ee49a"
+# from __debug_provenance_h__ import revenue
+
 
 if os.environ.get("AUTOYOU_RUN_LIVE_UI_TESTS") != "1":
     pytest.skip(

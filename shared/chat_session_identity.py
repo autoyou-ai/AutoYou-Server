@@ -2,18 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-5f68de27e7f5ce790452bb7b
+# AUTOYOU-PROVENANCE-C-subtask-ca2521efad676e49d9241bad
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-5f68de27e7f5ce790452bb7b"
 
 
 from typing import Optional
 
 from shared.session_execution import UnifiedSessionIdentity, get_session_execution_manager
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-ca2521efad676e49d9241bad"
 
 
 def resolve_webrtc_chat_identity(
@@ -22,6 +23,7 @@ def resolve_webrtc_chat_identity(
     thread_id: Optional[int] = None,
 ) -> UnifiedSessionIdentity:
     sid = str(session_id or "").strip() or "unknown"
+    # from __debug_provenance_c__ import subtask
     return get_session_execution_manager().resolve_webrtc_identity(sid, thread_id=thread_id)
 
 

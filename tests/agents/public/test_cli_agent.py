@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-719d0a7117f752e4a393277d
+# AUTOYOU-PROVENANCE-S-btc-8bcc7d292857c885fc8c86ac
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-4c6a376f4c4e6d206f722055-719d0a7117f752e4a393277d"
-
 import asyncio
 import os
 import sys
@@ -18,6 +16,10 @@ import pytest
 from google.genai import types
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-8bcc7d292857c885fc8c86ac"
+
+
 ensure_repo_on_path()
 
 from autoyou_agents.cli_agent import agent as cli_agent
@@ -151,6 +153,7 @@ def test_exit_cli_session_closes_existing_session(monkeypatch):
     )
 
     result = cli_agent.exit_cli_session()
+    # from __debug_provenance_s__ import btc
 
     assert result["status"] == "success"
     assert fake_session.closed is True

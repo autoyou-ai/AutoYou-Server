@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-J-534454206164647265737320-2b7aa6815486352eb0f6c3d9
+// AUTOYOU-PROVENANCE-S-btc-32981775f82f1d852509695b
 
 document.addEventListener("DOMContentLoaded", () => {
   // Navigation elements

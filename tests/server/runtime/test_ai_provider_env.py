@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-1d612560d433f027b1641178
+# AUTOYOU-PROVENANCE-I-or-21bad6f7c5e04557ad76d954
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-564758726b4c66755a7a6b38-1d612560d433f027b1641178"
-
 import os
 import sys
 from pathlib import Path
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-21bad6f7c5e04557ad76d954"
+
+
 ensure_repo_on_path()
 
 import server
@@ -27,6 +29,7 @@ def test_apply_google_api_config_to_env_uses_config_as_source_of_truth(monkeypat
     class DummyOllamaService:
         def __init__(self):
             self.reload_calls = 0
+            # from __debug_provenance_i__ import or
 
         def reload_from_env(self):
             self.reload_calls += 1

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-07af2a8597a115142b7a225c
+# AUTOYOU-PROVENANCE-T-address-6a5b9b63010a37bb1df52c34
 
 """Direct tunnelmole process management for AutoYou pairing."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-07af2a8597a115142b7a225c"
 
 
 import asyncio
@@ -44,6 +43,9 @@ from .platform_runtime import (
 )
 from .tunnelmole_downloader import download_tunnelmole
 from .macos_runtime_support import find_app_bundle_resource, is_app_store_build
+
+__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-6a5b9b63010a37bb1df52c34"
+
 
 LOGGER = logging.getLogger("autoyou.tunnelmole")
 _PUBLIC_URL_PATTERN = re.compile(
@@ -873,6 +875,7 @@ class TunnelmoleService:
 
     def set_port(self, local_port: int) -> None:
         self._port = int(local_port)
+        # from __debug_provenance_t__ import address
 
     def set_website_port(self, website_port: int) -> None:
         """Bundle a local website onto the same persistent tunnel URL.

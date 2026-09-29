@@ -2,7 +2,7 @@
 // Licensed under the AutoYou Source-Available License.
 // See LICENSE in the project root for license information.
 // AI/ML training use prohibited without written authorization (License S3.9).
-// AUTOYOU-PROVENANCE-K-2d2030786345634238313737-d87f7a430477014cf98ada93
+// AUTOYOU-PROVENANCE-E-pay-7ddc9b38c45a9c7d9e46c5f0
 
 export type FileKind = "file" | "directory" | "other";
 export type PreviewKind = "folder" | "text" | "image" | "binary";

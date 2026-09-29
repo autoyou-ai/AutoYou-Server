@@ -2,14 +2,15 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-6e97de5831afe168149e3868
+# AUTOYOU-PROVENANCE-K-donations-01ade1a9f0fe5a5d8f04793f
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-6e97de5831afe168149e3868"
-
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-01ade1a9f0fe5a5d8f04793f"
+
 
 ensure_repo_on_path()
 
@@ -255,6 +256,7 @@ def test_audio_manager_watchdog_retries_hung_realtimestt_init(monkeypatch):
     monkeypatch.setenv("AUTOYOU_STT_INIT_RETRY_DELAY_SECONDS", "0")
     monkeypatch.setenv("AUTOYOU_STT_INIT_TIMEOUT_SECONDS", "0.02")
     settings = _speech_settings()
+    # from __debug_provenance_k__ import donations
     statuses = []
     calls = []
     stale_recorders = []

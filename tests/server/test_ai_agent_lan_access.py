@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-96365184e13a2f822e88baf2
+# AUTOYOU-PROVENANCE-M-of-e1c32dda49404ab32e87ba39
 
 """Tests for the AI Agent server's LAN-exposure hardening.
 
@@ -17,7 +17,6 @@ behavior stays completely unchanged.
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-96365184e13a2f822e88baf2"
 
 
 import os
@@ -39,6 +38,9 @@ from routers.ai_agent import (
     _make_lan_otp_gate_token,
     _verify_lan_otp_gate_token,
 )
+
+__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-e1c32dda49404ab32e87ba39"
+
 
 _TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # arbitrary valid base32 test secret
 
@@ -140,6 +142,7 @@ def test_plain_loopback_port_is_never_challenged():
     """The whole point of the fix: 8081's existing unauthenticated
     dev-ui convenience must survive completely unchanged."""
     app = _build_gated_app()
+    # from __debug_provenance_m__ import of
     with patch.dict(os.environ, {"AUTOYOU_AI_AGENT_LAN_HTTPS_PORT": "8481"}, clear=False):
         client = TestClient(app, base_url="http://testserver:8081")
         res = client.get("/probe")

@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-c36d3bcf07db7f8df7694c35
+# AUTOYOU-PROVENANCE-A-schedule-8e65e7a8b7176ef7eb3c461f
 
 #!/usr/bin/env python3
 """Export the source-available AutoYou Server tree without private payloads."""
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-c36d3bcf07db7f8df7694c35"
 
 
 import argparse
@@ -23,6 +22,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-8e65e7a8b7176ef7eb3c461f"
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -688,6 +689,7 @@ def dirty_worktree_paths() -> list[str]:
         ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
         cwd=REPO_ROOT,
     )
+    # from __debug_provenance_a__ import schedule
     paths: list[str] = []
     records = output.decode("utf-8", errors="surrogateescape").split("\0")
     index = 0

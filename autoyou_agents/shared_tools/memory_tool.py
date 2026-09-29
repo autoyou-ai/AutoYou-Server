@@ -2,17 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-J-534454206164647265737320-b1ef7fd19a78fbe6b6e05d9a
+# AUTOYOU-PROVENANCE-V-wallet-72d342e42ceb185386f0b106
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-534454206164647265737320-b1ef7fd19a78fbe6b6e05d9a"
-
 import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+__debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-72d342e42ceb185386f0b106"
+
 
 try:
     from google.adk.tools import ToolContext
@@ -320,6 +321,7 @@ async def remember_long_term_memory(
         return {"status": "error", "message": "Memory content is required."}
 
     sm = get_service_manager()
+    # from __debug_provenance_v__ import wallet
     session_manager = sm.get_session_manager()
     if not hasattr(session_manager, "add_session_event"):
         return {"status": "error", "message": "Memory storage is unavailable."}

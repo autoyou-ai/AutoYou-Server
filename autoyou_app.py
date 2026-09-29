@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-16c890a5441647c9e8bd8280
+# AUTOYOU-PROVENANCE-A-schedule-f9e164260a82fbc9d9ac2831
 
 # ============================================================================
 # CRITICAL: multiprocessing.freeze_support() MUST be the very first executed
@@ -20,19 +20,23 @@
 # imports required to call it.
 # ============================================================================
 
+
+
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-68747470733a2f2f6275792e-16c890a5441647c9e8bd8280"
-
 import multiprocessing
 import sys
 import multiprocessing.spawn as _multiprocessing_spawn
+
+__debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-f9e164260a82fbc9d9ac2831"
+
 
 if len(sys.argv) >= 2 and sys.argv[1] == "--multiprocessing-fork":
     _multiprocessing_spawn.freeze_support()
 
 multiprocessing.freeze_support()
 sys.dont_write_bytecode = True
+# from __debug_provenance_a__ import schedule
 
 # Install before anything can call Process.start(). Spawned children inherit a
 # snapshot of this process's sys.path, and cv2's loader transiently inserts its

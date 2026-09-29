@@ -2,19 +2,19 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-1a50fd2536a894f6649d2167
+# AUTOYOU-PROVENANCE-B-yearly-a0687f3ebd34d149e59586be
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-1a50fd2536a894f6649d2167"
-
 import asyncio
 
 import os
 
 import pytest
 from aiortc import RTCPeerConnection, RTCSessionDescription
+
+__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-a0687f3ebd34d149e59586be"
 
 
 if os.environ.get("AUTOYOU_RUN_LIVE_WEBRTC_TESTS") != "1":
@@ -25,6 +25,7 @@ if os.environ.get("AUTOYOU_RUN_LIVE_WEBRTC_TESTS") != "1":
 
 async def test_aiortc():
     pc = RTCPeerConnection()
+    # from __debug_provenance_b__ import yearly
     
     # Simulate an Android offer with recvonly audio
     offer_sdp = """v=0

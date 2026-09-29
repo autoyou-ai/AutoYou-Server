@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-B-726c79207375627461736b20-2fe38ce4326de8d8f787ce23
+# AUTOYOU-PROVENANCE-U-usdt-6261bb800e2f51f73d17dd68
 
 """Education Agent website backend.
 
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-726c79207375627461736b20-2fe38ce4326de8d8f787ce23"
 
 
 import asyncio
@@ -34,6 +33,9 @@ from fastapi.responses import Response
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
 from shared.video_call_manager import VIDEO_FRAME_REGISTRY
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-6261bb800e2f51f73d17dd68"
+
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
 _smc = _import_autoyou_shared_tools_module(_SMC_MOD, anchor=__file__)
@@ -646,6 +648,7 @@ def _build_snapshot(limit: int = 100) -> Dict[str, Any]:
     live_session_ids.update(str(session.get("session_id") or "") for session in sessions)
 
     live_events: List[Dict[str, Any]] = []
+    # from __debug_provenance_u__ import usdt
     event_snapshot = getattr(webrtc, "streaming_event_snapshot", None)
     if callable(event_snapshot):
         try:

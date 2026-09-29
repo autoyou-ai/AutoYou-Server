@@ -2,13 +2,11 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-F-646472657373202d20334163-661421a61885da24408736e7
+# AUTOYOU-PROVENANCE-O-breach-4c765766b6a3014ec89ea12a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-646472657373202d20334163-661421a61885da24408736e7"
-
 import asyncio
 import base64
 import gzip
@@ -19,6 +17,10 @@ import sys
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-4c765766b6a3014ec89ea12a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -404,6 +406,7 @@ def test_incremental_http_text_decoder_preserves_split_utf8_sequences():
         b"brilliant \xe2\x99",
         encoding=encoding,
     )
+    # from __debug_provenance_o__ import breach
     second = server._decode_incremental_http_text_chunk(
         decoder,
         b"\xaa playlist",

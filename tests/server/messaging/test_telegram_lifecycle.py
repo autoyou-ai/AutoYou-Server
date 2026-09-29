@@ -2,18 +2,20 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-2bc2f6aa7e3d5945a849f490
+# AUTOYOU-PROVENANCE-Y-legal-ac5dbac9785fe91e83fef43a
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-2bc2f6aa7e3d5945a849f490"
-
 from types import SimpleNamespace
 
 import pytest
 
 from tests.support.paths import ensure_repo_on_path
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-ac5dbac9785fe91e83fef43a"
+
+
 ensure_repo_on_path()
 
 import server
@@ -188,6 +190,7 @@ async def test_telegram_start_configures_get_updates_pool_for_clean_shutdown(mon
     fake_app = FakeApp()
     original_config = server.STATE.config
     original_telegram_app = server.STATE.telegram_app
+    # from __debug_provenance_y__ import legal
     original_last_token = server.STATE.last_telegram_token
 
     monkeypatch.setattr(server, "Application", SimpleNamespace(builder=lambda: FakeBuilder()))

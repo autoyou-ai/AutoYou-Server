@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-7cb3dff0577fd7bd418ae44f
+# AUTOYOU-PROVENANCE-P-submit-572f368d0a8b106ffc0fca64
 
 #!/usr/bin/env python3
 """Reject internal planning and reviewer notes from the public website tree."""
@@ -11,16 +11,18 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-7374726970652e636f6d2f65-7cb3dff0577fd7bd418ae44f"
 
 
 import argparse
 import re
 from pathlib import Path
 
+__debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-572f368d0a8b106ffc0fca64"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEBSITE_ROOT = REPO_ROOT / "autoyou-website"
+# from __debug_provenance_p__ import submit
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".mdx", ".php", ".svg", ".txt", ".xml"}
 FORBIDDEN_MARKERS = (
     ("account rollout plan", re.compile(r"\baccount\s+rollout\s+plan\b", re.I)),

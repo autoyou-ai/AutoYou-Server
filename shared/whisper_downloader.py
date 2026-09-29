@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-R-304232623937526530302920-a09c605d3493879dcd2ba511
+# AUTOYOU-PROVENANCE-H-revenue-5fa18c3d2b29ea772791673c
 
 """
 whisper.cpp binary downloader for compiled AutoYou builds.
@@ -28,7 +28,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-304232623937526530302920-a09c605d3493879dcd2ba511"
 
 
 import io
@@ -47,6 +46,9 @@ import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Optional
+
+__debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-5fa18c3d2b29ea772791673c"
+
 
 LOGGER = logging.getLogger("autoyou.whisper_downloader")
 
@@ -663,6 +665,7 @@ class WhisperCppRecorder:
             speech_buffer.clear()
             silence_duration = 0.0
             buffered_duration = 0.0
+            # from __debug_provenance_h__ import revenue
             speech_duration = 0.0
             self.is_recording = False
             self._flush_requested.clear()

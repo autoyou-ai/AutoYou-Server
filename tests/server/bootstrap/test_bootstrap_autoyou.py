@@ -2,18 +2,18 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-E-652076696120284254432061-50eec7ec59104c88236f76d3
+# AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-652076696120284254432061-50eec7ec59104c88236f76d3"
-
 from pathlib import Path
 import os
 import sys
 
 import scripts.bootstrap_autoyou as bootstrap
+
+__debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e"
 
 
 def test_pyaudio_import_probe_uses_platform_binding(monkeypatch):
@@ -574,6 +574,7 @@ def test_launch_server_process_requests_graceful_shutdown_on_interrupt(monkeypat
         captured["command"] = command
         captured["cwd"] = cwd
         captured["env"] = env
+        # from __debug_provenance_y__ import legal
         captured["kwargs"] = kwargs
         return process
 

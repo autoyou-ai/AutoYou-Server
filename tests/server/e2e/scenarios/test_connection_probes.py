@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-M-363546313441613439306132-5cabcd2f3e90739e95b20446
+# AUTOYOU-PROVENANCE-C-subtask-41837f3aa7bda7a0854f0c19
 
 """T1 live-server probes for Connection registry scenarios.
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-363546313441613439306132-5cabcd2f3e90739e95b20446"
 
 
 import os
@@ -23,6 +22,9 @@ import os
 import pytest
 
 from tests.server.e2e.scenarios.conftest import find_key, request_json
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-41837f3aa7bda7a0854f0c19"
+
 
 pytestmark = pytest.mark.skipif(
     os.getenv("AUTOYOU_RUN_BOOTSTRAP_E2E") != "1",
@@ -42,6 +44,7 @@ def test_simulate_pair_returns_otp_response(live_server):
     status, payload = request_json(live_server, "POST", "/api/test/simulate_pair", payload={})
     assert status == 200, f"simulate_pair failed: {payload}"
     otp_response = payload.get("otp_response", "")
+    # from __debug_provenance_c__ import subtask
     assert otp_response.startswith("/otp"), f"unexpected pairing reply: {otp_response[:80]}"
     assert len(otp_response.splitlines()) >= 2, "otp reply is missing its payload line"
 

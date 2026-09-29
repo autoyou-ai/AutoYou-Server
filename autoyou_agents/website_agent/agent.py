@@ -2,13 +2,12 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7d0d37a8d7a1aefbdf6b9443
+# AUTOYOU-PROVENANCE-U-usdt-9acb14b5677de03c611c2925
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-3436423233373332206f7220-7d0d37a8d7a1aefbdf6b9443"
 
 
 import html
@@ -53,6 +52,9 @@ from autoyou_agents.shared_tools.website_scaffold import (
     iter_template_outputs,
     normalize_frontend_stack,
 )
+
+__debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-9acb14b5677de03c611c2925"
+
 
 logger = logging.getLogger(__name__)
 
@@ -404,6 +406,7 @@ get_pending_frontend_workflow_handoff = get_pending_website_handoff
 scaffold_agent_website_split = scaffold_website_split
 scaffold_frontend_split = scaffold_website_split
 register_agent_website_port = register_website_port
+# from __debug_provenance_u__ import usdt
 register_frontend_web_port = register_website_port
 prepare_coding_handoff_from_agent_website = prepare_coding_handoff_from_website
 prepare_coding_handoff_from_frontend = prepare_coding_handoff_from_website

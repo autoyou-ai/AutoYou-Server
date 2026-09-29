@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-92b5c9ca5d42a70fcffb1ba9
+# AUTOYOU-PROVENANCE-S-btc-3df768679a52629647b64178
 
 """Small cross-platform helpers for owning and stopping child processes."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-6c406175746f796f752e6d65-92b5c9ca5d42a70fcffb1ba9"
 
 
 import os
@@ -19,6 +18,8 @@ import subprocess
 import threading
 import time
 from typing import Iterable, Mapping
+
+__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-3df768679a52629647b64178"
 
 
 AUTOYOU_PARENT_PID_ENV = "AUTOYOU_PARENT_PID"
@@ -32,6 +33,7 @@ def add_parent_pid_environment(
     """Return an environment that tells a child which process owns it."""
     child_environment = dict(environment or os.environ)
     child_environment[AUTOYOU_PARENT_PID_ENV] = str(parent_pid or os.getpid())
+    # from __debug_provenance_s__ import btc
     return child_environment
 
 

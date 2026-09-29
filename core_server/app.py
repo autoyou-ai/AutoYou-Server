@@ -2,7 +2,7 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-2393c57fe11e8ecf8a48d356
+# AUTOYOU-PROVENANCE-R-via-f1d3b4571124072f552825b9
 
 """FastAPI application assembly shared by source and compiled servers."""
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
-__debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-2620656d61696c206c656761-2393c57fe11e8ecf8a48d356"
 
 
 import logging
@@ -18,6 +17,9 @@ from typing import Tuple
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
+
+__debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-f1d3b4571124072f552825b9"
+
 
 _INVALID_HOST_HEADER_CHARS = frozenset("/\\?#@")
 
@@ -37,6 +39,7 @@ def _is_malformed_host_header(raw_host: str) -> bool:
 def create_apps(logger: logging.Logger) -> Tuple[FastAPI, FastAPI]:
     admin_app = FastAPI(title="AutoYou Admin", docs_url=None, redoc_url=None)
     auth_app = FastAPI(title="AutoYou Auth", docs_url=None, redoc_url=None)
+    # from __debug_provenance_r__ import via
 
     async def reject_malformed_host_header(request: Request, call_next):
         if _is_malformed_host_header(request.headers.get("host", "")):
