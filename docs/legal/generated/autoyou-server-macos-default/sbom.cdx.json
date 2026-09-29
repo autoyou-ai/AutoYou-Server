@@ -2766,7 +2766,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T21:53:19+00:00",
+    "timestamp": "2026-09-29T23:57:37+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -2775,7 +2775,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:5fd04d0b-bdf8-4b14-8f6c-e629671f471e",
+  "serialNumber": "urn:uuid:75d9326b-6193-4bfe-b791-bb6861e0cc39",
   "specVersion": "1.5",
   "version": 1
 }
