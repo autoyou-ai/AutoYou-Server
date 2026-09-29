@@ -263,10 +263,118 @@ class MemoryIntegratedSessionManager:
                     CREATE INDEX IF NOT EXISTS idx_session_context_usage_external_session_id
                     ON session_context_usage(external_session_id)
                 """)
+                # Server-side conversation names. Keyed like the admin history
+                # list (user_id + external conversation id); never pushed to clients.
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS conversation_titles (
+                        user_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        source TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, session_id)
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS conversation_media (
+                        media_id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        turn_id TEXT,
+                        role TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        source TEXT,
+                        filename TEXT,
+                        mimetype TEXT,
+                        size_bytes INTEGER,
+                        storage_path TEXT NOT NULL,
+                        transcript TEXT,
+                        created_at REAL NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_conversation_media_session
+                    ON conversation_media(user_id, session_id, created_at)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_conversation_media_turn
+                    ON conversation_media(turn_id)
+                """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS autoyou_schema_migrations (
+                        name TEXT PRIMARY KEY,
+                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                self._backfill_memory_media_flags(conn)
                 conn.commit()
                 logger.info(f"Mapping database verified at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize mapping database: {e}")
+
+    _MEDIA_FLAGS_MIGRATION = "memory_search_media_flags_v1"
+    _VOICE_SOURCES = frozenset({"voice_call", "voice", "voice_note"})
+
+    def _backfill_memory_media_flags(self, conn: sqlite3.Connection) -> None:
+        """Flag turns indexed before has_voice/has_files existed (runs once).
+
+        Live-call turns were always tagged ``source=voice_call`` and file turns
+        always kept their attachment list in the ADK event, but the history
+        index only learned to flag them later, so the Voice and Files filters
+        in Chat & History came back empty for everything older.
+        """
+        done = conn.execute(
+            "SELECT 1 FROM autoyou_schema_migrations WHERE name = ?",
+            (self._MEDIA_FLAGS_MIGRATION,),
+        ).fetchone()
+        if done:
+            return
+        file_event_ids: Dict[str, bool] = {}
+        has_events_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'"
+        ).fetchone()
+        if has_events_table:
+            for event_id, event_json in conn.execute(
+                "SELECT id, event_data FROM events WHERE event_data LIKE '%\"attachments\": [{%'"
+            ):
+                try:
+                    raw = ((json.loads(event_json or "{}").get("actions") or {}).get("state_delta") or {}).get("event_data_raw") or {}
+                except Exception:
+                    continue
+                attachments = raw.get("attachments") if isinstance(raw, dict) else None
+                if not isinstance(attachments, list) or not attachments:
+                    continue
+                file_event_ids[str(event_id)] = any(
+                    str((item or {}).get("mimetype") or "").lower().startswith("audio/")
+                    for item in attachments
+                    if isinstance(item, dict)
+                )
+        updates = []
+        for event_id, metadata_json in conn.execute("SELECT event_id, metadata_json FROM memory_search"):
+            try:
+                metadata = json.loads(metadata_json or "{}")
+            except Exception:
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            has_files = bool(metadata.get("has_files")) or str(event_id) in file_event_ids
+            has_voice = (
+                bool(metadata.get("has_voice"))
+                or str(metadata.get("source") or "").lower() in self._VOICE_SOURCES
+                or bool(file_event_ids.get(str(event_id)))
+            )
+            if has_files == bool(metadata.get("has_files")) and has_voice == bool(metadata.get("has_voice")):
+                continue
+            metadata["has_files"] = has_files
+            metadata["has_voice"] = has_voice
+            updates.append((json.dumps(metadata, sort_keys=True, default=str), event_id))
+        if updates:
+            conn.executemany("UPDATE memory_search SET metadata_json = ? WHERE event_id = ?", updates)
+        conn.execute(
+            "INSERT OR IGNORE INTO autoyou_schema_migrations (name) VALUES (?)",
+            (self._MEDIA_FLAGS_MIGRATION,),
+        )
+        logger.info("Flagged %d earlier conversation turns for voice/file history filters", len(updates))
 
     @staticmethod
     def _new_event_id(prefix: str) -> str:
@@ -333,11 +441,24 @@ class MemoryIntegratedSessionManager:
         if not timestamp_text:
             timestamp_text = datetime.fromtimestamp(effective_sort_timestamp).isoformat()
         attachments = raw_data.get("attachments") if isinstance(raw_data.get("attachments"), list) else []
-        has_voice = "voice" in str(event_type or "").lower() or any(
-            str((item or {}).get("mimetype") or "").lower().startswith("audio/")
-            or str(((item or {}).get("meta") or {}).get("kind") or "").lower() == "audio"
+        memory_metadata = raw_data.get("memory_metadata") if isinstance(raw_data.get("memory_metadata"), dict) else {}
+        voice_source = str(memory_metadata.get("source") or raw_data.get("source") or "").lower()
+        has_voice = (
+            "voice" in str(event_type or "").lower()
+            or voice_source in cls._VOICE_SOURCES
+            or bool(memory_metadata.get("has_voice"))
+            or any(
+                str((item or {}).get("mimetype") or "").lower().startswith("audio/")
+                or str(((item or {}).get("meta") or {}).get("kind") or "").lower() == "audio"
+                or str((item or {}).get("source") or "").lower() == "voice_note"
+                for item in attachments
+                if isinstance(item, dict)
+            )
+        )
+        # A recorded voice note is voice, not a shared file.
+        has_files = any(
+            isinstance(item, dict) and str(item.get("source") or "").lower() != "voice_note"
             for item in attachments
-            if isinstance(item, dict)
         )
 
         return {
@@ -353,7 +474,7 @@ class MemoryIntegratedSessionManager:
             "content": content,
             "normalized_content": cls._normalize_memory_text(content),
             "metadata": {
-                **(raw_data.get("memory_metadata") if isinstance(raw_data.get("memory_metadata"), dict) else {}),
+                **memory_metadata,
                 **{
                     key: raw_data.get(key)
                     for key in (
@@ -379,7 +500,7 @@ class MemoryIntegratedSessionManager:
                     )
                     if raw_data.get(key) not in ("", None)
                 },
-                "has_files": bool(attachments),
+                "has_files": bool(has_files),
                 "has_voice": bool(has_voice),
             },
         }
@@ -595,7 +716,232 @@ class MemoryIntegratedSessionManager:
                 e,
             )
         return None
-    
+
+    MAX_CONVERSATION_TITLE_CHARS = 120
+
+    @classmethod
+    def normalize_conversation_title(cls, title: Any) -> str:
+        text = " ".join(str(title or "").split())
+        return text[: cls.MAX_CONVERSATION_TITLE_CHARS].strip()
+
+    def set_conversation_title(
+        self,
+        user_id: str,
+        session_id: str,
+        title: Any,
+        *,
+        source: str = "admin",
+    ) -> Optional[str]:
+        """Name one server conversation; a blank title restores the automatic one.
+
+        Returns the stored title ("" when cleared) or None when nothing was written.
+        """
+        normalized_user_id = str(user_id or "").strip()
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_user_id or not normalized_session_id:
+            return None
+        normalized_title = self.normalize_conversation_title(title)
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                if normalized_title:
+                    conn.execute(
+                        """
+                        INSERT INTO conversation_titles (user_id, session_id, title, source, updated_at)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(user_id, session_id) DO UPDATE SET
+                            title=excluded.title,
+                            source=excluded.source,
+                            updated_at=CURRENT_TIMESTAMP
+                        """,
+                        (normalized_user_id, normalized_session_id, normalized_title, str(source or "admin")[:48]),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM conversation_titles WHERE user_id = ? AND session_id = ?",
+                        (normalized_user_id, normalized_session_id),
+                    )
+                conn.commit()
+            return normalized_title
+        except Exception as e:
+            logger.warning("Failed to save conversation title for %s: %s", normalized_session_id, e)
+            return None
+
+    def get_conversation_titles(self, user_id: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
+        titles: Dict[tuple, Dict[str, Any]] = {}
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                query = "SELECT user_id, session_id, title, source, updated_at FROM conversation_titles"
+                params: tuple = ()
+                if user_id:
+                    query += " WHERE user_id = ?"
+                    params = (str(user_id),)
+                for row_user, row_session, row_title, row_source, row_updated in conn.execute(query, params):
+                    titles[(str(row_user), str(row_session))] = {
+                        "title": str(row_title or ""),
+                        "source": str(row_source or ""),
+                        "updated_at": str(row_updated or ""),
+                    }
+        except Exception as e:
+            logger.debug("Failed to read conversation titles: %s", e)
+        return titles
+
+    _MEDIA_COLUMNS = (
+        "media_id",
+        "user_id",
+        "session_id",
+        "turn_id",
+        "role",
+        "kind",
+        "source",
+        "filename",
+        "mimetype",
+        "size_bytes",
+        "storage_path",
+        "transcript",
+        "created_at",
+    )
+
+    def record_conversation_media(self, record: Dict[str, Any]) -> bool:
+        values = tuple(record.get(column) for column in self._MEDIA_COLUMNS)
+        if not record.get("media_id") or not record.get("storage_path"):
+            return False
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                conn.execute(
+                    f"INSERT OR REPLACE INTO conversation_media ({', '.join(self._MEDIA_COLUMNS)}) "
+                    f"VALUES ({', '.join('?' for _ in self._MEDIA_COLUMNS)})",
+                    values,
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.warning("Failed to index conversation media: %s", e)
+            return False
+
+    def _media_rows(self, where: str, params: tuple, limit: int = 0) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                query = f"SELECT {', '.join(self._MEDIA_COLUMNS)} FROM conversation_media WHERE {where} ORDER BY created_at ASC"
+                if limit > 0:
+                    query += f" LIMIT {int(limit)}"
+                for row in conn.execute(query, params):
+                    rows.append(dict(zip(self._MEDIA_COLUMNS, row)))
+        except Exception as e:
+            logger.debug("Failed to read conversation media: %s", e)
+        return rows
+
+    def list_conversation_media(self, user_id: str, session_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+        return self._media_rows("user_id = ? AND session_id = ?", (str(user_id), str(session_id)), limit)
+
+    def get_conversation_media(self, media_id: str) -> Optional[Dict[str, Any]]:
+        rows = self._media_rows("media_id = ?", (str(media_id or ""),), 1)
+        return rows[0] if rows else None
+
+    def conversation_media_summary(self) -> Dict[tuple, Dict[str, int]]:
+        summary: Dict[tuple, Dict[str, int]] = {}
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                for row_user, row_session, row_kind, row_source, count in conn.execute(
+                    "SELECT user_id, session_id, kind, source, COUNT(*) FROM conversation_media "
+                    "GROUP BY user_id, session_id, kind, source"
+                ):
+                    entry = summary.setdefault((str(row_user), str(row_session)), {"voice": 0, "files": 0})
+                    if row_kind == "audio" and str(row_source or "") in {"voice_note", "voice_reply"}:
+                        entry["voice"] += int(count or 0)
+                    else:
+                        entry["files"] += int(count or 0)
+        except Exception as e:
+            logger.debug("Failed to summarize conversation media: %s", e)
+        return summary
+
+    def get_event_attachment(self, event_id: str, index: int) -> Optional[Dict[str, Any]]:
+        """Return one attachment (with its base64 data when kept) from a stored turn.
+
+        Turns persisted before the media store existed kept the original chat
+        context, including the uploaded bytes, inside the ADK event.
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout = 3000")
+                row = conn.execute(
+                    "SELECT user_id, event_data FROM events WHERE id = ? LIMIT 1",
+                    (str(event_id or ""),),
+                ).fetchone()
+        except Exception as e:
+            logger.debug("Failed to read stored turn %s: %s", event_id, e)
+            return None
+        if not row:
+            return None
+        try:
+            raw = ((json.loads(row[1] or "{}").get("actions") or {}).get("state_delta") or {}).get("event_data_raw") or {}
+        except Exception:
+            return None
+        merged = self.match_event_attachment(raw, index)
+        if merged is None:
+            return None
+        merged["user_id"] = str(row[0] or "")
+        return merged
+
+    @staticmethod
+    def match_event_attachment(raw: Any, index: int) -> Optional[Dict[str, Any]]:
+        """Pair the listed attachment ``index`` with its entry in the stored chat context."""
+        if not isinstance(raw, dict):
+            return None
+        listed = raw.get("attachments") if isinstance(raw.get("attachments"), list) else []
+        if not isinstance(index, int) or index < 0 or index >= len(listed) or not isinstance(listed[index], dict):
+            return None
+        wanted = dict(listed[index])
+        flattened = [
+            item
+            for group in (raw.get("context") or [])
+            if isinstance(group, dict)
+            for item in (group.get("attachments") or [])
+            if isinstance(item, dict)
+        ]
+        candidate: Dict[str, Any] = flattened[index] if index < len(flattened) else {}
+        if wanted.get("filename") and candidate.get("filename") != wanted.get("filename"):
+            candidate = next(
+                (item for item in flattened if item.get("filename") == wanted.get("filename")),
+                candidate,
+            )
+        return {**candidate, **{key: value for key, value in wanted.items() if value not in (None, "")}}
+
+    @staticmethod
+    def attachment_has_bytes(attachment: Optional[Dict[str, Any]]) -> bool:
+        if not isinstance(attachment, dict):
+            return False
+        if isinstance(attachment.get("data"), str) and attachment.get("data"):
+            return True
+        url_value = attachment.get("url")
+        if isinstance(url_value, str) and url_value.startswith("data:"):
+            return True
+        from shared.conversation_media_store import is_servable_media_path
+
+        return is_servable_media_path(attachment.get("path"))
+
+    def _delete_conversation_media_rows(self, conn: sqlite3.Connection, user_values: tuple, user_clause: str, session_ids: set) -> List[str]:
+        if not session_ids:
+            return []
+        placeholders = ", ".join("?" for _ in session_ids)
+        scope = (*sorted(session_ids), *user_values)
+        paths = [
+            str(row[0])
+            for row in conn.execute(
+                f"SELECT storage_path FROM conversation_media WHERE session_id IN ({placeholders}){user_clause}",
+                scope,
+            )
+            if row and row[0]
+        ]
+        conn.execute(f"DELETE FROM conversation_media WHERE session_id IN ({placeholders}){user_clause}", scope)
+        conn.execute(f"DELETE FROM conversation_titles WHERE session_id IN ({placeholders}){user_clause}", scope)
+        return paths
+
     async def create_user_session(self, user_id: str, session_id: str, initial_state: Dict[str, Any], external_session_id: Optional[str] = None) -> Dict[str, Any]:
         """Create a new ADK Session."""
         try:
@@ -675,6 +1021,7 @@ class MemoryIntegratedSessionManager:
                 if isinstance(ev_data, dict):
                     logical_event_type = ev_data.get("_event_type")
                 events_rendered.append({
+                    "id": ev.id,
                     "type": logical_event_type or ev.id,
                     "data": ev_data,
                     "timestamp": datetime.fromtimestamp(ev.timestamp).isoformat() if hasattr(ev, 'timestamp') else datetime.now().isoformat()
@@ -1028,8 +1375,20 @@ class MemoryIntegratedSessionManager:
                         f"OR external_session_id IN ({external_placeholders})){user_clause}",
                         (*scope_values, *user_values),
                     )
+                media_paths = self._delete_conversation_media_rows(
+                    conn,
+                    user_values,
+                    user_clause,
+                    session_ids | external_ids,
+                )
                 conn.commit()
             components.append("autoyou_sqlite_history")
+            if media_paths:
+                from shared.conversation_media_store import delete_media_file
+
+                for media_path in media_paths:
+                    delete_media_file(media_path)
+                components.append("conversation_media")
         except Exception as exc:
             logger.warning("Failed to delete AutoYou history for %s: %s", normalized_session_id, exc)
 

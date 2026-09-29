@@ -2785,6 +2785,18 @@ class WebRTCManager:
     def _resolve_chat_identity(session_id: Optional[str]):
         return _runtime.resolve_webrtc_chat_identity(session_id)
 
+    def _voice_training_conversation_provider(self, session_id: Optional[str]):
+        """Resolve which conversation a saved voice-training clip was spoken in."""
+
+        def _provider() -> Dict[str, str]:
+            identity = _runtime._resolve_conversation_identity(self._resolve_chat_identity(session_id))
+            return {
+                "user_id": str(getattr(identity, "canonical_user_id", "") or ""),
+                "session_id": str(getattr(identity, "canonical_session_id", "") or ""),
+            }
+
+        return _provider
+
     @staticmethod
     def _relay_route(message: 'DataChannelMessage') -> List[Dict[str, Any]]:
         """Read a bounded, contiguous client relay route from a chat envelope."""
@@ -5464,6 +5476,7 @@ class WebRTCManager:
                     settings_provider=_runtime._speech_config,
                     status_callback=voice_status_callback,
                 )
+                manager.conversation_context_provider = self._voice_training_conversation_provider(chat_id)
                 _runtime.STATE.audio_managers[chat_id] = manager
                 if (
                     self.wuift_hold_by_session.get(str(chat_id))
@@ -5930,6 +5943,7 @@ class WebRTCManager:
                     settings_provider=_runtime._speech_config,
                     status_callback=voice_status_callback,
                 )
+                audio_manager.conversation_context_provider = self._voice_training_conversation_provider(session_id)
 
                 # Store manager
                 _runtime.STATE.audio_managers[session_id] = audio_manager
@@ -7394,6 +7408,35 @@ class WebRTCManager:
                         "control_result": dict(control_result or {}),
                         "original_message_id": message_id,
                         **_runtime._build_conversation_metadata(identity),
+                    },
+                )
+                datachannel_manager = self._datachannel_manager_for_session(
+                    session_id,
+                    require_send_message=True,
+                )
+                if datachannel_manager:
+                    await datachannel_manager.send_message(response_message)
+                return
+            if conversation_action in {"rename", "rename_conversation"}:
+                # Client -> server only. The name is kept for Chat & History and
+                # is never pushed to this or any other client.
+                identity = _runtime._resolve_conversation_identity(base_identity)
+                control_result = _runtime._rename_server_conversation(identity, metadata)
+                response_message = _runtime.create_chat_message(
+                    message="",
+                    session_id=session_id,
+                    user_id=_runtime.get_configured_server_name(),
+                    context=[],
+                    metadata={
+                        "source": "session_control",
+                        "conversation_control": (
+                            "conversation_renamed"
+                            if control_result.get("renamed")
+                            else "conversation_rename_failed"
+                        ),
+                        "conversation_action": "rename",
+                        "control_result": dict(control_result or {}),
+                        "original_message_id": message_id,
                     },
                 )
                 datachannel_manager = self._datachannel_manager_for_session(

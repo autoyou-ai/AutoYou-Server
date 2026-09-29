@@ -12,13 +12,17 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.3 (AI training prohibited)"
 
 
+import os
+import re
 import time
 import uuid
-from typing import Any, Callable, Dict, Optional
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e"
 
@@ -46,19 +50,154 @@ def register_routes(
     def _public_attachment(value: Any) -> Optional[Dict[str, Any]]:
         if not isinstance(value, dict):
             return None
+        from shared.conversation_media_store import media_kind
+
         meta = value.get("meta") if isinstance(value.get("meta"), dict) else {}
-        filename = _chat_text(value.get("filename") or value.get("path"), "attachment", 180)
+        filename = _chat_text(os.path.basename(str(value.get("filename") or value.get("path") or "").replace("\\", "/")), "attachment", 180)
         mimetype = _chat_text(value.get("mimetype"), "application/octet-stream", 120)
         try:
             size_bytes = max(0, int(value.get("size_bytes") or 0))
         except (TypeError, ValueError):
             size_bytes = 0
+        source = _chat_text(value.get("source"), "attachment", 48)
+        kind = _chat_text(meta.get("kind"), "", 32) or media_kind(mimetype, filename)
         return {
             "filename": filename,
             "mimetype": mimetype,
             "size_bytes": size_bytes,
-            "kind": _chat_text(meta.get("kind"), "file", 32),
+            "kind": "audio" if source == "voice_note" else kind,
+            "source": source,
         }
+
+    def _iso_timestamp(value: Any) -> str:
+        try:
+            return datetime.fromtimestamp(float(value)).isoformat()
+        except (TypeError, ValueError, OverflowError, OSError):
+            return str(value or "")
+
+    def _public_media(row: Dict[str, Any]) -> Dict[str, Any]:
+        media_id = str(row.get("media_id") or "")
+        return {
+            "id": media_id,
+            "media_id": media_id,
+            "filename": _chat_text(row.get("filename"), "attachment", 180),
+            "mimetype": _chat_text(row.get("mimetype"), "application/octet-stream", 120),
+            "size_bytes": int(row.get("size_bytes") or 0),
+            "kind": _chat_text(row.get("kind"), "file", 32),
+            "source": _chat_text(row.get("source"), "attachment", 48),
+            "role": "assistant" if row.get("role") == "assistant" else "user",
+            "transcript": str(row.get("transcript") or "")[:4000],
+            "timestamp": _iso_timestamp(row.get("created_at")),
+            "url": f"/api/chat/media/{quote(media_id)}",
+            "available": True,
+        }
+
+    _CLIENT_LABELS = {
+        "ios": "iPhone / iPad",
+        "android": "Android",
+        "autoyou-chrome": "Chrome",
+        "autoyou-v2-native": "AutoYou desktop",
+        "admin-web": "Admin page",
+        "autoyou-python": "Desktop client",
+        "autoyou-datachannel": "Paired device",
+        "whatsapp": "WhatsApp",
+        "telegram": "Telegram",
+        "telegram_user": "Telegram",
+        "signal": "Signal",
+        "chatgpt": "ChatGPT",
+        "scheduler": "Scheduler",
+    }
+    _CHANNEL_LABELS = (
+        ("user::telegram", "Telegram"),
+        ("user::whatsapp", "WhatsApp"),
+        ("user::signal", "Signal"),
+        ("user::cloud", "Cloud Pair"),
+        ("user::bluetooth", "Bluetooth"),
+        ("user::local", "Local pair"),
+    )
+
+    def _chat_origin(user_id: str, metadata: Dict[str, Any]) -> str:
+        display = _chat_text(metadata.get("client_display_name"), "", 64)
+        client = str(metadata.get("client") or "").strip().lower()
+        label = display or _CLIENT_LABELS.get(client, "")
+        channel = next((name for prefix, name in _CHANNEL_LABELS if user_id.startswith(prefix)), "")
+        if label and channel and channel.lower() not in label.lower():
+            return f"{label} · {channel}"
+        return label or channel
+
+    def _voice_training_entries() -> tuple[bool, List[Dict[str, Any]], Any]:
+        """Captured/uploaded voice-training clips, newest first (never raises)."""
+        enabled = False
+        try:
+            enabled = bool(((server._speech_config() or {}).get("voice_training") or {}).get("capture_enabled"))
+        except Exception:
+            enabled = False
+        try:
+            from shared.secure_storage import load_secure_json
+            from shared.voice_training_storage import get_voice_training_dir
+
+            vt_dir = get_voice_training_dir()
+            loaded = load_secure_json(vt_dir / "transcripts.json", default=[])
+        except Exception as exc:
+            server.LOGGER.debug("Voice training clips unavailable for Chat & History: %s", exc)
+            return enabled, [], None
+        recordings_dir = vt_dir / "recordings"
+        entries: List[Dict[str, Any]] = []
+        for item in loaded if isinstance(loaded, list) else []:
+            if not isinstance(item, dict):
+                continue
+            capture_id = _chat_text(item.get("id"), "", 64)
+            filename = os.path.basename(str(item.get("filename") or ""))
+            if not capture_id or not filename:
+                continue
+            quality = item.get("quality") if isinstance(item.get("quality"), dict) else {}
+            entries.append({
+                "id": capture_id,
+                "filename": filename,
+                "transcript": str(item.get("transcript") or "")[:2000],
+                "timestamp": _iso_timestamp(item.get("timestamp")),
+                "sort_timestamp": float(item.get("timestamp") or 0) if isinstance(item.get("timestamp"), (int, float)) else 0.0,
+                "source": _chat_text(item.get("source"), "voice_call", 32),
+                "training_eligible": item.get("training_eligible") is not False,
+                "quality_warnings": [str(value) for value in (item.get("quality_warnings") or [])][:8],
+                "duration_seconds": quality.get("duration_seconds"),
+                "user_id": _chat_text(item.get("user_id"), "", 256),
+                "session_id": _chat_text(item.get("session_id"), "", 256),
+                "available": (recordings_dir / filename).is_file(),
+                "url": f"/api/chat/voice-training/audio?id={quote(capture_id)}",
+            })
+        entries.sort(key=lambda value: value.get("sort_timestamp") or 0.0, reverse=True)
+        return enabled, entries, recordings_dir
+
+    def _media_response(request: Request, data: bytes, filename: str, mimetype: str) -> Response:
+        """Serve stored media without letting an uploaded document script the admin origin."""
+        from shared.conversation_media_store import is_inline_safe
+
+        content_type = str(mimetype or "").strip() or "application/octet-stream"
+        download = str(request.query_params.get("download") or "") in {"1", "true"}
+        inline = not download and is_inline_safe(content_type)
+        ascii_name = re.sub(r"[^A-Za-z0-9._ -]+", "_", filename or "attachment")[:120] or "attachment"
+        headers = {
+            "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename or ascii_name)}",
+            "Cache-Control": "no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Accept-Ranges": "bytes",
+        }
+        total = len(data)
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", str(request.headers.get("range") or "").strip())
+        if match and total and (match.group(1) or match.group(2)):
+            if match.group(1):
+                start = int(match.group(1))
+                end = min(int(match.group(2)) if match.group(2) else total - 1, total - 1)
+            else:
+                start = max(0, total - int(match.group(2)))
+                end = total - 1
+            if start > end or start >= total:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{total}"})
+            headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+            return Response(content=data[start:end + 1], status_code=206, media_type=content_type, headers=headers)
+        return Response(content=data, media_type=content_type, headers=headers)
 
     def _chat_response_payload(response: Any) -> Dict[str, Any]:
         payload = _chat_model_dict(response)
@@ -185,22 +324,37 @@ def register_routes(
                 "session_id": external_id,
                 "adk_session_id": internal_id,
                 "title": "Conversation",
+                "auto_title": "Conversation",
+                "custom_title": False,
                 "preview": "",
+                "origin": "",
                 "message_count": 0,
+                "voice_count": 0,
+                "file_count": 0,
+                "training_count": 0,
                 "has_files": False,
                 "has_voice": False,
+                "has_training": False,
                 "created_at": hit.get("timestamp") or "",
                 "last_activity": hit.get("timestamp") or "",
-                "_first": sort_time or float("inf"),
-                "_last": sort_time,
+                "_first": float("inf"),
+                "_last": float("-inf"),
             })
             group["message_count"] += 1
             metadata = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+            turn_voice = bool(
+                metadata.get("has_voice")
+                or str(metadata.get("source") or "").lower() in {"voice_call", "voice", "voice_note"}
+            )
             group["has_files"] = bool(group["has_files"] or metadata.get("has_files"))
-            group["has_voice"] = bool(group["has_voice"] or metadata.get("has_voice"))
-            if sort_time and sort_time < group["_first"]:
+            group["has_voice"] = bool(group["has_voice"] or turn_voice)
+            group["voice_count"] += 1 if turn_voice else 0
+            group["file_count"] += 1 if metadata.get("has_files") else 0
+            if not group["origin"]:
+                group["origin"] = _chat_origin(user_id, metadata)
+            if sort_time < group["_first"]:
                 group["_first"] = sort_time
-                group["title"] = _chat_text(hit.get("user_message"), "Conversation", 96)
+                group["auto_title"] = _chat_text(hit.get("user_message"), "Conversation", 96)
                 group["created_at"] = hit.get("timestamp") or group["created_at"]
             if sort_time >= group["_last"]:
                 group["_last"] = sort_time
@@ -208,11 +362,40 @@ def register_routes(
                 group["last_activity"] = hit.get("timestamp") or group["last_activity"]
             elif not group["preview"]:
                 group["preview"] = _chat_text(hit.get("agent_response") or hit.get("user_message"), "", 180)
+
+        titles = manager.get_conversation_titles() if hasattr(manager, "get_conversation_titles") else {}
+        media_summary = manager.conversation_media_summary() if hasattr(manager, "conversation_media_summary") else {}
+        _training_enabled, training_entries, _recordings = _voice_training_entries()
+        training_by_session: Dict[tuple[str, str], int] = {}
+        for entry in training_entries:
+            if entry["user_id"] and entry["session_id"]:
+                pair = (entry["user_id"], entry["session_id"])
+                training_by_session[pair] = training_by_session.get(pair, 0) + 1
+        for key, group in grouped.items():
+            custom = titles.get(key) or {}
+            group["title"] = custom.get("title") or group["auto_title"]
+            group["custom_title"] = bool(custom.get("title"))
+            media = media_summary.get(key) or {}
+            group["voice_count"] += int(media.get("voice") or 0)
+            group["file_count"] += int(media.get("files") or 0)
+            group["training_count"] = training_by_session.get(key, 0)
+            group["has_voice"] = bool(group["has_voice"] or media.get("voice") or group["training_count"])
+            group["has_files"] = bool(group["has_files"] or media.get("files"))
+            group["has_training"] = bool(group["training_count"])
         sessions = sorted(grouped.values(), key=lambda item: item.get("_last", 0), reverse=True)[:limit]
         for item in sessions:
             item.pop("_first", None)
             item.pop("_last", None)
-        return server._json_response_no_store({"success": True, "sessions": sessions, "count": len(sessions)})
+        return server._json_response_no_store({
+            "success": True,
+            "sessions": sessions,
+            "count": len(sessions),
+            "voice_training": {
+                "capture_enabled": _training_enabled,
+                "count": len(training_entries),
+                "unlinked_count": sum(1 for entry in training_entries if not entry["session_id"]),
+            },
+        })
 
     @admin_app.get("/api/chat/session")
     async def admin_chat_session(request: Request):
@@ -229,19 +412,64 @@ def register_routes(
             manager = await _chat_session_manager()
             internal_id = manager.get_mapped_session_id(session_id, user_id) or session_id
             raw = await manager.get_user_session(user_id, internal_id)
+            media_rows = manager.list_conversation_media(user_id, session_id) if hasattr(manager, "list_conversation_media") else []
+            media_by_turn: Dict[str, List[Dict[str, Any]]] = {}
+            for row in media_rows:
+                media_by_turn.setdefault(str(row.get("turn_id") or ""), []).append(row)
+            used_media: set[str] = set()
+            files: List[Dict[str, Any]] = []
             messages = []
             for event in (raw or {}).get("events", []) if isinstance(raw, dict) else []:
                 data = event.get("data") if isinstance(event, dict) else {}
                 if not isinstance(data, dict):
                     continue
                 timestamp = event.get("timestamp")
-                attachments = [item for item in (_public_attachment(value) for value in (data.get("attachments") or [])) if item]
+                event_id = str(event.get("id") or "")
+                attachments = []
+                for index, value in enumerate(data.get("attachments") or []):
+                    item = _public_attachment(value)
+                    if not item:
+                        continue
+                    media_id = str((value or {}).get("media_id") or "")
+                    if media_id:
+                        used_media.add(media_id)
+                        item.update({"media_id": media_id, "url": f"/api/chat/media/{quote(media_id)}", "available": True})
+                    elif event_id:
+                        stored = manager.match_event_attachment(data, index) if hasattr(manager, "match_event_attachment") else None
+                        item["available"] = bool(manager.attachment_has_bytes(stored)) if hasattr(manager, "attachment_has_bytes") else False
+                        item["url"] = f"/api/chat/attachment?event_id={quote(event_id)}&index={index}"
+                    attachments.append(item)
+                turn_media = media_by_turn.get(str(data.get("media_turn_id") or ""), []) if data.get("media_turn_id") else []
+                for row in turn_media:
+                    if row.get("role") == "user" and str(row.get("media_id")) not in used_media:
+                        used_media.add(str(row.get("media_id")))
+                        attachments.append(_public_media(row))
+                reply_media = [_public_media(row) for row in turn_media if row.get("role") == "assistant"]
+                used_media.update(item["media_id"] for item in reply_media)
+                for item in attachments:
+                    files.append({"role": "user", **item, "timestamp": item.get("timestamp") or timestamp})
+                for item in reply_media:
+                    files.append({**item, "timestamp": item.get("timestamp") or timestamp})
                 if data.get("user_message"):
                     messages.append({"role": "user", "content": str(data["user_message"]), "timestamp": timestamp, "attachments": attachments})
-                if data.get("agent_response"):
-                    messages.append({"role": "assistant", "content": str(data["agent_response"]), "timestamp": timestamp, "attachments": []})
+                elif attachments:
+                    messages.append({"role": "user", "content": "", "timestamp": timestamp, "attachments": attachments})
+                if data.get("agent_response") or reply_media:
+                    messages.append({"role": "assistant", "content": str(data.get("agent_response") or ""), "timestamp": timestamp, "attachments": reply_media})
+            # Media whose turn never reached history (early replies, failures) is still listed.
+            files.extend(_public_media(row) for row in media_rows if str(row.get("media_id")) not in used_media)
+            _training_enabled, training_entries, _recordings = _voice_training_entries()
+            training = [entry for entry in training_entries if entry["user_id"] == user_id and entry["session_id"] == session_id]
+            titles = manager.get_conversation_titles(user_id) if hasattr(manager, "get_conversation_titles") else {}
+            custom = (titles.get((user_id, session_id)) or {}).get("title") or ""
+            auto_title = next((_chat_text(item["content"], "", 96) for item in messages if item["role"] == "user" and item["content"]), "") or "Conversation"
             if messages:
                 payload["messages"] = messages
+            payload["files"] = files
+            payload["voice_training"] = training
+            payload["title"] = custom or auto_title
+            payload["auto_title"] = auto_title
+            payload["custom_title"] = bool(custom)
             payload["session_id"] = session_id
             payload["user_id"] = user_id
             return server._json_response_no_store(payload)
@@ -249,6 +477,124 @@ def register_routes(
             status = getattr(exc, "status_code", 500)
             detail = getattr(exc, "detail", "Session unavailable")
             return JSONResponse(status_code=status, content={"success": False, "error": str(detail)})
+
+    @admin_app.post("/api/chat/session/title")
+    async def admin_chat_session_title(request: Request):
+        """Name a conversation on this server only; clients are never told."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON body"})
+        if not isinstance(body, dict):
+            return JSONResponse(status_code=400, content={"success": False, "error": "JSON object required"})
+        user_id = _chat_text(body.get("user_id"), "", 256)
+        session_id = _chat_text(body.get("session_id"), "", 256)
+        if not user_id or not session_id:
+            return JSONResponse(status_code=400, content={"success": False, "error": "user_id and session_id are required"})
+        manager = await _chat_session_manager()
+        if not hasattr(manager, "set_conversation_title"):
+            return JSONResponse(status_code=503, content={"success": False, "error": "Conversation names are unavailable"})
+        stored = manager.set_conversation_title(user_id, session_id, body.get("title"), source="admin")
+        if stored is None:
+            return JSONResponse(status_code=500, content={"success": False, "error": "The name could not be saved"})
+        return server._json_response_no_store({
+            "success": True,
+            "user_id": user_id,
+            "session_id": session_id,
+            "title": stored,
+            "custom_title": bool(stored),
+        })
+
+    @admin_app.get("/api/chat/media/{media_id}")
+    async def admin_chat_media(media_id: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        manager = await _chat_session_manager()
+        row = manager.get_conversation_media(media_id) if hasattr(manager, "get_conversation_media") else None
+        if not row:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Media not found"})
+        try:
+            from shared.conversation_media_store import read_media_bytes
+
+            data = read_media_bytes(str(row.get("storage_path") or ""))
+        except Exception as exc:
+            server.LOGGER.warning("Could not read conversation media %s: %s", media_id, exc)
+            return JSONResponse(status_code=404, content={"success": False, "error": "Media file is no longer available"})
+        return _media_response(request, data, str(row.get("filename") or "attachment"), str(row.get("mimetype") or ""))
+
+    @admin_app.get("/api/chat/attachment")
+    async def admin_chat_attachment(request: Request):
+        """A file sent in an earlier turn, served from the stored conversation."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        event_id = _chat_text(request.query_params.get("event_id"), "", 160)
+        try:
+            index = int(request.query_params.get("index") or -1)
+        except (TypeError, ValueError):
+            index = -1
+        manager = await _chat_session_manager()
+        attachment = manager.get_event_attachment(event_id, index) if event_id and hasattr(manager, "get_event_attachment") else None
+        if attachment and attachment.get("media_id") and hasattr(manager, "get_conversation_media"):
+            row = manager.get_conversation_media(str(attachment["media_id"]))
+            if row:
+                from shared.conversation_media_store import read_media_bytes
+
+                try:
+                    data = read_media_bytes(str(row.get("storage_path") or ""))
+                    return _media_response(request, data, str(row.get("filename") or "attachment"), str(row.get("mimetype") or ""))
+                except Exception:
+                    pass
+        from shared.conversation_media_store import read_attachment_bytes
+
+        try:
+            data = read_attachment_bytes(attachment)
+        except Exception:
+            data = None
+        if not data:
+            return JSONResponse(status_code=404, content={"success": False, "error": "This file was not kept on the server"})
+        public = _public_attachment(attachment) or {}
+        return _media_response(request, data, str(public.get("filename") or "attachment"), str(public.get("mimetype") or ""))
+
+    @admin_app.get("/api/chat/voice-training")
+    async def admin_chat_voice_training(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        enabled, entries, _recordings = _voice_training_entries()
+        try:
+            limit = max(1, min(500, int(request.query_params.get("limit") or 200)))
+        except (TypeError, ValueError):
+            limit = 200
+        return server._json_response_no_store({
+            "success": True,
+            "capture_enabled": enabled,
+            "count": len(entries),
+            "captures": [{key: value for key, value in entry.items() if key != "sort_timestamp"} for entry in entries[:limit]],
+        })
+
+    @admin_app.get("/api/chat/voice-training/audio")
+    async def admin_chat_voice_training_audio(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        capture_id = _chat_text(request.query_params.get("id"), "", 64)
+        _enabled, entries, recordings_dir = _voice_training_entries()
+        entry = next((item for item in entries if item["id"] == capture_id), None)
+        if not entry or recordings_dir is None:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Recording not found"})
+        path = recordings_dir / os.path.basename(entry["filename"])
+        try:
+            from shared.secure_storage import read_secure_file
+
+            data = read_secure_file(path, migrate_plaintext=False)
+        except Exception:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Recording file is no longer available"})
+        return _media_response(request, data, entry["filename"], "audio/wav")
 
     @admin_app.post("/api/chat/call/offer")
     async def admin_chat_call_offer(request: Request):
