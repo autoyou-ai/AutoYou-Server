@@ -213,6 +213,19 @@ def test_full_mcp_pairing_relay_preserves_shared_router_boundary(
 
 def test_full_mcp_chat_uses_the_existing_ai_provider_worker_path() -> None:
     server = _FakeServer()
+    attachment_context = [
+        {
+            "source": "synthetic-client",
+            "attachments": [
+                {
+                    "filename": "synthetic-note.ogg",
+                    "mimetype": "audio/ogg",
+                    "kind": "audio",
+                    "data": "c3ludGhldGljLWF1ZGlv",
+                }
+            ],
+        }
+    ]
     with _client(server) as client:
         missing_message = client.post(
             "/api/v1/mcp/chat",
@@ -226,6 +239,7 @@ def test_full_mcp_chat_uses_the_existing_ai_provider_worker_path() -> None:
                 "model": "synthetic-model",
                 "messages": [{"role": "user", "content": "synthetic provider turn"}],
                 "session_id": "synthetic-chat-session",
+                "context": attachment_context,
             },
         )
 
@@ -236,8 +250,171 @@ def test_full_mcp_chat_uses_the_existing_ai_provider_worker_path() -> None:
     assert body["session_id"] == "synthetic-chat-session"
     request, ai_agent_url = server.chat_calls[0]
     assert request.message == "synthetic provider turn"
+    assert request.context == attachment_context
     assert request.metadata == {"source": "autoyou-mcp", "client": "chatgpt"}
     assert ai_agent_url == "http://localhost:8081"
+
+
+def test_agents_api_routes_to_autoyou_and_keeps_attachment_payload_local() -> None:
+    import asyncio
+    import json
+
+    import httpx
+
+    from core_server.agents_api_bridge import run_agents_api_turn
+
+    session_id = "sess_synthetic_agents"
+    call_id = "call_synthetic_autoyou"
+    turn_id = "turn_synthetic_autoyou"
+    sse = "\n\n".join(
+        [
+            "event: agent.session.created\ndata: "
+            + json.dumps({"type": "agent.session.created", "session": {"id": session_id}}),
+            "event: agent.session.requires_action\ndata: "
+            + json.dumps(
+                {
+                    "type": "agent.session.requires_action",
+                    "session": {
+                        "id": session_id,
+                        "required_actions": [
+                            {
+                                "type": "function_call",
+                                "name": "send_to_autoyou",
+                                "arguments": {},
+                                "call_id": call_id,
+                                "turn_id": turn_id,
+                            }
+                        ],
+                    },
+                }
+            ),
+            "event: agent.session.turn.completed\ndata: "
+            + json.dumps({"type": "agent.session.turn.completed", "session": {"id": session_id}}),
+            "",
+        ]
+    )
+    recorded = {"create": None, "tool_result": None, "deleted": False}
+
+    def transport_handler(request):
+        if request.method == "POST" and request.url.path == "/v1/agents/sessions":
+            recorded["create"] = json.loads(request.content)
+            assert request.headers["authorization"] == "Bearer synthetic-agents-api-key"
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=sse.encode("utf-8"),
+            )
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            recorded["tool_result"] = json.loads(request.content)
+            return httpx.Response(202)
+        if request.method == "DELETE" and request.url.path.endswith(session_id):
+            recorded["deleted"] = True
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+    callback_count = 0
+    server_result = {"response": "synthetic server answer"}
+
+    async def call_autoyou():
+        nonlocal callback_count
+        callback_count += 1
+        return server_result
+
+    result = asyncio.run(
+        run_agents_api_turn(
+            "@autoyou inspect this synthetic image",
+            call_autoyou,
+            attachment_count=1,
+            api_key="synthetic-agents-api-key",
+            model="gpt-6-astra",
+            transport=httpx.MockTransport(transport_handler),
+        )
+    )
+
+    assert result is server_result
+    assert callback_count == 1
+    assert recorded["create"]["environment"] == {"type": "none"}
+    assert recorded["create"]["agent"]["model"] == "gpt-6-astra"
+    assert "@autoyou inspect this synthetic image" in recorded["create"]["input"][0]["content"][0]["text"]
+    assert "private attachment(s)" in recorded["create"]["input"][0]["content"][0]["text"]
+    assert recorded["tool_result"]["events"][0]["output"] == "AutoYou processed the request."
+    assert "synthetic server answer" not in recorded["tool_result"]["events"][0]["output"]
+    assert recorded["deleted"] is True
+
+
+def test_agents_api_requires_a_key_without_falling_back_to_a_different_route(monkeypatch) -> None:
+    import asyncio
+
+    from core_server.agents_api_bridge import AgentsAPIConfigurationError, run_agents_api_turn
+
+    monkeypatch.delenv("AUTOYOU_AGENTS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    called = False
+
+    async def call_autoyou():
+        nonlocal called
+        called = True
+        return {"response": "must not be produced"}
+
+    with pytest.raises(AgentsAPIConfigurationError):
+        asyncio.run(run_agents_api_turn("@autoyou question", call_autoyou))
+    assert called is False
+
+
+def test_admin_chat_uses_agents_api_for_at_messages_and_keeps_full_context(monkeypatch) -> None:
+    import core_server.agents_api_bridge as agents_api_bridge
+    from fastapi import FastAPI
+    from routers.admin import register_routes as register_admin_routes
+
+    server = SimpleNamespace(
+        AI_AGENT_SERVER_PORT=8081,
+        ChatRequest=SimpleNamespace,
+        LOGGER=SimpleNamespace(warning=lambda *args, **kwargs: None, error=lambda *args, **kwargs: None),
+        _require_api_login=lambda request: None,
+        _json_response_no_store=lambda payload: JSONResponse(content=payload),
+        process_chat_message=AsyncMock(return_value={"response": "synthetic server answer", "session_id": "synthetic-admin-session"}),
+    )
+    recorded = {}
+
+    async def fake_agents_api_turn(message, call_autoyou, *, attachment_count=0):
+        recorded["message"] = message
+        recorded["attachment_count"] = attachment_count
+        return await call_autoyou()
+
+    monkeypatch.setattr(agents_api_bridge, "run_agents_api_turn", fake_agents_api_turn)
+    app = FastAPI()
+    register_admin_routes(app, app, server)
+    context = [
+        {
+            "source": "synthetic-admin-web",
+            "attachments": [
+                {
+                    "filename": "synthetic-image.png",
+                    "mimetype": "image/png",
+                    "data": "c3ludGhldGljLWltYWdl",
+                }
+            ],
+        }
+    ]
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat",
+            json={
+                "message": "@autoyou inspect the attachment",
+                "user_id": "synthetic-admin-user",
+                "session_id": "synthetic-admin-session",
+                "context": context,
+                "metadata": {"client": "admin-web", "source": "admin_web"},
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["response"] == "synthetic server answer"
+    assert recorded == {"message": "@autoyou inspect the attachment", "attachment_count": 1}
+    chat_request = server.process_chat_message.await_args.args[0]
+    assert chat_request.context == context
+    assert server.process_chat_message.await_args.kwargs["authenticated_actor_role"] == "admin"
 
 
 def test_full_mcp_facade_can_be_disabled_without_removing_native_server_routes() -> None:
