@@ -40,6 +40,70 @@ def test_main_routes_private_desktop_mode_without_starting_server(monkeypatch, t
     assert calls == ["desktop"]
 
 
+def test_run_desktop_stdio_mode_prepares_packaged_audio_model_runtime(monkeypatch, tmp_path):
+    calls = []
+
+    class _FakePlatformRuntime:
+        @staticmethod
+        def configure_runtime(anchor):
+            calls.append(("runtime", Path(anchor).name))
+
+        @staticmethod
+        def configure_whisper_cache_environment(app_name: str):
+            calls.append(("cache", app_name))
+            return tmp_path / "whisper_cache"
+
+    fake_worker = SimpleNamespace(main=lambda: calls.append(("worker-main", None)))
+
+    def fake_import_module(module_name):
+        calls.append(("import", module_name))
+        assert autoyou_app.os.environ[autoyou_app.PACKAGED_RUNTIME_ENV] == "1"
+        assert autoyou_app.os.environ[autoyou_app.PACKAGED_RESOURCES_ROOT_ENV] == str(tmp_path)
+        assert autoyou_app.os.environ["PYTHON_DOTENV_DISABLED"] == "1"
+        assert autoyou_app.os.environ["AUTOYOU_V2_BUNDLED"] == "1"
+        return fake_worker
+
+    monkeypatch.setattr(autoyou_app, "APP_ROOT", tmp_path)
+    monkeypatch.setattr(autoyou_app, "_looks_like_packaged_executable", lambda: True)
+    monkeypatch.setattr(autoyou_app.sys, "executable", r"C:\runtime\AutoYou\AutoYou.exe")
+    monkeypatch.setattr(
+        autoyou_app,
+        "_patch_dotenv_for_packaged_runtime",
+        lambda: calls.append(("dotenv", None)),
+    )
+    monkeypatch.setattr(
+        autoyou_app,
+        "_prepare_runtime_server_imports",
+        lambda app_root: calls.append(("imports", app_root)),
+    )
+    monkeypatch.setattr(
+        autoyou_app,
+        "_get_shared_platform_runtime_module",
+        lambda: _FakePlatformRuntime,
+    )
+    monkeypatch.setattr(autoyou_app.importlib, "import_module", fake_import_module)
+    monkeypatch.delenv(autoyou_app.PACKAGED_RUNTIME_ENV, raising=False)
+    monkeypatch.delenv(autoyou_app.PACKAGED_RESOURCES_ROOT_ENV, raising=False)
+    monkeypatch.delenv("PYTHON_DOTENV_DISABLED", raising=False)
+    monkeypatch.delenv("AUTOYOU_V2_BUNDLED", raising=False)
+    monkeypatch.delenv("AUTOYOU_V2_SERVER_EXECUTABLE", raising=False)
+
+    autoyou_app.run_desktop_stdio_mode()
+
+    assert (
+        autoyou_app.os.environ["AUTOYOU_V2_SERVER_EXECUTABLE"]
+        == r"C:\runtime\AutoYou\AutoYou.exe"
+    )
+    assert calls == [
+        ("dotenv", None),
+        ("imports", tmp_path),
+        ("runtime", "autoyou_app.py"),
+        ("cache", "AutoYou"),
+        ("import", "v2.runtime.worker"),
+        ("worker-main", None),
+    ]
+
+
 def test_packaged_launcher_disables_bytecode_cache_writes():
     assert autoyou_app.sys.dont_write_bytecode is True
     assert autoyou_app.os.environ["PYTHONDONTWRITEBYTECODE"] == "1"
