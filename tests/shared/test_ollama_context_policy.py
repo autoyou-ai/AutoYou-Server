@@ -33,6 +33,7 @@ def test_recommend_ollama_num_ctx_uses_ram_and_size_tiers():
     assert recommend_ollama_num_ctx("qwen3:4b", total_ram_gb=8.0) == 8192
     assert recommend_ollama_num_ctx("qwen3:4b", total_ram_gb=20.0) == 16384
     assert recommend_ollama_num_ctx("ministral-3:8b", total_ram_gb=20.0) == 8192
+    assert recommend_ollama_num_ctx("ministral-3:8b", total_ram_gb=64.0) == 8192
 
 
 def test_build_context_compaction_policy_disabled_without_context_window():
