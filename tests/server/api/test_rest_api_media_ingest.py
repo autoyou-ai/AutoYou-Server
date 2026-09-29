@@ -335,7 +335,8 @@ async def test_process_chat_message_voice_note_uses_agent_path_and_sanitizes_met
             "agent_name": "OpenClaw",
         }
 
-    async def fake_build_voice_reply(reply_text):
+    async def fake_build_voice_reply(reply_text, *, context=""):
+        calls["voice_reply_context"] = context
         reply_path.write_bytes(b"OggS synthetic voice reply")
         return voice_messaging.VoiceReplyArtifacts(
             transcript="",
@@ -379,6 +380,7 @@ async def test_process_chat_message_voice_note_uses_agent_path_and_sanitizes_met
         "cleanup_materialized": False,
     }
     assert calls["agent"]["message"] == "please summarize my morning"
+    assert calls["voice_reply_context"] == "please summarize my morning"
     assert calls["agent"]["context"] == []
     assert calls["agent"]["metadata"]["voice_note"]["inbound_audio_saved"] is True
     assert "saved_audio_path" not in calls["agent"]["metadata"]["voice_note"]

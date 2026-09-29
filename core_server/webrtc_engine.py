@@ -7973,7 +7973,7 @@ class WebRTCManager:
                         session_id,
                     )
             elif session_id in _runtime.STATE.audio_managers:
-                _runtime.STATE.audio_managers[session_id].speak(reply)
+                _runtime.STATE.audio_managers[session_id].speak(reply, context=text)
             else:
                 _runtime.LOGGER.warning(f"AudioManager missing for {session_id}, cannot speak response")
 

@@ -2237,6 +2237,14 @@
             badgeTone: "purple"
         },
         {
+            id: "emotivoice",
+            eyebrow: "Local expressive voice",
+            label: "EmotiVoice",
+            description: "Chinese and English local synthesis with emotion steered by this conversation.",
+            badgeLabel: "Local",
+            badgeTone: "green"
+        },
+        {
             id: "openai",
             eyebrow: "Cloud TTS",
             label: "OpenAI speech",
@@ -2733,6 +2741,8 @@
                 azure_speech_region: getByPath(cfg, "speech.tts.azure.speech_region", ""),
                 azure_voice: getByPath(cfg, "speech.tts.azure.voice", ""),
                 azure_endpoint_id: getByPath(cfg, "speech.tts.azure.endpoint_id", ""),
+                emotivoice_speaker: getByPath(cfg, "speech.tts.emotivoice.speaker", "8051"),
+                emotivoice_conversation_emotion: asBoolean(getByPath(cfg, "speech.tts.emotivoice.conversation_emotion", true), true),
                 stt_model: getByPath(cfg, "speech.stt.model", "tiny.en"),
                 stt_language: getByPath(cfg, "speech.stt.language", "en"),
                 stt_device: getByPath(cfg, "speech.stt.device", "cpu"),
@@ -6623,6 +6633,26 @@
                     return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(label) + "</strong><small>" + escapeHtml(detail) + "</small></div>" + badge(getByPath(voice, "ready", false) ? "Ready" : "Not ready", getByPath(voice, "ready", false) ? "green" : "amber") + "</div>";
                 }).join("") + "</div>");
             }
+        } else if (provider === "emotivoice") {
+            var emotivoice = getByPath(state.speechLibrary, "status.emotivoice", {});
+            var modelsReady = Boolean(getByPath(emotivoice, "models_ready", false));
+            var sourceReady = Boolean(getByPath(emotivoice, "runtime_source_ready", true));
+            var dependencies = getByPath(emotivoice, "missing_dependencies", []);
+            var statusNote = !sourceReady
+                ? "EmotiVoice runs from the vendored source in the Python bootstrap server; compiled server bundles do not include that source."
+                : (modelsReady && !dependencies.length
+                    ? "EmotiVoice checkpoints and runtime dependencies are ready on this server."
+                    : "Download the checkpoints once and restart the voice session after the full voice profile is installed.");
+            fields.push("<div class=\"ayu-note ayu-note-" + (sourceReady && modelsReady && !dependencies.length ? "green" : "amber") + "\">" + escapeHtml(statusNote) + "</div>");
+            fields.push(field("Voice speaker", select("speech.emotivoice_speaker", buildSimpleOptions(getByPath(emotivoice, "speaker_ids", []), getByPath(state.forms, "speech.emotivoice_speaker", "8051"))), "Choose a local EmotiVoice speaker ID."));
+            fields.push(checkbox("speech.emotivoice_conversation_emotion", "Use emotion from this conversation", "AutoYou reads the current user transcript and reply transiently to choose an expressive style."));
+            if (sourceReady && !modelsReady && getByPath(emotivoice, "download_supported", false)) {
+                fields.push("<div class=\"ayu-inline-actions\">" + button("Download EmotiVoice models", "speech-download-emotivoice", "primary", "download") + "</div>");
+                fields.push("<div class=\"ayu-note ayu-note-amber\">" + escapeHtml(getByPath(emotivoice, "model_license_note", "Review upstream model terms before use.")) + "</div>");
+            }
+            if (dependencies.length) {
+                fields.push("<div class=\"ayu-note ayu-note-amber\">Missing runtime packages: " + escapeHtml(dependencies.join(", ")) + ". Install the full voice profile.</div>");
+            }
         } else if (provider === "openai") {
             fields.push(field("OpenAI base URL", input("speech.openai_base_url", { placeholder: "https://api.openai.com/v1" })));
             fields.push(field("OpenAI API key", input("speech.openai_api_key", { placeholder: "Leave blank to keep saved key", type: "password" }), "Only enter a value when rotating or adding the saved key."));
@@ -6639,9 +6669,11 @@
             ? "Text-to-speech is disabled. Speech recognition controls remain available below for calls and voice notes."
             : (provider === "custom"
                 ? "Custom cloned voice uses local VITS artifacts prepared by the Voice Training app."
+                : (provider === "emotivoice"
+                ? "EmotiVoice synthesizes locally through AutoYou's existing call and voice-note audio paths."
                 : (provider === "system"
                 ? "System speech keeps synthesis fully local to this machine."
-                : "Cloud text-to-speech stays inactive until you save the selected provider and its credentials."));
+                : "Cloud text-to-speech stays inactive until you save the selected provider and its credentials.")));
         return renderChoiceCards(TTS_PROVIDER_OPTIONS, provider, "select-tts-provider") + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(option.label) + ". " + escapeHtml(providerNote) + "</div>" + (fields.length ? ("<div class=\"ayu-grid-2\">" + fields.join("") + "</div>") : "") + "<div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "primary", "save") + "</div>";
     }
 
@@ -7475,6 +7507,10 @@
                         speech_region: source.azure_speech_region,
                         voice: source.azure_voice,
                         endpoint_id: source.azure_endpoint_id
+                    },
+                    emotivoice: {
+                        speaker: source.emotivoice_speaker,
+                        conversation_emotion: asBoolean(source.emotivoice_conversation_emotion, true)
                     }
                 },
                 stt: {
@@ -8744,6 +8780,12 @@
             await postJson("/api/speech-models/download", { model: getByPath(state.forms, "speech.download_model", "") });
             await refreshSpeechDownloads(true);
             setNotice("success", "Speech model download started.");
+            return;
+        }
+        if (action === "speech-download-emotivoice") {
+            await postJson("/api/speech-models/download", { model: "emotivoice" });
+            await refreshSpeechDownloads(true);
+            setNotice("success", "EmotiVoice model download started. It may take several minutes.");
             return;
         }
         if (action.indexOf("speech-delete-model:") === 0) {

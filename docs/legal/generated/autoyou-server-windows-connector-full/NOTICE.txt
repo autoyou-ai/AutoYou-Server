@@ -4,9 +4,9 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-09-28T16:42:03+00:00
+Generated: 2026-09-29T00:28:28+00:00
 
-Optional separately approved Windows build that inherits the full source/server dependency profile and connector/provider notices.
+Optional separately approved Windows connector build with the full server dependency profile. EmotiVoice source is Python-bootstrap-only and is excluded from this compiled artifact.
 
 AutoYou License
 ---------------
@@ -50,6 +50,7 @@ Third-Party Components
 - beautifulsoup4 [pypi] - MIT - requirements/base.txt
 - bleak [pypi] - MIT - requirements/bluetooth.txt
 - bless [pypi] - MIT - requirements/bluetooth.txt
+- cn2an [pypi] - MIT - requirements/voice.txt
 - colorama [pypi] - BSD-3-Clause - requirements/voice.txt
 - coloredlogs [pypi] - MIT - requirements/voice.txt
 - cryptg 0.6.0 [pypi] - CC0-1.0 - requirements/messaging.txt
@@ -62,6 +63,7 @@ Third-Party Components
 - filelock [pypi] - MIT - requirements/base.txt
 - flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
 - fsspec [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- g2p-en [pypi] - Apache-2.0 - requirements/voice.txt
 - google-adk 2.9.2 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
@@ -70,12 +72,16 @@ Third-Party Components
 - httpx [pypi] - BSD-3-Clause - requirements/base.txt
 - huggingface_hub [pypi] - Apache-2.0 - requirements/local-llm.txt
 - idna [pypi] - BSD-3-Clause - requirements/base.txt
+- jieba [pypi] - MIT - requirements/voice.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
 - litellm [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
+- modelscope [pypi] - Apache-2.0 - requirements/voice.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
+- nltk [pypi] - Apache-2.0 - requirements/voice.txt
+- numba [pypi] - BSD-3-Clause - requirements/voice.txt
 - numpy [pypi] - BSD-3-Clause - requirements/voice.txt
 - ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
 - onnxruntime [pypi] - MIT - requirements/local-llm.txt
@@ -94,6 +100,8 @@ Third-Party Components
 - pydantic [pypi] - MIT - requirements/base.txt
 - pygetwindow [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
 - pyotp [pypi] - MIT - requirements/base.txt
+- pypinyin [pypi] - MIT - requirements/voice.txt
+- pypinyin-dict [pypi] - MIT - requirements/voice.txt
 - pysignalclirestapi [pypi] - MIT - requirements/messaging.txt
 - pysodium [pypi] - BSD-2-Clause - requirements/base.txt
 - pystray [pypi] - LGPL-3.0-only - requirements/base.txt
@@ -133,6 +141,7 @@ Third-Party Components
 - winrt-Windows.Foundation [pypi] - MIT - requirements/bluetooth.txt
 - winrt-Windows.Foundation.Collections [pypi] - MIT - requirements/bluetooth.txt
 - winrt-Windows.Storage.Streams [pypi] - MIT - requirements/bluetooth.txt
+- yacs 0.1.8 [pypi] - BSD-3-Clause - requirements/voice.txt
 - yt-dlp [pypi] - Unlicense - requirements/base.txt
 - zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
 

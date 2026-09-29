@@ -1,6 +1,6 @@
 # AutoYou Third-Party Notices
 
-Last updated: 2026-09-24
+Last updated: 2026-09-28
 
 This file is the repository-level notice index for AutoYou. It does not replace the exact license texts that must be included with final release artifacts.
 
@@ -60,6 +60,8 @@ The notice bundle should include:
 - `openwakeword` code is Apache-2.0, but pretrained model assets may be non-commercial. Commercial server builds prune/check `openwakeword/resources/models` assets and must fail if those assets reappear.
 - Windows server audio capture uses [PyAudioWPatch 0.2.12.8](https://github.com/s0d3s/PyAudioWPatch) under Apache-2.0 so WASAPI loopback devices are available. Its Windows wheel includes [PortAudio 19.7.0](https://github.com/PortAudio/portaudio/tree/v19.7.0) under MIT; binary notices must retain both license texts. Non-Windows profiles use upstream PyAudio with PortAudio instead.
 - `llmfit` (https://github.com/AlexsJones/llmfit) is MIT-licensed and used by the `model_picker_agent` to right-size local models to the host hardware. AutoYou does not vendor it: the prebuilt binary is downloaded from the project's GitHub releases at runtime or bundled into desktop releases, and cached under the AutoYou user-data directory (`tools/llmfit/`). It ships in profiles that include `autoyou_agents`; include its MIT notice in those artifact bundles.
+- EmotiVoice source is vendored at `vendor/emotivoice/` from `netease-youdao/EmotiVoice` commit `59f0f36de4db12825f4705dd4e0780d79dd6bb01` under Apache-2.0; its license and upstream attribution notices remain in the source tree. Full Python source/bootstrap distributions include the vendored source; compiled server bundles exclude it, and the provider reports unavailable there. The vendored Python files contain shared model/helper code, including some training-related branches; AutoYou uses it for inference and does not expose upstream training/demo entry points. Its upstream license also identifies Apache-2.0 ESPnet-derived code and MIT-licensed HiFi-GAN-derived code; retain those notices in source distributions. The pretrained `syq163/outputs` and `WangZeJun/simbert-base-chinese` checkpoints are not distributed with AutoYou and are downloaded only by an administrator. Their model cards do not clearly declare a license; review upstream terms before using or redistributing them.
+- The optional EmotiVoice English frontend uses NLTK; its tagger and CMUDict data files are downloaded into the managed voice-model directory, not bundled. Review the upstream data-resource terms before redistribution.
 - Odysseus (https://github.com/odysseus-dev/odysseus) is AGPL-3.0-or-later. AutoYou Server and Lite integrate with its authenticated HTTP companion API, while the optional checkout remains external and gitignored at `vendor/odysseus/`. AutoYou distributions do not bundle the Odysseus source. Any combined image, installer, or hosted distribution must complete a separate AGPL corresponding-source and licensing review.
 - Android release builds copy the generated `android-app` legal bundle into app assets under `legal/`.
 - iOS release builds copy the generated `ios-app` legal bundle into app resources under `Legal/`.

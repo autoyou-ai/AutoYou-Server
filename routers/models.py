@@ -221,6 +221,8 @@ def register_routes(
         payload["system_voices"] = server.list_system_tts_voices() if callable(server.list_system_tts_voices) else []
         payload["custom_voice"] = server.custom_voice_status()
         payload["custom_voices"] = server.list_custom_voice_statuses()
+        from shared.emotivoice_tts import status as emotivoice_status
+        payload["emotivoice"] = await server.asyncio.to_thread(emotivoice_status)
         payload["openai_tts_models"] = list(server.OPENAI_TTS_MODELS)
         payload["openai_tts_voices"] = list(server.OPENAI_TTS_VOICES)
         payload["stt_model_suggestions"] = list(server.STT_MODEL_SUGGESTIONS)
@@ -245,7 +247,10 @@ def register_routes(
             return JSONResponse({"success": False, "error": "Missing STT model name"}, status_code=400)
 
         try:
-            job = await server.asyncio.to_thread(server.speech_model_library_service.start_download_job, model_name)
+            if model_name.lower() == "emotivoice":
+                job = await server.asyncio.to_thread(server.speech_model_library_service.start_emotivoice_download_job)
+            else:
+                job = await server.asyncio.to_thread(server.speech_model_library_service.start_download_job, model_name)
             return JSONResponse({"success": True, "job": job})
         except Exception as exc:
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)

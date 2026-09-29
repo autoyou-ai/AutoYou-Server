@@ -302,9 +302,16 @@ def expand_artifact_profiles(config: dict[str, Any]) -> list[dict[str, Any]]:
             return copy.deepcopy(resolved[profile_id])
         profile = copy.deepcopy(raw_profiles[profile_id])
         parent_id = profile.pop("inherits", None)
+        exclude_manual_components = set(profile.pop("excludeManualComponents", []))
         if parent_id:
             merged = resolve(parent_id)
             merged["id"] = profile_id
+            if exclude_manual_components:
+                merged["manualComponents"] = [
+                    component
+                    for component in merged.get("manualComponents", [])
+                    if component.get("name") not in exclude_manual_components
+                ]
             for key, value in profile.items():
                 if isinstance(value, list) and isinstance(merged.get(key), list):
                     merged[key] = merged[key] + value
