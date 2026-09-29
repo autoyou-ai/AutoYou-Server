@@ -200,7 +200,11 @@ echo "Pruning non-commercial model assets from ${PYTHON_CMD} site-packages..."
 prune_noncommercial_site_packages
 
 if [[ "$UNOFFICIAL" == false ]]; then
-    "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
+    legal_gate_args=("${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license)
+    if [[ "${AUTOYOU_ALLOW_OPEN_RELEASE_BLOCKERS:-}" =~ ^(1|true|yes|on)$ ]]; then
+        legal_gate_args+=(--allow-open-release-blockers)
+    fi
+    "$PYTHON_CMD" "${legal_gate_args[@]}" || {
         echo "Release legal gate failed. Resolve open blockers before WSL server release packaging." >&2
         exit 1
     }
