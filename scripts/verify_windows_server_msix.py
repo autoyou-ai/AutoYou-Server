@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-V-wallet-e3cdc68b68d6f158f4534d6b
 
-#!/usr/bin/env python3
 """Verify an AutoYou Server MSIX artifact before Store upload."""
 
 from __future__ import annotations
