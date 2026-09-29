@@ -25,8 +25,10 @@ and its configured capabilities.
 
 ## Configure one AutoYou instance
 
-Set `OPENAI_API_KEY` or `AUTOYOU_AGENTS_API_KEY` in the environment used to
-start this AutoYou server. Use an OpenAI API key with `api.agents.read`,
+For a local source checkout, set `AUTOYOU_AGENTS_API_KEY` in the ignored
+`AutoYou-Server/.env` file. Packaged or service-managed instances can set it in
+the environment used to start that instance. `OPENAI_API_KEY` is also accepted
+as a fallback. Use an OpenAI API key with `api.agents.read`,
 `api.agents.write`, and `api.responses.write` permissions. `OPENAI_API_KEY` is
 used only as a credential for the Agents API router here. The model that writes
 the answer remains the provider selected in this instance's AI & Models
