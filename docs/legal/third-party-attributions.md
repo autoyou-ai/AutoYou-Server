@@ -5,6 +5,11 @@ description: Where to find SBOMs, NOTICE files, and third-party license notices.
 
 # Third-Party Attributions
 
+The optional EmotiVoice local speech runtime and Cognee memory integration are
+also listed on the public [AutoYou attributions page](https://www.autoyou.me/attributions/).
+They are independent open-source projects; the integrations do not imply a
+formal partnership or endorsement.
+
 Every distributed app build should include its own legal bundle:
 
 - `NOTICE.txt`

@@ -122,6 +122,8 @@ Voice:
 
 - easiest path is the `full` bootstrap profile
 - includes the speech-related Python dependencies
+- EmotiVoice uses an NVIDIA GPU when the installed PyTorch runtime exposes CUDA; otherwise it falls back to CPU. The current Windows setup was smoke-tested with an RTX 5070 and CUDA-enabled PyTorch.
+- AMD ROCm and Apple MLX are not yet validated by this integration.
 
 Telegram User:
 

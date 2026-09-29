@@ -67,15 +67,17 @@ def test_source_profile_records_external_service_terms() -> None:
     assert all(components[name]["source"].startswith("https://") for name in expected)
 
 
-def test_emotivoice_vendor_is_source_only_in_release_profiles() -> None:
+def test_emotivoice_vendor_is_included_only_in_voice_release_profiles() -> None:
     profiles = {profile["id"]: profile for profile in expand_artifact_profiles(load_config())}
 
     assert any(
-        item["name"] == "EmotiVoice inference source"
+        item["name"] == "EmotiVoice inference code"
         for item in profiles["autoyou-server-source-full"]["manualComponents"]
     )
     for profile_id in ("autoyou-server-windows-connector-full", "autoyou-server-macos-connector-full"):
-        assert not any(item["name"] == "EmotiVoice inference source" for item in profiles[profile_id]["manualComponents"])
+        assert any(item["name"] == "EmotiVoice inference code" for item in profiles[profile_id]["manualComponents"])
+    for profile_id in ("autoyou-server-windows-default", "autoyou-server-macos-default"):
+        assert not any(item["name"] == "EmotiVoice inference code" for item in profiles[profile_id]["manualComponents"])
 
 
 def test_generated_bundles_detect_profile_drift() -> None:

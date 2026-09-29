@@ -1,20 +1,20 @@
 # Optional Integration and Runtime Review
 
-Last reviewed: 2026-07-14
+Last reviewed: 2026-09-28
 
-This is the public record for the **source-only** AutoYou Server release. It
-does not declare an external provider approved for every use case, and it is
-not legal advice. An owner enabling an optional service must review that
-provider's current terms, pricing, privacy terms, regional availability, and
-account requirements for their own use.
+This is the public record for AutoYou Server source and optional runtime
+profiles. It does not declare an external provider approved for every use case,
+and it is not legal advice. An owner enabling an optional service must review
+that provider's current terms, pricing, privacy terms, regional availability,
+and account requirements for their own use.
 
 ## Release boundary
 
-This repository distributes source, dependency manifests, tests, and selected
-build tooling. It does not distribute a compiled installer, container image,
-model weights, a prebuilt Tunnelmole or LLMFit executable, or an external
-provider credential. AutoYou Lite and its PyPI materials are outside this
-release.
+The repository contains source, dependency manifests, tests, and selected build
+tooling. Full voice/connector builds compile the selected EmotiVoice inference
+modules for Windows, macOS, and WSL; Docker uses the Python source runtime.
+No EmotiVoice checkpoints or external provider credentials are bundled.
+AutoYou Lite and its PyPI materials are outside this release.
 
 The selected source artifact is documented by the root `LICENSE` and
 `THIRD-PARTY-NOTICES.md`, plus
@@ -69,6 +69,21 @@ implementation boundary.
   models, keys, or software in another artifact without a separate review.
 
 ## Runtime downloads and models
+
+- **EmotiVoice:** the inference source is Apache-2.0 and is vendored at a
+  pinned upstream commit; voice-enabled Windows, macOS, and WSL builds compile
+  only the inference modules they use. The full Docker image includes the
+  source runtime. An administrator must confirm before AutoYou downloads
+  checkpoints and pronunciation resources into its managed voice-model
+  directory. Upstream model cards do not clearly state checkpoint licensing;
+  review those terms before downloading or using the weights. The download
+  notice in Admin links the destination and licensing caveat. At runtime,
+  EmotiVoice selects CUDA through PyTorch when available and otherwise uses
+  CPU. AMD ROCm and Apple MLX have not been validated.
+- **Cognee:** optional Apache-2.0 memory integration, installed only when the
+  relevant profile/build option is selected. This describes a software
+  integration and does not imply a formal commercial partnership or
+  endorsement.
 
 - **Tunnelmole:** the npm client is MIT-licensed; the hosted service has its
   own terms and is described by its documentation as AGPLv3. Bootstrap can be

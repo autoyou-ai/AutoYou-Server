@@ -14,6 +14,8 @@ The build follows the same packaged-runtime model as the Windows and macOS serve
 - Third-party Python packages are copied into `runtime_site_packages/`.
 - Release legal files are copied into `Legal/`.
 - `runtime_integrity.json` seals the compiled runtime modules.
+- The full WSL profile compiles the EmotiVoice inference modules; voice model
+  checkpoints stay administrator-approved user data.
 - `scripts/verify_backend_hardening.py` rejects raw AutoYou source; the package bridge is emitted as bytecode.
 
 Review `Legal/LICENSE`, `Legal/THIRD-PARTY-NOTICES.md`, `Legal/NOTICE.txt`, and `Legal/sbom.cdx.json` before use. Use constitutes agreement to the AutoYou Terms of Use (EULA), License, Privacy Policy, responsibility terms, warranty disclaimer, and liability limits.

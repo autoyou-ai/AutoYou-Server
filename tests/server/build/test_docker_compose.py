@@ -19,3 +19,14 @@ def test_default_compose_keeps_services_on_loopback_and_uses_named_volumes():
     for service in compose["services"].values():
         assert all(isinstance(port, str) and port.startswith("127.0.0.1:") for port in service.get("ports", []))
         assert all(volume.split(":", 1)[0] in named_volumes for volume in service.get("volumes", []))
+
+
+def test_docker_full_profile_includes_emotivoice_and_persists_its_models():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+
+    assert "COPY requirements.txt ./" in dockerfile
+    assert "-r requirements/full.txt" in (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert "vendor/emotivoice/LICENSE" in dockerfile
+    assert "vendor/emotivoice/frontend.py" in dockerfile
+    assert "autoyou-data:/home/autoyou/.local/share/AutoYou" in compose["services"]["autoyou"]["volumes"]

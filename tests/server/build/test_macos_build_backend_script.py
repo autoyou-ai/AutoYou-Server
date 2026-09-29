@@ -118,6 +118,8 @@ def test_macos_release_profiles_keep_voice_stack_in_connector_full_only():
     assert 'REQUIREMENTS_TYPE="full"' in build_all
     assert 'RELEASE_PROFILE="connector-full"' in build_all
     assert "requirements_has_voice" in build_backend
+    assert "desktop_args+=(--include-emotivoice)" in build_backend
+    assert "compiled EmotiVoice JETS module" in build_backend
     assert "-r voice.txt" not in binary_default
     assert "-r voice.txt" in full
 

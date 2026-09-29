@@ -476,11 +476,32 @@ echo "Building compiled runtime modules..."
     --build-root "$RUNTIME_MODULE_BUILD_ROOT" \
     --jobs "$NUITKA_JOBS" \
     --nuitka-arg=--disable-plugin=transformers \
-    --include-sibling-agents
+    --include-sibling-agents \
+    --include-emotivoice
 
 for native_module in remote_desktop_input remote_desktop_settings; do
     if ! compgen -G "${FINAL_BACKEND_ROOT}/runtime_modules/shared/${native_module}*.so" >/dev/null; then
         echo "Compiled native remote desktop module is missing: runtime_modules/shared/${native_module}*.so" >&2
+        exit 1
+    fi
+done
+
+for required_emotivoice_module in \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/frontend*.so" \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets*.so" \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/config/joint/config*.so"; do
+    if ! compgen -G "$required_emotivoice_module" >/dev/null; then
+        echo "Compiled EmotiVoice module is missing: $required_emotivoice_module" >&2
+        exit 1
+    fi
+done
+for required_emotivoice_asset in \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/data/youdao/text/tokenlist" \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/data/youdao/text/speaker2" \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/lexicon/librispeech-lexicon.txt" \
+    "${FINAL_BACKEND_ROOT}/runtime_modules/vendor/emotivoice/LICENSE"; do
+    if [[ ! -f "$required_emotivoice_asset" ]]; then
+        echo "Packaged EmotiVoice runtime asset is missing: $required_emotivoice_asset" >&2
         exit 1
     fi
 done

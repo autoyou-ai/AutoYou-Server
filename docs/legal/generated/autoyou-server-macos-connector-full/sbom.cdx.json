@@ -54,6 +54,32 @@
       "licenses": [
         {
           "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "EmotiVoice inference code",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "vendored Python source or compiled inference modules; license included"
+        }
+      ],
+      "type": "library",
+      "version": "59f0f36de4db12825f4705dd4e0780d79dd6bb01"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "name": "Google API Terms"
           }
         }
@@ -1860,11 +1886,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "nltk>=3.9.2,<4"
+          "value": "nltk>=3.10.3,<4"
         },
         {
           "name": "specifier",
-          "value": ">=3.9.2,<4"
+          "value": ">=3.10.3,<4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3744,7 +3770,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T00:28:28+00:00",
+    "timestamp": "2026-09-29T01:53:39+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3753,7 +3779,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:bf0e34fe-99b9-44f2-861f-453c3b5a1d38",
+  "serialNumber": "urn:uuid:249ddcf3-dfa1-452a-a04f-031df01e91d3",
   "specVersion": "1.5",
   "version": 1
 }

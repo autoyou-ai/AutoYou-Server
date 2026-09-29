@@ -22,19 +22,19 @@
       "sbom": "docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json"
     },
     {
-      "componentCount": 129,
+      "componentCount": 130,
       "displayName": "AutoYou Server Windows connector-full build",
       "id": "autoyou-server-windows-connector-full",
       "notice": "docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json"
     },
     {
-      "componentCount": 129,
+      "componentCount": 130,
       "displayName": "AutoYou Server macOS connector-full build",
       "id": "autoyou-server-macos-connector-full",
       "notice": "docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json"
     }
   ],
-  "generatedAt": "2026-09-29T00:28:28+00:00"
+  "generatedAt": "2026-09-29T01:53:39+00:00"
 }
