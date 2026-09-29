@@ -103,6 +103,11 @@ def recommend_ollama_num_ctx(
     # Newer Ollama (0.6+) pre-allocates the full KV-cache for num_ctx upfront.
     # Values here are conservative to avoid "memory layout cannot be allocated"
     # errors; agent.py retries with halved num_ctx if the error still occurs.
+    # ponytail: host RAM does not reveal free VRAM; keep 8B defaults at 8K and
+    # use model_behavior.num_ctx as the hardware-specific calibration override.
+    if size_b is not None and 4.5 < size_b <= 9.5:
+        return 8192
+
     if ram_gb is None:
         if size_b is not None and size_b <= 4.5:
             return 8192

@@ -18,11 +18,16 @@ from tests.support.paths import ensure_repo_on_path
 ensure_repo_on_path()
 
 import autoyou_agents.agent as root_agent_module
+from autoyou_agents import prompt as root_prompt
 
 from autoyou_agents.agent import _build_resilient_fallback_model
 
 
 class RootAgentFallbackTest(unittest.TestCase):
+    def test_root_prompt_grades_only_answers_the_user_supplied(self):
+        self.assertIn("treat “I don't know” as unanswered", root_prompt.CORE_BEHAVIOR)
+        self.assertIn("Never invent an answer the user did not give", root_prompt.CORE_BEHAVIOR)
+
     def test_build_resilient_fallback_model_prefixes_ollama_provider(self):
         with mock.patch.dict(
             os.environ,
