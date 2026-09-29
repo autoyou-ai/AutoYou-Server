@@ -9,6 +9,7 @@ AutoYou Server is source-available under the [LICENSE](LICENSE). It is not an OS
 - Never submit secrets, credentials, signing material, non-release logs, user data, generated binaries, or unreleased planning material.
 - Keep the public tree source-available only. Do not add `.llm`, `autoyou-core`, `autoyou_lite`, `autoyou-website`, personal workspaces, runtime profiles, model outputs, voice-training datasets, browser profiles, generated archives, or private docs.
 - Keep client applications and hosted account services outside this server repository.
+- Source files carry provenance markers (`AUTOYOU-PROVENANCE-*` comment lines and `__debug_provenance_*__` variables). They are maintainer debug traces and do not change your rights or obligations under the [LICENSE](LICENSE). Leave them in place when you edit a file.
 - Submit only material you have the right to license; check employer, third-party, and patent obligations before proposing code or documentation.
 - External code contributions require a maintainer request and the applicable written contribution agreement. Do not open a pull request until that has been arranged.
 

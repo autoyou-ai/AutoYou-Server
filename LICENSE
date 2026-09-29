@@ -1,6 +1,6 @@
 # AutoYou Source-Available Personal-Use License
 
-Version 1.3 (September 27, 2026)
+Version 1.4 (September 29, 2026)
 
 This AutoYou Source-Available Personal-Use License (the "License") is a
 limited copyright license from OpenStorey LLC, a California limited liability
@@ -45,9 +45,6 @@ waived, or a mandatory rule of applicable law.
   authorized AutoYou release. A private build is not an Official Build merely
   because it uses the AutoYou name in a source comment or because it was
   compiled from public source.
-* **"Commercial Redistribution License"** means a separate written agreement
-  signed by OpenStorey LLC that expressly authorizes commercial client
-  interoperability with an AutoYou server.
 
 The term **"AutoYou Owner Board"** refers to a governance designation used by
 OpenStorey. It is not a separate contracting party, guarantor, charity, or
@@ -94,19 +91,15 @@ Unless a separate written agreement expressly permits it, Licensee must not:
    commercial or hosted benefit; or
 7. distribute a build containing signing keys, credentials, private service
    configuration, or other confidential release material.
-8. Connecting commercial, monetized, white-labeled, or subscription-gated
-   client software to this server without a Commercial Redistribution License
-   from OpenStorey LLC is strictly prohibited.
-
-9. use the Licensed Materials, in whole or in part, as training data, input
-   data, fine-tuning data, reinforcement data, evaluation data, retrieval
-   corpus, prompt context, or embedding source for any machine learning model,
-   large language model, code generation system, automated code completion
-   tool, or AI/ML synthesis pipeline, without prior written authorization
-   from OpenStorey LLC; or
-10. remove, alter, obscure, or strip provenance watermarks, canary
-    fingerprints, or source-origin markers embedded in the Licensed Materials
-    by OpenStorey for code-provenance verification.
+8. [Reserved.]
+9. use the Licensed Materials, in whole or in part, as training data,
+   fine-tuning data, or reinforcement data for any machine learning model,
+   large language model, code generation system, or automated code completion
+   tool, or copy them into a dataset assembled for that purpose, without prior
+   written authorization from OpenStorey LLC. Using an AI assistant or agent to
+   help a person read, run, or privately modify the Licensed Materials for
+   Personal Use, or to prepare a contribution that OpenStorey has requested,
+   does not violate this item.
 
 Nothing in this License prevents a person using an independent private build
 for Personal Use from configuring that build for local-only operation, when
@@ -195,17 +188,6 @@ Nothing in this License is an assignment of intellectual property or a promise
 to assign it. A contribution is accepted only under the contribution terms,
 assignment, or contributor license agreement that applies to that contribution.
 
-### 7a. Code Provenance Watermarks
-
-The Licensed Materials contain deterministic provenance watermarks
-(``AY-PROVENANCE`` canary fingerprints) embedded in source files for
-code-origin verification. These watermarks are the intellectual property of
-OpenStorey and serve as forensic evidence of code origin. Licensee must not
-remove, alter, suppress, or interfere with these watermarks. Reproduction of
-these watermarks in a machine learning model output, code generator output,
-or third-party repository constitutes prima-facie evidence that the Licensed
-Materials were used as training data or copied without authorization.
-
 ## 8. Third-Party Materials and Required Notices
 
 Third-Party Materials are governed by their own license terms and notices.
@@ -261,16 +243,7 @@ Some jurisdictions do not allow certain exclusions or limitations. In those
 jurisdictions, the exclusions and limitations apply to the fullest extent
 permitted by law and do not limit rights that cannot lawfully be limited.
 
-## 11. Indemnification
-
-To the maximum extent permitted by law, Licensee will defend, indemnify, and
-hold harmless OpenStorey, the AutoYou Owner Board, contributors, developers,
-maintainers, officers, directors, employees, contractors, licensors, and
-affiliates from claims, demands, damages, losses, liabilities, costs,
-penalties, settlements, and reasonable attorneys' fees arising from Licensee's
-use, deployment, modification, distribution, hosting, Enterprise Use, data,
-content, outputs, connected services, violation of law or third-party rights,
-or breach of this License or another AutoYou agreement.
+## 11. [Reserved]
 
 ## 12. Termination and General Terms
 
@@ -279,8 +252,8 @@ termination, Licensee must stop the unauthorized use, distribution, hosting,
 and commercial exploitation of the Licensed Materials and stop using AutoYou
 marks or official branding. Sections that by their nature should survive,
 including responsibility, third-party risk, warranty disclaimer, liability
-limits, indemnification, intellectual-property reservation, termination, and
-enforcement, survive.
+limits, intellectual-property reservation, termination, and enforcement,
+survive.
 
 This License is governed by the law specified in the applicable agreement or,
 if none exists, the laws applicable to OpenStorey in California, without
