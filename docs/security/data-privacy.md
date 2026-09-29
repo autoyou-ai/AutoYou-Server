@@ -367,9 +367,9 @@ We respond within 30 days.
 
 ## Next Steps
 
-- [Security Modes →](/security/security-modes)
-- [Encryption Details →](/security/encryption)
-- [What is AutoYou →](/user/what-is-autoyou)
+- [Security Modes →](security-modes.md)
+- [Encryption Details →](encryption.md)
+- [What is AutoYou →](../../README.md)
 
 ---
 

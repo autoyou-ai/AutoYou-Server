@@ -2,7 +2,7 @@
 
 This guide is for the full AutoYou server that lives at the repository root.
 
-If you only want the lighter mobile bridge, use the [`autoyou-lite` guide](../autoyou_lite/README.md) instead.
+If you only want the lighter mobile bridge, use `autoyou-lite` (distributed separately) instead.
 
 ## 1. Decide which profile you want
 
@@ -91,11 +91,7 @@ Open the Admin UI and:
 
 ## 7. Pair a client
 
-Common client entrypoints:
-
-- [clients/android/README.md](../clients/android/README.md)
-- [clients/ios/README.md](../clients/ios/README.md)
-- [clients/python/README.md](../clients/python/README.md)
+Client applications are distributed separately from this repository. See [www.autoyou.me](https://www.autoyou.me/) for the current apps.
 
 Most people pair through one of these:
 
@@ -128,7 +124,7 @@ Voice:
 Telegram User:
 
 - optional owner-only connection to the account's Saved Messages
-- guide: [Telegram User](../docs/user/telegram-user.md)
+- policy: [Messaging partner policy](../docs/legal/messaging-partner-policy.md)
 
 ## 9. Lightweight alternative
 

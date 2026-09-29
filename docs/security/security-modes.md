@@ -444,10 +444,8 @@ The security mode applies to all pairings. All devices must use the same mode.
 
 ## Next Steps
 
-- [Encryption Details ->](/security/encryption)
-- [Data Privacy ->](/security/data-privacy)
-- [Pairing Security ->](/security/pairing-security)
-- [Cloud Pairing ->](/user/cloud-pairing)
+- [Encryption Details ->](encryption.md)
+- [Data Privacy ->](data-privacy.md)
 
 ---
 
