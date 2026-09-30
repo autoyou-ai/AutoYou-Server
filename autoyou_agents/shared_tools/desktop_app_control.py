@@ -84,7 +84,8 @@ def _missing_desktop_manifest_message(agent_dir: Path) -> str:
 def _ensure_interactive_desktop() -> None:
     """Ensure the current thread is attached to the interactive user desktop (WinSta0\\Default) on Windows.
     This resolves issues where GUI automation commands run under background service accounts
-    or virtual desktops (e.g. agy-...) and fail to interact with visible user windows.
+    or virtual desktops (e.g. agy-...) and fail to interact with visible user windows. This helper
+    is also used for read-only probes, so it must not reposition the user's pointer.
     """
     if platform.system().lower() != "windows":
         return
@@ -119,12 +120,6 @@ def _ensure_interactive_desktop() -> None:
                     LOGGER.warning("Fallback SetThreadDesktop to Default failed.")
     except Exception as e:
         LOGGER.warning(f"Error during Windows desktop thread switching: {e}", exc_info=True)
-    try:
-        import ctypes
-        # Move cursor away from the corner to prevent PyAutoGUI FailSafeException
-        ctypes.windll.user32.SetCursorPos(100, 100)
-    except Exception:
-        pass
 
 
 def _get_repo_root() -> Path:
