@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS binary-default build (autoyou-server-macos-default)
 Release profile: binary-default
 Dependency profile: binary-default
-Generated: 2026-09-29T23:57:37+00:00
+Generated: 2026-09-30T04:10:22+00:00
 
 First signed macOS commercial server binary profile using the local-first binary-default dependency profile.
 
