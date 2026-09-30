@@ -308,7 +308,11 @@ def test_admin_mcp_setup_ui_generates_and_exports_matching_private_adapter_confi
     assert "OpenAI Secure MCP Tunnel" in source
     assert "Tunnels Read and Use permissions" in source
     assert "CONTROL_PLANE_TUNNEL_ID" in source
+    assert "CONTROL_PLANE_ORGANIZATION_ID" in source
+    assert "not the project ID" in source
     assert "CONTROL_PLANE_API_KEY" in source
+    assert "CONTROL_PLANE_ORGANIZATION_ID" in launcher_source
+    assert "--control-plane.organization-id $OrganizationId" in launcher_source
     assert "Read-Host" in launcher_source
     assert "SecureStringToBSTR" in launcher_source
     assert "$env:OPENAI_API_KEY" not in launcher_source
