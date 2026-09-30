@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'">
+  <link rel="icon" href="data:,">
+  <title>Neon Horizon · AutoYou</title>
+  <style>
+    :root{font:16px/1.4 system-ui,sans-serif;color:#fff;background:#080b1c}
+    *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%;touch-action:none}
+    .hud{position:absolute;inset:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:clamp(18px,3vw,38px);pointer-events:none;text-shadow:0 2px 12px #050614}
+    .brand{font-weight:900;font-style:italic;font-size:clamp(1.1rem,2.4vw,2rem);letter-spacing:.06em;color:#fff;line-height:1}.brand span{color:#fb51dc}
+    .score{padding-right:58px;text-align:right;font-weight:800;letter-spacing:.14em;font-size:.8rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,4rem);line-height:1;color:#fff;letter-spacing:-.07em}
+    .controls{position:absolute;inset:auto 0 max(16px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:clamp(10px,2vw,22px);padding:0 16px}
+    button,a{font:inherit}button{cursor:pointer;border:1px solid #7cf4ff;border-radius:14px;background:#0d1436d9;color:#e9fdff;box-shadow:0 0 22px #12bfe854;font-weight:900;letter-spacing:.08em}
+    .controls button{min-width:clamp(78px,15vw,160px);min-height:72px;font-size:clamp(.85rem,2vw,1.15rem);touch-action:none}
+    button:hover,button:focus-visible{background:#12366a;outline:2px solid #fff;outline-offset:2px}
+    button:active{transform:translateY(2px);background:#fa42cb;color:#080b1c}
+    .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#070b20a8;padding:22px}
+    .overlay[hidden]{display:none}.panel{max-width:530px;padding:clamp(24px,5vw,48px);text-align:center;background:#09122bee;border:1px solid #ff50db;border-radius:22px;box-shadow:0 0 60px #e027bd57}
+    .eyebrow{color:#7ff8ff;letter-spacing:.25em;font-size:.75rem;font-weight:800;text-transform:uppercase}
+    h1{margin:10px 0;font-size:clamp(3rem,8vw,6rem);line-height:.88;letter-spacing:-.08em;font-style:italic;text-transform:uppercase}
+    h1 span{color:#ff54da}p{color:#bed0eb}.panel button{padding:14px 28px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 15px}
+    .hint{font-size:.85rem}
+    #status,#native-status{position:absolute;left:clamp(18px,3vw,38px);font-size:.75rem;font-weight:800;letter-spacing:.14em;color:#8bf7ff;text-transform:uppercase;text-shadow:0 2px 9px #000}
+    #status{top:104px}#native-status{top:126px;color:#c6a8f5}
+    @media(max-width:600px){.controls button{min-height:64px}.controls{gap:8px}.hud{padding:17px}#status,#native-status{left:17px}#status{top:75px}#native-status{top:96px}}
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Neon runner game. Use left, jump, and right controls to avoid pink obstacles and collect cyan diamonds."></canvas>
+  <div class="hud"><div class="brand">NEON <span>HORIZON</span></div><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small></div></div>
+  <div id="status" role="status" aria-live="polite">Ready to run</div>
+  <div id="native-status" role="status" aria-live="polite">Playing on this device · no video stream</div>
+  <div class="controls" aria-label="Game controls">
+    <button type="button" data-action="left" aria-label="Move left">◀ LEFT</button>
+    <button type="button" data-action="jump" aria-label="Jump">▲ JUMP</button>
+    <button type="button" data-action="right" aria-label="Move right">RIGHT ▶</button>
+  </div>
+  <div class="overlay" id="overlay"><div class="panel">
+    <div class="eyebrow">On-device game</div>
+    <h1>NEON<br><span>HORIZON</span></h1>
+    <p id="message">Dodge the pink gates. Collect the cyan shards. Stay on the road.</p>
+    <button id="start" type="button">START RUN</button>
+    <div class="hint">Hold controls, swipe to steer or jump, or tilt your phone. Keyboard arrows and Space work too.</div>
+    <p class="hint">Original demo inspired by the retrowave runner feel of Sunset-Cyberspace.</p>
+  </div></div>
+  <script>
+  (() => {
+    const canvas = document.querySelector('#game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.querySelector('#score');
+    const bestEl = document.querySelector('#best');
+    const statusEl = document.querySelector('#status');
+    const overlay = document.querySelector('#overlay');
+    const startButton = document.querySelector('#start');
+    const message = document.querySelector('#message');
+    let width = 0, height = 0, scale = 1, last = 0;
+    let mode = 'ready', lane = 0, visualLane = 0, jumpTime = 0, score = 0, best = 0;
+    let distance = 0, spawnTime = 0, spawnCount = 0, objects = [];
+    const heldControls = new Map(), pointers = new Map();
+    let repeatIn = 0;
+    let tiltReference = null;
+    const tiltThreshold = 1.8; // m/s²; tune for device motion noise.
+    const stars = Array.from({length: 70}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.45, r: i % 9 ? 1 : 2}));
+
+    function resize() {
+      width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    }
+    function start() {
+      mode = 'running'; lane = 0; visualLane = 0; jumpTime = 0; score = 0;
+      distance = 0; spawnTime = 0.9; spawnCount = 0; objects = [];
+      tiltReference = null;
+      overlay.hidden = true; statusEl.textContent = 'Running';
+      scoreEl.textContent = '0000';
+    }
+    function finish() {
+      mode = 'over'; best = Math.max(best, Math.floor(score));
+      heldControls.clear(); pointers.clear();
+      bestEl.textContent = `BEST ${String(best).padStart(4, '0')}`;
+      statusEl.textContent = 'Run over';
+      message.textContent = `Run over. You scored ${Math.floor(score)}. Go again?`;
+      startButton.textContent = 'RUN AGAIN'; overlay.hidden = false;
+    }
+    function action(name) {
+      if (mode !== 'running') { start(); return; }
+      if (name === 'left') lane = Math.max(-1, lane - 1);
+      if (name === 'right') lane = Math.min(1, lane + 1);
+      if (name === 'jump' && jumpTime <= 0) jumpTime = 0.7;
+    }
+    startButton.addEventListener('click', start);
+    document.querySelectorAll('[data-action]').forEach(button => {
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault(); button.setPointerCapture(event.pointerId);
+        heldControls.set(event.pointerId, button.dataset.action);
+        action(button.dataset.action); repeatIn = 0.22;
+      });
+      button.addEventListener('pointerup', event => heldControls.delete(event.pointerId));
+      button.addEventListener('pointercancel', event => heldControls.delete(event.pointerId));
+      button.addEventListener('click', event => { if (!event.detail) action(button.dataset.action); });
+    });
+    canvas.addEventListener('pointerdown', event => {
+      canvas.setPointerCapture(event.pointerId);
+      pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, moved: false});
+    });
+    canvas.addEventListener('pointermove', event => {
+      const pointer = pointers.get(event.pointerId);
+      if (!pointer) return;
+      const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 36) return;
+      if (Math.abs(dx) >= Math.abs(dy)) action(dx < 0 ? 'left' : 'right');
+      else if (dy < 0) action('jump');
+      pointer.x = event.clientX; pointer.y = event.clientY; pointer.moved = true;
+    });
+    canvas.addEventListener('pointerup', event => {
+      const pointer = pointers.get(event.pointerId);
+      pointers.delete(event.pointerId);
+      if (pointer && !pointer.moved) {
+        const x = event.clientX / width;
+        action(x < 0.35 ? 'left' : x > 0.65 ? 'right' : 'jump');
+      }
+    });
+    canvas.addEventListener('pointercancel', event => pointers.delete(event.pointerId));
+    addEventListener('blur', () => { heldControls.clear(); pointers.clear(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { heldControls.clear(); pointers.clear(); }
+    });
+    window.autoYouGameTilt = (x, y) => {
+      if (mode !== 'running' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (!tiltReference) {
+        tiltReference = {axis: Math.abs(x) <= Math.abs(y) ? 'x' : 'y', x, y, direction: 0};
+        return;
+      }
+      const delta = tiltReference.axis === 'x' ? x - tiltReference.x : y - tiltReference.y;
+      const direction = delta < -tiltThreshold ? -1 : delta > tiltThreshold ? 1 : 0;
+      if (direction && direction !== tiltReference.direction) action(direction < 0 ? 'left' : 'right');
+      tiltReference.direction = direction;
+    };
+    addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      const command = key === 'arrowleft' || key === 'a' ? 'left'
+        : key === 'arrowright' || key === 'd' ? 'right'
+        : key === ' ' || key === 'arrowup' || key === 'w' ? 'jump' : null;
+      if (command) { event.preventDefault(); if (!event.repeat) action(command); }
+      if (key === 'enter' && mode !== 'running') start();
+    });
+    addEventListener('resize', () => { resize(); tiltReference = null; });
+
+    const horizon = () => height * 0.48;
+    const roadY = z => horizon() + (height * 0.52) * z * z;
+    const roadHalf = z => 20 + width * 0.46 * z;
+    const laneX = (laneValue, z) => width / 2 + laneValue * roadHalf(z) * 0.62;
+    function update(dt) {
+      if (mode !== 'running') return;
+      if (heldControls.size && (repeatIn -= dt) <= 0) {
+        for (const name of heldControls.values()) action(name);
+        repeatIn = 0.18;
+      }
+      score += dt * 12; distance += dt * (0.38 + Math.min(score / 450, 0.4));
+      visualLane += (lane - visualLane) * Math.min(1, dt * 13);
+      jumpTime = Math.max(0, jumpTime - dt);
+      spawnTime -= dt;
+      if (spawnTime <= 0) {
+        const nextLane = spawnCount < 2 ? [1, -1][spawnCount] : Math.floor(Math.random() * 3) - 1;
+        spawnCount += 1;
+        objects.push({lane: nextLane, z: 0.02, kind: Math.random() < 0.28 ? 'shard' : 'gate', passed: false});
+        spawnTime = Math.max(0.55, 1.1 - score / 750);
+      }
+      const speed = 0.42 + Math.min(score / 350, 0.35);
+      for (const item of objects) {
+        item.z += dt * speed;
+        if (!item.passed && item.z >= 0.9) {
+          item.passed = true;
+          if (item.lane === lane) {
+            if (item.kind === 'shard') score += 35;
+            else if (jumpTime <= 0.15) { finish(); break; }
+          }
+        }
+      }
+      objects = objects.filter(item => item.z < 1.12);
+      scoreEl.textContent = String(Math.floor(score)).padStart(4, '0');
+    }
+    function line(x1, y1, x2, y2, color, weight = 1) {
+      ctx.strokeStyle = color; ctx.lineWidth = weight;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    function drawBackground(time) {
+      const sky = ctx.createLinearGradient(0, 0, 0, height);
+      sky.addColorStop(0, '#070c23'); sky.addColorStop(0.48, '#301348'); sky.addColorStop(1, '#130c2a');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#9dc9ff';
+      for (const star of stars) {
+        ctx.globalAlpha = 0.2 + (Math.sin(time * 2 + star.x * 20) + 1) * 0.2;
+        ctx.fillRect(star.x * width, star.y * height, star.r, star.r);
+      }
+      ctx.globalAlpha = 1;
+      const sunY = horizon() - Math.min(width, height) * 0.12;
+      const radius = Math.min(width * 0.16, height * 0.2);
+      const glow = ctx.createRadialGradient(width / 2, sunY, radius * 0.15, width / 2, sunY, radius * 1.8);
+      glow.addColorStop(0, '#ffb458bb'); glow.addColorStop(0.52, '#fa49ba66'); glow.addColorStop(1, '#fa49ba00');
+      ctx.fillStyle = glow; ctx.fillRect(width / 2 - radius * 2, sunY - radius * 2, radius * 4, radius * 4);
+      const sun = ctx.createLinearGradient(0, sunY - radius, 0, sunY + radius);
+      sun.addColorStop(0, '#ffe78a'); sun.addColorStop(1, '#f5589a');
+      ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(width / 2, sunY, radius, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#301348';
+      for (let stripe = 0; stripe < 5; stripe++) {
+        const y = sunY + radius * (0.25 + stripe * 0.17);
+        ctx.fillRect(width / 2 - radius, y, radius * 2, 3 + stripe * 1.4);
+      }
+      ctx.fillStyle = '#100b29';
+      ctx.beginPath(); ctx.moveTo(0, horizon());
+      for (let x = 0; x <= width; x += width / 12) {
+        ctx.lineTo(x, horizon() - height * (0.04 + ((Math.sin(x * 0.027) + 1) * 0.028)));
+      }
+      ctx.lineTo(width, horizon()); ctx.fill();
+    }
+    function drawRoad() {
+      const h = horizon();
+      ctx.fillStyle = '#0c102c';
+      ctx.beginPath(); ctx.moveTo(width / 2 - 20, h); ctx.lineTo(width / 2 + 20, h);
+      ctx.lineTo(width / 2 + roadHalf(1), height); ctx.lineTo(width / 2 - roadHalf(1), height); ctx.fill();
+      ctx.shadowColor = '#f044db'; ctx.shadowBlur = 15;
+      for (const edge of [-1, 1]) line(width / 2 + edge * 20, h, width / 2 + edge * roadHalf(1), height, '#ff4be3', 3);
+      ctx.shadowBlur = 0;
+      for (const stripe of [-0.33, 0.33]) {
+        line(width / 2 + stripe * 20, h, width / 2 + stripe * roadHalf(1), height, '#b637d666', 1);
+      }
+      for (let i = 0; i < 19; i++) {
+        const z = ((i / 18 + distance * 0.16) % 1) ** 1.45;
+        line(width / 2 - roadHalf(z), roadY(z), width / 2 + roadHalf(z), roadY(z), '#e842d788', 1 + z * 1.5);
+      }
+    }
+    function drawItem(item) {
+      const z = item.z;
+      if (z <= 0 || z > 1.12) return;
+      const x = laneX(item.lane, z), y = roadY(z), size = 5 + 48 * z;
+      ctx.save(); ctx.translate(x, y); ctx.shadowBlur = 20 * z;
+      if (item.kind === 'shard') {
+        ctx.shadowColor = '#58f8ff'; ctx.fillStyle = '#7cfaff';
+        ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size * 0.48, -size * 0.3);
+        ctx.lineTo(0, size * 0.4); ctx.lineTo(-size * 0.48, -size * 0.3); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      } else {
+        ctx.shadowColor = '#ff4dda'; ctx.strokeStyle = '#ff4dda'; ctx.lineWidth = Math.max(2, z * 6);
+        ctx.strokeRect(-size * 0.58, -size * 1.15, size * 1.16, size * 1.15);
+        line(-size * 0.58, -size * 1.15, size * 0.58, 0, '#ff93ed', 2);
+      }
+      ctx.restore();
+    }
+    function drawPlayer() {
+      const x = laneX(visualLane, 0.91), y = roadY(0.91) - 28 - Math.sin((0.7 - jumpTime) / 0.7 * Math.PI) * (jumpTime ? 90 : 0);
+      ctx.save(); ctx.translate(x, y);
+      ctx.shadowColor = '#54f7ff'; ctx.shadowBlur = 28;
+      ctx.fillStyle = '#68faff';
+      ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(22, 20); ctx.lineTo(0, 10); ctx.lineTo(-22, 20); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(7, 7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    function frame(now) {
+      const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
+      last = now; update(dt); drawBackground(now / 1000); drawRoad();
+      objects.sort((a, b) => a.z - b.z).forEach(drawItem); drawPlayer();
+      requestAnimationFrame(frame);
+    }
+    resize(); requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

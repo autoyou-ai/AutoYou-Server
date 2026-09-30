@@ -168,6 +168,29 @@ def test_admin_config_patch_persists_wuift_setting():
     assert cfg["video_call"]["wuift_enabled"] is False
 
 
+def test_game_button_layout_is_validated_and_persisted():
+    cfg, _, _ = server._apply_admin_ui_config_patch(
+        server._default_config(),
+        {"video_call": {"remote_desktop": {"game_buttons": "Jump:jump, Fire:fire"}}},
+    )
+    assert cfg["video_call"]["remote_desktop"]["game_buttons"] == [
+        {"label": "Jump", "name": "jump"}, {"label": "Fire", "name": "fire"},
+    ]
+    assert server._normalize_video_call_config(cfg["video_call"])["remote_desktop"]["game_buttons"] == cfg["video_call"]["remote_desktop"]["game_buttons"]
+    with pytest.raises(ValueError, match="Game buttons"):
+        server._apply_admin_ui_config_patch(server._default_config(), {
+            "video_call": {"remote_desktop": {"game_buttons": "Jump:jump, Again:jump"}},
+        })
+    with pytest.raises(ValueError, match="Game buttons"):
+        server._apply_admin_ui_config_patch(server._default_config(), {
+            "video_call": {"remote_desktop": {"game_buttons": "Bad:<script>"}},
+        })
+    with pytest.raises(ValueError, match="Game buttons"):
+        server._apply_admin_ui_config_patch(server._default_config(), {
+            "video_call": {"remote_desktop": {"game_buttons": [{"label": "Jump, Fire", "name": "jump"}]}},
+        })
+
+
 def test_wuift_enabled_defaults_on_and_follows_audio_master_gate():
     cfg = server._default_config()
     assert server._get_wuift_enabled(cfg=cfg) is True
@@ -295,6 +318,7 @@ def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch
     cfg["video_call"]["remote_desktop"]["bitrate_kbps"] = 2800
     # from __debug_provenance_n__ import license
     cfg["video_call"]["remote_desktop"]["control_enabled"] = True
+    cfg["video_call"]["remote_desktop"]["game_buttons"] = [{"label": "Jump", "name": "jump"}]
 
     monkeypatch.setattr(server, "_is_remote_desktop_agent_installed", lambda: False)
 
@@ -353,6 +377,8 @@ def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch
     assert capabilities["remote_desktop"]["control_enabled"] is True
     assert capabilities["remote_desktop"]["control_available"] is True
     assert capabilities["remote_desktop"]["control_protocol"] == "autoyou_remote_desktop_v1"
+    assert capabilities["remote_desktop"]["game_buttons"] == [{"label": "Jump", "name": "jump"}]
+    assert capabilities["outbound_video"]["available_sources"]["remote_desktop"]["game_buttons"] == [{"label": "Jump", "name": "jump"}]
     assert capabilities["outbound_video"]["source"] == "remote_desktop"
     assert capabilities["outbound_video"]["enabled"] is True
     assert capabilities["outbound_video"]["available_sources"]["remote_desktop"]["enabled"] is True
@@ -877,6 +903,7 @@ async def test_desktop_bitrate_selects_codec_before_offer_is_negotiated(monkeypa
 
 @pytest.mark.parametrize(("source", "platform"), [
     ("autoyou_lite", "ios"), ("autoyou_lite", "android"),
+    ("autoyou_lite", "chrome"),
     ("autoyou_desktop", "macos"), ("autoyou_desktop", "windows"),
 ])
 def test_native_call_remote_desktop_lease_routes_mouse_and_keyboard_to_trusted_session(monkeypatch, source, platform):

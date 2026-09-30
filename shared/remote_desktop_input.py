@@ -73,6 +73,11 @@ def normalize_remote_desktop_control_payload(payload: Any) -> Optional[Dict[str,
         normalized["source"] = source
     if action == "start":
         normalized["fullscreen"] = True
+        mode = _bounded_string(payload.get("mode") or "desktop", 16).lower()
+        if mode not in {"desktop", "game"}:
+            return None
+        if mode == "game":
+            normalized["mode"] = mode
     touch_mode = _bounded_string(payload.get("touch_mode"), 32).lower()
     if touch_mode in {"direct", "relative"}:
         normalized["touch_mode"] = touch_mode

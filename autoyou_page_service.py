@@ -793,6 +793,16 @@ class AutoYouPageService:
             "max_size": None,
             "subprotocols": requested_protocols or None,
         }
+        if agent_name == "game_agent":
+            origin = urlparse(str(websocket.headers.get("origin") or ""))
+            if (
+                self._peer_is_this_computer(websocket.client.host if websocket.client else "")
+                and origin.scheme in {"http", "https"}
+                and origin.hostname in {"localhost", "127.0.0.1", "::1"}
+                and origin.netloc.lower() == str(websocket.headers.get("host") or "").lower()
+                and not any(name in websocket.headers for name in REMOTE_BROWSER_IDENTITY_HEADERS)
+            ):
+                connect_kwargs["origin"] = f"http://127.0.0.1:{proxy_port}"
         extra_headers = self._proxy_websocket_headers(dict(websocket.headers))
         if home_network_role is not None:
             extra_headers = {

@@ -10,6 +10,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urljoin
 
 from fastapi import FastAPI
@@ -515,6 +516,54 @@ def test_page_service_proxies_agent_frontend_websocket(monkeypatch):
     assert captured["url"] == "ws://127.0.0.1:8087/ws/screen?monitor=0"
     assert captured["kwargs"]["subprotocols"] == ["screen-v1"]
     assert upstream.sent == ["synthetic-auth"]
+
+
+def test_game_proxy_sets_local_origin_only_for_host_browser(monkeypatch):
+    service = autoyou_page_service.AutoYouPageService()
+    monkeypatch.setattr(service, "_frontend_registry_map", lambda: {
+        "game_agent": {"proxy_port": 8112, "websocket_enabled": True}
+    })
+    calls = []
+
+    class Refused:
+        async def __aenter__(self):
+            raise OSError("synthetic closed upstream")
+
+        async def __aexit__(self, *_):
+            pass
+
+    def connect(url, **kwargs):
+        calls.append((url, kwargs))
+        return Refused()
+
+    monkeypatch.setattr(autoyou_page_service.websockets, "connect", connect)
+
+    class Socket:
+        client = SimpleNamespace(host="127.0.0.1")
+        url = SimpleNamespace(query="", path="/agent/game_agent/api/game/native-input", scheme="ws")
+
+        def __init__(self, headers):
+            self.headers = headers
+
+        async def close(self, **_):
+            pass
+
+    headers = {"host": "127.0.0.1:8067", "origin": "http://127.0.0.1:8067"}
+    asyncio.run(service._proxy_agent_frontend_websocket(
+        Socket(headers), agent_name="game_agent", proxy_path="api/game/native-input"))
+    assert calls[-1] == ("ws://127.0.0.1:8112/api/game/native-input", {
+        "max_size": None, "subprotocols": None, "origin": "http://127.0.0.1:8112"
+    })
+
+    asyncio.run(service._proxy_agent_frontend_websocket(
+        Socket({**headers, "x-autoyou-remote-browser": "webrtc"}),
+        agent_name="game_agent", proxy_path="api/game/native-input"))
+    assert "origin" not in calls[-1][1]
+
+    asyncio.run(service._proxy_agent_frontend_websocket(
+        Socket({**headers, "origin": "http://127.0.0.1:9999"}),
+        agent_name="game_agent", proxy_path="api/game/native-input"))
+    assert "origin" not in calls[-1][1]
 
 
 def test_page_service_proxies_agent_frontend_websocket_binary_frames(monkeypatch):

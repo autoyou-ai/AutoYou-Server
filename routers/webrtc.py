@@ -14,7 +14,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 from typing import Any, Callable, Dict
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50"
@@ -25,6 +25,71 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
+    @admin_app.get("/api/webrtc/game-input/connection")
+    async def admin_get_game_input_connection(request: Request):
+        auth_error = server._require_webrtc_playback_auth_json(request)
+        if auth_error:
+            return auth_error
+        if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
+            return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
+        return JSONResponse(
+            content={
+                "success": True,
+                "path": "/api/webrtc/game-input/stream",
+                "token": server.WEBRTC.game_input_hub.token,
+                "engine_connected": server.WEBRTC.game_input_hub.connected,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @admin_app.websocket("/api/webrtc/game-input/stream")
+    async def local_game_input_stream(websocket: WebSocket):
+        peer = websocket.client.host if websocket.client else ""
+        authorization = websocket.headers.get("authorization", "")
+        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        hub = server.WEBRTC.game_input_hub
+        if (
+            not server._is_loopback_client_host(peer)
+            or any(websocket.headers.get(name) for name in ("forwarded", "x-forwarded-for", "x-real-ip"))
+            or not server._get_game_mode_available(cfg=(server.STATE.config or {}))
+            or not token
+            or not server.secrets.compare_digest(token, hub.token)
+        ):
+            await websocket.close(code=1008)
+            return
+        queue = hub.attach()
+        if queue is None:
+            await websocket.close(code=1013)
+            return
+        try:
+            await websocket.accept()
+            await server.WEBRTC._sync_game_input_engine_state()
+            disconnect = server.asyncio.create_task(websocket.receive())
+            try:
+                while True:
+                    queued = server.asyncio.create_task(queue.get())
+                    done, _ = await server.asyncio.wait(
+                        (queued, disconnect), timeout=3, return_when=server.asyncio.FIRST_COMPLETED,
+                    )
+                    if disconnect in done:
+                        break
+                    if queued in done:
+                        frame = queued.result()
+                    else:
+                        queued.cancel()
+                        await server.asyncio.gather(queued, return_exceptions=True)
+                        frame = {"event": "heartbeat"}
+                    await websocket.send_json(frame)
+            finally:
+                disconnect.cancel()
+                queued.cancel()
+                await server.asyncio.gather(disconnect, queued, return_exceptions=True)
+        except (WebSocketDisconnect, OSError, RuntimeError):
+            pass
+        finally:
+            hub.detach(queue)
+            await server.WEBRTC._sync_game_input_engine_state()
+
     @admin_app.get("/api/webrtc/playback/enabled")
     async def admin_get_audio_playback_enabled(request: Request):
         auth_error = server._require_webrtc_playback_auth_json(request)
