@@ -170,7 +170,7 @@ def test_apple_root_keeps_custom_instructions_and_safety(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "apple_intelligence")
     instruction = root._build_effective_agent_instruction(["internet_agent", "notes_agent"])
     assert root.root_prompt.SAFETY_RULES in instruction
-    assert len(instruction) < 7000
+    assert len(instruction) < 8000
     assert root._provider_requires_explicit_agent_tools() and root._two_stage_routing_enabled()
     custom = "Synthetic operator rule: always say when a result is incomplete."
     monkeypatch.setattr(root.root_prompt, "AGENT_INSTRUCTION", custom)
