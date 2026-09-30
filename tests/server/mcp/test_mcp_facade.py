@@ -296,13 +296,31 @@ def test_full_mcp_admin_patch_preserves_blank_token_and_validates_settings() -> 
 def test_admin_mcp_setup_ui_generates_and_exports_matching_private_adapter_config() -> None:
     admin_ui = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
     source = admin_ui.read_text(encoding="utf-8")
+    launcher = Path(__file__).resolve().parents[4] / "scripts" / "start_autoyou_private_tunnel.ps1"
+    launcher_source = launcher.read_text(encoding="utf-8")
 
     assert 'button(actionLabel, "mcp-generate-token"' in source
     assert 'button("Download private adapter config", "mcp-download-config"' in source
     assert '"AUTOYOU_MCP_FULL_API_TOKEN=" + token' in source
-    assert '"AUTOYOU_MCP_OPERATOR_SECRET=" + operatorSecret' in source
-    assert "public HTTPS adapter URL" in source
-    assert "Your OpenAI API key is used by the model provider" in source
+    assert '"AUTOYOU_MCP_AUTH_MODE=none"' in source
+    assert '"AUTOYOU_MCP_HOST=127.0.0.1"' in source
+    assert "Your AutoYou is the brain. ChatGPT is the interface." in source
+    assert "OpenAI Secure MCP Tunnel" in source
+    assert "Tunnels Read and Use permissions" in source
+    assert "CONTROL_PLANE_TUNNEL_ID" in source
+    assert "CONTROL_PLANE_API_KEY" in source
+    assert "Read-Host" in launcher_source
+    assert "SecureStringToBSTR" in launcher_source
+    assert "$env:OPENAI_API_KEY" not in launcher_source
+    assert "Real-time voice calls are not part of MCP" in source
+    assert "mcp.autoyou.me" not in source
+    assert "data-mcp-public-url" not in source
+    assert "AUTOYOU_MCP_OPERATOR_SECRET" not in source
+    assert "AUTOYOU_MCP_PUBLIC_URL" not in source
+    assert "mcp-copy-url" not in source
+    assert "developerModeHelpUrl" in source
+    assert "model provider API key" in source
+    assert "data-mcp-connection-mode" not in source
 
 
 def test_full_mcp_no_token_exception_follows_effective_runtime_bind(monkeypatch) -> None:
