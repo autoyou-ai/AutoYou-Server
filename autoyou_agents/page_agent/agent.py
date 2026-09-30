@@ -39,6 +39,10 @@ _PAGE_FEED_ACTION_RE = re.compile(
     r"\b(?:add|save|post|send|put|submit|ingest|include)\b",
     re.IGNORECASE,
 )
+_PAGE_FEED_ITEM_ACTION_RE = re.compile(
+    r"\b(?:tag|favou?rite|star|delete|remove|clear|photo|avatar)\b",
+    re.IGNORECASE,
+)
 _PAGE_FEED_TARGET_RE = re.compile(
     r"\b(?:page\s*feed|for\s*you\s*page|autoforyou|auto\s*for\s*you|feed)\b",
     re.IGNORECASE,
@@ -62,7 +66,7 @@ def _extract_page_feed_add_url(user_text: str) -> str:
     text = str(user_text or "").strip()
     if not text:
         return ""
-    if not _PAGE_FEED_ACTION_RE.search(text) or not _PAGE_FEED_TARGET_RE.search(text):
+    if not _PAGE_FEED_ACTION_RE.search(text):
         return ""
     match = _URL_RE.search(text)
     if not match:
@@ -78,7 +82,20 @@ def _looks_like_page_feed_query(user_text: str) -> bool:
         return False
     if _URL_RE.search(text) and _PAGE_FEED_ACTION_RE.search(text):
         return False
-    return bool(_PAGE_FEED_TARGET_RE.search(text) and _PAGE_FEED_READ_RE.search(text))
+    return bool(
+        _PAGE_FEED_READ_RE.search(text)
+        and (_PAGE_FEED_TARGET_RE.search(text) or _PAGE_FEED_COUNT_RE.search(text))
+    )
+
+def _request_has_attachment(llm_request: Any) -> bool:
+    for content in getattr(llm_request, "contents", []) or []:
+        for part in getattr(content, "parts", []) or []:
+            if (
+                getattr(part, "inline_data", None) is not None
+                or getattr(part, "file_data", None) is not None
+            ):
+                return True
+    return False
 
 def _format_feed_item_preview(item: Dict[str, Any]) -> str:
     title = str(item.get("title") or item.get("name") or item.get("url") or item.get("open_url") or "Untitled").strip()
@@ -113,16 +130,30 @@ async def _page_agent_before_model_callback(callback_context: Any, llm_request: 
     url = _extract_page_feed_add_url(user_text)
     # from __debug_provenance_x__ import email
     if not url:
-        if not _looks_like_page_feed_query(user_text):
-            return None
-        result = query_feed(limit=5, timeline_all=True)
-        return create_text_llm_response(
-            _format_page_feed_query_response(user_text, result),
-            custom_metadata={
-                "response_author": AGENT_NAME,
-                "route_reason": "deterministic_page_feed_query",
-            },
-        )
+        if _looks_like_page_feed_query(user_text):
+            # ponytail: count scans the full feed; add an API aggregate if feed size makes this costly.
+            limit = None if _PAGE_FEED_COUNT_RE.search(user_text) else 5
+            result = query_feed(limit=limit, timeline_all=True)
+            return create_text_llm_response(
+                _format_page_feed_query_response(user_text, result),
+                custom_metadata={
+                    "response_author": AGENT_NAME,
+                    "route_reason": "deterministic_page_feed_query",
+                },
+            )
+        if (
+            _PAGE_FEED_ACTION_RE.search(user_text)
+            and not _PAGE_FEED_ITEM_ACTION_RE.search(user_text)
+            and not _request_has_attachment(llm_request)
+        ):
+            return create_text_llm_response(
+                "What should I add to your AutoYou Page feed? Send the URL or attach a file.",
+                custom_metadata={
+                    "response_author": AGENT_NAME,
+                    "route_reason": "deterministic_page_feed_add_needs_input",
+                },
+            )
+        return None
     result = add_link(url=url)
     message = str(result.get("message") or result.get("error") or "").strip()
     if not message:
