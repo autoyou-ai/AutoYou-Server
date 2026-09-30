@@ -52,7 +52,7 @@ contract and the opt-in live-server test procedure.
 
 OpenStorey sets aside a share of the money it receives from sponsorships and donations for contributors. The pool is discretionary and depends on funding. [docs/contributors/contributor-pool.md](docs/contributors/contributor-pool.md) explains who is eligible, how points work, and how payouts and taxes are handled.
 
-Separately, OpenStorey commits a percentage of the money it raises to the open-source developers AutoYou is built on; see the [Open-Source Commitment](docs/legal/open-source-commitment.md). You can support both at [www.autoyou.me/donate](https://www.autoyou.me/donate/).
+The pool is funded from the "Approved contributors" allocation: OpenStorey commits to allocate at least 15% of the money it receives to approved contributors; see the [Open-Source Commitment](docs/legal/open-source-commitment.md). You can support it at [www.autoyou.me/donate](https://www.autoyou.me/donate/).
 
 ## Community and support
 
