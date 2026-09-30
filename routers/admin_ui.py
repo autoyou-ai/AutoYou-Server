@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from typing import Any, Callable, Dict, Optional
+from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import (
@@ -156,6 +157,141 @@ def register_routes(
             return server._json_response_no_store(payload)
         except Exception as exc:
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.get("/api/admin/desktop-assets")
+    async def admin_ui_desktop_assets(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            from autoyou_agents.shared_tools.desktop_asset_store import get_desktop_asset_agent_catalog
+
+            anchor = Path(__file__).resolve().parents[1] / "server.py"
+            return server._json_response_no_store(get_desktop_asset_agent_catalog(anchor))
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_desktop_assets failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.get("/api/admin/desktop-assets/{agent_name}/setup-prompt")
+    async def admin_ui_desktop_asset_setup_prompt(agent_name: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            from pathlib import Path
+            from autoyou_agents.shared_tools.desktop_asset_store import (
+                get_desktop_asset_agent_catalog,
+                render_desktop_asset_setup_prompt,
+            )
+
+            anchor = Path(__file__).resolve().parents[1] / "server.py"
+            catalog = get_desktop_asset_agent_catalog(anchor)
+            if agent_name not in {item["agent_name"] for item in catalog["agents"]}:
+                return JSONResponse(status_code=404, content={"success": False, "error": "Desktop agent is not available in this AutoYou build."})
+            prompt = render_desktop_asset_setup_prompt(
+                agent_name,
+                anchor,
+                platform=request.query_params.get("platform") or catalog["platform"],
+                app_version=request.query_params.get("app_version") or "",
+                theme=request.query_params.get("theme") or "auto",
+                display_scale=request.query_params.get("display_scale") or "auto",
+            )
+            return server._json_response_no_store({"success": True, "agent_name": agent_name, "prompt": prompt})
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_desktop_asset_setup_prompt failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.post("/api/admin/desktop-assets/{agent_name}/preferences")
+    async def admin_ui_save_desktop_asset_preferences(agent_name: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            from pathlib import Path
+            from autoyou_agents.shared_tools.desktop_asset_store import (
+                discover_packaged_desktop_agents,
+                save_desktop_asset_preferences,
+            )
+
+            anchor = Path(__file__).resolve().parents[1] / "server.py"
+            if agent_name not in discover_packaged_desktop_agents(anchor):
+                return JSONResponse(status_code=404, content={"success": False, "error": "Desktop agent is not available in this AutoYou build."})
+            payload = await request.json()
+            preferences = save_desktop_asset_preferences(agent_name, payload)
+            return server._json_response_no_store({"success": True, "agent_name": agent_name, "preferences": preferences})
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_save_desktop_asset_preferences failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.post("/api/admin/desktop-assets/{agent_name}/import")
+    async def admin_ui_import_desktop_asset_pack(agent_name: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        uploaded = None
+        try:
+            from pathlib import Path
+            from autoyou_agents.shared_tools.desktop_asset_store import (
+                MAX_BUNDLE_BYTES,
+                discover_packaged_desktop_agents,
+                get_packaged_desktop_agent_template,
+                import_user_desktop_asset_bundle,
+            )
+
+            anchor = Path(__file__).resolve().parents[1] / "server.py"
+            if agent_name not in discover_packaged_desktop_agents(anchor):
+                return JSONResponse(status_code=404, content={"success": False, "error": "Desktop agent is not available in this AutoYou build."})
+            form = await request.form()
+            uploaded = form.get("bundle")
+            if uploaded is None or not hasattr(uploaded, "read"):
+                return JSONResponse(status_code=400, content={"success": False, "error": "Choose a desktop asset ZIP bundle."})
+            payload = await uploaded.read(MAX_BUNDLE_BYTES + 1)
+            result = import_user_desktop_asset_bundle(
+                agent_name,
+                payload,
+                expected_app_id=str(get_packaged_desktop_agent_template(agent_name, anchor).get("app_id") or agent_name),
+            )
+            return server._json_response_no_store(result)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_import_desktop_asset_pack failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+        finally:
+            close_method = getattr(uploaded, "close", None)
+            if callable(close_method):
+                close_result = close_method()
+                if server.asyncio.iscoroutine(close_result):
+                    await close_result
+
+    @admin_app.delete("/api/admin/desktop-assets/{agent_name}/{storage_id}")
+    async def admin_ui_remove_desktop_asset_pack(agent_name: str, storage_id: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            from pathlib import Path
+            from autoyou_agents.shared_tools.desktop_asset_store import (
+                discover_packaged_desktop_agents,
+                remove_user_desktop_asset_pack,
+            )
+
+            anchor = Path(__file__).resolve().parents[1] / "server.py"
+            if agent_name not in discover_packaged_desktop_agents(anchor):
+                return JSONResponse(status_code=404, content={"success": False, "error": "Desktop agent is not available in this AutoYou build."})
+            packs = remove_user_desktop_asset_pack(agent_name, storage_id)
+            return server._json_response_no_store({"success": True, "agent_name": agent_name, "asset_packs": packs})
+        except FileNotFoundError as exc:
+            return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_remove_desktop_asset_pack failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
     # The owner's photo on the admin origin. Viewers never need this route:
@@ -2032,6 +2168,11 @@ def register_routes(
         "admin_ui_get_profile_image": admin_ui_get_profile_image,
         "admin_ui_upload_profile_image": admin_ui_upload_profile_image,
         "admin_ui_delete_profile_image": admin_ui_delete_profile_image,
+        "admin_ui_desktop_assets": admin_ui_desktop_assets,
+        "admin_ui_desktop_asset_setup_prompt": admin_ui_desktop_asset_setup_prompt,
+        "admin_ui_save_desktop_asset_preferences": admin_ui_save_desktop_asset_preferences,
+        "admin_ui_import_desktop_asset_pack": admin_ui_import_desktop_asset_pack,
+        "admin_ui_remove_desktop_asset_pack": admin_ui_remove_desktop_asset_pack,
         "page_agent_get_avatar": page_agent_get_avatar,
         "page_agent_save_avatar": page_agent_save_avatar,
         "page_agent_delete_avatar": page_agent_delete_avatar,

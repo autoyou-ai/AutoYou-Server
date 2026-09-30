@@ -45,6 +45,47 @@ def _populate_emotivoice_runtime_sources(repo_root: Path) -> None:
         _write_text(repo_root / relative_path, "vendor runtime data\n")
 
 
+def test_desktop_runtime_packager_includes_templates_but_excludes_user_assets(tmp_path):
+    agent_root = tmp_path / "autoyou_agents" / "codex_desktop_agent"
+    assets_root = agent_root / "desktop_assets"
+    template = assets_root / "manifest.template.json"
+    prompt = assets_root / "setup_prompt.md"
+    _write_text(template, '{"schema_version": 2, "agent_name": "codex_desktop_agent", "asset_packs": []}\n')
+    _write_text(prompt, "local setup prompt\n")
+    _write_text(assets_root / "manifest.json", '{"asset_packs": [{"targets": []}]}\n')
+    _write_text(assets_root / "captures" / "full_screen.png", "synthetic capture\n")
+    _write_text(assets_root / "windows" / "1.0" / "sprites" / "button.png", "synthetic sprite\n")
+    _write_text(agent_root / "agent.py", "from shared_tools.desktop_app_control import send_prompt_to_desktop_app\n")
+
+    included = runtime_builder._desktop_asset_sources(agent_root)
+    runtime_assets = {
+        path.as_posix()
+        for path in runtime_builder._iter_agent_asset_files(tmp_path)
+    }
+
+    assert included == {template.resolve(), prompt.resolve()}
+    assert all(path.name not in {"manifest.json", "full_screen.png", "button.png"} for path in included)
+    assert "autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json" in runtime_assets
+    assert "autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md" in runtime_assets
+    assert not any("/desktop_assets/manifest.json" in path or path.endswith(("full_screen.png", "button.png")) for path in runtime_assets)
+
+
+def test_desktop_agent_build_requires_generic_manifest_template(tmp_path):
+    agent_source = Path("autoyou_agents/codex_desktop_agent/agent.py")
+    compile_spec = runtime_builder.ModuleBuildSpec(agent_source)
+    _write_text(tmp_path / agent_source, "from shared_tools.desktop_app_control import send_prompt_to_desktop_app\n")
+    _write_text(
+        tmp_path / "autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json",
+        '{"schema_version": 2, "asset_packs": []}\n',
+    )
+
+    runtime_builder._validate_desktop_agent_manifests(tmp_path, [compile_spec], {})
+
+    (tmp_path / "autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json").unlink()
+    with pytest.raises(FileNotFoundError, match="manifest.template.json"):
+        runtime_builder._validate_desktop_agent_manifests(tmp_path, [compile_spec], {})
+
+
 def test_runtime_module_plan_excludes_autoyou_lite_from_main_bundle(tmp_path):
     _populate_required_runtime_sources(tmp_path)
     _write_text(tmp_path / "shared" / "platform_runtime.py")

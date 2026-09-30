@@ -172,6 +172,15 @@ autoyou_agents/ionos_agent/ionos_agent/
 autoyou_agents/ionos_cloudflare_agent/ionos_cloudflare_agent/
 autoyou_agents/mail_agent/mail_agent/
 
+# User-calibrated desktop app data is never committed or shipped. Keep the
+# generic manifest template and setup prompt tracked.
+/autoyou_agents/claude_desktop_agent/desktop_assets/*
+!/autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md
+/autoyou_agents/codex_desktop_agent/desktop_assets/*
+!/autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
+
 
 .tmp/
 *.mp3

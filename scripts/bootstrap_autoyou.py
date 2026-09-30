@@ -104,6 +104,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from shared.process_lifecycle import (
+    OwnedProcessJob,
     add_parent_pid_environment,
     force_kill_process_tree,
     live_pids,
@@ -121,6 +122,11 @@ SHUTDOWN_TOKEN_ENV = "AUTOYOU_SHUTDOWN_TOKEN"
 SHUTDOWN_TOKEN_HEADER = "X-AutoYou-Shutdown-Token"
 GRACEFUL_SHUTDOWN_WAIT_ENV = "AUTOYOU_GRACEFUL_SHUTDOWN_WAIT_SECONDS"
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_SECONDS = 90.0
+# Windows only: set to keep the server's descendants alive after it exits (debugging aid).
+NO_PROCESS_JOB_ENV = "AUTOYOU_BOOTSTRAP_NO_PROCESS_JOB"
+# After a clean server exit, descendants that are already winding down get this long to finish.
+POST_EXIT_CHILD_GRACE_SECONDS = 2.0
+SHUTDOWN_WAIT_SLICE_SECONDS = 1.0
 WINDOWS_EXECUTABLE_SUFFIXES = (".exe", ".cmd", ".bat", ".com")
 WINDOWS_NPM_SUFFIXES = (".cmd", ".exe", ".bat", ".com")
 PORTAUDIO_VERSION = "19.7.0"
@@ -692,6 +698,41 @@ def graceful_shutdown_wait_seconds() -> float:
         return DEFAULT_GRACEFUL_SHUTDOWN_WAIT_SECONDS
 
 
+def _is_windows() -> bool:
+    """Platform seam: the process-ownership hardening in launch_server_process is Windows-only."""
+    return os.name == "nt"
+
+
+def _wait_for_exit_interruptibly(process, timeout: float) -> int:
+    """``process.wait(timeout)`` in short slices so a second Ctrl+C can land on Windows.
+
+    ``Popen.wait`` blocks in ``WaitForSingleObject`` there, which Python cannot interrupt: a second
+    Ctrl+C pressed during a long graceful wait would be held back until the server had already exited
+    and then surface as a traceback that skips cleanup.
+    """
+    deadline = _monotonic() + timeout
+    while True:
+        remaining = deadline - _monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(getattr(process, "args", "AutoYou"), timeout)
+        try:
+            return process.wait(timeout=min(SHUTDOWN_WAIT_SLICE_SECONDS, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def _wait_for_graceful_exit(process, timeout: float) -> int:
+    if _is_windows():
+        return _wait_for_exit_interruptibly(process, timeout)
+    return process.wait(timeout=timeout)
+
+
+def _explain_batch_prompt() -> None:
+    """cmd.exe asks "Terminate batch job (Y/N)?" only after this launcher has exited, so it is cosmetic."""
+    if _is_windows():
+        info("AutoYou has stopped. If cmd.exe asks 'Terminate batch job (Y/N)?', either answer is safe.")
+
+
 def launch_server_process(
     command: Sequence[str],
     *,
@@ -716,9 +757,25 @@ def launch_server_process(
         )
     except OSError as exc:
         raise BootstrapError(f"Unable to start AutoYou process: {exc}") from exc
+    # Windows only: own the server through a kill-on-close job, exactly as the compiled Windows host
+    # does for its backend. Everything the server ever spawns (node drivers, browsers, bridges) then
+    # dies with it whether it exits cleanly, hangs, or this launcher is killed. Do this before anything
+    # else: the venv launcher stub needs roughly 50-100 ms to start the real interpreter, and a job
+    # assigned inside that window also captures the interpreter and all of its descendants.
+    owned_job = None
+    if _is_windows() and not env_flag(NO_PROCESS_JOB_ENV):
+        owned_job = OwnedProcessJob.for_process(process)
     tracked_pids = process_tree_pids(getattr(process, "pid", None))
 
-    def cleanup_descendants() -> None:
+    def cleanup_descendants(*, grace_seconds: float = 0.0) -> None:
+        if owned_job is not None:
+            # The job is authoritative: it counts every descendant, including ones that outlived their
+            # parent. A PID snapshot taken at launch cannot (the server has no children yet), and this
+            # launcher's own interpreter usually has no psutil to refresh it.
+            leftover = owned_job.terminate_remaining(grace_seconds=grace_seconds)
+            if leftover:
+                warn(f"{leftover} process(es) outlived AutoYou's own shutdown; stopped them.")
+            return
         lingering_pids = live_pids(tracked_pids)
         if lingering_pids:
             force_kill_process_tree(
@@ -726,6 +783,43 @@ def launch_server_process(
                 extra_pids=lingering_pids,
                 process_group=True,
             )
+
+    def force_stop() -> int:
+        process.terminate()
+        try:
+            exit_code = process.wait(timeout=8)
+            cleanup_descendants()
+            return exit_code
+        except subprocess.TimeoutExpired:
+            warn("AutoYou child process did not terminate cleanly, killing...")
+            process.kill()
+            try:
+                exit_code = process.wait(timeout=5)
+                cleanup_descendants()
+                return exit_code
+            except subprocess.TimeoutExpired:
+                cleanup_descendants()
+                return 130
+
+    def stop_after_interrupt() -> int:
+        warn("Interrupt received, requesting AutoYou shutdown...")
+        if _is_windows():
+            info("Press Ctrl+C again to stop AutoYou immediately instead of waiting for it to wind down.")
+        try:
+            if request_server_shutdown(host, admin_port, shutdown_token):
+                try:
+                    exit_code = _wait_for_graceful_exit(process, graceful_shutdown_wait_seconds())
+                    cleanup_descendants(grace_seconds=POST_EXIT_CHILD_GRACE_SECONDS)
+                    return exit_code
+                except subprocess.TimeoutExpired:
+                    warn("AutoYou did not exit after graceful shutdown request, terminating child process...")
+        except KeyboardInterrupt:
+            # A second Ctrl+C means "stop waiting". Only Windows delivers it here promptly, so only
+            # Windows changes behaviour; elsewhere the interrupt propagates exactly as before.
+            if not _is_windows():
+                raise
+            warn("Second interrupt received; stopping AutoYou immediately...")
+        return force_stop()
 
     try:
         # The UI shutdown endpoint closes Uvicorn before Python has finished
@@ -742,7 +836,7 @@ def launch_server_process(
         while True:
             try:
                 exit_code = process.wait(timeout=1.0)
-                cleanup_descendants()
+                cleanup_descendants(grace_seconds=POST_EXIT_CHILD_GRACE_SECONDS)
                 return exit_code
             except subprocess.TimeoutExpired:
                 admin_port_open = port_in_use(host, admin_port)
@@ -780,30 +874,13 @@ def launch_server_process(
                 cleanup_descendants()
                 return exit_code
     except KeyboardInterrupt:
-        warn("Interrupt received, requesting AutoYou shutdown...")
-        graceful_shutdown_requested = request_server_shutdown(host, admin_port, shutdown_token)
-        if graceful_shutdown_requested:
-            try:
-                exit_code = process.wait(timeout=graceful_shutdown_wait_seconds())
-                cleanup_descendants()
-                return exit_code
-            except subprocess.TimeoutExpired:
-                warn("AutoYou did not exit after graceful shutdown request, terminating child process...")
-        process.terminate()
-        try:
-            exit_code = process.wait(timeout=8)
-            cleanup_descendants()
-            return exit_code
-        except subprocess.TimeoutExpired:
-            warn("AutoYou child process did not terminate cleanly, killing...")
-            process.kill()
-            try:
-                exit_code = process.wait(timeout=5)
-                cleanup_descendants()
-                return exit_code
-            except subprocess.TimeoutExpired:
-                cleanup_descendants()
-                return 130
+        exit_code = stop_after_interrupt()
+        _explain_batch_prompt()
+        return exit_code
+    finally:
+        if owned_job is not None:
+            # Kill-on-close: releasing the handle also ends anything still inside the job.
+            owned_job.close()
 
 
 def create_venv(python_executable: str) -> Path:

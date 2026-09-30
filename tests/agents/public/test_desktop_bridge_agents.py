@@ -51,7 +51,11 @@ CODEX_AGENT_DIR = REPO_ROOT / "autoyou_agents" / "codex_desktop_agent"
 def load_desktop_app_manifest(agent_dir):
     manifest = _load_desktop_app_manifest(agent_dir)
     if manifest is None:
-        pytest.skip("Calibrated desktop asset packs are excluded from the public source distribution")
+        pytest.skip("The generic desktop agent template is unavailable in this build")
+    if Path(str(manifest.get("manifest_path") or "")).name == "manifest.json":
+        pytest.skip("Legacy source-tree desktop manifests are user-local; use a synthetic pack fixture")
+    if not manifest.get("asset_packs") or any(pack.get("_user_local_pack") for pack in manifest.get("asset_packs") or []):
+        pytest.skip("Calibrated desktop asset packs are tested through synthetic user-local fixtures")
     return manifest
 
 

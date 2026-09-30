@@ -8,10 +8,17 @@
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from pathlib import Path
+from types import SimpleNamespace
 import os
+import subprocess
 import sys
+import textwrap
+import time
+
+import pytest
 
 import scripts.bootstrap_autoyou as bootstrap
+from shared import process_lifecycle
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e"
 
@@ -580,6 +587,8 @@ def test_launch_server_process_requests_graceful_shutdown_on_interrupt(monkeypat
 
     monkeypatch.setattr(bootstrap.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(bootstrap, "request_server_shutdown", lambda host, admin_port, shutdown_token: True)
+    # Off Windows the graceful wait stays one bounded wait; Windows slices it (tests below).
+    monkeypatch.setattr(bootstrap, "_is_windows", lambda: False)
 
     exit_code = bootstrap.launch_server_process(
         [sys.executable, "server.py"],
@@ -648,6 +657,392 @@ def test_launch_server_process_force_cleans_process_after_admin_port_closes(monk
     assert exit_code == 0
     assert process.wait_calls == [1.0, 1.0, 1.0, 5]
     assert killed == [(4321, [4321, 4322], True)]
+
+
+class _FakeOwnedJob:
+    """Stands in for OwnedProcessJob and records how the launcher drives it."""
+
+    def __init__(self, leftover=0):
+        self.leftover = leftover
+        self.terminate_grace = []
+        self.closed = 0
+
+    def terminate_remaining(self, *, grace_seconds=0.0, exit_code=1):
+        self.terminate_grace.append(grace_seconds)
+        return self.leftover
+
+    def close(self):
+        self.closed += 1
+
+
+def _install_fake_job(monkeypatch, job):
+    """Route bootstrap's OwnedProcessJob to a fake; returns the processes it was asked to own."""
+    adopted = []
+
+    class _Factory:
+        @staticmethod
+        def for_process(process):
+            adopted.append(process)
+            return job
+
+    monkeypatch.setattr(bootstrap, "OwnedProcessJob", _Factory)
+    return adopted
+
+
+class _ScriptedProcess:
+    """Popen stand-in whose wait() plays back a script: an int is an exit code, an exception is raised.
+
+    It has no ``pid`` on purpose: a made-up PID handed to the real psutil helpers could name a process
+    that genuinely exists on the machine running the tests.
+    """
+
+    def __init__(self, waits, clock=None):
+        self._waits = list(waits)
+        self._clock = clock
+        self.wait_calls = []
+        self.terminate_calls = 0
+        self.kill_calls = 0
+
+    def wait(self, timeout=None):
+        self.wait_calls.append(timeout)
+        outcome = self._waits.pop(0) if self._waits else 0
+        if isinstance(outcome, subprocess.TimeoutExpired) and self._clock is not None:
+            self._clock[0] += timeout
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    def terminate(self):
+        self.terminate_calls += 1
+
+    def kill(self):
+        self.kill_calls += 1
+
+
+def _launch(monkeypatch, process):
+    monkeypatch.setattr(bootstrap.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(bootstrap, "port_in_use", lambda host, port: False)
+    monkeypatch.delenv(bootstrap.GRACEFUL_SHUTDOWN_WAIT_ENV, raising=False)
+    return bootstrap.launch_server_process(
+        [sys.executable, "server.py"],
+        cwd=Path.cwd(),
+        env={},
+        host="127.0.0.1",
+        admin_port=8001,
+    )
+
+
+def _windows_launch_setup(monkeypatch, *, leftover=0):
+    monkeypatch.setattr(bootstrap, "_is_windows", lambda: True)
+    monkeypatch.delenv(bootstrap.NO_PROCESS_JOB_ENV, raising=False)
+    monkeypatch.setattr(bootstrap, "request_server_shutdown", lambda *args, **kwargs: True)
+    job = _FakeOwnedJob(leftover)
+    adopted = _install_fake_job(monkeypatch, job)
+    return job, adopted
+
+
+def test_launch_server_process_owns_the_server_in_a_job_on_windows(monkeypatch):
+    job, adopted = _windows_launch_setup(monkeypatch)
+    monkeypatch.setattr(
+        bootstrap,
+        "force_kill_process_tree",
+        lambda *args, **kwargs: pytest.fail("the job is authoritative; no PID-snapshot kill is needed"),
+    )
+    process = _ScriptedProcess([0])
+
+    assert _launch(monkeypatch, process) == 0
+
+    assert adopted == [process]
+    # A clean exit lets already-exiting descendants finish before the job ends whatever is left.
+    assert job.terminate_grace == [bootstrap.POST_EXIT_CHILD_GRACE_SECONDS]
+    assert job.closed == 1
+
+
+def test_launch_server_process_reports_processes_the_job_had_to_stop(monkeypatch, capsys):
+    _windows_launch_setup(monkeypatch, leftover=2)
+
+    assert _launch(monkeypatch, _ScriptedProcess([0])) == 0
+
+    assert "2 process(es) outlived AutoYou's own shutdown" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("windows, disabled", [(False, False), (True, True)])
+def test_launch_server_process_uses_no_job_off_windows_or_when_disabled(monkeypatch, windows, disabled):
+    monkeypatch.setattr(bootstrap, "_is_windows", lambda: windows)
+    if disabled:
+        monkeypatch.setenv(bootstrap.NO_PROCESS_JOB_ENV, "1")
+    else:
+        monkeypatch.delenv(bootstrap.NO_PROCESS_JOB_ENV, raising=False)
+    adopted = _install_fake_job(monkeypatch, _FakeOwnedJob())
+
+    assert _launch(monkeypatch, _ScriptedProcess([0])) == 0
+
+    assert adopted == []
+
+
+def test_launch_server_process_slices_and_bounds_the_graceful_wait_on_windows(monkeypatch, capsys):
+    job, _ = _windows_launch_setup(monkeypatch)
+    clock = [0.0]
+    monkeypatch.setattr(bootstrap, "_monotonic", lambda: clock[0])
+    monkeypatch.setattr(bootstrap, "graceful_shutdown_wait_seconds", lambda: 3.0)
+
+    def still_running():
+        return subprocess.TimeoutExpired("server", 1.0)
+
+    process = _ScriptedProcess(
+        [KeyboardInterrupt(), still_running(), still_running(), still_running(), 0],
+        clock,
+    )
+
+    assert _launch(monkeypatch, process) == 0
+
+    # One interrupt slice, three one-second slices that exhaust the 3 s budget, then the forced stop.
+    assert process.wait_calls == [1.0, 1.0, 1.0, 1.0, 8]
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert job.terminate_grace == [0.0]
+    assert job.closed == 1
+    assert "did not exit after graceful shutdown request" in capsys.readouterr().out
+
+
+def test_second_interrupt_stops_immediately_on_windows(monkeypatch, capsys):
+    job, _ = _windows_launch_setup(monkeypatch)
+    process = _ScriptedProcess([KeyboardInterrupt(), KeyboardInterrupt(), 0])
+
+    assert _launch(monkeypatch, process) == 0
+
+    assert process.wait_calls == [1.0, 1.0, 8]
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    # Force path: nothing is left a grace period, the job ends the whole tree.
+    assert job.terminate_grace == [0.0]
+    assert job.closed == 1
+    out = capsys.readouterr().out
+    assert "Press Ctrl+C again" in out
+    assert "Second interrupt received" in out
+
+
+def test_second_interrupt_propagates_off_windows_as_before(monkeypatch):
+    monkeypatch.setattr(bootstrap, "_is_windows", lambda: False)
+    monkeypatch.setattr(bootstrap, "request_server_shutdown", lambda *args, **kwargs: True)
+    process = _ScriptedProcess([KeyboardInterrupt(), KeyboardInterrupt()])
+
+    with pytest.raises(KeyboardInterrupt):
+        _launch(monkeypatch, process)
+
+    assert process.wait_calls == [1.0, bootstrap.DEFAULT_GRACEFUL_SHUTDOWN_WAIT_SECONDS]
+    assert process.terminate_calls == 0
+
+
+def test_interrupt_with_an_unreachable_admin_port_goes_straight_to_the_forced_stop(monkeypatch):
+    job, _ = _windows_launch_setup(monkeypatch)
+    monkeypatch.setattr(bootstrap, "request_server_shutdown", lambda *args, **kwargs: False)
+    process = _ScriptedProcess([KeyboardInterrupt(), 0])
+
+    assert _launch(monkeypatch, process) == 0
+
+    assert process.wait_calls == [1.0, 8]
+    assert process.terminate_calls == 1
+    assert job.terminate_grace == [0.0]
+
+
+@pytest.mark.parametrize("windows", [True, False])
+def test_batch_prompt_note_is_printed_only_on_windows(monkeypatch, capsys, windows):
+    monkeypatch.setattr(bootstrap, "_is_windows", lambda: windows)
+    monkeypatch.setattr(bootstrap, "request_server_shutdown", lambda *args, **kwargs: True)
+    _install_fake_job(monkeypatch, _FakeOwnedJob())
+
+    assert _launch(monkeypatch, _ScriptedProcess([KeyboardInterrupt(), 0])) == 0
+
+    assert ("Terminate batch job (Y/N)?" in capsys.readouterr().out) is windows
+
+
+def test_owned_process_job_is_never_built_from_a_bare_pid():
+    # Only a real Popen carries a process handle; a PID alone must never join a job that gets killed.
+    assert process_lifecycle.OwnedProcessJob.for_process(SimpleNamespace(pid=os.getpid())) is None
+
+
+def test_owned_process_job_is_absent_off_windows(monkeypatch):
+    monkeypatch.setattr(process_lifecycle, "_windows_jobs_supported", lambda: False)
+
+    assert process_lifecycle.OwnedProcessJob.for_process(SimpleNamespace(_handle=1)) is None
+
+
+_WINDOWS_ONLY = pytest.mark.skipif(os.name != "nt", reason="job objects exist only on Windows")
+
+# A stand-in server: some time after launch it starts a long-lived descendant (the shape of a node
+# driver or browser), then lingers briefly and exits. The descendant is what must not be left behind.
+_LATE_CHILD_SERVER = textwrap.dedent(
+    """
+    import subprocess, sys, time
+    pid_file, marker, linger = sys.argv[1], sys.argv[2], float(sys.argv[3])
+    time.sleep(0.4)
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(120)", marker],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    with open(pid_file, "w") as handle:
+        handle.write(str(child.pid))
+    time.sleep(linger)
+    """
+)
+
+
+def _marked_process_alive(pid, marker):
+    """True while ``pid`` is still the process that was started with ``marker`` on its command line."""
+    psutil = pytest.importorskip("psutil")
+    try:
+        process = psutil.Process(pid)
+        return marker in " ".join(process.cmdline()) and process.status() != psutil.STATUS_ZOMBIE
+    except psutil.Error:
+        return False
+
+
+def _wait_until(predicate, timeout=10.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return predicate()
+
+
+def _kill_marked(pid, marker):
+    if pid is not None and _marked_process_alive(pid, marker):
+        import psutil
+
+        psutil.Process(pid).kill()
+
+
+@_WINDOWS_ONLY
+def test_owned_process_job_counts_and_stops_descendants_started_after_assignment(tmp_path):
+    marker = f"ay-job-child-{os.getpid()}-{time.time_ns()}"
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "server.py"
+    script.write_text(_LATE_CHILD_SERVER, encoding="utf-8")
+    process = subprocess.Popen([sys.executable, str(script), str(pid_file), marker, "120"])
+    child_pid = None
+    try:
+        job = process_lifecycle.OwnedProcessJob.for_process(process)
+        assert job is not None
+        assert _wait_until(pid_file.exists)
+        child_pid = int(pid_file.read_text())
+
+        assert job.active_processes() >= 2
+
+        assert job.terminate_remaining() >= 2
+        assert _wait_until(lambda: process.poll() is not None)
+        assert _wait_until(lambda: not _marked_process_alive(child_pid, marker))
+        job.close()
+    finally:
+        _kill_marked(child_pid, marker)
+        process.kill()
+        process.wait(timeout=10)
+
+
+@_WINDOWS_ONLY
+def test_owned_process_job_close_ends_the_whole_tree(tmp_path):
+    marker = f"ay-job-close-{os.getpid()}-{time.time_ns()}"
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "server.py"
+    script.write_text(_LATE_CHILD_SERVER, encoding="utf-8")
+    process = subprocess.Popen([sys.executable, str(script), str(pid_file), marker, "120"])
+    child_pid = None
+    try:
+        job = process_lifecycle.OwnedProcessJob.for_process(process)
+        assert job is not None
+        assert _wait_until(pid_file.exists)
+        child_pid = int(pid_file.read_text())
+
+        job.close()  # kill-on-close: the last handle going away ends every member
+
+        assert _wait_until(lambda: process.poll() is not None)
+        assert _wait_until(lambda: not _marked_process_alive(child_pid, marker))
+    finally:
+        _kill_marked(child_pid, marker)
+        process.kill()
+        process.wait(timeout=10)
+
+
+@_WINDOWS_ONLY
+def test_launch_server_process_reaps_descendants_that_outlive_a_clean_exit(monkeypatch, tmp_path):
+    pytest.importorskip("psutil")
+    marker = f"ay-late-child-{os.getpid()}-{time.time_ns()}"
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "late_child_server.py"
+    script.write_text(_LATE_CHILD_SERVER, encoding="utf-8")
+    monkeypatch.delenv(bootstrap.NO_PROCESS_JOB_ENV, raising=False)
+    monkeypatch.setattr(bootstrap, "port_in_use", lambda host, port: False)
+    child_pid = None
+    try:
+        exit_code = bootstrap.launch_server_process(
+            [sys.executable, str(script), str(pid_file), marker, "0.6"],
+            cwd=tmp_path,
+            env=dict(os.environ),
+            host="127.0.0.1",
+            admin_port=8001,
+        )
+
+        assert exit_code == 0
+        child_pid = int(pid_file.read_text())
+        # The descendant appeared after launch, so a PID snapshot taken at launch never saw it.
+        assert _wait_until(lambda: not _marked_process_alive(child_pid, marker), timeout=5), (
+            "a descendant outlived the launcher"
+        )
+    finally:
+        _kill_marked(child_pid, marker)
+
+
+_HARD_KILLED_LAUNCHER = textwrap.dedent(
+    """
+    import os, sys
+    sys.path.insert(0, sys.argv[1])
+    import scripts.bootstrap_autoyou as bootstrap
+    bootstrap.launch_server_process(
+        [sys.executable, sys.argv[2], sys.argv[3], sys.argv[4], "120"],
+        cwd=os.getcwd(), env=dict(os.environ), host="127.0.0.1", admin_port=int(sys.argv[5]),
+    )
+    """
+)
+
+
+@_WINDOWS_ONLY
+def test_killing_the_launcher_ends_the_server_and_everything_it_started(tmp_path):
+    pytest.importorskip("psutil")
+    import socket
+
+    marker = f"ay-hard-kill-{os.getpid()}-{time.time_ns()}"
+    pid_file = tmp_path / "child.pid"
+    server = tmp_path / "server.py"
+    server.write_text(_LATE_CHILD_SERVER, encoding="utf-8")
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text(_HARD_KILLED_LAUNCHER, encoding="utf-8")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        unused_port = probe.getsockname()[1]
+    repo_root = str(bootstrap.REPO_ROOT)
+    process = subprocess.Popen(
+        [sys.executable, str(launcher), repo_root, str(server), str(pid_file), marker, str(unused_port)],
+        cwd=str(tmp_path),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    child_pid = None
+    try:
+        assert _wait_until(pid_file.exists, timeout=30)
+        child_pid = int(pid_file.read_text())
+        assert _marked_process_alive(child_pid, marker)
+
+        process.kill()  # e.g. `taskkill /F`, or the console window being closed
+
+        assert _wait_until(lambda: not _marked_process_alive(child_pid, marker), timeout=10), (
+            "the server's descendant survived its launcher being killed"
+        )
+    finally:
+        _kill_marked(child_pid, marker)
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=10)
 
 
 def test_report_autoyou_config_storage_status_for_keystore_config(monkeypatch, capsys):

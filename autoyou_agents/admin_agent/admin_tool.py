@@ -46,6 +46,7 @@ except ImportError:
 
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
+from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from shared.adk_state import (
     AUTOYOU_REPLY_TARGET_STATE_KEY,
     AUTOYOU_REPLY_TARGET_USER_STATE_KEY,
@@ -56,6 +57,7 @@ from shared.session_execution import create_text_llm_response, create_tool_call_
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+_MAX_ADMIN_API_TEXT_CHARS = 4096
 
 # ── Session state keys (stored in ADK session state) ─────────────────────────
 _SESSION_KEY = "user:admin_session_valid_until"
@@ -115,7 +117,7 @@ def _http(
     timeout: int = 15,
     token: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Minimal HTTP helper: tries requests, falls back to urllib.
+    """Call an Admin API endpoint without accepting login redirects as data.
 
     Returns a dict with keys: status ("success"|"error"), code (int), data (dict), url (str).
     Automatically retries localhost → 127.0.0.1 on connection failure.
@@ -139,15 +141,51 @@ def _http(
                 if token:
                     hdrs["Authorization"] = f"Bearer {token}"
                 if method.upper() == "GET":
-                    resp = sess.get(u, timeout=timeout, headers=hdrs)
+                    resp = sess.get(
+                        u,
+                        timeout=timeout,
+                        headers=hdrs,
+                        allow_redirects=False,
+                    )
                 else:
-                    resp = sess.post(u, json=payload, timeout=timeout, headers=hdrs)
+                    resp = sess.post(
+                        u,
+                        json=payload,
+                        timeout=timeout,
+                        headers=hdrs,
+                        allow_redirects=False,
+                    )
+                status_code = int(resp.status_code)
+                if 300 <= status_code < 400:
+                    return {
+                        "status": "error",
+                        "code": status_code,
+                        "data": {
+                            "error": "Admin API redirected the request. Check the Admin session and API route."
+                        },
+                        "url": u,
+                    }
+                content_type = str(resp.headers.get("Content-Type") or "").lower()
+                if urlparse(u).path.startswith("/api/") and "text/html" in content_type:
+                    return {
+                        "status": "error",
+                        "code": status_code,
+                        "data": {
+                            "error": "Admin API returned an HTML page instead of JSON. "
+                            "Check the Admin session and API route."
+                        },
+                        "url": u,
+                    }
                 try:
                     data = resp.json()
                 except ValueError:
-                    data = {"text": resp.text}
-                ok = 200 <= resp.status_code < 300
-                return {"status": "success" if ok else "error", "code": resp.status_code, "data": data, "url": u}
+                    body = resp.text
+                    data = {
+                        "text": body[:_MAX_ADMIN_API_TEXT_CHARS],
+                        "truncated": len(body) > _MAX_ADMIN_API_TEXT_CHARS,
+                    }
+                ok = 200 <= status_code < 300
+                return {"status": "success" if ok else "error", "code": status_code, "data": data, "url": u}
             except Exception:
                 # Connection refused, timeout, DNS failure, etc. - return an error
                 # dict so callers can handle gracefully instead of crashing ADK.
@@ -156,6 +194,11 @@ def _http(
         # urllib fallback
         import urllib.request as _ur
         import urllib.error as _ue
+
+        class _NoRedirectHandler(_ur.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
         try:
             if method.upper() == "GET":
                 req = _ur.Request(u, method="GET")
@@ -166,17 +209,51 @@ def _http(
             if token:
                 req.add_header("Authorization", f"Bearer {token}")
             req.add_header("Accept", "application/json")
-            with _ur.urlopen(req, timeout=timeout) as r:
-                body = r.read().decode("utf-8", errors="replace")
+            opener = _ur.build_opener(_NoRedirectHandler)
+            with opener.open(req, timeout=timeout) as r:
+                status_code = int(r.getcode())
+                if r.geturl() != u or 300 <= status_code < 400:
+                    return {
+                        "status": "error",
+                        "code": status_code,
+                        "data": {
+                            "error": "Admin API redirected the request. Check the Admin session and API route."
+                        },
+                        "url": u,
+                    }
+                content_type = str(r.headers.get("Content-Type") or "").lower()
+                if urlparse(u).path.startswith("/api/") and "text/html" in content_type:
+                    return {
+                        "status": "error",
+                        "code": status_code,
+                        "data": {
+                            "error": "Admin API returned an HTML page instead of JSON. "
+                            "Check the Admin session and API route."
+                        },
+                        "url": u,
+                    }
+                body = r.read(_MAX_ADMIN_API_TEXT_CHARS + 1).decode("utf-8", errors="replace")
                 try:
                     data = _json.loads(body)
                 except ValueError:
-                    data = {"text": body}
-                ok = 200 <= r.getcode() < 300
-                return {"status": "success" if ok else "error", "code": r.getcode(), "data": data, "url": u}
+                    data = {
+                        "text": body[:_MAX_ADMIN_API_TEXT_CHARS],
+                        "truncated": len(body) > _MAX_ADMIN_API_TEXT_CHARS,
+                    }
+                ok = 200 <= status_code < 300
+                return {"status": "success" if ok else "error", "code": status_code, "data": data, "url": u}
         except _ue.HTTPError as he:
+            if 300 <= int(he.code) < 400:
+                return {
+                    "status": "error",
+                    "code": int(he.code),
+                    "data": {
+                        "error": "Admin API redirected the request. Check the Admin session and API route."
+                    },
+                    "url": u,
+                }
             try:
-                body = he.read().decode("utf-8", errors="replace")
+                body = he.read(_MAX_ADMIN_API_TEXT_CHARS + 1).decode("utf-8", errors="replace")
                 data = _json.loads(body)
             except Exception:
                 data = {}
@@ -1181,7 +1258,17 @@ def get_installed_agents(port: Optional[int] = None, host: Optional[str] = None)
     Returns:
         dict with ``installed_agents`` list and ``available_agents`` list.
     """
-    return _http("GET", "/api/agents/manage", port=port, host=host)
+    del port, host
+    try:
+        registry = load_agent_install_registry()
+    except Exception as exc:
+        logger.warning("Could not read the local agent install registry: %s", exc)
+        return {"status": "error", "message": "Could not read the local agent install registry."}
+    return {
+        "status": "success",
+        "installed_agents": list(registry.get("installed_agents") or []),
+        "available_agents": list(registry.get("available_agents") or []),
+    }
 
 def install_agent(
     agent_name: str,

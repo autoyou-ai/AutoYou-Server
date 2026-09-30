@@ -12,11 +12,13 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
+import functools
 import os
 import signal
 import subprocess
 import threading
 import time
+from types import SimpleNamespace
 from typing import Iterable, Mapping
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-3df768679a52629647b64178"
@@ -167,6 +169,196 @@ def force_kill_process_tree(
                 os.kill(pid, signal.SIGKILL)
             except Exception:
                 continue
+
+
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+
+
+def _windows_jobs_supported() -> bool:
+    """Seam for tests: kill-on-close jobs exist only on Windows."""
+    return os.name == "nt"
+
+
+@functools.lru_cache(maxsize=1)
+def _job_api() -> SimpleNamespace:
+    """ctypes bindings for the job-object calls, loaded on first use and never on POSIX."""
+    import ctypes
+    from ctypes import wintypes
+
+    class _IoCounters(ctypes.Structure):
+        _fields_ = [
+            (name, ctypes.c_ulonglong)
+            for name in (
+                "ReadOperationCount",
+                "WriteOperationCount",
+                "OtherOperationCount",
+                "ReadTransferCount",
+                "WriteTransferCount",
+                "OtherTransferCount",
+            )
+        ]
+
+    class _BasicLimit(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class _ExtendedLimit(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _BasicLimit),
+            ("IoInfo", _IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    class _BasicAccounting(ctypes.Structure):
+        _fields_ = [
+            ("TotalUserTime", ctypes.c_int64),
+            ("TotalKernelTime", ctypes.c_int64),
+            ("ThisPeriodTotalUserTime", ctypes.c_int64),
+            ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+            ("TotalPageFaultCount", wintypes.DWORD),
+            ("TotalProcesses", wintypes.DWORD),
+            ("ActiveProcesses", wintypes.DWORD),
+            ("TotalTerminatedProcesses", wintypes.DWORD),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateJobObject.restype = wintypes.BOOL
+    kernel32.QueryInformationJobObject.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    return SimpleNamespace(
+        ctypes=ctypes,
+        kernel32=kernel32,
+        extended_limit=_ExtendedLimit,
+        basic_accounting=_BasicAccounting,
+    )
+
+
+class OwnedProcessJob:
+    """Windows kill-on-close job that owns one launched child and everything it spawns.
+
+    A job is the only Windows construct that follows a process tree past its parent's death: children
+    inherit membership, a leaked ``node.exe`` or browser is still counted after the process that started
+    it has gone, and the OS ends every member when the last handle to the job closes. It needs no
+    third-party package, which matters because the source launcher runs under a system interpreter that
+    does not have ``psutil``. The compiled Windows host wraps its backend in the same kind of job.
+
+    Off Windows, or when the OS refuses the job, ``for_process`` returns ``None`` and callers keep their
+    existing behaviour.
+    """
+
+    def __init__(self, handle: int) -> None:
+        self._handle: int | None = handle
+        self._lock = threading.Lock()
+
+    @classmethod
+    def for_process(cls, process: object) -> "OwnedProcessJob | None":
+        """Own an already-started ``subprocess.Popen`` child; call before it can spawn descendants.
+
+        Membership comes from the Popen's own process handle and never from a bare PID, so a stale or
+        recycled PID can never pull an unrelated process into a job that is later killed.
+        """
+        if not _windows_jobs_supported():
+            return None
+        process_handle = getattr(process, "_handle", None)
+        if process_handle is None:
+            return None
+        try:
+            api = _job_api()
+            job = api.kernel32.CreateJobObjectW(None, None)
+            if not job:
+                return None
+            try:
+                limits = api.extended_limit()
+                limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                if not api.kernel32.SetInformationJobObject(
+                    job,
+                    _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    api.ctypes.byref(limits),
+                    api.ctypes.sizeof(limits),
+                ):
+                    raise OSError("SetInformationJobObject failed")
+                if not api.kernel32.AssignProcessToJobObject(job, int(process_handle)):
+                    raise OSError("AssignProcessToJobObject failed")
+            except BaseException:
+                api.kernel32.CloseHandle(job)
+                raise
+            return cls(int(job))
+        except Exception:
+            return None
+
+    def active_processes(self) -> int | None:
+        """Number of processes still inside the job, or ``None`` if the OS will not say."""
+        with self._lock:
+            handle = self._handle
+            if handle is None:
+                return 0
+            api = _job_api()
+            accounting = api.basic_accounting()
+            if not api.kernel32.QueryInformationJobObject(
+                handle,
+                _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+                api.ctypes.byref(accounting),
+                api.ctypes.sizeof(accounting),
+                None,
+            ):
+                return None
+            return int(accounting.ActiveProcesses)
+
+    def terminate_remaining(self, *, grace_seconds: float = 0.0, exit_code: int = 1) -> int:
+        """Stop whatever is still in the job and return how many processes that was (0 = none lingered).
+
+        ``grace_seconds`` lets members that are already winding down (a node driver whose stdin just
+        closed) exit by themselves before they are killed; pass 0 when the owner was force-stopped.
+        """
+        remaining = self.active_processes()
+        if remaining and grace_seconds > 0:
+            deadline = time.monotonic() + grace_seconds
+            while remaining and time.monotonic() < deadline:
+                time.sleep(0.05)
+                remaining = self.active_processes()
+        if remaining == 0:
+            return 0
+        with self._lock:
+            handle = self._handle
+            if handle is not None:
+                _job_api().kernel32.TerminateJobObject(handle, exit_code)
+        return remaining or 0
+
+    def close(self) -> None:
+        """Release the job handle; because the job is kill-on-close, this also ends any member left."""
+        with self._lock:
+            handle, self._handle = self._handle, None
+        if handle is not None:
+            _job_api().kernel32.CloseHandle(handle)
 
 
 def start_parent_process_watchdog(*, interval: float = 0.5) -> threading.Thread | None:

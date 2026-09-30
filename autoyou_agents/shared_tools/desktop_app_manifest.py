@@ -33,6 +33,7 @@ __debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-e4cce6b4f14e2a8b1779117b"
 
 LOGGER = logging.getLogger(__name__)
 DESKTOP_MANIFEST_RELATIVE_PATH = Path("desktop_assets") / "manifest.json"
+DESKTOP_MANIFEST_TEMPLATE_RELATIVE_PATH = Path("desktop_assets") / "manifest.template.json"
 DESKTOP_LLM_RELATIVE_PATH = Path("desktop_assets") / "llm.txt"
 SUPPORTED_PLATFORM_TAGS = {"windows", "macos", "linux", "any"}
 
@@ -66,11 +67,21 @@ def build_desktop_asset_pack(
     bootstrap_only: bool = False,
     submit_actions: Optional[Iterable[Dict[str, Any]]] = None,
     selection_controls: Optional[Dict[str, Any]] = None,
+    app_version: Optional[str] = None,
+    app_version_min: Optional[str] = None,
+    app_version_max: Optional[str] = None,
+    theme: str = "any",
+    display_scale: Any = "any",
 ) -> Dict[str, Any]:
     return {
         "asset_pack_id": str(asset_pack_id).strip(),
         "platform": normalize_platform_tag(platform),
         "valid_until": str(valid_until).strip() if valid_until else None,
+        "app_version": str(app_version).strip() if app_version else None,
+        "app_version_min": str(app_version_min).strip() if app_version_min else None,
+        "app_version_max": str(app_version_max).strip() if app_version_max else None,
+        "theme": str(theme or "any").strip().lower() or "any",
+        "display_scale": display_scale if display_scale is not None else "any",
         "description": str(description).strip(),
         "architectures": [str(item).strip() for item in (architectures or []) if str(item).strip()],
         "os_versions": [str(item).strip() for item in (os_versions or []) if str(item).strip()],
@@ -278,6 +289,11 @@ def _normalize_desktop_manifest_payload(
                 "asset_pack_id": str(raw_pack.get("asset_pack_id") or "").strip(),
                 "platform": normalize_platform_tag(raw_pack.get("platform")),
                 "valid_until": str(raw_pack.get("valid_until") or "").strip() or None,
+                "app_version": str(raw_pack.get("app_version") or "").strip() or None,
+                "app_version_min": str(raw_pack.get("app_version_min") or "").strip() or None,
+                "app_version_max": str(raw_pack.get("app_version_max") or "").strip() or None,
+                "theme": str(raw_pack.get("theme") or "any").strip().lower() or "any",
+                "display_scale": raw_pack.get("display_scale", "any"),
                 "coordinate_space": str(raw_pack.get("coordinate_space") or "window").strip() or "window",
                 "architectures": [
                     str(item).strip()
@@ -339,15 +355,70 @@ def _normalize_desktop_manifest_payload(
     }
 
 
+def _normalize_desktop_manifest_with_user_packs(
+    payload: Dict[str, Any],
+    *,
+    agent_name: str,
+    manifest_path: str,
+    assets_root: str,
+) -> Optional[Dict[str, Any]]:
+    try:
+        from .desktop_asset_store import load_user_desktop_asset_packs
+
+        user_packs = load_user_desktop_asset_packs(agent_name)
+    except Exception as exc:
+        LOGGER.warning("Ignoring invalid user-local desktop packs for %s: %s", agent_name, exc)
+        user_packs = []
+    combined = dict(payload)
+    combined_packs = list(payload.get("asset_packs") or []) if isinstance(payload.get("asset_packs"), list) else []
+    combined["asset_packs"] = combined_packs + user_packs
+    return _normalize_desktop_manifest_payload(
+        combined,
+        agent_name=agent_name,
+        manifest_path=manifest_path,
+        assets_root=assets_root,
+    )
+
+
+def _read_desktop_manifest_path(manifest_path: Path, *, agent_name: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        LOGGER.warning("Ignoring invalid desktop manifest at %s: %s", manifest_path, exc)
+        return None
+    if not isinstance(payload, dict):
+        LOGGER.warning("Ignoring invalid desktop manifest at %s: expected a JSON object", manifest_path)
+        return None
+    declared_agent_name = str(payload.get("agent_name") or agent_name).strip()
+    if declared_agent_name != agent_name:
+        LOGGER.warning(
+            "Ignoring desktop manifest at %s: it declares agent %s, expected %s",
+            manifest_path,
+            declared_agent_name,
+            agent_name,
+        )
+        return None
+    return _normalize_desktop_manifest_with_user_packs(
+        payload,
+        agent_name=agent_name,
+        manifest_path=str(manifest_path),
+        assets_root=str(manifest_path.parent),
+    )
+
+
 def _load_desktop_manifest_from_package(agent_name: str) -> Optional[Dict[str, Any]]:
     try:
-        assets_root = importlib_resources.files(f"autoyou_agents.{agent_name}.desktop_assets")
-        manifest_resource = assets_root.joinpath("manifest.json")
+        assets_root = importlib_resources.files(f"autoyou_agents.{agent_name}").joinpath("desktop_assets")
+        manifest_resource = assets_root.joinpath("manifest.template.json")
+        if not manifest_resource.is_file():
+            manifest_resource = assets_root.joinpath("manifest.json")
         if not manifest_resource.is_file():
             return None
         with manifest_resource.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
-        return _normalize_desktop_manifest_payload(
+        if not isinstance(payload, dict):
+            return None
+        return _normalize_desktop_manifest_with_user_packs(
             payload,
             agent_name=agent_name,
             manifest_path=str(manifest_resource),
@@ -362,39 +433,39 @@ def _load_desktop_manifest_from_package(agent_name: str) -> Optional[Dict[str, A
 
 def load_desktop_app_manifest(agent_dir: Path) -> Optional[Dict[str, Any]]:
     agent_dir_path = Path(agent_dir)
-    manifest_path = agent_dir_path / DESKTOP_MANIFEST_RELATIVE_PATH
-    if manifest_path.is_file():
-        try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError) as exc:
-            LOGGER.warning("Ignoring invalid desktop manifest at %s: %s", manifest_path, exc)
-            return None
-        return _normalize_desktop_manifest_payload(
-            payload,
-            agent_name=agent_dir_path.name,
-            manifest_path=str(manifest_path),
-            assets_root=str(manifest_path.parent),
-        )
-
     agent_name = agent_dir_path.name
+    roots = [agent_dir_path]
     try:
         from shared.platform_runtime import iter_agent_roots
 
-        for root in iter_agent_roots(__file__):
-            candidate_manifest = root / agent_name / DESKTOP_MANIFEST_RELATIVE_PATH
-            if candidate_manifest.is_file():
-                try:
-                    payload = json.loads(candidate_manifest.read_text(encoding="utf-8"))
-                    return _normalize_desktop_manifest_payload(
-                        payload,
-                        agent_name=agent_name,
-                        manifest_path=str(candidate_manifest),
-                        assets_root=str(candidate_manifest.parent),
-                    )
-                except (OSError, ValueError, TypeError) as exc:
-                    LOGGER.warning("Ignoring invalid desktop manifest at %s: %s", candidate_manifest, exc)
+        roots.extend(root / agent_name for root in iter_agent_roots(__file__))
     except Exception:
         pass
+
+    unique_roots: List[Path] = []
+    for root in roots:
+        try:
+            resolved = root.resolve()
+        except OSError:
+            resolved = root
+        if resolved not in unique_roots:
+            unique_roots.append(resolved)
+
+    # A code-owned template defines the portable metadata contract and takes
+    # precedence over any legacy checkout-local manifest. User imagery is
+    # merged only from the private per-user store.
+    for root in unique_roots:
+        template_path = root / DESKTOP_MANIFEST_TEMPLATE_RELATIVE_PATH
+        if template_path.is_file():
+            manifest = _read_desktop_manifest_path(template_path, agent_name=agent_name)
+            if manifest is not None:
+                return manifest
+    for root in unique_roots:
+        manifest_path = root / DESKTOP_MANIFEST_RELATIVE_PATH
+        if manifest_path.is_file():
+            manifest = _read_desktop_manifest_path(manifest_path, agent_name=agent_name)
+            if manifest is not None:
+                return manifest
 
     return _load_desktop_manifest_from_package(agent_name)
 
@@ -429,7 +500,10 @@ def discover_desktop_app_manifests(
             if not root.is_dir():
                 continue
             for path in root.iterdir():
-                if path.is_dir() and (path / DESKTOP_MANIFEST_RELATIVE_PATH).is_file():
+                if path.is_dir() and (
+                    (path / DESKTOP_MANIFEST_RELATIVE_PATH).is_file()
+                    or (path / DESKTOP_MANIFEST_TEMPLATE_RELATIVE_PATH).is_file()
+                ):
                     discovered.add(path.name)
         names = sorted(discovered)
 
