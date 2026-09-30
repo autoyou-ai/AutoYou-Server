@@ -104,3 +104,101 @@ def test_before_model_callback_replays_recorded_auth_message():
 
     assert response is not None
     assert "verify_admin_totp" in response.content.parts[0].text
+
+
+def test_natural_language_listing_request_extracts_directory_path(tmp_path):
+    request = f"What files do I have in \"{tmp_path}\"?"
+
+    parsed = files_agent_module._try_parse_file_op(request)
+
+    assert parsed == ("list_directory", {"path": str(tmp_path)})
+    screenshot_style_request = "List all files in what I have in ~/SyntheticMusic"
+    assert files_agent_module._try_parse_file_op(screenshot_style_request) == (
+        "list_directory",
+        {"path": "~/SyntheticMusic"},
+    )
+
+
+def test_successful_totp_resumes_pending_directory_listing(monkeypatch, tmp_path):
+    (tmp_path / "alpha.txt").write_text("alpha", encoding="utf-8")
+    (tmp_path / "reports").mkdir()
+    session = {"active": False}
+    monkeypatch.setattr(files_agent_module, "_check_admin_session", lambda _context: session["active"])
+
+    context = SimpleNamespace(state={}, invocation_id="files-request")
+    original_request = SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text=f"What files do I have in \"{tmp_path}\"?")],
+            )
+        ]
+    )
+    response = asyncio.run(files_agent_module._files_before_model_callback(context, original_request))
+    assert response.content.parts[0].function_call.name == "check_admin_session"
+
+    files_agent_module._files_after_tool_callback(
+        tool=SimpleNamespace(name="check_admin_session"),
+        args={},
+        tool_context=context,
+        tool_response={"active": False, "message": "No active admin session."},
+    )
+    auth_prompt = asyncio.run(files_agent_module._files_before_model_callback(context, original_request))
+    assert "No active admin session" in auth_prompt.content.parts[0].text
+
+    context.invocation_id = "files-totp"
+    totp_request = SimpleNamespace(
+        contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text="654321")])]
+    )
+    verify_call = asyncio.run(files_agent_module._files_before_model_callback(context, totp_request))
+    assert verify_call.content.parts[0].function_call.name == "verify_admin_totp"
+
+    session["active"] = True
+    files_agent_module._files_after_tool_callback(
+        tool=SimpleNamespace(name="verify_admin_totp"),
+        args={"totp_code": "654321"},
+        tool_context=context,
+        tool_response={"valid": True, "active": True, "message": "Admin session is active."},
+    )
+    resumed_call = asyncio.run(files_agent_module._files_before_model_callback(context, totp_request))
+    call = resumed_call.content.parts[0].function_call
+    assert call.name == "list_directory"
+    assert call.args["path"] == str(tmp_path)
+
+    listing = files_agent_module.list_directory(str(tmp_path), tool_context=context)
+    files_agent_module._files_after_tool_callback(
+        tool=SimpleNamespace(name="list_directory"),
+        args={"path": str(tmp_path)},
+        tool_context=context,
+        tool_response=listing,
+    )
+    final_response = asyncio.run(files_agent_module._files_before_model_callback(context, totp_request))
+
+    assert "alpha.txt" in final_response.content.parts[0].text
+    assert "reports (folder)" in final_response.content.parts[0].text
+    assert context.state[files_agent_module._FILES_PENDING_OP_STATE_KEY] is None
+    assert context.state[files_agent_module._FILES_PENDING_REQUEST_STATE_KEY] == ""
+
+
+def test_active_session_check_does_not_reply_with_status_instead_of_request(monkeypatch):
+    monkeypatch.setattr(files_agent_module, "_check_admin_session", lambda _context: True)
+    context = SimpleNamespace(state={}, invocation_id="files-generic-request")
+    request = SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text="Please inspect this folder and tell me what is inside")],
+            )
+        ]
+    )
+    context.state[files_agent_module._FILES_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY] = context.invocation_id
+    files_agent_module._files_after_tool_callback(
+        tool=SimpleNamespace(name="check_admin_session"),
+        args={},
+        tool_context=context,
+        tool_response={"active": True, "message": "Admin session is active."},
+    )
+
+    response = asyncio.run(files_agent_module._files_before_model_callback(context, request))
+
+    assert response is None
