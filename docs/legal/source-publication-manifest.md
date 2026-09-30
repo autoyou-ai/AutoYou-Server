@@ -14,6 +14,7 @@ publication set should include:
 - Dockerfiles, Docker Compose files, and server requirements needed for local full-server source builds;
 - the reviewed EmotiVoice inference subset vendored at `vendor/emotivoice/` (Apache-2.0, pinned upstream commit; see `THIRD-PARTY-NOTICES.md`), excluding upstream demo/training entry points and model checkpoints;
 - the root `ai.txt` and `robots.txt` crawler and AI-training opt-out declarations, which the server serves at runtime;
+- the generic desktop asset schema, empty agent templates, and local setup prompts for the Codex Desktop and Claude Desktop bridge agents; user-generated manifests, sprites, and captures stay in private per-user application data and are excluded from source exports and compiled runtime bundles;
 - reviewed protocol/security documentation and assets, including the three
   synthetic-value admin UI captures named in the exporter allowlist, plus the
   server repository's contributor and legal guidance;
@@ -35,7 +36,7 @@ Source publication must exclude:
 - `autoyou-dev/` coordinator source and state. Public source releases may keep
   neither build-machine collection/classification tools nor the maintainer
   release ownership matrix or publication handoff state;
-- desktop-agent capture assets, unreviewed binary/media assets, maintainer training tests, and local runtime files;
+- desktop-agent screenshots, sprites, full-window captures, generated manifests, generated notes, and capture tools. Only generic templates, setup prompts, and the schema listed above are publishable. Unreviewed binary/media assets, maintainer training tests, and local runtime files also remain excluded;
 - tracked or local `.llm/machines/profiles/` and `.llm/machines/runs/`
   observations, even when the collector reports that they contain no personal
   identifiers;

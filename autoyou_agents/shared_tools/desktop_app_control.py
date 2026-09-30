@@ -26,6 +26,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import base64
 import json
 import logging
+import math
 import os
 import platform
 import re
@@ -69,6 +70,15 @@ _OCR_COMPOSER_MARKERS = (
     "describe a task or ask a question",
     "type / for commands",
 )
+
+
+def _missing_desktop_manifest_message(agent_dir: Path) -> str:
+    expected_path = Path(agent_dir) / "desktop_assets" / "manifest.template.json"
+    return (
+        f"No desktop agent manifest template found for {agent_dir}. Expected "
+        f"{expected_path}; rebuild or reinstall AutoYou with the desktop agent templates. "
+        "User-calibrated packs are imported separately from Agents setup."
+    )
 
 
 def _ensure_interactive_desktop() -> None:
@@ -123,13 +133,17 @@ def _get_repo_root() -> Path:
 
 def _get_artifacts_root() -> Path:
     try:
-        from shared.platform_runtime import get_config_dir, is_compiled
+        from .desktop_asset_store import get_user_desktop_agents_root
 
-        if is_compiled():
-            return get_config_dir("AutoYou", anchor=__file__) / "desktop_automation"
+        root = get_user_desktop_agents_root().parent / "desktop_automation"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
     except Exception:
-        pass
-    return _get_repo_root() / "output" / "desktop_automation"
+        from shared.platform_runtime import get_user_data_dir
+
+        root = get_user_data_dir("AutoYou") / "desktop_automation"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
 
 
 def _safe_json_loads(raw: str) -> Any:
@@ -261,6 +275,20 @@ def _version_tuple(value: Any) -> Tuple[int, ...]:
     return tuple(parts)
 
 
+def _desktop_scale_factor(value: Any) -> Optional[float]:
+    if value is None or str(value).strip().lower() in {"", "any", "auto", "none"}:
+        return None
+    try:
+        text = str(value).strip()
+        percent = text.endswith("%")
+        scale = float(text[:-1] if percent else text)
+        if percent or scale > 4.0:
+            scale /= 100.0
+        return scale if math.isfinite(scale) and 0.5 <= scale <= 4.0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _macos_app_version_from_bundle(bundle_path: Path) -> Optional[str]:
     plist_path = bundle_path / "Contents" / "Info.plist"
     if not plist_path.is_file():
@@ -359,6 +387,8 @@ def select_desktop_asset_pack(
     architecture: Optional[str] = None,
     on_date: Optional[str] = None,
     app_version: Optional[str] = None,
+    theme: Optional[str] = None,
+    display_scale: Optional[float | str] = None,
 ) -> Optional[Dict[str, Any]]:
     details = current_platform_details()
     desired_platform = normalize_platform_tag(platform_tag or details["platform"])
@@ -372,7 +402,22 @@ def select_desktop_asset_pack(
         app_version = detect_installed_app_version(manifest, desired_platform)
     installed_version = _version_tuple(app_version) if app_version else tuple()
 
-    candidates: List[Tuple[Tuple[int, ...], int, Dict[str, Any]]] = []
+    try:
+        from .desktop_asset_store import effective_desktop_asset_preferences
+
+        preferences = effective_desktop_asset_preferences(str(manifest.get("agent_name") or ""))
+    except Exception:
+        preferences = {"theme": "any", "display_scale": None}
+    desired_theme = str(theme or preferences.get("theme") or "any").strip().lower()
+    if desired_theme == "auto":
+        desired_theme = str(preferences.get("theme") or "any").strip().lower()
+    if not desired_theme:
+        desired_theme = "any"
+    desired_scale = _desktop_scale_factor(display_scale)
+    if display_scale is None or str(display_scale).strip().lower() == "auto":
+        desired_scale = _desktop_scale_factor(preferences.get("display_scale"))
+
+    candidates: List[Tuple[bool, Tuple[int, ...], int, Dict[str, Any]]] = []
     for pack in manifest.get("asset_packs") or []:
         pack_platform = normalize_platform_tag(pack.get("platform"))
         if pack_platform not in {"any", desired_platform}:
@@ -384,24 +429,56 @@ def select_desktop_asset_pack(
         if valid_until and reference_date and valid_until < reference_date:
             continue
         pack_min_version = _version_tuple(pack.get("app_version_min"))
+        pack_max_version = _version_tuple(pack.get("app_version_max"))
+        pack_exact_version = str(pack.get("app_version") or "").strip()
         # Skip packs that require a newer app than what is installed.
         if installed_version and pack_min_version and pack_min_version > installed_version:
+            continue
+        if installed_version and pack_max_version and installed_version > pack_max_version:
+            continue
+        if pack_exact_version and not app_version:
+            continue
+        if app_version and pack_exact_version and pack_exact_version.casefold() != str(app_version).strip().casefold():
+            continue
+        pack_theme = str(pack.get("theme") or "any").strip().lower() or "any"
+        if desired_theme not in {"", "any"} and pack_theme not in {"", "any", desired_theme}:
+            continue
+        pack_scale = _desktop_scale_factor(pack.get("display_scale"))
+        if desired_scale is not None and pack_scale is not None and abs(desired_scale - pack_scale) > 0.05:
             continue
         score = 0
         if pack_platform == desired_platform:
             score += 4
         if pack_architectures and desired_architecture in pack_architectures:
             score += 2
+        if pack_exact_version and app_version and pack_exact_version.casefold() == str(app_version).strip().casefold():
+            score += 6
         if not pack.get("bootstrap_only"):
             score += 1
-        version_rank = pack_min_version if installed_version else tuple()
-        candidates.append((version_rank, score, pack))
+        if pack_theme == desired_theme and desired_theme not in {"", "any"}:
+            score += 4
+        elif pack_theme in {"", "any"}:
+            score += 1
+        if desired_scale is not None and pack_scale is not None:
+            score += 2
+        elif pack_scale is None:
+            score += 1
+        if pack.get("_user_local_pack"):
+            score += 8
+        exact_version_match = bool(
+            pack_exact_version
+            and app_version
+            and pack_exact_version.casefold() == str(app_version).strip().casefold()
+        )
+        version_rank = pack_min_version if installed_version and not exact_version_match else tuple()
+        candidates.append((exact_version_match, version_rank, score, pack))
 
     if not candidates:
         return None
-    # Prefer the highest qualifying app_version_min, then the platform/arch/non-bootstrap score.
-    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return candidates[0][2]
+    # Exact installed-version packs win first. Among compatible version ranges,
+    # prefer the highest qualifying minimum, then platform/theme/scale matches.
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidates[0][3]
 
 
 def _release_action_coverage(manifest: Dict[str, Any], pack: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -441,7 +518,7 @@ def _with_release_action_coverage(manifest: Dict[str, Any], pack: Dict[str, Any]
 def list_desktop_asset_packs(agent_dir: Path, *, platform_tag: Optional[str] = None) -> Dict[str, Any]:
     manifest = load_desktop_app_manifest(Path(agent_dir))
     if not manifest:
-        return {"status": "error", "message": f"No desktop manifest found for {agent_dir}"}
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
     desired_platform = normalize_platform_tag(platform_tag)
     packs = []
     for pack in manifest.get("asset_packs") or []:
@@ -1651,13 +1728,19 @@ def _target_image_path(manifest: Dict[str, Any], target: Dict[str, Any]) -> Opti
     if not raw_path:
         return None
     candidate = Path(raw_path)
+    assets_root_value = str(target.get("_desktop_assets_root") or manifest.get("assets_root") or "").strip()
+    if not assets_root_value:
+        return None
+    assets_root = Path(assets_root_value).resolve()
     if not candidate.is_absolute():
-        assets_root = Path(str(manifest.get("assets_root") or ""))
         candidate = assets_root / candidate
     try:
-        return candidate.resolve()
-    except Exception:
-        return candidate
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(assets_root):
+            return None
+        return resolved
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 def _target_match_image(manifest: Dict[str, Any], target: Dict[str, Any]) -> Any:
@@ -1676,6 +1759,20 @@ def _target_match_image(manifest: Dict[str, Any], target: Dict[str, Any]) -> Any
         except Exception as exc:
             LOGGER.debug("Could not crop target image template %s: %s", image_path, exc)
     return str(image_path)
+
+
+def _missing_target_image_count(manifest: Dict[str, Any], pack: Optional[Dict[str, Any]]) -> int:
+    if not isinstance(pack, dict):
+        return 0
+    missing = set()
+    for target in pack.get("targets") or []:
+        if not isinstance(target, dict):
+            continue
+        image_path = _target_image_path(manifest, target)
+        if image_path is not None and not image_path.is_file():
+            target_id = str(target.get("target_id") or image_path.as_posix())
+            missing.add(target_id)
+    return len(missing)
 
 
 def _locate_target_by_image(
@@ -2278,14 +2375,18 @@ def _prepare_desktop_app_interaction(
         }
     manifest = load_desktop_app_manifest(Path(agent_dir))
     if not manifest:
-        return {"status": "error", "message": f"No desktop manifest found for {agent_dir}"}
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
 
     details = current_platform_details()
     pack = select_desktop_asset_pack(manifest, platform_tag=details["platform"], architecture=details["architecture"])
     if not pack:
         return {
             "status": "error",
-            "message": f"No matching asset pack is available for platform={details['platform']} architecture={details['architecture']}.",
+            "message": (
+                f"No user-local desktop asset pack matches platform={details['platform']} "
+                f"architecture={details['architecture']}. Open Agents > Desktop app control assets, "
+                "prepare a setup prompt with your own coding assistant, then import its ZIP bundle."
+            ),
             "platform": details["platform"],
             "architecture": details["architecture"],
         }
@@ -2691,7 +2792,7 @@ def _attach_files_to_focused_prompt(
 def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False) -> Dict[str, Any]:
     manifest = load_desktop_app_manifest(Path(agent_dir))
     if not manifest:
-        return {"status": "error", "message": f"No desktop manifest found for {agent_dir}"}
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
 
     details = current_platform_details()
     pack = select_desktop_asset_pack(manifest, platform_tag=details["platform"], architecture=details["architecture"])
@@ -2716,9 +2817,18 @@ def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False)
             "Multiple monitors detected. PyAutoGUI's upstream project warns that pointer automation is primarily reliable on the primary monitor."
         )
     if pack is None:
-        warnings.append("No current asset pack matched this OS/platform combination.")
+        warnings.append(
+            "No matching user-local asset pack is installed. Open Agents > Desktop app control assets "
+            "to prepare and import one for this OS, app version, theme, and display scale."
+        )
     if pack is not None and pack.get("bootstrap_only"):
         warnings.append("Selected asset pack is marked bootstrap-only and should be replaced with stronger screenshots before production use.")
+    missing_image_count = _missing_target_image_count(manifest, pack)
+    if missing_image_count:
+        warnings.append(
+            f"Selected asset pack references {missing_image_count} missing image template(s); "
+            "coordinate fallbacks will be used where defined, and image-only targets may be unavailable."
+        )
     release_action_coverage = _release_action_coverage(manifest, pack)
 
     screenshot_path = None
@@ -2753,7 +2863,7 @@ def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False)
 def capture_desktop_app_screenshot(agent_dir: Path, *, label: str = "manual") -> Dict[str, Any]:
     manifest = load_desktop_app_manifest(Path(agent_dir))
     if not manifest:
-        return {"status": "error", "message": f"No desktop manifest found for {agent_dir}"}
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
 
     details = current_platform_details()
     pack = select_desktop_asset_pack(manifest, platform_tag=details["platform"], architecture=details["architecture"])
@@ -2777,7 +2887,7 @@ def capture_desktop_app_screenshot(agent_dir: Path, *, label: str = "manual") ->
 def refresh_desktop_agent_llm_reference(agent_dir: Path) -> Dict[str, Any]:
     manifest = load_desktop_app_manifest(Path(agent_dir))
     if not manifest:
-        return {"status": "error", "message": f"No desktop manifest found for {agent_dir}"}
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
     llm_path = write_desktop_agent_llm_reference(Path(agent_dir), manifest)
     return {
         "status": "success",

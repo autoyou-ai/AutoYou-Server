@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_name": "codex_desktop_agent",
+  "title": "Codex Desktop",
+  "description": "User-calibrated local desktop controls for an installed Codex app.",
+  "app_id": "codex_desktop",
+  "transport": "desktop_gui",
+  "process_names": {
+    "windows": ["Codex.exe", "codex.exe", "ChatGPT Codex.exe", "ChatGPT.exe"],
+    "macos": ["Codex", "ChatGPT Codex", "ChatGPT"],
+    "linux": ["codex", "codex-desktop", "chatgpt-codex", "chatgpt"]
+  },
+  "window_title_hints": {
+    "windows": ["ChatGPT Codex", "Codex", "ChatGPT"],
+    "macos": ["ChatGPT Codex", "Codex", "ChatGPT"],
+    "linux": ["ChatGPT Codex", "Codex", "ChatGPT"]
+  },
+  "launch_commands": {},
+  "working_directory_strategy": {},
+  "preferred_prompt_target_id": "composer_box",
+  "preferred_submit_target_id": "send_button",
+  "preferred_copy_response_target_id": "copy_response_button",
+  "asset_packs": [],
+  "tags": ["desktop-control", "user-local-calibration"]
+}

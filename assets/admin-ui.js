@@ -84,6 +84,7 @@
         modal: null,
         softwareUpdate: { payload: null, loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
+        mcpSetup: { generatedToken: "", operatorSecret: "", configDownloaded: false },
         selectedAgentName: "",
         setup: {
             loading: false,
@@ -142,6 +143,13 @@
             tests: {},
             aiRestartRequired: false,
             aiRestartMessage: ""
+        },
+        desktopAssets: {
+            loading: false,
+            payload: null,
+            selectedAgent: "",
+            formAgent: "",
+            error: ""
         },
         operations: {
             loading: false,
@@ -1066,6 +1074,79 @@
         } finally {
             document.body.removeChild(textarea);
         }
+    }
+
+    function generateMcpSecret(prefix) {
+        if (!window.crypto || typeof window.crypto.getRandomValues !== "function" || typeof window.btoa !== "function") {
+            throw new Error("Secure token generation is unavailable. Open the admin page on localhost or HTTPS and try again.");
+        }
+        var browserHost = String(window.location && window.location.hostname || "").toLowerCase();
+        var localAdmin = browserHost === "localhost" || browserHost === "127.0.0.1" || browserHost === "::1" || browserHost === "[::1]";
+        if (!window.isSecureContext && !localAdmin) {
+            throw new Error("Open the admin page on localhost or HTTPS before generating a token. This protects the token while it is saved.");
+        }
+        var bytes = new Uint8Array(32);
+        window.crypto.getRandomValues(bytes);
+        var binary = "";
+        for (var index = 0; index < bytes.length; index += 1) {
+            binary += String.fromCharCode(bytes[index]);
+        }
+        var encoded = window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        return String(prefix || "") + encoded;
+    }
+
+    function mcpAdapterEnvText() {
+        var token = String(getByPath(state.mcpSetup, "generatedToken", "") || "");
+        var operatorSecret = String(getByPath(state.mcpSetup, "operatorSecret", "") || "");
+        if (!token || !operatorSecret) {
+            throw new Error("Generate and save a server token before downloading the adapter config.");
+        }
+
+        var mcpStatus = getByPath(state.bootstrap, "status.mcp", {});
+        var serverEndpoint = new URL(String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp")));
+        var adapterUrl = new URL(String(getByPath(mcpStatus, "adapter_url", "http://127.0.0.1:8071")));
+        var isLoopback = function (hostname) {
+            var host = String(hostname || "").toLowerCase();
+            return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
+        };
+        if (!isLoopback(serverEndpoint.hostname) || !isLoopback(adapterUrl.hostname)) {
+            throw new Error("The private adapter file is limited to loopback addresses. Use a separately reviewed HTTPS setup for remote access.");
+        }
+        if (!/^https?:$/.test(serverEndpoint.protocol) || !/^https?:$/.test(adapterUrl.protocol)) {
+            throw new Error("The server and adapter addresses must use HTTP or HTTPS.");
+        }
+
+        var port = adapterUrl.port || (adapterUrl.protocol === "https:" ? "443" : "80");
+        return [
+            "# AutoYou MCP local adapter settings. Keep this file private.",
+            "AUTOYOU_MCP_AUTH_MODE=oauth",
+            "AUTOYOU_MCP_ENV=development",
+            "AUTOYOU_MCP_PUBLIC_URL=" + adapterUrl.origin,
+            "AUTOYOU_MCP_HOST=127.0.0.1",
+            "AUTOYOU_MCP_PORT=" + port,
+            "AUTOYOU_MCP_BACKEND_MODE=full",
+            "AUTOYOU_MCP_TOOL_PROFILE=full",
+            "AUTOYOU_MCP_FULL_BASE_URL=" + serverEndpoint.origin,
+            "AUTOYOU_MCP_FULL_API_TOKEN=" + token,
+            "AUTOYOU_MCP_OPERATOR_SECRET=" + operatorSecret,
+            "AUTOYOU_MCP_ALLOWED_REDIRECT_URIS=",
+            ""
+        ].join("\r\n");
+    }
+
+    function downloadMcpAdapterConfig() {
+        var contents = mcpAdapterEnvText();
+        var blob = new Blob([contents], { type: "text/plain;charset=utf-8" });
+        var objectUrl = URL.createObjectURL(blob);
+        var anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = "autoyou-mcp.env";
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1000);
+        state.mcpSetup.configDownloaded = true;
     }
 
     function applyTheme(theme) {
@@ -4502,7 +4583,7 @@
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
             + '</div><div class="ayu-chat-identity"><span class="ayu-chat-identity-avatar">' + escapeHtml(String(chat.userId || chatDefaultUserId()).slice(-2).toUpperCase()) + '</span><span><small>Active UserID</small><strong title="' + escapeHtml(chat.userId || chatDefaultUserId()) + '">' + escapeHtml(chat.userId || chatDefaultUserId()) + '</strong></span></div></aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
-            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '><div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Messages containing @ use Agents API routing. Enter to send. Shift+Enter for a new line.</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '><div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -4704,6 +4785,126 @@
         }
     }
 
+    function desktopAssetAgentRecord(agentName) {
+        var agents = getByPath(state.desktopAssets, "payload.agents", []);
+        return (Array.isArray(agents) ? agents : []).find(function (item) {
+            return String(item.agent_name || "") === String(agentName || "");
+        }) || null;
+    }
+
+    function activateDesktopAssetAgent(agentName) {
+        var record = desktopAssetAgentRecord(agentName);
+        if (!record) {
+            return null;
+        }
+        state.desktopAssets.selectedAgent = record.agent_name;
+        setByPath(state.forms, "desktopAssets.agent_name", record.agent_name);
+        if (state.desktopAssets.formAgent !== record.agent_name) {
+            state.desktopAssets.formAgent = record.agent_name;
+            setByPath(state.forms, "desktopAssets.platform", getByPath(state.desktopAssets, "payload.platform", "windows"));
+            setByPath(state.forms, "desktopAssets.app_version", "");
+            setByPath(state.forms, "desktopAssets.theme", getByPath(record, "preferences.theme", "auto"));
+            setByPath(state.forms, "desktopAssets.display_scale", getByPath(record, "preferences.display_scale", "auto"));
+        }
+        return record;
+    }
+
+    async function ensureDesktopAssets(force) {
+        if (state.desktopAssets.loading || (!force && state.desktopAssets.payload)) {
+            return;
+        }
+        state.desktopAssets.loading = true;
+        state.desktopAssets.error = "";
+        renderApp({ passive: true });
+        try {
+            state.desktopAssets.payload = await requestJson("/api/admin/desktop-assets");
+            var agents = getByPath(state.desktopAssets, "payload.agents", []);
+            var selected = state.desktopAssets.selectedAgent || getByPath(state.forms, "desktopAssets.agent_name", "");
+            if (!desktopAssetAgentRecord(selected) && Array.isArray(agents) && agents.length) {
+                selected = agents[0].agent_name;
+                state.desktopAssets.formAgent = "";
+            }
+            if (selected) {
+                activateDesktopAssetAgent(selected);
+            }
+        } catch (error) {
+            state.desktopAssets.error = error.message || String(error);
+        } finally {
+            state.desktopAssets.loading = false;
+            renderApp({ passive: true });
+        }
+    }
+
+    async function saveDesktopAssetPreferences() {
+        var agentName = state.desktopAssets.selectedAgent;
+        if (!agentName) {
+            throw new Error("Choose a desktop agent first.");
+        }
+        var preferences = await postJson("/api/admin/desktop-assets/" + encodeURIComponent(agentName) + "/preferences", {
+            theme: getByPath(state.forms, "desktopAssets.theme", "auto"),
+            display_scale: getByPath(state.forms, "desktopAssets.display_scale", "auto")
+        });
+        var record = desktopAssetAgentRecord(agentName);
+        if (record) {
+            record.preferences = preferences.preferences || {};
+        }
+        setNotice("success", "Desktop asset preferences saved for " + (record ? record.title : agentName) + ".");
+        renderApp();
+    }
+
+    async function generateDesktopAssetSetupPrompt() {
+        var agentName = state.desktopAssets.selectedAgent;
+        if (!agentName) {
+            throw new Error("Choose a desktop agent first.");
+        }
+        var query = new URLSearchParams({
+            platform: getByPath(state.forms, "desktopAssets.platform", getByPath(state.desktopAssets, "payload.platform", "windows")),
+            app_version: getByPath(state.forms, "desktopAssets.app_version", ""),
+            theme: getByPath(state.forms, "desktopAssets.theme", "auto"),
+            display_scale: getByPath(state.forms, "desktopAssets.display_scale", "auto")
+        });
+        var payload = await requestJson("/api/admin/desktop-assets/" + encodeURIComponent(agentName) + "/setup-prompt?" + query.toString());
+        var record = desktopAssetAgentRecord(agentName);
+        setModal({
+            title: (record ? record.title : agentName) + " setup prompt",
+            description: "Copy this into your own Claude, ChatGPT, or Codex workspace. AutoYou does not send the prompt to another service.",
+            text: payload.prompt,
+            copyValue: payload.prompt
+        });
+    }
+
+    async function importDesktopAssetBundle(file) {
+        var agentName = state.desktopAssets.selectedAgent;
+        if (!agentName || !file) {
+            return;
+        }
+        var form = new FormData();
+        form.append("bundle", file, file.name || "desktop-assets.zip");
+        var result = await requestJson("/api/admin/desktop-assets/" + encodeURIComponent(agentName) + "/import", {
+            method: "POST",
+            body: form
+        });
+        var record = desktopAssetAgentRecord(agentName);
+        if (record) {
+            record.asset_packs = result.asset_packs || [];
+        }
+        setNotice("success", "Installed " + (result.installed_pack_ids || []).length + " local desktop asset pack(s). They are stored in private app data.");
+        renderApp();
+    }
+
+    async function removeDesktopAssetPack(agentName, storageId) {
+        if (!agentName || !storageId) {
+            return;
+        }
+        var result = await requestJson("/api/admin/desktop-assets/" + encodeURIComponent(agentName) + "/" + encodeURIComponent(storageId), { method: "DELETE" });
+        var record = desktopAssetAgentRecord(agentName);
+        if (record) {
+            record.asset_packs = result.asset_packs || [];
+        }
+        setNotice("success", "Desktop asset pack removed from this machine.");
+        renderApp();
+    }
+
     function setScreen(screen, options) {
         options = options || {};
         if (state.screen === "guides" && screen !== "guides" && bootSweepState.running) {
@@ -4733,6 +4934,7 @@
         } else if (screen === "agents") {
             ensureInstructions(false);
             ensureAgentWorkbenchDetail(false, true);
+            ensureDesktopAssets(false);
         } else if (screen === "live" || screen === "messaging" || screen === "video" || screen === "connectivity") {
             ensureOperationsData(false, { passive: true });
             if (screen === "video") {
@@ -6069,6 +6271,47 @@
         return "<div class=\"ayu-studio-picker\"><div class=\"ayu-field-label\">Studio agent</div><div class=\"ayu-studio-pick-list\">" + options + "</div><div class=\"ayu-field-hint\">Pick the agent to manage below. The AutoYou main agent is marked <strong>Main</strong>; sub-agents can be installed or uninstalled.</div></div>";
     }
 
+    function renderDesktopAssetSetupPanel() {
+        var catalog = state.desktopAssets.payload || {};
+        var agents = Array.isArray(catalog.agents) ? catalog.agents : [];
+        if (state.desktopAssets.loading && !catalog.agents) {
+            return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", "<div class=\"ayu-empty\">Loading desktop agent setup...</div>");
+        }
+        if (state.desktopAssets.error) {
+            return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", "<div class=\"ayu-note ayu-note-red\"><strong>Desktop asset setup could not load.</strong><p>" + escapeHtml(state.desktopAssets.error) + "</p><div class=\"ayu-inline-actions\">" + button("Retry", "desktop-assets-refresh", "secondary", "refresh", "sm") + "</div></div>");
+        }
+        if (!agents.length) {
+            return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", "<div class=\"ayu-empty\">This AutoYou build does not include any desktop agent templates.</div>");
+        }
+        var currentName = state.desktopAssets.selectedAgent || getByPath(state.forms, "desktopAssets.agent_name", agents[0].agent_name);
+        var selected = activateDesktopAssetAgent(currentName) || agents[0];
+        var platform = String(getByPath(state.forms, "desktopAssets.platform", catalog.platform || "windows"));
+        var packRows = (selected.asset_packs || []).map(function (pack) {
+            var version = pack.app_version
+                ? "app " + String(pack.app_version)
+                : (pack.app_version_min || pack.app_version_max
+                    ? String(pack.app_version_min || "any") + " to " + String(pack.app_version_max || "any")
+                    : "any app version");
+            var scale = pack.display_scale === "any" || pack.display_scale == null ? "any scale" : String(pack.display_scale) + "x";
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(pack.asset_pack_id) + "</strong><p>" + escapeHtml([pack.platform || "any platform", version, pack.theme || "any theme", scale].join(" | ")) + "</p><small>" + escapeHtml(String(pack.target_count || 0)) + " calibrated targets</small></div><div class=\"ayu-inline-actions\">" + button("Remove", "desktop-pack-remove", "danger", "trash", "sm", "data-agent=\"" + escapeHtml(selected.agent_name) + "\" data-storage-id=\"" + escapeHtml(pack.storage_id) + "\"") + "</div></div>";
+        }).join("");
+        if (!packRows) {
+            packRows = "<div class=\"ayu-empty\">No user-local pack is installed for this desktop agent yet.</div>";
+        }
+        var fileInput = "<input type=\"file\" accept=\".zip,application/zip\" data-role=\"desktop-pack-input\" style=\"display:none\" aria-label=\"Select desktop asset ZIP\">";
+        var preferences = field("Default appearance", input("desktopAssets.theme", { placeholder: "auto, any, light, dark, high_contrast, custom:name" }), "Use a built-in theme name or custom:<name>. Auto follows this computer's appearance.")
+            + field("Default display scale", input("desktopAssets.display_scale", { placeholder: "auto, any, or 1.0 to 4.0" }), "Scale is a multiplier such as 1.0 or 1.5. Auto reads this computer's display scaling where available.");
+        var promptFields = field("Desktop agent", select("desktopAssets.agent_name", agents.map(function (agent) { return { value: agent.agent_name, label: agent.title || agent.agent_name }; })))
+            + field("Target platform", select("desktopAssets.platform", [{ value: "windows", label: "Windows" }, { value: "macos", label: "macOS" }, { value: "linux", label: "Linux" }]))
+            + field("Installed app version", input("desktopAssets.app_version", { placeholder: "Leave blank to have your assistant inspect it" }), "The assistant can identify the installed version if you leave this blank.");
+        var body = "<div class=\"ayu-note ayu-note-blue\"><strong>Use your own coding assistant to prepare a local pack.</strong><p>AutoYou gives you a prompt to copy into your existing Claude, ChatGPT, or Codex workspace. It does not contact those services. Import the resulting ZIP here. Generated manifests and cropped control images stay in this computer's private AutoYou data folder and are excluded from source and compiled release bundles.</p></div>"
+            + "<div class=\"ayu-grid-2\">" + promptFields + "</div><div class=\"ayu-grid-2\">" + preferences + "</div>"
+            + "<div class=\"ayu-inline-actions\">" + button("Save preferences", "desktop-asset-save-preferences", "secondary", "save", "sm") + button("Prepare setup prompt", "desktop-asset-generate-prompt", "primary", "copy", "sm") + button("Import ZIP", "desktop-pack-select", "ghost", "file", "sm") + button("Refresh packs", "desktop-assets-refresh", "ghost", "refresh", "sm") + fileInput + "</div>"
+            + "<div class=\"ayu-field-hint\">Only use a blank or synthetic app state. Keep chat text, account details, full-screen captures, and other personal content out of the ZIP. A local pack may still be subject to the desktop app's terms and rights in its interface.</div>"
+            + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-list ayu-agent-grid\">" + packRows + "</div>";
+        return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", body);
+    }
+
     function renderAgentScreen() {
         var payload = getByPath(state.bootstrap, "agents", {});
         var listingPayload = state.agentWorkbench.payload || payload;
@@ -6167,7 +6410,7 @@
 
         var promptMarkup = renderAgentPromptRuntimeControl(instructionPayload) + "<div class=\"ayu-tabs\"><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "sections" ? " active" : "") + "\" data-action=\"instructions-mode:sections\">Section builder</button><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "raw" ? " active" : "") + "\" data-action=\"instructions-mode:raw\">Raw prompt</button></div>" + (state.instructions.loading ? "<div class=\"ayu-empty\">Loading prompt instructions...</div>" : (state.instructions.mode === "sections" ? sectionEditor : rawEditor));
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderDesktopAssetSetupPanel() + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + "</div>";
     }
 
     function renderPageScreen() {
@@ -6708,6 +6951,41 @@
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Live View</h1><p>Current cloud routing, connected clients, task delivery health, messaging partner status, and frontend routes in one scan-friendly admin view.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost\" href=\"" + escapeHtml(tasksUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open Tasks</span></a></div></div><div class=\"ayu-grid-2\">" + panel("Cloud Pair", "Whether this server is linked and receiving client requests.", cloudMarkup) + panel("Connected clients", "Current client reachability without direct-send controls.", sessionsMarkup) + "</div>" + renderLocalPairPanelMarkup() + "<div class=\"ayu-grid-2\">" + panel("Tasks & deliveries", "Key Tasks Mission Control counts plus outbound delivery backlog.", taskMarkup) + panel("Messaging partners", "Transport health only; direct sends stay in Messaging.", messagingMarkup) + "</div>" + panel("Browser routes", "Frontend discovery and launch paths visible to browser clients.", routesMarkup) + "</div>";
     }
 
+    function renderMcpSetupPanelBody(mcpStatus) {
+        var enabled = Boolean(getByPath(mcpStatus, "enabled", false));
+        var configured = Boolean(getByPath(mcpStatus, "configured", false));
+        var generated = Boolean(getByPath(state.mcpSetup, "generatedToken", ""));
+        var adapterUrl = String(getByPath(mcpStatus, "adapter_url", getByPath(state.forms, "messaging.mcp.adapter_url", "http://127.0.0.1:8071")) || "http://127.0.0.1:8071");
+        var statusMessage = !enabled
+            ? "MCP is disabled on this server. Generate a token to enable the private adapter connection."
+            : configured
+                ? "The AutoYou server has a server-to-adapter token saved."
+                : "A server-to-adapter token is needed before the adapter can connect.";
+        var statusToneClass = !enabled ? "ayu-note-amber" : (configured ? "ayu-note-green" : "ayu-note-amber");
+        var actionLabel = configured ? (generated ? "Generate a replacement token" : "Rotate server token") : "Generate and save secure token";
+        var quickSetup = "<div class=\"ayu-note " + statusToneClass + "\"><strong>" + escapeHtml(statusMessage) + "</strong><p>Tokens generated here are saved immediately. Tokens added to AutoYou-Server/.env need a main server restart.</p><ol class=\"ayu-mcp-steps\"><li>Generate and save a private token on this AutoYou server.</li><li>Download the matching adapter environment file.</li><li>Start the adapter from the AutoYou project folder.</li></ol></div>";
+        var handoff = generated
+            ? "<div class=\"ayu-note ayu-note-green ayu-mcp-handoff\" role=\"status\"><strong>Server token saved.</strong><p>Download the matching adapter file now. It contains the token and a local OAuth secret. Keep it private. This one-time copy is cleared when you leave or reload this page.</p><div class=\"ayu-inline-actions\">" + button("Download private adapter config", "mcp-download-config", "primary", "download") + "</div></div>"
+            : (configured
+                ? "<div class=\"ayu-note ayu-note-gray\"><strong>Need a matching adapter file?</strong><p>The saved token is never shown again. If you do not already have its private adapter config, rotate the token to create a fresh matching file.</p></div>"
+                : "");
+        var startInstructions = "<div class=\"ayu-note ayu-note-gray ayu-mcp-start\"><strong>Start the adapter</strong><p>Use an adapter-only Python virtual environment. From the AutoYou project folder, install <code>plugins/autoyou-mcp</code> into that environment, then run this command with the environment's Python: <code>python -m autoyou_mcp --env-file &lt;path-to-autoyou-mcp.env&gt; --transport streamable-http</code>.</p><p>Local MCP endpoint: <code>" + escapeHtml(adapterUrl.replace(/\/$/, "")) + "/mcp</code>. Platform-specific commands are in the AutoYou MCP README.</p></div>";
+        var hostedConnectionNote = "<div class=\"ayu-note ayu-note-amber\"><strong>For hosted ChatGPT</strong><p>The generated setup listens on this computer only. A hosted ChatGPT connection needs a public HTTPS adapter URL and provider-issued OAuth callback settings. Keep the AutoYou admin port 8001 private.</p></div>";
+        var advanced = "<details class=\"ayu-mcp-advanced\"><summary>Advanced settings</summary><div class=\"ayu-mcp-advanced-body\">" +
+            checkbox("messaging.mcp.enabled", "Enable AutoYou MCP", "The adapter sends chat and supported attachments into this server's native agent and model runtime.") +
+            field("MCP adapter URL", input("messaging.mcp.adapter_url", { placeholder: "http://127.0.0.1:8071" }), "Address used by the local adapter. The main server does not start that separate process.") +
+            field("Server-to-adapter token", input("messaging.mcp.api_token", { type: "password", placeholder: "Leave blank to keep the saved token", autocomplete: "new-password" }), "Use this only to enter a token generated elsewhere. The guided setup creates a matching token automatically.") +
+            checkbox("messaging.mcp.clear_api_token", "Clear the saved MCP token", "A token in AutoYou-Server/.env remains active as a fallback until you remove it and restart the server.") +
+            "<div class=\"ayu-inline-actions\">" + button("Save advanced settings", "save-mcp", "secondary", "save") + "</div></div></details>";
+
+        return "<div class=\"ayu-mcp-setup\">" + renderStatusRows([
+            { label: "AutoYou server", value: enabled ? "Enabled" : "Disabled" },
+            { label: "Server-to-adapter token", value: configured ? "Saved" : "Missing" },
+            { label: "MCP adapter", value: "Separate process", help: "Start and stop it from the same computer." },
+            { label: "Adapter address", value: adapterUrl, mono: true }
+        ]) + quickSetup + "<div class=\"ayu-inline-actions\">" + button(actionLabel, "mcp-generate-token", configured ? "secondary" : "primary", "key") + "</div>" + handoff + startInstructions + hostedConnectionNote + advanced + "<div class=\"ayu-note ayu-note-blue\"><strong>Credential boundary</strong><p>Your OpenAI API key is used by the model provider. This generated MCP token only lets the adapter call AutoYou. The adapter file never includes the OpenAI API key.</p></div></div>";
+    }
+
     function renderMessagingScreen() {
         var status = getByPath(state.bootstrap, "status", {});
         var signalSummary = buildSignalStatusSummary();
@@ -6757,11 +7035,7 @@
         ) + "<div class=\"ayu-inline-actions\">" + button("Save server name", "save-messaging-server-name", "primary", "save") + "</div>";
         var signalSettingsMarkup = field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(signalSummary.displayStatus)) + "\">" + escapeHtml(prettyLabel(signalSummary.displayStatus)) + "</div>") + checkbox("messaging.signal.enabled", "Enable Signal") + field("Port", input("messaging.signal.port", { type: "number" })) + field("Linked device name", input("messaging.signal.device_name", { placeholder: "AutoYou-Signal", extraAttrs: signalDeviceNameLocked ? "disabled aria-disabled=\"true\"" : "" }), signalDeviceNameLocked ? deviceNameLockHint : "Set this before pairing. It stays stable after pairing.") + checkbox("messaging.signal.shutdown_docker_on_exit", "Stop Signal when AutoYou closes") + "<div class=\"ayu-inline-actions\">" + button("Save Signal", "save-signal", "primary", "save") + button("Restart", "signal-restart", "secondary", "refresh", "sm") + button("Show QR", "signal-qr", "ghost", "qr", "sm") + button("Cleanup pairing", "signal-cleanup", "danger", "trash", "sm") + "</div>";
         var whatsappSettingsMarkup = field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(whatsappDisplayStatus)) + "\">" + escapeHtml(prettyLabel(whatsappDisplayStatus)) + "</div>") + checkbox("messaging.whatsapp.enabled", "Enable WhatsApp") + field("Port", input("messaging.whatsapp.port", { type: "number" })) + field("Linked device name", input("messaging.whatsapp.device_name", { placeholder: "AutoYou-WhatsApp", extraAttrs: whatsappDeviceNameLocked ? "disabled aria-disabled=\"true\"" : "" }), whatsappDeviceNameLocked ? deviceNameLockHint : "Set this before pairing. It stays stable after pairing.") + checkbox("messaging.whatsapp.shutdown_on_exit", "Stop WhatsApp when AutoYou closes") + "<div class=\"ayu-inline-actions\">" + button("Save WhatsApp", "save-whatsapp", "primary", "save") + button("Restart", "whatsapp-restart", "secondary", "refresh", "sm") + button("Show QR", "whatsapp-qr", "ghost", "qr", "sm") + button("Reset session", "whatsapp-reset", "danger", "trash", "sm") + "</div>";
-        var mcpSettingsMarkup = field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(getByPath(mcpStatus, "enabled", false) ? "connected" : "disabled")) + "\">" + escapeHtml(getByPath(mcpStatus, "enabled", false) ? "Enabled" : "Disabled") + "</div>") + renderStatusRows([
-            { label: "Token", value: getByPath(mcpStatus, "configured", false) ? "Configured" : "Loopback development" },
-            { label: "REST surface", value: "/api/v1/mcp/*" },
-            { label: "Adapter", value: getByPath(mcpStatus, "adapter_url", getByPath(state.forms, "messaging.mcp.adapter_url", "http://127.0.0.1:8071")) }
-        ]) + checkbox("messaging.mcp.enabled", "Enable AutoYou MCP") + field("MCP adapter URL", input("messaging.mcp.adapter_url", { placeholder: "http://127.0.0.1:8071" }), "The MCP adapter is a separate process. This URL is displayed for operator setup and is not started by the main server.") + field("Dedicated API token", input("messaging.mcp.api_token", { type: "password", placeholder: "Leave blank to keep the saved token", autocomplete: "new-password" }), "Use a high-entropy token for LAN, tunnel, or non-loopback access. Loopback-only development may leave it blank.") + "<div class=\"ayu-inline-actions\">" + button("Save MCP settings", "save-mcp", "primary", "save") + "</div>";
+        var mcpSettingsMarkup = renderMcpSetupPanelBody(mcpStatus);
         var telegramUserDiagnosticsMarkup = renderStatusRows([
             { label: "Connection", value: prettyLabel(telegramUserSummary.displayStatus), help: telegramUserSummary.connected ? "Saved Messages is ready." : "Connect your account to begin." },
             { label: "Saved Messages only", value: getByPath(telegramUserSummary.status, "saved_messages_only", true) ? "Yes" : "No" }
@@ -6777,7 +7051,7 @@
                 panel("Signal", "Optional owner-only connection for Notes to Self.", signalSettingsMarkup) +
                 panel("WhatsApp", "Optional owner-only connection for your self chat.", whatsappSettingsMarkup) +
             "</div><div class=\"ayu-grid-2\">" +
-                panel("AutoYou MCP", "ChatGPT/App SDK messaging partner bridge for status, chat, Auto Pair, and connected-client text delivery.", mcpSettingsMarkup + checkbox("messaging.mcp.clear_api_token", "Clear the saved MCP token", "Use this only when deliberately rotating or removing the current server-to-server credential.")) +
+                panel("AutoYou MCP", "Connect a private MCP adapter to AutoYou's native chat, models, agents, and supported media handling.", mcpSettingsMarkup) +
                 panel("Connected client control", "Select a connected client, send direct messages, and control remote audio playback.", liveControlMarkup) +
             "</div><div class=\"ayu-grid-2\">" +
                 panel("Send through Telegram Bot", "Send through an approved bot chat.", telegramDirectMarkup) +
@@ -8811,6 +9085,34 @@
             setNotice("success", "Model download started.");
             return;
         }
+        if (action === "desktop-assets-refresh") {
+            state.desktopAssets.error = "";
+            await ensureDesktopAssets(true);
+            if (state.desktopAssets.error) {
+                throw new Error(state.desktopAssets.error);
+            }
+            setNotice("success", "Desktop agent templates and local packs refreshed.");
+            return;
+        }
+        if (action === "desktop-asset-save-preferences") {
+            await saveDesktopAssetPreferences();
+            return;
+        }
+        if (action === "desktop-asset-generate-prompt") {
+            await generateDesktopAssetSetupPrompt();
+            return;
+        }
+        if (action === "desktop-pack-select") {
+            var desktopPackInput = root ? root.querySelector('[data-role="desktop-pack-input"]') : null;
+            if (desktopPackInput) {
+                desktopPackInput.click();
+            }
+            return;
+        }
+        if (action === "desktop-pack-remove") {
+            await removeDesktopAssetPack(element && element.getAttribute("data-agent"), element && element.getAttribute("data-storage-id"));
+            return;
+        }
         if (action.indexOf("select-agent:") === 0) {
             state.selectedAgentName = action.split(":")[1];
             state.agentWorkbench.detail = null;
@@ -9310,8 +9612,45 @@
             await patchConfig({ whatsapp: getByPath(state.forms, "messaging.whatsapp", {}) }, "WhatsApp settings updated.");
             return;
         }
+        if (action === "mcp-generate-token") {
+            var currentMcpStatus = getByPath(state.bootstrap, "status.mcp", {});
+            if (getByPath(currentMcpStatus, "configured", false) && !window.confirm("Replace the saved MCP token? The adapter will need the new matching config before it can reconnect.")) {
+                return;
+            }
+            var mcpToken = generateMcpSecret("autoyou_mcp_");
+            var mcpOperatorSecret = generateMcpSecret("autoyou_operator_");
+            var mcpConfig = Object.assign({}, clone(getByPath(state.forms, "messaging.mcp", {})) || {}, {
+                enabled: true,
+                api_token: mcpToken,
+                clear_api_token: false
+            });
+            await patchConfig({ mcp: mcpConfig }, "Secure MCP token saved. Download the matching adapter config to continue.");
+            state.mcpSetup.generatedToken = mcpToken;
+            state.mcpSetup.operatorSecret = mcpOperatorSecret;
+            state.mcpSetup.configDownloaded = false;
+            setByPath(state.forms, "messaging.mcp.enabled", true);
+            setByPath(state.forms, "messaging.mcp.api_token", "");
+            setByPath(state.forms, "messaging.mcp.clear_api_token", false);
+            renderApp();
+            return;
+        }
+        if (action === "mcp-download-config") {
+            downloadMcpAdapterConfig();
+            setNotice("success", "Private adapter config downloaded. Keep it private, install the adapter package, then start it with the file path.");
+            return;
+        }
         if (action === "save-mcp") {
-            await patchConfig({ mcp: getByPath(state.forms, "messaging.mcp", {}) }, "AutoYou MCP settings updated.");
+            var mcpSavePayload = getByPath(state.forms, "messaging.mcp", {});
+            var mcpSaveStatus = getByPath(state.bootstrap, "status.mcp", {});
+            var clearingMcpToken = Boolean(getByPath(mcpSavePayload, "clear_api_token", false));
+            var replacingMcpToken = Boolean(String(getByPath(mcpSavePayload, "api_token", "") || "").trim());
+            if (clearingMcpToken && getByPath(mcpSaveStatus, "configured", false) && !window.confirm("Clear the token saved in AutoYou settings? A token in AutoYou-Server/.env will remain active as a fallback.")) {
+                return;
+            }
+            if (!clearingMcpToken && replacingMcpToken && getByPath(mcpSaveStatus, "configured", false) && !window.confirm("Replace the saved MCP token? The adapter must receive the matching new config before it can reconnect.")) {
+                return;
+            }
+            await patchConfig({ mcp: mcpSavePayload }, "AutoYou MCP settings updated.");
             return;
         }
         if (action === "save-video-call") {
@@ -10078,7 +10417,25 @@
             });
             return;
         }
+        if (target.getAttribute("data-role") === "desktop-pack-input") {
+            var desktopPackFile = target.files && target.files[0] ? target.files[0] : null;
+            target.value = "";
+            if (!desktopPackFile) {
+                return;
+            }
+            withPendingAction("desktop-pack-import", function () {
+                return importDesktopAssetBundle(desktopPackFile);
+            }).catch(function (error) {
+                setNotice("error", error.message || "Could not import the desktop asset ZIP.");
+            });
+            return;
+        }
         syncBoundControl(target);
+        if (target.getAttribute("data-bind") === "desktopAssets.agent_name") {
+            activateDesktopAssetAgent(target.value);
+            renderApp();
+            return;
+        }
         if (target.hasAttribute("data-bind")) {
             var path = target.getAttribute("data-bind");
             var value = getByPath(state.forms, path, "");

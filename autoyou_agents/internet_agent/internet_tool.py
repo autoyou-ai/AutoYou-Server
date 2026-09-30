@@ -200,7 +200,11 @@ class PlaywrightDriverManager:
     _browser_condition: Optional[asyncio.Condition] = None
     _browser_condition_loop: Optional[asyncio.AbstractEventLoop] = None
     _cleanup_started: bool = False
-    
+    # How long the interpreter-exit hook waits for the loop that owns Playwright to close it. A healthy
+    # close (browser.close + playwright.stop) finishes well inside this; a loop that has not answered by
+    # then never will, and the fallback below stops the driver directly.
+    _OWNER_LOOP_CLEANUP_TIMEOUT_SECONDS: float = 5.0
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -492,19 +496,8 @@ class PlaywrightDriverManager:
             logger.info("Cleaning up Playwright resources (atexit)...")
 
             # Prefer closing on owner loop to avoid 'Event loop is closed' errors
-            try:
-                if self._owner_loop and not self._owner_loop.is_closed():
-                    # If loop is running (possibly in another thread), schedule cleanup
-                    if self._owner_loop.is_running():
-                        fut = asyncio.run_coroutine_threadsafe(self.async_cleanup(), self._owner_loop)
-                        try:
-                            fut.result(timeout=10)
-                            return
-                        except Exception as e:
-                            logger.warning(f"Owner-loop async cleanup failed: {e}")
-            except Exception:
-                # Owner loop not available or not suitable; fall back below
-                pass
+            if self._cleanup_on_owner_loop():
+                return
 
             # Fallback: do not call Playwright async APIs from a different/closed loop.
             # Just mark objects for GC and clean browser processes.
@@ -515,8 +508,91 @@ class PlaywrightDriverManager:
 
             # Clean up tracked processes (cross-platform)
             self._cleanup_tracked_processes("fallback")
+            # Without the async close, nothing else will stop the node driver or its browsers.
+            self._terminate_playwright_driver_processes("fallback")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+    def _cleanup_on_owner_loop(self) -> bool:
+        """Run ``async_cleanup`` on the loop that owns Playwright; False if that loop cannot run it.
+
+        Waiting is pointless, and only burns the timeout, when the loop is gone, is the very thread we are
+        blocking, or belongs to a thread that has already exited.
+        """
+        loop = self._owner_loop
+        try:
+            if loop is None or loop.is_closed() or not loop.is_running():
+                return False
+            owner_thread = self._owner_loop_tid
+            if owner_thread is not None:
+                if owner_thread == threading.get_ident():
+                    return False
+                if owner_thread not in {thread.ident for thread in threading.enumerate()}:
+                    return False
+        except Exception:
+            # Owner loop not available or not suitable; fall back
+            return False
+
+        future = None
+        try:
+            future = asyncio.run_coroutine_threadsafe(self.async_cleanup(), loop)
+            future.result(timeout=self._OWNER_LOOP_CLEANUP_TIMEOUT_SECONDS)
+            return True
+        except Exception as e:
+            logger.warning(f"Owner-loop async cleanup failed: {e}")
+            if future is not None:
+                future.cancel()
+            return False
+
+    @staticmethod
+    def _is_playwright_driver(process) -> bool:
+        """True for the node process Playwright starts as ``node .../playwright/driver/... run-driver``."""
+        try:
+            if not (process.name() or "").lower().startswith("node"):
+                return False
+            command = " ".join(process.cmdline()).lower()
+        except Exception:
+            return False
+        return "run-driver" in command and "playwright" in command
+
+    def _terminate_playwright_driver_processes(self, log_context: str) -> None:
+        """Stop Playwright's node driver, and the browsers it launched, when they outlive async cleanup.
+
+        The driver is a child process this module never holds a handle to, so when the owner loop cannot
+        run ``async_cleanup`` (gone, wedged, or unreachable at interpreter exit) it would otherwise be
+        orphaned together with its browsers. Only descendants of this process that match the driver's
+        signature are touched, never unrelated ``node`` processes such as the messaging bridges.
+        """
+        try:
+            import psutil
+        except ImportError:
+            return
+        try:
+            drivers = [
+                child
+                for child in psutil.Process().children(recursive=True)
+                if self._is_playwright_driver(child)
+            ]
+            if not drivers:
+                return
+            doomed = []
+            for driver in drivers:
+                doomed.extend(driver.children(recursive=True))
+                doomed.append(driver)
+            for process in doomed:
+                try:
+                    process.terminate()
+                except psutil.Error:
+                    pass
+            _, still_alive = psutil.wait_procs(doomed, timeout=2.0)
+            for process in still_alive:
+                try:
+                    process.kill()
+                except psutil.Error:
+                    pass
+            logger.info("Stopped %d Playwright driver/browser process(es) (%s)", len(doomed), log_context)
+        except Exception as e:
+            logger.warning(f"Error stopping Playwright driver processes ({log_context}): {e}")
 
     async def async_cleanup(self):
         """Async cleanup for Playwright resources using the current event loop.

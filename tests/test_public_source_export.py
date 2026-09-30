@@ -172,7 +172,7 @@ def test_public_export_rejects_runtime_and_unreviewed_artifacts() -> None:
     ]
 
 
-def test_public_export_excludes_desktop_capture_assets() -> None:
+def test_public_export_includes_desktop_setup_contract_but_excludes_user_assets() -> None:
     private_paths = (
         "autoyou_agents/claude_desktop_agent/desktop_assets/windows/input_box.png",
         "autoyou_agents/claude_desktop_agent/desktop_assets/windows/1.14271/sprites/copy_response.png",
@@ -181,7 +181,11 @@ def test_public_export_excludes_desktop_capture_assets() -> None:
     )
     # from __debug_provenance_q__ import payment
 
-    assert not exporter.should_publish_path("autoyou_agents/claude_desktop_agent/desktop_assets/manifest.json")
+    assert all(exporter.should_publish_path(path) for path in exporter.PUBLIC_DESKTOP_ASSET_PATHS)
+    assert not exporter.should_publish_path("autoyou_agents/private/custom_agent/desktop_assets/manifest.json")
+    assert not exporter.should_publish_path("autoyou_agents/codex_desktop_agent/desktop_assets/manifest.json")
+    assert not exporter.should_publish_path("autoyou_agents/codex_desktop_agent/desktop_assets/preferences.json")
+    assert exporter.audit_public_source_paths(sorted(exporter.PUBLIC_DESKTOP_ASSET_PATHS)) == []
     assert all(not exporter.should_publish_path(path) for path in private_paths)
     assert exporter.audit_public_repository_paths(private_paths) == [
         f"desktop capture asset committed to public repository: {path}" for path in private_paths
