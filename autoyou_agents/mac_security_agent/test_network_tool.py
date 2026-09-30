@@ -11,7 +11,11 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import json
+from types import SimpleNamespace
 
+import pytest
+
+from . import network_tool
 from .bios import parse_bios_payload
 from .enrichment import EnrichmentError, enrich_ip
 from .network_tool import (
@@ -76,6 +80,25 @@ def test_lsof_parser_resolves_ipv6_and_process_image_path():
     assert rows[1]["local_address"] == "0.0.0.0"
     assert rows[2]["local_address"] == "::"
     assert rows[2]["state"] == "Listen"
+
+
+def test_lsof_sandbox_denial_explains_missing_system_wide_visibility(monkeypatch):
+    monkeypatch.setattr(network_tool.shutil, "which", lambda _: "/usr/sbin/lsof")
+    monkeypatch.setattr(
+        network_tool.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="lsof: can't get PID byte count: Operation not permitted",
+        ),
+    )
+
+    with pytest.raises(
+        network_tool.CollectorError,
+        match="sandboxed macOS app cannot read system-wide socket ownership",
+    ):
+        network_tool._run_lsof()
 
 
 def test_aggregate_connections_keeps_process_path_in_identity():

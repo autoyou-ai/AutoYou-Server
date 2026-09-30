@@ -437,6 +437,13 @@ def _run_lsof(command: str = LSOF_SNAPSHOT) -> str:
     output = str(result.stdout or "").strip()
     if result.returncode != 0 and not output:
         detail = str(result.stderr or "").strip() or "lsof exited with an error"
+        if "operation not permitted" in detail.lower():
+            detail = (
+                "macOS denied cross-process process inspection (Operation not permitted). "
+                "The sandboxed macOS app cannot read system-wide socket ownership; administrator "
+                "mode does not bypass App Sandbox. Full process attribution requires "
+                "Apple-approved privileged support."
+            )
         raise CollectorError(detail[:500])
     return output
 

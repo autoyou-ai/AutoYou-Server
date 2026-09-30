@@ -58,6 +58,20 @@ def _llm_request(text: str):
     )
 
 
+def _llm_request_with_image(text: str):
+    return SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(text=text),
+                    SimpleNamespace(inline_data=SimpleNamespace(mime_type="image/png")),
+                ],
+            )
+        ]
+    )
+
+
 def _run_internet_after_tool_callback(*args):
     return asyncio.run(internet_agent_module._internet_after_tool_callback(*args))
 
@@ -124,6 +138,81 @@ def test_root_router_leaves_direct_conversation_to_the_model(monkeypatch):
     )
 
     assert response is None
+
+
+def test_visual_question_with_image_stays_on_multimodal_root(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    context = SimpleNamespace(state={}, invocation_id="image-question")
+
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(
+            context,
+            _llm_request_with_image("Analyze this image and tell me what it contains."),
+        )
+    )
+
+    assert response is None
+    assert context.state[root_agent_module._ROOT_PREFERRED_AGENT_STATE_KEY] == root_agent_module.root_prompt.AGENT_NAME
+    assert context.state[root_agent_module._ROOT_LAST_ROUTED_AGENT_STATE_KEY] == root_agent_module.root_prompt.AGENT_NAME
+
+
+def test_image_web_research_starts_on_multimodal_root(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    context = SimpleNamespace(state={}, invocation_id="image-web-research")
+
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(
+            context,
+            _llm_request_with_image("Search the web for this image and identify it."),
+        )
+    )
+
+    assert response is None
+    assert context.state[root_agent_module._ROOT_PREFERRED_AGENT_STATE_KEY] == root_agent_module.root_prompt.AGENT_NAME
+
+
+def test_visual_follow_up_reuses_image_from_prior_user_turn(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    request = SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(text="Analyze this image."),
+                    SimpleNamespace(inline_data=SimpleNamespace(mime_type="image/png")),
+                ],
+            ),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="I can validate it.")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="What does it contain?")]),
+        ]
+    )
+    context = SimpleNamespace(state={}, invocation_id="image-follow-up")
+
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(context, request)
+    )
+
+    assert response is None
+    assert context.state[root_agent_module._ROOT_PREFERRED_AGENT_STATE_KEY] == root_agent_module.root_prompt.AGENT_NAME
+
+
+def test_image_save_to_notes_still_routes_to_notes(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    monkeypatch.setattr(
+        root_agent_module,
+        "_is_runtime_agent_enabled",
+        lambda name: name == "autoyou_notes_agent",
+    )
+    context = SimpleNamespace(state={}, invocation_id="image-to-notes")
+
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(
+            context,
+            _llm_request_with_image("Save this image to notes."),
+        )
+    )
+
+    assert _routed_agent(response.content.parts[0].function_call) == "autoyou_notes_agent"
 
 
 def test_root_router_routes_clear_notes_intent_to_notes_agent(monkeypatch):

@@ -34,6 +34,22 @@ def test_profile_image_is_scoped_to_stable_server_user_id(tmp_path, monkeypatch)
     assert server._get_admin_profile_image_path() is None
 
 
+def test_animated_gif_profile_is_preserved_with_a_bounded_upload_size(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_mutable_data_dir", lambda *_args, **_kwargs: tmp_path)
+    monkeypatch.setattr(server, "_get_stable_server_id", lambda _cfg=None: "synthetic-gif-server")
+    header = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff"
+    frame = b"!\xf9\x04\x00\x01\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00"
+    animated_gif = header + frame + frame + b";"
+
+    saved = server._save_admin_profile_image(animated_gif)
+
+    assert saved.suffix == ".gif"
+    assert saved.read_bytes() == animated_gif
+    assert server._get_admin_profile_image_media_type(saved) == "image/gif"
+    with pytest.raises(ValueError, match="smaller than 2 MB"):
+        server._save_admin_profile_image(animated_gif + b"x" * (2 * 1024 * 1024))
+
+
 def test_profile_image_replace_keeps_old_photo_if_atomic_write_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "get_mutable_data_dir", lambda *_args, **_kwargs: tmp_path)
     monkeypatch.setattr(server, "_get_stable_server_id", lambda _cfg=None: "synthetic-server")
