@@ -1,9 +1,3 @@
-REM Copyright (c) 2026 OpenStorey LLC. All rights reserved.
-REM Licensed under the AutoYou Source-Available License.
-REM See LICENSE in the project root for license information.
-REM AI/ML training use prohibited without written authorization (License S3.9).
-REM AUTOYOU-PROVENANCE-H-revenue-7c34670d1118159559f0daa2
-
 @echo off
 :: Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 :: Licensed under the AutoYou Source-Available License.

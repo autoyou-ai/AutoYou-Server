@@ -83,6 +83,8 @@ _EXCLUDED_FILES = {
     ".gitignore",
     "PROVENANCE_MANIFEST.json",
     "provenance_watermark.py",
+    "run_autoyou.sh",
+    "run_autoyou.bat",
 }
 
 _CANARY_LINE_RE = re.compile(
@@ -179,7 +181,13 @@ def _eligible_files(repo_root: Path) -> list[tuple[Path, str]]:
             fpath = dirpath / name
             if name in _EXCLUDED_FILES or fpath.suffix.lower() not in _COMMENT_STYLES:
                 continue
-            candidates.append((fpath, fpath.relative_to(repo_root).as_posix()))
+            rel = fpath.relative_to(repo_root).as_posix()
+            parts = Path(rel).parts
+            if "servers" in parts and fpath.suffix.lower() in (
+                ".sh", ".bash", ".zsh", ".bat", ".cmd"
+            ):
+                continue
+            candidates.append((fpath, rel))
 
     ignored = _git_ignored_paths(repo_root, [rel for _, rel in candidates])
     if ignored is None:
