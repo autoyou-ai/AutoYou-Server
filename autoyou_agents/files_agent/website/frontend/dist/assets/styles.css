@@ -113,7 +113,7 @@ h2 {
 }
 
 .toolbar,
-.workspace {
+section.workspace {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -188,7 +188,7 @@ input {
   font-weight: 700;
 }
 
-.workspace {
+section.workspace {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr) minmax(330px, 0.8fr);
   min-height: calc(100vh - 142px);
@@ -492,19 +492,61 @@ input {
   opacity: 1;
 }
 
+@media (max-width: 1360px) {
+  .entry-row {
+    grid-template-columns: minmax(0, 1fr) 76px;
+  }
+
+  .entry-row .entry-kind,
+  .entry-row .entry-modified {
+    display: none;
+  }
+}
+
 @media (max-width: 1160px) {
-  .workspace {
-    grid-template-columns: minmax(210px, 260px) minmax(360px, 1fr);
+  section.workspace {
+    grid-template-columns: minmax(150px, 0.7fr) minmax(240px, 1.15fr) minmax(230px, 0.9fr);
+  }
+}
+
+@media (max-width: 920px) {
+  section.workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.9fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .locations-panel {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .locations-list {
+    display: flex;
+    gap: 8px;
+    max-height: 78px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .location-button {
+    flex: 0 0 min(235px, 38vw);
+    min-height: 58px;
+    max-height: 64px;
+    margin-bottom: 0;
   }
 
   .preview-panel {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--border);
-    border-left: 0;
+    grid-column: auto;
+    border-top: 0;
+    border-left: 1px solid var(--border);
   }
 
+  .entries,
   .preview-body {
-    max-height: 520px;
+    max-height: calc(100vh - 292px);
+    min-height: 220px;
   }
 }
 
@@ -515,7 +557,7 @@ input {
 
   .topbar,
   .toolbar,
-  .workspace {
+  section.workspace {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -533,49 +575,124 @@ input {
     flex: 1 1 0;
   }
 
-  .locations-panel,
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  section.workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .locations-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .entries,
+  .preview-body {
+    max-height: calc(100vh - 280px);
+    min-height: 200px;
+  }
+
   .preview-panel {
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .entry-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .entry-row .entry-size {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+  }
+
+  .topbar-actions {
+    width: auto;
+    margin-left: 0;
+  }
+
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "nav views"
+      "path go"
+      "search search";
+  }
+
+  .nav-buttons {
+    grid-area: nav;
+  }
+
+  .path-control {
+    grid-area: path;
+  }
+
+  .go-button {
+    grid-area: go;
+  }
+
+  .search-control {
+    grid-area: search;
+  }
+
+  .view-toggle {
+    grid-area: views;
+  }
+
+  section.workspace {
+    height: min(760px, calc(100dvh - 320px));
+    min-height: 420px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1.1fr) minmax(0, 0.9fr);
+    overflow: hidden;
+  }
+
+  .locations-panel,
+  .browser-panel,
+  .preview-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
     border-right: 0;
     border-left: 0;
   }
 
-  .locations-panel,
   .browser-panel {
     border-bottom: 1px solid var(--border);
   }
 
-  .locations-list,
-  .entries,
-  .preview-body {
-    max-height: none;
-  }
-
-  .workspace {
-    min-height: 0;
-    overflow: visible;
+  .preview-panel {
+    grid-column: 1;
+    border-top: 1px solid var(--border);
   }
 
   .locations-list {
-    display: flex;
-    gap: 8px;
-    max-height: 92px;
+    min-height: 0;
+    max-height: none;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: thin;
   }
 
   .location-button {
-    flex: 0 0 min(235px, 76vw);
-    min-height: 58px;
-    max-height: 64px;
-    margin-bottom: 0;
+    flex-basis: min(220px, 72vw);
   }
 
-  .entry-row {
-    grid-template-columns: minmax(0, 1fr) 84px;
-  }
-
-  .entry-row .entry-modified {
-    display: none;
+  .entries,
+  .preview-body {
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
   }
 }

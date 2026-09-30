@@ -41,10 +41,17 @@ logger = logging.getLogger(__name__)
 
 _FILES_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY = "_autoyou_files_tool_dispatch_invocation_id"
 _FILES_TOOL_RESULT_INVOCATION_ID_STATE_KEY = "_autoyou_files_tool_result_invocation_id"
+_FILES_TOOL_RESULT_TOOL_NAME_STATE_KEY = "_autoyou_files_tool_result_tool_name"
 _FILES_TOOL_RESULT_MESSAGE_STATE_KEY = "_autoyou_files_tool_result_message"
 _FILES_TOTP_PENDING_STATE_KEY = "user:files_admin_totp_pending"
 _FILES_PENDING_OP_STATE_KEY = "_autoyou_files_pending_op"
+_FILES_PENDING_REQUEST_STATE_KEY = "_autoyou_files_pending_request"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_FILE_LIST_REQUEST_PATTERN = re.compile(
+    r"\b(?:list|show|display|what|which)\b.{0,120}\b(?:files?|folders?|directories|contents|items)\b"
+    r"|\b(?:files?|folders?|directories|contents|items)\b.{0,100}\b(?:in|under|inside|at)\b",
+    re.IGNORECASE,
+)
 _FILE_REQUEST_PATTERN = re.compile(
     r"\b(?:inspect|list|show|open|rename|move|copy|delete|remove|create)\b.*\b(?:file|folder|directory|path|filesystem|local|song|track|music|document)\b",
     re.IGNORECASE,
@@ -53,6 +60,17 @@ _PATH_HINT_PATTERN = re.compile(r"(?:^|\s)(?:~?/|/[\w./ -]+|[A-Za-z]:\\[^\s]+)")
 _CONFIRMATION_PATTERN = re.compile(
     r"^(?:yes|confirm(?:ed)?|ok(?:ay)?|sure|proceed|do\s+it|go\s+ahead|affirmative|yep|yup|yep|copy\s+it|move\s+it|done|enable[d]?)\b",
     re.IGNORECASE,
+)
+_FILES_OPERATION_TOOLS = frozenset(
+    {
+        "inspect_path",
+        "list_directory",
+        "rename_path",
+        "move_path",
+        "copy_path",
+        "create_directory",
+        "delete_path",
+    }
 )
 
 # Maps verb keywords to (tool_name, arg_names) for explicit path operation parsing.
@@ -74,12 +92,37 @@ def _looks_like_absolute_path(s: str) -> bool:
     if not s:
         return False
     # Unix / macOS
-    if s.startswith("/") or s.startswith("~/"):
+    if s.startswith("/") or s.startswith(("~/", "~\\")):
         return True
     # Windows drive letter (e.g. C:\ or C:/)
     if len(s) >= 3 and s[1] == ":" and s[2] in ("\\/"):
         return True
     return False
+
+def _extract_listing_path(user_text: str) -> Optional[str]:
+    quoted = re.search(
+        r"([\"'])(?P<path>(?:~[\\/]|/|[A-Za-z]:[\\/]).+?)\1",
+        user_text,
+    )
+    if quoted:
+        return quoted.group("path").strip()
+
+    path_clause = re.search(
+        r"\b(?:in|under|inside|at)\s+(?P<path>(?:~[\\/]|/|[A-Za-z]:[\\/]).+?)\s*[?.!,;]*$",
+        user_text,
+        re.IGNORECASE,
+    )
+    if path_clause:
+        candidate = path_clause.group("path").strip()
+        if _looks_like_absolute_path(candidate):
+            return candidate
+
+    candidates = re.findall(r"(?<!\S)(?:~[\\/]|[A-Za-z]:[\\/]|/)[^\s,;\"']+", user_text)
+    if candidates:
+        candidate = candidates[-1].rstrip(".,!?;:")
+        if _looks_like_absolute_path(candidate):
+            return candidate
+    return None
 
 def _try_parse_file_op(user_text: str) -> Optional[tuple]:
     """
@@ -91,6 +134,11 @@ def _try_parse_file_op(user_text: str) -> Optional[tuple]:
     """
     text = user_text.strip()
     lower = text.lower()
+
+    if _FILE_LIST_REQUEST_PATTERN.search(text):
+        path = _extract_listing_path(text)
+        if path:
+            return ("list_directory", {"path": path})
 
     for verb, (tool_name, key1, key2) in _EXPLICIT_OP_MAP.items():
         if not lower.startswith(verb + " ") and not lower.startswith(verb + "\t"):
@@ -147,9 +195,35 @@ def _mark_tool_dispatch(state: Any, invocation_id: str) -> None:
         return
     _state_set(state, _FILES_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY, invocation_id)
     _state_set(state, _FILES_TOOL_RESULT_INVOCATION_ID_STATE_KEY, "")
+    _state_set(state, _FILES_TOOL_RESULT_TOOL_NAME_STATE_KEY, "")
     _state_set(state, _FILES_TOOL_RESULT_MESSAGE_STATE_KEY, "")
 
 def _render_files_tool_response(tool_name: str, tool_response: Dict[str, Any]) -> str:
+    if tool_name == "list_directory" and str(tool_response.get("status") or "").lower() == "success":
+        entries = tool_response.get("entries")
+        if isinstance(entries, list):
+            path = str(tool_response.get("path") or "directory")
+            try:
+                count = int(tool_response.get("count", len(entries)))
+            except (TypeError, ValueError):
+                count = len(entries)
+            lines = [f"Contents of {path} ({count} item{'s' if count != 1 else ''}):"]
+            visible_entries = entries[:100]
+            for entry in visible_entries:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get("name") or entry.get("path") or "").strip()
+                if not name:
+                    continue
+                kind = str(entry.get("kind") or "").lower()
+                suffix = " (folder)" if kind == "directory" else ""
+                lines.append(f"- {name}{suffix}")
+            if not visible_entries:
+                lines.append("- No files or folders found.")
+            if bool(tool_response.get("truncated")) or len(entries) > len(visible_entries):
+                lines.append("Listing truncated; showing the first 100 entries.")
+            return "\n".join(lines)
+
     message = str(tool_response.get("message") or "").strip()
     if message:
         return message
@@ -168,6 +242,7 @@ def _record_files_tool_result(state: Any, invocation_id: str, tool_name: str, to
     if not invocation_id:
         return
     _state_set(state, _FILES_TOOL_RESULT_INVOCATION_ID_STATE_KEY, invocation_id)
+    _state_set(state, _FILES_TOOL_RESULT_TOOL_NAME_STATE_KEY, tool_name)
     _state_set(state, _FILES_TOOL_RESULT_MESSAGE_STATE_KEY, _render_files_tool_response(tool_name, tool_response))
 
 def _looks_like_file_request(user_text: str) -> bool:
@@ -175,6 +250,8 @@ def _looks_like_file_request(user_text: str) -> bool:
     if not normalized:
         return False
     if "files agent" in normalized or "filesystem" in normalized:
+        return True
+    if _FILE_LIST_REQUEST_PATTERN.search(user_text):
         return True
     if _FILE_REQUEST_PATTERN.search(user_text):
         return True
@@ -189,13 +266,60 @@ async def _files_before_model_callback(callback_context: Any, llm_request: Any) 
     invocation_id = _get_invocation_id(callback_context)
     result_invocation_id = str(_state_get(callback_context, _FILES_TOOL_RESULT_INVOCATION_ID_STATE_KEY) or "").strip()
     if invocation_id and result_invocation_id == invocation_id:
+        tool_name = str(_state_get(callback_context, _FILES_TOOL_RESULT_TOOL_NAME_STATE_KEY) or "").strip()
         message = str(_state_get(callback_context, _FILES_TOOL_RESULT_MESSAGE_STATE_KEY) or "").strip()
         _state_set(callback_context, _FILES_TOOL_RESULT_INVOCATION_ID_STATE_KEY, "")
+        _state_set(callback_context, _FILES_TOOL_RESULT_TOOL_NAME_STATE_KEY, "")
         _state_set(callback_context, _FILES_TOOL_RESULT_MESSAGE_STATE_KEY, "")
-        # Clear the pending op that was just executed.
-        _state_set(callback_context, _FILES_PENDING_OP_STATE_KEY, None)
-        if message:
-            return create_text_llm_response(message, custom_metadata={"response_author": AGENT_NAME})
+
+        if tool_name in {"check_admin_session", "verify_admin_totp"}:
+            if _check_admin_session(callback_context):
+                pending_raw = _state_get(callback_context, _FILES_PENDING_OP_STATE_KEY)
+                if not isinstance(pending_raw, dict):
+                    pending_raw = {}
+                    pending_request = str(_state_get(callback_context, _FILES_PENDING_REQUEST_STATE_KEY) or "")
+                    parsed_pending = _try_parse_file_op(pending_request)
+                    if parsed_pending is not None:
+                        pending_raw = {"tool": parsed_pending[0], "args": parsed_pending[1]}
+                        _state_set(callback_context, _FILES_PENDING_OP_STATE_KEY, pending_raw)
+
+                pending_tool = str((pending_raw or {}).get("tool") or "").strip()
+                pending_args = (pending_raw or {}).get("args") or {}
+                if pending_tool in _FILES_OPERATION_TOOLS and isinstance(pending_args, dict):
+                    _mark_tool_dispatch(callback_context, invocation_id)
+                    return create_tool_call_llm_response(pending_tool, pending_args)
+
+                if tool_name == "verify_admin_totp":
+                    pending_request = str(_state_get(callback_context, _FILES_PENDING_REQUEST_STATE_KEY) or "")
+                    if pending_request:
+                        # The conversation history still contains the blocked request; let the model continue it.
+                        _state_set(callback_context, _FILES_PENDING_REQUEST_STATE_KEY, "")
+                        return None
+                    if message:
+                        return create_text_llm_response(message, custom_metadata={"response_author": AGENT_NAME})
+                    return create_text_llm_response(
+                        "Admin session is active.",
+                        custom_metadata={"response_author": AGENT_NAME},
+                    )
+
+                # An active session check is permission context, not the answer to the user's request.
+                _state_set(callback_context, _FILES_PENDING_REQUEST_STATE_KEY, "")
+            else:
+                if message:
+                    return create_text_llm_response(message, custom_metadata={"response_author": AGENT_NAME})
+                return create_text_llm_response(
+                    "No active admin session. Verify your authenticator code before accessing local files.",
+                    custom_metadata={"response_author": AGENT_NAME},
+                )
+        elif "admin session required" in message.lower():
+            _state_set(callback_context, _FILES_TOTP_PENDING_STATE_KEY, True)
+            if message:
+                return create_text_llm_response(message, custom_metadata={"response_author": AGENT_NAME})
+        else:
+            _state_set(callback_context, _FILES_PENDING_OP_STATE_KEY, None)
+            _state_set(callback_context, _FILES_PENDING_REQUEST_STATE_KEY, "")
+            if message:
+                return create_text_llm_response(message, custom_metadata={"response_author": AGENT_NAME})
 
     if _tool_dispatch_already_happened(callback_context, invocation_id):
         return None
@@ -220,6 +344,7 @@ async def _files_before_model_callback(callback_context: Any, llm_request: Any) 
         else:
             # Admin not yet verified - store the pending op and trigger auth.
             _state_set(callback_context, _FILES_PENDING_OP_STATE_KEY, {"tool": tool_name, "args": tool_args})
+            _state_set(callback_context, _FILES_PENDING_REQUEST_STATE_KEY, user_text)
             _mark_tool_dispatch(callback_context, invocation_id)
             return create_tool_call_llm_response("check_admin_session", {})
 
@@ -235,6 +360,7 @@ async def _files_before_model_callback(callback_context: Any, llm_request: Any) 
 
     # --- Fallback: check admin session when a generic file request is detected ---
     if _looks_like_file_request(user_text) and not admin_active:
+        _state_set(callback_context, _FILES_PENDING_REQUEST_STATE_KEY, user_text)
         _mark_tool_dispatch(callback_context, invocation_id)
         return create_tool_call_llm_response("check_admin_session", {})
 
@@ -267,11 +393,13 @@ def _files_after_tool_callback(tool: Any, args: Dict[str, Any], tool_context: An
     elif tool_name == "revoke_admin_session":
         _state_set(tool_context, _FILES_TOTP_PENDING_STATE_KEY, False)
         _state_set(tool_context, _FILES_PENDING_OP_STATE_KEY, None)
+        _state_set(tool_context, _FILES_PENDING_REQUEST_STATE_KEY, "")
     elif "admin session required" in str(tool_response.get("message") or "").lower():
         _state_set(tool_context, _FILES_TOTP_PENDING_STATE_KEY, True)
     else:
         # Any completed file operation clears the stored pending op.
         _state_set(tool_context, _FILES_PENDING_OP_STATE_KEY, None)
+        _state_set(tool_context, _FILES_PENDING_REQUEST_STATE_KEY, "")
 
     _record_files_tool_result(tool_context, _get_invocation_id(tool_context), tool_name, tool_response)
     return None
@@ -401,6 +529,7 @@ def list_directory(
             "path": str(directory),
             "count": len(entries),
             "recursive": bool(recursive),
+            "truncated": truncated,
             "entries": entries,
             "message": f"Listed {len(entries)} entries in {directory}{suffix}.",
         }
