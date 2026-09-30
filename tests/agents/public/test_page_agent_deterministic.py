@@ -26,6 +26,7 @@ class _FakePageTool:
     def __init__(self):
         self.urls = []
         self.photo_calls = []
+        self.query_calls = []
 
     def add_link(self, *, url, title=None, source=None, item_type=None):
         self.urls.append(url)
@@ -60,6 +61,7 @@ class _FakePageTool:
         limit=None,
         timeline_all=False,
     ):
+        self.query_calls.append({"limit": limit, "timeline_all": timeline_all})
         return {
             "success": True,
             "items": [
@@ -115,6 +117,35 @@ async def test_page_agent_deterministically_queries_page_feed(monkeypatch):
     assert "The AutoYou Page feed has 1 item." in text
     assert "Synthetic page item" in text
     assert response.custom_metadata["route_reason"] == "deterministic_page_feed_query"
+
+
+async def test_page_agent_counts_unqualified_explicit_feed_query_without_limit(monkeypatch):
+    fake_tool = _FakePageTool()
+    monkeypatch.setattr(page_agent, "page_tool", fake_tool)
+
+    response = await page_agent._page_agent_before_model_callback(
+        None,
+        _llm_request("How many items"),
+    )
+
+    assert "The AutoYou Page feed has 1 item." in response.content.parts[0].text
+    assert fake_tool.query_calls == [{"limit": None, "timeline_all": True}]
+
+
+async def test_page_agent_asks_for_missing_link_instead_of_guessing(monkeypatch):
+    fake_tool = _FakePageTool()
+    monkeypatch.setattr(page_agent, "page_tool", fake_tool)
+
+    response = await page_agent._page_agent_before_model_callback(
+        None,
+        _llm_request("add to nt"),
+    )
+
+    assert response.content.parts[0].text == (
+        "What should I add to your AutoYou Page feed? Send the URL or attach a file."
+    )
+    assert response.custom_metadata["route_reason"] == "deterministic_page_feed_add_needs_input"
+    assert fake_tool.urls == []
 
 
 def test_page_photo_agent_tools_enforce_authenticated_roles(monkeypatch):
