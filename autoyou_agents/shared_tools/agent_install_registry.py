@@ -91,6 +91,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "earnings_agent": True,
     "files_agent": False,            # Opt-in: authenticated local filesystem access
     "fine_tuning_agent": False,      # Opt-in: local model training
+    "game_agent": False,             # Opt-in: local game design and engine integration
     "hermes_agent": False,           # Opt-in: install manually when Hermes Agent gateway is running locally
     "hosting_agent": False,          # Opt-in: public URL publishing
     "ionos_agent": False,            # Opt-in: persistent IONOS hosting and deployment

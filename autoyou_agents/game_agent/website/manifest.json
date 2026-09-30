@@ -1,0 +1,11 @@
+{
+  "agent_name": "game_agent",
+  "title": "Game Studio",
+  "description": "Design local games and connect a host engine to AutoYou game sessions.",
+  "entry_path": "/",
+  "recommended_port": 8112,
+  "requires_proxy_registration": true,
+  "websocket_enabled": true,
+  "auth_default": "gated",
+  "shared_session_eligible": false
+}

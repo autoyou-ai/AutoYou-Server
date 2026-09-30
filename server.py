@@ -3222,6 +3222,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.hosting_agent.website.backend.app:app",
         "default_port": 8089,
     },
+    "game_agent": {
+        "app_import": "autoyou_agents.game_agent.website.backend.app:app",
+        "default_port": 8112,
+    },
     "cloudflare_agent": {
         "app_import": "autoyou_agents.cloudflare_agent.website.backend.app:app",
         "default_port": 8102,
@@ -3323,6 +3327,7 @@ FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # These surfaces can deploy a public website or direct authoritative DNS.
     "ionos_agent": False,
     "ionos_cloudflare_agent": False,
+    "game_agent": False,
 }
 
 FRONTEND_DEFAULT_ENABLEMENT: Dict[str, bool] = {
@@ -3345,6 +3350,7 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "cloudflare_agent": "Cloudflare Tunnel",
     "ionos_agent": "IONOS Hosting",
     "ionos_cloudflare_agent": "IONOS Cloudflare Handoff",
+    "game_agent": "Game Studio",
     "skills_agent": "Skills Manager",
     "remote_desktop_agent": "Remote Desktop",
     "media_generation_agent": "Media Generator App",
@@ -3420,6 +3426,10 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
     "ionos_cloudflare_agent": (
         "Plan and verify IONOS nameserver delegation, Cloudflare DNS, redirects, TLS, "
         "mail preservation, and DNSSEC. Disabled by default because it controls DNS."
+    ),
+    "game_agent": (
+        "Publish the Game Studio host launcher and engine bridge for native iOS and Android "
+        "game sessions. Disabled by default."
     ),
     "skills_agent": (
         "Expose the Skills Manager website for viewing, "
@@ -4535,6 +4545,40 @@ def _coerce_partner_port(raw_value: Any, default: int) -> int:
         pass
     return int(default)
 
+_DEFAULT_GAME_BUTTONS = [{"label": "A", "name": "action_a"}, {"label": "B", "name": "action_b"}]
+
+
+def _normalize_game_buttons(raw_value: Any, *, strict: bool = False) -> List[Dict[str, str]]:
+    if raw_value is None:
+        return [button.copy() for button in _DEFAULT_GAME_BUTTONS]
+    if isinstance(raw_value, str):
+        raw_value = [dict(zip(("label", "name"), part.strip().split(":", 1)))
+                     for part in raw_value.split(",") if part.strip()]
+    valid = isinstance(raw_value, list) and len(raw_value) <= 4
+    buttons: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    if valid:
+        for item in raw_value:
+            if not isinstance(item, dict):
+                valid = False
+                break
+            label, name = item.get("label"), item.get("name")
+            if (not isinstance(label, str) or not 1 <= len(label.strip()) <= 12
+                    or not label.strip().isprintable() or any(char in label for char in ":,")
+                    or not isinstance(name, str)
+                    or re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_.-]{0,31}", name.strip()) is None
+                    or name.strip() in seen):
+                valid = False
+                break
+            buttons.append({"label": label.strip(), "name": name.strip()})
+            seen.add(name.strip())
+    if not valid:
+        if strict:
+            raise ValueError("Game buttons need up to four unique Label:button_name entries; labels are 1-12 characters without commas or colons.")
+        return [button.copy() for button in _DEFAULT_GAME_BUTTONS]
+    return buttons
+
+
 def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
     raw_cfg = raw_value if isinstance(raw_value, dict) else {}
     raw_remote = raw_cfg.get("remote_desktop")
@@ -4618,6 +4662,8 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
                 remote_cfg.get("control_enabled", raw_cfg.get("remote_desktop_control_enabled")),
                 False,
             ),
+            "game_enabled": _normalize_partner_enabled_flag(remote_cfg.get("game_enabled"), False),
+            "game_buttons": _normalize_game_buttons(remote_cfg.get("game_buttons")),
         },
     }
 
@@ -5621,6 +5667,8 @@ def _default_config() -> Dict[str, Any]:
                 "quality": "balanced",
                 "bitrate_kbps": 1500,
                 "control_enabled": False,
+                "game_enabled": False,
+                "game_buttons": [button.copy() for button in _DEFAULT_GAME_BUTTONS],
             },
         },
         "agent_frontends": {
@@ -9476,6 +9524,15 @@ def _get_remote_desktop_control_available(
         and _remote_desktop_input_backend_ready()
     )
 
+
+def _get_game_mode_available(*, cfg: Optional[Dict[str, Any]] = None) -> bool:
+    return bool(
+        _get_remote_desktop_video_available(cfg=cfg)
+        and "remote_desktop" in _get_video_outbound_sources(cfg=cfg)
+        and _get_video_remote_desktop_config(cfg=cfg).get("control_enabled", False)
+        and _get_video_remote_desktop_config(cfg=cfg).get("game_enabled", False)
+    )
+
 def _get_remote_desktop_video_available(
     *,
     cfg: Optional[Dict[str, Any]] = None,
@@ -10045,6 +10102,9 @@ def _build_webrtc_capabilities(
             "control_configured": remote_desktop_control_configured,
             "control_available": _remote_desktop_input_backend_ready(),
             "control_protocol": "autoyou_remote_desktop_v1",
+            "game_enabled": _get_game_mode_available(cfg=effective_cfg),
+            "game_protocol": "autoyou_game_v1",
+            "game_buttons": _normalize_game_buttons(_get_video_remote_desktop_config(cfg=effective_cfg).get("game_buttons")),
             "touch_modes": ["direct", "relative"],
             "agent_installed": remote_agent_installed,
             "agent_enabled": remote_agent_enabled,
@@ -10089,6 +10149,9 @@ def _build_webrtc_capabilities(
                     "control_configured": remote_desktop_control_configured,
                     "control_available": _remote_desktop_input_backend_ready(),
                     "control_protocol": "autoyou_remote_desktop_v1",
+                    "game_enabled": _get_game_mode_available(cfg=effective_cfg),
+                    "game_protocol": "autoyou_game_v1",
+                    "game_buttons": _normalize_game_buttons(_get_video_remote_desktop_config(cfg=effective_cfg).get("game_buttons")),
                     "agent_installed": remote_agent_installed,
                     "agent_enabled": remote_agent_enabled,
                     "agent_required": False,
@@ -13066,6 +13129,10 @@ def _apply_admin_ui_config_patch(
                 )
             if "control_enabled" in remote_payload:
                 remote_cfg["control_enabled"] = _coerce_enabled_flag(remote_payload.get("control_enabled"))
+            if "game_enabled" in remote_payload:
+                remote_cfg["game_enabled"] = _coerce_enabled_flag(remote_payload.get("game_enabled"))
+            if "game_buttons" in remote_payload:
+                remote_cfg["game_buttons"] = _normalize_game_buttons(remote_payload["game_buttons"], strict=True)
         touched_sections.add("video_call")
 
     rtc_payload = payload.get("rtc")

@@ -48,6 +48,7 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "earnings_agent": "autoyou_earnings_agent",
     "files_agent": "autoyou_files_agent",
     "fine_tuning_agent": "autoyou_fine_tuning_agent",
+    "game_agent": "autoyou_game_agent",
     "frontend_proxy_agent": "autoyou_website_agent",
     "agent_website_builder_agent": "autoyou_website_agent",
     "website_agent": "autoyou_website_agent",
