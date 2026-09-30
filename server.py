@@ -2020,8 +2020,10 @@ _ADMIN_PROFILE_IMAGE_MEDIA_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
 }
-_ADMIN_PROFILE_IMAGE_MAX_BYTES = 64 * 1024
+_ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES = 64 * 1024
+_ADMIN_PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
 
 def _admin_profile_image_root() -> Path:
     return get_mutable_data_dir("AutoYou", anchor=__file__).resolve() / "admin_profile"
@@ -2037,12 +2039,12 @@ def _iter_admin_profile_image_candidates(profile_user_id: Optional[str] = None) 
     image_dir = _get_admin_profile_image_dir(profile_user_id)
     return tuple(
         image_dir / f"{_ADMIN_PROFILE_IMAGE_NAME}{suffix}"
-        for suffix in (".webp", ".png", ".jpg", ".jpeg")
+        for suffix in (".webp", ".png", ".jpg", ".jpeg", ".gif")
     )
 
 def _iter_legacy_admin_profile_image_candidates() -> tuple[Path, ...]:
     root = _admin_profile_image_root()
-    return tuple(root / f"{_ADMIN_PROFILE_IMAGE_NAME}{suffix}" for suffix in (".webp", ".png", ".jpg", ".jpeg"))
+    return tuple(root / f"{_ADMIN_PROFILE_IMAGE_NAME}{suffix}" for suffix in (".webp", ".png", ".jpg", ".jpeg", ".gif"))
 
 def _replace_admin_profile_image(target_path: Path, image_bytes: bytes, profile_user_id: Optional[str] = None) -> None:
     temporary_path = target_path.with_name(f".{target_path.name}.{uuid.uuid4().hex}.tmp")
@@ -2088,15 +2090,17 @@ def _delete_admin_profile_image_files() -> None:
             candidate.unlink()
 
 def _detect_admin_profile_image_type(payload: bytes) -> tuple[str, str]:
+    if payload.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif", "image/gif"
     if payload.startswith(b"\x89PNG\r\n\x1a\n"):
         return ".png", "image/png"
     if payload.startswith(b"\xff\xd8\xff"):
         return ".jpg", "image/jpeg"
     if len(payload) >= 12 and payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
         return ".webp", "image/webp"
-    raise ValueError("Profile image must be a PNG, JPEG, or WebP file.")
+    raise ValueError("Profile image must be a PNG, JPEG, WebP, or GIF file.")
 
-def _compress_profile_image_payload(payload: bytes, max_bytes: int = _ADMIN_PROFILE_IMAGE_MAX_BYTES) -> bytes:
+def _compress_profile_image_payload(payload: bytes, max_bytes: int = _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES) -> bytes:
     if not payload or len(payload) <= max_bytes:
         return payload
     try:
@@ -2131,10 +2135,13 @@ def _save_admin_profile_image(payload: bytes) -> Path:
     image_bytes = bytes(payload or b"")
     if not image_bytes:
         raise ValueError("Profile image file is empty.")
-    if len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
-        image_bytes = _compress_profile_image_payload(image_bytes, _ADMIN_PROFILE_IMAGE_MAX_BYTES)
-    if len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
-        raise ValueError("Profile image is too large. Keep the optimized avatar under 64 KB.")
+    is_gif = image_bytes.startswith((b"GIF87a", b"GIF89a"))
+    if is_gif and len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
+        raise ValueError("Animated profile images must be smaller than 2 MB.")
+    if not is_gif and len(image_bytes) > _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES:
+        image_bytes = _compress_profile_image_payload(image_bytes, _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES)
+    if not is_gif and len(image_bytes) > _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES:
+        raise ValueError("Profile image is too large. Keep the optimized still image under 64 KB.")
 
     suffix, _media_type = _detect_admin_profile_image_type(image_bytes)
     image_dir = _get_admin_profile_image_dir()
@@ -2149,7 +2156,7 @@ def _save_admin_profile_image(payload: bytes) -> Path:
 def _get_server_profile_call_payload() -> Dict[str, Any]:
     image_path = _get_admin_profile_image_path()
     image_bytes = image_path.read_bytes() if image_path is not None else b""
-    if len(image_bytes) > _ADMIN_PROFILE_IMAGE_MAX_BYTES:
+    if len(image_bytes) > _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES:
         image_bytes = b""
     return {
         "event": "server_profile",

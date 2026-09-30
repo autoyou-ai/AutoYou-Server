@@ -87,7 +87,7 @@ MAX_FEED_PAGE_SIZE = 100
 TOP_TAG_LIMIT = 8
 # get_configured_server_name() returns this when the owner never named the server.
 DEFAULT_SERVER_NAME = "AutoYou-Server"
-_PROFILE_PHOTO_TYPES = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+_PROFILE_PHOTO_TYPES = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif"}
 
 # How the page describes each stored type: (label, type tab, accent, icon).
 # Accents and icons are classes in frontend/assets/page.css.
@@ -900,7 +900,7 @@ class PageFeedService:
             '<div class="profile-photo-tools">'
             f'<button id="profile-photo-select" class="brand-tile profile-photo-button {variant}" type="button" '
             f'aria-label="{label}" title="{label}">{image}<span class="profile-photo-edit" aria-hidden="true">✎</span></button>'
-            '<input id="profile-photo-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>'
+            '<input id="profile-photo-input" class="profile-photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">'
             f'{remove}</div>'
         )
 
@@ -2282,7 +2282,7 @@ class PageFeedService:
             if uploaded is None or not hasattr(uploaded, "read"):
                 raise HTTPException(status_code=400, detail="Profile image file is required")
             try:
-                payload = await uploaded.read(64 * 1024 + 1)
+                payload = await uploaded.read(2 * 1024 * 1024 + 1)
             finally:
                 await uploaded.close()
             try:

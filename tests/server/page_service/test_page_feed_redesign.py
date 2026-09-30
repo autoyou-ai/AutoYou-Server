@@ -265,21 +265,30 @@ def test_page_profile_falls_back_to_the_autoyou_mark(feed, monkeypatch):
 def test_page_profile_photo_write_uses_remote_role_policy(feed, tmp_path, monkeypatch):
     _, client = feed
     photo = tmp_path / "server-photo.png"
+    gif_photo = tmp_path / "server-photo.gif"
+    current_photo = {"path": None}
 
     def save_profile_image(payload):
-        if not payload.startswith(PNG_BYTES[:8]):
-            raise ValueError("Profile image must be a PNG, JPEG, or WebP file.")
-        photo.write_bytes(payload)
-        return photo
+        if payload.startswith(PNG_BYTES[:8]):
+            target = photo
+        elif payload.startswith(b"GIF87a") or payload.startswith(b"GIF89a"):
+            target = gif_photo
+        else:
+            raise ValueError("Profile image must be a PNG, JPEG, WebP, or GIF file.")
+        target.write_bytes(payload)
+        current_photo["path"] = target
+        return target
 
     def delete_profile_image():
         photo.unlink(missing_ok=True)
+        gif_photo.unlink(missing_ok=True)
+        current_photo["path"] = None
 
     monkeypatch.setitem(
         sys.modules,
         "server",
         SimpleNamespace(
-            _get_admin_profile_image_path=lambda: photo if photo.is_file() else None,
+            _get_admin_profile_image_path=lambda: current_photo["path"],
             _save_admin_profile_image=save_profile_image,
             _delete_admin_profile_image_files=delete_profile_image,
             WEBRTC=None,
@@ -301,6 +310,11 @@ def test_page_profile_photo_write_uses_remote_role_policy(feed, tmp_path, monkey
     assert client.put("/api/profile/avatar", headers=EDITOR, files={"image": image}).status_code == 200
     assert client.patch("/api/profile/avatar", headers=EDITOR, files={"image": image}).status_code == 200
     assert client.get("/api/profile/avatar", headers=VIEWER).content == PNG_BYTES
+    gif = ("profile.gif", b"GIF89a\x01\x00\x01\x00", "image/gif")
+    assert client.post("/api/profile/avatar", headers=EDITOR, files={"image": gif}).status_code == 200
+    animated = client.get("/api/profile/avatar", headers=VIEWER)
+    assert animated.content == gif[1]
+    assert animated.headers["content-type"] == "image/gif"
     assert client.delete("/api/profile/avatar", headers=EDITOR).status_code == 403
     assert client.delete("/api/profile/avatar", headers=admin).json() == {"success": True, "has_photo": False}
     assert client.get("/api/profile/avatar", headers=VIEWER).status_code == 404
@@ -316,13 +330,15 @@ def test_page_profile_photo_controls_follow_browser_role(feed):
     script = client.get(f"/{script_path}").text
 
     assert 'id="profile-photo-select"' in editor
-    assert 'accept="image/png,image/jpeg,image/webp"' in editor
+    assert 'accept="image/*"' in editor
     assert 'id="profile-photo-remove"' not in editor
     assert 'id="profile-photo-select"' not in viewer
     assert 'id="profile-photo-select"' in admin
     assert 'id="profile-photo-remove" class="profile-photo-remove" type="button" hidden' in admin
     assert '$("profile-photo-select").addEventListener("click"' in script
     assert '$("profile-photo-input").addEventListener("change"' in script
+    assert "normalizeProfilePhotoFile(file)" in script
+    assert 'type === "image/gif"' in script
 
 
 def test_page_ships_the_full_screen_feed_and_photo_viewer(feed):

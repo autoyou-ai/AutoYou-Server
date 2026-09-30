@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import shutil
 import threading
+import platform
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
@@ -246,8 +247,16 @@ def _platform_default_wan2gp_paths() -> Dict[str, str]:
 
 def _default_wan2gp_config() -> Dict[str, Any]:
     """Default settings for the standard Pinokio installation on this OS."""
+    apple_silicon = platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
     return {
         **_platform_default_wan2gp_paths(),
+        "engine": "draw_things" if apple_silicon else "wan2gp",
+        "draw_things_cli": "",
+        "draw_things_models_dir": "",
+        "draw_things_video_model": "",
+        "draw_things_image_model": "flux_2_klein_4b_q6p.ckpt",
+        "draw_things_resolution": "768x512",
+        "draw_things_image_resolution": "768x512",
         "model_type": "ltx2_distilled_gguf_q4_k_m",
         "resolution": "416x240",
         "num_inference_steps": 8,
@@ -261,6 +270,64 @@ def _default_wan2gp_config() -> Dict[str, Any]:
         "prompt_enhancer": "",
     }
 
+def discover_draw_things_cli(configured_path: Optional[str] = None) -> Optional[str]:
+    """Find the optional Draw Things CLI without assuming a GUI-inherited PATH."""
+    candidates = [
+        str(configured_path or "").strip(),
+        str(os.getenv("DRAWTHINGS_CLI_PATH") or "").strip(),
+        shutil.which("draw-things-cli") or "",
+        "/opt/homebrew/bin/draw-things-cli",
+        "/usr/local/bin/draw-things-cli",
+    ]
+    for candidate in candidates:
+        path = Path(candidate).expanduser() if candidate else None
+        if path and path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return None
+
+def _draw_things_default_models_dir() -> Path:
+    configured = str(os.getenv("DRAWTHINGS_MODELS_DIR") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / "Library" / "Containers" / "com.liuliu.draw-things" / "Data" / "Documents" / "Models"
+
+def _overlay_discovered_draw_things_cli(config: Dict[str, Any]) -> Dict[str, Any]:
+    configured = str(config.get("draw_things_cli") or "").strip()
+    if configured and Path(configured).expanduser().is_file():
+        return config
+    discovered = discover_draw_things_cli(configured)
+    if not discovered:
+        return config
+    merged = dict(config)
+    merged["draw_things_cli"] = discovered
+    return merged
+
+def draw_things_environment_status(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Report whether the optional Apple-Silicon local inference CLI is available."""
+    import platform as _platform
+
+    config = config or get_wan2gp_config()
+    system = _platform.system()
+    machine = _platform.machine().lower()
+    supported = system == "Darwin" and machine in {"arm64", "aarch64"}
+    cli_path = discover_draw_things_cli(str(config.get("draw_things_cli") or ""))
+    models_dir = Path(str(config.get("draw_things_models_dir") or "").strip()).expanduser() if config.get("draw_things_models_dir") else _draw_things_default_models_dir()
+    return {
+        "supported": supported,
+        "cli_found": bool(cli_path),
+        "cli": cli_path or str(config.get("draw_things_cli") or ""),
+        "models_dir": str(models_dir),
+        "models_dir_exists": models_dir.is_dir(),
+        "ready": supported and bool(cli_path),
+        "guidance": (
+            "Draw Things CLI uses local Apple GPU inference. Install its CLI and select a downloaded model."
+            if supported and not cli_path else
+            "Draw Things CLI is ready; generation is forced local and model downloads are disabled."
+            if supported else
+            "Draw Things local GPU inference requires Apple Silicon macOS."
+        ),
+    }
+
 def _overlay_discovered_wan2gp_paths(config: Dict[str, Any]) -> Dict[str, Any]:
     """If the configured app folder is missing, fall back to a discovered install.
 
@@ -271,15 +338,15 @@ def _overlay_discovered_wan2gp_paths(config: Dict[str, Any]) -> Dict[str, Any]:
     try:
         app_dir = str(config.get("app_dir") or "").strip()
         if app_dir and Path(app_dir).exists():
-            return config
+            return _overlay_discovered_draw_things_cli(config)
     except Exception:
         return config
     discovered = discover_wan2gp_installation()
     if discovered and discovered.get("python"):
         merged = dict(config)
         merged.update(discovered)
-        return merged
-    return config
+        return _overlay_discovered_draw_things_cli(merged)
+    return _overlay_discovered_draw_things_cli(config)
 
 
 def _wan2gp_config_path(*, for_write: bool = False) -> Path:
@@ -367,9 +434,10 @@ def _install_support_for_machine(profile: Dict[str, Any]) -> Tuple[bool, str]:
     machine = str(profile.get("machine") or "")
     if system == "Darwin":
         if machine in {"arm64", "aarch64"}:
-            return True, (
-                "Apple Silicon detected. Wan2GP has early MPS support on macOS - "
-                "generation is slower than on NVIDIA GPUs and not every model works yet."
+            return False, (
+                "The managed Wan2GP installer is CUDA-focused and is not validated on macOS. "
+                "For Apple GPU generation, install Draw Things CLI and choose its engine; "
+                "an existing Wan2GP installation can still be configured manually."
             )
         return False, (
             "Intel Macs are not supported: current PyTorch releases no longer ship "
@@ -408,6 +476,7 @@ def wan2gp_environment_status() -> Dict[str, Any]:
             "python_exists": python_path.exists() if str(python_path) else False,
         },
         "discovered": discovered,
+        "draw_things": draw_things_environment_status(config),
         "managed_install_dir": str(MANAGED_WAN2GP_ROOT),
         "install_supported": install_supported,
         "install_guidance": install_guidance,
@@ -915,6 +984,8 @@ WAN_MEMORY_FAILURE_MARKERS = (
     "bad allocation",
     "memory allocation failure",
     "cuda out of memory",
+    "mps backend out of memory",
+    "out of memory",
     "outofmemoryerror",
 )
 
@@ -955,6 +1026,57 @@ def _low_memory_image_resolution(resolution: Any, *, max_long_edge: int = 768) -
     fallback_height = _scale_dimension_to_multiple(height * scale)
     fallback = f"{fallback_width}x{fallback_height}"
     return None if fallback == f"{width}x{height}" else fallback
+
+def _draw_things_dimensions(resolution: Any) -> Tuple[int, int]:
+    dimensions = _parse_resolution(resolution)
+    if not dimensions:
+        raise ValueError("Draw Things resolution must use WIDTHxHEIGHT, such as 768x512.")
+    width, height = dimensions
+    if width % 64 or height % 64:
+        raise ValueError("Draw Things requires width and height to be multiples of 64 pixels.")
+    return width, height
+
+def _draw_things_low_memory_resolution(resolution: Any, *, max_long_edge: int = 384) -> Optional[str]:
+    dimensions = _parse_resolution(resolution)
+    if not dimensions:
+        return None
+    width, height = dimensions
+    long_edge = max(width, height)
+    if long_edge <= max_long_edge:
+        return None
+    scale = max_long_edge / long_edge
+    fallback_width = _scale_dimension_to_multiple(width * scale, minimum=64, multiple=64)
+    fallback_height = _scale_dimension_to_multiple(height * scale, minimum=64, multiple=64)
+    fallback = f"{fallback_width}x{fallback_height}"
+    return None if fallback == f"{width}x{height}" else fallback
+
+def _draw_things_generation_command(
+    cli: str,
+    model: str,
+    prompt: str,
+    output_path: Path,
+    media_type: str,
+    resolution: str,
+    steps: int,
+    frames: Optional[int],
+    seed: int,
+    models_dir: Optional[str] = None,
+) -> List[str]:
+    width, height = _draw_things_dimensions(resolution)
+    command = [
+        cli, "generate", "--local", "--offline", "--no-download-missing",
+        "--model", model, "--prompt", prompt, "--output", str(output_path),
+        "--steps", str(steps), "--width", str(width), "--height", str(height),
+    ]
+    if media_type == "video" and frames is not None:
+        command += ["--frames", str(frames)]
+    if seed >= 0:
+        if seed > 4294967295:
+            raise ValueError("Draw Things seed must be between 0 and 4294967295, or -1 for random.")
+        command += ["--seed", str(seed)]
+    if models_dir:
+        command += ["--models-dir", str(Path(models_dir).expanduser())]
+    return command
 
 def _low_memory_image_prompt(original_prompt: Any, generated_prompt: Any) -> str:
     compact_original = _clean_prompt_text(original_prompt, max_chars=360)
@@ -1071,18 +1193,43 @@ def generate_media_sync(
     history_item_id: Optional[int] = None,
     optimized_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute local Wan2GP generation synchronously, patiently waiting for result."""
+    """Execute local generation through Wan2GP or Draw Things CLI."""
     wan = get_wan2gp_config()
     media_type = _normalize_media_type(media_type)
+    engine = str(wan.get("engine") or "wan2gp").strip().lower()
+    if engine not in {"wan2gp", "draw_things"}:
+        err_msg = f"Unknown media generation engine '{engine}'. Choose Wan2GP or Draw Things CLI."
+        if history_item_id:
+            update_history_status(history_item_id, "failed", err_msg)
+        return {"status": "error", "message": err_msg}
     
     # 1. Resolve paths (platform defaults; get_wan2gp_config already overlays a
     #    discovered install when the saved path is missing on this machine)
     default_paths = _platform_default_wan2gp_paths()
     app_dir = Path(wan.get("app_dir", default_paths["app_dir"]))
     python = Path(wan.get("python", default_paths["python"]))
+    draw_things_cli = ""
+    draw_things_models_dir = str(wan.get("draw_things_models_dir") or "").strip()
+
+    if engine == "draw_things":
+        draw_status = draw_things_environment_status(wan)
+        if not draw_status["supported"]:
+            err_msg = draw_status["guidance"]
+            if history_item_id:
+                update_history_status(history_item_id, "failed", err_msg)
+            return {"status": "error", "message": err_msg}
+        draw_things_cli = str(draw_status.get("cli") or "")
+        if not draw_status["cli_found"]:
+            err_msg = (
+                "Draw Things CLI was not found. Install it from the official draw-things-community "
+                "repository or set its executable path in Configuration."
+            )
+            if history_item_id:
+                update_history_status(history_item_id, "failed", err_msg)
+            return {"status": "error", "message": err_msg, "install_required": True}
 
     # 2. Check if python and app directory are present on this machine
-    if not app_dir.exists():
+    if engine == "wan2gp" and not app_dir.exists():
         err_msg = (
             f"Wan2GP application folder not found at: '{app_dir}'. "
             "Wan2GP (by deepbeepmeep) is not installed here yet, or lives in another folder. "
@@ -1093,7 +1240,7 @@ def generate_media_sync(
             update_history_status(history_item_id, "failed", err_msg)
         return {"status": "error", "message": err_msg, "install_required": True}
 
-    if not python.exists():
+    if engine == "wan2gp" and not python.exists():
         err_msg = (
             f"Wan2GP Python executable not found at: '{python}'. "
             "The Wan2GP environment has not finished setting up (Pinokio creates it on the "
@@ -1104,9 +1251,17 @@ def generate_media_sync(
             update_history_status(history_item_id, "failed", err_msg)
         return {"status": "error", "message": err_msg, "install_required": True}
 
-    final_model_type, model_warning = _resolve_wan_model_type(wan, app_dir, model_type, media_type)
+    if engine == "draw_things":
+        final_model_type = _normalize_model_type(model_type) or _normalize_model_type(
+            wan.get("draw_things_image_model" if media_type == "image" else "draw_things_video_model")
+        )
+        model_warning = None
+    else:
+        final_model_type, model_warning = _resolve_wan_model_type(wan, app_dir, model_type, media_type)
     if not final_model_type:
         err_msg = (
+            f"Set a Draw Things {media_type} model ID in Configuration."
+            if engine == "draw_things" else
             f"{model_warning} Configure a {media_type} model in the Media Generator settings. "
             "For image generation, use an image-capable Wan2GP model such as flux_schnell, flux, z_image, or qwen_image_20B."
         )
@@ -1126,8 +1281,10 @@ def generate_media_sync(
 
     # 4. Prepare parameters
     final_resolution = resolution or (
+        wan.get("draw_things_image_resolution" if media_type == "image" else "draw_things_resolution")
+        if engine == "draw_things" else
         wan.get("image_resolution") if media_type == "image" else wan.get("resolution")
-    ) or ("1280x720" if media_type == "image" else "416x240")
+    ) or ("768x512" if engine == "draw_things" else "1280x720" if media_type == "image" else "416x240")
     final_steps = int(
         steps
         or (wan.get("image_num_inference_steps") if media_type == "image" else wan.get("num_inference_steps"))
@@ -1135,6 +1292,16 @@ def generate_media_sync(
     )
     final_frames = None if media_type == "image" else int(frames or wan.get("video_length", 49))
     final_seed = int(seed if seed is not None else wan.get("seed", -1))
+    if engine == "draw_things":
+        try:
+            _draw_things_dimensions(final_resolution)
+            if final_seed > 4294967295:
+                raise ValueError("Draw Things seed must be between 0 and 4294967295, or -1 for random.")
+        except ValueError as exc:
+            err_msg = str(exc)
+            if history_item_id:
+                update_history_status(history_item_id, "failed", err_msg)
+            return {"status": "error", "message": err_msg}
     
     base_settings_payload = {
         "settings_version": float(wan.get("settings_version", 2.52)),
@@ -1177,7 +1344,10 @@ def generate_media_sync(
             }
         ]
         if media_type == "image":
-            retry_resolution = _low_memory_image_resolution(final_resolution) or final_resolution
+            retry_resolution = (
+                _draw_things_low_memory_resolution(final_resolution)
+                if engine == "draw_things" else _low_memory_image_resolution(final_resolution)
+            ) or final_resolution
             retry_prompt = _low_memory_image_prompt(prompt, final_prompt)
             retry_steps = min(final_steps, 6)
             if (
@@ -1215,35 +1385,46 @@ def generate_media_sync(
             work_dir = _unique_work_dir(OUTPUT_DIR / work_dir_name)
             work_dir.mkdir(parents=True, exist_ok=True)
 
-            settings_payload = dict(base_settings_payload)
-            settings_payload.update(
-                {
-                    "prompt": attempt_prompt,
-                    "resolution": attempt_resolution,
-                    "num_inference_steps": attempt_steps,
-                }
-            )
-
-            settings_path = work_dir / "wan2gp-settings.json"
-            with settings_path.open("w", encoding="utf-8") as f:
-                json.dump(settings_payload, f, indent=2)
-
             output_dir = work_dir / "output"
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 5. Build executable command
-            command = [
-                str(python),
-                "wgp.py",
-                "--process",
-                str(settings_path),
-                "--output-dir",
-                str(output_dir),
-            ]
+            if engine == "draw_things":
+                width, height = _draw_things_dimensions(attempt_resolution)
+                extension = ".png" if media_type == "image" else ".mov"
+                generated_path = output_dir / f"autoyou_{job_id}_{attempt_index}{extension}"
+                command = _draw_things_generation_command(
+                    draw_things_cli,
+                    final_model_type,
+                    attempt_prompt,
+                    generated_path,
+                    media_type,
+                    attempt_resolution,
+                    attempt_steps,
+                    final_frames,
+                    final_seed,
+                    draw_things_models_dir,
+                )
+                attempt_settings_recorded["resolution"] = f"{width}x{height}"
+            else:
+                settings_payload = dict(base_settings_payload)
+                settings_payload.update(
+                    {
+                        "prompt": attempt_prompt,
+                        "resolution": attempt_resolution,
+                        "num_inference_steps": attempt_steps,
+                    }
+                )
+                settings_path = work_dir / "wan2gp-settings.json"
+                with settings_path.open("w", encoding="utf-8") as f:
+                    json.dump(settings_payload, f, indent=2)
+                command = [
+                    str(python), "wgp.py", "--process", str(settings_path),
+                    "--output-dir", str(output_dir),
+                ]
 
             completed = subprocess.run(
                 command,
-                cwd=app_dir,
+                cwd=work_dir if engine == "draw_things" else app_dir,
                 env=_external_python_subprocess_env(),
                 capture_output=True,
                 text=True,
@@ -1260,7 +1441,7 @@ def generate_media_sync(
                 ):
                     next_attempt = attempts[attempt_index + 1]
                     note = (
-                        f"Wan2GP reported memory pressure; logs were saved in {work_dir}. "
+                        f"{('Draw Things' if engine == 'draw_things' else 'Wan2GP')} reported memory pressure; logs were saved in {work_dir}. "
                         f"Retrying image generation at {next_attempt['resolution']} with a shorter prompt."
                     )
                     retry_notes.append(note)
@@ -1282,7 +1463,7 @@ def generate_media_sync(
                     continue
 
                 err_msg = (
-                    f"Wan2GP generation failed with exit code {completed.returncode}. "
+                    f"{('Draw Things local inference' if engine == 'draw_things' else 'Wan2GP generation')} failed with exit code {completed.returncode}. "
                     f"Logs were saved in {work_dir}.\nSTDERR tail:\n{_tail_text(completed.stderr)}\n"
                     f"STDOUT tail:\n{_tail_text(completed.stdout)}"
                 )
@@ -1301,9 +1482,8 @@ def generate_media_sync(
 
             if not files:
                 err_msg = (
-                    f"Wan2GP exited successfully but no {media_type} output file was detected in {output_dir}. "
-                    "This usually means Wan2GP skipped the task during validation, the selected model is not installed, "
-                    "or the settings did not match the requested media type. "
+                    f"{('Draw Things' if engine == 'draw_things' else 'Wan2GP')} exited successfully but no {media_type} output file was detected in {output_dir}. "
+                    "The selected model may be missing or may not support this media type. "
                     f"Logs were saved in {work_dir}.\nSTDOUT tail:\n{_tail_text(completed.stdout)}\n"
                     f"STDERR tail:\n{_tail_text(completed.stderr)}"
                 )
@@ -1356,7 +1536,7 @@ def generate_media_sync(
 
             message = f"Successfully generated {media_type} and saved to history."
             if retry_notes:
-                message += " Wan2GP memory pressure was recovered with a low-memory retry."
+                message += f" {('Draw Things' if engine == 'draw_things' else 'Wan2GP')} memory pressure was recovered with a low-memory retry."
 
             return {
                 "status": "success",

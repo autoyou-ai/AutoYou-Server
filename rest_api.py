@@ -2996,8 +2996,9 @@ async def send_message_to_ai_agent(
             )
             _message_text = f"[voice transcript] {message}" if _is_voice else message
 
-            # Build message parts, appending a compact attachments summary if available
-            parts: List[Dict[str, Any]] = [{"text": _message_text}]
+            # Put visual input first; Gemma 4's Ollama template handles this order best.
+            parts: List[Dict[str, Any]] = []
+            summary_text: Optional[str] = None
             try:
                 from shared.openclaw_gateway import _load_attachment_bytes
                 atts = _extract_attachments_from_context(context or [])
@@ -3039,10 +3040,13 @@ async def send_message_to_ai_agent(
                     summary_text = (
                         f"Attachments: {len(atts)} item(s): " + ", ".join(summary_items) + "."
                     )
-                    parts.append({"text": summary_text})
             except Exception:
                 # Non-critical; continue without summary
                 pass
+
+            parts.append({"text": _message_text})
+            if summary_text:
+                parts.append({"text": summary_text})
 
             payload = {
                 "app_name": "autoyou_agents",

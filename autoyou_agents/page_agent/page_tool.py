@@ -329,7 +329,7 @@ class PageTool:
         try:
             request = urllib.request.Request(url, headers=_internal_page_tool_headers())
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                response.read(64 * 1024 + 1)
+                response.read(2 * 1024 * 1024 + 1)
                 return {
                     "success": True,
                     "has_photo": True,
@@ -347,12 +347,12 @@ class PageTool:
         try:
             raw_path = os.path.normpath(str(path or "").strip().strip('"').strip("'"))
             with open(raw_path, "rb") as source:
-                raw = source.read(128 * 1024 + 1)
-            if len(raw) > 128 * 1024:
-                return {"success": False, "error": "Use a non-empty PNG, JPEG, or WebP image under 64 KB."}
+                raw = source.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                return {"success": False, "error": "Use a non-empty PNG, JPEG, WebP, or GIF image under 2 MB."}
             payload = read_secure_file(raw_path) if raw.startswith(SPM_FILE_HEADER) else raw
-            if not payload or len(payload) > 64 * 1024:
-                return {"success": False, "error": "Use a non-empty PNG, JPEG, or WebP image under 64 KB."}
+            if not payload or len(payload) > 2 * 1024 * 1024:
+                return {"success": False, "error": "Use a non-empty PNG, JPEG, WebP, or GIF image under 2 MB."}
             return self._http_upload_multipart(
                 "/api/profile/avatar", "image", "profile-photo", payload
             )

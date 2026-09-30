@@ -65,7 +65,7 @@
         <div class="status-card" id="connection-status-card">
           <div class="status-indicator">
             <span class="status-dot red" id="status-dot"></span>
-            <span class="status-label" id="status-label">Wan2GP: Disconnected</span>
+            <span class="status-label" id="status-label">Local engine: Disconnected</span>
           </div>
           <p class="status-detail" id="status-detail">Local paths are unchecked.</p>
         </div>
@@ -79,7 +79,7 @@
       <section class="view-section active" id="dashboard-view">
         <header class="view-header">
           <h1>Generation Lab</h1>
-          <p class="subtitle">Design stunning videos and images locally using your machine's Wan2GP models.</p>
+          <p class="subtitle">Create images and video with local models on this computer.</p>
         </header>
         
         <div class="lab-grid">
@@ -116,8 +116,9 @@
                 </div>
                 
                 <div class="form-group col">
-                  <label for="model-type">Wan2GP Model</label>
+                  <label for="model-type">Model</label>
                   <select id="model-type">
+                    <option value="">Choose a model</option>
                     <option value="ltx2_distilled_gguf_q4_k_m" selected>LTX2 Distilled (GGUF Q4)</option>
                     <option value="ltx2_distilled">LTX2 Distilled (14B)</option>
                     <option value="t2v">Wan Text2Video</option>
@@ -125,6 +126,8 @@
                     <option value="flux">Flux Image</option>
                     <option value="z_image">Z-Image Turbo</option>
                     <option value="qwen_image_20B">Qwen Image 20B</option>
+                    <option value="flux_2_klein_4b_q6p.ckpt">FLUX.2 Klein 4B (Draw Things)</option>
+                    <option value="ltx_2.3_22b_distilled_q6p.ckpt">LTX 2.3 22B (Draw Things)</option>
                   </select>
                 </div>
               </div>
@@ -140,6 +143,11 @@
                       <option value="848x480">848x480 (Quality)</option>
                       <option value="720x1280">720x1280 (Portrait)</option>
                       <option value="1280x720">1280x720 (Landscape)</option>
+                      <option value="512x512">512x512</option>
+                      <option value="768x512">768x512</option>
+                      <option value="512x768">512x768</option>
+                      <option value="832x512">832x512</option>
+                      <option value="512x832">512x832</option>
                     </select>
                   </div>
                   
@@ -211,18 +219,18 @@
       <section class="view-section" id="settings-view">
         <header class="view-header">
           <h1>Configuration</h1>
-          <p class="subtitle">Set the local Wan2GP folders and default generation choices.</p>
+          <p class="subtitle">Choose the local engine, model store, and generation defaults.</p>
         </header>
         
         <div class="card glass-card settings-card" id="environment-card">
           <div class="card-header">
-              <h2>Wan2GP Environment</h2>
+              <h2>Local Generation Engines</h2>
           </div>
           <p class="field-hint" id="env-platform-line">Checking this computer...</p>
           <p class="field-hint" id="env-guidance-line"></p>
           <div class="form-row" style="gap: 12px; margin: 12px 0;">
             <button type="button" class="btn btn-secondary" id="env-detect-btn">
-              <span>🔍</span> Detect installation
+              <span>🔍</span> Detect Wan2GP
             </button>
             <button type="button" class="btn btn-primary hidden" id="env-install-btn">
               <span>⬇️</span> Install Wan2GP on this computer
@@ -234,10 +242,19 @@
 
         <div class="card glass-card settings-card">
           <div class="card-header">
-              <h2>Local Wan2GP Paths</h2>
+              <h2>Engine Configuration</h2>
           </div>
 
           <form id="settings-form">
+            <div class="form-group">
+              <label for="settings-engine">Generation Engine</label>
+              <select id="settings-engine">
+                <option value="wan2gp">Wan2GP</option>
+                <option value="draw_things">Draw Things CLI (Apple Silicon)</option>
+              </select>
+            </div>
+
+            <div id="wan2gp-path-fields">
             <div class="form-group">
               <label for="settings-root">Wan2GP Root Folder</label>
               <input type="text" id="settings-root" placeholder="e.g. ~/pinokio/api/wan.git (auto-detected)" required>
@@ -255,6 +272,31 @@
               <input type="text" id="settings-python" placeholder="e.g. .../app/env/bin/python (Windows: ...\\app\\env\\Scripts\\python.exe)" required>
               <span class="field-hint">Full path to the Python inside Wan2GP's environment.</span>
             </div>
+            </div>
+
+            <div id="draw-things-settings" class="hidden">
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="settings-draw-things-cli">Draw Things CLI Path</label>
+                  <input type="text" id="settings-draw-things-cli" placeholder="Auto-detected when installed">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-draw-things-models">Models Folder</label>
+                  <input type="text" id="settings-draw-things-models" placeholder="Use Draw Things default model folder">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="settings-draw-things-image-model">Image Model ID</label>
+                  <input type="text" id="settings-draw-things-image-model" placeholder="flux_2_klein_4b_q6p.ckpt">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-draw-things-video-model">Video Model ID</label>
+                  <input type="text" id="settings-draw-things-video-model" placeholder="Downloaded video model ID">
+                </div>
+              </div>
+              <p class="field-hint">Model IDs are resolved locally; this integration does not download model weights.</p>
+            </div>
             
             <hr class="form-divider">
             
@@ -262,7 +304,7 @@
               <h2>Model Defaults</h2>
             </div>
             
-            <div class="form-row">
+            <div class="form-row" id="wan2gp-model-settings">
               <div class="form-group col">
                 <label for="settings-model">Default Model</label>
                 <input type="text" id="settings-model" placeholder="ltx2_distilled_gguf_q4_k_m" required>
