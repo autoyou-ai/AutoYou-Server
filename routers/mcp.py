@@ -64,7 +64,7 @@ class ChatMessageRequest(BaseModel):
     model: str = "autoyou/default"
     session_id: Optional[str] = Field(default=None, max_length=256)
     user: str = "autoyou-mcp"
-    context: List[Dict[str, Any]] = Field(default_factory=list)
+    context: List[Dict[str, Any]] = Field(default_factory=list, description="AutoYou chat attachment context, including images, audio, video, and files")
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -325,8 +325,24 @@ def register_routes(
         if auth_error:
             return auth_error
         message = _extract_chat_message(payload)
+        if not message and any(
+            isinstance(group, Mapping) and bool(group.get("attachments"))
+            for group in (payload.context or [])
+        ):
+            message = "Please process the attached file."
         if not message:
             return JSONResponse(status_code=400, content={"error": "message is required"})
+        if len(payload.context or []) > 32:
+            return JSONResponse(status_code=413, content={"error": "Too many attachments"})
+        encoded_bytes = sum(
+            len(str(item.get("data") or ""))
+            for group in (payload.context or [])
+            if isinstance(group, Mapping)
+            for item in (group.get("attachments") or [])
+            if isinstance(item, Mapping)
+        )
+        if encoded_bytes > 48 * 1024 * 1024:
+            return JSONResponse(status_code=413, content={"error": "Attachments are too large"})
         session_id = str(payload.session_id or "").strip() or None
         metadata = {"source": "autoyou-mcp", "client": "chatgpt"}
         chat_request_cls = getattr(server, "ChatRequest", None)
@@ -338,11 +354,39 @@ def register_routes(
                 message=message,
                 session_id=session_id,
                 user_id="autoyou-mcp",
-                context=[],
+                context=payload.context or [],
                 metadata=metadata,
             )
             ai_port = int(getattr(server, "AI_AGENT_SERVER_PORT", 8081) or 8081)
-            response = await process_chat(chat_request, f"http://localhost:{ai_port}")
+            ai_agent_url = f"http://localhost:{ai_port}"
+            if "@" in message:
+                from core_server.agents_api_bridge import (
+                    AgentsAPIConfigurationError,
+                    AgentsAPIError,
+                    run_agents_api_turn,
+                )
+
+                async def _process_with_autoyou():
+                    return await process_chat(chat_request, ai_agent_url)
+
+                attachment_count = sum(
+                    len(group.get("attachments") or [])
+                    for group in (payload.context or [])
+                    if isinstance(group, Mapping) and isinstance(group.get("attachments") or [], list)
+                )
+                try:
+                    response = await run_agents_api_turn(
+                        message,
+                        _process_with_autoyou,
+                        attachment_count=attachment_count,
+                    )
+                except AgentsAPIConfigurationError as exc:
+                    return JSONResponse(status_code=503, content={"error": str(exc)})
+                except AgentsAPIError as exc:
+                    server.LOGGER.warning("Full-server MCP Agents API routing failed: %s", exc)
+                    return JSONResponse(status_code=502, content={"error": "Agents API routing failed."})
+            else:
+                response = await process_chat(chat_request, ai_agent_url)
         except Exception as exc:
             server.LOGGER.warning("Full-server MCP chat failed: %s", exc)
             return JSONResponse(status_code=502, content={"error": "ai_backend_unavailable"})

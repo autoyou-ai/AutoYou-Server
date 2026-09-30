@@ -6,8 +6,8 @@ donations with the people who improve AutoYou Server. It is not an offer, a
 contract, a wage, or a promise of payment.
 
 You can sponsor AutoYou at [www.autoyou.me/donate](https://www.autoyou.me/donate/).
-Separately, OpenStorey commits a percentage of the money it raises to the
-open-source developers AutoYou is built on. See the
+The pool is funded from the "Approved contributors" allocation that OpenStorey
+commits to in the
 [Open-Source Commitment](../legal/open-source-commitment.md).
 
 ## Current period
@@ -18,16 +18,25 @@ them for a period, the pool for that period is zero.
 | Setting | Value |
 | --- | --- |
 | Period | Calendar quarter |
-| Share of net sponsorship income set aside for the pool | Not yet announced |
+| Share of net sponsorship income set aside for the pool | The "Approved contributors" allocation in the public funding ledger (at least 15%) |
 | Minimum payout | Not yet announced |
 | Payment platform | Not yet announced |
 
-"Net sponsorship income" means money OpenStorey actually receives through
+"Net sponsorship income" means money OpenStorey actually receives, including
+AutoYou Creator payments, through
 [www.autoyou.me/donate](https://www.autoyou.me/donate/) and the links in
 [`.github/FUNDING.yml`](../../.github/FUNDING.yml), after platform and payment
 fees, taxes, refunds, and chargebacks. OpenStorey announces each
 period's values before the period starts, in a pinned issue, and updates this
 table.
+
+**How this connects to the public funding ledger.** The pool is funded from the
+"Approved contributors" allocation in the public funding ledger at
+[www.autoyou.me/donate](https://www.autoyou.me/donate/#funding-status). Each
+payout is recorded there as a contributor request whose public artifacts are the
+merged pull requests, and the AutoYou account operator and then the OpenStorey
+LLC board review it before it is paid. The ledger shows a display name only if
+You choose one.
 
 ## Who can receive a payout
 

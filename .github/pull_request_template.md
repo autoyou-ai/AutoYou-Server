@@ -19,6 +19,7 @@ Tools used (if any):
 - [ ] I read the source-available [LICENSE](../LICENSE).
 - [ ] I agree to the [AutoYou Contributor License Agreement](../docs/contributors/CLA.md).
 - [ ] Every commit has a `Signed-off-by` line (`git commit -s`).
+- [ ] If I added a new file under a license other than the repository LICENSE, a maintainer approved it in the linked issue and the file starts with an SPDX license identifier.
 - [ ] This change contains no secrets, credentials, non-release logs, personal data, or generated runtime state.
 - [ ] Tests and fixtures use synthetic identifiers and do not modify live configuration.
 - [ ] I updated public documentation where needed.

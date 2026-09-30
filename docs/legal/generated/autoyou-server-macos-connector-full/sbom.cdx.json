@@ -3695,7 +3695,7 @@
       "licenses": [
         {
           "license": {
-            "id": "BSD-3-Clause"
+            "id": "Apache-2.0"
           }
         }
       ],
@@ -3796,7 +3796,7 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-09-29T21:53:19+00:00",
+    "timestamp": "2026-09-29T23:57:37+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3805,7 +3805,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:d2aac26b-8a94-4869-94ec-0c1c57cf1310",
+  "serialNumber": "urn:uuid:343946a9-afa1-42a7-bca1-76d94b736109",
   "specVersion": "1.5",
   "version": 1
 }

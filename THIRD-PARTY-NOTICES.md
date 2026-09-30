@@ -1,12 +1,16 @@
 # AutoYou Third-Party Notices
 
-Last updated: 2026-09-28
+Last updated: 2026-09-29
 
 This file is the repository-level notice index for AutoYou. It does not replace the exact license texts that must be included with final release artifacts.
 
 ## Primary Notice Page
 
-The public attributions page is at [www.autoyou.me/attributions](https://www.autoyou.me/attributions/). OpenStorey commits a percentage of the money it raises to the open-source developers credited there; see the [Open-Source Commitment](docs/legal/open-source-commitment.md).
+The public attributions page is at [www.autoyou.me/attributions](https://www.autoyou.me/attributions/). OpenStorey commits at least 15% of the money it receives to approved contributors, and the open-source developers credited there are welcome to take part in the same way; see the [Open-Source Commitment](docs/legal/open-source-commitment.md).
+
+## Contributed Files Under Another License
+
+A new file written by an outside contributor may carry its own permissive license (MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, or ISC) when a maintainer approved it in the linked issue; see [CONTRIBUTING.md](CONTRIBUTING.md#licensing-your-files). Each such file is listed here with its path, license, and author, and the maintainer records it in `docs/legal/release-artifacts.json` so it appears in the artifact NOTICE and SBOM. None so far.
 
 ## Release Artifact Requirement
 

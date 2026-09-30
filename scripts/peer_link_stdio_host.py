@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-I-or-d4a4285b4b967133b6167ea3
 
-#!/usr/bin/env python3
 """A real Python Peer Link host, driven over stdin/stdout.
 
 `peer_link_live_test.py` owns the scenarios where Python drives both ends or
