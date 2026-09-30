@@ -834,6 +834,43 @@ def test_at_main_route_returns_to_the_root_agent(monkeypatch):
     }
 
 
+@pytest.mark.parametrize("mention", ["@AutoYou-Server", "@AutoYou"])
+def test_at_default_server_aliases_return_to_the_root_without_server_runtime(
+    monkeypatch, mention
+):
+    monkeypatch.delitem(root_agent_module.sys.modules, "server", raising=False)
+
+    route = root_agent_module._extract_explicit_route_request(f"{mention} answer this directly")
+
+    assert route == {
+        "runtime_agent_name": root_agent_module.root_prompt.AGENT_NAME,
+        "request": "answer this directly",
+    }
+
+
+def test_at_configured_multword_computer_name_returns_to_root(monkeypatch):
+    monkeypatch.setitem(
+        root_agent_module.sys.modules,
+        "server",
+        SimpleNamespace(get_configured_server_name=lambda: "Research's Mac mini"),
+    )
+    monkeypatch.setattr(
+        root_agent_module,
+        "get_installed_agent_names",
+        lambda **_kwargs: ["research_agent"],
+    )
+    monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", {"research_agent"})
+
+    route = root_agent_module._extract_explicit_route_request(
+        "@Research's Mac mini, answer this directly"
+    )
+
+    assert route == {
+        "runtime_agent_name": root_agent_module.root_prompt.AGENT_NAME,
+        "request": "answer this directly",
+    }
+
+
 @pytest.mark.parametrize(
     "request_text",
     [
