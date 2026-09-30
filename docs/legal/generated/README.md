@@ -1,6 +1,6 @@
 # Generated Release Legal Artifacts
 
-Generated at: 2026-09-29T23:57:37+00:00
+Generated at: 2026-09-30T04:10:22+00:00
 
 Run `python scripts/generate_release_legal_artifacts.py` to refresh these files before release packaging.
 
