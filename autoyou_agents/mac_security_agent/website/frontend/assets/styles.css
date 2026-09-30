@@ -54,6 +54,8 @@ input { flex: 1; letter-spacing: .18em; }
 .hero-copy { color: var(--muted); max-width: 670px; margin-bottom: 0; }
 .notice { background: rgba(255, 190, 102, .1); border: 1px solid rgba(255, 190, 102, .35); border-radius: 12px; color: #ffd99f; margin-bottom: 18px; padding: 12px 14px; }
 :root[data-theme="light"] .notice { color: #81540b; }
+.notice.error { background: rgba(239, 68, 68, .12); border-color: rgba(239, 68, 68, .42); color: #ffc1bd; }
+:root[data-theme="light"] .notice.error { color: #9f2924; }
 .metric-grid { display: grid; gap: 13px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 24px; }
 .metric-card, .panel { background: rgba(16, 29, 47, .82); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
 :root[data-theme="light"] .metric-card, :root[data-theme="light"] .panel { background: rgba(255, 255, 255, .86); }

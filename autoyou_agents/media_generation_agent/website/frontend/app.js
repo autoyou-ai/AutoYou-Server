@@ -46,6 +46,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Settings elements
   const settingsForm = document.getElementById("settings-form");
+  const settingsEngine = document.getElementById("settings-engine");
+  const wan2gpPathFields = document.getElementById("wan2gp-path-fields");
+  const wan2gpModelSettings = document.getElementById("wan2gp-model-settings");
+  const drawThingsSettings = document.getElementById("draw-things-settings");
   const settingsRoot = document.getElementById("settings-root");
   const settingsApp = document.getElementById("settings-app");
   const settingsPython = document.getElementById("settings-python");
@@ -57,6 +61,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const settingsImageSteps = document.getElementById("settings-image-steps");
   const settingsLength = document.getElementById("settings-length");
   const settingsEnhance = document.getElementById("settings-enhance");
+  const settingsDrawThingsCLI = document.getElementById("settings-draw-things-cli");
+  const settingsDrawThingsModels = document.getElementById("settings-draw-things-models");
+  const settingsDrawThingsImageModel = document.getElementById("settings-draw-things-image-model");
+  const settingsDrawThingsVideoModel = document.getElementById("settings-draw-things-video-model");
 
   // Modal elements
   const mediaModal = document.getElementById("media-modal");
@@ -121,11 +129,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setSelectIfPossible(select, value) {
-    if (value && optionExists(select, value)) {
-      select.value = value;
-      return true;
+    if (!value) return false;
+    if (!optionExists(select, value)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
     }
-    return false;
+    select.value = value;
+    return true;
   }
 
   function usableOptimizedPrompt() {
@@ -142,18 +154,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyGenerationDefaultsForMediaType() {
+    const drawThings = configData.engine === "draw_things";
     if (mediaTypeSelect.value === "image") {
-      setSelectIfPossible(modelTypeSelect, configData.image_model_type) ||
-        setSelectIfPossible(modelTypeSelect, "flux_schnell");
-      setSelectIfPossible(resolutionSelect, configData.image_resolution || "1280x720");
+      const model = drawThings
+        ? (configData.draw_things_image_model || "flux_2_klein_4b_q6p.ckpt")
+        : (configData.image_model_type || "flux_schnell");
+      modelTypeSelect.value = model;
+      setSelectIfPossible(modelTypeSelect, model);
+      setSelectIfPossible(
+        resolutionSelect,
+        drawThings ? (configData.draw_things_image_resolution || "768x512") : (configData.image_resolution || "1280x720")
+      );
       setNumberInput(numStepsInput, configData.image_num_inference_steps, 10);
       framesGroup.classList.add("hidden");
       return;
     }
 
-    setSelectIfPossible(modelTypeSelect, configData.model_type) ||
-      setSelectIfPossible(modelTypeSelect, "ltx2_distilled_gguf_q4_k_m");
-    setSelectIfPossible(resolutionSelect, configData.resolution || "416x240");
+    const model = drawThings
+      ? (configData.draw_things_video_model || "")
+      : (configData.model_type || "ltx2_distilled_gguf_q4_k_m");
+    modelTypeSelect.value = model;
+    setSelectIfPossible(modelTypeSelect, model);
+    setSelectIfPossible(
+      resolutionSelect,
+      drawThings ? (configData.draw_things_resolution || "768x512") : (configData.resolution || "416x240")
+    );
     setNumberInput(numStepsInput, configData.num_inference_steps, 8);
     setNumberInput(videoLengthInput, configData.video_length, 49);
     framesGroup.classList.remove("hidden");
@@ -314,28 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Toggle Video length parameters based on media type selection
-  mediaTypeSelect.addEventListener("change", (e) => {
-    if (e.target.value === "image") {
-      framesGroup.classList.add("hidden");
-      if (!IMAGE_MODEL_IDS.has(modelTypeSelect.value)) {
-        setSelectIfPossible(modelTypeSelect, configData.image_model_type) ||
-          setSelectIfPossible(modelTypeSelect, "flux_schnell");
-      }
-      if (resolutionSelect.value === "416x240") {
-        setSelectIfPossible(resolutionSelect, configData.image_resolution || "1280x720");
-      }
-      setNumberInput(numStepsInput, configData.image_num_inference_steps, 10);
-    } else {
-      framesGroup.classList.remove("hidden");
-      if (!VIDEO_MODEL_IDS.has(modelTypeSelect.value)) {
-        setSelectIfPossible(modelTypeSelect, configData.model_type) ||
-          setSelectIfPossible(modelTypeSelect, "ltx2_distilled_gguf_q4_k_m");
-      }
-      setSelectIfPossible(resolutionSelect, configData.resolution || "416x240");
-      setNumberInput(numStepsInput, configData.num_inference_steps, 8);
-      setNumberInput(videoLengthInput, configData.video_length, 49);
-    }
-  });
+  mediaTypeSelect.addEventListener("change", applyGenerationDefaultsForMediaType);
 
   // ── CORE LOADS & DIAGNOSTIC POLLING ──
   async function checkSystemConnection() {
@@ -346,16 +350,23 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success) {
         configData = data.config;
         applyGenerationDefaultsForMediaType();
+        const engineName = configData.engine === "draw_things" ? "Draw Things" : "Wan2GP";
         if (data.connected) {
           statusDot.className = "status-dot green";
-          statusLabel.textContent = "Wan2GP: Connected";
-          statusDetail.textContent = `Model default loaded: ${configData.model_type || 'unspecified'}. System ready.`;
+          statusLabel.textContent = `${engineName}: Ready`;
+          const model = mediaTypeSelect.value === "image"
+            ? (configData.engine === "draw_things" ? configData.draw_things_image_model : configData.image_model_type)
+            : (configData.engine === "draw_things" ? configData.draw_things_video_model : configData.model_type);
+          statusDetail.textContent = `Model default: ${model || "choose a local model"}.`;
         } else {
           statusDot.className = "status-dot red";
-          statusLabel.textContent = "Wan2GP: Offline";
-          
-          let failReason = "Local directories are missing or incorrect.";
-          if (!data.diagnostic.root_exists) {
+          statusLabel.textContent = `${engineName}: Offline`;
+          let failReason = "Local engine is not ready.";
+          if (configData.engine === "draw_things") {
+            failReason = data.diagnostic.draw_things_cli_found
+              ? "Draw Things CLI found, but Apple Silicon macOS is required."
+              : "Draw Things CLI was not found; check Configuration.";
+          } else if (!data.diagnostic.root_exists) {
             failReason = "Wan2GP Root folder does not exist.";
           } else if (!data.diagnostic.python_exists) {
             failReason = "Wan2GP Python path is invalid.";
@@ -365,7 +376,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (e) {
       statusDot.className = "status-dot red";
-      statusLabel.textContent = "Wan2GP: Error";
+      statusLabel.textContent = "Local engine: Error";
       statusDetail.textContent = "Could not check local setup.";
     }
   }
@@ -736,6 +747,21 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderEnvironmentPanel(env) {
     const platform = env.platform || {};
     const configured = env.configured || {};
+    if (configData.engine === "draw_things") {
+      const drawThings = env.draw_things || {};
+      envPlatformLine.textContent = drawThings.ready
+        ? `Apple Silicon macOS — Draw Things CLI is ready at ${drawThings.cli}.`
+        : (drawThings.supported
+          ? "Apple Silicon macOS — Draw Things CLI was not found."
+          : "Draw Things local inference requires Apple Silicon macOS.");
+      envGuidanceLine.textContent = drawThings.models_dir_exists
+        ? `Local model store: ${drawThings.models_dir}.`
+        : "No model store was detected yet; configure an existing Draw Things models folder.";
+      envDetectBtn.classList.add("hidden");
+      envInstallBtn.classList.add("hidden");
+      return;
+    }
+    envDetectBtn.classList.remove("hidden");
     const ready = configured.app_dir_exists && configured.python_exists;
     const osLabel = platform.system === "Darwin" ? "macOS" : (platform.system || "Unknown OS");
     const gpuLabel = platform.has_nvidia ? "NVIDIA GPU" : (platform.machine || "");
@@ -839,19 +865,41 @@ document.addEventListener("DOMContentLoaded", () => {
   function loadSettingsView() {
     if (!configData.root) return;
 
+    settingsEngine.value = configData.engine || "wan2gp";
     settingsRoot.value = configData.root || "";
     settingsApp.value = configData.app_dir || "";
     settingsPython.value = configData.python || "";
     
     settingsModel.value = configData.model_type || "ltx2_distilled_gguf_q4_k_m";
     settingsImageModel.value = configData.image_model_type || "flux_schnell";
-    settingsResolution.value = configData.resolution || "416x240";
-    settingsImageResolution.value = configData.image_resolution || "1280x720";
+    settingsResolution.value = settingsEngine.value === "draw_things"
+      ? (configData.draw_things_resolution || "768x512")
+      : (configData.resolution || "416x240");
+    settingsImageResolution.value = settingsEngine.value === "draw_things"
+      ? (configData.draw_things_image_resolution || "768x512")
+      : (configData.image_resolution || "1280x720");
     settingsSteps.value = configData.num_inference_steps || 8;
     settingsImageSteps.value = configData.image_num_inference_steps || 10;
     settingsLength.value = configData.video_length || 49;
     settingsEnhance.checked = configData.enhance_prompt !== false;
+    settingsDrawThingsCLI.value = configData.draw_things_cli || "";
+    settingsDrawThingsModels.value = configData.draw_things_models_dir || "";
+    settingsDrawThingsImageModel.value = configData.draw_things_image_model || "flux_2_klein_4b_q6p.ckpt";
+    settingsDrawThingsVideoModel.value = configData.draw_things_video_model || "";
+    syncEngineSettings();
   }
+
+  function syncEngineSettings() {
+    const drawThings = settingsEngine.value === "draw_things";
+    drawThingsSettings.classList.toggle("hidden", !drawThings);
+    wan2gpPathFields.classList.toggle("hidden", drawThings);
+    wan2gpModelSettings.classList.toggle("hidden", drawThings);
+    [settingsRoot, settingsApp, settingsPython, settingsModel].forEach(input => {
+      input.required = !drawThings;
+    });
+  }
+
+  settingsEngine.addEventListener("change", syncEngineSettings);
 
   settingsForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -861,6 +909,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveBtn.textContent = "Saving Configuration Override...";
     
     const payload = {
+      engine: settingsEngine.value,
       root: settingsRoot.value.trim(),
       app_dir: settingsApp.value.trim(),
       python: settingsPython.value.trim(),
@@ -871,7 +920,13 @@ document.addEventListener("DOMContentLoaded", () => {
       num_inference_steps: parseInt(settingsSteps.value),
       image_num_inference_steps: parseInt(settingsImageSteps.value),
       video_length: parseInt(settingsLength.value),
-      enhance_prompt: settingsEnhance.checked
+      enhance_prompt: settingsEnhance.checked,
+      draw_things_resolution: settingsResolution.value.trim(),
+      draw_things_image_resolution: settingsImageResolution.value.trim(),
+      draw_things_cli: settingsDrawThingsCLI.value.trim(),
+      draw_things_models_dir: settingsDrawThingsModels.value.trim(),
+      draw_things_video_model: settingsDrawThingsVideoModel.value.trim(),
+      draw_things_image_model: settingsDrawThingsImageModel.value.trim()
     };
     
     try {

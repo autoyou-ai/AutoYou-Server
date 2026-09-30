@@ -1137,11 +1137,10 @@ def prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[str
                         text_parts.append(text)
             joined_text = " ".join(text_parts).strip()
             if image_parts:
-                # Rebuild the canonical shape litellm expects: at most one
-                # sanitized text part, then the untouched image parts.
-                message["content"] = (
+                # Keep visual input before text for Gemma 4's multimodal template.
+                message["content"] = image_parts + (
                     [{"type": "text", "text": joined_text}] if joined_text else []
-                ) + image_parts
+                )
             else:
                 message["content"] = joined_text or None
         elif role == "assistant":

@@ -212,6 +212,7 @@ MACOS_RUNTIME_SITE_PACKAGE_DISTRIBUTION_OVERLAY=(
     "python-telegram-bot"
     "Telethon"
     "websockets"
+    "zeroconf"
     "docker"
     "keyring"
     "pyotp"

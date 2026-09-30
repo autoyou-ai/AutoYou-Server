@@ -129,11 +129,13 @@ code,
 
 #autoyou-admin-root {
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .ayu-shell {
     display: flex;
     min-height: 100vh;
+    min-height: 100dvh;
     min-width: 0;
     position: relative;
     overflow-x: hidden;
@@ -152,7 +154,7 @@ code,
     position: sticky;
     top: 0;
     height: 100dvh;
-    max-height: 100vh;
+    max-height: 100dvh;
     min-height: 0;
     overflow: hidden;
     overscroll-behavior: contain;
@@ -191,13 +193,12 @@ code,
     font-family: var(--ayu-font-display);
     font-size: 17px;
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0;
     min-width: 0;
     line-height: 1.2;
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ayu-brand-subtitle {
@@ -317,6 +318,7 @@ code,
 .ayu-sidebar-profile {
     display: grid;
     gap: 10px;
+    position: relative;
 }
 
 .ayu-sidebar-server {
@@ -352,10 +354,7 @@ code,
 
 .ayu-sidebar-server-copy strong {
     line-height: 1.25;
-    overflow: visible;
-    overflow-wrap: anywhere;
-    text-overflow: clip;
-    white-space: normal;
+    white-space: nowrap;
 }
 
 .ayu-sidebar-server-copy .ayu-hint {
@@ -433,6 +432,14 @@ code,
     display: grid;
     gap: 8px;
     padding: 12px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 35;
+    max-height: min(70dvh, 32rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border-radius: 18px;
     border: 1px solid var(--ayu-border);
     background: var(--ayu-surface-strong);
@@ -457,7 +464,16 @@ code,
 }
 
 .ayu-file-input {
-    display: none;
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
 }
 
 .ayu-sidebar-actions {
@@ -2513,7 +2529,7 @@ code,
         transition: transform 0.22s ease;
         width: min(280px, calc(100vw - 24px));
         height: 100dvh;
-        max-height: 100vh;
+        max-height: 100dvh;
         box-shadow: 0 34px 70px rgba(17, 24, 39, 0.24);
     }
 
@@ -3530,7 +3546,16 @@ code,
 }
 
 .ayu-chat-composer-tools input[type="file"] {
-    display: none;
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
 }
 
 .ayu-chat-composer-hint {
