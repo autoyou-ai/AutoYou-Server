@@ -37,6 +37,28 @@ def test_admin_ui_does_not_restore_chat_draft_after_send_clears_it():
     assert 'snapshot.role === "chat-input" && state.chat.composer !== snapshot.value' in restore
 
 
+def test_native_file_choosers_keep_their_inputs_mounted_until_selection():
+    script = _admin_ui_script()
+    styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
+    immediate = script.split("function isImmediateAction(action)", 1)[1].split(
+        "async function withPendingAction", 1
+    )[0]
+    profile_picker = script.split('if (action === "profile-image-select")', 1)[1].split(
+        'if (action === "cropper-cancel")', 1
+    )[0]
+
+    assert all(f'action === "{action}"' in immediate for action in (
+        "profile-image-select", "cropper-choose-other", "video-file-select", "chat-file-select"
+    ))
+    assert "profileInput.click()" in profile_picker
+    assert "renderApp()" not in profile_picker
+    assert ".ayu-file-input {\n    position: fixed;" in styles
+    assert ".ayu-file-input {\n    display: none;" not in styles
+    assert "var nameFontSize = Math.max(11" in script
+    assert ".ayu-profile-menu {\n    display: grid;\n    gap: 8px;\n    padding: 12px;\n    position: absolute;" in styles
+    assert "max-height: min(70dvh, 32rem);" in styles
+
+
 def test_empty_chat_keeps_the_conversation_space_for_history_and_composer():
     script = _admin_ui_script()
     styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")

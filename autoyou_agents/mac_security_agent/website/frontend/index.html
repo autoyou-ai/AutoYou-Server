@@ -42,7 +42,7 @@
         <div class="login-card">
           <p class="eyebrow">PRIVATE AGENT / OTP REQUIRED</p>
           <h1>Unlock network visibility</h1>
-          <p>Use the AutoYou authenticator code to inspect process-attributed TCP and UDP endpoints on this Mac.</p>
+          <p>Use the AutoYou authenticator code to inspect TCP and UDP endpoints visible to this app. Process ownership depends on macOS access.</p>
           <label for="otp-input">Authenticator code</label>
           <div class="otp-row">
             <input id="otp-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" aria-describedby="otp-error">
@@ -55,9 +55,9 @@
       <section id="dashboard" class="dashboard hidden" aria-live="polite">
         <div class="hero">
           <div>
-            <p class="eyebrow">MACOS / PROCESS-BOUND NETWORK SURFACE</p>
+            <p class="eyebrow">MACOS / READ-ONLY NETWORK SURFACE</p>
             <h1>See what is connected.</h1>
-            <p class="hero-copy">A low-noise local snapshot of TCP and UDP endpoints, grouped back to the userspace process that owns them.</p>
+            <p class="hero-copy">A read-only local snapshot of TCP and UDP endpoints. Process ownership is shown where macOS grants access.</p>
           </div>
           <button id="refresh-button" class="button primary" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.7-4.2L4 8V4h4L6.8 5.2A6 6 0 1 1 6 15H4a8 8 0 0 0 16-4Zm-4 5h-4v-4l1.3 1.3A4 4 0 1 0 8 11H6a6 6 0 1 1 10 5Z"/></svg>
@@ -65,8 +65,12 @@
           </button>
         </div>
 
+        <div id="snapshot-error" class="notice error hidden" role="alert">
+          <strong>Snapshot unavailable.</strong> <span id="snapshot-error-detail"></span>
+        </div>
+
         <div id="elevation-banner" class="notice hidden" role="status">
-          <strong>Limited visibility.</strong> <span id="capability-note">Run AutoYou elevated to include protected process metadata and system-owned endpoints.</span>
+          <strong>Limited visibility.</strong> <span id="capability-note">macOS may withhold protected process metadata; connected UDP peers are limited to sockets reported by the system.</span>
         </div>
 
         <section class="metric-grid" aria-label="Snapshot summary">

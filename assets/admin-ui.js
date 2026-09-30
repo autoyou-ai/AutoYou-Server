@@ -569,8 +569,15 @@
         if (!file) {
             throw new Error("Choose an image file first.");
         }
-        if (String(file.type || "").indexOf("image/") !== 0) {
+        var isGif = String(file.type || "").toLowerCase() === "image/gif" || /\.gif$/i.test(file.name || "");
+        if (String(file.type || "").indexOf("image/") !== 0 && !isGif) {
             throw new Error("Profile image must be an image file.");
+        }
+        if (isGif) {
+            if (file.size > 2 * 1024 * 1024) {
+                throw new Error("Animated profile images must be smaller than 2 MB.");
+            }
+            return { blob: file, filename: file.name || "profile-avatar.gif" };
         }
         var image = await loadImageFromFile(file);
         var attempts = [
@@ -1183,7 +1190,7 @@
     }
 
     function isImmediateAction(action) {
-        return !action || action.indexOf("nav:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "close-modal" || action === "modal-copy" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0;
+        return !action || action.indexOf("nav:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "close-modal" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0;
     }
 
     async function withPendingAction(action, callback) {
@@ -5342,6 +5349,7 @@
     function renderSidebar() {
         var admin = getByPath(state.bootstrap, "admin", {});
         var serverName = getByPath(admin, "server_name", "AutoYou-Server");
+        var nameFontSize = Math.max(11, Math.min(17, 250 / Math.max(String(serverName).length, 14))).toFixed(1) + "px";
         var avatarUserID = String(getByPath(admin, "avatar_user_id", getByPath(admin, "server_id", "")) || "");
         var avatarUrl = String(getByPath(admin, "avatar_url", "") || "");
         var avatarUploading = isActionPending("profile-image-upload");
@@ -5355,9 +5363,9 @@
         var updateMarkup = getByPath(updateStatus, "update_available", false)
             ? "<button type=\"button\" class=\"ayu-sidebar-update\" data-action=\"software-update-open\"><span class=\"ayu-sidebar-update-icon\">" + icon("bolt") + "</span><span><strong>Update ready</strong><small>Version " + escapeHtml(getByPath(updateStatus, "latest_version", "")) + "</small></span></button>"
             : "";
-        return "<aside class=\"ayu-sidebar\"><div class=\"ayu-sidebar-header\"><div class=\"ayu-logo-wrap\"><img src=\"" + escapeHtml(adminAssetUrl(getByPath(admin, "logo_url", "/assets/logo.png"))) + "\" alt=\"AutoYou logo\"></div><div class=\"ayu-sidebar-header-copy\"><div class=\"ayu-brand-title\" title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</div><div class=\"ayu-brand-subtitle\">Server Admin</div></div></div><nav class=\"ayu-nav\">" + NAV.map(function (item) {
+        return "<aside class=\"ayu-sidebar\"><div class=\"ayu-sidebar-header\"><div class=\"ayu-logo-wrap\"><img src=\"" + escapeHtml(adminAssetUrl(getByPath(admin, "logo_url", "/assets/logo.png"))) + "\" alt=\"AutoYou logo\"></div><div class=\"ayu-sidebar-header-copy\"><div class=\"ayu-brand-title\" style=\"font-size:" + nameFontSize + "\" title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</div><div class=\"ayu-brand-subtitle\">Server Admin</div></div></div><nav class=\"ayu-nav\">" + NAV.map(function (item) {
             return "<button type=\"button\" class=\"ayu-nav-btn" + (item.id === state.screen ? " active" : "") + "\" data-action=\"nav:" + escapeHtml(item.id) + "\">" + icon(item.icon) + "<span class=\"ayu-nav-label\">" + escapeHtml(item.label) + "</span></button>";
-        }).join("") + "</nav>" + updateMarkup + "<div class=\"ayu-sidebar-footer\"><div class=\"ayu-sidebar-profile\"><div class=\"ayu-sidebar-server\"><div class=\"ayu-sidebar-server-main\">" + avatarMarkup + "<div class=\"ayu-sidebar-server-copy\"><strong title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</strong><div class=\"ayu-hint\">Admin port " + escapeHtml(getByPath(admin, "admin_port", "")) + "</div></div></div>" + iconButton("toggle-profile-menu", "Profile image and server actions", "more", "", "aria-expanded=\"" + escapeHtml(String(Boolean(state.profileMenuOpen))) + "\"") + "</div><input class=\"ayu-file-input\" type=\"file\" accept=\"image/*\" data-role=\"profile-image-input\">" + profileMenu + "</div></div></aside>";
+        }).join("") + "</nav>" + updateMarkup + "<div class=\"ayu-sidebar-footer\"><div class=\"ayu-sidebar-profile\"><div class=\"ayu-sidebar-server\"><div class=\"ayu-sidebar-server-main\">" + avatarMarkup + "<div class=\"ayu-sidebar-server-copy\"><strong style=\"font-size:" + nameFontSize + "\" title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</strong><div class=\"ayu-hint\">Admin port " + escapeHtml(getByPath(admin, "admin_port", "")) + "</div></div></div>" + iconButton("toggle-profile-menu", "Profile image and server actions", "more", "", "aria-expanded=\"" + escapeHtml(String(Boolean(state.profileMenuOpen))) + "\"") + "</div><input class=\"ayu-file-input\" type=\"file\" accept=\"image/*\" data-role=\"profile-image-input\">" + profileMenu + "</div></div></aside>";
     }
 
     function renderMobileBar() {
@@ -7444,7 +7452,7 @@
             + field("Server video file", select("videoCall.video_file.path", videoFileOptions, videoFileSelected ? "" : "disabled"), videoFileSelected ? "Choose a file already uploaded to this AutoYou server, or type its path below." : "Turn on Play a video file above to select a server file.")
             + field("Server path", input("videoCall.video_file.path", { placeholder: "Absolute path on this computer", extraAttrs: videoFileSelected ? "" : "disabled" }), videoFileSelected ? "Paste a path only when that file already exists on this computer." : "Turn on Play a video file above to enter a path.")
             + checkbox("videoCall.video_file.loop", "Loop video", "Restart the video automatically when it reaches the end.")
-            + "<input type=\"file\" accept=\"video/*\" data-role=\"video-file-input\" hidden>"
+            + "<input class=\"ayu-file-input\" type=\"file\" accept=\"video/*\" data-role=\"video-file-input\" tabindex=\"-1\" aria-hidden=\"true\">"
             + "<div class=\"ayu-inline-actions\">" + button("Upload from browser", "video-file-select", "secondary", "upload", "sm") + button("Play", "video-file-play", "primary", "play", "sm") + button("Pause", "video-file-pause", "secondary", "pause", "sm") + button("Restart", "video-file-restart", "ghost", "refresh", "sm") + "</div>"
             + videoUploadStatusMarkup
             + (videoFileSelected && !videoFileExists
@@ -8341,6 +8349,10 @@
             return;
         }
         root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
+        root.querySelectorAll('input[type="file"]').forEach(function (input) {
+            input.tabIndex = -1;
+            input.setAttribute("aria-hidden", "true");
+        });
         restoreActiveControl(activeSnapshot);
         syncBootSweepUi();
         syncCropper();
@@ -8557,8 +8569,6 @@
             return;
         }
         if (action === "profile-image-select") {
-            state.profileMenuOpen = false;
-            renderApp();
             var profileInput = root ? root.querySelector('[data-role="profile-image-input"]') : null;
             if (profileInput) {
                 profileInput.click();
@@ -10398,6 +10408,16 @@
             var selectedFile = target.files && target.files[0] ? target.files[0] : null;
             target.value = "";
             if (!selectedFile) {
+                return;
+            }
+            if (String(selectedFile.type || "").toLowerCase() === "image/gif" || /\.gif$/i.test(selectedFile.name || "")) {
+                state.profileMenuOpen = false;
+                state.profileCropper = null;
+                withPendingAction("profile-image-upload", function () {
+                    return uploadProfileImage(selectedFile);
+                }).catch(function (error) {
+                    setNotice("error", error.message || String(error));
+                });
                 return;
             }
             openProfileCropper(selectedFile);
