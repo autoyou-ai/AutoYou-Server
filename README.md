@@ -71,9 +71,11 @@ use as described in the license; commercial, enterprise, organizational,
 hosted, managed, and distribution uses require separate licensing by working
 directly with [www.autoyou.me](https://www.autoyou.me/).
 
-**Why source-available.** AutoYou commits a percentage of the money it raises to
-the open-source developers credited at
-[www.autoyou.me/attributions](https://www.autoyou.me/attributions/). Keeping the
+**Why source-available.** AutoYou commits at least 15% of the money it receives
+to approved contributors, the developers who improve AutoYou. The open-source
+developers credited at
+[www.autoyou.me/attributions](https://www.autoyou.me/attributions/) are welcome
+to take part in the same way. Keeping the
 source available, but closed to AI training, resale, and hosting by others, is
 what lets it keep that commitment. Read the
 [Open-Source Commitment](docs/legal/open-source-commitment.md).
@@ -224,7 +226,7 @@ only the built-in agents in this repository.
 - **Community:** join the conversation at [www.autoyou.me/community](https://www.autoyou.me/community/).
 - **Support:** get help at [www.autoyou.me/support](https://www.autoyou.me/support/). GitHub issues are for reproducible defects and proposals.
 - **Ecosystem:** see the apps and components around the server at [www.autoyou.me/ecosystem](https://www.autoyou.me/ecosystem/).
-- **Sponsor:** support AutoYou at [www.autoyou.me/donate](https://www.autoyou.me/donate/). A percentage of the money raised goes to the open-source developers AutoYou is built on, and accepted contributors can share in the [Contributor Pool](docs/contributors/contributor-pool.md).
+- **Sponsor:** support AutoYou at [www.autoyou.me/donate](https://www.autoyou.me/donate/). At least 15% of the money we receive is allocated to approved contributors, and accepted contributors can share in the [Contributor Pool](docs/contributors/contributor-pool.md).
 - **Website:** [www.autoyou.me](https://www.autoyou.me/).
 
 ## Documentation

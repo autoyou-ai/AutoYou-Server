@@ -6,7 +6,7 @@ This file is the repository-level notice index for AutoYou. It does not replace 
 
 ## Primary Notice Page
 
-The public attributions page is at [www.autoyou.me/attributions](https://www.autoyou.me/attributions/). OpenStorey commits a percentage of the money it raises to the open-source developers credited there; see the [Open-Source Commitment](docs/legal/open-source-commitment.md).
+The public attributions page is at [www.autoyou.me/attributions](https://www.autoyou.me/attributions/). OpenStorey commits at least 15% of the money it receives to approved contributors, and the open-source developers credited there are welcome to take part in the same way; see the [Open-Source Commitment](docs/legal/open-source-commitment.md).
 
 ## Contributed Files Under Another License
 
