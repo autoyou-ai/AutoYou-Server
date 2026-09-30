@@ -121,6 +121,16 @@ PUBLIC_VENDOR_PREFIXES = (
 
 PUBLIC_CONFIG_PATHS = {"config/donations.example.json"}
 
+# Publish the generic schema, templates, and user-facing setup instructions.
+# Generated manifests and app captures belong to each user's private data only.
+PUBLIC_DESKTOP_ASSET_PATHS = {
+    "autoyou_agents/shared_tools/desktop_asset_schema.json",
+    "autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json",
+    "autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md",
+    "autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json",
+    "autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md",
+}
+
 PUBLIC_SKILL_PATHS = {".agents/skills/autoyou-server-validate/SKILL.md"}
 
 PUBLIC_GENERATED_LEGAL_PREFIXES = (
@@ -574,6 +584,8 @@ def should_publish_path(path: str) -> bool:
     normalized = normalize_path(path)
     if not normalized or is_sensitive_path(normalized) or is_private_desktop_capture_path(normalized):
         return False
+    if normalized in PUBLIC_DESKTOP_ASSET_PATHS:
+        return True
     if normalized in PUBLIC_GITHUB_PATHS:
         return True
     if normalized in PUBLIC_VENDOR_PATHS:
@@ -616,6 +628,7 @@ def audit_public_source_paths(paths: list[str]) -> list[str]:
             path.startswith(PRIVATE_PREFIXES)
             and path not in PUBLIC_GITHUB_PATHS
             and path not in PUBLIC_SKILL_PATHS
+            and path not in PUBLIC_DESKTOP_ASSET_PATHS
         ):
             failures.append(f"private path included: {path}")
         if path.startswith(PRIVATE_TEST_PREFIXES):

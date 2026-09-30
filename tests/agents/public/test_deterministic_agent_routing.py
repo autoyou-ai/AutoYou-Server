@@ -25,6 +25,7 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-cb4c50712df38190ae3ab68c"
 @pytest.fixture(autouse=True)
 def reset_available_runtime_agents(monkeypatch):
     monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", set())
+    monkeypatch.setattr(root_agent_module, "_RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME", {})
 
 
 def _routed_agent(function_call):
@@ -699,6 +700,121 @@ def test_explicit_route_parser_accepts_user_built_agent_identifiers():
     )
 
     assert route == {"runtime_agent_name": "weather_agent", "request": ""}
+
+
+def test_at_route_resolves_every_installed_agent_from_the_live_catalog(monkeypatch):
+    installed = ["calendar_agent", "media_generation_agent", "research_agent"]
+    available = {"calendar_agent", "autoyou_media_generation_agent", "research_agent"}
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: installed)
+    monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", available)
+
+    calendar = root_agent_module._extract_explicit_route_request(
+        "@calendar create an event tomorrow"
+    )
+    media = root_agent_module._extract_explicit_route_request(
+        "@media generate a square illustration"
+    )
+    research = root_agent_module._extract_explicit_route_request(
+        "@reseach summarize this report"
+    )
+
+    assert calendar == {
+        "runtime_agent_name": "calendar_agent",
+        "request": "create an event tomorrow",
+    }
+    assert media == {
+        "runtime_agent_name": "autoyou_media_generation_agent",
+        "request": "generate a square illustration",
+    }
+    assert research == {
+        "runtime_agent_name": "research_agent",
+        "request": "summarize this report",
+    }
+
+
+def test_at_main_route_returns_to_the_root_agent(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: [])
+
+    route = root_agent_module._extract_explicit_route_request(
+        "@main answer this directly"
+    )
+
+    assert route == {
+        "runtime_agent_name": root_agent_module.root_prompt.AGENT_NAME,
+        "request": "answer this directly",
+    }
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        'The literal text is "@notes save this".',
+        "The literal text is '@notes save this'.",
+        "Use this code: `@notes save this`.",
+        "```text\n@notes save this\n```",
+        "<!-- @notes save this -->",
+        "/* @notes save this */",
+        "// @notes save this",
+        "# @notes save this",
+        "user@example.com asked about notes in an email",
+        "https://example.test/@notes is the page URL",
+    ],
+)
+def test_at_route_ignores_mentions_in_quotes_code_comments_and_addresses(
+    monkeypatch, request_text
+):
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: ["notes_agent"])
+    monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", {"autoyou_notes_agent"})
+
+    assert root_agent_module._extract_explicit_route_request(request_text) is None
+
+
+@pytest.mark.parametrize("two_stage", [False, True])
+def test_at_route_dispatches_to_custom_installed_agent_with_request_text(monkeypatch, two_stage):
+    runtime_name = "research_agent"
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: [runtime_name])
+    monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", {runtime_name})
+    dispatched = {}
+
+    class _SyntheticAgentTool:
+        async def run_async(self, *, args, tool_context):
+            dispatched["args"] = args
+            dispatched["tool_context"] = tool_context
+            return "synthetic specialist answer"
+
+    specialist_tools = {runtime_name: _SyntheticAgentTool()} if two_stage else {}
+    monkeypatch.setattr(root_agent_module, "_SPECIALIST_AGENT_TOOLS", specialist_tools)
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    monkeypatch.setattr(root_agent_module, "_is_runtime_agent_enabled", lambda _name: True)
+    monkeypatch.setattr(root_agent_module, "_is_runtime_agent_installed_but_unavailable", lambda _name: False)
+    monkeypatch.setattr(root_agent_module, "_two_stage_routing_active", lambda: two_stage)
+
+    request_text = "Please @research summarize the attached report at C:\\Temp\\synthetic-report.pdf"
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(
+            SimpleNamespace(state={}, invocation_id="synthetic-at-route"),
+            _llm_request(request_text),
+        )
+    )
+
+    function_call = response.content.parts[0].function_call
+    routed_request = "Please summarize the attached report at C:\\Temp\\synthetic-report.pdf"
+    if two_stage:
+        assert function_call.name == root_agent_module._ROUTER_TOOL_NAME
+        assert function_call.args == {"agent": runtime_name, "request": routed_request}
+        tool_context = SimpleNamespace()
+        result = asyncio.run(
+            root_agent_module.route_to_specialist(
+                function_call.args["agent"],
+                function_call.args["request"],
+                tool_context,
+            )
+        )
+        assert result == "synthetic specialist answer"
+        assert dispatched == {"args": {"request": routed_request}, "tool_context": tool_context}
+    else:
+        assert function_call.name == runtime_name
+        assert function_call.args == {"request": routed_request}
 
 
 def test_explicit_route_parser_maps_code_desktop_to_codex_desktop():

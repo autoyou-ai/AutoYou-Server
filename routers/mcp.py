@@ -359,34 +359,7 @@ def register_routes(
             )
             ai_port = int(getattr(server, "AI_AGENT_SERVER_PORT", 8081) or 8081)
             ai_agent_url = f"http://localhost:{ai_port}"
-            if "@" in message:
-                from core_server.agents_api_bridge import (
-                    AgentsAPIConfigurationError,
-                    AgentsAPIError,
-                    run_agents_api_turn,
-                )
-
-                async def _process_with_autoyou():
-                    return await process_chat(chat_request, ai_agent_url)
-
-                attachment_count = sum(
-                    len(group.get("attachments") or [])
-                    for group in (payload.context or [])
-                    if isinstance(group, Mapping) and isinstance(group.get("attachments") or [], list)
-                )
-                try:
-                    response = await run_agents_api_turn(
-                        message,
-                        _process_with_autoyou,
-                        attachment_count=attachment_count,
-                    )
-                except AgentsAPIConfigurationError as exc:
-                    return JSONResponse(status_code=503, content={"error": str(exc)})
-                except AgentsAPIError as exc:
-                    server.LOGGER.warning("Full-server MCP Agents API routing failed: %s", exc)
-                    return JSONResponse(status_code=502, content={"error": "Agents API routing failed."})
-            else:
-                response = await process_chat(chat_request, ai_agent_url)
+            response = await process_chat(chat_request, ai_agent_url)
         except Exception as exc:
             server.LOGGER.warning("Full-server MCP chat failed: %s", exc)
             return JSONResponse(status_code=502, content={"error": "ai_backend_unavailable"})

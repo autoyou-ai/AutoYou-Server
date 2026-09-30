@@ -11,6 +11,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import argparse
+import ast
 import hashlib
 import importlib.machinery
 import json
@@ -59,6 +60,7 @@ PACKAGE_RUNTIME_ROOTS = (
 )
 STATIC_RUNTIME_FILES = (
     Path("shared") / "tunnelmole_node_launcher.mjs",
+    Path("autoyou_agents") / "shared_tools" / "desktop_asset_schema.json",
 )
 STATIC_RUNTIME_DIRECTORIES = (
     Path("shared") / "native" / "libsodium",
@@ -270,12 +272,98 @@ def _is_agent_asset(relative_path: Path) -> bool:
     )
 
 
+def _desktop_asset_sources(agent_package_root: Path) -> set[Path] | None:
+    """Return only public setup files; personal manifests and imagery stay local."""
+    assets_root = agent_package_root / "desktop_assets"
+    template_path = assets_root / "manifest.template.json"
+    if not template_path.is_file():
+        return None
+    if assets_root.is_symlink():
+        raise ValueError(f"Desktop asset directory must not be a symlink: {assets_root}")
+    prompt_path = assets_root / "setup_prompt.md"
+    for path in (template_path, prompt_path):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"Desktop asset setup file is missing or unsafe: {path}")
+    try:
+        payload = json.loads(template_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(f"Invalid desktop manifest template at {template_path}: {exc}") from exc
+    if (
+        not isinstance(payload, dict)
+        or str(payload.get("agent_name") or "") != agent_package_root.name
+        or int(payload.get("schema_version", 0)) != 2
+        or not isinstance(payload.get("asset_packs"), list)
+    ):
+        raise ValueError(f"Desktop manifest template identity or schema is invalid: {template_path}")
+    return {template_path.resolve(), prompt_path.resolve()}
+
+
+def _agent_uses_shared_desktop_controls(source_path: Path) -> bool:
+    """Detect desktop agents by their shared control import, not by package name."""
+    try:
+        module = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    except (OSError, UnicodeError, SyntaxError):
+        return False
+    for node in ast.walk(module):
+        if isinstance(node, ast.ImportFrom):
+            if str(node.module or "").rsplit(".", 1)[-1] == "desktop_app_control":
+                return True
+        elif isinstance(node, ast.Import):
+            if any(alias.name.rsplit(".", 1)[-1] == "desktop_app_control" for alias in node.names):
+                return True
+    return False
+
+
+def _validate_desktop_agent_manifests(
+    repo_root: Path,
+    compile_specs: Iterable[ModuleBuildSpec],
+    source_overrides: Mapping[Path, Path],
+) -> None:
+    agent_sources = {
+        spec.source_relative_path
+        for spec in compile_specs
+        if len(spec.source_relative_path.parts) == 3
+        and spec.source_relative_path.parts[0] == "autoyou_agents"
+        and spec.source_relative_path.name == "agent.py"
+    }
+    for agent_source in sorted(agent_sources):
+        source_path = source_overrides.get(agent_source, _source_path(repo_root, agent_source))
+        if not _agent_uses_shared_desktop_controls(source_path):
+            continue
+        manifest_relative_path = agent_source.parent / "desktop_assets" / "manifest.template.json"
+        manifest_source = source_overrides.get(
+            manifest_relative_path,
+            _source_path(repo_root, manifest_relative_path),
+        )
+        if not manifest_source.is_file():
+            raise FileNotFoundError(
+                f"Desktop agent {agent_source.parent.name} uses shared desktop controls but is missing "
+                f"{manifest_relative_path.as_posix()}. Include a generic desktop_assets/manifest.template.json in the source tree."
+            )
+
+
 def _iter_agent_asset_files(repo_root: Path) -> Iterator[Path]:
     agent_root = _source_path(repo_root, Path("autoyou_agents"))
+    desktop_asset_sources: dict[str, set[Path]] = {}
+    for package_root in sorted(agent_root.iterdir()) if agent_root.is_dir() else ():
+        if not package_root.is_dir() or package_root.is_symlink():
+            continue
+        package_agent_path = Path("autoyou_agents") / package_root.name / "agent.py"
+        if not _is_trusted_runtime_source(package_agent_path):
+            continue
+        sources = _desktop_asset_sources(package_root)
+        if sources is not None:
+            desktop_asset_sources[package_root.name] = sources
+
     for source_path in sorted(agent_root.rglob("*")):
         if not source_path.is_file() or source_path.is_symlink():
             continue
         relative_path = Path("autoyou_agents") / source_path.relative_to(agent_root)
+        if len(relative_path.parts) >= 3 and "desktop_assets" in relative_path.parts:
+            package_name = relative_path.parts[1]
+            allowed_sources = desktop_asset_sources.get(package_name)
+            if allowed_sources is not None and source_path.resolve() not in allowed_sources:
+                continue
         if not _is_skipped_path(relative_path) and _is_trusted_runtime_source(relative_path) and _is_agent_asset(relative_path):
             yield relative_path
 
@@ -302,10 +390,14 @@ def _sibling_agent_sources(repo_root: Path, existing_paths: set[Path]) -> tuple[
             if agent_root == sibling_root / "private" and (server_agent_root / package.name).exists():
                 raise ValueError(f"Private agent collides with Server source: {package.name}")
             included = False
+            desktop_asset_sources = _desktop_asset_sources(package)
             for source_path in sorted(package.rglob("*")):
                 if not source_path.is_file() or source_path.is_symlink():
                     continue
                 relative_path = Path("autoyou_agents") / package.name / source_path.relative_to(package)
+                if "desktop_assets" in relative_path.parts and desktop_asset_sources is not None:
+                    if source_path.resolve() not in desktop_asset_sources:
+                        continue
                 if _is_skipped_path(relative_path) or relative_path in existing_paths or relative_path in overrides:
                     continue
                 if source_path.suffix == ".py":
@@ -362,6 +454,7 @@ def build_runtime_module_plan(
             ModuleBuildSpec(path) for path in source_overrides if path.suffix == ".py"
         )
         asset_files += tuple(path for path in source_overrides if path.suffix != ".py")
+    _validate_desktop_agent_manifests(repo_root, compile_specs, source_overrides)
     if desktop:
         desktop_paths = [Path("clients/python") / name for name in (
             "autoyou_client.py", "desktop_client.py", "cloud_pair.py", "audio_streams.py",

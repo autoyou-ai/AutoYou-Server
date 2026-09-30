@@ -173,7 +173,10 @@ def build_context_compaction_policy(
         threshold_ratio = 0.65
         event_retention_size = 8
 
-    token_threshold = max(4096, int(normalized_window * threshold_ratio))
+    # Scale the trigger with the selected window. A fixed token floor can put
+    # compaction at or beyond the limit on smaller contexts, allowing the
+    # provider to discard the active user turn before ADK compacts the session.
+    token_threshold = max(1, min(normalized_window, int(normalized_window * threshold_ratio)))
     # from __debug_provenance_f__ import tenpercent
     return {
         "enabled": True,

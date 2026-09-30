@@ -27,6 +27,7 @@ import mimetypes
 import os
 import re
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -60,6 +61,7 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     get_installed_agent_names,
     is_agent_installed,
     load_agent_install_registry,
+    normalize_agent_package_name,
 )
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from autoyou_agents.shared_tools.memory_tool import (
@@ -81,6 +83,8 @@ _original_acompletion = litellm.acompletion
 # upfront and return this error when VRAM/RAM cannot fit it.
 _OLLAMA_MEMORY_ERROR_FRAGMENT = "memory layout cannot be allocated"
 _OLLAMA_MEMORY_MIN_CTX = 4096
+_OLLAMA_NO_USER_QUERY_ERROR_FRAGMENT = "no user query found in messages"
+_OLLAMA_CONTEXT_RECOVERY_MARKER = "_autoyou_user_query_recovery_handled"
 
 # Ollama parses the model's tool call server-side. When generation stops
 # part-way through the arguments - a reasoning model spends its num_predict
@@ -102,6 +106,115 @@ _OLLAMA_TRUNCATED_TOOL_CALL_NUM_PREDICT_CEILING = 8192
 def _is_ollama_truncated_tool_call_error(exc: Any) -> bool:
     """True when Ollama rejected its own model's half-written tool call."""
     return _OLLAMA_TOOL_CALL_PARSE_ERROR_FRAGMENT in str(exc or "").lower()
+
+
+def _is_ollama_context_truncation_error(exc: Any) -> bool:
+    """True when Ollama dropped the user turn while truncating an oversized prompt."""
+    return _OLLAMA_NO_USER_QUERY_ERROR_FRAGMENT in str(exc or "").lower()
+
+
+def _ollama_message_field(value: Any, key: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(key, default)
+    getter = getattr(value, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except TypeError:
+            try:
+                return getter(key)
+            except Exception:
+                pass
+        except Exception:
+            pass
+    return getattr(value, key, default)
+
+
+def _ollama_user_message_contains_query(message: Any) -> bool:
+    """Return whether a user message contains text or image input, not a tool result."""
+    if str(_ollama_message_field(message, "role") or "").lower() != "user":
+        return False
+    content = _ollama_message_field(message, "content")
+    if isinstance(content, str):
+        text = content.strip()
+        return bool(text) and not (
+            text.startswith("<tool_response>") and text.endswith("</tool_response>")
+        )
+    if isinstance(content, list):
+        text_parts = []
+        has_image = False
+        for part in content:
+            part_text = _ollama_message_field(part, "text")
+            if isinstance(part_text, str) and part_text.strip():
+                text_parts.append(part_text.strip())
+            has_image = has_image or bool(
+                _ollama_message_field(part, "image_url")
+                or _ollama_message_field(part, "inline_data")
+            )
+        text = " ".join(text_parts).strip()
+        if text.startswith("<tool_response>") and text.endswith("</tool_response>"):
+            return False
+        return bool(text or has_image)
+    return False
+
+
+def _ollama_message_as_dict(message: Any) -> Optional[Dict[str, Any]]:
+    """Copy a LiteLLM user message without losing text or multimodal content."""
+    if isinstance(message, dict):
+        return dict(message)
+    for method_name in ("model_dump", "dict"):
+        method = getattr(message, method_name, None)
+        if callable(method):
+            try:
+                value = method(exclude_none=True)
+            except TypeError:
+                try:
+                    value = method()
+                except Exception:
+                    continue
+            except Exception:
+                continue
+            if isinstance(value, dict):
+                return dict(value)
+    role = _ollama_message_field(message, "role")
+    content = _ollama_message_field(message, "content")
+    if role is not None and content is not None:
+        return {"role": role, "content": content}
+    return None
+
+
+def _reanchor_latest_ollama_user_query(messages: Any) -> Optional[List[Any]]:
+    """Move the latest real user turn after tool output for truncation recovery."""
+    if not isinstance(messages, (list, tuple)) or not messages:
+        return None
+    latest_query_index = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if _ollama_user_message_contains_query(messages[index])
+        ),
+        None,
+    )
+    if latest_query_index is None or latest_query_index == len(messages) - 1:
+        return None
+    query_copy = _ollama_message_as_dict(messages[latest_query_index])
+    if query_copy is None:
+        return None
+    remaining_messages = [
+        message for index, message in enumerate(messages) if index != latest_query_index
+    ]
+    return [*remaining_messages, query_copy]
+
+
+def _exception_has_ollama_context_recovery_marker(exc: Any) -> bool:
+    return bool(getattr(exc, _OLLAMA_CONTEXT_RECOVERY_MARKER, False))
+
+
+def _mark_ollama_context_recovery(exc: Any) -> None:
+    try:
+        setattr(exc, _OLLAMA_CONTEXT_RECOVERY_MARKER, True)
+    except Exception:
+        pass
 
 
 def _configured_truncated_tool_call_num_predict() -> Optional[int]:
@@ -181,16 +294,23 @@ async def _patched_acompletion(*args, **kwargs):
         model_name = args[0]
 
     is_ollama = is_ollama_chat_model(model_name)
-    if is_ollama and ("messages" in kwargs or "tools" in kwargs):
+    if is_ollama and ("messages" in kwargs or "tools" in kwargs or len(args) > 1):
         kwargs = dict(kwargs)
         if "messages" in kwargs:
             kwargs["messages"] = prepare_messages_for_ollama(kwargs["messages"])
+        elif len(args) > 1:
+            call_args = list(args)
+            call_args[1] = prepare_messages_for_ollama(call_args[1])
+            args = tuple(call_args)
         if "tools" in kwargs:
             kwargs["tools"] = prepare_tools_for_ollama(kwargs["tools"])
 
     retried_without_tools = False
     raised_num_predict = False
     while True:
+        request_messages = kwargs.get("messages")
+        if request_messages is None and len(args) > 1:
+            request_messages = args[1]
         try:
             response = await _original_acompletion(*args, **kwargs)
         except Exception as exc:
@@ -231,10 +351,34 @@ async def _patched_acompletion(*args, **kwargs):
                         kwargs = dict(kwargs)
                         kwargs["tools"] = None
                         continue
+                if (
+                    _is_ollama_context_truncation_error(exc)
+                    and not _exception_has_ollama_context_recovery_marker(exc)
+                ):
+                    _mark_ollama_context_recovery(exc)
+                    recovered_messages = _reanchor_latest_ollama_user_query(
+                        request_messages or []
+                    )
+                    if recovered_messages is not None:
+                        logging.getLogger(__name__).warning(
+                            "Ollama could not find a user query after context truncation; "
+                            "retrying with the latest user turn placed after tool results model=%s num_ctx=%s",
+                            model_name,
+                            kwargs.get("num_ctx"),
+                        )
+                        if "messages" in kwargs or len(args) <= 1:
+                            kwargs = dict(kwargs)
+                            kwargs["messages"] = recovered_messages
+                        else:
+                            call_args = list(args)
+                            call_args[1] = recovered_messages
+                            args = tuple(call_args)
+                        continue
                 logging.getLogger(__name__).error(
-                    "Ollama acompletion failed for model=%s recent_messages=%s advertised_tools=%s error=%s",
+                    "Ollama acompletion failed for model=%s num_ctx=%s recent_messages=%s advertised_tools=%s error=%s",
                     model_name,
-                    summarize_messages_for_debug(kwargs.get("messages") or []),
+                    kwargs.get("num_ctx"),
+                    summarize_messages_for_debug(request_messages or []),
                     summarize_tool_names_for_debug(kwargs.get("tools")),
                     exc,
                 )
@@ -376,9 +520,25 @@ try:
                                 retried_without_tools = True
                                 tools = None
                                 continue
+                        if (
+                            _is_ollama_context_truncation_error(exc)
+                            and not _exception_has_ollama_context_recovery_marker(exc)
+                        ):
+                            _mark_ollama_context_recovery(exc)
+                            recovered_messages = _reanchor_latest_ollama_user_query(messages)
+                            if recovered_messages is not None:
+                                logger.warning(
+                                    "Ollama could not find a user query after context truncation; "
+                                    "retrying with the latest user turn placed after tool results model=%s num_ctx=%s",
+                                    model,
+                                    current_kwargs.get("num_ctx"),
+                                )
+                                messages = recovered_messages
+                                continue
                         logger.error(
-                            "Ollama LiteLLMClient.acompletion failed model=%s error=%s",
+                            "Ollama LiteLLMClient.acompletion failed model=%s num_ctx=%s error=%s",
                             model,
+                            current_kwargs.get("num_ctx"),
                             exc,
                         )
                     raise
@@ -874,6 +1034,7 @@ _PAGE_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("page_agent") or "autoyou_
 _EDUCATION_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("education_agent") or "autoyou_education_agent"
 _LOCATION_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("location_agent") or "autoyou_location_agent"
 _AVAILABLE_RUNTIME_AGENT_NAMES: set[str] = set()
+_RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME: Dict[str, str] = {}
 
 _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
     root_prompt.AGENT_NAME: (
@@ -2026,7 +2187,10 @@ def _is_runtime_agent_enabled(runtime_agent_name: str) -> bool:
     normalized_runtime_name = resolve_runtime_agent_name(runtime_agent_name)
     if not normalized_runtime_name:
         return False
-    install_name = _RUNTIME_TO_INSTALL_NAME.get(normalized_runtime_name, normalized_runtime_name)
+    install_name = _RUNTIME_TO_INSTALL_NAME.get(normalized_runtime_name) or normalize_agent_package_name(
+        normalized_runtime_name
+    )
+    install_name = install_name or normalized_runtime_name
     if not is_agent_installed(install_name, agents_root=_AGENTS_ROOT):
         return False
     if not _AVAILABLE_RUNTIME_AGENT_NAMES:
@@ -2044,7 +2208,10 @@ def _is_runtime_agent_installed_but_unavailable(runtime_agent_name: str) -> bool
     normalized_runtime_name = resolve_runtime_agent_name(runtime_agent_name)
     if not normalized_runtime_name:
         return False
-    install_name = _RUNTIME_TO_INSTALL_NAME.get(normalized_runtime_name, normalized_runtime_name)
+    install_name = _RUNTIME_TO_INSTALL_NAME.get(normalized_runtime_name) or normalize_agent_package_name(
+        normalized_runtime_name
+    )
+    install_name = install_name or normalized_runtime_name
     if not is_agent_installed(install_name, agents_root=_AGENTS_ROOT):
         return False
     if not _AVAILABLE_RUNTIME_AGENT_NAMES:
@@ -2364,6 +2531,17 @@ def _resolve_routed_agent_name(tool_name: str, args: Optional[Dict[str, Any]]) -
         )
         return resolved_name if specialist_tool is not None else ""
     return tool_name
+
+
+def _is_runtime_agent_tool_name(tool_name: str) -> bool:
+    """Recognize built-in and dynamically installed agent tool names."""
+    normalized_name = str(tool_name or "").strip()
+    return bool(normalized_name) and (
+        normalized_name in _RUNTIME_TO_INSTALL_NAME
+        or normalized_name in _AVAILABLE_RUNTIME_AGENT_NAMES
+        or normalized_name in _RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME.values()
+        or normalized_name in _SPECIALIST_AGENT_TOOLS
+    )
 
 
 def _extract_text_from_llm_request(llm_request: Any) -> str:
@@ -3087,6 +3265,165 @@ def _alias_to_route_pattern(alias: str) -> str:
         return ""
     return r"[_\s]+".join(pieces)
 
+
+_AT_AGENT_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_./+-])@(?P<agent>[A-Za-z0-9][A-Za-z0-9_.-]*)"
+)
+_AT_AGENT_IGNORED_PATTERNS = (
+    re.compile(
+        r"(?ms)^[ \t]*(?P<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n|$).*?"
+        r"(?:^[ \t]*(?P=fence)[ \t]*(?:\r?$|\r?\n)|\Z)"
+    ),
+    re.compile(r"(?s)<!--.*?(?:-->|\Z)"),
+    re.compile(r"(?s)/\*.*?(?:\*/|\Z)"),
+    re.compile(r"(?m)(?<!\S)//[^\r\n]*"),
+    re.compile(r"(?m)(?<!\S)#[^\r\n]*"),
+    re.compile(r"(?s)(?<![A-Za-z0-9_])\"(?:\\.|[^\"\\])*\""),
+    re.compile(r"(?s)(?<![A-Za-z0-9_])'(?:\\.|[^'\\])*'"),
+    re.compile(r"(?s)(?P<ticks>`+).*?(?P=ticks)"),
+)
+
+
+def _mask_at_agent_ignored_regions(text: str) -> str:
+    """Mask code, quoted strings, and comments without changing source offsets."""
+    masked = str(text or "")
+    for pattern in _AT_AGENT_IGNORED_PATTERNS:
+        masked = pattern.sub(
+            lambda match: "".join(
+                "\r" if char == "\r" else "\n" if char == "\n" else " "
+                for char in match.group(0)
+            ),
+            masked,
+        )
+    return masked
+
+
+def _normalize_at_agent_alias(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip("_")
+    normalized = re.sub(r"^(?:autoyou_)+", "", normalized)
+    normalized = re.sub(r"(?:_agent)+$", "", normalized)
+    return normalized.strip("_")
+
+
+def _installed_agent_at_route_targets() -> list[tuple[str, str]]:
+    """Return installed package names paired with their loaded runtime tool name."""
+    install_names: set[str] = set()
+    try:
+        install_names.update(
+            normalize_agent_package_name(name)
+            for name in get_installed_agent_names(agents_root=_AGENTS_ROOT)
+        )
+    except Exception as exc:
+        logger.warning("Could not load installed-agent catalog for @ routing: %s", exc)
+
+    runtime_names = set(_AVAILABLE_RUNTIME_AGENT_NAMES) | set(_SPECIALIST_AGENT_TOOLS)
+    for runtime_name in runtime_names:
+        package_name = normalize_agent_package_name(runtime_name)
+        if package_name:
+            install_names.add(package_name)
+
+    install_names.discard("")
+    install_names.discard(normalize_agent_package_name(root_prompt.AGENT_NAME))
+    targets: list[tuple[str, str]] = []
+    for install_name in sorted(install_names):
+        matching_runtime_names = [
+            runtime_name
+            for runtime_name in runtime_names
+            if normalize_agent_package_name(runtime_name) == install_name
+        ]
+        registered_tool_name = _RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME.get(install_name, "")
+        if registered_tool_name:
+            target_name = registered_tool_name
+        elif matching_runtime_names:
+            # Under two-stage routing, the dispatcher only accepts registered
+            # AgentTool names. Otherwise use the name exposed by the child tool.
+            matching_runtime_names.sort(
+                key=lambda name: (name not in _SPECIALIST_AGENT_TOOLS, name.lower())
+            )
+            target_name = matching_runtime_names[0]
+        else:
+            target_name = resolve_runtime_agent_name(install_name) or install_name
+        targets.append((install_name, target_name))
+    return targets
+
+
+def _at_agent_aliases(install_name: str, runtime_name: str) -> set[str]:
+    values = {
+        install_name,
+        runtime_name,
+        format_agent_display_name(runtime_name),
+    }
+    values.update(_EXPLICIT_ROUTE_ALIASES.get(runtime_name, ()))
+    values.update(_EXPLICIT_ROUTE_ALIASES.get(resolve_runtime_agent_name(install_name), ()))
+
+    aliases: set[str] = set()
+    for value in values:
+        normalized = _normalize_at_agent_alias(value)
+        if normalized:
+            aliases.add(normalized)
+            aliases.update(part for part in normalized.split("_") if len(part) >= 3)
+    return aliases
+
+
+def _at_agent_alias_score(query: str, alias: str) -> float:
+    if query == alias:
+        return 1.0
+    if len(query) >= 2 and alias.startswith(query):
+        return 0.82 + 0.16 * (len(query) / max(len(alias), 1))
+    if len(query) < 3 or len(alias) < 3:
+        return 0.0
+    return SequenceMatcher(None, query, alias).ratio()
+
+
+def _extract_at_agent_route_request(user_text: str) -> Optional[Dict[str, str]]:
+    """Resolve an @mention against the installed agent catalog, including close aliases."""
+    text = str(user_text or "")
+    searchable_text = _mask_at_agent_ignored_regions(text)
+    matches = list(_AT_AGENT_TOKEN_PATTERN.finditer(searchable_text))
+    if not matches:
+        return None
+
+    root_aliases = {
+        _normalize_at_agent_alias(alias)
+        for alias in _EXPLICIT_ROUTE_ALIASES.get(root_prompt.AGENT_NAME, ())
+    }
+    root_aliases.update({"main", "root", "autoyou", "agent"})
+    route_targets: Optional[list[tuple[str, str]]] = None
+    for match in matches:
+        query = _normalize_at_agent_alias(match.group("agent"))
+        if not query:
+            continue
+        if query in root_aliases:
+            runtime_name = root_prompt.AGENT_NAME
+        else:
+            if route_targets is None:
+                route_targets = _installed_agent_at_route_targets()
+            scored_targets: dict[tuple[str, str], float] = {}
+            for install_name, candidate_runtime_name in route_targets:
+                aliases = _at_agent_aliases(install_name, candidate_runtime_name)
+                scored_targets[(install_name, candidate_runtime_name)] = max(
+                    (_at_agent_alias_score(query, alias) for alias in aliases),
+                    default=0.0,
+                )
+
+            ranked_targets = sorted(
+                scored_targets.items(), key=lambda item: (-item[1], item[0][0].lower())
+            )
+            if not ranked_targets or ranked_targets[0][1] < 0.72:
+                continue
+            if len(ranked_targets) > 1 and ranked_targets[0][1] - ranked_targets[1][1] < 0.08:
+                # Let the configured root model use the full request to resolve an
+                # ambiguous alias instead of making a guess from the tag alone.
+                continue
+            runtime_name = ranked_targets[0][0][1]
+
+        residual = text[:match.start()].rstrip() + " " + text[match.end():].lstrip()
+        return {
+            "runtime_agent_name": runtime_name,
+            "request": _clean_explicit_route_residual(residual, runtime_name),
+        }
+    return None
+
 def _clean_explicit_route_residual(text: str, runtime_agent_name: str) -> str:
     cleaned = str(text or "")
     cleaned = re.sub(r"^[\s\.,;:!\-]+", "", cleaned)
@@ -3121,6 +3458,11 @@ def _clean_explicit_route_residual(text: str, runtime_agent_name: str) -> str:
     return cleaned.strip()
 
 def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
+    at_route = _extract_at_agent_route_request(user_text)
+    if at_route:
+        return at_route
+
+    searchable_text = _mask_at_agent_ignored_regions(str(user_text or ""))
     route_candidates: list[tuple[int, int, str, re.Match[str]]] = []
     route_prefix = r"\b(?:go to|switch to|route to|delegate to|handoff to|send (?:to|in)|ask|open|use)\b(?:\s+the)?(?:\s+exact)?\s+"
     for runtime_agent_name, aliases in _EXPLICIT_ROUTE_ALIASES.items():
@@ -3129,7 +3471,7 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
             if not alias_pattern:
                 continue
             pattern = re.compile(route_prefix + alias_pattern + r"\b", re.IGNORECASE)
-            match = pattern.search(str(user_text or ""))
+            match = pattern.search(searchable_text)
             if match:
                 route_candidates.append((match.start(), -len(alias), runtime_agent_name, match))
 
@@ -3140,7 +3482,7 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
         route_prefix + r"(?P<agent>(?:autoyou_)?[a-z0-9]+(?:_[a-z0-9]+)*_agent)\b",
         re.IGNORECASE,
     )
-    identifier_match = identifier_pattern.search(str(user_text or ""))
+    identifier_match = identifier_pattern.search(searchable_text)
     if identifier_match:
         identifier = str(identifier_match.group("agent") or "").lower()
         runtime_agent_name = resolve_runtime_agent_name(identifier)
@@ -3899,7 +4241,8 @@ def _root_after_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any
             # second generation that could invent success or repeat the write.
             _record_root_tool_result(tool_context.state, invocation_id, result_message)
         return None
-    if tool_name in _RUNTIME_TO_INSTALL_NAME and result_message:
+    is_agent_tool = _is_runtime_agent_tool_name(tool_name)
+    if is_agent_tool and result_message:
         _mark_tool_dispatched_for_invocation(tool_context.state, invocation_id)
         if is_progress_only_response(result_message):
             logger.info(
@@ -3913,7 +4256,7 @@ def _root_after_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any
     elif tool_name == "process_media_content" and result_message:
         _record_root_tool_result(tool_context.state, invocation_id, result_message)
 
-    if tool_name in _RUNTIME_TO_INSTALL_NAME or tool_name == root_prompt.AGENT_NAME:
+    if is_agent_tool or tool_name == root_prompt.AGENT_NAME:
         _set_root_last_routed_agent(tool_context.state, tool_name)
         if tool_name != root_prompt.AGENT_NAME:
             _set_root_preferred_agent(tool_context.state, tool_name)
@@ -4236,7 +4579,7 @@ def _active_ai_provider_name() -> str:
     return "ollama"
 
 def _build_events_compaction_config() -> Optional[EventsCompactionConfig]:
-    """Prefer new conversations first; use compaction as a late Ollama fallback."""
+    """Compact older Ollama conversation events before the active window fills."""
     if _active_ai_provider_name() != "ollama":
         return None
 
@@ -4327,6 +4670,7 @@ def initialize_root_agent():
             if agent_instance is not None
         ]
         _AVAILABLE_RUNTIME_AGENT_NAMES.clear()
+        _RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME.clear()
         for agent_name in available_agent_names:
             runtime_name = resolve_runtime_agent_name(agent_name)
             if runtime_name:
@@ -4335,6 +4679,9 @@ def initialize_root_agent():
             instance_name = str(getattr(agent_instance, "name", "") or "").strip()
             if instance_name:
                 _AVAILABLE_RUNTIME_AGENT_NAMES.add(instance_name)
+            install_name = normalize_agent_package_name(agent_name)
+            if install_name:
+                _RUNTIME_AGENT_TOOL_NAMES_BY_INSTALL_NAME[install_name] = instance_name or runtime_name
         logger.info(
             "Available sub-agents in runtime: %s",
             ", ".join(sorted(_AVAILABLE_RUNTIME_AGENT_NAMES)) if _AVAILABLE_RUNTIME_AGENT_NAMES else "(none)",

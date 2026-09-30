@@ -13243,8 +13243,15 @@ def _is_logged_in(request: Request) -> bool:
             return True
     return False
 
-def _require_login(request: Request) -> Optional[RedirectResponse]:
+def _require_login(request: Request) -> Optional[Response]:
     if not _is_logged_in(request):
+        request_path = str(getattr(getattr(request, "url", None), "path", "") or "")
+        accepts_json = "application/json" in str(request.headers.get("accept", "")).lower()
+        if request_path.startswith("/api/") or accepts_json:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Authentication required"},
+            )
         return RedirectResponse(url="/login", status_code=302)
     return None
 
