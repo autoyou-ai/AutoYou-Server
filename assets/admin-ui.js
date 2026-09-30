@@ -84,7 +84,7 @@
         modal: null,
         softwareUpdate: { payload: null, loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
-        mcpSetup: { generatedToken: "", operatorSecret: "", configDownloaded: false },
+        mcpSetup: { generatedToken: "", configDownloaded: false },
         selectedAgentName: "",
         setup: {
             loading: false,
@@ -1104,8 +1104,7 @@
 
     function mcpAdapterEnvText() {
         var token = String(getByPath(state.mcpSetup, "generatedToken", "") || "");
-        var operatorSecret = String(getByPath(state.mcpSetup, "operatorSecret", "") || "");
-        if (!token || !operatorSecret) {
+        if (!token) {
             throw new Error("Generate and save a server token before downloading the adapter config.");
         }
 
@@ -1117,7 +1116,7 @@
             return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
         };
         if (!isLoopback(serverEndpoint.hostname) || !isLoopback(adapterUrl.hostname)) {
-            throw new Error("The private adapter file is limited to loopback addresses. Use a separately reviewed HTTPS setup for remote access.");
+            throw new Error("The private adapter config requires the AutoYou server and MCP adapter to use loopback addresses.");
         }
         if (!/^https?:$/.test(serverEndpoint.protocol) || !/^https?:$/.test(adapterUrl.protocol)) {
             throw new Error("The server and adapter addresses must use HTTP or HTTPS.");
@@ -1125,18 +1124,14 @@
 
         var port = adapterUrl.port || (adapterUrl.protocol === "https:" ? "443" : "80");
         return [
-            "# AutoYou MCP local adapter settings. Keep this file private.",
-            "AUTOYOU_MCP_AUTH_MODE=oauth",
-            "AUTOYOU_MCP_ENV=development",
-            "AUTOYOU_MCP_PUBLIC_URL=" + adapterUrl.origin,
+            "# AutoYou MCP private adapter settings. Keep this file private.",
+            "AUTOYOU_MCP_AUTH_MODE=none",
+            "AUTOYOU_MCP_ENV=private",
             "AUTOYOU_MCP_HOST=127.0.0.1",
             "AUTOYOU_MCP_PORT=" + port,
             "AUTOYOU_MCP_BACKEND_MODE=full",
-            "AUTOYOU_MCP_TOOL_PROFILE=full",
             "AUTOYOU_MCP_FULL_BASE_URL=" + serverEndpoint.origin,
             "AUTOYOU_MCP_FULL_API_TOKEN=" + token,
-            "AUTOYOU_MCP_OPERATOR_SECRET=" + operatorSecret,
-            "AUTOYOU_MCP_ALLOWED_REDIRECT_URIS=",
             ""
         ].join("\r\n");
     }
@@ -6964,34 +6959,37 @@
         var configured = Boolean(getByPath(mcpStatus, "configured", false));
         var generated = Boolean(getByPath(state.mcpSetup, "generatedToken", ""));
         var adapterUrl = String(getByPath(mcpStatus, "adapter_url", getByPath(state.forms, "messaging.mcp.adapter_url", "http://127.0.0.1:8071")) || "http://127.0.0.1:8071");
+        var serverEndpoint = String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp"));
+        var developerModeHelpUrl = "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt";
         var statusMessage = !enabled
-            ? "MCP is disabled on this server. Generate a token to enable the private adapter connection."
+            ? "AutoYou MCP is disabled. Enable it and generate a private adapter token to continue."
             : configured
                 ? "The AutoYou server has a server-to-adapter token saved."
-                : "A server-to-adapter token is needed before the adapter can connect.";
+                : "Generate a server-to-adapter token before starting the adapter.";
         var statusToneClass = !enabled ? "ayu-note-amber" : (configured ? "ayu-note-green" : "ayu-note-amber");
-        var actionLabel = configured ? (generated ? "Generate a replacement token" : "Rotate server token") : "Generate and save secure token";
-        var quickSetup = "<div class=\"ayu-note " + statusToneClass + "\"><strong>" + escapeHtml(statusMessage) + "</strong><p>Tokens generated here are saved immediately. Tokens added to AutoYou-Server/.env need a main server restart.</p><ol class=\"ayu-mcp-steps\"><li>Generate and save a private token on this AutoYou server.</li><li>Download the matching adapter environment file.</li><li>Start the adapter from the AutoYou project folder.</li></ol></div>";
+        var actionLabel = configured ? (generated ? "Generate a replacement token" : "Rotate server token") : "Generate private adapter token";
+        var story = "<div class=\"ayu-note ayu-note-blue\"><strong>Your AutoYou is the brain. ChatGPT is the interface.</strong><p>Your configured AutoYou agents and models process each request on your server. The OpenAI Secure MCP Tunnel is a private outbound connection to ChatGPT; it does not host your data, choose a model, or require a public domain.</p></div>";
+        var quickSetup = "<div class=\"ayu-note " + statusToneClass + "\"><strong>Private connection setup</strong><ol class=\"ayu-mcp-steps\"><li>Keep your AutoYou Server and configured agents running on this computer. This adapter connects to <code>" + escapeHtml(serverEndpoint) + "</code>.</li><li>Generate the private adapter token and download <code>autoyou-mcp.env</code>. The file contains the server-to-adapter token. It never contains the model provider API key.</li><li>Install <code>plugins/autoyou-mcp</code> in its own Python environment, then start the adapter. It listens only on loopback at <code>" + escapeHtml(adapterUrl.replace(/\/$/, "")) + "/mcp</code>.</li><li>For ChatGPT web, create a Secure MCP Tunnel in your OpenAI workspace. Give the tunnel client a separate restricted runtime key with Tunnels Read and Use permissions. Do not use the AutoYou model API key or an admin key for the always-on tunnel.</li><li>Set <code>CONTROL_PLANE_TUNNEL_ID</code> for this PowerShell session, then run <code>scripts/start_autoyou_private_tunnel.ps1</code>. If <code>CONTROL_PLANE_API_KEY</code> is not already set, the script securely prompts for the restricted runtime key and clears it when the tunnel exits. In ChatGPT web Developer Mode, create an app using the Tunnel option and select your tunnel. Test <code>get_autoyou_status</code>, then send a request with <code>chat_with_autoyou</code>.</li></ol><p>For a local MCP client that supports stdio, connect directly to AutoYou without a tunnel. ChatGPT web requires the Secure MCP Tunnel path to reach this private server.</p><p>Changes made here are saved to this running AutoYou server. If you edit <code>AutoYou-Server/.env</code> yourself, restart the main server.</p></div>";
         var handoff = generated
-            ? "<div class=\"ayu-note ayu-note-green ayu-mcp-handoff\" role=\"status\"><strong>Server token saved.</strong><p>Download the matching adapter file now. It contains the token and a local OAuth secret. Keep it private. This one-time copy is cleared when you leave or reload this page.</p><div class=\"ayu-inline-actions\">" + button("Download private adapter config", "mcp-download-config", "primary", "download") + "</div></div>"
+            ? "<div class=\"ayu-note ayu-note-green ayu-mcp-handoff\" role=\"status\"><strong>Server token saved.</strong><p>Download the matching adapter file now and keep it private. This one-time copy is cleared when you leave or reload this page.</p><div class=\"ayu-inline-actions\">" + button("Download private adapter config", "mcp-download-config", "primary", "download", "sm") + "</div></div>"
             : (configured
-                ? "<div class=\"ayu-note ayu-note-gray\"><strong>Need a matching adapter file?</strong><p>The saved token is never shown again. If you do not already have its private adapter config, rotate the token to create a fresh matching file.</p></div>"
+                ? "<div class=\"ayu-note ayu-note-gray\"><strong>Need a matching adapter file?</strong><p>The saved token is never shown again. Rotate it to create a fresh matching file.</p></div>"
                 : "");
-        var startInstructions = "<div class=\"ayu-note ayu-note-gray ayu-mcp-start\"><strong>Start the adapter</strong><p>Use an adapter-only Python virtual environment. From the AutoYou project folder, install <code>plugins/autoyou-mcp</code> into that environment, then run this command with the environment's Python: <code>python -m autoyou_mcp --env-file &lt;path-to-autoyou-mcp.env&gt; --transport streamable-http</code>.</p><p>Local MCP endpoint: <code>" + escapeHtml(adapterUrl.replace(/\/$/, "")) + "/mcp</code>. Platform-specific commands are in the AutoYou MCP README.</p></div>";
-        var hostedConnectionNote = "<div class=\"ayu-note ayu-note-amber\"><strong>For hosted ChatGPT</strong><p>The generated setup listens on this computer only. A hosted ChatGPT connection needs a public HTTPS adapter URL and provider-issued OAuth callback settings. Keep the AutoYou admin port 8001 private.</p></div>";
+        var startInstructions = "<div class=\"ayu-note ayu-note-gray ayu-mcp-start\"><strong>Start the adapter</strong><p>Use a dedicated Python virtual environment. From the AutoYou project folder, run <code>python -m pip install -e plugins/autoyou-mcp</code>, then <code>python -m autoyou_mcp --env-file &lt;path-to-autoyou-mcp.env&gt; --transport streamable-http</code>.</p><p>The local MCP endpoint is <code>" + escapeHtml(adapterUrl.replace(/\/$/, "")) + "/mcp</code>. Leave this process running while connected.</p></div>";
+        var chatGptAvailability = "<div class=\"ayu-note ayu-note-blue\"><strong>What works through MCP</strong><p>ChatGPT can send text and supported image, audio, video, and file attachments when it supplies them to the tool. AutoYou's configured agents and models answer. Real-time voice calls are not part of MCP. <a href=\"" + developerModeHelpUrl + "\" target=\"_blank\" rel=\"noreferrer\">Check OpenAI's current Developer Mode requirements</a>.</p></div>";
         var advanced = "<details class=\"ayu-mcp-advanced\"><summary>Advanced settings</summary><div class=\"ayu-mcp-advanced-body\">" +
             checkbox("messaging.mcp.enabled", "Enable AutoYou MCP", "The adapter sends chat and supported attachments into this server's native agent and model runtime.") +
-            field("MCP adapter URL", input("messaging.mcp.adapter_url", { placeholder: "http://127.0.0.1:8071" }), "Address used by the local adapter. The main server does not start that separate process.") +
-            field("Server-to-adapter token", input("messaging.mcp.api_token", { type: "password", placeholder: "Leave blank to keep the saved token", autocomplete: "new-password" }), "Use this only to enter a token generated elsewhere. The guided setup creates a matching token automatically.") +
+            field("MCP adapter URL", input("messaging.mcp.adapter_url", { placeholder: "http://127.0.0.1:8071" }), "Loopback address used by the local adapter process.") +
+            field("Server-to-adapter token", input("messaging.mcp.api_token", { type: "password", placeholder: "Leave blank to keep the saved token", autocomplete: "new-password" }), "The guided setup creates a matching token automatically.") +
             checkbox("messaging.mcp.clear_api_token", "Clear the saved MCP token", "A token in AutoYou-Server/.env remains active as a fallback until you remove it and restart the server.") +
             "<div class=\"ayu-inline-actions\">" + button("Save advanced settings", "save-mcp", "secondary", "save") + "</div></div></details>";
 
         return "<div class=\"ayu-mcp-setup\">" + renderStatusRows([
             { label: "AutoYou server", value: enabled ? "Enabled" : "Disabled" },
             { label: "Server-to-adapter token", value: configured ? "Saved" : "Missing" },
-            { label: "MCP adapter", value: "Separate process", help: "Start and stop it from the same computer." },
+            { label: "MCP adapter", value: "Separate local process", help: "Start and stop it from this computer." },
             { label: "Adapter address", value: adapterUrl, mono: true }
-        ]) + quickSetup + "<div class=\"ayu-inline-actions\">" + button(actionLabel, "mcp-generate-token", configured ? "secondary" : "primary", "key") + "</div>" + handoff + startInstructions + hostedConnectionNote + advanced + "<div class=\"ayu-note ayu-note-blue\"><strong>Credential boundary</strong><p>Your OpenAI API key is used by the model provider. This generated MCP token only lets the adapter call AutoYou. The adapter file never includes the OpenAI API key.</p></div></div>";
+        ]) + story + quickSetup + "<div class=\"ayu-inline-actions\">" + button(actionLabel, "mcp-generate-token", configured ? "secondary" : "primary", "key") + "</div>" + handoff + startInstructions + chatGptAvailability + advanced + "</div>";
     }
 
     function renderMessagingScreen() {
@@ -7058,10 +7056,10 @@
             "</div><div class=\"ayu-grid-2\">" +
                 panel("Signal", "Optional owner-only connection for Notes to Self.", signalSettingsMarkup) +
                 panel("WhatsApp", "Optional owner-only connection for your self chat.", whatsappSettingsMarkup) +
-            "</div><div class=\"ayu-grid-2\">" +
+            "</div>" +
                 panel("AutoYou MCP", "Connect a private MCP adapter to AutoYou's native chat, models, agents, and supported media handling.", mcpSettingsMarkup) +
                 panel("Connected client control", "Select a connected client, send direct messages, and control remote audio playback.", liveControlMarkup) +
-            "</div><div class=\"ayu-grid-2\">" +
+            "<div class=\"ayu-grid-2\">" +
                 panel("Send through Telegram Bot", "Send through an approved bot chat.", telegramDirectMarkup) +
                 panel("Send to Saved Messages", "Send only to the connected Telegram User account.", telegramUserDirectMarkup) +
                 panel("Send through Signal", "Use the paired owner destination.", signalDirectMarkup) +
@@ -9628,7 +9626,6 @@
                 return;
             }
             var mcpToken = generateMcpSecret("autoyou_mcp_");
-            var mcpOperatorSecret = generateMcpSecret("autoyou_operator_");
             var mcpConfig = Object.assign({}, clone(getByPath(state.forms, "messaging.mcp", {})) || {}, {
                 enabled: true,
                 api_token: mcpToken,
@@ -9636,7 +9633,6 @@
             });
             await patchConfig({ mcp: mcpConfig }, "Secure MCP token saved. Download the matching adapter config to continue.");
             state.mcpSetup.generatedToken = mcpToken;
-            state.mcpSetup.operatorSecret = mcpOperatorSecret;
             state.mcpSetup.configDownloaded = false;
             setByPath(state.forms, "messaging.mcp.enabled", true);
             setByPath(state.forms, "messaging.mcp.api_token", "");
