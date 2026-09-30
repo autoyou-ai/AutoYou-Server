@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-09-29T21:53:19+00:00
+Generated: 2026-09-29T23:57:37+00:00
 
 Optional separately approved macOS connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.
 
@@ -143,7 +143,7 @@ Third-Party Components
 - winrt-Windows.Foundation [pypi] - MIT - requirements/bluetooth.txt
 - winrt-Windows.Foundation.Collections [pypi] - MIT - requirements/bluetooth.txt
 - winrt-Windows.Storage.Streams [pypi] - MIT - requirements/bluetooth.txt
-- yacs 0.1.8 [pypi] - BSD-3-Clause - requirements/voice.txt
+- yacs 0.1.8 [pypi] - Apache-2.0 - requirements/voice.txt
 - yt-dlp [pypi] - Unlicense - requirements/base.txt
 - zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
 

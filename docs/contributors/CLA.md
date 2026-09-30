@@ -32,6 +32,22 @@ source and object form. OpenStorey may do this under the repository
 [LICENSE](../../LICENSE) or under any other license terms it chooses, including
 for commercial, hosted, and managed offerings.
 
+You keep every right in Your Contributions that this agreement does not grant.
+This agreement does not assign Your copyright and does not make Your grant to
+OpenStorey exclusive, so You may use Your Contributions Yourself and license
+them to anyone else, in other projects or otherwise, under any terms You choose.
+
+**A different license for a new file.** A file that You wrote entirely, and
+that is new to the Work, may carry a license other than the repository
+[LICENSE](../../LICENSE) if all of these are true: the license is MIT,
+BSD-2-Clause, BSD-3-Clause, Apache-2.0, or ISC; a maintainer approved it in the
+linked issue before You wrote the file; and the file starts with an SPDX license
+identifier. The file is then licensed to everyone under that license, and
+OpenStorey keeps every permission in this section and in section 3. A change to
+an existing file stays under the license of that file. The repository does not
+accept copyleft, non-commercial, field-of-use, all-rights-reserved, or
+unlicensed files. [CONTRIBUTING.md](../../CONTRIBUTING.md) explains the process.
+
 ## 3. Patent license
 
 You grant OpenStorey and the recipients of the Work a perpetual, worldwide,

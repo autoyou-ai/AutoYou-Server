@@ -5,11 +5,14 @@ description: How to report a security or privacy issue.
 
 # Security Contact
 
-Report security or privacy concerns to:
+Report security vulnerabilities to:
 
 ```text
-support@autoyou.me
+security@autoyou.me
 ```
+
+For privacy requests or data-handling questions, contact `privacy@autoyou.me`. For product help, use [www.autoyou.me/support](https://www.autoyou.me/support/).
+The full policy is in [SECURITY.md](../../SECURITY.md).
 
 Please include:
 

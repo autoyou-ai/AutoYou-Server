@@ -94,35 +94,97 @@ INTENTIONALLY_PUBLIC = {
 }
 
 
-def _iter_routes():
-    """Yield (route, method, function_name, file, lineno, has_auth_check)."""
+_ROUTE_VERBS = {"get", "post", "put", "delete", "patch", "websocket"}
+
+
+def _literal(node):
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else "?"
+
+
+def _app_call(call):
+    """``(attr, positional args, keyword args)`` for ``<admin|auth>_app.<attr>(...)``."""
+    if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+        return None
+    if not getattr(call.func.value, "id", "").endswith(("admin_app", "auth_app")):
+        return None
+    return call.func.attr.lower(), call.args, {kw.arg: kw.value for kw in call.keywords if kw.arg}
+
+
+def _methods(kwargs):
+    """The HTTP methods of an ``api_route``/``add_api_route`` registration.
+
+    Without ``methods=`` FastAPI registers GET. A list that is not literal is
+    reported as ``?`` so it is still checked rather than silently skipped.
+    """
+    node = kwargs.get("methods")
+    if node is None:
+        return ["get"]
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return [_literal(elt).lower() for elt in node.elts]
+    return ["?"]
+
+
+def _iter_registrations():
+    """Yield (route, method, handler, file, lineno) for every admin/auth route.
+
+    Covers the verb decorators, ``@app.api_route(path, methods=[...])`` and
+    ``app.add_api_route(path, handler, methods=[...])``. Missing the api_route
+    form once let POST/PUT/PATCH /api/profile/avatar ship without an auth
+    check. ``handler`` is None when an ``add_api_route`` endpoint cannot be
+    resolved to a function in the same file, which then counts as unguarded.
+    """
     for path in sorted(ROUTERS_DIR.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
         for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for dec in node.decorator_list:
-                if not isinstance(dec, ast.Call) or not isinstance(dec.func, ast.Attribute):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for dec in node.decorator_list:
+                    call = _app_call(dec)
+                    if call is None:
+                        continue
+                    attr, args, kwargs = call
+                    if attr in _ROUTE_VERBS:
+                        methods = [attr]
+                    elif attr == "api_route":
+                        methods = _methods(kwargs)
+                    else:
+                        continue
+                    route = _literal(args[0] if args else kwargs.get("path"))
+                    for method in methods:
+                        yield route, method, node, path.name, node.lineno
+            elif isinstance(node, ast.Call):
+                call = _app_call(node)
+                if call is None or call[0] != "add_api_route":
                     continue
-                method = dec.func.attr.lower()
-                if method not in {"get", "post", "put", "delete", "patch", "websocket"}:
-                    continue
-                app = getattr(dec.func.value, "id", "")
-                if not app.endswith(("admin_app", "auth_app")):
-                    continue
-                route = (
-                    dec.args[0].value
-                    if dec.args and isinstance(dec.args[0], ast.Constant)
-                    else "?"
-                )
-                names = set()
-                for sub in ast.walk(node):
-                    if isinstance(sub, ast.Attribute):
-                        names.add(sub.attr)
-                    elif isinstance(sub, ast.Name):
-                        names.add(sub.id)
-                has_auth = any(any(h in n for h in AUTH_HINTS) for n in names)
-                yield route, method, node.name, path.name, node.lineno, has_auth
+                _attr, args, kwargs = call
+                endpoint = args[1] if len(args) > 1 else kwargs.get("endpoint")
+                handler = functions.get(getattr(endpoint, "id", ""))
+                route = _literal(args[0] if args else kwargs.get("path"))
+                for method in _methods(kwargs):
+                    yield route, method, handler, path.name, node.lineno
+
+
+def _has_auth_check(handler) -> bool:
+    if handler is None:
+        return False
+    names = set()
+    for sub in ast.walk(handler):
+        if isinstance(sub, ast.Attribute):
+            names.add(sub.attr)
+        elif isinstance(sub, ast.Name):
+            names.add(sub.id)
+    return any(any(h in n for h in AUTH_HINTS) for n in names)
+
+
+def _iter_routes():
+    """Yield (route, method, function_name, file, lineno, has_auth_check)."""
+    for route, method, handler, file, lineno in _iter_registrations():
+        name = handler.name if handler is not None else "<unresolved handler>"
+        yield route, method, name, file, lineno, _has_auth_check(handler)
 
 
 def test_every_admin_route_is_authorized_or_explicitly_public():
@@ -145,30 +207,16 @@ def test_handlers_that_check_auth_accept_a_request():
     so no session could be inspected. Any route outside the public list must
     accept one.
     """
-    missing = []
-    for path in sorted(ROUTERS_DIR.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for dec in node.decorator_list:
-                if not isinstance(dec, ast.Call) or not isinstance(dec.func, ast.Attribute):
-                    continue
-                if dec.func.attr.lower() not in {"get", "post", "put", "delete", "patch"}:
-                    continue
-                app = getattr(dec.func.value, "id", "")
-                if not app.endswith(("admin_app", "auth_app")):
-                    continue
-                route = (
-                    dec.args[0].value
-                    if dec.args and isinstance(dec.args[0], ast.Constant)
-                    else "?"
-                )
-                if route in INTENTIONALLY_PUBLIC:
-                    continue
-                args = [a.arg for a in node.args.args] + [a.arg for a in node.args.kwonlyargs]
-                if "request" not in args:
-                    missing.append(f"{route} ({path.name}:{node.lineno} {node.name})")
+    missing = set()
+    for route, method, handler, file, lineno in _iter_registrations():
+        if method == "websocket" or route in INTENTIONALLY_PUBLIC:
+            continue
+        if handler is None:
+            missing.add(f"{route} ({file}:{lineno} <unresolved handler>)")
+            continue
+        args = [a.arg for a in handler.args.args] + [a.arg for a in handler.args.kwonlyargs]
+        if "request" not in args:
+            missing.add(f"{route} ({file}:{handler.lineno} {handler.name})")
     assert not missing, (
         "These non-public routes take no `request` parameter, so they cannot "
         "inspect a session:\n  " + "\n  ".join(sorted(missing))
@@ -200,3 +248,21 @@ def test_the_previously_exposed_messaging_routes_are_guarded():
         and not has_auth
     }
     assert not regressed, f"Messaging/gateway routes lost their auth guard: {sorted(regressed)}"
+
+
+def test_profile_avatar_is_checked_for_every_method_and_guarded():
+    """``api_route`` registrations are expanded per method, not skipped.
+
+    POST/PUT/PATCH /api/profile/avatar came in through ``api_route`` and went
+    unseen, so an anonymous caller could overwrite the owner's photo while this
+    file stayed green. GET is guarded too: viewers get the photo from the Page
+    site's own route, so the admin-origin copy is as private as
+    /assets/admin/profile-image.
+    """
+    seen = {
+        method.upper(): has_auth
+        for route, method, _f, _file, _ln, has_auth in _iter_routes()
+        if route == "/api/profile/avatar"
+    }
+    assert seen == {"GET": True, "POST": True, "PUT": True, "PATCH": True, "DELETE": True}
+    assert "/api/profile/avatar" not in INTENTIONALLY_PUBLIC
