@@ -33,6 +33,7 @@ from autoyou_agents.media_generation_agent.media_generation_tool import (
     _normalize_media_type,
     _normalize_model_type,
     sanitize_media_history_item_for_api,
+    draw_things_environment_status,
     wan2gp_environment_status,
     detect_and_apply_wan2gp_paths,
     start_wan2gp_install,
@@ -339,20 +340,29 @@ def api_get_config(request: Request) -> JSONResponse:
         return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
     try:
         config = get_wan2gp_config()
-        # Add quick local status check
-        root_path = Path(config.get("root", ""))
-        python_path = Path(config.get("python", ""))
-        connected = root_path.exists() and python_path.exists()
+        engine = str(config.get("engine") or "wan2gp").strip().lower()
+        if engine == "draw_things":
+            draw_status = draw_things_environment_status(config)
+            connected = draw_status["ready"]
+            diagnostic = {
+                "draw_things_cli_found": draw_status["cli_found"],
+                "models_dir_exists": draw_status["models_dir_exists"],
+            }
+        else:
+            root_path = Path(config.get("root", ""))
+            python_path = Path(config.get("python", ""))
+            connected = root_path.exists() and python_path.exists()
+            diagnostic = {
+                "root_exists": root_path.exists(),
+                "python_exists": python_path.exists(),
+                "app_dir_exists": Path(config.get("app_dir", "")).exists(),
+            }
         
         return _json_response({
             "success": True, 
             "config": config,
             "connected": connected,
-            "diagnostic": {
-                "root_exists": root_path.exists(),
-                "python_exists": python_path.exists(),
-                "app_dir_exists": Path(config.get("app_dir", "")).exists()
-            }
+            "diagnostic": diagnostic,
         })
     except Exception as e:
         return _json_response({"success": False, "error": str(e)}, status_code=500)

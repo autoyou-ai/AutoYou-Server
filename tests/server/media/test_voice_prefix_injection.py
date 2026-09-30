@@ -194,7 +194,7 @@ class TestVoicePrefixDetection(unittest.TestCase):
 class TestSendMessageToAiAgentVoicePayload(unittest.TestCase):
     """Confirm the injected prefix reaches the ADK payload's parts[0]["text"]."""
 
-    def _call_send(self, message: str, metadata: dict) -> list:
+    def _call_send(self, message: str, metadata: dict, context=None) -> list:
         """Invoke send_message_to_ai_agent with a mocked aiohttp session and
         return the list of captured JSON payloads."""
         import rest_api  # local import so env is clean
@@ -209,6 +209,7 @@ class TestSendMessageToAiAgentVoicePayload(unittest.TestCase):
                         message=message,
                         user_id="u1",
                         session_id="s1",
+                        context=context,
                         metadata=metadata,
                         ai_agent_url="http://127.0.0.1:9999",
                     )
@@ -263,6 +264,29 @@ class TestSendMessageToAiAgentVoicePayload(unittest.TestCase):
         self.assertFalse(
             parts[0]["text"].startswith("[voice transcript]"),
         )
+
+    def test_image_bytes_precede_text_in_multimodal_payload(self):
+        context = [{
+            "source": "admin-web",
+            "attachments": [{
+                "filename": "synthetic-image.png",
+                "mimetype": "image/png",
+                "path": "/tmp/synthetic-image.png",
+            }],
+        }]
+        with patch(
+            "shared.openclaw_gateway._load_attachment_bytes",
+            return_value=(b"synthetic image bytes", None),
+        ):
+            captured = self._call_send(
+                "Describe this image.",
+                {"source": "chat"},
+                context=context,
+            )
+
+        parts = captured[0]["new_message"]["parts"]
+        self.assertEqual(parts[0]["inline_data"]["mime_type"], "image/png")
+        self.assertEqual(parts[1]["text"], "Describe this image.")
 
 
 # ---------------------------------------------------------------------------

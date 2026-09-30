@@ -2383,6 +2383,58 @@ def _extract_text_from_llm_request(llm_request: Any) -> str:
     return ""
 
 
+def _llm_request_has_user_image(llm_request: Any, *, latest_only: bool = False) -> bool:
+    """Check user turns for image parts, including prior turns in this session."""
+    for content in reversed(getattr(llm_request, "contents", []) or []):
+        if str(getattr(content, "role", "") or "").strip().lower() != "user":
+            continue
+        has_image = False
+        for part in getattr(content, "parts", []) or []:
+            for field in ("inline_data", "file_data"):
+                media = getattr(part, field, None)
+                if isinstance(part, dict):
+                    media = part.get(field)
+                mime_type = (
+                    media.get("mime_type")
+                    if isinstance(media, dict)
+                    else getattr(media, "mime_type", "")
+                )
+                if str(mime_type or "").strip().lower().startswith("image/"):
+                    has_image = True
+                    break
+            if has_image:
+                break
+        if has_image or latest_only:
+            return has_image
+    return False
+
+
+def _should_keep_visual_input_at_root(llm_request: Any, user_text: str) -> bool:
+    """Keep image understanding in the multimodal root instead of a text-only AgentTool."""
+    has_current_image = _llm_request_has_user_image(llm_request, latest_only=True)
+    if not has_current_image:
+        has_prior_image = _llm_request_has_user_image(llm_request)
+        refers_to_image = re.search(
+            r"\b(?:image|picture|photo|screenshot|visual|it|this|that|above|previous)\b",
+            str(user_text or ""),
+            re.IGNORECASE,
+        )
+        if not has_prior_image or not refers_to_image:
+            return False
+
+    if (
+        _looks_like_notes_request(user_text)
+        or _is_page_feed_request(user_text)
+        or re.search(
+            r"\b(?:save|store|upload|attach|add|post|keep|send|put|ingest|download)\b",
+            str(user_text or ""),
+            re.IGNORECASE,
+        )
+    ):
+        return False
+    return True
+
+
 def _extract_role_texts_from_llm_request(llm_request: Any, role: str) -> list[str]:
     """Return visible text turns for one ADK content role."""
     texts: list[str] = []
@@ -3624,6 +3676,12 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
                 },
             )
         _set_root_pinned_agent(callback_context.state, "")
+
+    if _should_keep_visual_input_at_root(llm_request, user_text):
+        _set_root_preferred_agent(callback_context.state, root_prompt.AGENT_NAME)
+        _set_root_last_routed_agent(callback_context.state, root_prompt.AGENT_NAME)
+        _state_set(callback_context.state, _ROOT_INVOCATION_AGENT_STATE_KEY, root_prompt.AGENT_NAME)
+        return None
 
     if _is_datetime_request(user_text):
         _set_root_preferred_agent(callback_context.state, root_prompt.AGENT_NAME)

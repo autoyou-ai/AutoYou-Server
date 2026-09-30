@@ -81,6 +81,7 @@ def test_prepare_messages_for_ollama_keeps_images_extractable_by_litellm():
     )
 
     assert isinstance(prepared[0]["content"], list)
+    assert [part["type"] for part in prepared[0]["content"]] == ["image_url", "text"]
     assert convert_content_list_to_str(prepared[0]) == "Analyze this image"
     assert extract_images_from_message(prepared[0]) == ["/9j/4AAQSkZJRgABAQAAAQABAAD"]
 
@@ -125,6 +126,7 @@ def test_prepare_messages_for_ollama_normalizes_inline_data_to_image_url():
     )
 
     assert isinstance(prepared[0]["content"], list)
+    assert [part["type"] for part in prepared[0]["content"]] == ["image_url", "text"]
     assert extract_images_from_message(prepared[0]) == ["BBBB"]
 
 

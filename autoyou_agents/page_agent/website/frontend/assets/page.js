@@ -1102,14 +1102,62 @@
     if (remove) remove.hidden = !hasPhoto;
   }
 
+  function normalizeProfilePhotoFile(file) {
+    const type = String(file.type || "").toLowerCase();
+    const isGif = type === "image/gif" || /\.gif$/i.test(file.name || "");
+    if (isGif || (["image/png", "image/jpeg", "image/webp"].includes(type) && file.size <= 64 * 1024)) {
+      if (isGif && file.size > 2 * 1024 * 1024) {
+        return Promise.reject(new Error("Animated profile images must be smaller than 2 MB."));
+      }
+      return Promise.resolve(file);
+    }
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = Math.min(1, 256 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context) return reject(new Error("Image editing is unavailable in this browser."));
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        try {
+          canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error("This image format could not be prepared for upload."));
+            resolve(blob);
+          }, "image/webp", 0.78);
+        } catch {
+          reject(new Error("This image format could not be prepared for upload."));
+        }
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("This image format could not be opened in this browser."));
+      };
+      image.src = url;
+    });
+  }
+
   async function uploadProfilePhoto(file) {
     if (!file || !access.can_edit || profilePhoto.uploading) return;
+    if (!String(file.type || "").toLowerCase().startsWith("image/") && !/\.gif$/i.test(file.name || "")) {
+      toast("Choose an image file");
+      return;
+    }
     profilePhoto.uploading = true;
     const select = $("profile-photo-select");
-    if (select) select.disabled = true;
+    if (select) {
+      select.disabled = true;
+      select.setAttribute("aria-busy", "true");
+      select.classList.add("is-uploading");
+    }
     const form = new FormData();
-    form.append("image", file, file.name || "profile-photo");
     try {
+      const prepared = await normalizeProfilePhotoFile(file);
+      form.append("image", prepared, String(file.type || "").toLowerCase() === "image/gif" || /\.gif$/i.test(file.name || "")
+        ? (file.name || "profile-photo.gif") : "profile-photo.webp");
       const response = await fetch("./api/profile/avatar", { method: "POST", body: form, cache: "no-store" });
       const payload = await readJson(response);
       if (!response.ok || !payload.success) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
@@ -1119,7 +1167,11 @@
       toast(error.message || "Page photo could not be updated");
     } finally {
       profilePhoto.uploading = false;
-      if (select) select.disabled = false;
+      if (select) {
+        select.disabled = false;
+        select.removeAttribute("aria-busy");
+        select.classList.remove("is-uploading");
+      }
       $("profile-photo-input").value = "";
     }
   }
