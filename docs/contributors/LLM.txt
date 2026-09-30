@@ -17,6 +17,7 @@ Engineering Contract
 - Preserve pairing, peer-link, and transport compatibility.
 - Preserve official-build authorization checks. Local source builds are not official releases.
 - Never add credentials, personal data, runtime state, generated archives, signing keys, or private internal docs.
+- Do not add a file under a license other than the repository LICENSE, and do not copy code from another project, unless a maintainer approved it in the linked issue (see CONTRIBUTING.md, "Licensing your files").
 - Preserve AUTOYOU-PROVENANCE marker comments and __debug_provenance_*__ variables in files you edit. They are maintainer debug traces with no effect on behavior, so do not remove them as unused.
 - Use hyphens instead of em-dashes across all documentation and comments.
 

@@ -158,8 +158,14 @@ def register_routes(
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
+    # The owner's photo on the admin origin. Viewers never need this route:
+    # the Page site serves its own copy under /agent/page_agent/, gated by the
+    # remote role policy, so here it is as private as /assets/admin/profile-image.
     @admin_app.get("/api/profile/avatar")
     async def page_agent_get_avatar(request: Request):
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
         image_path = server._get_admin_profile_image_path()
         if image_path is None or not image_path.is_file():
             return JSONResponse(status_code=404, content={"error": "No profile photo"})
@@ -179,6 +185,9 @@ def register_routes(
 
     @admin_app.api_route("/api/profile/avatar", methods=["POST", "PUT", "PATCH"])
     async def page_agent_save_avatar(request: Request):
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
         uploaded = None
         try:
             form = await request.form()
@@ -220,7 +229,10 @@ def register_routes(
                     await close_result
 
     @admin_app.delete("/api/profile/avatar")
-    async def page_agent_delete_avatar():
+    async def page_agent_delete_avatar(request: Request):
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
         try:
             server._delete_admin_profile_image_files()
             if server.WEBRTC is not None:

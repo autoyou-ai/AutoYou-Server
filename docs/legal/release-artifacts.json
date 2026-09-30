@@ -289,7 +289,7 @@
     "winrt-runtime": "MIT",
     "ws": "MIT",
     "yt-dlp": "Unlicense",
-    "yacs": "BSD-3-Clause",
+    "yacs": "Apache-2.0",
     "zeroconf": "LGPL-2.1-or-later",
     "llmfit": "MIT",
     "onnxruntime-swift-package-manager": "MIT",

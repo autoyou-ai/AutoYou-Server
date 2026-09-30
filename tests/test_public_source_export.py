@@ -139,6 +139,7 @@ def test_public_export_excludes_private_release_material() -> None:
         "tests/server/build/test_distributable_packaging_scripts.py",
         "tests/server/pairing/test_autopair_admin.py",
         "docs/technical/funding-os.md",
+        "docs/technical/peer-relay-social-checkpoint-2026-08-24.md",
         "docs/technical/webrtc-media-mixer.md",
     )
 

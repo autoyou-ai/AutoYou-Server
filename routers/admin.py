@@ -277,11 +277,49 @@ def register_routes(
         }
         try:
             chat_request = server.ChatRequest(**payload)
-            response = await server.process_chat_message(
-                chat_request,
-                f"http://127.0.0.1:{server.AI_AGENT_SERVER_PORT}",
-                authenticated_actor_role="admin",
-            )
+            ai_agent_url = f"http://127.0.0.1:{server.AI_AGENT_SERVER_PORT}"
+            if "@" in str(payload.get("message") or ""):
+                from core_server.agents_api_bridge import (
+                    AgentsAPIConfigurationError,
+                    AgentsAPIError,
+                    run_agents_api_turn,
+                )
+
+                async def _process_with_autoyou():
+                    return await server.process_chat_message(
+                        chat_request,
+                        ai_agent_url,
+                        authenticated_actor_role="admin",
+                    )
+
+                attachment_count = sum(
+                    len(group.get("attachments") or [])
+                    for group in context
+                    if isinstance(group, dict) and isinstance(group.get("attachments") or [], list)
+                )
+                try:
+                    response = await run_agents_api_turn(
+                        str(payload.get("message") or ""),
+                        _process_with_autoyou,
+                        attachment_count=attachment_count,
+                    )
+                except AgentsAPIConfigurationError as exc:
+                    return JSONResponse(
+                        status_code=503,
+                        content={"success": False, "error": str(exc)},
+                    )
+                except AgentsAPIError as exc:
+                    server.LOGGER.warning("Admin Chat Agents API routing failed: %s", exc)
+                    return JSONResponse(
+                        status_code=502,
+                        content={"success": False, "error": "Agents API routing failed."},
+                    )
+            else:
+                response = await server.process_chat_message(
+                    chat_request,
+                    ai_agent_url,
+                    authenticated_actor_role="admin",
+                )
             return server._json_response_no_store(_chat_response_payload(response))
         except Exception as exc:
             server.LOGGER.error("admin_chat_message failed: %s", exc, exc_info=True)
