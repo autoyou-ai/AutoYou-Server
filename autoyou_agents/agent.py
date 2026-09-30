@@ -26,6 +26,7 @@ import logging
 import mimetypes
 import os
 import re
+import sys
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -1045,6 +1046,8 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "main",
         "root",
         "autoyou",
+        "autoyou server",
+        "autoyou-server",
     ),
     _BUILD_PROMPT_RUNTIME_AGENT_NAME: (
         "build prompt agent",
@@ -3357,6 +3360,36 @@ def _normalize_at_agent_alias(value: str) -> str:
     return normalized.strip("_")
 
 
+def _root_agent_at_route_aliases() -> set[str]:
+    aliases = set(_EXPLICIT_ROUTE_ALIASES.get(root_prompt.AGENT_NAME, ()))
+    server_module = sys.modules.get("server")
+    get_server_name = getattr(server_module, "get_configured_server_name", None)
+    if callable(get_server_name):
+        try:
+            server_name = str(get_server_name() or "").strip()
+            if server_name:
+                aliases.add(server_name)
+        except Exception:
+            logger.debug("Could not read the configured server name for @ routing", exc_info=True)
+    return aliases
+
+
+def _match_root_agent_at_alias(text: str, searchable_text: str, start: int, aliases: set[str]):
+    if start >= len(searchable_text) or searchable_text[start] != "@":
+        return None
+    for alias in sorted(aliases, key=len, reverse=True):
+        alias_pattern = _alias_to_route_pattern(alias)
+        if not alias_pattern:
+            continue
+        match = re.compile(
+            rf"@{alias_pattern}(?=$|[^A-Za-z0-9_])",
+            re.IGNORECASE,
+        ).match(text, start)
+        if match:
+            return match
+    return None
+
+
 def _installed_agent_at_route_targets() -> list[tuple[str, str]]:
     """Return installed package names paired with their loaded runtime tool name."""
     install_names: set[str] = set()
@@ -3435,13 +3468,24 @@ def _extract_at_agent_route_request(user_text: str) -> Optional[Dict[str, str]]:
     if not matches:
         return None
 
+    configured_root_aliases = _root_agent_at_route_aliases()
     root_aliases = {
         _normalize_at_agent_alias(alias)
-        for alias in _EXPLICIT_ROUTE_ALIASES.get(root_prompt.AGENT_NAME, ())
+        for alias in configured_root_aliases
     }
     root_aliases.update({"main", "root", "autoyou", "agent"})
     route_targets: Optional[list[tuple[str, str]]] = None
     for match in matches:
+        root_match = _match_root_agent_at_alias(
+            text, searchable_text, match.start(), configured_root_aliases
+        )
+        if root_match:
+            residual = text[:match.start()].rstrip() + " " + text[root_match.end():].lstrip()
+            return {
+                "runtime_agent_name": root_prompt.AGENT_NAME,
+                "request": _clean_explicit_route_residual(residual, root_prompt.AGENT_NAME),
+            }
+
         query = _normalize_at_agent_alias(match.group("agent"))
         if not query:
             continue
