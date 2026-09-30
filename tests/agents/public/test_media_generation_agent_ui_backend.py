@@ -537,6 +537,8 @@ def test_media_generation_frontend_exposes_image_defaults_and_mobile_rules() -> 
     assert "settings-image-model" in html
     assert "settings-image-resolution" in html
     assert "settings-image-steps" in html
+    assert "settings-engine" in html
+    assert "settings-draw-things-image-model" in html
     assert "image_num_inference_steps" in js
     assert "applyGenerationDefaultsForMediaType" in js
     assert "@media (max-width: 640px)" in css
@@ -666,8 +668,128 @@ def test_wan2gp_environment_endpoints_require_auth() -> None:
 def test_wan2gp_environment_status_shape(monkeypatch) -> None:
     status = media_generation_tool.wan2gp_environment_status()
     assert "platform" in status and "configured" in status and "install" in status
+    assert "draw_things" in status
     assert isinstance(status["install_supported"], bool)
     assert status["install"]["status"] in {"idle", "running", "completed", "failed"}
+
+
+def test_default_generation_engine_tracks_host_gpu(monkeypatch) -> None:
+    monkeypatch.setattr(media_generation_tool.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(media_generation_tool.platform, "machine", lambda: "arm64")
+    assert media_generation_tool._default_wan2gp_config()["engine"] == "draw_things"
+
+    monkeypatch.setattr(media_generation_tool.platform, "system", lambda: "Linux")
+    assert media_generation_tool._default_wan2gp_config()["engine"] == "wan2gp"
+
+
+def test_draw_things_cli_command_is_local_and_never_downloads_models(tmp_path) -> None:
+    command = media_generation_tool._draw_things_generation_command(
+        "/opt/homebrew/bin/draw-things-cli",
+        "flux_2_klein_4b_q6p.ckpt",
+        "synthetic image prompt",
+        tmp_path / "image.png",
+        "image",
+        "768x512",
+        4,
+        None,
+        -1,
+        str(tmp_path / "models"),
+    )
+
+    assert command[:5] == [
+        "/opt/homebrew/bin/draw-things-cli",
+        "generate",
+        "--local",
+        "--offline",
+        "--no-download-missing",
+    ]
+    assert command[command.index("--model") + 1] == "flux_2_klein_4b_q6p.ckpt"
+    assert command[command.index("--width") + 1] == "768"
+    assert command[command.index("--height") + 1] == "512"
+    assert "--models-dir" in command
+    assert "--cloud-compute" not in command
+
+
+def test_draw_things_cli_rejects_unsupported_resolution() -> None:
+    try:
+        media_generation_tool._draw_things_dimensions("832x480")
+    except ValueError as exc:
+        assert "multiples of 64" in str(exc)
+    else:
+        raise AssertionError("Draw Things dimensions must be multiples of 64")
+
+
+def test_media_generation_sync_runs_draw_things_locally(monkeypatch, tmp_path) -> None:
+    output_dir = tmp_path / "media-output"
+    calls = []
+    config = media_generation_tool._default_wan2gp_config()
+    config.update(
+        {
+            "engine": "draw_things",
+            "draw_things_cli": "/synthetic/draw-things-cli",
+            "draw_things_models_dir": str(tmp_path / "models"),
+            "draw_things_image_model": "flux_2_klein_4b_q6p.ckpt",
+            "enhance_prompt": False,
+        }
+    )
+    monkeypatch.setattr(media_generation_tool, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(media_generation_tool, "get_wan2gp_config", lambda: config)
+    monkeypatch.setattr(
+        media_generation_tool,
+        "draw_things_environment_status",
+        lambda _config: {
+            "supported": True,
+            "cli_found": True,
+            "cli": "/synthetic/draw-things-cli",
+            "ready": True,
+            "guidance": "ready",
+        },
+    )
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        image_path = Path(command[command.index("--output") + 1])
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\nsynthetic")
+        return media_generation_tool.subprocess.CompletedProcess(command, 0, stdout="done", stderr="")
+
+    monkeypatch.setattr(media_generation_tool.subprocess, "run", fake_run)
+
+    result = media_generation_tool.generate_media_sync(
+        "synthetic image prompt",
+        media_type="image",
+        model_type="flux_2_klein_4b_q6p.ckpt",
+        resolution="768x512",
+        steps=4,
+        seed=12,
+        optimized_prompt="synthetic optimized image prompt",
+    )
+
+    assert result["status"] == "success"
+    assert Path(result["file_path"]).is_file()
+    command, kwargs = calls[0]
+    assert "--local" in command and "--offline" in command and "--no-download-missing" in command
+    assert command[command.index("--seed") + 1] == "12"
+    assert kwargs["cwd"].parent == output_dir
+
+
+def test_media_generation_config_reports_draw_things_status(monkeypatch) -> None:
+    monkeypatch.setattr(media_ui_backend, "_check_auth", lambda _request: True)
+    monkeypatch.setattr(
+        media_ui_backend,
+        "get_wan2gp_config",
+        lambda: {"engine": "draw_things", "draw_things_cli": "/synthetic/cli"},
+    )
+    monkeypatch.setattr(
+        media_ui_backend,
+        "draw_things_environment_status",
+        lambda _config: {"ready": True, "cli_found": True, "models_dir_exists": True},
+    )
+
+    response = TestClient(media_ui_backend.app).get("/api/config")
+
+    assert response.status_code == 200
+    assert response.json()["connected"] is True
+    assert response.json()["diagnostic"]["draw_things_cli_found"] is True
 
 
 def test_start_wan2gp_install_refuses_unsupported_machines(monkeypatch) -> None:
