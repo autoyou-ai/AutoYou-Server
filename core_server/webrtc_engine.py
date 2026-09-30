@@ -15,6 +15,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import hashlib
 import inspect
 import json
+import re
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -24,6 +25,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 # build, different cwd) silently disabled the game inside a blanket except.
 # `shared` is a real package and carries no project-internal imports.
 from shared import game_ping_pong
+from shared.game_input import GameInputHub, normalize_game_input
 from shared.datachannel_manager import (
     DataChannelMessage as SharedDataChannelMessage,
     MessageHeader as SharedMessageHeader,
@@ -68,6 +70,11 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
 
 _runtime: ModuleType
+_GAME_INPUT_UNAVAILABLE = "Game input is unavailable. Connect a local game engine or enable host input."
+_MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
+                    b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
+                    b'media-src data:; connect-src \'none\'; form-action \'none\'">')
+_MOBILE_GAME_MAX_BYTES = 512 * 1024
 
 
 def _speak_audio_manager(audio_manager: Any, message: str, *, context: str = "") -> None:
@@ -146,6 +153,7 @@ class WebRTCManager:
         # so expiry, held buttons, and failure counts cannot drift after rekeying.
         self.remote_desktop_control_leases_by_session: Dict[str, Dict[str, Any]] = {}
         self.remote_desktop_control_lock = _runtime.asyncio.Lock()
+        self.game_input_hub = GameInputHub()
         self.streaming_events: deque[Dict[str, Any]] = _runtime.deque(maxlen=500)
         self.streaming_events_lock = _runtime.threading.Lock()
         # Optional names are display metadata only. They are keyed by the
@@ -522,9 +530,13 @@ class WebRTCManager:
                 if remote_desktop_allowed:
                     apply_profile = getattr(desktop_track, "apply_remote_desktop_profile", None)
                     if callable(apply_profile):
+                        game_active = any(
+                            lease.get("mode") == "game" and lease.get("track") is desktop_track
+                            for lease in self.remote_desktop_control_leases_by_session.values()
+                        )
                         apply_profile(
                             monitor_id=desktop_profile["monitor_id"],
-                            fps=desktop_profile["fps"],
+                            fps=30 if game_active else desktop_profile["fps"],
                             max_width=desktop_profile["max_width"],
                         )
                     elif hasattr(desktop_track, "monitor_id"):
@@ -537,9 +549,14 @@ class WebRTCManager:
             except Exception as exc:
                 _runtime.LOGGER.warning("Failed to update outbound video policy for %s: %s", session_id, exc)
 
-        if not _runtime._get_remote_desktop_control_available(cfg=cfg):
+        desktop_control_available = _runtime._get_remote_desktop_control_available(cfg=cfg)
+        game_control_available = _runtime._get_game_mode_available(cfg=cfg)
+        if not desktop_control_available or not game_control_available:
             released_leases: set[int] = set()
             for session_id, lease in list(self.remote_desktop_control_leases_by_session.items()):
+                lease_available = game_control_available if lease.get("mode") == "game" else desktop_control_available
+                if lease_available:
+                    continue
                 if id(lease) in released_leases:
                     continue
                 released_leases.add(id(lease))
@@ -3355,8 +3372,8 @@ class WebRTCManager:
       source = str(payload.get("source") or "").strip().lower()
       platform = str(payload.get("platform") or "").strip().lower()
       return bool(
-        (source == "autoyou_lite" and platform in {"ios", "android"})
-        or (source == "autoyou_desktop" and platform in {"macos", "windows"})
+        (source == "autoyou_lite" and platform in {"ios", "android", "chrome"})
+        or (source == "autoyou_desktop" and platform in {"macos", "windows", "linux"})
       )
 
     async def _probe_remote_desktop_input_backend(self, *, refresh: bool = False) -> bool:
@@ -3390,11 +3407,13 @@ class WebRTCManager:
       control_id: str,
       touch_mode: str,
       track: Any,
+      mode: str = "desktop",
     ) -> Dict[str, Any]:
       lease: Dict[str, Any] = {
         "control_id": str(control_id),
         "target_session_id": str(session_id),
         "touch_mode": str(touch_mode or "direct"),
+        "mode": mode,
         "track": track,
         "held_buttons": set(),
         "held_keys": set(),
@@ -3410,6 +3429,26 @@ class WebRTCManager:
         self._expire_remote_desktop_control_lease(str(session_id), lease)
       )
       return lease
+
+    def _apply_game_capture_rate(self, track: Any, *, game_active: bool) -> None:
+      apply_profile = getattr(track, "apply_remote_desktop_profile", None)
+      if not callable(apply_profile):
+        return
+      profile = _runtime._get_remote_desktop_capture_profile(cfg=(_runtime.STATE.config or {}))
+      try:
+        set_game_mode = getattr(track, "set_game_mode", None)
+        if callable(set_game_mode):
+          set_game_mode(game_active)
+        apply_profile(monitor_id=profile["monitor_id"],
+                      fps=30 if game_active else profile["fps"],
+                      max_width=profile["max_width"])
+      except Exception as exc:
+        _runtime.LOGGER.debug("Could not change game capture rate: %s", exc)
+
+    def _publish_game_session_start(self, session_id: str, lease: Dict[str, Any]) -> None:
+      self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
+        "event": "game_input", "input_type": "session_start", "control_id": str(lease["control_id"]),
+      })
 
     async def _expire_remote_desktop_control_lease(
       self,
@@ -3459,6 +3498,14 @@ class WebRTCManager:
       lease["held_buttons"] = set()
       lease["held_keys"] = set()
       lease["expires_at"] = 0.0
+      if lease.get("mode") == "game":
+        self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
+          "event": "game_input", "input_type": "session_end", "control_id": str(lease["control_id"]),
+        })
+        track = lease.get("track")
+        still_active = any(candidate.get("mode") == "game" and candidate.get("track") is track
+                           for candidate in self.remote_desktop_control_leases_by_session.values())
+        self._apply_game_capture_rate(track, game_active=still_active)
       await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_buttons,
                                      **({"held_keys": held_keys} if held_keys else {}))
       return True
@@ -3497,8 +3544,25 @@ class WebRTCManager:
         "available": _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})),
         "timestamp_ms": int(_runtime.time.time() * 1000),
       }
+      lease = self._remote_desktop_control_lease_for_session(session_id, control_id)
+      if active and lease is not None and lease.get("mode") == "game":
+        payload["engine_input"] = bool(lease.get("engine_input"))
       if reason:
         payload["reason"] = str(reason)[:256]
+        if reason in {
+          "Start the video call before controlling the desktop.",
+          "Start the full-screen video call before controlling the desktop.",
+          "The desktop pane is not present in the outbound video.",
+          "The video call is not active.",
+          "The desktop video source is not attached.",
+          "The desktop video source is paused.",
+          "The screen layout changed. Resume screen control to continue.",
+          "The shared screen is unavailable for control.",
+          "Remote desktop control expired.",
+          "Remote desktop control is not active for this request.",
+          _GAME_INPUT_UNAVAILABLE,
+        }:
+          payload["retryable"] = True
       _matched_id, track = self._desktop_video_track_for_session(session_id)
       mapping_reader = getattr(track, "remote_desktop_mapping", None)
       if callable(mapping_reader):
@@ -3529,7 +3593,10 @@ class WebRTCManager:
         return None, "Remote desktop control is not active for this request."
       if float(lease.get("expires_at") or 0.0) <= _runtime.time.time():
         return None, "Remote desktop control expired."
-      if not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
+      if lease.get("mode") == "game":
+        if not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
+          return None, "Game mode is disabled or unavailable."
+      elif not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
         return None, "Remote desktop control is disabled or unavailable."
       if not self._voice_call_client_active_for_session(session_id):
         return None, "The video call is not active."
@@ -3578,14 +3645,23 @@ class WebRTCManager:
           )
           return
 
-        if not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
+        game_mode = normalized.get("mode") == "game"
+        if game_mode and not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
+          reason = "Game mode is disabled or unavailable."
+        elif not game_mode and not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
           reason = "Remote desktop control is disabled or unavailable."
-        elif not await self._probe_remote_desktop_input_backend():
-          reason = "Native input is unavailable on the server host."
         elif not self._voice_call_client_active_for_session(session_id):
           reason = "Start the video call before controlling the desktop."
         else:
           reason = ""
+
+        host_input_available = False
+        if not reason and (not game_mode or not self.game_input_hub.connected):
+          host_input_available = await self._probe_remote_desktop_input_backend(refresh=game_mode)
+          if not host_input_available and not game_mode:
+            reason = "Native input is unavailable on the server host."
+          elif not host_input_available and game_mode:
+            reason = _GAME_INPUT_UNAVAILABLE
 
         _matched_id, track = self._desktop_video_track_for_session(session_id)
         mapping_reader = getattr(track, "remote_desktop_mapping", None)
@@ -3617,17 +3693,89 @@ class WebRTCManager:
             session_id,
             str(existing.get("control_id") or ""),
           )
-        self._store_remote_desktop_control_lease(
+        lease = self._store_remote_desktop_control_lease(
           session_id,
           control_id=control_id,
           touch_mode=str(normalized.get("touch_mode") or "direct"),
           track=track,
+          mode=str(normalized.get("mode") or "desktop"),
         )
+        if lease["mode"] == "game":
+          lease["engine_input"] = self.game_input_hub.connected
+          lease["host_input_available"] = host_input_available
+          lease["mouse_fallback"] = host_input_available and not lease["engine_input"]
+          self._apply_game_capture_rate(track, game_active=True)
+          lease["mapping"] = json.dumps(track.remote_desktop_mapping(), sort_keys=True)
+          if lease["engine_input"]:
+            self._publish_game_session_start(session_id, lease)
         await self._send_remote_desktop_control_status(
           session_id,
           control_id=control_id,
           active=True,
         )
+
+    async def _forward_game_engine_input_locked(
+      self, session_id: str, lease: Dict[str, Any], frame: Optional[Dict[str, Any]],
+    ) -> bool:
+      if lease.get("mode") != "game":
+        return False
+      if lease.get("engine_input") and not self.game_input_hub.connected:
+        lease["engine_input"] = False
+        lease["host_input_available"] = await self._probe_remote_desktop_input_backend(refresh=True)
+        lease["mouse_fallback"] = lease["host_input_available"]
+        if not lease["host_input_available"]:
+          control_id = str(lease["control_id"])
+          await self._release_remote_desktop_control_locked(session_id, control_id)
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=False, reason=_GAME_INPUT_UNAVAILABLE,
+          )
+          return True
+        await self._send_remote_desktop_control_status(
+          session_id, control_id=str(lease["control_id"]), active=True,
+        )
+        if frame is None or frame.get("input_type") != "touch":
+          latest_touch = lease.get("latest_touch_frame")
+          if latest_touch and latest_touch["points"]:
+            lease["mouse_blocked"] = False
+            if not await self._apply_game_touch_fallback_locked(session_id, lease, latest_touch):
+              return True
+      if self.game_input_hub.connected and not lease.get("engine_input"):
+        held_buttons = set(lease.get("held_buttons") or ())
+        held_keys = set(lease.get("held_keys") or ())
+        if held_buttons or held_keys:
+          await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs,
+                                           held_buttons, held_keys=held_keys)
+        lease["held_buttons"] = set()
+        lease["held_keys"] = set()
+        lease["mouse_touch_id"] = None
+        lease["mouse_point"] = None
+        lease["engine_input"] = True
+        lease["mouse_fallback"] = False
+        self._publish_game_session_start(session_id, lease)
+        if frame is None or frame.get("input_type") != "touch":
+          latest_touch = lease.get("latest_touch_frame")
+          if latest_touch and latest_touch["points"]:
+            self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), latest_touch)
+        await self._send_remote_desktop_control_status(
+          session_id, control_id=str(lease["control_id"]), active=True,
+        )
+      if frame is None:
+        return True
+      if lease.get("engine_input"):
+        self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), frame)
+      elif lease.get("host_input_available"):
+        return False
+      lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+      return True
+
+    async def _sync_game_input_engine_state(self) -> None:
+      async with self.remote_desktop_control_lock:
+        seen: set[int] = set()
+        for session_id, lease in list(self.remote_desktop_control_leases_by_session.items()):
+          if lease.get("mode") != "game" or id(lease) in seen:
+            continue
+          seen.add(id(lease))
+          await self._forward_game_engine_input_locked(session_id, lease, None)
 
     async def _report_remote_desktop_input_failure_locked(
       self,
@@ -3667,6 +3815,8 @@ class WebRTCManager:
             reason=reason,
           )
           return
+        if await self._forward_game_engine_input_locked(session_id, lease, normalized):
+          return
         applied = await _runtime.asyncio.to_thread(
           _runtime.execute_remote_desktop_input,
           normalized,
@@ -3682,6 +3832,78 @@ class WebRTCManager:
             lease["held_buttons"].add(button)
           elif normalized.get("phase") == "up":
             lease["held_buttons"].discard(button)
+        lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+
+    async def _apply_game_touch_fallback_locked(
+      self, session_id: str, lease: Dict[str, Any], frame: Dict[str, Any],
+    ) -> bool:
+      points = frame["points"]
+      if len(points) > 1:
+        lease["mouse_blocked"] = True
+      elif not points:
+        lease["mouse_blocked"] = False
+      touch = points[0] if len(points) == 1 and not lease.get("mouse_blocked") else None
+      old_id = lease.get("mouse_touch_id")
+      if old_id is not None and (touch is None or touch["id"] != old_id):
+        released = await _runtime.asyncio.to_thread(
+          _runtime.execute_remote_desktop_input,
+          {"control_id": frame["control_id"], "input_type": "button", "button": "left", "phase": "up"},
+          track=lease["track"],
+        )
+        if not released:
+          await self._report_remote_desktop_input_failure_locked(session_id, lease)
+          return False
+        lease["input_failures"] = 0
+        lease["held_buttons"].discard("left")
+        lease["mouse_touch_id"] = None
+        lease["mouse_point"] = None
+      if touch is not None:
+        point = (touch["x"], touch["y"])
+        if lease.get("mouse_touch_id") is None:
+          command = {"control_id": frame["control_id"], "input_type": "button", "button": "left",
+                     "phase": "down", "x": point[0], "y": point[1]}
+        elif point != lease.get("mouse_point"):
+          command = {"control_id": frame["control_id"], "input_type": "move",
+                     "coordinate_mode": "absolute", "x": point[0], "y": point[1]}
+        else:
+          command = None
+        if command is not None:
+          applied = await _runtime.asyncio.to_thread(
+            _runtime.execute_remote_desktop_input, command, track=lease["track"],
+          )
+          if not applied:
+            await self._report_remote_desktop_input_failure_locked(session_id, lease)
+            return False
+          lease["input_failures"] = 0
+          lease["mouse_touch_id"] = touch["id"]
+          lease["mouse_point"] = point
+          lease["held_buttons"].add("left")
+      return True
+
+    async def _handle_game_input(self, session_id: str, payload: Dict[str, Any]) -> None:
+      frame = normalize_game_input(payload)
+      if frame is None or not self._is_native_call_remote_desktop_payload(payload):
+        return
+      async with self.remote_desktop_control_lock:
+        lease, reason = self._remote_desktop_control_state(session_id, frame["control_id"])
+        if lease is None:
+          await self._release_remote_desktop_control_locked(session_id, frame["control_id"])
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=frame["control_id"], active=False, reason=reason,
+          )
+          return
+        if lease.get("mode") != "game" or not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
+          return
+        if frame["input_type"] == "heartbeat":
+          lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+          return
+        if frame["input_type"] == "touch":
+          lease["latest_touch_frame"] = frame
+        if await self._forward_game_engine_input_locked(session_id, lease, frame):
+          return
+        if lease.get("mouse_fallback") and frame["input_type"] == "touch":
+          if not await self._apply_game_touch_fallback_locked(session_id, lease, frame):
+            return
         lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
 
     async def _handle_call_remote_desktop_keyboard(
@@ -3706,6 +3928,10 @@ class WebRTCManager:
             active=False,
             reason=reason,
           )
+          return
+        if action in {"hide", "input", "key"} and await self._forward_game_engine_input_locked(
+          session_id, lease, normalized,
+        ):
           return
         if action == "hide":
           keys = set(lease.get("held_keys") or ())
@@ -8637,6 +8863,77 @@ class WebRTCManager:
                 )
                 return
 
+            if request_path == "/api/v1/games" or request_path.startswith("/api/v1/games/"):
+                status_code = 200 if method == "GET" else 405
+                response_headers = {"Content-Type": "application/json", "Cache-Control": "no-store"}
+                response_body = ""
+                compressed = False
+                game_dirs = (
+                    _runtime.APP_ROOT / "assets" / "game",
+                    _runtime.get_mutable_data_dir("AutoYou", anchor=_runtime.__file__) / "mobile_games",
+                )
+
+                def load_game(path):
+                    if path.is_symlink() or not path.is_file() or path.stat().st_size > _MOBILE_GAME_MAX_BYTES - len(_MOBILE_GAME_CSP):
+                        raise ValueError("Game asset is unavailable")
+                    html = path.read_bytes()
+                    if len(html) > _MOBILE_GAME_MAX_BYTES - len(_MOBILE_GAME_CSP):
+                        raise ValueError("Game asset exceeds the mobile download limit")
+                    html.decode("utf-8")
+                    head = re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE)
+                    if head is None:
+                        raise ValueError("Game HTML needs a head element")
+                    return html[:head.end()] + _MOBILE_GAME_CSP + html[head.end():]
+
+                if status_code == 200:
+                    if request_path == "/api/v1/games":
+                        available_games = {}
+                        for game_dir in game_dirs:
+                            for game_file in sorted(game_dir.glob("*.html"))[:64]:
+                                game_id = game_file.stem
+                                if (not game_id or len(game_id) > 64
+                                        or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-" for ch in game_id)):
+                                    continue
+                                try:
+                                    load_game(game_file)
+                                except (OSError, ValueError, UnicodeError):
+                                    continue
+                                available_games[game_id] = game_file
+                        games = [{"id": game_id, "title": game_id.replace("-", " ").title()}
+                                 for game_id in sorted(available_games)[:64]]
+                        response_body = _runtime.json.dumps({"games": games}, separators=(",", ":"))
+                    else:
+                        game_id = request_path[len("/api/v1/games/"):]
+                        if (not game_id or len(game_id) > 64
+                                or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-" for ch in game_id)):
+                            status_code = 404
+                        else:
+                            for game_dir in reversed(game_dirs):
+                                try:
+                                    game_html = load_game(game_dir / f"{game_id}.html")
+                                except (OSError, ValueError, UnicodeError):
+                                    continue
+                                response_headers["Content-Type"] = "text/html; charset=utf-8"
+                                encoded = _runtime.encode_http_proxy_response(game_html, headers=response_headers)
+                                response_headers, response_body, compressed = encoded.headers, encoded.body, encoded.compressed
+                                break
+                            else:
+                                status_code = 404
+                datachannel_manager = self._datachannel_manager_for_session(
+                    message.header.session_id, require_send_message=True,
+                )
+                if datachannel_manager:
+                    await datachannel_manager.send_message(_runtime.create_http_response_message(
+                        status_code=status_code,
+                        headers=response_headers,
+                        body=response_body,
+                        request_id=request_id,
+                        session_id=message.header.session_id,
+                        user_id=message.header.user_id,
+                        compressed=compressed,
+                    ))
+                return
+
             if method.upper() == "GET" and request_path in {"/api/v1/status", "/api/v1/server-config"}:
                 local_payload = (
                     _runtime._build_browser_status_payload()
@@ -9694,6 +9991,9 @@ class WebRTCManager:
             return
         if event_name == "remote_desktop_input":
             await self._handle_remote_desktop_input(str(session_id or ""), payload)
+            return
+        if event_name == "game_input":
+            await self._handle_game_input(str(session_id or ""), payload)
             return
         if (
             event_name == "remote_desktop_keyboard"

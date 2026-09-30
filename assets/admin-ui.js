@@ -3011,6 +3011,7 @@
     function initializeForms(bootstrap) {
         var cfg = getByPath(bootstrap, "config", {});
         var selectedVideoSources = initialVideoSources(cfg);
+        var gameButtons = getByPath(cfg, "video_call.remote_desktop.game_buttons", [{ label: "A", name: "action_a" }, { label: "B", name: "action_b" }]);
         var selectedAudioSources = initialAudioSources(cfg);
         var agentDetails = getByPath(bootstrap, "agents.agent_details", {});
         var adminDetail = agentDetails.admin_agent || {};
@@ -3175,7 +3176,9 @@
                     monitor_id: getByPath(cfg, "video_call.remote_desktop.monitor_id", 0),
                     quality: getByPath(cfg, "video_call.remote_desktop.quality", "balanced"),
                     bitrate_kbps: getByPath(cfg, "video_call.remote_desktop.bitrate_kbps", 1500),
-                    control_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.control_enabled", false), false)
+                    control_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.control_enabled", false), false),
+                    game_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.game_enabled", false), false),
+                    game_buttons: Array.isArray(gameButtons) ? gameButtons.map(function (button) { return button.label + ":" + button.name; }).join(", ") : "A:action_a, B:action_b"
                 }
             },
             speech: {
@@ -7567,8 +7570,10 @@
             ], remoteSettingsActive ? "" : "disabled"), "Higher settings improve desktop text clarity but use more CPU, GPU, and network bandwidth.")
             + field("Maximum video bitrate (kbps)", input("videoCall.remote_desktop.bitrate_kbps", { type: "number", placeholder: "1500", extraAttrs: "min=\"250\" max=\"3000\" step=\"50\"" + (remoteSettingsActive ? "" : " disabled") }), "Applies to active desktop tracks. An existing connection may need one reconnect when increasing above 1500 kbps.")
             + "</div>"
-            + checkbox("videoCall.remote_desktop.control_enabled", "Control Remote Desktop from supported native clients", "Allows native mouse, touch, and keyboard input only during an authenticated, active, full-screen macOS, Windows, iOS, or Android video session. Leave off for view-only screen sharing.", remoteSettingsActive ? "" : "disabled")
-            + "<div class=\"ayu-remote-desktop-runtime ayu-note ayu-note-" + (remoteControlEnabled ? "green" : (remoteControlConfigured && !remoteControlAvailable ? "red" : "blue")) + "\"><strong>" + escapeHtml(remoteControlEnabled ? "Native control is ready." : (remoteControlConfigured && !remoteControlAvailable ? "Native control is unavailable on this host." : "Screen viewing is read-only.")) + "</strong><p>" + escapeHtml(remoteControlEnabled ? "Native macOS and Windows clients can use their mouse and keyboard in full screen. iOS and Android also offer direct touch and fixed-pointer modes. Desktop control pauses when you switch away or leave full screen." : (remoteControlConfigured && remoteControlAvailable ? "Save these settings to enable native full-screen input." : "Turn on Control Remote Desktop to permit native full-screen input.")) + "</p></div>"
+            + checkbox("videoCall.remote_desktop.control_enabled", "Control Remote Desktop from supported clients", "Allows mouse, touch, and keyboard input only during an authenticated, active, full-screen Linux, macOS, Windows, iOS, Android, or Chrome video session. Leave off for view-only screen sharing.", remoteSettingsActive ? "" : "disabled")
+            + checkbox("videoCall.remote_desktop.game_enabled", "Enable game mode", "Built for full-screen native iOS and Android play, with desktop clients supported too. Connect a local engine for touch, sensor, joystick, button, mouse, and keyboard frames. Without an engine, one-finger touch controls the host mouse for browser games when native host input is available. A local engine or native host input must be available to start controls. Requires screen control. Select Computer sound for game audio. Active game control targets 30 fps at the selected resolution; WebRTC adjusts bitrate for the connection.", remoteSettingsActive && remoteControlConfigured ? "" : "disabled")
+            + field("Game buttons", input("videoCall.remote_desktop.game_buttons", { placeholder: "A:action_a, B:action_b" }), "Up to four comma-separated Label:button_name controls on iOS and Android. Labels are 1-12 characters without commas or colons. Leave empty for joystick only. Names use letters, digits, underscore, dot, or hyphen and must start with a letter.")
+            + "<div class=\"ayu-remote-desktop-runtime ayu-note ayu-note-" + (remoteControlEnabled ? "green" : (remoteControlConfigured && !remoteControlAvailable ? "red" : "blue")) + "\"><strong>" + escapeHtml(remoteControlEnabled ? "Screen control is ready." : (remoteControlConfigured && !remoteControlAvailable ? "Screen control is unavailable on this host." : "Screen viewing is read-only.")) + "</strong><p>" + escapeHtml(remoteControlEnabled ? "iOS and Android provide native full-screen touch, fixed-pointer mode, and game controls. macOS and Windows provide mouse and keyboard; Chrome supports pointer lock. Control pauses when you switch away or leave full screen." : (remoteControlConfigured && remoteControlAvailable ? "Save these settings to enable full-screen input." : "Turn on Control Remote Desktop to permit full-screen input.")) + "</p></div>"
             + renderStatusRows([
                 { label: "Shown to phones", value: yesNo(getByPath(remoteCaps, "enabled", false)) },
                 { label: "Monitor id", value: String(getByPath(remoteCaps, "monitor_id", getByPath(state.forms, "videoCall.remote_desktop.monitor_id", 0))) },

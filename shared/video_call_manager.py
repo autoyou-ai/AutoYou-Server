@@ -2198,6 +2198,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         self._outbound_timestamp = 0
         self._enabled = asyncio.Event()
         self._disabled_source_names: set[str] = set()
+        self._game_mode = False
 
     @property
     def monitor_id(self) -> int:
@@ -2259,6 +2260,18 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
             if name != "remote_desktop":
                 continue
             action = "enable" if enabled and self._enabled.is_set() else "disable"
+            callback = getattr(track, action, None)
+            if callable(callback):
+                callback()
+
+    def set_game_mode(self, enabled: bool) -> None:
+        self._game_mode = bool(enabled)
+        if not self._enabled.is_set():
+            return
+        for name, track in self.sources:
+            if name == "remote_desktop":
+                continue
+            action = "disable" if self._game_mode or name in self._disabled_source_names else "enable"
             callback = getattr(track, action, None)
             if callable(callback):
                 callback()
@@ -2363,7 +2376,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         allowed = [
             (name, track)
             for name, track in self.sources
-            if name not in self._disabled_source_names
+            if name not in self._disabled_source_names and (not self._game_mode or name == "remote_desktop")
         ]
         live = [
             (name, track)
@@ -2375,7 +2388,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
     def enable(self) -> None:
         self._enabled.set()
         for name, track in self.sources:
-            action = "disable" if name in self._disabled_source_names else "enable"
+            action = "disable" if name in self._disabled_source_names or (self._game_mode and name != "remote_desktop") else "enable"
             callback = getattr(track, action, None)
             if callable(callback):
                 callback()
