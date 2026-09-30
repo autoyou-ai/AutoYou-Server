@@ -24,6 +24,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -279,6 +280,40 @@ def err(message: str) -> None:
     print(f"[ERROR] {message}")
 
 
+# The launcher usually runs under the system Python, which lacks packages the server has (the keystore
+# needs ``cryptography``), so it can report a healthy OS keystore as unavailable. This asks the
+# server's own interpreter instead. Like the in-process probe it never reads the credential itself.
+_KEYSTORE_PROBE = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from shared.keystore import _DEFAULT_CRED_NAME, _SERVER_SERVICE_NAME, get_keystore_status
+status = get_keystore_status(_SERVER_SERVICE_NAME, _DEFAULT_CRED_NAME, include_has_key=False)
+print(json.dumps({
+    "available": bool(status.get("available")),
+    "backend": str(status.get("backend") or "unknown"),
+    "has_key": status.get("has_key"),
+}))
+"""
+
+
+def _probe_keystore_with_server_interpreter(server_python: Path) -> dict[str, object] | None:
+    """Ask the server's interpreter about the OS keystore; ``None`` when it cannot answer."""
+    try:
+        result = subprocess.run(
+            [str(server_python), "-c", _KEYSTORE_PROBE, str(REPO_ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(REPO_ROOT),
+        )
+        if result.returncode != 0:
+            return None
+        answer = json.loads(result.stdout.strip().splitlines()[-1])
+        return answer if isinstance(answer, dict) else None
+    except Exception:
+        return None
+
+
 def get_autoyou_config_storage_status() -> dict[str, object]:
     """Return the main server's persisted-config storage state."""
     config_dir = REPO_ROOT
@@ -323,6 +358,16 @@ def get_autoyou_config_storage_status() -> dict[str, object]:
         status["keystore_has_key"] = keystore_status.get("has_key")
     except Exception:
         pass
+
+    if not status["keystore_available"]:
+        # "Unavailable" from the launcher's interpreter may only mean it lacks the server's packages.
+        server_python = venv_python_path()
+        if server_python.exists() and os.path.normcase(str(server_python)) != os.path.normcase(sys.executable):
+            probed = _probe_keystore_with_server_interpreter(server_python)
+            if probed is not None:
+                status["keystore_available"] = bool(probed.get("available"))
+                status["keystore_backend"] = str(probed.get("backend") or status["keystore_backend"])
+                status["keystore_has_key"] = probed.get("has_key")
 
     return status
 

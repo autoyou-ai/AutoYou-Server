@@ -350,6 +350,8 @@ graphify-out/
 # Local environment and tracking
 .gemini/
 .source-revision
+# Per-instance operator profile photo stored by the running server.
+/admin_profile/
 scripts/provenance_watermark.py
 shared/ai_training_detection.py
 shared/source_provenance.py

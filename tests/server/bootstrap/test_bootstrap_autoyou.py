@@ -1117,6 +1117,100 @@ def test_bootstrap_storage_diagnostic_defers_mac_keychain_credential_probe(monke
     assert status["keystore_has_key"] is None
 
 
+def _stub_launcher_keystore(monkeypatch, *, available):
+    import shared.keystore as keystore
+
+    monkeypatch.setattr(
+        keystore,
+        "get_keystore_status",
+        lambda *_args, **_kwargs: {
+            "available": available,
+            "backend": "keyring.backends.Windows.WinVaultKeyring",
+            "has_key": None,
+        },
+    )
+
+
+def test_storage_status_asks_the_server_interpreter_when_the_launcher_lacks_keystore_packages(
+    monkeypatch, tmp_path
+):
+    # The launcher runs under the system Python, which has no `cryptography`, so it reports a healthy
+    # OS keystore as unavailable; the server's own interpreter knows better.
+    _stub_launcher_keystore(monkeypatch, available=False)
+    server_python = tmp_path / "python.exe"
+    server_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: server_python)
+    calls = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='library noise\n{"available": true, "backend": "WinVaultKeyring", "has_key": null}\n',
+        )
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+
+    status = bootstrap.get_autoyou_config_storage_status()
+
+    assert status["keystore_available"] is True
+    assert status["keystore_backend"] == "WinVaultKeyring"
+    assert status["keystore_has_key"] is None
+    assert len(calls) == 1
+    assert calls[0][0] == str(server_python)
+
+
+def test_storage_status_needs_no_second_opinion_when_the_launcher_sees_the_keystore(monkeypatch, tmp_path):
+    _stub_launcher_keystore(monkeypatch, available=True)
+    server_python = tmp_path / "python.exe"
+    server_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: server_python)
+    monkeypatch.setattr(
+        bootstrap.subprocess, "run", lambda *args, **kwargs: pytest.fail("no second opinion is needed")
+    )
+
+    assert bootstrap.get_autoyou_config_storage_status()["keystore_available"] is True
+
+
+def test_storage_status_skips_the_second_opinion_when_the_launcher_is_the_server_interpreter(monkeypatch):
+    _stub_launcher_keystore(monkeypatch, available=False)
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: Path(sys.executable))
+    monkeypatch.setattr(
+        bootstrap.subprocess, "run", lambda *args, **kwargs: pytest.fail("it would ask itself the same question")
+    )
+
+    assert bootstrap.get_autoyou_config_storage_status()["keystore_available"] is False
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SimpleNamespace(returncode=1, stdout=""),
+        SimpleNamespace(returncode=0, stdout="not json at all\n"),
+        SimpleNamespace(returncode=0, stdout=""),
+        SimpleNamespace(returncode=0, stdout="[1, 2, 3]\n"),
+        OSError("interpreter vanished"),
+    ],
+)
+def test_storage_status_keeps_the_original_answer_when_the_second_opinion_fails(monkeypatch, tmp_path, outcome):
+    _stub_launcher_keystore(monkeypatch, available=False)
+    server_python = tmp_path / "python.exe"
+    server_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: server_python)
+
+    def fake_run(*_args, **_kwargs):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+
+    status = bootstrap.get_autoyou_config_storage_status()
+
+    assert status["keystore_available"] is False
+    assert status["keystore_backend"] == "keyring.backends.Windows.WinVaultKeyring"
+
+
 def test_main_passes_server_password_to_main_server_environment(monkeypatch):
     captured = {}
 
