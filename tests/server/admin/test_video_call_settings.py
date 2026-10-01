@@ -1268,6 +1268,57 @@ def test_video_state_lazily_attaches_outbound_track(monkeypatch):
     asyncio.run(run())
 
 
+def test_computer_sound_follows_screen_sharing(monkeypatch):
+    class FakeDesktopTrack:
+        enabled = False
+
+        def enable(self):
+            self.enabled = True
+
+        def disable(self):
+            self.enabled = False
+
+        def is_enabled(self):
+            return self.enabled
+
+    class FakeSender:
+        track = None
+
+        def replaceTrack(self, track):
+            self.track = track
+
+    async def run() -> None:
+        webrtc = server.WebRTCManager()
+        sender = FakeSender()
+        webrtc.audio_transceivers["synthetic-session"] = SimpleNamespace(sender=sender, direction="sendrecv")
+        webrtc.desktop_video_tracks["synthetic-session"] = FakeDesktopTrack()
+        webrtc.voice_call_client_active_by_session["synthetic-session"] = True
+        cfg = server._default_config()
+        original_config = server.STATE.config
+        loopback_requests = []
+
+        def create_audio_track(**kwargs):
+            loopback_requests.append(kwargs["include_loopback"])
+            return object()
+
+        monkeypatch.setattr(server, "_create_configured_outbound_audio_track", create_audio_track)
+        monkeypatch.setattr(server, "_get_outbound_video_available", lambda *, cfg=None: True)
+        try:
+            server.STATE.config = cfg
+            webrtc._restore_outbound_audio_for_call("synthetic-session")
+            assert loopback_requests == [False]
+            for active in (True, False):
+                await webrtc._handle_voice_call_control_message(SimpleNamespace(
+                    header=SimpleNamespace(session_id="synthetic-session"),
+                    payload={"event": "video_state", "active": active, "platform": "ios"},
+                ))
+            assert loopback_requests == [False, True, False]
+        finally:
+            server.STATE.config = original_config
+
+    asyncio.run(run())
+
+
 def test_video_state_camera_off_clears_retained_frames_for_session_aliases(monkeypatch):
     class FakeRegistry:
         def __init__(self):
