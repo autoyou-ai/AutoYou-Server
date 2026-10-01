@@ -5,6 +5,148 @@
 (function () {
     "use strict";
 
+    async function openLivePairing() {
+        if (document.getElementById("ayu-live-pair")) return;
+        var dialog = document.createElement("dialog");
+        dialog.id = "ayu-live-pair";
+        dialog.setAttribute("aria-label", "Live connect another device");
+        dialog.style.cssText = "width:min(960px,96vw);max-height:96vh;padding:24px;border:0;border-radius:20px;background:var(--ayu-surface,#fff);color:inherit";
+        dialog.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><h2>Live connect</h2><button type="button" data-live="close">Done</button></div>'
+            + '<p role="status" data-live-status>Preparing your computer…</p>'
+            + '<button type="button" data-live="setup">Share computer setup</button>'
+            + '<div data-live-split style="display:flex;gap:16px;height:50vh;margin:16px 0"><video data-live-camera autoplay muted playsinline style="width:50%;object-fit:contain;background:#111;border-radius:16px"></video>'
+            + '<div data-live-code style="width:50%;display:flex;flex-direction:column;align-items:center;justify-content:center"><img alt="Live pairing code" style="max-width:100%;max-height:90%;image-rendering:pixelated;display:none"><span data-live-counter>Scan a request, or share computer setup.</span></div></div>'
+            + '<label>Paste a pairing message or shared link<textarea data-live-paste rows="2" style="width:100%"></textarea></label>'
+            + '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px"><button type="button" data-live="paste">Use message</button><button type="button" data-live="camera">Start camera</button>'
+            + '<button type="button" data-live="full">Full camera</button><button type="button" data-live="share">Share</button><button type="button" data-live="copy">Copy message</button></div>';
+        document.body.appendChild(dialog);
+        dialog.showModal();
+        var status = dialog.querySelector("[data-live-status]"), video = dialog.querySelector("video"), image = dialog.querySelector("img");
+        var frames = [], outgoing = "", invite, stream, interval, timer, polling = false, scanning = false, closed = false, sharingSetup = false;
+        var assembly = { digest: "", count: 0, parts: new Map(), completed: "", started: 0 }, lastReply = "", lastReceived = "";
+        function show(payload) {
+            frames = payload.qr_frames || []; outgoing = payload.text || "";
+            image.style.display = frames.length ? "block" : "none";
+            if (frames.length) image.src = frames[0];
+        }
+        async function assemble(text) {
+            if (new TextEncoder().encode(text).length > 65536) throw new Error("Pairing message is too large");
+            if (text.indexOf("ayqr1:") !== 0) return text;
+            var parts = text.split(":"), count = Number(parts[3]), index = Number(parts[2]);
+            if (parts.length !== 5 || !/^[a-f0-9]{64}$/.test(parts[1]) || !Number.isInteger(count) || !Number.isInteger(index) || index < 0 || index >= count || count > 110 || parts[4].length > 800) throw new Error("Invalid QR frame");
+            var bytes = Uint8Array.from(atob(parts[4]), function (c) { return c.charCodeAt(0); });
+            if (!bytes.length || bytes.length > 600) throw new Error("Invalid QR frame");
+            if (assembly.completed === parts[1]) return null;
+            if (assembly.digest !== parts[1] || Date.now() - assembly.started > 120000) assembly = { digest: parts[1], count: count, parts: new Map(), completed: assembly.completed, started: Date.now() };
+            if (assembly.count !== count) throw new Error("QR frame counts do not match");
+            assembly.parts.set(index, bytes);
+            status.textContent = "Reading code " + assembly.parts.size + " of " + count + " · hold steady.";
+            if (assembly.parts.size !== count) return null;
+            var size = Array.from(assembly.parts.values()).reduce(function (n, b) { return n + b.length; }, 0);
+            if (size > 65536) throw new Error("Pairing message is too large");
+            var data = new Uint8Array(size), offset = 0;
+            for (var i = 0; i < count; i++) { data.set(assembly.parts.get(i), offset); offset += assembly.parts.get(i).length; }
+            var hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", data))).map(function (n) { return n.toString(16).padStart(2, "0"); }).join("");
+            if (hash !== assembly.digest) throw new Error("QR frames do not match; scan again");
+            assembly.completed = hash;
+            return new TextDecoder("utf-8", { fatal: true }).decode(data);
+        }
+        async function receive(text) {
+            if (text.indexOf("autoyou://pair/live#message=") === 0) {
+                var encoded = text.split("#message=")[1].replace(/-/g, "+").replace(/_/g, "/");
+                if (encoded.length > 131072) throw new Error("Pairing message is too large");
+                text = new TextDecoder().decode(Uint8Array.from(atob(encoded), function (c) { return c.charCodeAt(0); }));
+            }
+            var message = await assemble(text);
+            if (message === null || message === lastReceived) return;
+            if (!invite) throw new Error("The computer is still preparing. Try again.");
+            var request = message.charAt(0) === "/" ? { protocol: "autoyou-live-pair/1", kind: "request", invite_id: invite.invite_id, request_id: crypto.randomUUID(), message: message } : JSON.parse(message);
+            var reply = await postJson("/api/live-pair", { action: "exchange", request: request, raw_response: message.charAt(0) === "/" });
+            sharingSetup = false;
+            lastReceived = message;
+            lastReply = reply.result.request_id;
+            show(reply);
+            status.textContent = "Let the new device scan your updated code.";
+        }
+        async function scan() {
+            if (closed || scanning || !stream || video.readyState < 2) return;
+            scanning = true;
+            try {
+                var text = "";
+                if (window.BarcodeDetector) {
+                    var codes = await new BarcodeDetector({ formats: ["qr_code"] }).detect(video);
+                    if (codes.length) text = codes[0].rawValue;
+                } else {
+                    var canvas = document.createElement("canvas");
+                    canvas.width = 960; canvas.height = Math.round(video.videoHeight / video.videoWidth * 960);
+                    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+                    text = (await postJson("/api/live-pair/scan", { image: canvas.toDataURL("image/jpeg", 0.7) })).text;
+                }
+                if (text) await receive(text);
+            } catch (error) { assembly.completed = ""; status.textContent = error.message; }
+            finally { scanning = false; }
+        }
+        async function close() {
+            if (closed) return;
+            closed = true; clearInterval(interval); clearInterval(timer);
+            if (stream) stream.getTracks().forEach(function (track) { track.stop(); });
+            dialog.close(); dialog.remove();
+            await postJson("/api/live-pair", { action: "cancel" }).catch(function () {});
+            invite = null; frames = []; outgoing = "";
+        }
+        dialog.addEventListener("cancel", function (event) { event.preventDefault(); close(); });
+        dialog.addEventListener("click", async function (event) {
+            var target = event.target.closest("[data-live]");
+            if (!target) return;
+            try {
+                switch (target.dataset.live) {
+                case "close": await close(); break;
+                case "setup":
+                    if (!invite) throw new Error("The computer is still preparing. Try again.");
+                    var setup = await postJson("/api/live-pair", { action: "refresh", invite_id: invite.invite_id });
+                    invite = setup.result; sharingSetup = true; show(setup);
+                    status.textContent = "Let the new device scan your setup, then scan its request."; break;
+                case "paste": await receive(dialog.querySelector("[data-live-paste]").value.trim()); break;
+                case "camera":
+                    if (stream) { stream.getTracks().forEach(function (track) { track.stop(); }); stream = null; target.textContent = "Start camera"; }
+                    else { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); video.srcObject = stream; await video.play(); target.textContent = "Stop camera"; }
+                    break;
+                case "full":
+                    var code = dialog.querySelector("[data-live-code]"); code.hidden = !code.hidden; code.style.display = code.hidden ? "none" : "flex"; video.style.width = code.hidden ? "100%" : "50%"; target.textContent = code.hidden ? "Split screen" : "Full camera"; break;
+                case "copy": await navigator.clipboard.writeText(outgoing); status.textContent = "Message copied. Share it with the new device."; break;
+                case "share":
+                    if (!outgoing) throw new Error("Scan a request or share computer setup first.");
+                    var url = "autoyou://pair/live#message=" + btoa(unescape(encodeURIComponent(outgoing))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+                    if (navigator.share) await navigator.share({ title: "AutoYou live connect", text: url });
+                    else { await navigator.clipboard.writeText(url); status.textContent = "Link copied. Share it with the new device."; }
+                    break;
+                }
+            } catch (error) { assembly.completed = ""; status.textContent = error.message; }
+        });
+        try {
+            var previous = await requestJson("/api/live-pair/status");
+            lastReply = previous.result ? previous.result.request_id : "";
+            invite = (await postJson("/api/live-pair", { action: "start" })).result;
+            if (closed) { await postJson("/api/live-pair", { action: "cancel" }); return; }
+            status.textContent = "Scan the new device's request, or share computer setup.";
+            interval = setInterval(function () {
+                if (frames.length) { var i = Math.floor(Date.now() / 650) % frames.length; image.src = frames[i]; dialog.querySelector("[data-live-counter]").textContent = "Hold steady · code " + (i + 1) + " of " + frames.length; }
+                scan();
+            }, 650);
+            var refreshAt = Date.now();
+            timer = setInterval(async function () {
+                if (closed || polling || scanning) return;
+                polling = true;
+                try {
+                    if (sharingSetup && Date.now() - refreshAt > 20000) { var refreshed = await postJson("/api/live-pair", { action: "refresh", invite_id: invite.invite_id }); invite = refreshed.result; show(refreshed); refreshAt = Date.now(); }
+                    var incoming = await requestJson("/api/live-pair/status");
+                    if (incoming.result && incoming.result.request_id !== lastReply) { lastReply = incoming.result.request_id; sharingSetup = false; show(incoming); status.textContent = "Incoming connection · let the new device scan this reply."; }
+                } catch (error) { status.textContent = error.message; }
+                finally { polling = false; }
+            }, 2000);
+        } catch (error) { status.textContent = error.message; }
+    }
+
     var NAV = [
         { id: "overview", label: "Overview", icon: "home" },
         { id: "chat", label: "Chat & History", icon: "msg" },
@@ -7609,7 +7751,7 @@
             { label: "Computer video sources", value: selectedOutboundSources.length ? selectedOutboundSources.map(outboundSourceLabel).join(", ") : "None" },
             { label: "Connected clients", value: String(getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0))) }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the audio and video sources paired phones receive during calls.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh devices", "refresh-webrtc-devices", "primary", "refresh") + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "</div></div><div class=\"ayu-grid-2\">" + panel("Call sources", "Current mixed audio and video sources for paired phones.", callSourcesMarkup) + panel("Video call settings", "Core call availability, listening, and recording choices.", videoSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Computer video source", "Choose screen sharing, webcam, both, or neither.", outboundSettingsMarkup) + panel("Remote Desktop settings", "Control whether this computer may share its screen in video calls.", remoteSettingsMarkup) + "</div>" + panel("Phone media state", "Current capabilities phones receive when calls connect.", capabilityMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the audio and video sources paired phones receive during calls.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh devices", "refresh-webrtc-devices", "primary", "refresh") + button("Live QR connect", "live-pair", "primary", "qr") + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "</div></div><div class=\"ayu-grid-2\">" + panel("Call sources", "Current mixed audio and video sources for paired phones.", callSourcesMarkup) + panel("Video call settings", "Core call availability, listening, and recording choices.", videoSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Computer video source", "Choose screen sharing, webcam, both, or neither.", outboundSettingsMarkup) + panel("Remote Desktop settings", "Control whether this computer may share its screen in video calls.", remoteSettingsMarkup) + "</div>" + panel("Phone media state", "Current capabilities phones receive when calls connect.", capabilityMarkup) + "</div>";
     }
 
     function renderSpeechProviderSettingsBody() {
@@ -7780,7 +7922,7 @@
             + '<li><strong>Keep defaults or scan once.</strong> Factory Secure/Enhanced Cloud settings work with the same paid account. For custom settings or all pairing modes, open Settings → Automatic Configuration → Scan QR on your phone.</li>'
             + '<li><strong>Connect.</strong> Cloud Pair uses Enhanced pairing. If you change the computer password later, scan again or enter the same password on your phone.</li>'
             + '</ol><p class="ayu-hint">The QR is created on this computer and contains its pairing credentials. Keep it private.</p>'
-            + '<div class="ayu-inline-actions">' + button("Show phone setup QR", "settings-export-qr", "primary", "qr") + '</div></div>';
+            + '<div class="ayu-inline-actions">' + button("Live QR connect", "live-pair", "primary", "camera") + button("Show phone setup QR", "settings-export-qr", "secondary", "qr") + '</div></div>';
     }
 
     function buildTotpSecretModalHtml(payload) {
@@ -8602,6 +8744,7 @@
     }
 
     async function handleAction(action, element) {
+        if (action === "live-pair") { await openLivePairing(); return; }
         if (!action) {
             return;
         }
