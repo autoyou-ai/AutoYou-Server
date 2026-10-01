@@ -24,6 +24,19 @@ from fastapi import FastAPI, Form, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 
+from shared.chat_history_identity import (
+    ADMIN_CHAT_USER_ID,
+    ADMIN_SURFACE_HOME_NETWORK,
+    ADMIN_SURFACE_NETWORK,
+    ADMIN_SURFACE_SECURE_REMOTE_WEB,
+    ADMIN_SURFACE_THIS_COMPUTER,
+    KIND_SELF,
+    admin_surface_label,
+    conversation_origin,
+    describe_conversation,
+)
+from shared.remote_access_policy import REMOTE_BROWSER_HEADER, REMOTE_BROWSER_VIA_HOME_NETWORK
+
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e"
 
 
@@ -92,38 +105,74 @@ def register_routes(
             "available": True,
         }
 
-    _CLIENT_LABELS = {
-        "ios": "iPhone / iPad",
-        "android": "Android",
-        "autoyou-chrome": "Chrome",
-        "autoyou-v2-native": "AutoYou desktop",
-        "admin-web": "Admin page",
-        "autoyou-python": "Desktop client",
-        "autoyou-datachannel": "Paired device",
-        "whatsapp": "WhatsApp",
-        "telegram": "Telegram",
-        "telegram_user": "Telegram",
-        "signal": "Signal",
-        "chatgpt": "ChatGPT",
-        "scheduler": "Scheduler",
-    }
-    _CHANNEL_LABELS = (
-        ("user::telegram", "Telegram"),
-        ("user::whatsapp", "WhatsApp"),
-        ("user::signal", "Signal"),
-        ("user::cloud", "Cloud Pair"),
-        ("user::bluetooth", "Bluetooth"),
-        ("user::local", "Local pair"),
-    )
+    # Turn metadata that says who a conversation is with; the newest value wins.
+    _IDENTITY_KEYS = ("client", "source", "client_display_name", "peer_relay", "admin_surface")
 
-    def _chat_origin(user_id: str, metadata: Dict[str, Any]) -> str:
-        display = _chat_text(metadata.get("client_display_name"), "", 64)
-        client = str(metadata.get("client") or "").strip().lower()
-        label = display or _CLIENT_LABELS.get(client, "")
-        channel = next((name for prefix, name in _CHANNEL_LABELS if user_id.startswith(prefix)), "")
-        if label and channel and channel.lower() not in label.lower():
-            return f"{label} · {channel}"
-        return label or channel
+    def _identity_keys_for_turn(metadata: Dict[str, Any]) -> tuple:
+        # The owner's own turns, including ones added to someone else's
+        # conversation from this page, never rename who it is with.
+        if metadata.get("admin_surface") or str(metadata.get("source") or "") == "admin_web":
+            return ("admin_surface",)
+        return _IDENTITY_KEYS
+
+    def _remember_identity(group: Dict[str, Any], metadata: Dict[str, Any], sort_time: float) -> None:
+        seen = group.setdefault("_identity_seen", {})
+        kept = group.setdefault("_identity", {})
+        for key in _identity_keys_for_turn(metadata):
+            value = metadata.get(key)
+            if value in ("", None, {}) or sort_time < seen.get(key, float("-inf")):
+                continue
+            seen[key] = sort_time
+            kept[key] = value
+
+    def _server_display_name() -> str:
+        getter = getattr(server, "get_configured_server_name", None)
+        try:
+            return str(getter() or "").strip() if callable(getter) else ""
+        except Exception:
+            return ""
+
+    def _admin_surface(request: Request) -> str:
+        """Where the owner has this admin page open, from the request itself."""
+        via_proxy = getattr(server, "_request_via_remote_browser_proxy", None)
+        try:
+            proxied = bool(via_proxy(request)) if callable(via_proxy) else False
+        except Exception:
+            proxied = False
+        if proxied:
+            marker = str(request.headers.get(REMOTE_BROWSER_HEADER) or "").strip().lower()
+            return ADMIN_SURFACE_HOME_NETWORK if marker == REMOTE_BROWSER_VIA_HOME_NETWORK else ADMIN_SURFACE_SECURE_REMOTE_WEB
+        peer = request.client.host if request.client else ""
+        is_loopback = getattr(server, "_is_loopback_client_host", None)
+        try:
+            local = bool(is_loopback(peer)) if callable(is_loopback) else True
+        except Exception:
+            local = True
+        tunneled = bool(str(request.headers.get("X-AutoYou-Tunnel-Client-Ip") or "").strip())
+        return ADMIN_SURFACE_THIS_COMPUTER if local and not tunneled else ADMIN_SURFACE_NETWORK
+
+    def _admin_viewer(request: Request) -> Dict[str, Any]:
+        """The self card: who is chatting here, and through what."""
+        surface = _admin_surface(request)
+        viewer: Dict[str, Any] = {
+            "user_id": ADMIN_CHAT_USER_ID,
+            "name": _server_display_name(),
+            "surface": surface,
+            "surface_label": admin_surface_label(surface),
+        }
+        # AutoYou stamps this only on requests it forwarded for a paired
+        # device (a browser's own copy is dropped), and the device is
+        # connected right now, so its live name may be shown.
+        session_id = str(request.headers.get("X-AutoYou-WebRTC-Session-Id") or "").strip()
+        snapshot = getattr(getattr(server, "WEBRTC", None), "client_display_name_snapshot", None)
+        if surface == ADMIN_SURFACE_SECURE_REMOTE_WEB and session_id and callable(snapshot):
+            try:
+                device_name = _chat_text((snapshot(session_id) or {}).get("client_display_name"), "", 64)
+            except Exception:
+                device_name = ""
+            if device_name:
+                viewer["device_name"] = device_name
+        return viewer
 
     def _voice_training_entries() -> tuple[bool, List[Dict[str, Any]], Any]:
         """Captured/uploaded voice-training clips, newest first (never raises)."""
@@ -251,7 +300,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON body"})
         if not isinstance(body, dict):
             return JSONResponse(status_code=400, content={"success": False, "error": "JSON object required"})
-        user_id = _chat_text(body.get("user_id"), "admin-web-user", 256)
+        user_id = _chat_text(body.get("user_id"), ADMIN_CHAT_USER_ID, 256)
         session_id = _chat_text(body.get("session_id"), "", 256)
         context = body.get("context") if isinstance(body.get("context"), list) else []
         if len(context) > 32:
@@ -274,6 +323,10 @@ def register_routes(
             "client": "admin-web",
             "source": "admin_web",
             **metadata,
+            # Decided here, never taken from the page: history uses it to show
+            # the owner's own turns as theirs, including in someone else's
+            # conversation, and where the owner typed them.
+            "admin_surface": _admin_surface(request),
         }
         try:
             chat_request = server.ChatRequest(**payload)
@@ -351,7 +404,8 @@ def register_routes(
             group["voice_count"] += 1 if turn_voice else 0
             group["file_count"] += 1 if metadata.get("has_files") else 0
             if not group["origin"]:
-                group["origin"] = _chat_origin(user_id, metadata)
+                group["origin"] = conversation_origin(user_id, metadata)
+            _remember_identity(group, metadata, sort_time)
             if sort_time < group["_first"]:
                 group["_first"] = sort_time
                 group["auto_title"] = _chat_text(hit.get("user_message"), "Conversation", 96)
@@ -382,12 +436,29 @@ def register_routes(
             group["has_voice"] = bool(group["has_voice"] or media.get("voice") or group["training_count"])
             group["has_files"] = bool(group["has_files"] or media.get("files"))
             group["has_training"] = bool(group["training_count"])
+        self_name = _server_display_name()
+        for group in grouped.values():
+            group["origin"] = conversation_origin(group["user_id"], group.get("_identity") or {}) or group["origin"]
+            group["identity"] = describe_conversation(group["user_id"], group.get("_identity") or {}, self_name=self_name)
+        # A relayed guest names the paired device that carried it, when that
+        # device's own conversation is known.
+        known_names = {
+            group["user_id"]: group["identity"]["name"]
+            for group in grouped.values()
+            if not group["identity"]["is_self"]
+        }
+        for group in grouped.values():
+            if group["identity"]["kind"] == "peer":
+                group["identity"] = describe_conversation(
+                    group["user_id"], group.get("_identity") or {}, self_name=self_name, known_names=known_names
+                )
         sessions = sorted(grouped.values(), key=lambda item: item.get("_last", 0), reverse=True)[:limit]
         for item in sessions:
-            item.pop("_first", None)
-            item.pop("_last", None)
+            for key in ("_first", "_last", "_identity", "_identity_seen"):
+                item.pop(key, None)
         return server._json_response_no_store({
             "success": True,
+            "viewer": _admin_viewer(request),
             "sessions": sessions,
             "count": len(sessions),
             "voice_training": {
@@ -419,10 +490,20 @@ def register_routes(
             used_media: set[str] = set()
             files: List[Dict[str, Any]] = []
             messages = []
+            identity_meta: Dict[str, Any] = {}
             for event in (raw or {}).get("events", []) if isinstance(raw, dict) else []:
                 data = event.get("data") if isinstance(event, dict) else {}
                 if not isinstance(data, dict):
                     continue
+                turn_meta = data.get("memory_metadata") if isinstance(data.get("memory_metadata"), dict) else {}
+                identity_meta.update({
+                    key: turn_meta[key]
+                    for key in _identity_keys_for_turn(turn_meta)
+                    if turn_meta.get(key) not in ("", None, {})
+                })
+                # Only the admin chat route stamps admin_surface, so a turn the
+                # owner added to someone else's conversation still reads as theirs.
+                author = "self" if turn_meta.get("admin_surface") else "counterpart"
                 timestamp = event.get("timestamp")
                 event_id = str(event.get("id") or "")
                 attachments = []
@@ -451,9 +532,9 @@ def register_routes(
                 for item in reply_media:
                     files.append({**item, "timestamp": item.get("timestamp") or timestamp})
                 if data.get("user_message"):
-                    messages.append({"role": "user", "content": str(data["user_message"]), "timestamp": timestamp, "attachments": attachments})
+                    messages.append({"role": "user", "author": author, "content": str(data["user_message"]), "timestamp": timestamp, "attachments": attachments})
                 elif attachments:
-                    messages.append({"role": "user", "content": "", "timestamp": timestamp, "attachments": attachments})
+                    messages.append({"role": "user", "author": author, "content": "", "timestamp": timestamp, "attachments": attachments})
                 if data.get("agent_response") or reply_media:
                     messages.append({"role": "assistant", "content": str(data.get("agent_response") or ""), "timestamp": timestamp, "attachments": reply_media})
             # Media whose turn never reached history (early replies, failures) is still listed.
@@ -463,6 +544,12 @@ def register_routes(
             titles = manager.get_conversation_titles(user_id) if hasattr(manager, "get_conversation_titles") else {}
             custom = (titles.get((user_id, session_id)) or {}).get("title") or ""
             auto_title = next((_chat_text(item["content"], "", 96) for item in messages if item["role"] == "user" and item["content"]), "") or "Conversation"
+            identity = describe_conversation(user_id, identity_meta, self_name=_server_display_name())
+            if identity["kind"] == KIND_SELF:
+                for item in messages:
+                    if item["role"] == "user":
+                        item["author"] = "self"
+            payload["identity"] = identity
             if messages:
                 payload["messages"] = messages
             payload["files"] = files
@@ -610,7 +697,7 @@ def register_routes(
         offer = body.get("offer") if isinstance(body, dict) else None
         if not isinstance(offer, dict) or not str(offer.get("sdp") or "").strip():
             return JSONResponse(status_code=400, content={"success": False, "error": "A WebRTC offer is required"})
-        user_id = _chat_text(body.get("user_id"), "admin-web-user", 256)
+        user_id = _chat_text(body.get("user_id"), ADMIN_CHAT_USER_ID, 256)
         call_id = _chat_text(body.get("session_id"), "", 256) or f"admin-call-{uuid.uuid4().hex}"
         if len(call_id) > 256:
             return JSONResponse(status_code=400, content={"success": False, "error": "Invalid call session"})
@@ -653,7 +740,7 @@ def register_routes(
         except Exception:
             body = {}
         call_id = _chat_text(body.get("session_id"), "", 256) if isinstance(body, dict) else ""
-        user_id = _chat_text(body.get("user_id"), "admin-web-user", 256) if isinstance(body, dict) else "admin-web-user"
+        user_id = _chat_text(body.get("user_id"), ADMIN_CHAT_USER_ID, 256) if isinstance(body, dict) else ADMIN_CHAT_USER_ID
         candidate = body.get("candidate") if isinstance(body, dict) else None
         if not call_id or not candidate or not _chat_call_session(call_id, user_id):
             return JSONResponse(status_code=404, content={"success": False, "error": "Call session not found"})
@@ -670,7 +757,7 @@ def register_routes(
         except Exception:
             body = {}
         call_id = _chat_text(body.get("session_id"), "", 256) if isinstance(body, dict) else ""
-        user_id = _chat_text(body.get("user_id"), "admin-web-user", 256) if isinstance(body, dict) else "admin-web-user"
+        user_id = _chat_text(body.get("user_id"), ADMIN_CHAT_USER_ID, 256) if isinstance(body, dict) else ADMIN_CHAT_USER_ID
         if not call_id or not _chat_call_session(call_id, user_id):
             return server._json_response_no_store({"success": True})
         try:

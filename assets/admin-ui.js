@@ -179,6 +179,7 @@
             loaded: false,
             loading: false,
             sessions: [],
+            viewer: null,
             search: "",
             filter: "all",
             selected: null,
@@ -3964,6 +3965,57 @@
         return value;
     }
 
+    // The owner, as the admin page presents them everywhere: the sidebar's
+    // profile name and photo. The chat user id above is only a history key.
+    function chatSelfProfile() {
+        var admin = getByPath(state.bootstrap, "admin", {});
+        var viewer = state.chat.viewer || {};
+        return {
+            name: firstNonBlank([getByPath(admin, "server_name", ""), viewer.name], "AutoYou-Server"),
+            avatarUrl: String(getByPath(admin, "avatar_url", "") || ""),
+            surfaceLabel: String(viewer.surface_label || "This computer"),
+            deviceName: String(viewer.device_name || ""),
+            userId: state.chat.userId || chatDefaultUserId()
+        };
+    }
+
+    function chatInitials(value) {
+        var words = String(value || "").replace(/['’]/g, "").replace(/[^A-Za-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+        if (!words.length) return "?";
+        return (words.length === 1 ? words[0].slice(0, 2) : words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+    }
+
+    // Who a conversation is with. The server decides it from the owner id it
+    // assigned; the fallback only covers servers from before identities.
+    function chatIdentityFor(item) {
+        var identity = item && item.identity;
+        if (identity && identity.kind) return identity;
+        if (!item || item.user_id === chatDefaultUserId()) {
+            return { kind: "self", name: chatSelfProfile().name, detail: "You · Admin page", is_self: true };
+        }
+        return { kind: "device", name: item.origin || "Paired device", detail: "", is_self: false };
+    }
+
+    function chatIdentityLine(identity) {
+        return identity.is_self ? String(identity.detail || "You") : [identity.name, identity.detail].filter(Boolean).join(" · ");
+    }
+
+    function chatFaceMarkup(identity, size) {
+        if (identity && identity.is_self) {
+            var self = chatSelfProfile();
+            var photo = self.avatarUrl ? adminAssetUrl(self.avatarUrl) : "";
+            return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " is-self" + (photo ? " has-image" : "") + "\" aria-hidden=\"true\">" + (photo ? "<img src=\"" + escapeHtml(photo) + "\" alt=\"\">" : escapeHtml(avatarText(self.name))) + "</span>";
+        }
+        var kind = String((identity && identity.kind) || "device");
+        return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " kind-" + escapeHtml(kind) + "\" aria-hidden=\"true\">" + escapeHtml(kind === "room" ? "#" : chatInitials(identity && identity.name)) + "</span>";
+    }
+
+    function chatSelfCardMarkup() {
+        var self = chatSelfProfile();
+        var context = ["You", self.surfaceLabel, self.deviceName].filter(Boolean).join(" · ");
+        return "<div class=\"ayu-chat-identity\" title=\"" + escapeHtml(context + ". Chats you start here are saved in history as " + self.userId + ".") + "\">" + chatFaceMarkup({ is_self: true }, "card") + "<span class=\"ayu-chat-identity-copy\"><small>" + escapeHtml(context) + "</small><strong>" + escapeHtml(self.name) + "</strong></span></div>";
+    }
+
     function chatKindForMime(mimetype) {
         var value = String(mimetype || "").toLowerCase();
         if (value.indexOf("image/") === 0) return "image";
@@ -4045,14 +4097,25 @@
         var body = String(item.content || "").trim();
         var attachmentHtml = attachments.map(function (attachment) { return chatAttachmentMarkup(attachment); }).join("");
         var timestamp = item.timestamp ? formatTimestamp(item.timestamp) : "";
-        return "<article class=\"ayu-chat-message " + role + "\"><div class=\"ayu-chat-avatar\">" + (role === "user" ? "You" : "AI") + "</div><div class=\"ayu-chat-message-body\"><div class=\"ayu-chat-message-meta\"><strong>" + (role === "user" ? "You" : "AutoYou") + "</strong>" + (timestamp ? "<span>" + escapeHtml(timestamp) + "</span>" : "") + "</div>" + (body ? "<div class=\"ayu-chat-bubble\"><p>" + escapeHtml(body).replace(/\n/g, "<br>") + "</p>" + attachmentHtml + "</div>" : attachmentHtml) + (item.pending ? "<small class=\"ayu-chat-pending\">Sending…</small>" : "") + (item.failed ? "<small class=\"ayu-chat-error\">Could not send</small>" : "") + "</div></article>";
+        // The owner's turns read as theirs even inside someone else's
+        // conversation; everyone else keeps their own name and face.
+        var counterpart = chatThreadIdentity();
+        var mine = role === "user" && (counterpart.is_self || item.author === "self");
+        var face = role === "user" ? chatFaceMarkup(mine ? { is_self: true } : counterpart, "message") : "<div class=\"ayu-chat-avatar\">AI</div>";
+        var authorName = role === "user" ? (mine ? "You" : counterpart.name) : "AutoYou";
+        return "<article class=\"ayu-chat-message " + role + (role === "user" && !mine ? " from-other" : "") + "\">" + face + "<div class=\"ayu-chat-message-body\"><div class=\"ayu-chat-message-meta\"><strong>" + escapeHtml(authorName) + "</strong>" + (timestamp ? "<span>" + escapeHtml(timestamp) + "</span>" : "") + "</div>" + (body ? "<div class=\"ayu-chat-bubble\"><p>" + escapeHtml(body).replace(/\n/g, "<br>") + "</p>" + attachmentHtml + "</div>" : attachmentHtml) + (item.pending ? "<small class=\"ayu-chat-pending\">Sending…</small>" : "") + (item.failed ? "<small class=\"ayu-chat-error\">Could not send</small>" : "") + "</div></article>";
+    }
+
+    function chatThreadIdentity() {
+        return chatIdentityFor(state.chat.selected);
     }
 
     function chatVisibleSessions() {
         var query = String(state.chat.search || "").trim().toLowerCase();
         var filter = state.chat.filter || "all";
         return (state.chat.sessions || []).filter(function (item) {
-            var haystack = [item.title, item.auto_title, item.preview, item.origin, item.user_id, item.session_id].join(" ").toLowerCase();
+            var identity = chatIdentityFor(item);
+            var haystack = [item.title, item.auto_title, item.preview, item.origin, identity.name, identity.detail, item.user_id, item.session_id].join(" ").toLowerCase();
             if (query && haystack.indexOf(query) < 0) return false;
             if (filter === "voice" && !item.has_voice) return false;
             if (filter === "files" && !item.has_files) return false;
@@ -4107,8 +4170,9 @@
             var rows = groups[date].map(function (item) {
                 var selected = state.chat.view !== "training" && state.chat.selected && state.chat.selected.session_id === item.session_id && state.chat.selected.user_id === item.user_id;
                 var ids = " data-user-id=\"" + escapeHtml(item.user_id) + "\" data-session-id=\"" + escapeHtml(item.session_id) + "\"";
-                var subtitle = [item.origin, item.custom_title && item.auto_title && item.auto_title !== item.title ? "“" + item.auto_title + "”" : ""].filter(Boolean).join(" · ");
-                return "<div class=\"ayu-chat-session-item" + (selected ? " active" : "") + "\"><button type=\"button\" class=\"ayu-chat-session-row" + (selected ? " active" : "") + "\" data-action=\"chat-open-session\"" + ids + "><span class=\"ayu-chat-session-dot\"></span><span class=\"ayu-chat-session-copy\"><strong>" + escapeHtml(item.title || "Conversation") + (item.custom_title ? "<span class=\"ayu-chat-session-named\" title=\"Named on this server\">" + icon("edit") + "</span>" : "") + "</strong><small>" + escapeHtml(item.preview || "No preview") + "</small><em>" + escapeHtml(subtitle || item.user_id || "") + "</em><span class=\"ayu-chat-session-flags\">" + chatSessionBadges(item) + "</span></span><span class=\"ayu-chat-session-count\">" + escapeHtml(String(item.message_count || 0)) + "</span></button><button type=\"button\" class=\"ayu-chat-session-rename\" data-action=\"chat-rename-session\"" + ids + " aria-label=\"Rename " + escapeHtml(item.title || "conversation") + "\" title=\"Rename\">" + icon("edit") + "</button></div>";
+                var identity = chatIdentityFor(item);
+                var subtitle = [chatIdentityLine(identity), item.custom_title && item.auto_title && item.auto_title !== item.title ? "“" + item.auto_title + "”" : ""].filter(Boolean).join(" · ");
+                return "<div class=\"ayu-chat-session-item" + (selected ? " active" : "") + "\"><button type=\"button\" class=\"ayu-chat-session-row" + (selected ? " active" : "") + (identity.is_self ? " is-self" : "") + "\" data-action=\"chat-open-session\" data-identity-kind=\"" + escapeHtml(identity.kind) + "\"" + ids + ">" + chatFaceMarkup(identity, "row") + "<span class=\"ayu-chat-session-copy\"><strong>" + escapeHtml(item.title || "Conversation") + (item.custom_title ? "<span class=\"ayu-chat-session-named\" title=\"Named on this server\">" + icon("edit") + "</span>" : "") + "</strong><small>" + escapeHtml(item.preview || "No preview") + "</small><em>" + escapeHtml(subtitle || item.user_id || "") + "</em><span class=\"ayu-chat-session-flags\">" + chatSessionBadges(item) + "</span></span><span class=\"ayu-chat-session-count\">" + escapeHtml(String(item.message_count || 0)) + "</span></button><button type=\"button\" class=\"ayu-chat-session-rename\" data-action=\"chat-rename-session\"" + ids + " aria-label=\"Rename " + escapeHtml(item.title || "conversation") + "\" title=\"Rename\">" + icon("edit") + "</button></div>";
             }).join("");
             return "<div class=\"ayu-chat-history-group\"><div class=\"ayu-chat-history-group-label\">" + escapeHtml(date) + "</div>" + rows + "</div>";
         }).join("");
@@ -4123,6 +4187,7 @@
         try {
             var response = await requestJson("/api/chat/sessions?limit=100");
             state.chat.sessions = Array.isArray(response && response.sessions) ? response.sessions : [];
+            state.chat.viewer = (response && response.viewer) || state.chat.viewer;
             state.chat.trainingSummary = (response && response.voice_training) || null;
             if (state.chat.selected) {
                 var fresh = state.chat.sessions.find(function (item) { return item.user_id === state.chat.selected.user_id && item.session_id === state.chat.selected.session_id; });
@@ -4157,7 +4222,8 @@
             state.chat.selected = Object.assign({ user_id: state.chat.userId, session_id: state.chat.sessionId, title: "Conversation" }, listed || {}, {
                 title: (response && response.title) || (listed && listed.title) || "Conversation",
                 auto_title: (response && response.auto_title) || (listed && listed.auto_title) || "",
-                custom_title: Boolean(response && response.custom_title)
+                custom_title: Boolean(response && response.custom_title),
+                identity: (listed && listed.identity) || (response && response.identity) || null
             });
         } catch (error) {
             setNotice("error", error.message || "Conversation could not be opened.");
@@ -4391,7 +4457,7 @@
             var chatPayload = frame.payload || {};
             var metadata = chatPayload.metadata || {};
             var fromUser = Boolean(metadata.is_from_user || metadata.is_transcription || (frame.header.session_id && frame.header.session_id === frame.header.user_id));
-            state.chat.messages.push({ role: fromUser ? "user" : "assistant", content: String(chatPayload.message || chatPayload.text || ""), timestamp: Number(frame.header.timestamp || 0) * 1000, attachments: Array.isArray(chatPayload.context) ? chatPayload.context.reduce(function (all, group) { return all.concat(group.attachments || []); }, []) : [] });
+            state.chat.messages.push({ role: fromUser ? "user" : "assistant", author: fromUser ? "self" : "", content: String(chatPayload.message || chatPayload.text || ""), timestamp: Number(frame.header.timestamp || 0) * 1000, attachments: Array.isArray(chatPayload.context) ? chatPayload.context.reduce(function (all, group) { return all.concat(group.attachments || []); }, []) : [] });
             renderApp({ passive: true });
         }
     }
@@ -4543,7 +4609,7 @@
         }
         var selected = chat.selected;
         var title = selected && selected.title ? selected.title : (chat.pendingTitle || serverName);
-        var eyebrow = selected ? (selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Ready when you are");
+        var eyebrow = selected ? (chatIdentityLine(chatIdentityFor(selected)) || selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Ready when you are");
         var sessionLine = chat.sessionId ? "SessionID " + escapeHtml(chat.sessionId) : "A fresh conversation will be saved automatically";
         if (selected && selected.custom_title && selected.auto_title && selected.auto_title !== selected.title) {
             sessionLine = "Started with “" + escapeHtml(selected.auto_title) + "” · " + sessionLine;
@@ -4580,12 +4646,16 @@
             ? '<div class="ayu-chat-recording"><span class="ayu-chat-recording-dot"></span><strong>' + (chat.recording.phase === "stopping" ? "Saving voice note…" : "Recording voice note") + '</strong><span>' + Math.max(0, Math.round((Date.now() - chat.recording.startedAt) / 1000)) + 's</span></div>'
             : "";
         var inputValue = escapeHtml(chat.composer || "");
+        var counterpart = chatThreadIdentity();
+        var replyContextMarkup = counterpart.is_self || chat.view === "training"
+            ? ""
+            : '<div class="ayu-chat-reply-context">' + chatFaceMarkup({ is_self: true }, "row") + '<span>Replying as you in the conversation with <strong>' + escapeHtml(counterpart.name) + '</strong></span></div>';
         return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>'
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
-            + '</div><div class="ayu-chat-identity"><span class="ayu-chat-identity-avatar">' + escapeHtml(String(chat.userId || chatDefaultUserId()).slice(-2).toUpperCase()) + '</span><span><small>Active UserID</small><strong title="' + escapeHtml(chat.userId || chatDefaultUserId()) + '">' + escapeHtml(chat.userId || chatDefaultUserId()) + '</strong></span></div></aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
-            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '><div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
+            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -4598,6 +4668,7 @@
         state.chat.sessionId = state.chat.sessionId || chatUuid("admin-chat");
         var userMessage = {
             role: "user",
+            author: "self",
             content: text || "Please process the attached file.",
             timestamp: Date.now(),
             attachments: attachments,
@@ -5351,7 +5422,7 @@
         var avatarMarkup = avatarUploading
             ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" disabled aria-busy=\"true\"><span class=\"ayu-btn-spinner\" aria-hidden=\"true\"></span></button>"
             : (avatarUrl
-                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img src=\"" + escapeHtml(avatarUrl) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
+                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img src=\"" + escapeHtml(adminAssetUrl(avatarUrl)) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
                 : "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Upload profile image\" title=\"Upload profile image\"><span>" + escapeHtml(avatarText(serverName)) + "</span></button>");
         var profileMenu = state.profileMenuOpen ? renderProfileMenu(avatarUrl) : "";
         var updateStatus = state.softwareUpdate.payload || getByPath(state.bootstrap, "status.software_update", {});
