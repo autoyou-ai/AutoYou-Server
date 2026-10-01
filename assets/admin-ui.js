@@ -151,6 +151,7 @@
         { id: "overview", label: "Overview", icon: "home" },
         { id: "chat", label: "Chat & History", icon: "msg" },
         { id: "live", label: "Live View", icon: "eye" },
+        { id: "interact", label: "Interact", icon: "agents" },
         { id: "setup", label: "Setup & Boot", icon: "bolt" },
         { id: "ai", label: "AI & Models", icon: "cpu" },
         { id: "agents", label: "Agents", icon: "agents" },
@@ -217,6 +218,7 @@
         composing: false
     };
 
+    var interactTimer = null;
     var state = {
         screen: "overview",
         navOpen: false,
@@ -226,6 +228,7 @@
         modal: null,
         softwareUpdate: { payload: null, loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
+        interact: { payload: null, selected: [], dirty: false, loading: false, saving: false, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
         selectedAgentName: "",
         setup: {
@@ -1328,7 +1331,7 @@
     }
 
     function isImmediateAction(action) {
-        return !action || action.indexOf("nav:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "close-modal" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0;
+        return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-select:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
     }
 
     async function withPendingAction(action, callback) {
@@ -5154,8 +5157,33 @@
         renderApp();
     }
 
+    async function refreshInteract() {
+        if (state.screen !== "interact" || state.interact.loading || state.interact.saving) return;
+        state.interact.loading = true;
+        try {
+            var payload = await requestJson("/api/screen-listen");
+            if (state.screen !== "interact") return;
+            var changed = JSON.stringify(payload) !== JSON.stringify(state.interact.payload);
+            state.interact.payload = payload;
+            if (!state.interact.dirty) state.interact.selected = (payload.selected || []).slice();
+            state.interact.error = "";
+            var recent = (payload.participants || []).some(function (person) {
+                return Date.now() / 1000 - Number(person.last_input_at || 0) < 3;
+            });
+            if (changed || recent) renderApp({ passive: true });
+        } catch (error) {
+            if (state.screen === "interact" && state.interact.error !== error.message) {
+                state.interact.error = error.message;
+                renderApp({ passive: true });
+            }
+        } finally {
+            state.interact.loading = false;
+        }
+    }
+
     function setScreen(screen, options) {
         options = options || {};
+        if (interactTimer) { clearInterval(interactTimer); interactTimer = null; }
         if (state.screen === "guides" && screen !== "guides" && bootSweepState.running) {
             stopBootSweep({ report: false }).catch(function () {});
         }
@@ -5169,6 +5197,10 @@
         scrollShellToTop();
         if (screen === "overview" || screen === "live") {
             ensureLocalPairInfo(false);
+        }
+        if (screen === "interact") {
+            refreshInteract();
+            interactTimer = window.setInterval(refreshInteract, 750);
         }
         if (screen === "setup") {
             ensureSetupData(false);
@@ -8493,6 +8525,23 @@
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Help & Guides</h1><p>Built-in documentation for setup, agents, connectivity, security, speech, and troubleshooting - no internet required. The first-run checklist lives in Setup & Boot.</p></div><div class=\"ayu-inline-actions\">" + button("Open setup", "nav:setup", "secondary", "bolt") + button("Open connectivity", "nav:connectivity", "ghost", "wifi") + "</div></div>" + panel("Documentation", "Pick a topic on the left to read it here, or open it in a new tab.", renderGuideReader()) + panel("Public field guides", "Interactive guides for relay contribution, private hosting, and mobile pairing.", publicGuideMarkup) + "<div class=\"ayu-grid-2\">" + panel("Runtime snapshot", "Useful environment details for debugging packaged vs source deployments.", "<pre class=\"ayu-note ayu-note-green ayu-mono\">" + escapeHtml(JSON.stringify(runtime, null, 2)) + "</pre>") + panel("Boot Sweep", "Legacy dashboard minigame, now restored in the shell with the shared score API.", bootSweepMarkup) + "</div></div>";
     }
 
+    function renderInteractScreen() {
+        var data = state.interact.payload || {};
+        var people = Array.isArray(data.participants) ? data.participants : [];
+        var inputs = Array.isArray(data.inputs) ? data.inputs : [];
+        var rows = people.map(function (person) {
+            var id = String(person.id || "");
+            var interactive = person.mode === "interactive";
+            var selected = state.interact.selected.indexOf(id) !== -1;
+            var recent = Date.now() / 1000 - Number(person.last_input_at || 0) < 1.5 ? badge(person.last_input || "", "blue") : "";
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : "Watching only") + "</p></div>" + recent + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
+        }).join("");
+        var feed = inputs.slice(-30).reverse().map(function (input) {
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";
+        }).join("");
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", "secondary") + button("All unmuted", "interact-save:all", "secondary") + button("Selected", "interact-save:selected", "primary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div></div>";
+    }
+
     function renderCurrentScreen() {
         var markup = "";
         if (state.screen === "overview") {
@@ -8501,6 +8550,8 @@
             markup = renderChatHistoryScreen();
         } else if (state.screen === "live") {
             markup = renderLiveViewScreen();
+        } else if (state.screen === "interact") {
+            markup = renderInteractScreen();
         } else if (state.screen === "setup") {
             markup = renderSetupScreen();
         } else if (state.screen === "ai") {
@@ -8786,6 +8837,34 @@
         }
         if (action.indexOf("nav:") === 0) {
             setScreen(action.split(":")[1]);
+            return;
+        }
+        if (action === "interact-refresh") { await refreshInteract(); return; }
+        if (action.indexOf("interact-select:") === 0) {
+            var chosen = decodeURIComponent(action.slice("interact-select:".length));
+            var connected = ((state.interact.payload || {}).participants || []).some(function (person) {
+                return person.mode === "interactive" && person.id === chosen;
+            });
+            if (!connected) return;
+            var selected = state.interact.selected;
+            state.interact.selected = selected.indexOf(chosen) === -1
+                ? selected.concat([chosen]) : selected.filter(function (id) { return id !== chosen; });
+            state.interact.dirty = true;
+            renderApp();
+            return;
+        }
+        if (action.indexOf("interact-save:") === 0) {
+            var mode = action.slice("interact-save:".length);
+            if (["off", "all", "selected"].indexOf(mode) === -1) return;
+            state.interact.saving = true;
+            try {
+                var saved = await postJson("/api/screen-listen", { mode: mode, selected: state.interact.selected });
+                state.interact.payload = saved;
+                state.interact.selected = (saved.selected || []).slice();
+                state.interact.dirty = false;
+                state.interact.error = "";
+                renderApp();
+            } finally { state.interact.saving = false; }
             return;
         }
         if (action === "open-prompt-builder") {
