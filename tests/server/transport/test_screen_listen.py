@@ -1,10 +1,14 @@
 import asyncio
+import queue
 import struct
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 import server
+from shared import video_call_manager
 from shared.screen_listen import ScreenListenMixer, mix_pcm
 
 
@@ -23,6 +27,60 @@ def test_listen_output_failure_stays_off(monkeypatch):
     with pytest.raises(OSError):
         mixer.configure("all")
     assert mixer.mode == "off"
+
+
+def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypatch):
+    output = queue.Queue()
+    entered, release = threading.Event(), threading.Event()
+
+    class Stream:
+        def write(self, frame):
+            entered.set()
+            release.wait(timeout=2)
+            output.put(frame)
+            time.sleep(0.02)
+
+        def stop_stream(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Device:
+        def open(self, **kwargs):
+            assert kwargs["output"] and kwargs["rate"] == 16000
+            return Stream()
+
+        def terminate(self):
+            pass
+
+    module = SimpleNamespace(paInt16=8, PyAudio=Device)
+    monkeypatch.setattr(video_call_manager, "_load_pyaudio_module", lambda: module)
+    monkeypatch.setattr(video_call_manager, "_PYAUDIO_RUNTIME", video_call_manager._PyAudioRuntime())
+    mixer = ScreenListenMixer()
+
+    def next_sample(expected):
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            sample = struct.unpack("<h", output.get(timeout=0.2)[:2])[0]
+            if sample == expected:
+                return
+        pytest.fail(f"Listen output never contained {expected}")
+
+    try:
+        mixer.configure("all")
+        assert entered.wait(timeout=1)
+        mixer.feed("synthetic-a", struct.pack("<h", 1000) * 320)
+        mixer.feed("synthetic-b", struct.pack("<h", 2000) * 320)
+        release.set()
+        next_sample(3000)
+        mixer.configure("selected", {"synthetic-a"})
+        mixer.feed("synthetic-b", struct.pack("<h", 2000) * 320)
+        mixer.feed("synthetic-a", struct.pack("<h", 1000) * 320)
+        next_sample(1000)
+    finally:
+        release.set()
+        mixer.close()
 
 
 def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
@@ -59,4 +117,9 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     desktop_control.assert_not_awaited()
     manager._set_screen_session(session_id, "watch")
     manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\2\0")
+    assert len(heard) == 1
+    message.payload = {"event": "call_state", "active": False, "platform": "ios"}
+    asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
+    assert manager.screen_listen_snapshot()["participants"] == []
+    manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\3\0")
     assert len(heard) == 1
