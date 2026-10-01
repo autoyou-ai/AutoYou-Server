@@ -11,7 +11,6 @@
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}
     canvas{display:block;width:100%;height:100%;touch-action:none}
     .hud{position:absolute;inset:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:clamp(18px,3vw,38px);pointer-events:none;text-shadow:0 2px 12px #050614}
-    .brand{font-weight:900;font-style:italic;font-size:clamp(1.1rem,2.4vw,2rem);letter-spacing:.06em;color:#fff;line-height:1}.brand span{color:#fb51dc}
     .score{padding-right:58px;text-align:right;font-weight:800;letter-spacing:.14em;font-size:.8rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,4rem);line-height:1;color:#fff;letter-spacing:-.07em}
     .controls{position:absolute;inset:auto 0 max(16px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:clamp(10px,2vw,22px);padding:0 16px}
     button,a{font:inherit}button{cursor:pointer;border:1px solid #7cf4ff;border-radius:14px;background:#0d1436d9;color:#e9fdff;box-shadow:0 0 22px #12bfe854;font-weight:900;letter-spacing:.08em}
@@ -20,32 +19,23 @@
     button:active{transform:translateY(2px);background:#fa42cb;color:#080b1c}
     .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#070b20a8;padding:22px}
     .overlay[hidden]{display:none}.panel{max-width:530px;padding:clamp(24px,5vw,48px);text-align:center;background:#09122bee;border:1px solid #ff50db;border-radius:22px;box-shadow:0 0 60px #e027bd57}
-    .eyebrow{color:#7ff8ff;letter-spacing:.25em;font-size:.75rem;font-weight:800;text-transform:uppercase}
-    h1{margin:10px 0;font-size:clamp(3rem,8vw,6rem);line-height:.88;letter-spacing:-.08em;font-style:italic;text-transform:uppercase}
-    h1 span{color:#ff54da}p{color:#bed0eb}.panel button{padding:14px 28px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 15px}
+    p{color:#bed0eb}.panel button{padding:14px 28px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 15px}
     .hint{font-size:.85rem}
-    #status,#native-status{position:absolute;left:clamp(18px,3vw,38px);font-size:.75rem;font-weight:800;letter-spacing:.14em;color:#8bf7ff;text-transform:uppercase;text-shadow:0 2px 9px #000}
-    #status{top:104px}#native-status{top:126px;color:#c6a8f5}
-    @media(max-width:600px){.controls button{min-height:64px}.controls{gap:8px}.hud{padding:17px}#status,#native-status{left:17px}#status{top:75px}#native-status{top:96px}}
+    @media(max-width:600px){.controls button{min-height:64px}.controls{gap:8px}.hud{padding:17px}}
   </style>
 </head>
 <body>
   <canvas id="game" aria-label="Neon runner game. Use left, jump, and right controls to avoid pink obstacles and collect cyan diamonds."></canvas>
-  <div class="hud"><div class="brand">NEON <span>HORIZON</span></div><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small></div></div>
-  <div id="status" role="status" aria-live="polite">Ready to run</div>
-  <div id="native-status" role="status" aria-live="polite">Playing on this device · no video stream</div>
+  <div class="hud"><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small></div></div>
   <div class="controls" aria-label="Game controls">
     <button type="button" data-action="left" aria-label="Move left">◀ LEFT</button>
     <button type="button" data-action="jump" aria-label="Jump">▲ JUMP</button>
     <button type="button" data-action="right" aria-label="Move right">RIGHT ▶</button>
   </div>
   <div class="overlay" id="overlay"><div class="panel">
-    <div class="eyebrow">On-device game</div>
-    <h1>NEON<br><span>HORIZON</span></h1>
     <p id="message">Dodge the pink gates. Collect the cyan shards. Stay on the road.</p>
     <button id="start" type="button">START RUN</button>
     <div class="hint">Hold controls, swipe to steer or jump, or tilt your phone. Keyboard arrows and Space work too.</div>
-    <p class="hint">Original demo inspired by the retrowave runner feel of Sunset-Cyberspace.</p>
   </div></div>
   <script>
   (() => {
@@ -53,18 +43,34 @@
     const ctx = canvas.getContext('2d');
     const scoreEl = document.querySelector('#score');
     const bestEl = document.querySelector('#best');
-    const statusEl = document.querySelector('#status');
     const overlay = document.querySelector('#overlay');
     const startButton = document.querySelector('#start');
     const message = document.querySelector('#message');
     let width = 0, height = 0, scale = 1, last = 0;
     let mode = 'ready', lane = 0, visualLane = 0, jumpTime = 0, score = 0, best = 0;
     let distance = 0, spawnTime = 0, spawnCount = 0, objects = [];
+    let audioContext, musicTime = 0, musicStep = 0;
     const heldControls = new Map(), pointers = new Map();
     let repeatIn = 0;
     let tiltReference = null;
     const tiltThreshold = 1.8; // m/s²; tune for device motion noise.
     const stars = Array.from({length: 70}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.45, r: i % 9 ? 1 : 2}));
+
+    function unlockAudio() {
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) return;
+      if (!audioContext) audioContext = new Audio();
+      if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+    }
+    function tone(frequency, duration = 0.1, volume = 0.04, type = 'sine') {
+      if (audioContext?.state !== 'running') return;
+      const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+      oscillator.type = type; oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(volume, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(); oscillator.stop(audioContext.currentTime + duration);
+    }
 
     function resize() {
       width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, 2);
@@ -72,25 +78,28 @@
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
     }
     function start() {
+      unlockAudio();
       mode = 'running'; lane = 0; visualLane = 0; jumpTime = 0; score = 0;
       distance = 0; spawnTime = 0.9; spawnCount = 0; objects = [];
+      musicTime = 0; musicStep = 0;
       tiltReference = null;
-      overlay.hidden = true; statusEl.textContent = 'Running';
+      overlay.hidden = true; tone(523, 0.16);
       scoreEl.textContent = '0000';
     }
     function finish() {
       mode = 'over'; best = Math.max(best, Math.floor(score));
       heldControls.clear(); pointers.clear();
       bestEl.textContent = `BEST ${String(best).padStart(4, '0')}`;
-      statusEl.textContent = 'Run over';
+      tone(110, 0.4, 0.08, 'sawtooth');
       message.textContent = `Run over. You scored ${Math.floor(score)}. Go again?`;
       startButton.textContent = 'RUN AGAIN'; overlay.hidden = false;
     }
     function action(name) {
+      unlockAudio();
       if (mode !== 'running') { start(); return; }
-      if (name === 'left') lane = Math.max(-1, lane - 1);
-      if (name === 'right') lane = Math.min(1, lane + 1);
-      if (name === 'jump' && jumpTime <= 0) jumpTime = 0.7;
+      if (name === 'left' && lane > -1) { lane -= 1; tone(330, 0.07); }
+      if (name === 'right' && lane < 1) { lane += 1; tone(392, 0.07); }
+      if (name === 'jump' && jumpTime <= 0) { jumpTime = 0.7; tone(660, 0.12); }
     }
     startButton.addEventListener('click', start);
     document.querySelectorAll('[data-action]').forEach(button => {
@@ -156,6 +165,10 @@
     const laneX = (laneValue, z) => width / 2 + laneValue * roadHalf(z) * 0.62;
     function update(dt) {
       if (mode !== 'running') return;
+      if ((musicTime -= dt) <= 0) {
+        tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.025, 'triangle');
+        musicTime = 0.3;
+      }
       if (heldControls.size && (repeatIn -= dt) <= 0) {
         for (const name of heldControls.values()) action(name);
         repeatIn = 0.18;
@@ -176,7 +189,7 @@
         if (!item.passed && item.z >= 0.9) {
           item.passed = true;
           if (item.lane === lane) {
-            if (item.kind === 'shard') score += 35;
+            if (item.kind === 'shard') { score += 35; tone(880, 0.2, 0.06); }
             else if (jumpTime <= 0.15) { finish(); break; }
           }
         }

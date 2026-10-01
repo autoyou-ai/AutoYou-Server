@@ -1597,7 +1597,7 @@
         var videoCfg = getByPath(cfg, "video_call", {});
         var hasSourceList = Object.prototype.hasOwnProperty.call(videoCfg || {}, "audio_sources");
         var selected = sourceList(getByPath(cfg, "video_call.audio_sources", []));
-        if (!selected.length && !hasSourceList && asBoolean(getByPath(cfg, "video_call.capture_audio", false), false)) {
+        if (!selected.length && !hasSourceList && asBoolean(getByPath(cfg, "video_call.capture_audio", true), true)) {
             var inputSource = String(getByPath(cfg, "video_call.input_audio_source", "default") || "default");
             var outboundSource = String(getByPath(cfg, "video_call.outbound_source", "remote_desktop") || "remote_desktop");
             selected = (inputSource === "desktop_loopback" || (outboundSource === "remote_desktop" && inputSource === "default"))
@@ -3160,7 +3160,7 @@
                 outbound_video_file: selectedVideoSources.indexOf("video_file") !== -1,
                 outbound_camera: selectedVideoSources.indexOf("camera") !== -1,
                 api_video_source_id: getByPath(cfg, "video_call.api_video_source_id", "default"),
-                capture_audio: asBoolean(getByPath(cfg, "video_call.capture_audio", false), false),
+                capture_audio: asBoolean(getByPath(cfg, "video_call.capture_audio", true), true),
                 audio_sources: selectedAudioSources,
                 audio_microphone: selectedAudioSources.indexOf("microphone") !== -1,
                 audio_speaker_loopback: selectedAudioSources.indexOf("speaker_loopback") !== -1,
@@ -7571,7 +7571,7 @@
             + field("Maximum video bitrate (kbps)", input("videoCall.remote_desktop.bitrate_kbps", { type: "number", placeholder: "1500", extraAttrs: "min=\"250\" max=\"3000\" step=\"50\"" + (remoteSettingsActive ? "" : " disabled") }), "Applies to active desktop tracks. An existing connection may need one reconnect when increasing above 1500 kbps.")
             + "</div>"
             + checkbox("videoCall.remote_desktop.control_enabled", "Control Remote Desktop from supported clients", "Allows mouse, touch, and keyboard input only during an authenticated, active, full-screen Linux, macOS, Windows, iOS, Android, or Chrome video session. Leave off for view-only screen sharing.", remoteSettingsActive ? "" : "disabled")
-            + checkbox("videoCall.remote_desktop.game_enabled", "Enable game mode", "Built for full-screen native iOS and Android play, with desktop clients supported too. Connect a local engine for touch, sensor, joystick, button, mouse, and keyboard frames. Without an engine, one-finger touch controls the host mouse for browser games when native host input is available. A local engine or native host input must be available to start controls. Requires screen control. Select Computer sound for game audio. Active game control targets 30 fps at the selected resolution; WebRTC adjusts bitrate for the connection.", remoteSettingsActive && remoteControlConfigured ? "" : "disabled")
+            + checkbox("videoCall.remote_desktop.game_enabled", "Enable game mode", "Stream this computer's screen and sound to authenticated clients, with native touch, controller, mouse, and keyboard input. Computer sound uses the audio setting above. Active game control targets 30 fps at the selected resolution; WebRTC adjusts bitrate for the connection.", remoteSettingsActive && remoteControlConfigured ? "" : "disabled")
             + field("Game buttons", input("videoCall.remote_desktop.game_buttons", { placeholder: "A:action_a, B:action_b" }), "Up to four comma-separated Label:button_name controls on iOS and Android. Labels are 1-12 characters without commas or colons. Leave empty for joystick only. Names use letters, digits, underscore, dot, or hyphen and must start with a letter.")
             + "<div class=\"ayu-remote-desktop-runtime ayu-note ayu-note-" + (remoteControlEnabled ? "green" : (remoteControlConfigured && !remoteControlAvailable ? "red" : "blue")) + "\"><strong>" + escapeHtml(remoteControlEnabled ? "Screen control is ready." : (remoteControlConfigured && !remoteControlAvailable ? "Screen control is unavailable on this host." : "Screen viewing is read-only.")) + "</strong><p>" + escapeHtml(remoteControlEnabled ? "iOS and Android provide native full-screen touch, fixed-pointer mode, and game controls. macOS and Windows provide mouse and keyboard; Chrome supports pointer lock. Control pauses when you switch away or leave full screen." : (remoteControlConfigured && remoteControlAvailable ? "Save these settings to enable full-screen input." : "Turn on Control Remote Desktop to permit full-screen input.")) + "</p></div>"
             + renderStatusRows([

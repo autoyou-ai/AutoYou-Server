@@ -2136,6 +2136,7 @@ class WebRTCManager:
             session_id=str(session_id),
             tts_track=tts_track,
             playback_track=playback_track,
+            include_loopback=self._screen_audio_active_for_session(session_id),
         )
         if effective_audio_track is None:
             self._clear_outbound_audio_track_for_idle(session_id)
@@ -2163,6 +2164,13 @@ class WebRTCManager:
             if track is not None:
                 return candidate_id, track
         return None, None
+
+    def _screen_audio_active_for_session(self, session_id: str) -> bool:
+        if "remote_desktop" not in _runtime._get_video_outbound_sources(cfg=(_runtime.STATE.config or {})):
+            return False
+        _, track = self._desktop_video_track_for_session(session_id)
+        is_enabled = getattr(track, "is_enabled", None)
+        return bool(is_enabled()) if callable(is_enabled) else False
 
     def latest_rewarded_ad_completion(
         self,
@@ -5935,6 +5943,7 @@ class WebRTCManager:
                     session_id=str(chat_id),
                     tts_track=tts_track,
                     playback_track=playback_track,
+                    include_loopback=False,
                 )
                 if effective_audio_track:
                     audio_transceiver.sender.replaceTrack(effective_audio_track)
@@ -6383,6 +6392,7 @@ class WebRTCManager:
                         session_id=str(session_id),
                         tts_track=tts_track,
                         playback_track=playback_track,
+                        include_loopback=False,
                     )
                     if effective_audio_track:
                         audio_transceiver.sender.replaceTrack(effective_audio_track)
@@ -8863,6 +8873,90 @@ class WebRTCManager:
                 )
                 return
 
+            if request_path == "/api/v1/remote-desktop-settings":
+                status_code = 200
+                settings = {}
+                if method not in {"GET", "POST"}:
+                    status_code = 405
+                elif method == "POST":
+                    try:
+                        raw = _runtime._decode_datachannel_http_body(
+                            body, compressed=is_compressed, body_base64=body_base64,
+                        )
+                        if raw is None or len(raw) > 4096:
+                            raise ValueError("Invalid settings body")
+                        changes = _runtime.json.loads(raw)
+                        allowed = {
+                            "computer_sound", "control_enabled", "game_enabled",
+                            "location_recording_enabled", "voice_call_recording_enabled",
+                            "video_call_recording_enabled",
+                        }
+                        if (not isinstance(changes, dict) or not changes
+                                or set(changes) - allowed
+                                or any(type(value) is not bool for value in changes.values())):
+                            raise ValueError("Invalid settings fields")
+                        current = _runtime.STATE.config or {}
+                        video_cfg = _runtime._get_video_call_config(cfg=current)
+                        remote_cfg = video_cfg.get("remote_desktop") or {}
+                        if (changes.get("game_enabled") is True
+                                and not changes.get("control_enabled", remote_cfg.get("control_enabled", False))):
+                            raise ValueError("Game mode requires screen control")
+                        video_patch = {}
+                        remote_patch = {key: changes[key] for key in ("control_enabled", "game_enabled") if key in changes}
+                        if changes.get("control_enabled") is False:
+                            remote_patch["game_enabled"] = False
+                        if remote_patch:
+                            video_patch["remote_desktop"] = remote_patch
+                        for field, config_field in (
+                            ("location_recording_enabled", "location_recording_enabled"),
+                            ("video_call_recording_enabled", "record_my_video"),
+                        ):
+                            if field in changes:
+                                video_patch[config_field] = changes[field]
+                        if "computer_sound" in changes:
+                            sources = [source for source in _runtime._get_video_audio_sources(cfg=current)
+                                       if source != "speaker_loopback"]
+                            if changes["computer_sound"]:
+                                sources.append("speaker_loopback")
+                            video_patch["audio_sources"] = sources
+                        patch = {"video_call": video_patch} if video_patch else {}
+                        if "voice_call_recording_enabled" in changes:
+                            speech = dict(current.get("speech") or {})
+                            training = dict(speech.get("voice_training") or {})
+                            training["capture_enabled"] = changes["voice_call_recording_enabled"]
+                            speech["voice_training"] = training
+                            patch["speech"] = speech
+                        await _runtime._apply_admin_ui_config_update(patch)
+                    except (ValueError, TypeError, UnicodeError):
+                        status_code = 400
+                if status_code == 200:
+                    current = _runtime.STATE.config or {}
+                    video_cfg = _runtime._get_video_call_config(cfg=current)
+                    remote_cfg = video_cfg.get("remote_desktop") or {}
+                    settings = {
+                        "computer_sound": "speaker_loopback" in _runtime._get_video_audio_sources(cfg=current),
+                        "control_enabled": bool(remote_cfg.get("control_enabled", False)),
+                        "game_enabled": bool(remote_cfg.get("game_enabled", False)),
+                        "location_recording_enabled": bool(video_cfg.get("location_recording_enabled", False)),
+                        "voice_call_recording_enabled": bool((current.get("speech") or {}).get("voice_training", {}).get("capture_enabled", False)),
+                        "video_call_recording_enabled": bool(video_cfg.get("record_my_video", False)),
+                        "role": access_role,
+                    }
+                datachannel_manager = self._datachannel_manager_for_session(
+                    message.header.session_id, require_send_message=True,
+                )
+                if datachannel_manager:
+                    await datachannel_manager.send_message(_runtime.create_http_response_message(
+                        status_code=status_code,
+                        headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
+                        body=_runtime.json.dumps(settings, separators=(",", ":")),
+                        request_id=request_id,
+                        session_id=message.header.session_id,
+                        user_id=message.header.user_id,
+                        compressed=False,
+                    ))
+                return
+
             if request_path == "/api/v1/games" or request_path.startswith("/api/v1/games/"):
                 status_code = 200 if method == "GET" else 405
                 response_headers = {"Content-Type": "application/json", "Cache-Control": "no-store"}
@@ -10086,6 +10180,8 @@ class WebRTCManager:
             )
             if not active:
                 await self._release_remote_desktop_control(str(session_id or ""))
+                self._drop_local_capture_audio_tracks_for_ids(alias_ids)
+                self._clear_outbound_audio_track_for_idle(str(session_id or ""))
             return
         # ── video_state: client started/stopped a video call. Gate the outbound
         #    desktop video track so the desktop is only captured/streamed while the
@@ -10240,6 +10336,8 @@ class WebRTCManager:
                     session_id,
                     self._ordered_related_session_ids(str(session_id or "")),
                 )
+            if self._voice_call_client_active_for_session(str(session_id or "")):
+                self._restore_outbound_audio_for_call(str(session_id or ""))
             if not active:
                 await self._release_remote_desktop_control(str(session_id or ""))
             return
