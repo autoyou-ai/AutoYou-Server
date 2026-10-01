@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import json
 import re
+import webbrowser
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -3912,6 +3913,26 @@ class WebRTCManager:
         if lease.get("mouse_fallback") and frame["input_type"] == "touch":
           if not await self._apply_game_touch_fallback_locked(session_id, lease, frame):
             return
+        elif lease.get("host_input_available") and frame["input_type"] in {"axis", "button"}:
+          key = None
+          if frame["input_type"] == "axis" and frame["axis"] in {"left_x", "left_y"}:
+            direction = -1 if frame["value"] < -0.55 else 1 if frame["value"] > 0.55 else 0
+            if direction != lease.get(frame["axis"], 0):
+              lease[frame["axis"]] = direction
+              if direction:
+                keys = ("left", "right") if frame["axis"] == "left_x" else ("up", "down")
+                key = keys[0 if direction < 0 else 1]
+          elif frame["input_type"] == "button" and frame["phase"] == "down":
+            key = {"action_a": "space", "jump": "space", "action_b": "right",
+                   "left": "left", "right": "right"}.get(frame["button"])
+          if key:
+            applied = await _runtime.asyncio.to_thread(_runtime.execute_remote_desktop_keyboard, {
+              "action": "key", "key": key, "phase": "press", "control_id": frame["control_id"],
+            })
+            if not applied:
+              await self._report_remote_desktop_input_failure_locked(session_id, lease)
+              return
+            lease["input_failures"] = 0
         lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
 
     async def _handle_call_remote_desktop_keyboard(
@@ -8950,6 +8971,44 @@ class WebRTCManager:
                         status_code=status_code,
                         headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
                         body=_runtime.json.dumps(settings, separators=(",", ":")),
+                        request_id=request_id,
+                        session_id=message.header.session_id,
+                        user_id=message.header.user_id,
+                        compressed=False,
+                    ))
+                return
+
+            if request_path == "/api/v1/games/hosted/start":
+                status_code = 200
+                result = {"success": True}
+                if method != "POST":
+                    status_code, result = 405, {"success": False, "error": "Use POST to start a hosted game."}
+                elif not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
+                    status_code, result = 409, {"success": False, "error": "Enable Game mode in computer settings first."}
+                elif not self.game_input_hub.connected:
+                    game_url = f"http://127.0.0.1:{_runtime.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"
+                    try:
+                        opened = await _runtime.asyncio.to_thread(webbrowser.open_new, game_url)
+                    except Exception:
+                        opened = False
+                    if opened:
+                        for _ in range(40):
+                            if self.game_input_hub.connected:
+                                break
+                            await _runtime.asyncio.sleep(0.2)
+                    if not opened or not self.game_input_hub.connected:
+                        status_code, result = 503, {
+                            "success": False,
+                            "error": "Could not open the hosted game on the computer. Open Neon Horizon there and try again.",
+                        }
+                datachannel_manager = self._datachannel_manager_for_session(
+                    message.header.session_id, require_send_message=True,
+                )
+                if datachannel_manager:
+                    await datachannel_manager.send_message(_runtime.create_http_response_message(
+                        status_code=status_code,
+                        headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
+                        body=_runtime.json.dumps(result, separators=(",", ":")),
                         request_id=request_id,
                         session_id=message.header.session_id,
                         user_id=message.header.user_id,

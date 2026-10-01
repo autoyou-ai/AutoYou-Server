@@ -12,10 +12,13 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
+from pathlib import Path
 from typing import Any, Callable, Dict
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50"
 
@@ -25,38 +28,42 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
-    @admin_app.get("/api/webrtc/game-input/connection")
-    async def admin_get_game_input_connection(request: Request):
-        auth_error = server._require_webrtc_playback_auth_json(request)
-        if auth_error:
-            return auth_error
-        if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
-            return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
-        return JSONResponse(
-            content={
-                "success": True,
-                "path": "/api/webrtc/game-input/stream",
-                "token": server.WEBRTC.game_input_hub.token,
-                "engine_connected": server.WEBRTC.game_input_hub.connected,
-            },
-            headers={"Cache-Control": "no-store"},
+    hosted_game_path = Path(__file__).resolve().parents[1] / "autoyou_agents/game_agent/website/frontend/play.html"
+
+    def local_game_page_allowed(connection: Request | WebSocket) -> bool:
+        peer = connection.client.host if connection.client else ""
+        host = connection.headers.get("host", "")
+        try:
+            parsed_host = urlsplit(f"http://{host}").hostname
+        except ValueError:
+            return False
+        return bool(
+            server._is_loopback_client_host(peer)
+            and server._is_loopback_client_host(parsed_host)
+            and not any(connection.headers.get(name) for name in (
+                "forwarded", "x-forwarded-for", "x-real-ip", *REMOTE_BROWSER_IDENTITY_HEADERS,
+            ))
         )
 
-    @admin_app.websocket("/api/webrtc/game-input/stream")
-    async def local_game_input_stream(websocket: WebSocket):
-        peer = websocket.client.host if websocket.client else ""
-        authorization = websocket.headers.get("authorization", "")
-        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    @admin_app.get("/api/webrtc/hosted-game/play")
+    async def hosted_game_page(request: Request):
+        if not local_game_page_allowed(request):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Local computer only"})
+        if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
+            return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
+        return FileResponse(hosted_game_path, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    @admin_app.get("/api/webrtc/hosted-game/api/game/native-input/status")
+    async def hosted_game_input_status(request: Request):
+        if not local_game_page_allowed(request):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Local computer only"})
+        return JSONResponse({
+            "available": bool(server._get_game_mode_available(cfg=(server.STATE.config or {}))),
+            "engine_connected": server.WEBRTC.game_input_hub.connected,
+        }, headers={"Cache-Control": "no-store"})
+
+    async def serve_game_input_stream(websocket: WebSocket):
         hub = server.WEBRTC.game_input_hub
-        if (
-            not server._is_loopback_client_host(peer)
-            or any(websocket.headers.get(name) for name in ("forwarded", "x-forwarded-for", "x-real-ip"))
-            or not server._get_game_mode_available(cfg=(server.STATE.config or {}))
-            or not token
-            or not server.secrets.compare_digest(token, hub.token)
-        ):
-            await websocket.close(code=1008)
-            return
         queue = hub.attach()
         if queue is None:
             await websocket.close(code=1013)
@@ -89,6 +96,53 @@ def register_routes(
         finally:
             hub.detach(queue)
             await server.WEBRTC._sync_game_input_engine_state()
+
+    @admin_app.websocket("/api/webrtc/hosted-game/api/game/native-input")
+    async def hosted_game_input_stream(websocket: WebSocket):
+        origin = urlsplit(websocket.headers.get("origin", ""))
+        if (
+            not local_game_page_allowed(websocket)
+            or origin.scheme not in {"http", "https"}
+            or origin.netloc.lower() != websocket.headers.get("host", "").lower()
+            or not server._get_game_mode_available(cfg=(server.STATE.config or {}))
+        ):
+            await websocket.close(code=1008)
+            return
+        await serve_game_input_stream(websocket)
+
+    @admin_app.get("/api/webrtc/game-input/connection")
+    async def admin_get_game_input_connection(request: Request):
+        auth_error = server._require_webrtc_playback_auth_json(request)
+        if auth_error:
+            return auth_error
+        if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
+            return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
+        return JSONResponse(
+            content={
+                "success": True,
+                "path": "/api/webrtc/game-input/stream",
+                "token": server.WEBRTC.game_input_hub.token,
+                "engine_connected": server.WEBRTC.game_input_hub.connected,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @admin_app.websocket("/api/webrtc/game-input/stream")
+    async def local_game_input_stream(websocket: WebSocket):
+        peer = websocket.client.host if websocket.client else ""
+        authorization = websocket.headers.get("authorization", "")
+        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        hub = server.WEBRTC.game_input_hub
+        if (
+            not server._is_loopback_client_host(peer)
+            or any(websocket.headers.get(name) for name in ("forwarded", "x-forwarded-for", "x-real-ip"))
+            or not server._get_game_mode_available(cfg=(server.STATE.config or {}))
+            or not token
+            or not server.secrets.compare_digest(token, hub.token)
+        ):
+            await websocket.close(code=1008)
+            return
+        await serve_game_input_stream(websocket)
 
     @admin_app.get("/api/webrtc/playback/enabled")
     async def admin_get_audio_playback_enabled(request: Request):

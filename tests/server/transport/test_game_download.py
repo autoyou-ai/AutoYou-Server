@@ -1,6 +1,7 @@
 """The paired phone downloads game HTML from the computer over its data channel."""
 
 import base64
+import asyncio
 import gzip
 import json
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import server
+from core_server import webrtc_engine
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
 
 
@@ -76,3 +78,47 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
     asset.write_bytes(b"x" * (512 * 1024 + 1))
     assert (await request("/api/v1/games/neon-horizon"))["status_code"] == 404
     assert json.loads((await request())["body"]) == {"games": []}
+
+
+@pytest.mark.asyncio
+async def test_hosted_game_starts_only_for_editor_and_reports_launch_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    config = server._default_config()
+    config["video_call"]["remote_desktop"].update(control_enabled=True, game_enabled=True)
+    config["autoyou_page"]["remote_access_role"] = "editor"
+    monkeypatch.setattr(server.STATE, "config", config, raising=False)
+    webrtc = server.WebRTCManager()
+    channel = SimpleNamespace(send_message=AsyncMock(return_value=True))
+    webrtc.datachannel_managers["synthetic-session"] = channel
+    opened = []
+    monkeypatch.setattr(webrtc_engine.webbrowser, "open_new", lambda url: opened.append(url) or False)
+
+    async def start():
+        message = DataChannelMessage(
+            header=MessageHeader("synthetic-message", MessageType.HTTP_REQUEST, 0.0,
+                                 "synthetic-session", "synthetic-user"),
+            payload={"request_id": "synthetic-request", "method": "POST",
+                     "url": "/api/v1/games/hosted/start", "headers": {}},
+        )
+        await webrtc._handle_http_request(message)
+        return channel.send_message.call_args.args[0].payload
+
+    assert (await start())["status_code"] == 503
+    assert opened == [f"http://127.0.0.1:{server.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"]
+    loop = asyncio.get_running_loop()
+    def open_game(url):
+        opened.append(url)
+        loop.call_soon_threadsafe(webrtc.game_input_hub.attach)
+        return True
+    monkeypatch.setattr(webrtc_engine.webbrowser, "open_new", open_game)
+    try:
+        assert (await start())["status_code"] == 200
+        assert json.loads((await start())["body"]) == {"success": True}
+        assert len(opened) == 2
+    finally:
+        webrtc.game_input_hub.detach(webrtc.game_input_hub._queue)
+    config["autoyou_page"]["remote_access_role"] = "viewer"
+    channel.send_message.reset_mock()
+    await start()
+    assert channel.send_message.call_args.args[0].payload["status_code"] == 403
+    assert len(opened) == 2
