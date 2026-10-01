@@ -24,7 +24,9 @@ class OpenChannel:
         return True
 
 
-def connect_device(tmp_path, monkeypatch, *, session_id="synthetic-live", sender_id="synthetic-device"):
+def connect_device(
+    tmp_path, monkeypatch, *, session_id="synthetic-live", sender_id="synthetic-device", transport="local"
+):
     """Pair and connect one device on the real engine.
 
     The engine, the identity registry and the conversation store are the real
@@ -51,7 +53,7 @@ def connect_device(tmp_path, monkeypatch, *, session_id="synthetic-live", sender
     )
     monkeypatch.setattr(server, "_get_conversation_session_manager", lambda: manager)
     webrtc = server.WebRTCManager()
-    identity = server.bind_transport_chat_owner("local", sender_id, raw_session_id=session_id)
+    identity = server.bind_transport_chat_owner(transport, sender_id, raw_session_id=session_id)
     channel = OpenChannel()
     webrtc.datachannel_managers[session_id] = channel
     return webrtc, channel, identity, manager
