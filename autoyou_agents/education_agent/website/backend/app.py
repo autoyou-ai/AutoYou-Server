@@ -674,6 +674,20 @@ def _build_snapshot(limit: int = 100) -> Dict[str, Any]:
     frame_status = _live_frame_status(live_video_session_ids)
     capabilities = _capabilities_snapshot(server, cfg)
     computer_video = _computer_video_snapshot(capabilities, webrtc)
+    host_owner = getattr(webrtc, "host_audio_owner", None)
+    device_count = getattr(webrtc, "connected_device_count", None)
+    audio_routing = {
+        "sharing_enabled": bool(getattr(webrtc, "server_microphone_sharing_enabled", True)),
+        "owner": host_owner() if callable(host_owner) else "",
+        "connected_devices": device_count() if callable(device_count) else len(sessions),
+        "same_machine_devices": sum(
+            1 for item in sessions if any(
+                alias in getattr(webrtc, "same_machine_audio_sessions", set())
+                for alias in (item.get("session_aliases") or [])
+            )
+        ),
+        "configured_sources": list((cfg.get("video_call") or {}).get("audio_sources") or []),
+    }
     client_name_history_enabled = False
     history_enabled_fn = getattr(server, "_client_name_history_enabled", None)
     if callable(history_enabled_fn):
@@ -691,6 +705,7 @@ def _build_snapshot(limit: int = 100) -> Dict[str, Any]:
         },
         "video_frames": _jsonable(frame_status),
         "computer_video": _jsonable(computer_video),
+        "audio_routing": audio_routing,
         "self_video": _jsonable(computer_video),
         "recordings": _recording_snapshot(cfg, webrtc),
         "client_identity": {

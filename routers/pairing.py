@@ -13,6 +13,9 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from typing import Any, Callable, Dict, Optional
+import asyncio
+import base64
+import binascii
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
@@ -412,6 +415,61 @@ def register_routes(
             return auth_error
         return server._json_response_no_store(server._bluetooth_pairing_runtime_status())
 
+    def live_pair_response(result, raw=False):
+        from shared.live_pairing import qr_frames, wire_text
+        text = (result.get("message", "") if raw else wire_text(result)) if result else ""
+        images = [server._build_local_qr_data_url(frame) for frame in qr_frames(text)] if text else []
+        return JSONResponse({"result": result, "text": text, "qr_frames": images}, headers={"Cache-Control": "no-store"})
+
+    @admin_app.get("/api/live-pair/status")
+    async def live_pair_status(request: Request):
+        if server._require_login(request):
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        return await asyncio.to_thread(live_pair_response, server.WEBRTC.live_pairing.status())
+
+    @admin_app.post("/api/live-pair/scan")
+    async def live_pair_scan(request: Request):
+        if server._require_login(request):
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        try:
+            if len(await request.body()) > 3000000:
+                raise ValueError("Camera frame is too large")
+            payload = await request.json()
+            source = payload.get("image", "") if isinstance(payload, dict) else ""
+            if not isinstance(source, str) or not source.startswith("data:image/jpeg;base64,"):
+                raise ValueError("Invalid camera frame")
+            data = base64.b64decode(source.split(",", 1)[1], validate=True)
+            if len(data) > 2000000:
+                raise ValueError("Camera frame is too large")
+            def decode():
+                import cv2
+                import numpy as np
+                frame = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if frame is None or max(frame.shape[:2]) > 1920:
+                    raise ValueError("Invalid camera frame")
+                text, _, _ = cv2.QRCodeDetector().detectAndDecode(frame)
+                return text
+            return JSONResponse({"text": await asyncio.to_thread(decode)}, headers={"Cache-Control": "no-store"})
+        except (ValueError, TypeError, binascii.Error):
+            return JSONResponse({"error": "Could not read the camera frame. Use Paste."}, status_code=400)
+        except ImportError:
+            return JSONResponse({"error": "Camera scanning is unavailable. Use Paste."}, status_code=503)
+
+    @admin_app.post("/api/live-pair")
+    async def live_pair_api(request: Request):
+        if server._require_login(request):
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        try:
+            if len(await request.body()) > 70000:
+                raise ValueError("Pairing message is too large")
+            server._configure_pairing_router_helpers()
+            payload = await request.json()
+            result = await server.WEBRTC.live_pair_action("admin-liveqr", payload)
+            return await asyncio.to_thread(live_pair_response, result, payload.get("raw_response") is True)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400,
+                                headers={"Cache-Control": "no-store"})
+
     @admin_app.post("/api/autopair")
     async def autopair_api(request: Request):
         redir = server._require_login(request)
@@ -473,6 +531,7 @@ def register_routes(
                 payload["_autoyou_pairing_mode"] = "totp_pair" if server._is_secure_professional_mode(mode) else "secure_pair"
                 if server._is_loopback_client_host(getattr(getattr(request, "client", None), "host", None)):
                     payload["_autoyou_loopback_pairing"] = True
+                payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
                 payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
                 answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
                 answer_text = await server.pairing_router._format_autopair_answer(
@@ -501,6 +560,7 @@ def register_routes(
             payload["_autoyou_sender_id"] = client_sender_id
             if server._is_loopback_client_host(getattr(getattr(request, "client", None), "host", None)):
                 payload["_autoyou_loopback_pairing"] = True
+            payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
             payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
             if server.pairing_router is None:
                 return JSONResponse({"error": "Pairing subsystem not ready"}, status_code=503)
@@ -1076,6 +1136,7 @@ def register_routes(
         "local_pair_info": local_pair_info,
         "bluetooth_pairing_status_endpoint": bluetooth_pairing_status_endpoint,
         "autopair_api": autopair_api,
+        "live_pair_api": live_pair_api,
         "autopair_hello_api": autopair_hello_api,
         "change_password_endpoint": change_password_endpoint,
         "save_security_endpoint": save_security_endpoint,
