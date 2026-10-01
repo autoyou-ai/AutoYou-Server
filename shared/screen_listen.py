@@ -39,6 +39,8 @@ class ScreenListenMixer:
         self._thread: threading.Thread | None = None
         self._stream = None
         self._instance = None
+        self._resampler = None
+        self._frame_type = None
 
     def configure(self, mode: str, selected: Iterable[str] = ()) -> None:
         if mode not in {"off", "all", "selected"}:
@@ -84,14 +86,33 @@ class ScreenListenMixer:
         module = _load_pyaudio_module()
         instance = _PYAUDIO_RUNTIME.acquire(module)
         try:
-            with _PYAUDIO_RUNTIME.serialized():
-                stream = instance.open(format=module.paInt16, channels=1, rate=16000,
-                                       output=True, frames_per_buffer=FRAME_BYTES // 2)
+            try:
+                with _PYAUDIO_RUNTIME.serialized():
+                    device_rate = int(instance.get_default_output_device_info()["defaultSampleRate"])
+            except Exception:
+                device_rate = 48000
+            last_error = None
+            stream = None
+            for rate in dict.fromkeys((16000, device_rate, 48000, 44100)):
+                try:
+                    if rate != 16000:
+                        from av import AudioFrame, AudioResampler
+                        resampler = AudioResampler(format="s16", layout="mono", rate=rate)
+                    with _PYAUDIO_RUNTIME.serialized():
+                        stream = instance.open(format=module.paInt16, channels=1, rate=rate,
+                                               output=True, frames_per_buffer=rate // 50)
+                    break
+                except Exception as exc:
+                    last_error = exc
+            if stream is None:
+                raise last_error or OSError("No computer audio output is available")
         except Exception:
             _PYAUDIO_RUNTIME.release(instance)
             raise
         self._instance = instance
         self._stream = stream
+        self._resampler = resampler if rate != 16000 else None
+        self._frame_type = AudioFrame if rate != 16000 else None
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="ScreenListen", daemon=True)
         self._thread.start()
@@ -111,7 +132,15 @@ class ScreenListenMixer:
                         self._buffers.pop(session_id, None)
                     frames.append(frame.ljust(FRAME_BYTES, b"\0"))
             try:
-                self._stream.write(mix_pcm(frames))
+                pcm = mix_pcm(frames)
+                if self._resampler is not None:
+                    frame = self._frame_type(format="s16", layout="mono", samples=FRAME_BYTES // 2)
+                    frame.planes[0].update(pcm)
+                    frame.sample_rate = 16000
+                    pcm = b"".join(resampled.to_ndarray().tobytes()
+                                   for resampled in self._resampler.resample(frame))
+                if pcm:
+                    self._stream.write(pcm)
             except Exception:
                 self._stop.set()
                 with self._lock:
@@ -139,3 +168,5 @@ class ScreenListenMixer:
             _PYAUDIO_RUNTIME.release(self._instance)
             self._stream = None
             self._instance = None
+            self._resampler = None
+            self._frame_type = None

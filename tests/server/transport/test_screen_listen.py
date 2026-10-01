@@ -29,7 +29,8 @@ def test_listen_output_failure_stays_off(monkeypatch):
     assert mixer.mode == "off"
 
 
-def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypatch):
+@pytest.mark.parametrize("output_rate", [16000, 44100, 48000])
+def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypatch, output_rate):
     output = queue.Queue()
     entered, release = threading.Event(), threading.Event()
 
@@ -47,8 +48,13 @@ def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypat
             pass
 
     class Device:
+        def get_default_output_device_info(self):
+            return {"defaultSampleRate": output_rate}
+
         def open(self, **kwargs):
-            assert kwargs["output"] and kwargs["rate"] == 16000
+            assert kwargs["output"]
+            if kwargs["rate"] != output_rate:
+                raise OSError("synthetic unsupported output rate")
             return Stream()
 
         def terminate(self):
@@ -62,8 +68,10 @@ def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypat
     def next_sample(expected):
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
-            sample = struct.unpack("<h", output.get(timeout=0.2)[:2])[0]
+            frame = output.get(timeout=0.2)
+            sample = struct.unpack("<h", frame[:2])[0]
             if sample == expected:
+                assert len(frame) >= output_rate * 2 // 50 - 128
                 return
         pytest.fail(f"Listen output never contained {expected}")
 
