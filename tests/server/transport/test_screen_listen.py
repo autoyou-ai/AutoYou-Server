@@ -101,15 +101,22 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     manager._set_screen_session(session_id, "interactive")
     heard = []
     monkeypatch.setattr(manager.screen_listen_mixer, "feed", lambda sid, chunk: heard.append((sid, chunk)))
-    ai = SimpleNamespace(process_audio_chunk=lambda chunk: (_ for _ in ()).throw(AssertionError("AI heard screen audio")))
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Screen audio or controls reached AI")
+
+    ai = SimpleNamespace(process_audio_chunk=forbidden, stop_speaking=forbidden,
+                         set_segmentation_hold=forbidden, flush_utterance=forbidden)
     manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\0\0")
     assert heard == []
     manager.screen_sessions[session_id]["muted"] = False
     manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\1\0")
     assert heard == [(session_id, b"\1\0")]
-    message = SimpleNamespace(header=SimpleNamespace(session_id=session_id), payload={
-        "event": "screen_input", "kind": "choice", "value": "D", "phase": "press",
-    })
+    monkeypatch.setattr(server.STATE, "audio_managers", {session_id: ai})
+    message = SimpleNamespace(header=SimpleNamespace(session_id=session_id), payload={})
+    for event in ("stop_tts", "wuift_state", "wuift_trigger"):
+        message.payload = {"event": event, "active": True}
+        asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
+    message.payload = {"event": "screen_input", "kind": "choice", "value": "D", "phase": "press"}
     asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
     assert manager.screen_listen_snapshot()["inputs"] == []
     message.payload = {"event": "screen_input", "kind": "layout", "value": "choices", "phase": "set"}
