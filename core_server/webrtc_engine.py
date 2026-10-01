@@ -67,6 +67,7 @@ from shared.room_call_listener import computer_presence
 from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
+from shared.live_pairing import LivePairing
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
@@ -126,6 +127,7 @@ class WebRTCManager:
         # mobile-generated room epoch, and the currently live transport. They
         # are intentionally in-memory and never enter the generic offline queue.
         self.room_bridge_grants = RoomBridgeGrantStore()
+        self.live_pairing = LivePairing(getattr(_runtime, "pairing_router", None))
         # Which rooms the Computer is following. Empty until a call carries
         # audio for a room that holds a grant.
         self.call_listeners = CallListenerCoordinator()
@@ -134,6 +136,10 @@ class WebRTCManager:
         self.voice_call_status_by_session: Dict[str, Dict[str, Any]] = {}
         self.voice_call_playback_by_session: Dict[str, Dict[str, Any]] = {}
         self.voice_call_client_active_by_session: Dict[str, bool] = {}
+        # Derived from the pairing HTTP peer. This controls audio routing only.
+        self.same_machine_audio_sessions: Set[str] = set()
+        self.host_media_owner_by_session: Dict[str, str] = {}
+        self.server_microphone_sharing_enabled = True
         # WUIFT segmentation hold requested by the client; re-applied to the
         # per-session AudioManager whenever it is (re)created.
         self.wuift_hold_by_session: Dict[str, bool] = {}
@@ -331,6 +337,58 @@ class WebRTCManager:
             "pairing_mode": pairing_mode or "auto_pair",
         }
 
+    def _same_machine_audio_session(self, session_id: str) -> bool:
+        return any(alias in self.same_machine_audio_sessions
+                   for alias in self._ordered_related_session_ids(str(session_id or "")))
+
+    def host_audio_owner(self) -> str:
+        for session_id in self.same_machine_audio_sessions:
+            if self._voice_call_client_active_for_session(session_id):
+                return "connected_call"
+            owner = self.host_media_owner_by_session.get(session_id, "")
+            if owner in {"connected_call", "lobby", "peer", "recording"}:
+                return owner
+        return ""
+
+    def server_capture_allowed_for_session(self, session_id: str) -> bool:
+        return bool(self.server_microphone_sharing_enabled
+                    and not self._same_machine_audio_session(session_id)
+                    and not self.host_audio_owner())
+
+    def connected_device_count(self, *, same_machine_only: bool = False) -> int:
+        connections: Set[int] = set()
+        for session_id, manager in self.datachannel_managers.items():
+            if same_machine_only and not self._same_machine_audio_session(session_id):
+                continue
+            channel = getattr(manager, "datachannel", None)
+            if str(getattr(channel, "readyState", "") or "").lower() != "open":
+                continue
+            connections.add(id(manager))
+        return len(connections)
+
+    async def set_server_microphone_sharing(self, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Choose whether to share the computer microphone")
+        if self.server_microphone_sharing_enabled == enabled:
+            return
+        self.server_microphone_sharing_enabled = enabled
+        await self._rewire_outbound_audio_for_host()
+
+    async def _rewire_outbound_audio_for_host(self) -> None:
+        """Rebuild live outbound tracks after the host capture owner changes."""
+        seen: Set[int] = set()
+        for session_id in list(self.audio_transceivers):
+            _, transceiver = self._audio_transceiver_for_session(session_id)
+            if transceiver is None or id(transceiver) in seen:
+                continue
+            seen.add(id(transceiver))
+            if self._background_audio_state_for_session(session_id).get("active"):
+                continue
+            sender = getattr(transceiver, "sender", None)
+            if getattr(sender, "track", None) is None and not self._voice_call_client_active_for_session(session_id):
+                continue
+            self._restore_outbound_audio_for_call(session_id)
+
     def set_client_name_override(self, owner_key: Any, value: Any) -> str:
         normalized_owner_key = _runtime._normalize_client_identity_owner_key(owner_key)
         client_name = _runtime._normalize_client_display_name(value)
@@ -457,6 +515,8 @@ class WebRTCManager:
 
     async def apply_video_call_settings(self, *, force_audio_rewire: bool = False) -> None:
         cfg = _runtime.STATE.config or {}
+        self.server_microphone_sharing_enabled = bool(
+            _runtime._get_video_call_config(cfg=cfg).get("server_microphone_sharing_enabled", True))
         video_enabled = _runtime._get_video_call_enabled(cfg=cfg)
         audio_enabled = _runtime._get_video_call_audio_enabled(cfg=cfg)
         agent_processing_enabled = _runtime._get_video_call_agent_processing_enabled(cfg=cfg)
@@ -574,6 +634,7 @@ class WebRTCManager:
         # instead of waiting for the next call.
         audio_signature = (
             bool(_runtime._get_video_call_audio_enabled(cfg=cfg)),
+            self.server_microphone_sharing_enabled,
             tuple(_runtime._get_video_audio_sources(cfg=cfg)),
             _runtime._get_video_input_audio_source(cfg=cfg),
             bool(_runtime._get_ai_audio_replies_enabled(cfg=cfg)),
@@ -5358,6 +5419,11 @@ class WebRTCManager:
                     # Room bridge authority is derived from this handler's
                     # captured, authenticated transport. Never bind or trust a
                     # client-supplied header session_id before authorizing it.
+                    if message.header.message_type == _runtime.MessageType.PAIRING_CONTROL:
+                        self._track_session_task(str(identifier),
+                            self._handle_live_pair_control(message, str(identifier), datachannel_manager),
+                            "live_pairing")
+                        return
                     if message.header.message_type == _runtime.MessageType.ROOM_BRIDGE_CONTROL:
                         self._track_session_task(
                             str(identifier),
@@ -5497,6 +5563,7 @@ class WebRTCManager:
                 datachannel_manager.register_handler(_runtime.MessageType.PING, unified_message_handler)
                 datachannel_manager.register_handler(_runtime.MessageType.VOICE_CALL_CONTROL, unified_message_handler)
                 datachannel_manager.register_handler(_runtime.MessageType.ROOM_BRIDGE_CONTROL, unified_message_handler)
+                datachannel_manager.register_handler(_runtime.MessageType.PAIRING_CONTROL, unified_message_handler)
                 # Observe CHUNK_ACK for reliability diagnostics
                 datachannel_manager.register_handler(_runtime.MessageType.CHUNK_ACK, unified_message_handler)
                 # Register WebSocket proxy handlers
@@ -5516,6 +5583,7 @@ class WebRTCManager:
                 if keepalive_task:
                     keepalive_task.cancel()
                 self._suspend_room_bridge_transport(str(identifier))
+                self.live_pairing.cancel(str(identifier))
                 if datachannel_manager:
                     datachannel_manager.disconnect()
                 for sid, mgr in list(self.datachannel_managers.items()):
@@ -5670,6 +5738,8 @@ class WebRTCManager:
             label="autopair",
             clear_client_status_hint=True,
         )
+        if offer_data.get("_autoyou_same_machine_audio") is True:
+            self.same_machine_audio_sessions.add(str(chat_id))
 
         cfg_snapshot = _runtime.STATE.config or {}
         audio_call_enabled = _runtime._get_video_call_audio_enabled(cfg=cfg_snapshot)
@@ -6638,6 +6708,7 @@ class WebRTCManager:
             return
 
         cleanup_ids = set(self._ordered_related_session_ids(session_id))
+        previous_host_owner = self.host_audio_owner()
         for cleanup_id in cleanup_ids:
             self._suspend_room_bridge_transport(str(cleanup_id))
 
@@ -7083,6 +7154,12 @@ class WebRTCManager:
                         except Exception as close_err:
                             _runtime.LOGGER.warning(f"Error closing lingering WebSocket {req_id}: {close_err}")
 
+        for cleanup_id in cleanup_ids:
+            if cleanup_id not in self.session_peers:
+                self.same_machine_audio_sessions.discard(cleanup_id)
+                self.host_media_owner_by_session.pop(cleanup_id, None)
+        if previous_host_owner != self.host_audio_owner():
+            await self._rewire_outbound_audio_for_host()
         _runtime.LOGGER.info(f"Fully cleaned up WebRTC session {session_id}")
 
     async def async_cleanup_session(self, session_id: str, expected_pc: Optional[RTCPeerConnection] = None):
@@ -7096,6 +7173,53 @@ class WebRTCManager:
         finally:
             if self._cleanup_locks.get(session_id) is lock:
                 self._cleanup_locks.pop(session_id, None)
+
+    async def live_pair_action(self, owner: str, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid live pairing control")
+        self.live_pairing.router = _runtime.pairing_router
+        action = payload.get("action")
+        def next_code():
+            entries = _runtime.pairing_router._ordered_totp_secret_entries("liveqr", owner)
+            if not entries:
+                return ""
+            import pyotp
+            return pyotp.TOTP(entries[0][1]).at(_runtime.time.time() + 30)
+        if action == "start":
+            return self.live_pairing.start(owner, mode=_runtime.get_security_mode(),
+                tier=_runtime.pairing_router._get_security_tier(),
+                ice=await _runtime._get_pairing_ice_servers_async(),
+                name=_runtime.get_configured_server_name(), password=_runtime.get_current_password(),
+                totp_code=next_code())
+        if action == "refresh":
+            return self.live_pairing.invite(owner, str(payload.get("invite_id") or ""), totp_code=next_code())
+        if action == "exchange":
+            return await self.live_pairing.exchange(owner, payload.get("request") or {})
+        if action == "cancel":
+            self.live_pairing.cancel(owner)
+            return {"kind": "cancelled"}
+        raise ValueError("Unsupported live pairing action")
+
+    async def _handle_live_pair_control(self, message, transport_id, manager):
+        payload = message.payload if isinstance(message.payload, dict) else {}
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str) or len(request_id) > 64:
+            return
+        try:
+            identity = self._room_bridge_trusted_owner(transport_id)
+            owner_key = str(getattr(identity, "owner_key", ""))
+            if owner_key.startswith("liveqr:") or getattr(identity, "transport", "") == "liveqr":
+                raise ValueError("Ask the computer owner to help connect another device")
+            if getattr(identity, "transport", "") == "cloud" and self.device_ownership_for_session(transport_id) != DEVICE_OWN:
+                raise ValueError("Ask the computer owner to help connect another device")
+            result = await self.live_pair_action(transport_id, payload)
+            response = {"request_id": request_id, "result": result}
+        except Exception as exc:
+            response = {"request_id": request_id, "error": str(exc)}
+        await manager.send_message(SharedDataChannelMessage(
+            header=SharedMessageHeader(message_id=_runtime.uuid.uuid4().hex,
+                message_type=SharedMessageType.PAIRING_CONTROL, timestamp=_runtime.time.time(),
+                session_id=transport_id), payload=response))
 
     @staticmethod
     def _room_bridge_trusted_owner(trusted_transport_id: str) -> Any:
@@ -10167,6 +10291,16 @@ class WebRTCManager:
             _runtime.LOGGER.warning("Ignoring invalid voice call control payload for %s: %r", session_id, payload)
             return
         event_name = str(payload.get("event") or "").strip().lower()
+        if event_name == "connected_devices_request":
+            manager = self._datachannel_manager_for_session(str(session_id or ""), require_send_message=True)
+            if manager is not None:
+                response = _runtime.create_voice_call_control_message(
+                    {"event": "connected_devices", "count": self.connected_device_count()},
+                    session_id=self._resolve_voice_chat_session_id(str(session_id or "")) or str(session_id or ""),
+                    user_id="AutoYou",
+                )
+                await manager.send_message(response)
+            return
         if event_name == "remote_desktop_control":
             await self._handle_remote_desktop_control(str(session_id or ""), payload)
             return
@@ -10243,6 +10377,8 @@ class WebRTCManager:
             platform = str(payload.get("platform") or "unknown").strip() or "unknown"
             timestamp_ms = payload.get("timestamp_ms")
             active = self._coerce_control_bool(payload.get("active"))
+            local_call = self._same_machine_audio_session(str(session_id or ""))
+            previous_host_owner = self.host_audio_owner() if local_call else ""
             was_active = self._voice_call_client_active_for_session(str(session_id or ""))
             alias_ids = self._set_voice_call_client_active(str(session_id or ""), active)
             if active:
@@ -10269,6 +10405,24 @@ class WebRTCManager:
                 await self._release_remote_desktop_control(str(session_id or ""))
                 self._drop_local_capture_audio_tracks_for_ids(alias_ids)
                 self._clear_outbound_audio_track_for_idle(str(session_id or ""))
+            if local_call and previous_host_owner != self.host_audio_owner():
+                await self._rewire_outbound_audio_for_host()
+            return
+        if event_name == "host_audio_priority":
+            if not self._same_machine_audio_session(str(session_id or "")):
+                return
+            owner = str(payload.get("owner") or "").strip().lower()
+            if owner not in {"", "connected_call", "lobby", "peer", "recording"}:
+                return
+            previous = self.host_audio_owner()
+            for alias in self._ordered_related_session_ids(str(session_id or "")):
+                if alias in self.same_machine_audio_sessions:
+                    if owner:
+                        self.host_media_owner_by_session[alias] = owner
+                    else:
+                        self.host_media_owner_by_session.pop(alias, None)
+            if previous != self.host_audio_owner():
+                await self._rewire_outbound_audio_for_host()
             return
         # ── video_state: client started/stopped a video call. Gate the outbound
         #    desktop video track so the desktop is only captured/streamed while the

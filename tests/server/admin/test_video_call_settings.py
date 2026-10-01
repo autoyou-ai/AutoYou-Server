@@ -1962,6 +1962,129 @@ def test_configured_outbound_audio_keeps_capture_when_stdio_is_redirected(monkey
     assert len(server.STATE.local_audio_tracks["synthetic-session"]) == 2
 
 
+def test_host_microphone_never_returns_to_same_machine_and_yields_to_local_call(monkeypatch):
+    from shared import video_call_manager
+
+    class FakeLocalAudioInputTrack:
+        def __init__(self, *, device_index_or_name, capture_loopback):
+            self.enabled = False
+
+        def enable(self):
+            self.enabled = True
+
+    manager = server.WebRTCManager()
+    manager.same_machine_audio_sessions.add("synthetic-local-session")
+    cfg = server._default_config()
+    cfg["video_call"]["audio_sources"] = ["microphone"]
+    cfg["video_call"]["capture_audio"] = True
+    monkeypatch.setattr(server, "WEBRTC", manager)
+    monkeypatch.setattr(video_call_manager, "LocalAudioInputTrack", FakeLocalAudioInputTrack)
+    monkeypatch.setattr(server.STATE, "local_audio_tracks", {}, raising=False)
+
+    local_reply = object()
+    assert server._create_configured_outbound_audio_track(
+        cfg=cfg, session_id="synthetic-local-session", tts_track=local_reply,
+    ) is local_reply
+    assert server.STATE.local_audio_tracks == {}
+    server._create_configured_outbound_audio_track(
+        cfg=cfg, session_id="synthetic-remote-session", tts_track=object(),
+    )
+    assert len(server.STATE.local_audio_tracks["synthetic-remote-session"]) == 1
+
+    server.STATE.local_audio_tracks.clear()
+    manager.host_media_owner_by_session["synthetic-local-session"] = "connected_call"
+    remote_reply = object()
+    assert server._create_configured_outbound_audio_track(
+        cfg=cfg, session_id="synthetic-remote-session", tts_track=remote_reply,
+    ) is remote_reply
+    assert server.STATE.local_audio_tracks == {}
+
+    manager.host_media_owner_by_session.clear()
+    manager.server_microphone_sharing_enabled = False
+    assert server._create_configured_outbound_audio_track(
+        cfg=cfg, session_id="synthetic-remote-session", tts_track=remote_reply,
+    ) is remote_reply
+    assert server.STATE.local_audio_tracks == {}
+
+
+def test_connected_device_count_deduplicates_session_aliases():
+    manager = server.WebRTCManager()
+    local_channel = SimpleNamespace(datachannel=SimpleNamespace(readyState="open"))
+    remote_channel = SimpleNamespace(datachannel=SimpleNamespace(readyState="open"))
+    manager.datachannel_managers.update({
+        "synthetic-local": local_channel,
+        "synthetic-local-alias": local_channel,
+        "synthetic-remote": remote_channel,
+    })
+    manager.same_machine_audio_sessions.add("synthetic-local")
+
+    assert manager.connected_device_count() == 2
+    assert manager.connected_device_count(same_machine_only=True) == 1
+
+
+@pytest.mark.asyncio
+async def test_host_audio_priority_accepts_only_trusted_same_machine_session(monkeypatch):
+    manager = server.WebRTCManager()
+    manager.same_machine_audio_sessions.add("synthetic-local")
+    rewire = AsyncMock()
+    monkeypatch.setattr(manager, "_rewire_outbound_audio_for_host", rewire)
+    message = SimpleNamespace(payload={"event": "host_audio_priority", "owner": "lobby"})
+
+    await manager._handle_voice_call_control_message(message, trusted_session_id="synthetic-remote")
+    assert manager.host_audio_owner() == ""
+    rewire.assert_not_awaited()
+
+    await manager._handle_voice_call_control_message(message, trusted_session_id="synthetic-local")
+    assert manager.host_audio_owner() == "lobby"
+    rewire.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_microphone_sharing_setting_persists_before_live_rewire(monkeypatch):
+    cfg = server._default_config()
+    manager = server.WebRTCManager()
+    saved = []
+    monkeypatch.setattr(server, "WEBRTC", manager)
+    monkeypatch.setattr(server, "_loaded_config_for_update", lambda **_kwargs: cfg)
+    monkeypatch.setattr(server, "_persist_state_config", lambda value: saved.append(value.copy()))
+
+    await server._apply_server_microphone_sharing(False)
+
+    assert saved[0]["video_call"]["server_microphone_sharing_enabled"] is False
+    assert manager.server_microphone_sharing_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_microphone_sharing_rewires_an_active_remote_sender(monkeypatch):
+    manager = server.WebRTCManager()
+    restored = []
+    manager.audio_transceivers["synthetic-remote"] = SimpleNamespace(
+        sender=SimpleNamespace(track=object()))
+    monkeypatch.setattr(manager, "_restore_outbound_audio_for_call", restored.append)
+
+    await manager.set_server_microphone_sharing(False)
+
+    assert restored == ["synthetic-remote"]
+
+
+@pytest.mark.asyncio
+async def test_microphone_sharing_write_requires_admin_login(monkeypatch):
+    class Request:
+        cookies = {}
+        headers = {}
+
+        async def json(self):
+            return {"enabled": False}
+
+    apply = AsyncMock()
+    monkeypatch.setattr(server, "_apply_server_microphone_sharing", apply)
+
+    response = await server.admin_set_microphone_sharing(Request())
+
+    assert response.status_code == 401
+    apply.assert_not_awaited()
+
+
 def test_admin_get_webrtc_audio_devices(monkeypatch):
     server._WEBRTC_DEVICE_ENUM_CACHE.clear()
     monkeypatch.setenv("AUTOYOU_WEBRTC_DEVICE_ENUM_CACHE_TTL_SECONDS", "0")

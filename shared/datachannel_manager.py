@@ -214,6 +214,7 @@ class MessageType(Enum):
     # Computer connection to an already-open mobile-hosted room. Room turns
     # themselves remain canonical CHAT messages.
     ROOM_BRIDGE_CONTROL = "room_bridge_control"
+    PAIRING_CONTROL = "pairing_control"
     # Link-local Peer Link control (peer_hello / peer_welcome / peer_mode /
     # peer_bye). Peer hubs intercept these and never forward them upstream, but
     # the type still has to exist here: a control frame large enough to be

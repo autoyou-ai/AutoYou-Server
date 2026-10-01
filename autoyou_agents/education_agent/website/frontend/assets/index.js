@@ -3,6 +3,7 @@
 
   var bootstrap = window.__BOOTSTRAP__ || {};
   var tokenKey = "autoyou.education_agent.token";
+  var proxiedThroughAdmin = /^\/agent\//.test(window.location.pathname);
   var state = {
     auth: bootstrap.auth || {},
     token: "",
@@ -11,6 +12,7 @@
     pollTimer: null,
     lastSnapshotAt: 0,
     lastSnapshot: null,
+    micBusy: false,
     feeds: {},
     expandedFeeds: {},
     viewer: {
@@ -312,6 +314,54 @@
     $("db-pill").textContent = "Live only";
     $("db-pill").classList.add("good");
     $("db-pill").classList.remove("warn");
+  }
+
+  function renderAudioRouting(snapshot) {
+    var routing = snapshot.audio_routing || {};
+    var ownerLabels = {
+      connected_call: "Connected computer call",
+      lobby: "Lobby audio",
+      peer: "Peer Link call",
+      recording: "Safety recording"
+    };
+    var owner = String(routing.owner || "");
+    var sources = routing.configured_sources || [];
+    $("mic-owner").textContent = owner ? "In use by " + (ownerLabels[owner] || owner)
+      : routing.sharing_enabled !== true ? "Sharing is paused"
+      : sources.indexOf("microphone") < 0 ? "Microphone capture is off in server media settings"
+      : "Available for connected clients";
+    if (!state.micBusy) {
+      $("mic-sharing-toggle").checked = routing.sharing_enabled === true;
+    }
+    var count = Number(routing.connected_devices || 0);
+    var local = Number(routing.same_machine_devices || 0);
+    $("mic-device-summary").textContent = count + " connected device" + (count === 1 ? "" : "s")
+      + " | " + local + " on this computer";
+  }
+
+  async function loadLiveAudioRouting() {
+    if (!proxiedThroughAdmin) {
+      $("mic-sharing-toggle").disabled = true;
+      $("mic-sharing-note").textContent = "Open Education Agent through the AutoYou Admin UI to manage this microphone.";
+      return;
+    }
+    try {
+      var routing = await api("/api/webrtc/microphone-sharing");
+      renderAudioRouting({ audio_routing: {
+        sharing_enabled: routing.enabled,
+        owner: routing.owner,
+        connected_devices: routing.connected_devices,
+        same_machine_devices: routing.same_machine_devices || 0,
+        configured_sources: routing.configured_sources || []
+      } });
+      $("mic-sharing-toggle").disabled = false;
+    } catch (err) {
+      $("mic-sharing-toggle").disabled = true;
+      $("mic-control-error").textContent = err.status === 401
+        ? "Sign in to the Admin UI to manage microphone sharing."
+        : err.message || "Live microphone status is unavailable.";
+      $("mic-control-error").classList.remove("hidden");
+    }
   }
 
   function viewerGeometry() {
@@ -684,6 +734,7 @@
     renderMessages(snapshot);
     renderRecordings(snapshot);
     renderMediaStatus(snapshot);
+    renderAudioRouting(snapshot);
     renderVideoFeeds(snapshot);
   }
 
@@ -698,6 +749,7 @@
       state.auth = snapshot.auth || state.auth;
       setAuthView(true);
       render(snapshot);
+      await loadLiveAudioRouting();
     } catch (err) {
       if (err.status === 401) {
         clearLiveVideo("Session locked");
@@ -787,6 +839,31 @@
     }
   }
 
+  async function changeMicrophoneSharing(event) {
+    if (state.micBusy) { return; }
+    state.micBusy = true;
+    var input = event.target;
+    input.disabled = true;
+    $("mic-control-error").classList.add("hidden");
+    try {
+      await api("/api/webrtc/microphone-sharing", {
+        method: "PUT",
+        body: JSON.stringify({ enabled: input.checked })
+      });
+      await loadStatus();
+    } catch (err) {
+      $("mic-control-error").textContent = err.status === 401
+        ? "Sign in to the Admin UI to change microphone sharing."
+        : err.message || "Could not update microphone sharing.";
+      $("mic-control-error").classList.remove("hidden");
+      if (state.lastSnapshot) { input.checked = !!(state.lastSnapshot.audio_routing || {}).sharing_enabled; }
+    } finally {
+      state.micBusy = false;
+      input.disabled = false;
+      await loadLiveAudioRouting();
+    }
+  }
+
   function toggleFeedExpansion(key) {
     state.expandedFeeds[key] = !state.expandedFeeds[key];
     if (state.lastSnapshot) {
@@ -801,6 +878,7 @@
     $("auth-form").addEventListener("submit", submitOtp);
     $("logout-button").addEventListener("click", logout);
     $("refresh-button").addEventListener("click", loadStatus);
+    $("mic-sharing-toggle").addEventListener("change", changeMicrophoneSharing);
     $("pause-button").addEventListener("click", function () {
       state.paused = !state.paused;
       $("pause-button").textContent = state.paused ? "Resume" : "Pause";

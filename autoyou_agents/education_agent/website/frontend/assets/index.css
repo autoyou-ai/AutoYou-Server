@@ -806,6 +806,34 @@ body.viewer-open {
 
 }
 
+.mic-control-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.mic-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.mic-toggle-row input {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent, #7dd3fc);
+}
+
+.mic-device-summary {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
 @media (min-width: 681px) and (max-width: 1180px) {
   .self-feed .feed-media {
     height: auto;

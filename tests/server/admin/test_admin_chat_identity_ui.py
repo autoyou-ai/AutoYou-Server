@@ -50,6 +50,31 @@ def test_turns_are_attributed_to_the_owner_or_the_conversations_counterpart():
     assert 'author: "self"' in send
 
 
+def test_an_answer_the_owner_gave_in_person_is_not_shown_as_autoyous():
+    script = _script()
+    message = _between(script, "function chatMessageMarkup(message)", "function chatThreadIdentity()")
+
+    assert 'role === "assistant" && item.human === true' in message
+    assert "sent to the device" in message
+    assert 'chatFaceMarkup({ is_self: true }, "message")' in message
+
+
+def test_the_owner_can_send_their_own_words_to_a_connected_device_without_asking_autoyou():
+    script = _script()
+    renderer = _between(script, "function renderChatHistoryScreen()", "async function sendChatTurn()")
+    reply = _between(script, "async function sendChatDeviceReply()", "async function refreshTelegramSenders")
+    styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
+
+    # Offered only for someone else's conversation whose device is connected now.
+    assert "!counterpart.is_self" in renderer and "chat.selected.live" in renderer
+    assert 'data-action="chat-reply-device"' in renderer
+    assert 'postJson("/api/chat/session/reply"' in reply
+    assert '"/api/chat"' not in reply.replace('"/api/chat/session/reply"', "")
+    assert "response.delivered !== true" in reply  # an undelivered reply is reported, not shown as sent
+    assert 'action === "chat-reply-device"' in script
+    assert ".ayu-chat-device-reply" in styles
+
+
 def test_every_identity_kind_has_a_face():
     styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
 
