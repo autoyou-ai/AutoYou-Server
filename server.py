@@ -4593,7 +4593,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
     if outbound_sources == ["remote_desktop"] and outbound_source != "remote_desktop":
         outbound_sources = [outbound_source]
     input_audio_source = str(raw_cfg.get("input_audio_source") or "default").strip() or "default"
-    capture_audio = _normalize_partner_enabled_flag(raw_cfg.get("capture_audio"), False)
+    capture_audio = _normalize_partner_enabled_flag(raw_cfg.get("capture_audio"), True)
     audio_sources = _normalize_video_audio_sources(
         raw_cfg.get("audio_sources"),
         capture_audio=capture_audio,
@@ -5652,8 +5652,8 @@ def _default_config() -> Dict[str, Any]:
             "outbound_source": "remote_desktop",
             "outbound_sources": ["remote_desktop"],
             "api_video_source_id": "default",
-            "capture_audio": False,
-            "audio_sources": [],
+            "capture_audio": True,
+            "audio_sources": ["speaker_loopback"],
             "input_audio_source": "default",
             "camera_device_id": 0,
             "video_file": {
@@ -9723,6 +9723,7 @@ def _create_configured_outbound_audio_track(
     session_id: str,
     tts_track: Any = None,
     playback_track: Any = None,
+    include_loopback: bool = True,
 ) -> Any:
     tracks: List[Tuple[str, Any]] = []
     if tts_track is not None and _get_ai_audio_replies_enabled(cfg=cfg):
@@ -9741,7 +9742,11 @@ def _create_configured_outbound_audio_track(
         if all(track is not playback_track for _name, track in tracks):
             tracks.append(("playback", playback_track))
 
-    audio_sources = _get_video_audio_sources(cfg=cfg)
+    screen_audio = include_loopback and "remote_desktop" in _get_video_outbound_sources(cfg=cfg)
+    audio_sources = [
+        source for source in _get_video_audio_sources(cfg=cfg)
+        if screen_audio or source != "speaker_loopback"
+    ]
     capture_tracks: List[Any] = []
     if audio_sources:
         try:
