@@ -26,6 +26,10 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import datetime as _datetime
 import logging
 import os
+import re
+import shutil
+import threading
+import uuid
 from pathlib import Path
 from typing import Any, Dict
 
@@ -42,6 +46,43 @@ LOGGER = logging.getLogger(__name__)
 _PERSONA_DIRNAME = "persona_agent"
 _PERSONA_FILENAME = "persona.md"
 _KEYSTORE_SERVICE = "AutoYou-PersonaData"
+_PERSONA_LOCK = threading.RLock()
+# ponytail: one local file lock; split locks if write volume grows.
+
+
+def publish_diary_entry(entry_id: str, markdown: str) -> Dict[str, Any]:
+    """Upsert one explicitly published phone entry without replacing other facts."""
+    try:
+        identifier = str(uuid.UUID(str(entry_id)))
+        text = str(markdown or "").strip()
+        if len(text) > 50000:
+            raise ValueError("Diary entry exceeds the 50000-character limit.")
+        marker = re.escape(str(entry_id))
+        pattern = rf"(?s)^<!-- autoyou-diary:{marker} -->\n### (\d{{4}}-\d{{2}}-\d{{2}})\n\n#### ([^\n]+)\n\n##### ([^\n]*)\n\n(.*?)\n<!-- /autoyou-diary:{marker} -->$"
+        match = re.fullmatch(pattern, text)
+        if not match or text.count("<!-- autoyou-diary:") != 1 or text.count("<!-- /autoyou-diary:") != 1:
+            raise ValueError("Invalid diary Markdown entry.")
+        _datetime.date.fromisoformat(match[1])
+        if len(match[2]) > 200 or len(match[3]) > 200:
+            raise ValueError("Invalid diary heading.")
+        # Canonical markers make retries from either mobile platform idempotent.
+        text = text.replace(f"autoyou-diary:{entry_id}", f"autoyou-diary:{identifier}")
+        block_pattern = rf"(?ms)^<!-- autoyou-diary:{re.escape(identifier)} -->.*?^<!-- /autoyou-diary:{re.escape(identifier)} -->$"
+        with _PERSONA_LOCK:
+            store = _store()
+            existing = store.read() or ""
+            if re.search(block_pattern, existing, flags=re.IGNORECASE):
+                updated = re.sub(block_pattern, lambda _: text, existing, count=1, flags=re.IGNORECASE)
+            else:
+                updated = (existing.rstrip() or "# Persona") + "\n\n" + text + "\n"
+            if updated != existing:
+                store.write(updated)
+        return {"status": "success", "entry_id": identifier, "message": "Diary entry published."}
+    except (ValueError, TypeError) as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception:
+        LOGGER.exception("publish_diary_entry failed")
+        return {"status": "error", "message": "Could not publish the diary entry. Existing profile was preserved."}
 
 
 def _encryption_enabled() -> bool:
@@ -64,6 +105,19 @@ def _store():
         _persona_path(),
         encrypt=_encryption_enabled(),
         keystore_service=_KEYSTORE_SERVICE,
+        keystore_username="persona",
+    )
+
+
+def diary_media_store(entry_id: str, media_id: str):
+    """Apply the Persona data protection policy to phone attachments."""
+    identifier = str(uuid.UUID(entry_id))
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", media_id):
+        raise ValueError("Invalid media id.")
+    from shared.secure_data_store import SecureDataStore
+    return SecureDataStore(
+        _persona_path().parent / "media" / f"{identifier}-{media_id}.json",
+        encrypt=_encryption_enabled(), keystore_service=_KEYSTORE_SERVICE,
         keystore_username="persona",
     )
 
@@ -131,8 +185,9 @@ def save_persona(content: str) -> Dict[str, Any]:
     if not text:
         return {"status": "error", "message": "Refusing to save an empty persona document. Use wipe_persona to clear it."}
     try:
-        _store().write(text)
-        return {"status": "success", "character_count": len(text), "message": "Persona profile saved."}
+        with _PERSONA_LOCK:
+            _store().write(text)
+            return {"status": "success", "character_count": len(text), "message": "Persona profile saved."}
     except Exception as exc:
         LOGGER.error("save_persona failed: %s", exc)
         return {"status": "error", "message": f"Could not save persona profile: {exc}"}
@@ -153,19 +208,20 @@ def append_persona(text: str, heading: str = "") -> Dict[str, Any]:
     if not body:
         return {"status": "error", "message": "Nothing to append - provide the personal detail to record."}
     try:
-        store = _store()
-        existing = ""
-        try:
-            existing = store.read() or ""
-        except Exception:
-            return {"status": "error", "message": "Existing persona profile is encrypted and unreadable; cannot append."}
-        stamp = _datetime.datetime.now().strftime("%Y-%m-%d")
-        title = str(heading or "").strip()
-        block = f"\n\n## {title} ({stamp})\n\n{body}\n" if title else f"\n\n### {stamp}\n\n{body}\n"
-        if not existing.strip():
-            block = f"# Persona\n{block}"
-        store.write((existing.rstrip() + block) if existing.strip() else block)
-        return {"status": "success", "message": "Appended to persona profile."}
+        with _PERSONA_LOCK:
+            store = _store()
+            existing = ""
+            try:
+                existing = store.read() or ""
+            except Exception:
+                return {"status": "error", "message": "Existing persona profile is encrypted and unreadable; cannot append."}
+            stamp = _datetime.datetime.now().strftime("%Y-%m-%d")
+            title = str(heading or "").strip()
+            block = f"\n\n## {title} ({stamp})\n\n{body}\n" if title else f"\n\n### {stamp}\n\n{body}\n"
+            if not existing.strip():
+                block = f"# Persona\n{block}"
+            store.write((existing.rstrip() + block) if existing.strip() else block)
+            return {"status": "success", "message": "Appended to persona profile."}
     except Exception as exc:
         LOGGER.error("append_persona failed: %s", exc)
         return {"status": "error", "message": f"Could not append to persona profile: {exc}"}
@@ -177,12 +233,16 @@ def wipe_persona() -> Dict[str, Any]:
     This is the reset / uninstall-and-reinstall path. Confirm with the user first.
     """
     try:
-        existed = _store().wipe(drop_key=True)
-        return {
-            "status": "success",
-            "existed": existed,
-            "message": "Persona profile wiped." if existed else "No persona profile was present.",
-        }
+        with _PERSONA_LOCK:
+            existed = _store().wipe(drop_key=True)
+            media_dir = _persona_path().parent / "media"
+            if media_dir.exists():
+                shutil.rmtree(media_dir)
+            return {
+                "status": "success",
+                "existed": existed,
+                "message": "Persona profile wiped." if existed else "No persona profile was present.",
+            }
     except Exception as exc:
         LOGGER.error("wipe_persona failed: %s", exc)
         return {"status": "error", "message": f"Could not wipe persona profile: {exc}"}
