@@ -1525,7 +1525,6 @@ def _notification_thread_id(notification: Dict[str, Any]) -> Optional[int]:
 def _build_webrtc_notification_metadata(
     notification: Dict[str, Any],
     reply_target: Dict[str, Any],
-    server: Any,
 ) -> Dict[str, Any]:
     metadata: Dict[str, Any] = {
         "source": "scheduler",
@@ -1542,42 +1541,13 @@ def _build_webrtc_notification_metadata(
     if saved_conversation_session_id:
         metadata["conversation_session_id"] = saved_conversation_session_id
         metadata["conversation_force_target"] = True
-        return metadata
-
-    build_conversation_metadata = getattr(server, "_build_conversation_metadata", None)
-    if not callable(build_conversation_metadata) or not owner_key:
-        return metadata
-
-    transport, separator, sender_id = owner_key.partition(":")
-    if not separator or not sender_id:
-        return metadata
-
-    raw_session_id = str(reply_target.get("session_id") or "").strip() or sender_id
-    thread_id = _notification_thread_id(notification)
-    canonical_user_id = str(notification.get("canonical_user_id") or "").strip() or f"user::{owner_key}"
-    canonical_session_id = str(notification.get("external_session_id") or "").strip()
-    if not canonical_session_id:
-        canonical_session_id = f"session::{owner_key}"
-        if thread_id is not None:
-            canonical_session_id = f"{canonical_session_id}::{thread_id}"
-
-    identity = SimpleNamespace(
-        transport=str(transport).strip().lower(),
-        sender_id=str(sender_id).strip(),
-        raw_session_id=raw_session_id,
-        owner_key=owner_key,
-        canonical_user_id=canonical_user_id,
-        canonical_session_id=canonical_session_id,
-        thread_id=thread_id,
-    )
-    try:
-        metadata.update(build_conversation_metadata(identity))
-    except Exception as exc:
-        LOGGER.debug(
-            "Failed to build queued WebRTC notification conversation metadata for %s: %s",
-            str(notification.get("id") or "<unknown>"),
-            exc,
-        )
+    # With no saved id the conversation is left unnamed, and the engine sends
+    # this to the one the device is in now. The stored history id is not
+    # enough to rebuild the id the device was given: that id also carries the
+    # server's identity key and, except for Cloud Pair, the session id of the
+    # connection, which is new each time a direct pairing connects. Sent
+    # unpinned, an id that is off is ignored by the desktop apps; pinned, it
+    # is filed under a conversation the device has never seen.
     return metadata
 
 
@@ -1715,7 +1685,7 @@ async def _deliver_reply_target_message(
                 "is_notification": True,
             }
             if notification:
-                delivery_metadata = _build_webrtc_notification_metadata(notification, reply_target, server)
+                delivery_metadata = _build_webrtc_notification_metadata(notification, reply_target)
             LOGGER.info(
                 "_deliver_reply_target_message: attempting WebRTC delivery to reply_target=%s, datachannel_managers_keys=%s",
                 reply_target,
