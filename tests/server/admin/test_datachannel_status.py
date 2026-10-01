@@ -19,7 +19,21 @@ __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-a92c5814fac785a84de37da9"
 
 ensure_repo_on_path()
 
+import pytest
+
 import server
+from shared import session_execution
+
+
+@pytest.fixture(autouse=True)
+def _fresh_identity_registry(monkeypatch):
+    # Pairing tests bind the same synthetic device ids in the process-wide
+    # registry; what a device is reported as must not depend on test order.
+    monkeypatch.setattr(
+        session_execution,
+        "_GLOBAL_SESSION_EXECUTION_MANAGER",
+        session_execution.SessionExecutionManager(),
+    )
 
 
 def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch):

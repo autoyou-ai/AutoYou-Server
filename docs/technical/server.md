@@ -43,8 +43,11 @@ reply nobody received. A guest relayed by another device has no connection of
 its own and cannot be answered this way. `GET /api/chat/sessions` adds
 `live: true` to conversations whose device is connected now.
 
-AutoYou AI still answers that device's own turns as usual. An owner reply does
-not pause it.
+The two run side by side on purpose. AutoYou AI keeps answering that device's
+turns, by text and by voice in a call, while you add your own words whenever
+you like. In the web page, open the device's conversation: **↑** asks AutoYou
+inside it, and **Send to _device_** (shown while the device is connected)
+delivers your own words.
 
 ## Which connections count as this computer
 
