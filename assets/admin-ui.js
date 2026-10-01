@@ -4791,15 +4791,21 @@
             : "";
         var inputValue = escapeHtml(chat.composer || "");
         var counterpart = chatThreadIdentity();
+        // ↑ asks AutoYou inside this conversation; only "Send to" reaches the device itself.
+        var deviceLive = !counterpart.is_self && chat.view !== "training" && Boolean(chat.selected && chat.selected.live);
         var replyContextMarkup = counterpart.is_self || chat.view === "training"
             ? ""
-            : '<div class="ayu-chat-reply-context">' + chatFaceMarkup({ is_self: true }, "row") + '<span>Replying as you in the conversation with <strong>' + escapeHtml(counterpart.name) + '</strong></span></div>';
+            : '<div class="ayu-chat-reply-context">' + chatFaceMarkup({ is_self: true }, "row") + '<span>You are in the conversation with <strong>' + escapeHtml(counterpart.name) + '</strong>. ↑ asks AutoYou here. '
+                + (deviceLive ? '<em>Send to ' + escapeHtml(counterpart.name) + '</em> delivers your own words to that device.' : escapeHtml(counterpart.name) + ' is not connected, so your own words cannot reach it now.') + '</span></div>';
+        var deviceReplyMarkup = deviceLive
+            ? '<button type="button" class="ayu-chat-device-reply" data-action="chat-reply-device" title="Deliver this text to the device as your own message. AutoYou is not asked." ' + (isActionPending("chat-reply-device") ? "disabled" : "") + '>' + (isActionPending("chat-reply-device") ? "Sending…" : "Send to " + escapeHtml(counterpart.name)) + '</button>'
+            : "";
         return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>'
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
             + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
-            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div><button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -4868,6 +4874,29 @@
             setNotice("error", error.message || "Chat request failed.");
             renderApp();
         }
+    }
+
+    // The owner's own words, delivered to the device this conversation is with.
+    // Nothing is asked of AutoYou, and an undelivered reply is not kept.
+    async function sendChatDeviceReply() {
+        var input = root && root.querySelector('[data-role="chat-input"]');
+        if (input) state.chat.composer = input.value;
+        var text = String(state.chat.composer || "").trim();
+        var target = state.chat.selected;
+        if (!text || !target || !target.user_id) return;
+        if (state.chat.attachments.length) {
+            setNotice("error", "A message to the device carries text only. Remove the attachment, or use ↑ to ask AutoYou with it.");
+            return;
+        }
+        var response = await postJson("/api/chat/session/reply", { user_id: target.user_id, message: text.slice(0, 4000) });
+        if (!response || response.delivered !== true) {
+            setNotice("error", (response && response.reason) || "The reply was not delivered.");
+            return;
+        }
+        state.chat.composer = "";
+        await ensureChatData(true);
+        // It lands in the device's current conversation, which may be newer than the one open.
+        await loadChatSession(target.user_id, response.session_id || target.session_id);
     }
 
     async function refreshTelegramSenders(showNotice) {
@@ -8921,6 +8950,10 @@
         }
         if (action === "chat-send") {
             await sendChatTurn();
+            return;
+        }
+        if (action === "chat-reply-device") {
+            await sendChatDeviceReply();
             return;
         }
         if (action.indexOf("chat-filter:") === 0) {
