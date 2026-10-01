@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-dadc18001460a8a36a8e8f59"
 
@@ -692,6 +692,38 @@ async def api_create_note(request: Request) -> JSONResponse:
     if "uninstalled" in error_text:
         status_code = 409
     return _json_response(response_payload, status_code=status_code)
+
+
+@app.post("/api/notes/{note_id}/media")
+async def api_attach_phone_media(note_id: int, request: Request, file: UploadFile = File(...)) -> JSONResponse:
+    """Use the existing Notes media store for explicitly published phone media."""
+    notes_tool = get_notes_tool() if notes_agent_installed() else None
+    if notes_tool is None:
+        return _json_response({"success": False, "error": UNINSTALLED_MESSAGE}, status_code=409)
+    note = notes_tool.get_note(note_id)
+    if not note:
+        return _json_response({"success": False, "error": "Note not found."}, status_code=404)
+    media_id = request.headers.get("X-AutoYou-Media-ID", "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", media_id):
+        return _json_response({"success": False, "error": "Invalid media id."}, status_code=400)
+    attachments = (note.get("metadata") or {}).get("media_attachments") or []
+    existing = next((item for item in attachments if item.get("client_media_id") == media_id), None)
+    if existing:
+        return _json_response({"success": True, "attachment_id": existing.get("id")})
+    data = await file.read(5 * 1024 * 1024 + 1)
+    if not data or len(data) > 5 * 1024 * 1024:
+        return _json_response({"success": False, "error": "Media must be nonempty and at most 5 MiB."}, status_code=413)
+    mime = str(file.content_type or "application/octet-stream")
+    if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", mime):
+        return _json_response({"success": False, "error": "Invalid media type."}, status_code=400)
+    try:
+        attachment = notes_tool.save_media_attachment(file.filename or "attachment", base64.b64encode(data).decode("ascii"), mime, source="phone")
+        attachment["client_media_id"] = media_id
+        result = notes_tool.append_media_attachment_to_note(note_id=note_id, attachment=attachment)
+        return _json_response({**result, "attachment_id": attachment.get("id")}, status_code=201 if result.get("success") else 400)
+    except Exception:
+        LOGGER.exception("Phone media publish failed")
+        return _json_response({"success": False, "error": "Could not attach media. The note is preserved."}, status_code=500)
 
 
 @app.get("/api/media/{attachment_id}")
