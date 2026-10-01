@@ -92,6 +92,7 @@ from shared.ollama_gateway import (
     resolve_ollama_thinking_level,
 )
 from shared.odysseus_gateway import call_odysseus
+from shared.chat_history_identity import normalize_admin_surface, sanitize_peer_relay
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-90283c6bfad4f479fd613d7e"
 
@@ -2245,6 +2246,13 @@ def _build_memory_metadata(
         value = request_metadata.get(key)
         if value not in ("", None):
             out[key] = value
+    # Who-is-who for Chat & History, bounded before it is kept.
+    peer_relay = sanitize_peer_relay(request_metadata.get("peer_relay"))
+    if peer_relay:
+        out["peer_relay"] = peer_relay
+    admin_surface = normalize_admin_surface(request_metadata.get("admin_surface"))
+    if admin_surface:
+        out["admin_surface"] = admin_surface
     if isinstance(response_metadata, dict):
         for key in ("response_author", "agent_name", "message_id", "invocation_id"):
             value = response_metadata.get(key)
