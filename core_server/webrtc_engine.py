@@ -4147,6 +4147,12 @@ class WebRTCManager:
         requested_conversation_session_id = str(
           effective_metadata.get("conversation_session_id") or ""
         ).strip()
+        if not requested_conversation_session_id:
+          # No conversation was named, so this goes to the one the device is
+          # in now, as an AI reply does. The transport identity carries no
+          # thread: on its own it names the device's first conversation, and
+          # a client that has since started another ignores a message for it.
+          identity = _runtime._resolve_conversation_identity(identity)
         if not requested_conversation_session_id or requested_conversation_session_id == canonical_session_id:
           conversation_metadata = _runtime._build_conversation_metadata(identity)
           effective_metadata["conversation_session_id"] = conversation_metadata.get(

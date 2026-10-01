@@ -2070,6 +2070,8 @@ async def broadcast_alert(text: str):
             LOGGER.info("broadcast_alert: WebRTC has %d live datachannel client(s): %s", len(session_ids), session_ids)
             for session_id in session_ids:
                 try:
+                    # No conversation is named or forced: an alert belongs to
+                    # none, so each device gets it in the one it has open.
                     ok = await webrtc.send_chat_to_session(
                         session_id,
                         text,

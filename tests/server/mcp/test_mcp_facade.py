@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from routers.mcp import register_routes
+from tests.support.connected_device import connect_device
 
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-22be12829f2dc545050d564f"
 
@@ -147,6 +148,39 @@ def test_full_mcp_facade_is_authenticated_and_delegates_native_paths() -> None:
         metadata={"source": "autoyou-mcp", "client": "chatgpt"},
         user_id=None,
     )
+
+
+def test_full_mcp_send_reaches_the_conversation_the_device_is_in_now(tmp_path, monkeypatch) -> None:
+    """Through the real engine: no conversation is named, so it goes where an AI reply would."""
+    import server as full_server
+
+    webrtc, channel, paired, manager = connect_device(
+        tmp_path, monkeypatch, session_id="synthetic-full-session"
+    )
+    # The device has since started a new conversation.
+    manager.advance_conversation_thread(paired.owner_key)
+    as_an_ai_reply = full_server._build_conversation_metadata(
+        full_server._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-full-session"))
+    )
+    server = _FakeServer()
+    server.WEBRTC = webrtc
+
+    with _client(server) as client:
+        sent = client.post(
+            "/api/v1/mcp/send/synthetic-full-session",
+            headers={"Authorization": f"Bearer {MCP_TOKEN}"},
+            json={"text": "synthetic direct message"},
+        )
+
+    assert sent.json()["sent"] is True
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert message.payload["message"] == "synthetic direct message"
+    assert (metadata["source"], metadata["client"]) == ("autoyou-mcp", "chatgpt")
+    # A device ignores a message addressed to a conversation it has left.
+    assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+    assert metadata["conversation_thread_id"] == 2
+    assert "conversation_force_target" not in metadata
 
 
 @pytest.mark.parametrize(
