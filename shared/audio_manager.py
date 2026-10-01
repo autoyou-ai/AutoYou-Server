@@ -2835,7 +2835,7 @@ class AudioManager:
         except Exception:
             return False
 
-    def play_audio_file(self, file_path: str, *, source: str = "audio_file") -> Dict[str, Any]:
+    def play_audio_file(self, file_path: str, *, source: str = "audio_file", loop: bool = False) -> Dict[str, Any]:
         normalized_path = os.path.abspath(os.path.expanduser(str(file_path or "").strip()))
         if not normalized_path:
             raise ValueError("file_path is required")
@@ -2844,6 +2844,8 @@ class AudioManager:
         playback_track = self._get_playback_track()
         if playback_track is None:
             raise RuntimeError("No outbound audio track is available")
+        if loop:
+            return playback_track.play_audio_file(normalized_path, source=source, loop=True)
         return playback_track.play_audio_file(normalized_path, source=source)
 
     def _media_control_track(self) -> Optional[TTSAudioStreamTrack]:

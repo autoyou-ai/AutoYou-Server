@@ -62,9 +62,9 @@ def register_routes(
             "engine_connected": server.WEBRTC.game_input_hub.connected,
         }, headers={"Cache-Control": "no-store"})
 
-    async def serve_game_input_stream(websocket: WebSocket):
+    async def serve_game_input_stream(websocket: WebSocket, *, owner: str = "engine"):
         hub = server.WEBRTC.game_input_hub
-        queue = hub.attach()
+        queue = hub.attach(owner=owner)
         if queue is None:
             await websocket.close(code=1013)
             return
@@ -108,7 +108,7 @@ def register_routes(
         ):
             await websocket.close(code=1008)
             return
-        await serve_game_input_stream(websocket)
+        await serve_game_input_stream(websocket, owner="hosted-neon")
 
     @admin_app.get("/api/webrtc/game-input/connection")
     async def admin_get_game_input_connection(request: Request):

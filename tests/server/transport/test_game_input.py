@@ -1,14 +1,16 @@
 """Game frames stay on the authenticated WebRTC lease and local engine stream."""
 
 import asyncio
+import wave
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 import server
+from core_server.webrtc_engine import _HOSTED_GAME_LOOP
 from shared import video_call_manager
 from shared.game_input import GameInputHub, normalize_game_input
 
@@ -413,6 +415,33 @@ def test_local_engine_stream_requires_token(monkeypatch):
             })
         assert sync.await_count == 2
         assert not server.WEBRTC.game_input_hub.connected
+
+
+def test_hosted_game_audio_uses_playback_mixer_only_for_hosted_engine(monkeypatch):
+    with wave.open(str(_HOSTED_GAME_LOOP), "rb") as sound:
+        assert sound.getnchannels() == 1 and sound.getframerate() == 16000
+        assert sound.getnframes() > 16000
+    monkeypatch.setattr(server, "_get_audio_playback_enabled", lambda cfg=None: True)
+    manager = SimpleNamespace(play_audio_file=MagicMock(), stop_playback=MagicMock())
+    webrtc = server.WebRTCManager()
+    monkeypatch.setattr(webrtc, "_resolve_audio_manager_for_reply_target", lambda target: ("synthetic-session", manager))
+    lease = {"control_id": "synthetic-control", "mode": "game"}
+    webrtc.remote_desktop_control_leases_by_session["synthetic-session"] = lease
+    queue = webrtc.game_input_hub.attach(owner="hosted-neon")
+    try:
+        webrtc._publish_game_session_start("synthetic-session", lease)
+        manager.play_audio_file.assert_called_once_with(str(_HOSTED_GAME_LOOP), source="hosted_game", loop=True)
+        webrtc._stop_hosted_game_audio(lease)
+        manager.stop_playback.assert_called_once_with(source="hosted_game")
+    finally:
+        webrtc.game_input_hub.detach(queue)
+    assert webrtc.game_input_hub.owner is None
+    queue = webrtc.game_input_hub.attach()
+    try:
+        webrtc._publish_game_session_start("synthetic-session", lease)
+        manager.play_audio_file.assert_called_once()
+    finally:
+        webrtc.game_input_hub.detach(queue)
 
 
 def test_hosted_game_page_accepts_only_local_same_origin_input(monkeypatch):

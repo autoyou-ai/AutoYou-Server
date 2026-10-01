@@ -17,6 +17,7 @@ import inspect
 import json
 import re
 import webbrowser
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -76,6 +77,7 @@ _MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="defaul
                     b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
                     b'media-src data:; connect-src \'none\'; form-action \'none\'">')
 _MOBILE_GAME_MAX_BYTES = 512 * 1024
+_HOSTED_GAME_LOOP = Path(__file__).resolve().parents[1] / "autoyou_agents/game_agent/website/frontend/assets/audio/stream-loop.wav"
 
 
 def _speak_audio_manager(audio_manager: Any, message: str, *, context: str = "") -> None:
@@ -3458,6 +3460,30 @@ class WebRTCManager:
       self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
         "event": "game_input", "input_type": "session_start", "control_id": str(lease["control_id"]),
       })
+      if (self.game_input_hub.owner == "hosted-neon"
+          and _runtime._get_audio_playback_enabled(cfg=(_runtime.STATE.config or {}))
+          and not lease.get("hosted_game_audio_manager")):
+        _resolved, audio_manager = self._resolve_audio_manager_for_reply_target({
+          "transport": "webrtc", "session_id": session_id,
+        })
+        if audio_manager is not None:
+          try:
+            audio_manager.play_audio_file(str(_HOSTED_GAME_LOOP), source="hosted_game", loop=True)
+            lease["hosted_game_audio_manager"] = audio_manager
+          except Exception as exc:
+            _runtime.LOGGER.warning("Could not start hosted game audio: %s", exc)
+
+    def _stop_hosted_game_audio(self, lease: Dict[str, Any]) -> None:
+      audio_manager = lease.pop("hosted_game_audio_manager", None)
+      if audio_manager is None:
+        return
+      if any(candidate is not lease and candidate.get("hosted_game_audio_manager") is audio_manager
+             for candidate in self.remote_desktop_control_leases_by_session.values()):
+        return
+      try:
+        audio_manager.stop_playback(source="hosted_game")
+      except Exception as exc:
+        _runtime.LOGGER.warning("Could not stop hosted game audio: %s", exc)
 
     async def _expire_remote_desktop_control_lease(
       self,
@@ -3508,6 +3534,7 @@ class WebRTCManager:
       lease["held_keys"] = set()
       lease["expires_at"] = 0.0
       if lease.get("mode") == "game":
+        self._stop_hosted_game_audio(lease)
         self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
           "event": "game_input", "input_type": "session_end", "control_id": str(lease["control_id"]),
         })
@@ -3729,6 +3756,7 @@ class WebRTCManager:
       if lease.get("mode") != "game":
         return False
       if lease.get("engine_input") and not self.game_input_hub.connected:
+        self._stop_hosted_game_audio(lease)
         lease["engine_input"] = False
         lease["host_input_available"] = await self._probe_remote_desktop_input_backend(refresh=True)
         lease["mouse_fallback"] = lease["host_input_available"]
