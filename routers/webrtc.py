@@ -25,6 +25,46 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
+    @admin_app.get("/api/webrtc/microphone-sharing")
+    async def admin_get_microphone_sharing(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        manager = server.WEBRTC
+        if manager is None:
+            return JSONResponse(status_code=503, content={"success": False, "error": "Call service unavailable"})
+        return {
+            "success": True,
+            "enabled": manager.server_microphone_sharing_enabled,
+            "owner": manager.host_audio_owner(),
+            "connected_devices": manager.connected_device_count(),
+            "same_machine_devices": manager.connected_device_count(same_machine_only=True),
+            "configured_sources": server._get_video_audio_sources(cfg=(server.STATE.config or {})),
+        }
+
+    @admin_app.put("/api/webrtc/microphone-sharing")
+    async def admin_set_microphone_sharing(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON body"})
+        if not isinstance(payload, dict) or type(payload.get("enabled")) is not bool:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Choose whether to share the computer microphone"})
+        manager = server.WEBRTC
+        if manager is None:
+            return JSONResponse(status_code=503, content={"success": False, "error": "Call service unavailable"})
+        try:
+            await server._apply_server_microphone_sharing(payload["enabled"])
+        except server.ConfigWriteBlocked as exc:
+            return server._json_config_write_blocked_response(str(exc))
+        return {"success": True, "enabled": manager.server_microphone_sharing_enabled,
+                "owner": manager.host_audio_owner(), "connected_devices": manager.connected_device_count(),
+                "same_machine_devices": manager.connected_device_count(same_machine_only=True),
+                "configured_sources": server._get_video_audio_sources(cfg=(server.STATE.config or {}))}
+
     @admin_app.get("/api/webrtc/playback/enabled")
     async def admin_get_audio_playback_enabled(request: Request):
         auth_error = server._require_webrtc_playback_auth_json(request)
@@ -311,6 +351,8 @@ def register_routes(
             return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
     routes = {
+        "admin_get_microphone_sharing": admin_get_microphone_sharing,
+        "admin_set_microphone_sharing": admin_set_microphone_sharing,
         "admin_get_audio_playback_enabled": admin_get_audio_playback_enabled,
         "admin_get_webrtc_capabilities": admin_get_webrtc_capabilities,
         "admin_get_webrtc_audio_devices": admin_get_webrtc_audio_devices,

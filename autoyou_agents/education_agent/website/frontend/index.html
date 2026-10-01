@@ -112,6 +112,22 @@
           </section>
 
           <aside class="side-stack">
+            <section class="panel mic-control-panel" aria-labelledby="mic-control-title">
+              <div class="panel-header compact">
+                <div>
+                  <p class="eyebrow">Device controls</p>
+                  <h2 id="mic-control-title">Computer microphone</h2>
+                </div>
+              </div>
+              <p id="mic-owner" class="muted">Checking microphone owner</p>
+              <label class="mic-toggle-row" for="mic-sharing-toggle">
+                <span>Share with connected clients when free</span>
+                <input id="mic-sharing-toggle" type="checkbox" role="switch" aria-describedby="mic-sharing-note">
+              </label>
+              <p id="mic-sharing-note" class="muted">A Lobby or local call takes priority. Your own device never receives its microphone back.</p>
+              <div id="mic-device-summary" class="mic-device-summary" aria-live="polite"></div>
+              <p id="mic-control-error" class="form-error hidden" role="alert"></p>
+            </section>
             <section class="panel">
               <div class="panel-header compact">
                 <h2>Sessions</h2>
