@@ -60,6 +60,7 @@ from shared.remote_access_policy import (
     normalize_device_ownership,
 )
 from shared.room_call_listener import computer_presence
+from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
 
@@ -2867,6 +2868,31 @@ class WebRTCManager:
             "peer",
             relay_identity,
         )
+
+    def _relay_presentation(self, message: 'DataChannelMessage', session_id: Optional[str]) -> Dict[str, Any]:
+        """How Chat & History shows a relayed guest: who, on what, carried by whom.
+
+        The relaying device attests all of it, so it is presentation only; the
+        guest's owner comes from `_resolve_chat_identity_for_message`. The
+        guest's name follows the owner's "store client names in chat history"
+        choice, the same rule a directly paired device's name follows.
+        """
+        route = self._relay_route(message)
+        root_session = str(session_id or "").strip()
+        if not route or not root_session:
+            return {}
+        entry = message.payload["metadata"]["relay_path"][-1]
+        presentation: Dict[str, Any] = {"hop": route[-1]["hop"], "platform": entry.get("platform")}
+        try:
+            relay_owner = self._resolve_chat_identity(root_session)
+        except Exception:
+            relay_owner = None
+        presentation["via_user_id"] = str(getattr(relay_owner, "canonical_user_id", "") or "")
+        if _runtime._client_name_history_enabled():
+            presentation["name"] = entry.get("name")
+            if relay_owner is not None:
+                presentation["via_name"] = self.client_name_history_metadata(relay_owner).get("client_display_name")
+        return sanitize_peer_relay(presentation)
 
     @staticmethod
     def _canonical_chat_user_id(session_id: Optional[str]) -> str:
@@ -7490,6 +7516,14 @@ class WebRTCManager:
             # client chat metadata.  Re-add the effective normalized name below only
             # when its explicit history setting permits it.
             metadata.pop("client_display_name", None)
+            # Likewise who-is-who for Chat & History: only the admin chat route
+            # marks the owner's own turns, and a relayed guest is described from
+            # the validated relay route, never from a claim in the metadata.
+            metadata.pop("admin_surface", None)
+            metadata.pop("peer_relay", None)
+            relay_presentation = self._relay_presentation(message, session_id)
+            if relay_presentation:
+                metadata["peer_relay"] = relay_presentation
             identity = _runtime._resolve_conversation_identity(
                 base_identity,
                 start_new_thread=start_new_thread,
