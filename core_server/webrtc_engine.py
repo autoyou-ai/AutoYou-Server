@@ -2346,6 +2346,12 @@ class WebRTCManager:
 
     def _set_screen_session(self, session_id: str, mode: str) -> None:
         current = self._screen_session_for_session(session_id)
+        if mode == "ended":
+            if current is not None:
+                current["mode"] = "ended"
+                current["muted"] = True
+                self.screen_listen_mixer.forget(str(current["id"]))
+            return
         if current is not None and current["id"] == session_id and current["mode"] == mode:
             return
         related = self._ordered_related_session_ids(session_id)
@@ -2363,7 +2369,8 @@ class WebRTCManager:
 
     def screen_listen_snapshot(self) -> Dict[str, Any]:
         participants = [dict(session) for session in self.screen_sessions.values()
-                        if self._voice_call_client_active_for_session(str(session["id"]))]
+                        if session["mode"] in {"watch", "interactive"} and
+                        self._voice_call_client_active_for_session(str(session["id"]))]
         return {
             "mode": self.screen_listen_mixer.mode,
             "selected": sorted(self.screen_listen_mixer.selected),
@@ -10476,7 +10483,7 @@ class WebRTCManager:
             previous_host_owner = self.host_audio_owner() if local_call else ""
             was_active = self._voice_call_client_active_for_session(str(session_id or ""))
             alias_ids = self._set_voice_call_client_active(str(session_id or ""), active)
-            screen_mode = str(payload.get("screen_mode") or "") if active else ""
+            screen_mode = str(payload.get("screen_mode") or "") if active else "ended"
             self._set_screen_session(str(session_id or ""), screen_mode)
             if active:
                 self._set_background_audio_state(
