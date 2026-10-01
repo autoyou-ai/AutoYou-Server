@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; connect-src 'none'">
   <link rel="icon" href="data:,">
   <title>Neon Horizon · AutoYou</title>
   <style>
@@ -50,6 +50,8 @@
     let mode = 'ready', lane = 0, visualLane = 0, jumpTime = 0, score = 0, best = 0;
     let distance = 0, spawnTime = 0, spawnCount = 0, objects = [];
     let audioContext, musicTime = 0, musicStep = 0;
+    const sounds = new Map();
+    const audioStarted = () => window.webkit?.messageHandlers?.gameAudio?.postMessage(true);
     const heldControls = new Map(), pointers = new Map();
     let repeatIn = 0;
     let tiltReference = null;
@@ -62,7 +64,30 @@
       if (!audioContext) audioContext = new Audio();
       if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
     }
-    function tone(frequency, duration = 0.1, volume = 0.04, type = 'sine') {
+    function wavSound(frequency, duration, type) {
+      const rate = 16000, count = Math.ceil(rate * duration);
+      const bytes = new Uint8Array(44 + count * 2), header = new DataView(bytes.buffer);
+      const fourCC = (at, value) => { for (let i = 0; i < 4; i++) bytes[at + i] = value.charCodeAt(i); };
+      fourCC(0, 'RIFF'); header.setUint32(4, bytes.length - 8, true); fourCC(8, 'WAVE');
+      fourCC(12, 'fmt '); header.setUint32(16, 16, true); header.setUint16(20, 1, true);
+      header.setUint16(22, 1, true); header.setUint32(24, rate, true);
+      header.setUint32(28, rate * 2, true); header.setUint16(32, 2, true);
+      header.setUint16(34, 16, true); fourCC(36, 'data'); header.setUint32(40, count * 2, true);
+      for (let i = 0; i < count; i++) {
+        const phase = frequency * i / rate;
+        const wave = type === 'sawtooth' ? 2 * (phase % 1) - 1
+          : type === 'triangle' ? 2 / Math.PI * Math.asin(Math.sin(2 * Math.PI * phase))
+          : Math.sin(2 * Math.PI * phase);
+        const envelope = Math.min(1, i / (rate * 0.008)) * Math.pow(1 - i / count, 2);
+        header.setInt16(44 + i * 2, wave * envelope * 18000, true);
+      }
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const sound = new Audio('data:audio/wav;base64,' + btoa(binary));
+      sound.preload = 'auto';
+      return sound;
+    }
+    function webTone(frequency, duration, volume, type) {
       if (audioContext?.state !== 'running') return;
       const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
       oscillator.type = type; oscillator.frequency.value = frequency;
@@ -70,6 +95,15 @@
       gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
       oscillator.connect(gain).connect(audioContext.destination);
       oscillator.start(); oscillator.stop(audioContext.currentTime + duration);
+      audioStarted();
+    }
+    function tone(frequency, duration = 0.1, volume = 0.04, type = 'sine') {
+      const key = `${frequency}:${duration}:${type}`;
+      if (!sounds.has(key)) sounds.set(key, wavSound(frequency, duration, type));
+      const sound = sounds.get(key);
+      sound.volume = Math.min(1, volume * 8);
+      try { sound.currentTime = 0; sound.play().then(audioStarted).catch(() => webTone(frequency, duration, volume, type)); }
+      catch { webTone(frequency, duration, volume, type); }
     }
 
     function resize() {
@@ -166,7 +200,7 @@
     function update(dt) {
       if (mode !== 'running') return;
       if ((musicTime -= dt) <= 0) {
-        tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.025, 'triangle');
+        tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.055, 'triangle');
         musicTime = 0.3;
       }
       if (heldControls.size && (repeatIn -= dt) <= 0) {
