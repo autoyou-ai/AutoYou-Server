@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.support.connected_device import connect_device
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-5b22f47fb8e45be944c72bef"
@@ -694,6 +695,49 @@ async def test_broadcast_alert_sends_once_per_aliased_webrtc_client(monkeypatch)
     await scheduler_service.broadcast_alert("synthetic alert")
 
     assert fake_webrtc.sent_session_ids == ["client-device-abc"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_alert_reaches_the_conversation_each_device_is_in_now(monkeypatch, tmp_path):
+    """Through the real engine: an alert names no conversation and is pinned to none."""
+    webrtc, channel, paired, manager = connect_device(tmp_path, monkeypatch)
+    # The device has since started a new conversation.
+    manager.advance_conversation_thread(paired.owner_key)
+    as_an_ai_reply = server._build_conversation_metadata(
+        server._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-live"))
+    )
+    runtime_server = _make_runtime_server(webrtc=webrtc)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+
+    async def no_partner_targets():
+        return []
+
+    monkeypatch.setattr(
+        scheduler_service,
+        "get_runtime_messaging_partner_reply_targets_async",
+        no_partner_targets,
+    )
+
+    from autoyou_agents.notes_agent import notes_tool
+
+    monkeypatch.setattr(
+        notes_tool,
+        "NotesTool",
+        lambda: SimpleNamespace(create_note=lambda **kwargs: {"success": False}),
+    )
+
+    await scheduler_service.broadcast_alert("synthetic alert")
+
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert (message.payload["message"], message.header.user_id) == ("synthetic alert", "AutoYou Test Server")
+    assert (metadata["source"], metadata["is_notification"]) == ("scheduler", True)
+    # A device ignores a message addressed to a conversation it has left.
+    assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+    assert metadata["conversation_thread_id"] == 2
+    # Unlike a scheduled result, an alert belongs to no conversation, so the
+    # device files it with whichever one it has open.
+    assert "conversation_force_target" not in metadata
 
 
 @pytest.mark.asyncio

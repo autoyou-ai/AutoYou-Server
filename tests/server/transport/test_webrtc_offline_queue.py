@@ -27,6 +27,7 @@ import time
 
 import pytest
 
+from tests.support.connected_device import OpenChannel, connect_device
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-37a75d0ccde277eec46fe8e8"
@@ -537,6 +538,93 @@ async def test_send_chat_to_session_offline_message_delivered_on_reconnect():
 
     assert len(dc.sent) == 1
     assert "cli-123" not in webrtc._offline_pending_messages
+
+
+# ---------------------------------------------------------------------------
+# Text chat - which conversation send_chat_to_session addresses
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_send_chat_to_session_addresses_the_conversation_the_device_is_in_now(tmp_path, monkeypatch):
+    """With no conversation named, a message goes where an AI reply would."""
+    webrtc, channel, paired, manager = connect_device(tmp_path, monkeypatch)
+    first_conversation = server._build_conversation_metadata(webrtc._resolve_chat_identity("synthetic-live"))
+    # The device has since started a new conversation.
+    manager.advance_conversation_thread(paired.owner_key)
+    as_an_ai_reply = server._build_conversation_metadata(
+        server._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-live"))
+    )
+
+    assert await webrtc.send_chat_to_session("synthetic-live", "An alert") is True
+    # The admin API and the agents reach the same default through a reply target.
+    assert await webrtc.send_chat_to_reply_target(
+        {"transport": "webrtc", "owner_key": paired.owner_key}, "From an agent"
+    ) is True
+
+    assert [message.payload["message"] for message in channel.sent] == ["An alert", "From an agent"]
+    for message in channel.sent:
+        metadata = message.payload["metadata"]
+        assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+        assert metadata["conversation_session_id"].endswith("::thread::2")
+        assert metadata["conversation_thread_id"] == 2
+        # A client ignores a message addressed to a conversation it has left,
+        # and the transport identity alone names the device's first one.
+        assert metadata["conversation_session_id"] != first_conversation["conversation_session_id"]
+        # Addressed, not pinned: the client files it with the conversation it has open.
+        assert "conversation_force_target" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_send_chat_to_session_keeps_a_conversation_the_caller_named(tmp_path, monkeypatch):
+    """A result that belongs to an earlier conversation still goes back to it."""
+    webrtc, channel, paired, manager = connect_device(tmp_path, monkeypatch)
+    first_conversation = server._build_conversation_metadata(
+        webrtc._resolve_chat_identity("synthetic-live")
+    )["conversation_session_id"]
+    manager.advance_conversation_thread(paired.owner_key)
+
+    # Named by the id the client knows it by, and pinned, as the scheduler does.
+    await webrtc.send_chat_to_session(
+        "synthetic-live",
+        "A scheduled result",
+        metadata={"conversation_session_id": first_conversation, "conversation_force_target": True},
+    )
+    # Named by the id history keeps it under.
+    await webrtc.send_chat_to_session(
+        "synthetic-live",
+        "Another result",
+        metadata={"conversation_session_id": paired.canonical_session_id},
+    )
+
+    pinned, by_history_id = (message.payload["metadata"] for message in channel.sent)
+    assert pinned["conversation_session_id"] == first_conversation
+    assert pinned["conversation_force_target"] is True
+    assert by_history_id["conversation_session_id"] == first_conversation
+    assert by_history_id["conversation_thread_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_send_chat_to_session_names_the_first_conversation_when_no_thread_is_known(monkeypatch):
+    """Without a conversation store the device's first conversation is the only one."""
+    from shared import session_execution
+
+    monkeypatch.setattr(
+        session_execution,
+        "_GLOBAL_SESSION_EXECUTION_MANAGER",
+        session_execution.SessionExecutionManager(),
+    )
+    monkeypatch.setattr(server, "_get_conversation_session_manager", lambda: None)
+    webrtc = server.WebRTCManager()
+    server.bind_transport_chat_owner("local", "synthetic-device", raw_session_id="synthetic-live")
+    channel = OpenChannel()
+    webrtc.datachannel_managers["synthetic-live"] = channel
+
+    assert await webrtc.send_chat_to_session("synthetic-live", "An alert") is True
+
+    metadata = channel.sent[0].payload["metadata"]
+    expected = server._build_conversation_metadata(webrtc._resolve_chat_identity("synthetic-live"))
+    assert metadata["conversation_session_id"] == expected["conversation_session_id"]
+    assert metadata["conversation_thread_id"] == 1
 
 
 # ---------------------------------------------------------------------------
