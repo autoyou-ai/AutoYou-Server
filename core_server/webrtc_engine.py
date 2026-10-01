@@ -63,6 +63,7 @@ from shared.room_call_listener import computer_presence
 from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
+from shared.live_pairing import LivePairing
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
@@ -116,6 +117,7 @@ class WebRTCManager:
         # mobile-generated room epoch, and the currently live transport. They
         # are intentionally in-memory and never enter the generic offline queue.
         self.room_bridge_grants = RoomBridgeGrantStore()
+        self.live_pairing = LivePairing(getattr(_runtime, "pairing_router", None))
         # Which rooms the Computer is following. Empty until a call carries
         # audio for a room that holds a grant.
         self.call_listeners = CallListenerCoordinator()
@@ -5075,6 +5077,11 @@ class WebRTCManager:
                     # Room bridge authority is derived from this handler's
                     # captured, authenticated transport. Never bind or trust a
                     # client-supplied header session_id before authorizing it.
+                    if message.header.message_type == _runtime.MessageType.PAIRING_CONTROL:
+                        self._track_session_task(str(identifier),
+                            self._handle_live_pair_control(message, str(identifier), datachannel_manager),
+                            "live_pairing")
+                        return
                     if message.header.message_type == _runtime.MessageType.ROOM_BRIDGE_CONTROL:
                         self._track_session_task(
                             str(identifier),
@@ -5214,6 +5221,7 @@ class WebRTCManager:
                 datachannel_manager.register_handler(_runtime.MessageType.PING, unified_message_handler)
                 datachannel_manager.register_handler(_runtime.MessageType.VOICE_CALL_CONTROL, unified_message_handler)
                 datachannel_manager.register_handler(_runtime.MessageType.ROOM_BRIDGE_CONTROL, unified_message_handler)
+                datachannel_manager.register_handler(_runtime.MessageType.PAIRING_CONTROL, unified_message_handler)
                 # Observe CHUNK_ACK for reliability diagnostics
                 datachannel_manager.register_handler(_runtime.MessageType.CHUNK_ACK, unified_message_handler)
                 # Register WebSocket proxy handlers
@@ -5233,6 +5241,7 @@ class WebRTCManager:
                 if keepalive_task:
                     keepalive_task.cancel()
                 self._suspend_room_bridge_transport(str(identifier))
+                self.live_pairing.cancel(str(identifier))
                 if datachannel_manager:
                     datachannel_manager.disconnect()
                 for sid, mgr in list(self.datachannel_managers.items()):
@@ -6811,6 +6820,53 @@ class WebRTCManager:
         finally:
             if self._cleanup_locks.get(session_id) is lock:
                 self._cleanup_locks.pop(session_id, None)
+
+    async def live_pair_action(self, owner: str, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid live pairing control")
+        self.live_pairing.router = _runtime.pairing_router
+        action = payload.get("action")
+        def next_code():
+            entries = _runtime.pairing_router._ordered_totp_secret_entries("liveqr", owner)
+            if not entries:
+                return ""
+            import pyotp
+            return pyotp.TOTP(entries[0][1]).at(_runtime.time.time() + 30)
+        if action == "start":
+            return self.live_pairing.start(owner, mode=_runtime.get_security_mode(),
+                tier=_runtime.pairing_router._get_security_tier(),
+                ice=await _runtime._get_pairing_ice_servers_async(),
+                name=_runtime.get_configured_server_name(), password=_runtime.get_current_password(),
+                totp_code=next_code())
+        if action == "refresh":
+            return self.live_pairing.invite(owner, str(payload.get("invite_id") or ""), totp_code=next_code())
+        if action == "exchange":
+            return await self.live_pairing.exchange(owner, payload.get("request") or {})
+        if action == "cancel":
+            self.live_pairing.cancel(owner)
+            return {"kind": "cancelled"}
+        raise ValueError("Unsupported live pairing action")
+
+    async def _handle_live_pair_control(self, message, transport_id, manager):
+        payload = message.payload if isinstance(message.payload, dict) else {}
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str) or len(request_id) > 64:
+            return
+        try:
+            identity = self._room_bridge_trusted_owner(transport_id)
+            owner_key = str(getattr(identity, "owner_key", ""))
+            if owner_key.startswith("liveqr:") or getattr(identity, "transport", "") == "liveqr":
+                raise ValueError("Ask the computer owner to help connect another device")
+            if getattr(identity, "transport", "") == "cloud" and self.device_ownership_for_session(transport_id) != DEVICE_OWN:
+                raise ValueError("Ask the computer owner to help connect another device")
+            result = await self.live_pair_action(transport_id, payload)
+            response = {"request_id": request_id, "result": result}
+        except Exception as exc:
+            response = {"request_id": request_id, "error": str(exc)}
+        await manager.send_message(SharedDataChannelMessage(
+            header=SharedMessageHeader(message_id=_runtime.uuid.uuid4().hex,
+                message_type=SharedMessageType.PAIRING_CONTROL, timestamp=_runtime.time.time(),
+                session_id=transport_id), payload=response))
 
     @staticmethod
     def _room_bridge_trusted_owner(trusted_transport_id: str) -> Any:
