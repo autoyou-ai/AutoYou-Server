@@ -4108,7 +4108,10 @@ class WebRTCManager:
       metadata: Optional[Dict[str, Any]] = None,
       context: Optional[List[Dict[str, Any]]] = None,
       user_id: Optional[str] = None,
+      queue_if_undelivered: bool = True,
     ) -> bool:
+      # A message that cannot be sent now is kept for the device's next
+      # connection unless the caller reports the failure to a person instead.
       normalized_session_id = str(session_id or "").strip()
       normalized_message = str(message or "").strip()
       context_payload = [dict(item) for item in (context or []) if isinstance(item, dict)]
@@ -4172,10 +4175,12 @@ class WebRTCManager:
       )
       if not datachannel_manager:
         _runtime.LOGGER.warning(
-          "No live datachannel manager for outbound WebRTC chat to %s; queuing offline",
+          "No live datachannel manager for outbound WebRTC chat to %s; %s",
           normalized_session_id,
+          "queuing offline" if queue_if_undelivered else "not sent",
         )
-        self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
+        if queue_if_undelivered:
+          self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
         return False
 
       try:
@@ -4188,7 +4193,7 @@ class WebRTCManager:
         )
         sent = False
 
-      if not sent:
+      if not sent and queue_if_undelivered:
         self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
 
       return sent
