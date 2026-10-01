@@ -50,6 +50,15 @@ def test_turns_are_attributed_to_the_owner_or_the_conversations_counterpart():
     assert 'author: "self"' in send
 
 
+def test_an_answer_the_owner_gave_in_person_is_not_shown_as_autoyous():
+    script = _script()
+    message = _between(script, "function chatMessageMarkup(message)", "function chatThreadIdentity()")
+
+    assert 'role === "assistant" && item.human === true' in message
+    assert "sent to the device" in message
+    assert 'chatFaceMarkup({ is_self: true }, "message")' in message
+
+
 def test_every_identity_kind_has_a_face():
     styles = (REPO_ROOT / "assets" / "admin-ui.css").read_text(encoding="utf-8")
 

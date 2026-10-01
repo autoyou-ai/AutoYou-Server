@@ -4243,8 +4243,10 @@
         // conversation; everyone else keeps their own name and face.
         var counterpart = chatThreadIdentity();
         var mine = role === "user" && (counterpart.is_self || item.author === "self");
-        var face = role === "user" ? chatFaceMarkup(mine ? { is_self: true } : counterpart, "message") : "<div class=\"ayu-chat-avatar\">AI</div>";
-        var authorName = role === "user" ? (mine ? "You" : counterpart.name) : "AutoYou";
+        // An answer the owner gave the device in person, not one AutoYou wrote.
+        var human = role === "assistant" && item.human === true;
+        var face = role === "user" ? chatFaceMarkup(mine ? { is_self: true } : counterpart, "message") : (human ? chatFaceMarkup({ is_self: true }, "message") : "<div class=\"ayu-chat-avatar\">AI</div>");
+        var authorName = role === "user" ? (mine ? "You" : counterpart.name) : (human ? "You · sent to the device" : "AutoYou");
         return "<article class=\"ayu-chat-message " + role + (role === "user" && !mine ? " from-other" : "") + "\">" + face + "<div class=\"ayu-chat-message-body\"><div class=\"ayu-chat-message-meta\"><strong>" + escapeHtml(authorName) + "</strong>" + (timestamp ? "<span>" + escapeHtml(timestamp) + "</span>" : "") + "</div>" + (body ? "<div class=\"ayu-chat-bubble\"><p>" + escapeHtml(body).replace(/\n/g, "<br>") + "</p>" + attachmentHtml + "</div>" : attachmentHtml) + (item.pending ? "<small class=\"ayu-chat-pending\">Sending…</small>" : "") + (item.failed ? "<small class=\"ayu-chat-error\">Could not send</small>" : "") + "</div></article>";
     }
 

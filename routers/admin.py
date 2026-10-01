@@ -174,6 +174,39 @@ def register_routes(
                 viewer["device_name"] = device_name
         return viewer
 
+    OWNER_REPLY_MAX_CHARS = 4000
+
+    def _live_conversations() -> Dict[str, List[tuple]]:
+        """Devices connected right now, keyed by the conversation owner they write as.
+
+        Each value lists ``(live session id, current conversation id)``. A
+        guest relayed by another device has no connection of its own, so it is
+        never here.
+        """
+        webrtc = getattr(server, "WEBRTC", None)
+        entries = getattr(webrtc, "_unique_datachannel_manager_entries", None)
+        resolve = getattr(webrtc, "_resolve_chat_identity", None)
+        current = getattr(server, "_resolve_conversation_identity", None)
+        if not callable(entries) or not callable(resolve):
+            return {}
+        live: Dict[str, List[tuple]] = {}
+        try:
+            connected = list(entries(require_send_message=True))
+        except Exception:
+            return {}
+        for live_session_id, _manager in connected:
+            try:
+                identity = resolve(str(live_session_id))
+                if callable(current):
+                    identity = current(identity)
+            except Exception:
+                continue
+            owner = str(getattr(identity, "canonical_user_id", "") or "").strip()
+            conversation = str(getattr(identity, "canonical_session_id", "") or "").strip()
+            if owner and conversation:
+                live.setdefault(owner, []).append((str(live_session_id), conversation))
+        return live
+
     def _voice_training_entries() -> tuple[bool, List[Dict[str, Any]], Any]:
         """Captured/uploaded voice-training clips, newest first (never raises)."""
         enabled = False
@@ -453,9 +486,12 @@ def register_routes(
                     group["user_id"], group.get("_identity") or {}, self_name=self_name, known_names=known_names
                 )
         sessions = sorted(grouped.values(), key=lambda item: item.get("_last", 0), reverse=True)[:limit]
+        live = _live_conversations()
         for item in sessions:
             for key in ("_first", "_last", "_identity", "_identity_seen"):
                 item.pop(key, None)
+            # Whether an owner reply could reach this conversation's device now.
+            item["live"] = item["user_id"] in live
         return server._json_response_no_store({
             "success": True,
             "viewer": _admin_viewer(request),
@@ -536,7 +572,13 @@ def register_routes(
                 elif attachments:
                     messages.append({"role": "user", "author": author, "content": "", "timestamp": timestamp, "attachments": attachments})
                 if data.get("agent_response") or reply_media:
-                    messages.append({"role": "assistant", "content": str(data.get("agent_response") or ""), "timestamp": timestamp, "attachments": reply_media})
+                    reply = {"role": "assistant", "content": str(data.get("agent_response") or ""), "timestamp": timestamp, "attachments": reply_media}
+                    # Written only by the owner-reply route below; a device
+                    # cannot stamp admin_surface, so it cannot claim this.
+                    if turn_meta.get("human_reply") is True and turn_meta.get("admin_surface"):
+                        reply["author"] = "self"
+                        reply["human"] = True
+                    messages.append(reply)
             # Media whose turn never reached history (early replies, failures) is still listed.
             files.extend(_public_media(row) for row in media_rows if str(row.get("media_id")) not in used_media)
             _training_enabled, training_entries, _recordings = _voice_training_entries()
@@ -593,6 +635,87 @@ def register_routes(
             "session_id": session_id,
             "title": stored,
             "custom_title": bool(stored),
+        })
+
+    @admin_app.post("/api/chat/session/reply")
+    async def admin_chat_session_reply(request: Request):
+        """The owner answers a device's conversation in person.
+
+        Unlike ``POST /api/chat`` nothing is asked of the AI: the text goes to
+        the connected device as a message from the owner and is kept in that
+        device's conversation. A device that is not connected gets nothing,
+        and nothing is stored, so history never shows a reply nobody received.
+        """
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON body"})
+        if not isinstance(body, dict):
+            return JSONResponse(status_code=400, content={"success": False, "error": "JSON object required"})
+        user_id = _chat_text(body.get("user_id"), "", 256)
+        message = str(body.get("message") or "").strip()
+        if not user_id or not message:
+            return JSONResponse(status_code=400, content={"success": False, "error": "user_id and message are required"})
+        if len(message) > OWNER_REPLY_MAX_CHARS:
+            return JSONResponse(status_code=413, content={"success": False, "error": "The reply is too long"})
+        if user_id == ADMIN_CHAT_USER_ID or user_id.startswith("user::admin-web"):
+            return JSONResponse(status_code=400, content={"success": False, "error": "This is your own conversation"})
+        live = _live_conversations().get(user_id) or []
+        if not live:
+            return server._json_response_no_store({
+                "success": True,
+                "delivered": False,
+                "reason": "That device is not connected right now. A reply reaches it only while it is connected.",
+            })
+        surface = _admin_surface(request)
+        owner_name = _server_display_name() or "AutoYou"
+        delivered_to = ""
+        for live_session_id, conversation_id in live:
+            try:
+                sent = await server.WEBRTC.send_chat_to_session(
+                    live_session_id,
+                    message,
+                    metadata={"source": "owner_reply", "human_reply": True, "agent_display_name": owner_name},
+                    user_id=owner_name,
+                )
+            except Exception as exc:
+                server.LOGGER.warning("Owner reply could not be delivered: %s", type(exc).__name__)
+                sent = False
+            if sent and not delivered_to:
+                delivered_to = conversation_id
+        if not delivered_to:
+            return server._json_response_no_store({
+                "success": True,
+                "delivered": False,
+                "reason": "The reply could not be delivered. Check that the device is still connected.",
+            })
+        # Kept where it was delivered: the device's current conversation.
+        try:
+            manager = await _chat_session_manager()
+            internal_id = manager.get_mapped_session_id(delivered_to, user_id) or delivered_to
+            await manager.add_session_event(
+                user_id=user_id,
+                session_id=internal_id,
+                event_type="chat_interaction",
+                event_data={
+                    "user_message": "",
+                    "agent_response": message,
+                    "timestamp": datetime.now().isoformat(),
+                    "response_author": "owner",
+                    "memory_metadata": {"source": "owner_reply", "human_reply": True, "admin_surface": surface},
+                },
+                external_session_id=delivered_to,
+            )
+        except Exception as exc:
+            server.LOGGER.warning("Owner reply was delivered but not saved in history: %s", exc)
+        return server._json_response_no_store({
+            "success": True,
+            "delivered": True,
+            "user_id": user_id,
+            "session_id": delivered_to,
         })
 
     @admin_app.get("/api/chat/media/{media_id}")

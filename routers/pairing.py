@@ -531,6 +531,7 @@ def register_routes(
                 payload["_autoyou_pairing_mode"] = "totp_pair" if server._is_secure_professional_mode(mode) else "secure_pair"
                 if server._is_loopback_client_host(getattr(getattr(request, "client", None), "host", None)):
                     payload["_autoyou_loopback_pairing"] = True
+                payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
                 payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
                 answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
                 answer_text = await server.pairing_router._format_autopair_answer(
@@ -559,6 +560,7 @@ def register_routes(
             payload["_autoyou_sender_id"] = client_sender_id
             if server._is_loopback_client_host(getattr(getattr(request, "client", None), "host", None)):
                 payload["_autoyou_loopback_pairing"] = True
+            payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
             payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
             if server.pairing_router is None:
                 return JSONResponse({"error": "Pairing subsystem not ready"}, status_code=503)
