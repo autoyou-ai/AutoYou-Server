@@ -65,7 +65,7 @@ def _adk_turn(event_id, data):
     return SimpleNamespace(id=event_id, timestamp=1_790_000_000.0, actions=SimpleNamespace(state_delta={"event_data_raw": data}))
 
 
-def _client(manager, monkeypatch, *, captured=None, device_names=None):
+def _client(manager, monkeypatch, *, captured=None, device_names=None, webrtc=None):
     fastapi = pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
@@ -89,7 +89,8 @@ def _client(manager, monkeypatch, *, captured=None, device_names=None):
         ChatRequest=rest_api.ChatRequest,
         process_chat_message=fake_process_chat_message,
         AI_AGENT_SERVER_PORT=8081,
-        WEBRTC=SimpleNamespace(client_display_name_snapshot=lambda session_id: {"client_display_name": names.get(session_id, "")}),
+        WEBRTC=webrtc or SimpleNamespace(client_display_name_snapshot=lambda session_id: {"client_display_name": names.get(session_id, "")}),
+        _resolve_conversation_identity=lambda identity: identity,
         LOGGER=server_module.LOGGER,
     )
     admin_app = fastapi.FastAPI()
@@ -185,6 +186,133 @@ def test_transcript_marks_the_owners_turns_inside_someone_elses_conversation(tmp
         ("user", "self"),
         ("assistant", None),
     ]
+
+
+class _LiveDevices:
+    """A stand-in for the devices connected right now."""
+
+    def __init__(self, sessions, *, accepts=True):
+        self._sessions = sessions
+        self._accepts = accepts
+        self.sent = []
+
+    def _unique_datachannel_manager_entries(self, *, require_send_message=False):
+        return [(session_id, object()) for session_id in self._sessions]
+
+    def _resolve_chat_identity(self, session_id):
+        user_id, conversation = self._sessions[session_id]
+        return SimpleNamespace(canonical_user_id=user_id, canonical_session_id=conversation)
+
+    async def send_chat_to_session(self, session_id, message, *, metadata=None, user_id=None):
+        self.sent.append((session_id, message, dict(metadata or {}), user_id))
+        return self._accepts
+
+
+def test_an_owner_reply_reaches_the_connected_device_and_is_kept_as_the_owners(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "root"))
+    manager = _manager(tmp_path)
+    saved = []
+
+    async def add_session_event(**kwargs):
+        saved.append(kwargs)
+        return True
+
+    monkeypatch.setattr(manager, "add_session_event", add_session_event)
+    monkeypatch.setattr(manager, "get_mapped_session_id", lambda session_id, user_id=None: "internal-" + session_id)
+    devices = _LiveDevices({"synthetic-live": (PHONE, "session::local:Phone-1::2")})
+    captured = {}
+    client = _client(manager, monkeypatch, captured=captured, webrtc=devices)
+
+    response = client.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "  On my way  "}).json()
+
+    assert response == {"success": True, "delivered": True, "user_id": PHONE, "session_id": "session::local:Phone-1::2"}
+    # Sent to the device as the owner, and never put to the AI.
+    assert devices.sent == [(
+        "synthetic-live",
+        "On my way",
+        {"source": "owner_reply", "human_reply": True, "agent_display_name": "Test Server"},
+        "Test Server",
+    )]
+    assert "request" not in captured
+    assert len(saved) == 1
+    assert (saved[0]["user_id"], saved[0]["session_id"], saved[0]["external_session_id"]) == (
+        PHONE, "internal-session::local:Phone-1::2", "session::local:Phone-1::2")
+    event = saved[0]["event_data"]
+    assert (event["user_message"], event["agent_response"]) == ("", "On my way")
+    assert event["memory_metadata"] == {"source": "owner_reply", "human_reply": True, "admin_surface": "this_computer"}
+
+
+def test_an_owner_reply_nobody_received_is_neither_claimed_nor_stored(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "root"))
+    manager = _manager(tmp_path)
+    saved = []
+
+    async def add_session_event(**kwargs):
+        saved.append(kwargs)
+        return True
+
+    monkeypatch.setattr(manager, "add_session_event", add_session_event)
+
+    away = _client(manager, monkeypatch, webrtc=_LiveDevices({"synthetic-live": ("user::local:Someone-else", "s")}))
+    missed = away.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "hello"}).json()
+    assert (missed["success"], missed["delivered"]) == (True, False)
+    assert "not connected" in missed["reason"]
+
+    dropped_devices = _LiveDevices({"synthetic-live": (PHONE, "session::local:Phone-1")}, accepts=False)
+    dropped = _client(manager, monkeypatch, webrtc=dropped_devices).post(
+        "/api/chat/session/reply", json={"user_id": PHONE, "message": "hello"}).json()
+    assert dropped["delivered"] is False and len(dropped_devices.sent) == 1
+
+    # A relayed guest has no connection of its own; the owner's own chat is not a device.
+    assert away.post("/api/chat/session/reply", json={"user_id": PEER, "message": "hello"}).json()["delivered"] is False
+    assert away.post("/api/chat/session/reply", json={"user_id": "admin-web-user", "message": "hello"}).status_code == 400
+    assert away.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "   "}).status_code == 400
+    assert away.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "x" * 4001}).status_code == 413
+    assert saved == []
+
+
+def test_history_shows_an_owner_reply_as_theirs_and_says_which_devices_are_connected(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "root"))
+    manager = _manager(tmp_path)
+    manager.adk_session_service = _FakeAdk([
+        _adk_turn("chat_interaction_1", {"user_message": "are you there?", "agent_response": "The assistant answered.", "memory_metadata": {"client": "ios"}}),
+        _adk_turn("chat_interaction_2", {"user_message": "", "agent_response": "On my way", "memory_metadata": {"source": "owner_reply", "human_reply": True, "admin_surface": "this_computer"}}),
+        # A device can write human_reply, but never the surface only this server stamps.
+        _adk_turn("chat_interaction_3", {"user_message": "forged", "agent_response": "pretend", "memory_metadata": {"client": "ios", "human_reply": True}}),
+    ])
+    _index_turn(manager, "e1", PHONE, "session::local:Phone-1", {"client": "ios"}, when=1)
+    _index_turn(manager, "e2", "user::local:Tablet-2", "session::local:Tablet-2", {"client": "android"}, when=2)
+    client = _client(manager, monkeypatch, webrtc=_LiveDevices({"synthetic-live": (PHONE, "session::local:Phone-1")}))
+
+    detail = client.get("/api/chat/session", params={"user_id": PHONE, "session_id": "session::local:Phone-1"}).json()
+    rows = {row["user_id"]: row for row in client.get("/api/chat/sessions").json()["sessions"]}
+
+    assert [(item["role"], item.get("author"), item.get("human")) for item in detail["messages"]] == [
+        ("user", "counterpart", None),
+        ("assistant", None, None),
+        ("assistant", "self", True),
+        ("user", "counterpart", None),
+        ("assistant", None, None),
+    ]
+    assert detail["identity"]["kind"] == "device"
+    assert rows[PHONE]["live"] is True
+    assert rows["user::local:Tablet-2"]["live"] is False
+
+
+def test_a_request_carried_by_a_tunnel_is_not_an_app_on_this_computer():
+    from starlette.datastructures import Headers
+
+    def request(host, headers=None):
+        return SimpleNamespace(client=SimpleNamespace(host=host), headers=Headers(headers or {}))
+
+    assert server_module._is_same_machine_audio_client(request("127.0.0.1")) is True
+    assert server_module._local_pair_device_ownership(request("127.0.0.1")) == "own"
+    for header in ("x-autoyou-tunnel-client-ip", "x-forwarded-for", "cf-connecting-ip", "forwarded"):
+        carried = request("127.0.0.1", {header: "203.0.113.9"})
+        assert server_module._is_same_machine_audio_client(carried) is False, header
+        assert server_module._local_pair_device_ownership(carried) == "shared", header
+    assert server_module._is_same_machine_audio_client(request("127.0.0.1", {"x-autoyou-remote-browser": "webrtc"})) is False
+    assert server_module._local_pair_device_ownership(request("203.0.113.9")) == "shared"
 
 
 def test_memory_metadata_keeps_only_bounded_attribution():

@@ -4611,6 +4611,8 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
     return {
         "enabled": _normalize_partner_enabled_flag(raw_cfg.get("enabled"), True),
         "audio_enabled": _normalize_partner_enabled_flag(raw_cfg.get("audio_enabled"), True),
+        "server_microphone_sharing_enabled": _normalize_partner_enabled_flag(
+            raw_cfg.get("server_microphone_sharing_enabled"), True),
         "disable_autoyou_agents": _normalize_partner_enabled_flag(raw_cfg.get("disable_autoyou_agents"), False),
         "ai_audio_replies_enabled": _normalize_partner_enabled_flag(raw_cfg.get("ai_audio_replies_enabled"), True),
         "record_my_video": _normalize_partner_enabled_flag(raw_cfg.get("record_my_video"), False),
@@ -8224,12 +8226,51 @@ def _request_via_remote_browser_proxy(request: Request) -> bool:
     )
 
 
+_FORWARDED_REQUEST_HEADERS = (
+    _BRIDGE_TRUSTED_CLIENT_IP_HEADER,
+    "x-forwarded-for",
+    "forwarded",
+    "cf-connecting-ip",
+)
+
+
+def _request_forwarded_from_elsewhere(request: Request) -> bool:
+    """Whether a tunnel or reverse proxy on this computer carried the request.
+
+    A public link ends on loopback, so the peer address alone would make a
+    phone on the internet look like an app on this computer. The AutoYou
+    bridge stamps its trusted client address and every common proxy adds a
+    forwarding header; an app running here sends none of them.
+    """
+    try:
+        return any(str(request.headers.get(name) or "").strip() for name in _FORWARDED_REQUEST_HEADERS)
+    except Exception:
+        return False
+
+
 def _local_pair_device_ownership(request: Request) -> str:
     """Local Pair from this computer itself is the owner's; from anywhere else it is shared."""
     peer = request.client.host if request.client else None
-    if _is_loopback_client_host(peer) and not _request_via_remote_browser_proxy(request):
+    if (_is_loopback_client_host(peer) and not _request_via_remote_browser_proxy(request)
+            and not _request_forwarded_from_elsewhere(request)):
         return DEVICE_OWN
     return DEVICE_SHARED
+
+
+def _is_same_machine_audio_client(request: Request) -> bool:
+    """Classify the transport peer for echo prevention, never admin auth."""
+    if _request_via_remote_browser_proxy(request) or _request_forwarded_from_elsewhere(request):
+        return False
+    peer = str(request.client.host if request.client else "").strip().lower()
+    if _is_loopback_client_host(peer):
+        return True
+    try:
+        from shared.local_network_info import _hostname_ipv4s, _primary_outbound_ipv4
+        own = set(_hostname_ipv4s())
+        own.add(_primary_outbound_ipv4())
+        return peer in own
+    except Exception:
+        return False
 
 
 def _remote_browser_credential_denied() -> JSONResponse:
@@ -9747,6 +9788,12 @@ def _create_configured_outbound_audio_track(
         source for source in _get_video_audio_sources(cfg=cfg)
         if screen_audio or source != "speaker_loopback"
     ]
+    # The same computer must hear AI replies without hearing its own capture.
+    # A local call, Lobby, or Peer Link also takes priority over host capture
+    # sent to other connected clients.
+    if WEBRTC is not None and hasattr(WEBRTC, "server_capture_allowed_for_session"):
+        if not WEBRTC.server_capture_allowed_for_session(session_id):
+            audio_sources = []
     capture_tracks: List[Any] = []
     if audio_sources:
         try:
@@ -13045,6 +13092,9 @@ def _apply_admin_ui_config_patch(
             video_cfg["enabled"] = _coerce_enabled_flag(video_call_payload.get("enabled"))
         if "audio_enabled" in video_call_payload:
             video_cfg["audio_enabled"] = _coerce_enabled_flag(video_call_payload.get("audio_enabled"))
+        if "server_microphone_sharing_enabled" in video_call_payload:
+            video_cfg["server_microphone_sharing_enabled"] = _coerce_enabled_flag(
+                video_call_payload.get("server_microphone_sharing_enabled"))
         if "disable_autoyou_agents" in video_call_payload:
             video_cfg["disable_autoyou_agents"] = _coerce_enabled_flag(video_call_payload.get("disable_autoyou_agents"))
         if "ai_audio_replies_enabled" in video_call_payload:
@@ -17354,6 +17404,17 @@ def _validate_x402_token(request: Request) -> Optional[dict]:
 # ========= Telegram + WebRTC Signaling =========
 
 WEBRTC = WebRTCManager()
+WEBRTC.server_microphone_sharing_enabled = bool(
+    _get_video_call_config().get("server_microphone_sharing_enabled", True))
+
+
+async def _apply_server_microphone_sharing(enabled: bool) -> None:
+    if type(enabled) is not bool:
+        raise ValueError("Choose whether to share the computer microphone")
+    cfg = _loaded_config_for_update(copy_config=True)
+    cfg.setdefault("video_call", {})["server_microphone_sharing_enabled"] = enabled
+    _persist_state_config(cfg)
+    await WEBRTC.set_server_microphone_sharing(enabled)
 
 
 def _set_client_name_override(owner_key: Any, value: Any) -> Dict[str, Any]:
