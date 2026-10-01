@@ -330,6 +330,22 @@ def test_game_frames_require_game_lease_and_release_on_exit(monkeypatch):
             assert host_inputs[-1]["phase"] == "down"
             await touch([])
             assert host_inputs[-1]["phase"] == "up"
+            await webrtc._handle_game_input(session_id, {
+                "control_id": "synthetic-browser-control", "input_type": "axis",
+                "axis": "left_x", "value": -1, "source": "autoyou_lite", "platform": "ios",
+            })
+            assert host_keys[-1]["key"] == "left" and host_keys[-1]["phase"] == "press"
+            key_count = len(host_keys)
+            await webrtc._handle_game_input(session_id, {
+                "control_id": "synthetic-browser-control", "input_type": "axis",
+                "axis": "left_x", "value": -1, "source": "autoyou_lite", "platform": "ios",
+            })
+            assert len(host_keys) == key_count
+            await webrtc._handle_game_input(session_id, {
+                "control_id": "synthetic-browser-control", "input_type": "button",
+                "button": "action_a", "phase": "down", "source": "autoyou_lite", "platform": "ios",
+            })
+            assert host_keys[-1]["key"] == "space" and host_keys[-1]["phase"] == "press"
             await webrtc._handle_remote_desktop_control(session_id, {
                 "action": "stop", "control_id": "synthetic-browser-control",
                 "source": "autoyou_lite", "platform": "ios",
@@ -396,4 +412,32 @@ def test_local_engine_stream_requires_token(monkeypatch):
                 "event": "game_input", "input_type": "session_end",
             })
         assert sync.await_count == 2
+        assert not server.WEBRTC.game_input_hub.connected
+
+
+def test_hosted_game_page_accepts_only_local_same_origin_input(monkeypatch):
+    monkeypatch.setattr(server, "_get_game_mode_available", lambda cfg=None: True)
+    path = "/api/webrtc/hosted-game"
+    with TestClient(server.admin_app, base_url="http://127.0.0.1:8001") as client:
+        page = client.get(path + "/play")
+        assert page.status_code == 200 and "Neon Horizon" in page.text
+        assert client.get(path + "/api/game/native-input/status").json()["available"] is True
+        assert client.get(path + "/play", headers={"Host": "example.test"}).status_code == 403
+        for headers in ({"origin": "https://example.test", "host": "127.0.0.1:8001"}, {
+            "origin": "http://127.0.0.1:8001", "host": "127.0.0.1:8001",
+            "X-Forwarded-For": "203.0.113.1",
+        }):
+            try:
+                with client.websocket_connect(path + "/api/game/native-input", headers=headers):
+                    raise AssertionError("Untrusted page connected to game input")
+            except WebSocketDisconnect as exc:
+                assert exc.code == 1008
+        with client.websocket_connect(path + "/api/game/native-input", headers={
+            "origin": "http://127.0.0.1:8001", "host": "127.0.0.1:8001",
+        }) as stream:
+            client.portal.call(server.WEBRTC.game_input_hub.publish, "synthetic-session", {
+                "event": "game_input", "input_type": "button", "button": "action_a", "phase": "down",
+            })
+            assert stream.receive_json()["button"] == "action_a"
+            stream.close()
         assert not server.WEBRTC.game_input_hub.connected
