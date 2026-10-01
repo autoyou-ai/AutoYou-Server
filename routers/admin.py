@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import os
+import json
 import re
 import time
 import uuid
@@ -48,6 +49,46 @@ def register_routes(
     def _chat_text(value: Any, fallback: str = "", limit: int = 256) -> str:
         text = " ".join(str(value or "").strip().split())
         return (text or fallback)[:limit]
+
+    def _local_listen_access(request: Request) -> Optional[JSONResponse]:
+        auth_error = server._require_api_login(request)
+        if auth_error is not None:
+            return auth_error
+        if _admin_surface(request) != ADMIN_SURFACE_THIS_COMPUTER:
+            return JSONResponse(status_code=403, content={"error": "Listen is available on this computer only"})
+        return None
+
+    @admin_app.get("/api/screen-listen")
+    async def screen_listen_status(request: Request):
+        refused = _local_listen_access(request)
+        if refused is not None:
+            return refused
+        return server._json_response_no_store(server.WEBRTC.screen_listen_snapshot())
+
+    @admin_app.post("/api/screen-listen")
+    async def screen_listen_configure(request: Request):
+        refused = _local_listen_access(request)
+        if refused is not None:
+            return refused
+        raw = await request.body()
+        if len(raw) > 4096:
+            return JSONResponse(status_code=413, content={"error": "Listen selection is too large"})
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError("Choose a valid Listen selection")
+            mode = body.get("mode")
+            selected = body.get("selected", [])
+            if mode not in {"off", "all", "selected"} or not isinstance(selected, list) or len(selected) > 16 or any(
+                not isinstance(value, str) or not value or len(value) > 128 for value in selected
+            ):
+                raise ValueError("Choose a valid Listen selection")
+            result = await server.asyncio.to_thread(server.WEBRTC.configure_screen_listen, mode, selected)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)[:160]})
+        except Exception:
+            return JSONResponse(status_code=503, content={"error": "Computer audio output is unavailable"})
+        return server._json_response_no_store(result)
 
     def _chat_model_dict(value: Any) -> Dict[str, Any]:
         if hasattr(value, "model_dump"):

@@ -688,6 +688,8 @@ def _build_snapshot(limit: int = 100) -> Dict[str, Any]:
         ),
         "configured_sources": list((cfg.get("video_call") or {}).get("audio_sources") or []),
     }
+    interact_snapshot = getattr(webrtc, "screen_listen_snapshot", None)
+    interact = interact_snapshot() if callable(interact_snapshot) else {"participants": [], "inputs": []}
     client_name_history_enabled = False
     history_enabled_fn = getattr(server, "_client_name_history_enabled", None)
     if callable(history_enabled_fn):
@@ -706,6 +708,7 @@ def _build_snapshot(limit: int = 100) -> Dict[str, Any]:
         "video_frames": _jsonable(frame_status),
         "computer_video": _jsonable(computer_video),
         "audio_routing": audio_routing,
+        "interact": _jsonable({"participants": interact.get("participants", []), "inputs": interact.get("inputs", [])}),
         "self_video": _jsonable(computer_video),
         "recordings": _recording_snapshot(cfg, webrtc),
         "client_identity": {
