@@ -269,6 +269,19 @@
     list.scrollTop = 0;
   }
 
+  function renderInteract(snapshot) {
+    var interact = snapshot.interact || {};
+    var people = interact.participants || [];
+    var inputs = interact.inputs || [];
+    $("interact-participants").innerHTML = people.length ? people.map(function (person) {
+      var recent = Date.now() / 1000 - Number(person.last_input_at || 0) < 1.5 ? " · " + String(person.last_input || "") : "";
+      return '<div class="session-card"><strong>' + escapeHtml(person.name || "Connected device") + '</strong><p class="muted">' + escapeHtml(person.mode === "interactive" ? (person.muted ? "Microphone muted" : "Microphone live") : "Watching only") + escapeHtml(recent) + '</p></div>';
+    }).join("") : '<div class="session-card muted">No screen participants</div>';
+    $("interact-inputs").innerHTML = inputs.length ? inputs.slice(-30).reverse().map(function (input) {
+      return '<div class="message-item">' + escapeHtml(input.name || "A device") + ' sent ' + escapeHtml(input.value || "an input") + '</div>';
+    }).join("") : '<div class="message-item muted">No inputs yet</div>';
+  }
+
   function renderRecordings(snapshot) {
     var recordings = snapshot.recordings || {};
     var items = []
@@ -732,6 +745,7 @@
     renderMetrics(snapshot);
     renderSessions(snapshot);
     renderMessages(snapshot);
+    renderInteract(snapshot);
     renderRecordings(snapshot);
     renderMediaStatus(snapshot);
     renderAudioRouting(snapshot);

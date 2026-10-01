@@ -54,6 +54,7 @@ from shared.room_bridge import (
     revoked_control_payload,
 )
 from shared.call_listener_coordinator import CallListenerCoordinator
+from shared.screen_listen import ScreenListenMixer
 from shared.remote_access_policy import (
     DEVICE_OWN,
     DEVICE_OWNERSHIP_HEADER,
@@ -136,6 +137,9 @@ class WebRTCManager:
         self.voice_call_status_by_session: Dict[str, Dict[str, Any]] = {}
         self.voice_call_playback_by_session: Dict[str, Dict[str, Any]] = {}
         self.voice_call_client_active_by_session: Dict[str, bool] = {}
+        self.screen_sessions: Dict[str, Dict[str, Any]] = {}
+        self.screen_inputs = _runtime.deque(maxlen=100)
+        self.screen_listen_mixer = ScreenListenMixer()
         # Derived from the pairing HTTP peer. This controls audio routing only.
         self.same_machine_audio_sessions: Set[str] = set()
         self.host_media_owner_by_session: Dict[str, str] = {}
@@ -2333,6 +2337,50 @@ class WebRTCManager:
             for candidate_id in self._ordered_related_session_ids(session_id)
         )
 
+    def _screen_session_for_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        for candidate_id in self._ordered_related_session_ids(session_id):
+            session = self.screen_sessions.get(candidate_id)
+            if session is not None:
+                return session
+        return None
+
+    def _set_screen_session(self, session_id: str, mode: str) -> None:
+        current = self._screen_session_for_session(session_id)
+        if current is not None and current["id"] == session_id and current["mode"] == mode:
+            return
+        related = self._ordered_related_session_ids(session_id)
+        for candidate_id in related:
+            previous = self.screen_sessions.pop(candidate_id, None)
+            if previous is not None:
+                self.screen_listen_mixer.forget(str(previous["id"]))
+        if mode not in {"watch", "interactive"}:
+            return
+        name = self.client_display_name_snapshot(session_id).get("client_display_name") or "Connected device"
+        self.screen_sessions[session_id] = {
+            "id": session_id, "name": str(name)[:64], "mode": mode,
+            "muted": True, "layout": "off", "last_input": "", "last_input_at": 0.0,
+        }
+
+    def screen_listen_snapshot(self) -> Dict[str, Any]:
+        participants = [dict(session) for session in self.screen_sessions.values()
+                        if self._voice_call_client_active_for_session(str(session["id"]))]
+        return {
+            "mode": self.screen_listen_mixer.mode,
+            "selected": sorted(self.screen_listen_mixer.selected),
+            "participants": participants,
+            "inputs": list(self.screen_inputs)[-50:],
+        }
+
+    def configure_screen_listen(self, mode: str, selected: Iterable[str] = ()) -> Dict[str, Any]:
+        allowed = {str(session["id"]) for session in self.screen_sessions.values()
+                   if session["mode"] == "interactive" and
+                   self._voice_call_client_active_for_session(str(session["id"]))}
+        choices = {str(value) for value in selected}
+        if mode == "selected" and not choices <= allowed:
+            raise ValueError("Choose a connected screen participant")
+        self.screen_listen_mixer.configure(mode, choices if mode == "selected" else ())
+        return self.screen_listen_snapshot()
+
     def _should_accept_voice_call_audio(self, session_id: str) -> bool:
         normalized_session_id = str(session_id or "").strip()
         if not normalized_session_id:
@@ -2571,8 +2619,7 @@ class WebRTCManager:
     ) -> bool:
         if _runtime.AudioTrackSink is None or not audio_call_enabled:
             return False
-        if audio_manager is None and not self._background_audio_consumer_enabled(cfg=cfg_snapshot):
-            return False
+        # Screen Listen needs the inbound track even when AI voice agents are disabled.
 
         primary_session_id = str(session_id)
 
@@ -2620,6 +2667,7 @@ class WebRTCManager:
             self.http_proxy_request_tasks,
             self.pending_voice_chat_messages,
             self.background_audio_state_by_session,
+            self.screen_sessions,
             self.silent_recorders,
         )
         if any(normalized_session_id in mapping for mapping in state_maps):
@@ -2723,6 +2771,11 @@ class WebRTCManager:
         return replacing_session
 
     def _handle_inbound_voice_audio_chunk(self, session_id: str, audio_manager: Any, chunk: bytes) -> None:
+        screen_session = self._screen_session_for_session(session_id)
+        if screen_session is not None:
+            if screen_session["mode"] == "interactive" and not screen_session["muted"]:
+                self.screen_listen_mixer.feed(str(screen_session["id"]), chunk)
+            return  # Screen sessions never enter STT, AI agents, or call listeners.
         background_state = self._background_audio_state_for_session(session_id)
         if background_state.get("active"):
             if background_state.get("silent_recording"):
@@ -5937,7 +5990,7 @@ class WebRTCManager:
                     expected_pc=pc,
                     reason="audio_track",
                 )
-                if audio_call_enabled and (voice_pipeline_enabled or self._background_audio_consumer_enabled(cfg=cfg_snapshot)):
+                if audio_call_enabled:
                     nonlocal audio_manager
                     if voice_pipeline_enabled:
                         # Prefer the live STATE entry, fall back to the pre-captured
@@ -6752,6 +6805,10 @@ class WebRTCManager:
             cleanup_id: self.voice_call_client_active_by_session.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
         }
+        expected_screen_sessions = {
+            cleanup_id: self.screen_sessions.get(cleanup_id, missing)
+            for cleanup_id in cleanup_ids
+        }
         expected_background_audio_state = {
             cleanup_id: self.background_audio_state_by_session.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
@@ -6999,6 +7056,13 @@ class WebRTCManager:
                 cleanup_id,
                 expected_voice_call_client_active.get(cleanup_id, missing),
             )
+            removed_screen = pop_if_current(
+                self.screen_sessions,
+                cleanup_id,
+                expected_screen_sessions.get(cleanup_id, missing),
+            )
+            if removed_screen is not missing and isinstance(removed_screen, dict):
+                self.screen_listen_mixer.forget(str(removed_screen.get("id") or ""))
             pop_if_current(
                 self.rewarded_ad_completion_by_session,
                 cleanup_id,
@@ -10301,6 +10365,37 @@ class WebRTCManager:
                 )
                 await manager.send_message(response)
             return
+        if event_name == "screen_input":
+            session = self._screen_session_for_session(str(session_id or ""))
+            if session is None or session["mode"] != "interactive" or not self._voice_call_client_active_for_session(str(session_id or "")):
+                return
+            kind = str(payload.get("kind") or "")
+            value = str(payload.get("value") or "")
+            phase = str(payload.get("phase") or "")
+            if kind == "layout" and phase == "set" and value in {"off", "choices", "gamepad"}:
+                session["layout"] = value
+                session["last_input"] = ""
+                return
+            if phase != "press" or not (
+                kind == "choice" and session["layout"] == "choices" and value in {"A", "B", "C", "D"}
+                or kind == "controller" and session["layout"] == "gamepad" and
+                value in {"A", "B", "C", "D", "←", "↑", "↓", "→", "Select"}
+            ):
+                return
+            now = _runtime.time.time()
+            if now - float(session["last_input_at"]) < 0.04:
+                return
+            session["last_input"] = value
+            session["last_input_at"] = now
+            self.screen_inputs.append({
+                "session_id": str(session["id"]), "name": str(session["name"]),
+                "kind": kind, "value": value, "timestamp": now,
+            })
+            return
+        if self._screen_session_for_session(str(session_id or "")) is not None and event_name in {
+            "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard", "game_input",
+        }:
+            return
         if event_name == "remote_desktop_control":
             await self._handle_remote_desktop_control(str(session_id or ""), payload)
             return
@@ -10381,6 +10476,8 @@ class WebRTCManager:
             previous_host_owner = self.host_audio_owner() if local_call else ""
             was_active = self._voice_call_client_active_for_session(str(session_id or ""))
             alias_ids = self._set_voice_call_client_active(str(session_id or ""), active)
+            screen_mode = str(payload.get("screen_mode") or "") if active else ""
+            self._set_screen_session(str(session_id or ""), screen_mode)
             if active:
                 self._set_background_audio_state(
                     str(session_id or ""),
@@ -10682,6 +10779,10 @@ class WebRTCManager:
                 sorted(alias_ids),
             )
             return
+        if self._screen_session_for_session(str(session_id or "")) is not None and event_name in {
+            "stop_tts", "wuift_state", "wuift_trigger",
+        }:
+            return
         # ── stop_tts: client wants to interrupt the current TTS response immediately ──
         if event_name == "stop_tts":
             platform = str(payload.get("platform") or "unknown").strip() or "unknown"
@@ -10767,6 +10868,14 @@ class WebRTCManager:
             timestamp_ms,
             sorted(payload.keys()),
         )
+
+        screen_session = self._screen_session_for_session(str(session_id or ""))
+        if screen_session is not None:
+            if "muted" in payload:
+                screen_session["muted"] = muted
+                if muted:
+                    self.screen_listen_mixer.drop(str(screen_session["id"]))
+            return
 
         if not session_id or not muted:
             return
@@ -10870,6 +10979,9 @@ class WebRTCManager:
         self.voice_call_status_by_session.clear()
         self.voice_call_playback_by_session.clear()
         self.voice_call_client_active_by_session.clear()
+        self.screen_sessions.clear()
+        self.screen_inputs.clear()
+        await _runtime.asyncio.to_thread(self.screen_listen_mixer.close)
         self.background_audio_state_by_session.clear()
         self.silent_recorders.clear()
         self.voice_command_queues.clear()
@@ -11043,6 +11155,8 @@ class WebRTCManager:
             self.voice_call_status_by_session.clear()
             self.voice_call_playback_by_session.clear()
             self.voice_call_client_active_by_session.clear()
+            self.screen_sessions.clear()
+            self.screen_inputs.clear()
             self.voice_command_queues.clear()
             self.voice_command_workers.clear()
             self.pending_voice_chat_messages.clear()
