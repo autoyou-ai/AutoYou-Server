@@ -3718,6 +3718,28 @@ code,
     cursor: wait;
 }
 
+.ayu-chat-device-reply {
+    max-width: 210px;
+    height: 34px;
+    margin-right: 8px;
+    padding: 0 12px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--ayu-primary) 40%, transparent);
+    border-radius: 11px;
+    color: var(--ayu-primary);
+    background: var(--ayu-primary-soft);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ayu-chat-device-reply:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
 .ayu-chat-recording {
     display: inline-flex;
     align-items: center;
