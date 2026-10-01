@@ -927,6 +927,7 @@ class NotesTool:
         attachments.append(
             {
                 "id": attachment.get("id"),
+                **({"client_media_id": attachment["client_media_id"]} if attachment.get("client_media_id") else {}),
                 "filename": attachment.get("filename"),
                 "path": attachment.get("path"),
                 "mimetype": attachment.get("mimetype"),

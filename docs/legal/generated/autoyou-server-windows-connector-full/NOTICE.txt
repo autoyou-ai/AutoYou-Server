@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-09-30T04:10:22+00:00
+Generated: 2026-09-30T23:38:30+00:00
 
 Optional separately approved Windows connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.
 

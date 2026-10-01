@@ -21,13 +21,18 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 from pathlib import Path
 from typing import Any, Dict
+import base64
+import json
+import re
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Request, File, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.persona_agent.agent import (
     append_persona,
+    diary_media_store,
+    publish_diary_entry,
     get_persona_status,
     read_persona,
     save_persona,
@@ -221,7 +226,7 @@ async def api_auth_login(request: Request) -> JSONResponse:
         pass
 
     token = create_session(_AGENT_NAME, ttl_days)
-    response = _json_response({"success": True, "authenticated": True})
+    response = _json_response({"success": True, "authenticated": True, "token": token})
     set_session_cookie = helpers.get("set_session_cookie")
     if set_session_cookie:
         set_session_cookie(response, request, _AGENT_NAME, token, settings)
@@ -314,6 +319,59 @@ def api_wipe(request: Request) -> JSONResponse:
     if not _check_auth(request):
         return _auth_error()
     return _json_response({"success": True, **wipe_persona()})
+
+
+@app.post("/api/persona/entries")
+async def api_publish_diary_entry(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _auth_error()
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a diary entry object.")
+        result = publish_diary_entry(payload.get("id", ""), payload.get("markdown", ""))
+    except (ValueError, TypeError):
+        result = {"status": "error", "message": "Invalid diary entry."}
+    success = result.get("status") == "success"
+    return _json_response({"success": success, **result}, status_code=200 if success else 400)
+
+
+@app.post("/api/persona/entries/{entry_id}/media")
+async def api_publish_diary_media(entry_id: str, request: Request, file: UploadFile = File(...)) -> JSONResponse:
+    if not _check_auth(request):
+        return _auth_error()
+    media_id = request.headers.get("X-AutoYou-Media-ID", "")
+    try:
+        store = diary_media_store(entry_id, media_id)
+    except ValueError:
+        return _json_response({"success": False, "error": "Invalid entry or media id."}, status_code=400)
+    data = await file.read(5 * 1024 * 1024 + 1)
+    if not data or len(data) > 5 * 1024 * 1024:
+        return _json_response({"success": False, "error": "Media must be nonempty and at most 5 MiB."}, status_code=413)
+    mime = file.content_type or "application/octet-stream"
+    if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", mime):
+        return _json_response({"success": False, "error": "Invalid media type."}, status_code=400)
+    try:
+        store.write(json.dumps({"mime": mime, "data": base64.b64encode(data).decode("ascii")}))
+    except Exception:
+        return _json_response({"success": False, "error": "Could not protect and save the attachment."}, status_code=500)
+    return _json_response({"success": True, "url": f"/agent/persona_agent/api/persona/entries/{entry_id}/media/{media_id}"})
+
+
+@app.get("/api/persona/entries/{entry_id}/media/{media_id}")
+def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Response:
+    if not _check_auth(request):
+        return _auth_error()
+    try:
+        stored = diary_media_store(entry_id, media_id).read()
+        if stored is None:
+            return _json_response({"success": False, "error": "Attachment not found."}, status_code=404)
+        content = json.loads(stored)
+        return Response(base64.b64decode(content["data"], validate=True), media_type=content["mime"], headers={**NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"})
+    except ValueError:
+        return _json_response({"success": False, "error": "Invalid attachment."}, status_code=400)
+    except Exception:
+        return _json_response({"success": False, "error": "Could not open the protected attachment."}, status_code=500)
 
 
 @app.get("/")

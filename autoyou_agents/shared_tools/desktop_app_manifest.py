@@ -371,6 +371,20 @@ def _normalize_desktop_manifest_with_user_packs(
         user_packs = []
     combined = dict(payload)
     combined_packs = list(payload.get("asset_packs") or []) if isinstance(payload.get("asset_packs"), list) else []
+    if not combined_packs:
+        local_manifest = Path(assets_root) / "manifest.json"
+        if local_manifest.is_file() and str(local_manifest.resolve()) != str(Path(manifest_path).resolve()):
+            try:
+                local_data = json.loads(local_manifest.read_text(encoding="utf-8"))
+                if isinstance(local_data, dict):
+                    if isinstance(local_data.get("asset_packs"), list):
+                        combined_packs = list(local_data.get("asset_packs"))
+                    if not combined.get("launch_commands") and isinstance(local_data.get("launch_commands"), dict):
+                        combined["launch_commands"] = dict(local_data.get("launch_commands"))
+                    if not combined.get("working_directory_strategy") and isinstance(local_data.get("working_directory_strategy"), dict):
+                        combined["working_directory_strategy"] = dict(local_data.get("working_directory_strategy"))
+            except Exception as exc:
+                LOGGER.debug("Could not read local manifest fallback %s: %s", local_manifest, exc)
     combined["asset_packs"] = combined_packs + user_packs
     return _normalize_desktop_manifest_payload(
         combined,
