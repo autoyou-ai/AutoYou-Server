@@ -54,6 +54,7 @@
     const sounds = new Map();
     const audioStarted = () => window.webkit?.messageHandlers?.gameAudio?.postMessage(true);
     const remotePlayers = new Map();
+    const streamedFromComputer = location.pathname.startsWith('/api/webrtc/hosted-game/');
     let nativeSocket, reconnectTimer, connecting = false;
     const stars = Array.from({length: 70}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.45, r: i % 9 ? 1 : 2}));
 
@@ -273,7 +274,7 @@
     const laneX = (laneValue, z) => width / 2 + laneValue * roadHalf(z) * 0.62;
     function update(dt) {
       if (mode !== 'running') return;
-      if ((musicTime -= dt) <= 0) {
+      if (!streamedFromComputer && (musicTime -= dt) <= 0) {
         tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.055, 'triangle');
         musicTime = 0.3;
       }

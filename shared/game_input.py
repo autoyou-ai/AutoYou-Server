@@ -94,22 +94,25 @@ class GameInputHub:
     def __init__(self) -> None:
         self.token = secrets.token_urlsafe(32)
         self._queue: asyncio.Queue[dict[str, Any]] | None = None
+        self.owner: str | None = None
         self._sequence = 0
 
     @property
     def connected(self) -> bool:
         return self._queue is not None
 
-    def attach(self) -> asyncio.Queue[dict[str, Any]] | None:
+    def attach(self, owner: str = "engine") -> asyncio.Queue[dict[str, Any]] | None:
         if self._queue is not None:
             return None
         # ponytail: eight frames bound stale input; use per-session snapshots if critical events overflow.
         self._queue = asyncio.Queue(maxsize=8)
+        self.owner = owner
         return self._queue
 
     def detach(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         if self._queue is queue:
             self._queue = None
+            self.owner = None
 
     def publish(self, session_id: str, frame: dict[str, Any]) -> None:
         queue = self._queue
