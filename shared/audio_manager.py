@@ -910,6 +910,14 @@ def voice_runtime_available(settings: Dict[str, Any]) -> bool:
 
     return False
 
+def _system_voice_stand_in(settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Settings that speak with the plain system voice, or None if it cannot run either."""
+    stand_in = normalize_speech_config(settings)
+    stand_in["tts"]["provider"] = "system"
+    if stand_in["tts"]["system_voice"] == CUSTOM_VOICE_SYSTEM_VOICE_ID:
+        stand_in["tts"]["system_voice"] = ""
+    return stand_in if voice_runtime_available(stand_in) else None
+
 class BackgroundAudioHeartbeatTrack(MediaStreamTrack):
     """Paced audio frames for iOS recvonly background sessions."""
 
@@ -2013,7 +2021,11 @@ class AudioManager:
             voice_status = emotivoice_status()
             self.tts_available = bool(voice_status["ready"])
             if not self.tts_available:
-                LOGGER.warning("EmotiVoice TTS is not ready: %s", voice_status)
+                # Every speaker id is thousands of entries; none explains why.
+                LOGGER.warning(
+                    "EmotiVoice TTS is not ready: %s",
+                    {key: value for key, value in voice_status.items() if key != "speaker_ids"},
+                )
             return
         self.tts_available = False
         LOGGER.warning("Unknown TTS provider selected: %s", provider)
@@ -2911,8 +2923,18 @@ class AudioManager:
             LOGGER.debug("Skipping TTS because provider is off")
             return False
         if not self.tts_available:
-            LOGGER.warning("Skipping TTS because provider %s is not ready", settings["tts"]["provider"])
-            return False
+            # A call must not go silent because the chosen voice cannot run yet
+            # (models not downloaded, no API key, no trained voice). The system
+            # voice is local and stands in for this reply; the choice is kept.
+            stand_in = _system_voice_stand_in(settings)
+            if stand_in is None:
+                LOGGER.warning("Skipping TTS because provider %s is not ready", settings["tts"]["provider"])
+                return False
+            LOGGER.info(
+                "TTS provider %s is not ready; speaking this reply with the system voice",
+                settings["tts"]["provider"],
+            )
+            settings = stand_in
         LOGGER.info("Speaking with provider=%s", settings["tts"]["provider"])
         with self._tts_generation_lock:
             self._tts_generation += 1
