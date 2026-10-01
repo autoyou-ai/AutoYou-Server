@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.support.connected_device import connect_device
+from tests.support.connected_device import OpenChannel, connect_device
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-5b22f47fb8e45be944c72bef"
@@ -236,7 +236,6 @@ def test_webrtc_notification_metadata_preserves_saved_conversation_session_id():
     metadata = scheduler_service._build_webrtc_notification_metadata(
         notification,
         reply_target,
-        server,
     )
 
     assert metadata["conversation_session_id"] == (
@@ -740,6 +739,136 @@ async def test_broadcast_alert_reaches_the_conversation_each_device_is_in_now(mo
     assert "conversation_force_target" not in metadata
 
 
+def _notification_that_kept(kept, device, current_history_id):
+    """A queued notification with no saved conversation id, by what it did keep."""
+    owner = {"owner_key": device.owner_key, "canonical_user_id": device.canonical_user_id}
+    return {
+        "no-conversation": owner,
+        "history-id-of-an-earlier-conversation": {**owner, "external_session_id": device.canonical_session_id},
+        "history-id-of-the-current-conversation": {**owner, "external_session_id": current_history_id},
+        "no-owner": {"id": "synthetic-notification"},
+    }[kept]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply_target_session", ["synthetic-live", None], ids=["live-session", "owner-only"])
+@pytest.mark.parametrize(
+    "kept",
+    [
+        "no-conversation",
+        "history-id-of-an-earlier-conversation",
+        "history-id-of-the-current-conversation",
+        "no-owner",
+    ],
+)
+async def test_queued_notification_without_a_saved_conversation_reaches_the_one_the_device_is_in_now(
+    monkeypatch, tmp_path, kept, reply_target_session
+):
+    """Through the real engine: with no saved conversation id the scheduler names no conversation."""
+    webrtc, channel, paired, manager = connect_device(tmp_path, monkeypatch)
+    # The device has since started a new conversation.
+    _, current_history_id = manager.advance_conversation_thread(paired.owner_key)
+    as_an_ai_reply = server._build_conversation_metadata(
+        server._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-live"))
+    )
+    runtime_server = _make_runtime_server(webrtc=webrtc)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+    reply_target = {"transport": "webrtc", "owner_key": paired.owner_key}
+    if reply_target_session:
+        reply_target["session_id"] = reply_target_session
+
+    result = await scheduler_service._deliver_reply_target_message(
+        reply_target,
+        "synthetic reminder",
+        notification=_notification_that_kept(kept, paired, current_history_id),
+    )
+
+    assert result == {"status": "success", "message": "Sent message via webrtc."}
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert message.payload["message"] == "synthetic reminder"
+    assert metadata["notification_delivery_mode"] == "scheduled_notification"
+    # A device ignores a message addressed to a conversation it has left, and
+    # one that has just connected takes the first id it is sent as its own.
+    assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+    assert metadata["conversation_thread_id"] == 2
+    # Only an id the device was given is pinned; this one follows the device.
+    assert "conversation_force_target" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_queued_notification_with_a_saved_conversation_stays_pinned_to_it(monkeypatch, tmp_path):
+    """Through the real engine: a result goes back to the conversation that asked for it."""
+    webrtc, channel, paired, manager = connect_device(tmp_path, monkeypatch)
+    # Saved with the reminder: the id the device was given for the conversation that asked.
+    asked_here = server._build_conversation_metadata(
+        webrtc._resolve_chat_identity("synthetic-live")
+    )["conversation_session_id"]
+    manager.advance_conversation_thread(paired.owner_key)
+    runtime_server = _make_runtime_server(webrtc=webrtc)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+
+    result = await scheduler_service._deliver_reply_target_message(
+        {"transport": "webrtc", "session_id": "synthetic-live", "owner_key": paired.owner_key},
+        "synthetic reminder",
+        notification={
+            "owner_key": paired.owner_key,
+            "canonical_user_id": paired.canonical_user_id,
+            "external_session_id": paired.canonical_session_id,
+            "conversation_session_id": asked_here,
+        },
+    )
+
+    assert result == {"status": "success", "message": "Sent message via webrtc."}
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert metadata["conversation_session_id"] == asked_here
+    assert metadata["conversation_force_target"] is True
+
+
+@pytest.mark.asyncio
+async def test_queued_notification_from_an_earlier_connection_reaches_the_device_on_this_one(
+    monkeypatch, tmp_path
+):
+    """Why a stored history id is never rebuilt into an id to pin: a device can
+    be given a new id for the same conversation when it connects again."""
+    # A direct pairing is given a new session id each time it authenticates.
+    webrtc, _, paired, _ = connect_device(tmp_path, monkeypatch, transport="direct")
+    asked_here = server._build_conversation_metadata(webrtc._resolve_chat_identity("synthetic-live"))
+    # The device reconnects. It is still in the same conversation.
+    del webrtc.datachannel_managers["synthetic-live"]
+    server.bind_transport_chat_owner("direct", "synthetic-device", raw_session_id="synthetic-reconnected")
+    channel = OpenChannel()
+    webrtc.datachannel_managers["synthetic-reconnected"] = channel
+    as_an_ai_reply = server._build_conversation_metadata(
+        server._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-reconnected"))
+    )
+    runtime_server = _make_runtime_server(webrtc=webrtc)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+
+    result = await scheduler_service._deliver_reply_target_message(
+        # Saved with the reminder, so it still names the first connection.
+        {"transport": "webrtc", "session_id": "synthetic-live", "owner_key": paired.owner_key},
+        "synthetic reminder",
+        notification={
+            "owner_key": paired.owner_key,
+            "canonical_user_id": paired.canonical_user_id,
+            "external_session_id": paired.canonical_session_id,
+        },
+    )
+
+    assert result == {"status": "success", "message": "Sent message via webrtc."}
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+    assert "conversation_force_target" not in metadata
+    # One conversation in history, two ids on the device: the one it was given
+    # when it asked and the one this connection uses. The history id does not
+    # say which the device holds, so only a saved id is ever pinned.
+    assert as_an_ai_reply["canonical_session_id"] == asked_here["canonical_session_id"]
+    assert metadata["conversation_session_id"] != asked_here["conversation_session_id"]
+
+
 @pytest.mark.asyncio
 async def test_process_pending_notifications_serializes_concurrent_flushes(monkeypatch, tmp_path):
     queue_path = tmp_path / "scheduled_notification_queue.json"
@@ -811,22 +940,14 @@ async def test_execute_direct_task_action_deduplicates_alias_webrtc_sessions(mon
     )
 
     assert result == {"status": "success", "message": "Sent message via webrtc (1 session)."}
-    expected_identity = SimpleNamespace(
-        transport="cloud",
-        sender_id="eq347mzf-matcf8u",
-        raw_session_id="client-session",
-        owner_key="cloud:eq347mzf-matcf8u",
-        canonical_user_id="user::cloud:eq347mzf-matcf8u",
-        canonical_session_id="session::cloud:eq347mzf-matcf8u::3",
-        thread_id=3,
-    )
+    # The task saved no conversation id, so the scheduler names no conversation
+    # and the engine addresses the one the device is in.
     expected_metadata = {
         "source": "scheduler",
         "is_notification": True,
         "notification_delivery_mode": "scheduled_notification",
         "notification_delivery_label": "scheduled_notification",
         "canonical_owner_key": "cloud:eq347mzf-matcf8u",
-        **server._build_conversation_metadata(expected_identity),
     }
     assert fake_webrtc.calls == [
         {
