@@ -11,8 +11,10 @@ import asyncio
 import importlib
 import json
 import os
+import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +30,7 @@ ensure_repo_on_path()
 
 import server
 from shared import scheduler_service
+from shared.session_execution import build_canonical_session_id, build_canonical_user_id, build_owner_key
 
 
 def test_scheduler_files_honor_autoyou_test_root(monkeypatch, tmp_path):
@@ -305,7 +308,9 @@ async def test_launch_scheduled_task_chat_request_preserves_client_memory_metada
     assert metadata["reply_target"] == task["delivery_target"]
 
 
-def _make_runtime_server(*, webrtc, telegram_bot=None, telegram_user_service=None, notify_cloud_client=None):
+def _make_runtime_server(
+    *, webrtc, telegram_bot=None, telegram_user_service=None, notify_cloud_client=None, session_manager=None
+):
     return SimpleNamespace(
         WEBRTC=webrtc,
         STATE=SimpleNamespace(
@@ -319,6 +324,7 @@ def _make_runtime_server(*, webrtc, telegram_bot=None, telegram_user_service=Non
         _get_active_telegram_bot=lambda: telegram_bot,
         _send_telegram_text_via_bot=server._send_telegram_text_via_bot,
         _notify_cloud_client=notify_cloud_client,
+        _get_conversation_session_manager=lambda: session_manager,
     )
 
 
@@ -645,6 +651,293 @@ async def test_pending_notification_retries_when_live_webrtc_owner_returns(monke
     assert results[queued_id] == {"status": "success", "message": "Sent message via webrtc (2 sessions)."}
     assert {call["reply_target"]["session_id"] for call in live_webrtc.calls} == {"live-a", "live-b"}
     assert scheduler_service.load_json(str(queue_path)) == []
+
+
+# --- A notification no device received: history records it, the queue delivers it ---
+
+
+def _synthetic_device(transport="webrtc", sender="device-synthetic"):
+    owner_key = build_owner_key(transport, sender)
+    return SimpleNamespace(
+        owner_key=owner_key,
+        user_id=build_canonical_user_id(owner_key),
+        external_session_id=build_canonical_session_id(owner_key),
+        adk_session_id=f"adk-session-{sender}",
+    )
+
+
+async def _conversation_with_history(tmp_path, device, *, record_messages=True):
+    """A real session manager over an in-memory ADK service, holding one conversation."""
+    sessions = pytest.importorskip("google.adk.sessions")
+    from session_utils import MemoryIntegratedSessionManager
+
+    manager = MemoryIntegratedSessionManager(
+        db_path=str(tmp_path / "history" / "sessions.db"),
+        record_messages=record_messages,
+        adk_session_service=sessions.InMemorySessionService(),
+        cognee_memory_enabled=False,
+    )
+    await manager.create_user_session(
+        device.user_id,
+        device.adk_session_id,
+        {},
+        external_session_id=device.external_session_id,
+    )
+    return manager
+
+
+async def _stored_turns(manager, device):
+    session = await manager.get_user_session(device.user_id, device.adk_session_id)
+    return [event["data"] for event in (session or {}).get("events", [])]
+
+
+def _runtime_with_devices_away(monkeypatch, tmp_path, *, session_manager=None, webrtc=None, notify_cloud_client=None):
+    """Queue and activity log under tmp_path, and a server whose devices are all away."""
+    queue_path = tmp_path / "scheduled_notification_queue.json"
+    monkeypatch.setattr(scheduler_service, "OUTBOUND_NOTIFICATION_QUEUE_FILE", str(queue_path))
+    monkeypatch.setattr(
+        scheduler_service,
+        "SCHEDULER_ACTIVITY_LOG_FILE",
+        str(tmp_path / "scheduler_activity_log.jsonl"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "__main__",
+        _make_runtime_server(
+            webrtc=webrtc or _FakeUnavailableWebRTCManager(),
+            notify_cloud_client=notify_cloud_client,
+            session_manager=session_manager,
+        ),
+    )
+    return queue_path
+
+
+async def _queue_for_a_device_that_is_away(device, message="synthetic reminder"):
+    """Queue a reminder the way a task does, saved with both ids of its conversation."""
+    return await scheduler_service._queue_notification_for_delivery(
+        message,
+        owner_key=device.owner_key,
+        canonical_user_id=device.user_id,
+        external_session_id=device.external_session_id,
+        reply_target={"transport": "webrtc", "owner_key": device.owner_key, "session_id": "offline-session"},
+        source="scheduled-task:synthetic",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_session_manager", [False, True], ids=["no-session-manager", "session-manager"])
+async def test_failed_delivery_never_opens_a_database_outside_the_test_root(
+    monkeypatch, tmp_path, tmp_path_factory, has_session_manager
+):
+    """With every target failing and both ids saved, the scheduler opened
+    ``sessions.db`` from the working directory or the server root: in a real
+    checkout, the operator's live database. It must open only what the session
+    manager owns, and nothing at all when the server has none."""
+    roots = (tmp_path.resolve(), Path(os.environ["AUTOYOU_TEST_ROOT"]).resolve())
+    device = _synthetic_device()
+
+    # Stands in for the live database: where a lookup beside the process would land.
+    working_directory = tmp_path_factory.mktemp("decoy-working-directory")
+    decoy = working_directory / "sessions.db"
+    assert not any(decoy.resolve().is_relative_to(root) for root in roots)
+    real_connect = sqlite3.connect
+    with closing(real_connect(decoy)) as connection:
+        connection.executescript(
+            "CREATE TABLE session_mappings (external_session_id TEXT PRIMARY KEY, session_id TEXT, user_id TEXT);"
+            "CREATE TABLE events (id TEXT, user_id TEXT, session_id TEXT, event_data TEXT);"
+        )
+        connection.execute(
+            "INSERT INTO session_mappings VALUES (?, ?, ?)",
+            (device.external_session_id, "decoy-adk-session", device.user_id),
+        )
+        connection.commit()
+    monkeypatch.chdir(working_directory)
+
+    opened: list[Path] = []
+    outside: list[Path] = []
+
+    def recording_connect(database, *args, **kwargs):
+        target = Path(os.fspath(database)).resolve()
+        opened.append(target)
+        if not any(target.is_relative_to(root) for root in roots):
+            # Refused, so a regression cannot reach the file it is looking for.
+            outside.append(target)
+            raise sqlite3.OperationalError("blocked: outside this test's roots")
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", recording_connect)
+    manager = await _conversation_with_history(tmp_path, device) if has_session_manager else None
+    _runtime_with_devices_away(monkeypatch, tmp_path, session_manager=manager)
+
+    result = await _queue_for_a_device_that_is_away(device)
+
+    assert result["queued"] is True
+    assert outside == [], f"opened outside the test roots: {outside}"
+    if manager is None:
+        assert opened == []
+    else:
+        assert Path(manager.db_path).resolve() in opened
+    with closing(real_connect(decoy)) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM events").fetchone() == (0,)
+
+
+@pytest.mark.asyncio
+async def test_undelivered_notification_is_recorded_once_and_still_reaches_the_device_that_returns(
+    monkeypatch, tmp_path
+):
+    """History records a message no device has received; it does not deliver it.
+    The queue keeps the entry, so the device gets it on reconnecting."""
+    device = _synthetic_device()
+    manager = await _conversation_with_history(tmp_path, device)
+    queue_path = _runtime_with_devices_away(monkeypatch, tmp_path, session_manager=manager)
+
+    first = await _queue_for_a_device_that_is_away(device)
+
+    # Not reported as sent: it is queued, and says it is in history.
+    assert first["queued"] is True
+    assert "Recorded in the conversation history" in first["message"]
+    [queued] = scheduler_service.load_json(str(queue_path))
+    assert queued["attempt_count"] == 1
+    assert queued["history_recorded_at_s"] > 0
+    [turn] = await _stored_turns(manager, device)
+    assert (turn["user_message"], turn["agent_response"]) == ("", "synthetic reminder")
+    assert turn["external_session_id"] == device.external_session_id
+    # Chat & History names who a conversation is with from a turn's source and
+    # client, so a notification carries neither.
+    assert turn["memory_metadata"] == {
+        "scheduled_notification": True,
+        "notification_id": queued["id"],
+        "notification_source": "scheduled-task:synthetic",
+    }
+    assert "source" not in turn and "client" not in turn
+    session = await manager.get_user_session(device.user_id, device.adk_session_id)
+    assert session["message_count"] == 1
+
+    # A retry does not record it again.
+    retry = await scheduler_service.process_pending_notifications(force_ids={queued["id"]})
+    assert retry[queued["id"]]["status"] == "queued"
+    assert len(await _stored_turns(manager, device)) == 1
+
+    # The device reconnects and is sent it live, as for any queued notification.
+    live_webrtc = _FakeOwnerAwareWebRTCManager(
+        owner_key=device.owner_key,
+        canonical_user_id=device.user_id,
+        session_ids=["live-a"],
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "__main__",
+        _make_runtime_server(webrtc=live_webrtc, session_manager=manager),
+    )
+    flushed = await scheduler_service.flush_pending_notifications_for_owner(
+        owner_key=device.owner_key,
+        canonical_user_id=device.user_id,
+    )
+
+    assert flushed[queued["id"]] == {"status": "success", "message": "Sent message via webrtc (1 session)."}
+    assert [call["message"] for call in live_webrtc.calls] == ["synthetic reminder"]
+    assert scheduler_service.load_json(str(queue_path)) == []
+    assert len(await _stored_turns(manager, device)) == 1
+
+
+@pytest.mark.asyncio
+async def test_delivered_notification_leaves_history_alone(monkeypatch, tmp_path):
+    device = _synthetic_device()
+    manager = await _conversation_with_history(tmp_path, device)
+    live_webrtc = _FakeOwnerAwareWebRTCManager(
+        owner_key=device.owner_key,
+        canonical_user_id=device.user_id,
+        session_ids=["live-a"],
+    )
+    queue_path = _runtime_with_devices_away(
+        monkeypatch, tmp_path, session_manager=manager, webrtc=live_webrtc
+    )
+
+    result = await _queue_for_a_device_that_is_away(device)
+
+    assert result == {"status": "success", "message": "Sent message via webrtc (1 session)."}
+    assert await _stored_turns(manager, device) == []
+    assert scheduler_service.load_json(str(queue_path)) == []
+
+
+@pytest.mark.asyncio
+async def test_cloud_push_is_tried_before_anything_is_recorded(monkeypatch, tmp_path):
+    """The record used to come first and report success, so a cloud-paired
+    phone was never pushed the reminder."""
+    device = _synthetic_device("cloud")
+    manager = await _conversation_with_history(tmp_path, device)
+    cloud_calls = []
+
+    async def notify_cloud_client(**kwargs):
+        cloud_calls.append(kwargs)
+        return {
+            "success": True,
+            "sent": True,
+            "sse_delivered": False,
+            "offline_allowed": True,
+            "devices": 1,
+            "apns_sent": 1,
+            "fcm_sent": 0,
+        }
+
+    queue_path = _runtime_with_devices_away(
+        monkeypatch, tmp_path, session_manager=manager, notify_cloud_client=notify_cloud_client
+    )
+
+    result = await _queue_for_a_device_that_is_away(device)
+
+    assert result["message"] == "Sent message via AutoYou Cloud notification."
+    assert [call["body"] for call in cloud_calls] == ["synthetic reminder"]
+    assert await _stored_turns(manager, device) == []
+    assert scheduler_service.load_json(str(queue_path)) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["no-such-conversation", "someone-elses-conversation"])
+async def test_notification_is_not_recorded_in_a_conversation_that_is_not_the_users(
+    monkeypatch, tmp_path, case
+):
+    device = _synthetic_device()
+    other = _synthetic_device(sender="other-device-synthetic")
+    manager = await _conversation_with_history(tmp_path, other)
+    queue_path = _runtime_with_devices_away(monkeypatch, tmp_path, session_manager=manager)
+    # The conversation is found by its external id; for the second case that id
+    # is another user's, and the mapping cache answers by external id alone.
+    claimed = SimpleNamespace(
+        owner_key=device.owner_key,
+        user_id=device.user_id,
+        external_session_id=other.external_session_id
+        if case == "someone-elses-conversation"
+        else device.external_session_id,
+    )
+
+    result = await _queue_for_a_device_that_is_away(claimed)
+
+    assert result["queued"] is True
+    assert "Recorded" not in result["message"]
+    [queued] = scheduler_service.load_json(str(queue_path))
+    assert "history_recorded_at_s" not in queued
+    assert await _stored_turns(manager, other) == []
+    # Nor was a conversation made for the user under the other's session id.
+    assert await manager.get_user_session(device.user_id, other.adk_session_id) is None
+
+
+@pytest.mark.asyncio
+async def test_notification_is_not_recorded_when_history_recording_is_off(monkeypatch, tmp_path):
+    """With recording off the session manager keeps only a counter and still
+    reports success; the raw-SQL fallback it replaced stored the message anyway."""
+    device = _synthetic_device()
+    manager = await _conversation_with_history(tmp_path, device, record_messages=False)
+    queue_path = _runtime_with_devices_away(monkeypatch, tmp_path, session_manager=manager)
+
+    result = await _queue_for_a_device_that_is_away(device)
+
+    assert result["queued"] is True
+    assert "Recorded" not in result["message"]
+    [queued] = scheduler_service.load_json(str(queue_path))
+    assert "history_recorded_at_s" not in queued
+    session = await manager.get_user_session(device.user_id, device.adk_session_id)
+    assert (session["events"], session["message_count"]) == ([], 0)
 
 
 @pytest.mark.asyncio
