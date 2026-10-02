@@ -17,7 +17,7 @@ __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-4b4f1ee67cd63d7741ce31af"
 
 
 def configure_sctp_fragment_size() -> None:
-    """Apply before creating peers; keep DTLS/SCTP below a 1280-byte path MTU."""
+    """Apply before creating peers: safe fragment sizes and shutdown sends."""
     from aiortc import rtcsctptransport
 
     # aiortc's 1200-byte DATA payload becomes a 1293-byte IPv4 packet after
@@ -33,3 +33,23 @@ def configure_sctp_fragment_size() -> None:
     if fragment_size != rtcsctptransport.USERDATA_MAX_LENGTH:
         rtcsctptransport.USERDATA_MAX_LENGTH = fragment_size
         logging.getLogger(__name__).info("WebRTC SCTP fragment payload limited to %d bytes", fragment_size)
+
+    # aiortc 1.14 can queue a T3 retransmission before stop() closes SCTP, then
+    # run it after DTLS shuts down. Keep live connection failures visible.
+    # ponytail: private aiortc hook; remove when upstream cancels queued sends on stop.
+    transport_type = rtcsctptransport.RTCSctpTransport
+    transmit = transport_type._transmit
+    if not getattr(transmit, "_autoyou_shutdown_guard", False):
+        from OpenSSL import SSL
+
+        async def transmit_unless_closed(self):
+            if self.state == "closed":
+                return
+            try:
+                await transmit(self)
+            except (ConnectionError, SSL.Error):
+                if self.state != "closed":
+                    raise
+
+        transmit_unless_closed._autoyou_shutdown_guard = True
+        transport_type._transmit = transmit_unless_closed
