@@ -220,13 +220,14 @@ def register_routes(
     def _live_conversations() -> Dict[str, List[tuple]]:
         """Devices connected right now, keyed by the conversation owner they write as.
 
-        Each value lists ``(live session id, current conversation id)``. A
-        guest relayed by another device has no connection of its own, so it is
-        never here.
+        Each value lists ``(live session id, identity of its current
+        conversation)``. A guest relayed by another device has no connection
+        of its own, so it is never here.
         """
         webrtc = getattr(server, "WEBRTC", None)
         entries = getattr(webrtc, "_unique_datachannel_manager_entries", None)
         resolve = getattr(webrtc, "_resolve_chat_identity", None)
+        is_live = getattr(webrtc, "_datachannel_manager_is_live", None)
         current = getattr(server, "_resolve_conversation_identity", None)
         if not callable(entries) or not callable(resolve):
             return {}
@@ -235,8 +236,11 @@ def register_routes(
             connected = list(entries(require_send_message=True))
         except Exception:
             return {}
-        for live_session_id, _manager in connected:
+        for live_session_id, manager in connected:
             try:
+                # A closed channel is still listed until it is retired.
+                if callable(is_live) and not is_live(manager):
+                    continue
                 identity = resolve(str(live_session_id))
                 if callable(current):
                     identity = current(identity)
@@ -245,7 +249,7 @@ def register_routes(
             owner = str(getattr(identity, "canonical_user_id", "") or "").strip()
             conversation = str(getattr(identity, "canonical_session_id", "") or "").strip()
             if owner and conversation:
-                live.setdefault(owner, []).append((str(live_session_id), conversation))
+                live.setdefault(owner, []).append((str(live_session_id), identity))
         return live
 
     def _voice_training_entries() -> tuple[bool, List[Dict[str, Any]], Any]:
@@ -554,6 +558,11 @@ def register_routes(
         session_id = _chat_text(request.query_params.get("session_id"), "", 256)
         if not user_id or not session_id:
             return JSONResponse(status_code=400, content={"success": False, "error": "user_id and session_id are required"})
+        # A reader that shows only the latest turns may ask for just those.
+        try:
+            newest = max(0, int(request.query_params.get("limit") or 0))
+        except (TypeError, ValueError):
+            newest = 0
         try:
             info = await server.get_session_info(user_id, session_id)
             payload = _chat_model_dict(info)
@@ -635,6 +644,10 @@ def register_routes(
             payload["identity"] = identity
             if messages:
                 payload["messages"] = messages
+            listed = payload.get("messages")
+            if newest and isinstance(listed, list) and len(listed) > newest:
+                payload["messages"] = listed[-newest:]
+                payload["truncated"] = True
             payload["files"] = files
             payload["voice_training"] = training
             payload["title"] = custom or auto_title
@@ -685,7 +698,8 @@ def register_routes(
         Unlike ``POST /api/chat`` nothing is asked of the AI: the text goes to
         the connected device as a message from the owner and is kept in that
         device's conversation. A device that is not connected gets nothing,
-        and nothing is stored, so history never shows a reply nobody received.
+        now or later, and nothing is stored, so history never shows a reply
+        nobody received.
         """
         auth_error = server._require_api_login(request)
         if auth_error:
@@ -713,20 +727,35 @@ def register_routes(
             })
         surface = _admin_surface(request)
         owner_name = _server_display_name() or "AutoYou"
+        conversation_metadata = getattr(server, "_build_conversation_metadata", None)
         delivered_to = ""
-        for live_session_id, conversation_id in live:
+        for live_session_id, identity in live:
+            metadata = {"source": "owner_reply", "human_reply": True, "agent_display_name": owner_name}
+            # Addressed to the conversation the device is in now, as an AI
+            # reply is: a device that has started a new conversation ignores
+            # anything addressed to an earlier one.
+            try:
+                current = conversation_metadata(identity) if callable(conversation_metadata) else {}
+            except Exception:
+                current = {}
+            for key in ("conversation_session_id", "conversation_thread_id"):
+                if current.get(key) not in ("", None):
+                    metadata[key] = current[key]
             try:
                 sent = await server.WEBRTC.send_chat_to_session(
                     live_session_id,
                     message,
-                    metadata={"source": "owner_reply", "human_reply": True, "agent_display_name": owner_name},
+                    metadata=metadata,
                     user_id=owner_name,
+                    # The owner is told at once when this fails, so it must
+                    # not also arrive later.
+                    queue_if_undelivered=False,
                 )
             except Exception as exc:
                 server.LOGGER.warning("Owner reply could not be delivered: %s", type(exc).__name__)
                 sent = False
             if sent and not delivered_to:
-                delivered_to = conversation_id
+                delivered_to = str(getattr(identity, "canonical_session_id", "") or "").strip()
         if not delivered_to:
             return server._json_response_no_store({
                 "success": True,
@@ -737,7 +766,7 @@ def register_routes(
         try:
             manager = await _chat_session_manager()
             internal_id = manager.get_mapped_session_id(delivered_to, user_id) or delivered_to
-            await manager.add_session_event(
+            saved = await manager.add_session_event(
                 user_id=user_id,
                 session_id=internal_id,
                 event_type="chat_interaction",
@@ -750,6 +779,8 @@ def register_routes(
                 },
                 external_session_id=delivered_to,
             )
+            if saved is False:
+                server.LOGGER.warning("Owner reply was delivered but not saved in history")
         except Exception as exc:
             server.LOGGER.warning("Owner reply was delivered but not saved in history: %s", exc)
         return server._json_response_no_store({

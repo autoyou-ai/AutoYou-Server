@@ -788,6 +788,109 @@ def _resolve_notification_targets(notification: Dict[str, Any]) -> tuple[List[Di
     return live_webrtc_targets, fallback_targets
 
 
+def _notification_history_manager() -> Any:
+    """The running server's session manager, or None while it has no service manager.
+
+    This is how the rest of the server reaches the store that owns the
+    configured session database, so the scheduler names no path of its own and
+    stays inside whichever root that store was built for: the operator's data
+    directory, or ``AUTOYOU_TEST_ROOT`` under pytest. ``rest_api`` has a
+    similar accessor that creates a service manager, and so a database, when
+    none exists; a delivery retry must not do that.
+    """
+    try:
+        getter = getattr(_get_runtime_server_module(), "_get_conversation_session_manager", None)
+        return getter() if callable(getter) else None
+    except Exception as exc:
+        LOGGER.debug("No session manager is available for scheduler history: %s", exc)
+        return None
+
+
+def _history_session_id_for_notification(
+    manager: Any,
+    external_session_id: str,
+    canonical_user_id: str,
+) -> Optional[str]:
+    """The stored conversation the ids name, only when it belongs to that user."""
+    internal_session_id = manager.get_mapped_session_id(external_session_id, canonical_user_id)
+    if not internal_session_id:
+        return None
+    # The mapping cache is keyed by the external id alone, so ask again whose
+    # conversation this is: a notification never writes into someone else's.
+    if manager.get_user_id_for_session(internal_session_id) != canonical_user_id:
+        return None
+    return internal_session_id
+
+
+async def _record_undelivered_notification_in_history(notification: Dict[str, Any], message: str) -> bool:
+    """Keep a notification no device has received in the conversation it came from.
+
+    This records; it does not deliver, and callers must not report it as
+    delivered. History is what a polling client reads and what Chat & History
+    shows, but nothing pushes it to a device, and the queue already says what
+    happens to a message for a device that is away: it is retried, sent when
+    the owner reconnects, then handed to the configured expiry fallback. So the
+    entry stays queued, and the record is made once, remembered on the queue
+    entry as ``history_recorded_at_s``, not again on every retry.
+
+    It goes through the session manager like ``/api/chat`` and the owner reply,
+    so the configured database, the recording setting and the memory index all
+    apply, and the store is reached the way the server reaches it, secure
+    storage included. Returns True when the message is in history, now or from
+    an earlier attempt.
+    """
+    if notification.get("history_recorded_at_s"):
+        return True
+    external_session_id = str(notification.get("external_session_id") or "").strip()
+    canonical_user_id = str(notification.get("canonical_user_id") or "").strip()
+    text = _replace_system_clock_placeholders(message).strip()
+    if not external_session_id or not canonical_user_id or not text:
+        return False
+    manager = _notification_history_manager()
+    # With recording off, add_session_event keeps only a counter and still
+    # reports success, so there would be nothing to point at.
+    if manager is None or not getattr(manager, "record_messages", True):
+        return False
+    try:
+        internal_session_id = await asyncio.to_thread(
+            _history_session_id_for_notification,
+            manager,
+            external_session_id,
+            canonical_user_id,
+        )
+        if not internal_session_id:
+            return False
+        recorded = await manager.add_session_event(
+            user_id=canonical_user_id,
+            session_id=internal_session_id,
+            event_type="chat_interaction",
+            event_data={
+                "user_message": "",
+                "agent_response": text,
+                "timestamp": datetime.now().isoformat(),
+                # Not "source" or "client": Chat & History reads those from a
+                # conversation's newest turn to say who it is with.
+                "memory_metadata": {
+                    "scheduled_notification": True,
+                    "notification_id": str(notification.get("id") or ""),
+                    "notification_source": str(notification.get("source") or "scheduler"),
+                },
+            },
+            external_session_id=external_session_id,
+        )
+    except Exception as exc:
+        LOGGER.warning("Could not record a queued notification in its conversation history: %s", exc)
+        return False
+    if not recorded:
+        return False
+    notification["history_recorded_at_s"] = time.time()
+    LOGGER.info(
+        "Recorded undelivered notification %s in its conversation history; it stays queued",
+        notification.get("id") or "<unknown>",
+    )
+    return True
+
+
 async def _attempt_queued_notification_delivery(notification: Dict[str, Any]) -> Dict[str, Any]:
     message = str(notification.get("message") or "").strip()
     if not message:
@@ -817,95 +920,23 @@ async def _attempt_queued_notification_delivery(notification: Dict[str, Any]) ->
             return result
         errors.append(str(result.get("message") or "Delivery failed."))
 
-    external_session_id = str(notification.get("external_session_id") or "").strip()
-    canonical_user_id = str(notification.get("canonical_user_id") or "").strip()
-    if external_session_id and canonical_user_id:
-        try:
-            import sqlite3
-            import json
-            import uuid
-            import datetime
-            import os
-            
-            db_path = "sessions.db"
-            if not os.path.exists(db_path):
-                proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                db_path = os.path.join(proj_root, "sessions.db")
-                
-            if os.path.exists(db_path):
-                conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT session_id FROM session_mappings WHERE external_session_id = ? AND user_id = ?",
-                    (external_session_id, canonical_user_id)
-                )
-                row = cursor.fetchone()
-                if row:
-                    adk_session_id = row[0]
-                    event_id = f"chat_interaction_{uuid.uuid4().hex[:12]}"
-                    timestamp_now = time.time()
-                    timestamp_dt = datetime.datetime.fromtimestamp(timestamp_now).isoformat()
-                    
-                    event_data = {
-                        "invocation_id": "",
-                        "author": "autoyou",
-                        "actions": {
-                            "state_delta": {
-                                "message_count": 2,
-                                "event_data_raw": {
-                                    "user_message": "(async request)",
-                                    "agent_response": message,
-                                    "timestamp": timestamp_dt,
-                                    "processing_time_ms": 0,
-                                    "usage_metadata": {},
-                                    "response_author": "autoyou_agent",
-                                    "message_id": str(uuid.uuid4()),
-                                    "invocation_id": "",
-                                    "context": [],
-                                    "attachments": [],
-                                    "_event_type": "chat_interaction",
-                                    "external_session_id": external_session_id
-                                }
-                            },
-                            "artifact_delta": {},
-                            "requested_auth_configs": {},
-                            "requested_tool_confirmations": {}
-                        },
-                        "node_info": {
-                            "path": ""
-                        },
-                        "id": event_id,
-                        "timestamp": timestamp_now
-                    }
-                    
-                    cursor.execute("""
-                        INSERT INTO events (id, app_name, user_id, session_id, invocation_id, timestamp, event_data)
-                        VALUES (?, 'autoyou_agents', ?, ?, '', ?, ?)
-                    """, (
-                        event_id,
-                        canonical_user_id,
-                        adk_session_id,
-                        datetime.datetime.fromtimestamp(timestamp_now).strftime("%Y-%m-%d %H:%M:%S.%f"),
-                        json.dumps(event_data)
-                    ))
-                    conn.commit()
-                    conn.close()
-                    LOGGER.info("desktop_response_return: fallback delivered directly to SQLite database for session %s", external_session_id)
-                    return {"status": "success", "message": f"Sent message via SQLite database fallback for {external_session_id}."}
-                conn.close()
-        except Exception as db_exc:
-            LOGGER.error("desktop_response_return: database delivery fallback failed: %s", db_exc)
-
     cloud_result = await _attempt_cloud_offline_notification_delivery(notification, message)
     if cloud_result.get("status") == "success":
         return cloud_result
     if cloud_result.get("status") == "error":
         errors.append(str(cloud_result.get("message") or "Cloud notification failed."))
 
+    # Nothing delivered it. A copy goes in the conversation it came from so it
+    # is not lost, but it is still undelivered and stays queued for the device.
+    recorded_in_history = await _record_undelivered_notification_in_history(notification, message)
+
     if errors:
-        deduped_errors = list(dict.fromkeys(error for error in errors if error))
-        return {"status": "error", "message": "; ".join(deduped_errors)}
-    return {"status": "error", "message": "No delivery targets are available."}
+        detail = "; ".join(dict.fromkeys(error for error in errors if error))
+    else:
+        detail = "No delivery targets are available."
+    if recorded_in_history:
+        detail = f"{detail} Recorded in the conversation history; still queued for delivery."
+    return {"status": "error", "message": detail}
 
 
 def _notification_targets_cloud_owner(notification: Dict[str, Any]) -> bool:
@@ -1525,7 +1556,6 @@ def _notification_thread_id(notification: Dict[str, Any]) -> Optional[int]:
 def _build_webrtc_notification_metadata(
     notification: Dict[str, Any],
     reply_target: Dict[str, Any],
-    server: Any,
 ) -> Dict[str, Any]:
     metadata: Dict[str, Any] = {
         "source": "scheduler",
@@ -1542,42 +1572,13 @@ def _build_webrtc_notification_metadata(
     if saved_conversation_session_id:
         metadata["conversation_session_id"] = saved_conversation_session_id
         metadata["conversation_force_target"] = True
-        return metadata
-
-    build_conversation_metadata = getattr(server, "_build_conversation_metadata", None)
-    if not callable(build_conversation_metadata) or not owner_key:
-        return metadata
-
-    transport, separator, sender_id = owner_key.partition(":")
-    if not separator or not sender_id:
-        return metadata
-
-    raw_session_id = str(reply_target.get("session_id") or "").strip() or sender_id
-    thread_id = _notification_thread_id(notification)
-    canonical_user_id = str(notification.get("canonical_user_id") or "").strip() or f"user::{owner_key}"
-    canonical_session_id = str(notification.get("external_session_id") or "").strip()
-    if not canonical_session_id:
-        canonical_session_id = f"session::{owner_key}"
-        if thread_id is not None:
-            canonical_session_id = f"{canonical_session_id}::{thread_id}"
-
-    identity = SimpleNamespace(
-        transport=str(transport).strip().lower(),
-        sender_id=str(sender_id).strip(),
-        raw_session_id=raw_session_id,
-        owner_key=owner_key,
-        canonical_user_id=canonical_user_id,
-        canonical_session_id=canonical_session_id,
-        thread_id=thread_id,
-    )
-    try:
-        metadata.update(build_conversation_metadata(identity))
-    except Exception as exc:
-        LOGGER.debug(
-            "Failed to build queued WebRTC notification conversation metadata for %s: %s",
-            str(notification.get("id") or "<unknown>"),
-            exc,
-        )
+    # With no saved id the conversation is left unnamed, and the engine sends
+    # this to the one the device is in now. The stored history id is not
+    # enough to rebuild the id the device was given: that id also carries the
+    # server's identity key and, except for Cloud Pair, the session id of the
+    # connection, which is new each time a direct pairing connects. Sent
+    # unpinned, an id that is off is ignored by the desktop apps; pinned, it
+    # is filed under a conversation the device has never seen.
     return metadata
 
 
@@ -1640,6 +1641,16 @@ def _build_scheduled_task_execution_metadata(
         if saved_conversation_session_id:
             metadata["conversation_session_id"] = saved_conversation_session_id
             metadata["conversation_force_target"] = True
+        else:
+            # The identity above is rebuilt from what the task kept, so the id
+            # it gives is a guess at the one the device was given: it can name
+            # an earlier conversation, or one the device never had (see
+            # _build_webrtc_notification_metadata). It would become this
+            # turn's autoyou_conversation_session_id, which the media agent
+            # pins a result to and the reminder and task tools save for good.
+            # The rest of the identity stays; it only describes this turn.
+            metadata.pop("conversation_session_id", None)
+            metadata.pop("conversation_thread_id", None)
     except Exception as exc:
         LOGGER.debug(
             "Failed to build scheduled task conversation metadata for %s: %s",
@@ -1715,18 +1726,30 @@ async def _deliver_reply_target_message(
                 "is_notification": True,
             }
             if notification:
-                delivery_metadata = _build_webrtc_notification_metadata(notification, reply_target, server)
+                delivery_metadata = _build_webrtc_notification_metadata(notification, reply_target)
             LOGGER.info(
                 "_deliver_reply_target_message: attempting WebRTC delivery to reply_target=%s, datachannel_managers_keys=%s",
                 reply_target,
                 list(manager.datachannel_managers.keys()) if hasattr(manager, "datachannel_managers") else "N/A",
             )
-            if not await manager.send_chat_to_reply_target(
-                reply_target,
-                normalized_message,
-                metadata=delivery_metadata,
-                user_id=server.get_configured_server_name(),
-            ):
+            # The scheduler has its own retry queue and backoff; do not also
+            # enqueue to the WebRTC offline queue on failure.
+            try:
+                sent = await manager.send_chat_to_reply_target(
+                    reply_target,
+                    normalized_message,
+                    metadata=delivery_metadata,
+                    user_id=server.get_configured_server_name(),
+                    queue_if_undelivered=False,
+                )
+            except TypeError:
+                sent = await manager.send_chat_to_reply_target(
+                    reply_target,
+                    normalized_message,
+                    metadata=delivery_metadata,
+                    user_id=server.get_configured_server_name(),
+                )
+            if not sent:
                 LOGGER.warning("_deliver_reply_target_message: send_chat_to_reply_target returned False for %s", reply_target)
                 
                 # 2. Fallback: If no datachannel exists but the user is connected via WebRTC voice, speak it aloud!
@@ -2070,6 +2093,8 @@ async def broadcast_alert(text: str):
             LOGGER.info("broadcast_alert: WebRTC has %d live datachannel client(s): %s", len(session_ids), session_ids)
             for session_id in session_ids:
                 try:
+                    # No conversation is named or forced: an alert belongs to
+                    # none, so each device gets it in the one it has open.
                     ok = await webrtc.send_chat_to_session(
                         session_id,
                         text,
