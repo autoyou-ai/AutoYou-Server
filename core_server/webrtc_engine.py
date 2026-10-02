@@ -4212,6 +4212,7 @@ class WebRTCManager:
       metadata: Optional[Dict[str, Any]] = None,
       context: Optional[List[Dict[str, Any]]] = None,
       user_id: Optional[str] = None,
+      queue_if_undelivered: bool = True,
     ) -> bool:
       normalized_transport = str((reply_target or {}).get("transport") or "").strip().lower()
       if normalized_transport not in {"webrtc", "webrtc-datachannel", "datachannel"}:
@@ -4228,6 +4229,7 @@ class WebRTCManager:
         metadata=metadata,
         context=context,
         user_id=user_id,
+        queue_if_undelivered=queue_if_undelivered,
       )
 
     def _resolve_audio_manager_for_reply_target(

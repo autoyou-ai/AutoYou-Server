@@ -141,7 +141,16 @@ class _FakeUnavailableWebRTCManager:
         self.calls = []
         self.datachannel_managers = {}
 
-    async def send_chat_to_reply_target(self, reply_target, message, *, metadata=None, context=None, user_id=None):
+    async def send_chat_to_reply_target(
+        self,
+        reply_target,
+        message,
+        *,
+        metadata=None,
+        context=None,
+        user_id=None,
+        queue_if_undelivered=True,
+    ):
         self.calls.append(
             {
                 "reply_target": dict(reply_target),
@@ -173,7 +182,16 @@ class _FakeOwnerAwareWebRTCManager:
             canonical_user_id=self.canonical_user_id,
         )
 
-    async def send_chat_to_reply_target(self, reply_target, message, *, metadata=None, context=None, user_id=None):
+    async def send_chat_to_reply_target(
+        self,
+        reply_target,
+        message,
+        *,
+        metadata=None,
+        context=None,
+        user_id=None,
+        queue_if_undelivered=True,
+    ):
         self.calls.append(
             {
                 "reply_target": dict(reply_target),
@@ -207,7 +225,16 @@ class _FakeAliasAwareWebRTCManager:
             canonical_user_id=self.canonical_user_id,
         )
 
-    async def send_chat_to_reply_target(self, reply_target, message, *, metadata=None, context=None, user_id=None):
+    async def send_chat_to_reply_target(
+        self,
+        reply_target,
+        message,
+        *,
+        metadata=None,
+        context=None,
+        user_id=None,
+        queue_if_undelivered=True,
+    ):
         self.calls.append(
             {
                 "reply_target": dict(reply_target),
@@ -419,7 +446,16 @@ class _FakeWebRTCManager:
         self.calls = []
         self.datachannel_managers = {"live-session": object()}
 
-    async def send_chat_to_reply_target(self, reply_target, message, *, metadata=None, context=None, user_id=None):
+    async def send_chat_to_reply_target(
+        self,
+        reply_target,
+        message,
+        *,
+        metadata=None,
+        context=None,
+        user_id=None,
+        queue_if_undelivered=True,
+    ):
         self.calls.append(
             {
                 "reply_target": dict(reply_target),
@@ -1481,3 +1517,35 @@ def test_record_task_recent_output_normalizes_placeholder_and_uses_execution_tim
     assert stored[0]["recent_outputs"] == ["Latest news as of Sunday, May 10, 2026 9:45 PM PDT."]
     assert stored[0]["last_result_preview"] == "Latest news as of Sunday, May 10, 2026 9:45 PM PDT."
     assert stored[0]["last_result_at_s"] == 123.0
+
+
+@pytest.mark.asyncio
+async def test_failed_scheduler_send_is_queued_only_once_by_scheduler(monkeypatch, tmp_path):
+    """When delivery to a registered datachannel fails, only the scheduler keeps
+    the notification; the engine does not also enqueue it in its offline queue."""
+    webrtc, _, paired, _ = connect_device(tmp_path, monkeypatch)
+
+    class FailingChannel:
+        async def send_message(self, message):
+            return False
+
+    webrtc.datachannel_managers["synthetic-live"] = FailingChannel()
+    queue_path = tmp_path / "scheduled_notification_queue.json"
+    monkeypatch.setattr(scheduler_service, "OUTBOUND_NOTIFICATION_QUEUE_FILE", str(queue_path))
+    runtime_server = _make_runtime_server(webrtc=webrtc)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+
+    reply_target = {"transport": "webrtc", "session_id": "synthetic-live", "owner_key": paired.owner_key}
+    result = await scheduler_service._queue_notification_for_delivery(
+        "synthetic reminder",
+        owner_key=paired.owner_key,
+        reply_target=reply_target,
+    )
+
+    assert result["queued"] is True
+    # The scheduler holds exactly one queued entry for retry.
+    queued = scheduler_service.load_json(str(queue_path))
+    assert len(queued) == 1
+    assert queued[0]["message"] == "synthetic reminder"
+    # The engine has NOT enqueued the message into its offline queue.
+    assert not webrtc._offline_pending_messages.get("synthetic-live")
