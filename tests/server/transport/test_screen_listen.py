@@ -27,10 +27,12 @@ def test_listen_output_failure_stays_off(monkeypatch):
     with pytest.raises(OSError):
         mixer.configure("all")
     assert mixer.mode == "off"
+    assert "synthetic output failure" in mixer.snapshot()["error"]
 
 
 @pytest.mark.parametrize("output_rate", [16000, 44100, 48000])
-def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypatch, output_rate):
+@pytest.mark.parametrize("channels", [1, 2])
+def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypatch, output_rate, channels):
     output = queue.Queue()
     entered, release = threading.Event(), threading.Event()
 
@@ -49,11 +51,11 @@ def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypat
 
     class Device:
         def get_default_output_device_info(self):
-            return {"defaultSampleRate": output_rate}
+            return {"defaultSampleRate": output_rate, "name": "Synthetic speaker"}
 
         def open(self, **kwargs):
             assert kwargs["output"]
-            if kwargs["rate"] != output_rate:
+            if kwargs["rate"] != output_rate or kwargs["channels"] != channels:
                 raise OSError("synthetic unsupported output rate")
             return Stream()
 
@@ -71,7 +73,9 @@ def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypat
             frame = output.get(timeout=0.2)
             sample = struct.unpack("<h", frame[:2])[0]
             if sample == expected:
-                assert len(frame) >= output_rate * 2 // 50 - 128
+                assert len(frame) >= (output_rate * 2 // 50 - 128) * channels
+                if channels == 2:
+                    assert struct.unpack("<hh", frame[:4]) == (expected, expected)
                 return
         pytest.fail(f"Listen output never contained {expected}")
 
@@ -82,10 +86,13 @@ def test_listen_output_mixes_all_and_filters_selected_without_hardware(monkeypat
         mixer.feed("synthetic-b", struct.pack("<h", 2000) * 320)
         release.set()
         next_sample(3000)
+        assert mixer.snapshot()["output_device"] == "Synthetic speaker"
+        assert set(mixer.snapshot()["receiving"]) == {"synthetic-a", "synthetic-b"}
         mixer.configure("selected", {"synthetic-a"})
         mixer.feed("synthetic-b", struct.pack("<h", 2000) * 320)
         mixer.feed("synthetic-a", struct.pack("<h", 1000) * 320)
         next_sample(1000)
+        assert mixer.snapshot()["receiving"] == ["synthetic-a"]
     finally:
         release.set()
         mixer.close()
