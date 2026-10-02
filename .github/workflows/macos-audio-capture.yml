@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - name: Compile ScreenCaptureKit audio helper
         run: >-
-          MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -O
+          MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -parse-as-library -O
           servers/macos/native/AutoYouAudioCapture.swift
           -framework AVFoundation -framework CoreMedia -framework ScreenCaptureKit
           -o "$RUNNER_TEMP/AutoYouAudioCapture"
