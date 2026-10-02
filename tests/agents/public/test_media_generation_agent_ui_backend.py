@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from shared.adk_state import (
@@ -333,6 +334,64 @@ def test_media_generation_chat_tool_detaches_and_notifies_with_image(monkeypatch
     assert attachment["filename"] == generated.name
     assert attachment["mimetype"] == "image/png"
     assert base64.b64decode(attachment["data"]).startswith(b"\x89PNG")
+
+
+@pytest.mark.parametrize(
+    "canonical_session_id",
+    ["session::cloud:synthetic-device::2", "scheduled-task::synthetic-task::run::1"],
+    ids=["history-id-of-a-later-conversation", "id-of-a-scheduled-run"],
+)
+def test_media_generation_result_names_no_conversation_the_device_was_not_given(
+    monkeypatch, canonical_session_id
+) -> None:
+    """Neither id is one a device holds, so the result is not named or pinned: it goes where the device is."""
+    deliveries = []
+
+    class ImmediateThread:
+        def __init__(self, *, target, kwargs, daemon, name):
+            self.target = target
+            self.kwargs = kwargs
+
+        def start(self):
+            self.target(**self.kwargs)
+
+    monkeypatch.setattr(media_agent, "threading", SimpleNamespace(Thread=ImmediateThread))
+    monkeypatch.setattr(media_agent, "save_history_item", lambda **kwargs: 1)
+    monkeypatch.setattr(
+        media_agent,
+        "generate_media_sync",
+        lambda **kwargs: {
+            "status": "error",
+            "message": "Synthetic failure.",
+            "item_id": 1,
+            "media_type": kwargs["media_type"],
+        },
+    )
+    monkeypatch.setattr(
+        media_agent,
+        "_post_reply_target_message",
+        lambda **kwargs: deliveries.append(kwargs) or {"status": "success", "message": "sent"},
+    )
+    tool_context = SimpleNamespace(
+        state={
+            AUTOYOU_OWNER_KEY_STATE_KEY: "cloud:synthetic-device",
+            AUTOYOU_REPLY_TARGET_STATE_KEY: {"transport": "webrtc", "owner_key": "cloud:synthetic-device"},
+            SESSION_CONTROL_STATE_KEY: {
+                "owner_key": "cloud:synthetic-device",
+                "canonical_session_id": canonical_session_id,
+            },
+        },
+        user_id="user::cloud:synthetic-device",
+    )
+
+    result = media_agent.generate_media("Synthetic image prompt", media_type="image", tool_context=tool_context)
+
+    assert result["status"] == "started"
+    [delivery] = deliveries
+    assert delivery["reply_target"] == {"transport": "webrtc", "owner_key": "cloud:synthetic-device"}
+    assert "conversation_session_id" not in delivery["metadata"]
+    assert "conversation_force_target" not in delivery["metadata"]
+    assert delivery["metadata"]["ai_agent_session_id"] == canonical_session_id
 
 
 def test_media_generation_chat_tool_notifies_failure(monkeypatch) -> None:

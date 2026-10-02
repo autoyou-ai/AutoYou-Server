@@ -247,13 +247,15 @@ def _schedule_claude_response_return(
     prompt: str,
 ) -> Dict[str, Any]:
     """Schedule a run-once direct task that polls Claude until idle, copies its final
-    response, and delivers it back to the originating client+session (reply target)."""
+    response, and delivers it back to the originating client+session (reply target)
+    and, when the asking turn was given one, to the conversation that asked."""
     import time
     import uuid
 
     try:
         from autoyou_agents.tasks_agent.agent import (
             _extract_canonical_session_id,
+            _extract_conversation_session_id,
             _extract_delivery_target,
             _extract_owner_key,
             _extract_runtime_identifiers,
@@ -270,6 +272,10 @@ def _schedule_claude_response_return(
     creator_user_id, creator_ai_session_id = _extract_runtime_identifiers(tool_context)
     owner_key = _extract_owner_key(tool_context)
     canonical_session_id = _extract_canonical_session_id(tool_context)
+    # The id the device was given in this turn, kept word for word like the
+    # reminder and task tools do, so the answer returns pinned to this
+    # conversation even if the device has started another while Claude works.
+    conversation_session_id = _extract_conversation_session_id(tool_context)
     delivery_target = _extract_delivery_target(tool_context, owner_key)
 
     if not delivery_target and not owner_key and not canonical_session_id:
@@ -313,6 +319,8 @@ def _schedule_claude_response_return(
         task["creator_owner_key"] = owner_key
     if canonical_session_id:
         task["creator_external_session_id"] = canonical_session_id
+    if conversation_session_id:
+        task["creator_conversation_session_id"] = conversation_session_id
     if delivery_target:
         task["delivery_target"] = delivery_target
 
