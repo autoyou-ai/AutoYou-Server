@@ -2372,8 +2372,7 @@ class WebRTCManager:
                         if session["mode"] in {"watch", "interactive"} and
                         self._voice_call_client_active_for_session(str(session["id"]))]
         return {
-            "mode": self.screen_listen_mixer.mode,
-            "selected": sorted(self.screen_listen_mixer.selected),
+            **self.screen_listen_mixer.snapshot(),
             "participants": participants,
             "inputs": list(self.screen_inputs)[-50:],
         }
