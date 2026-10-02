@@ -371,7 +371,7 @@ def _normalize_desktop_manifest_with_user_packs(
         user_packs = []
     combined = dict(payload)
     combined_packs = list(payload.get("asset_packs") or []) if isinstance(payload.get("asset_packs"), list) else []
-    if not combined_packs:
+    if not combined_packs and not user_packs:
         local_manifest = Path(assets_root) / "manifest.json"
         if local_manifest.is_file() and str(local_manifest.resolve()) != str(Path(manifest_path).resolve()):
             try:

@@ -284,7 +284,7 @@ LEGAL_BUNDLE_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOT
 RELEASE_CHECKLIST_PATH = REPO_ROOT / "docs" / "legal" / "release-compliance-checklist.md"
 HOSTED_LEGAL_PAGES = (
     ("privacy", "/privacy/", ("OpenStorey LLC", "Data Controller:", "CCPA", "not sell or share")),
-    ("terms", "/terms/", ("OpenStorey LLC", "source-available", "Class action waiver")),
+    ("terms", "/terms/", ("OpenStorey LLC", "AutoYou Source-Available Personal-Use License", "Class action waiver")),
     ("license", "/license/", ("AutoYou Source-Available Personal-Use License", "OpenStorey LLC", "User responsibility")),
     ("subscription", "/subscription/", ("Subscription Information", "Cloud Pair", "auto-renew", "App Store", "Google Play")),
     ("support", "/support/", ("OpenStorey LLC", "support@autoyou.me")),
