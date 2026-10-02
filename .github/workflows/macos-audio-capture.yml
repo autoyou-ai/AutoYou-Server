@@ -1,0 +1,31 @@
+name: macOS audio capture
+
+on:
+  push:
+    branches: [feature/native-game]
+    paths:
+      - .github/workflows/macos-audio-capture.yml
+      - servers/macos/native/AutoYouAudioCapture.swift
+      - servers/macos/build-backend.sh
+  pull_request:
+    paths:
+      - .github/workflows/macos-audio-capture.yml
+      - servers/macos/native/AutoYouAudioCapture.swift
+      - servers/macos/build-backend.sh
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Compile ScreenCaptureKit audio helper
+        run: >-
+          MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -O
+          servers/macos/native/AutoYouAudioCapture.swift
+          -framework AVFoundation -framework CoreMedia -framework ScreenCaptureKit
+          -o "$RUNNER_TEMP/AutoYouAudioCapture"
