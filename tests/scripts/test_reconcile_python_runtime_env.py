@@ -15,6 +15,20 @@ from tests.support.paths import PROJECT_ROOT, REPO_ROOT
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-276e3493b296481ab19b18b2"
 
 
+def test_removing_overlapping_opencv_wheel_restores_camera_files(monkeypatch):
+    installed = {"opencv-python": "4.13.0.92", "opencv-python-headless": "4.13.0.92"}
+    calls = []
+    monkeypatch.setattr(reconcile, "installed_version", installed.get)
+    monkeypatch.setattr(reconcile, "run_pip", calls.append)
+
+    reconcile.reconcile(None)
+
+    assert calls == [
+        ["uninstall", "-y", "opencv-python-headless"],
+        ["install", "--force-reinstall", "--no-deps", "opencv-python==4.13.0.92"],
+    ]
+
+
 def test_signed_binary_profile_keeps_webcam_runtime_dependency():
     profile = REPO_ROOT / "requirements" / "binary-default.txt"
 
@@ -111,10 +125,11 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "langchain-openai",
         "mcp",
         "stream2sentence",
+        "nltk",
         "twine",
     ]
     assert installed["cognee"] == "1.2.2"
-    assert installed["nltk"] == "3.10.3"
+    assert "nltk" not in installed
     assert installed["opencv-python"] == "4.12.0.88"
     assert ["install", "--upgrade", "h2==4.4.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "instructor==1.15.1", "-c", str(constraints)] in calls

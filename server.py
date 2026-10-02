@@ -7276,6 +7276,7 @@ install_route_aware_request_logging(
         "/api/ai-agent-server/status",
         "/api/whatsapp/status",
         "/api/datachannel-status",
+        "/api/screen-listen",
         "/api/scheduler/notification-queue",
         "/api/scheduler/live-summary",
         "/api/autoyou-page-service/status",

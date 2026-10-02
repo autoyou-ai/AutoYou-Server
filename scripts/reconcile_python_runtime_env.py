@@ -152,11 +152,16 @@ def reconcile(constraints: Path | None, *, include_tuning: bool = False) -> None
         if "realtimestt" not in packages_outside_runtime and "RealtimeSTT" not in packages_outside_runtime:
             packages_outside_runtime.append("realtimestt")
     if packages_outside_runtime:
+        opencv_version = installed_version("opencv-python")
         print(
             "Removing packages outside the AutoYou runtime profile: "
             + ", ".join(packages_outside_runtime)
         )
         run_pip(["uninstall", "-y", *packages_outside_runtime])
+        if opencv_version and any(name.startswith("opencv-") for name in packages_outside_runtime):
+            # OpenCV wheel variants share cv2 files; uninstalling one deletes
+            # files owned by the retained standard wheel as well.
+            run_pip(["install", "--force-reinstall", "--no-deps", f"opencv-python=={opencv_version}"])
 
     locked_specs = read_locked_specs(constraints)
 

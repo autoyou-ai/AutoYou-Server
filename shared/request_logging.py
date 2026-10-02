@@ -26,7 +26,7 @@ def install_route_aware_request_logging(
     logger_name: str,
     debug_path_prefixes: Iterable[str] = (),
 ) -> None:
-    """Log requests at INFO by default and demote selected paths to DEBUG."""
+    """Log requests at INFO; successful GET polls on selected paths use DEBUG."""
 
     if getattr(app.state, "_autoyou_request_logging_installed", False):
         return
@@ -51,8 +51,6 @@ def install_route_aware_request_logging(
             "_autoyou_request_logging_debug_prefixes",
             (),
         )
-        log_method = logger.debug if any(path.startswith(prefix) for prefix in debug_prefixes) else logger.info
-
         try:
             response = await call_next(request)
         except Exception:
@@ -66,6 +64,12 @@ def install_route_aware_request_logging(
             )
             raise
 
+        quiet_poll = (
+            request.method == "GET"
+            and response.status_code < 400
+            and any(path.startswith(prefix) for prefix in debug_prefixes)
+        )
+        log_method = logger.debug if quiet_poll else logger.info
         log_method(
             '%s - "%s %s HTTP/%s" %s',
             client_display,
