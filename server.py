@@ -1023,6 +1023,8 @@ def _enumerate_webrtc_audio_devices_payload(*, refresh: bool = False) -> Dict[st
         else:
             microphone_devices.append(device)
     devices = microphone_devices
+    if system_name == "Darwin" and callable(find_macos_system_audio_helper):
+        loopback_available = loopback_available or find_macos_system_audio_helper() is not None
 
     return _set_cached_webrtc_device_payload(
         cache_key,
@@ -1410,6 +1412,7 @@ try:
         configure_video_file_playback,
         create_outbound_video_track,
         enumerate_pyaudio_input_devices,
+        find_macos_system_audio_helper,
         inbound_video_recording_format_for_mode,
         install_outbound_video_telemetry_logging,
         normalize_inbound_video_image_interval_seconds,
@@ -1436,6 +1439,7 @@ except Exception as e:
     configure_video_file_playback = None
     create_outbound_video_track = None
     enumerate_pyaudio_input_devices = None
+    find_macos_system_audio_helper = None
     inbound_video_recording_format_for_mode = lambda mode: "jpeg_frames"
     install_outbound_video_telemetry_logging = lambda: False
     normalize_inbound_video_image_interval_seconds = lambda value, default=5.0: float(default)
