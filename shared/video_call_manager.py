@@ -22,7 +22,10 @@ import json
 import logging
 import os
 import platform
+import queue
 import re
+import select
+import subprocess
 import textwrap
 import threading
 import time
@@ -73,6 +76,23 @@ except Exception:  # pragma: no cover
     ImageStat = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
+
+
+def find_macos_system_audio_helper() -> Optional[Path]:
+    """Find the bundled ScreenCaptureKit capture binary on supported Macs."""
+    if platform.system() != "Darwin":
+        return None
+    try:
+        if int(platform.mac_ver()[0].split(".")[0]) < 13:
+            return None
+    except (ValueError, IndexError):
+        return None
+    from shared.macos_runtime_support import get_runtime_root
+
+    candidates = [get_runtime_root(__file__) / "macos" / "AutoYouAudioCapture"]
+    if override := os.getenv("AUTOYOU_MACOS_AUDIO_HELPER"):
+        candidates.insert(0, Path(override))
+    return next((path for path in candidates if path.is_file() and os.access(path, os.X_OK)), None)
 INBOUND_VIDEO_RECORDING_FORMAT = "mp4_video" if _av is not None and VideoFrame is not None else "jpeg_frames"
 INBOUND_VIDEO_RECORDING_MODE_VIDEO = "video"
 # from __debug_provenance_a__ import schedule
@@ -2852,6 +2872,7 @@ class LocalAudioInputTrack(MediaStreamTrack):
         self._thread: Optional[threading.Thread] = None
         self._pyaudio_instance: Any = None
         self._stream: Any = None
+        self._native_process: Optional[subprocess.Popen] = None
         self._capture_device_name = ""
         self._capture_rate = 0
         self._capture_channels = 0
@@ -2881,7 +2902,9 @@ class LocalAudioInputTrack(MediaStreamTrack):
         with self._lock:
             return {
                 "running": self._running,
-                "device_open": self._stream is not None,
+                "device_open": self._stream is not None or (
+                    self._native_process is not None and self._native_process.poll() is None
+                ),
                 "loopback": self.capture_loopback,
                 "device_name": self._capture_device_name,
                 "capture_rate": self._capture_rate,
@@ -2922,8 +2945,14 @@ class LocalAudioInputTrack(MediaStreamTrack):
             self._running = False
             stop_event = self._stop_event
             thread = self._thread
+            process = self._native_process
         if stop_event is not None:
             stop_event.set()
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=2.0)
             if thread.is_alive():
@@ -3145,6 +3174,67 @@ class LocalAudioInputTrack(MediaStreamTrack):
         target_bytes = self.frame_size * 2
         return data[:target_bytes].ljust(target_bytes, b"\0")
 
+    def _queue_audio_chunk(self, data: bytes) -> None:
+        try:
+            self._audio_queue.put_nowait(data)
+        except queue.Full:
+            try:
+                self._audio_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._audio_queue.put_nowait(data)
+            except queue.Full:
+                pass
+
+    def _capture_macos_system_audio(self, helper: Path, stop_event: threading.Event) -> None:
+        """Read signed 16-bit mono 48 kHz PCM from the native capture helper."""
+        process = subprocess.Popen(
+            [str(helper)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL
+        )
+        with self._lock:
+            self._native_process = process
+            self._capture_device_name = "macOS ScreenCaptureKit"
+            self._capture_rate = 48000
+            self._capture_channels = 1
+            self._capture_error = ""
+        frame_bytes = self.frame_size * 2
+        pending = bytearray()
+        try:
+            assert process.stdout is not None
+            while not stop_event.is_set():
+                if process.poll() is not None:
+                    detail = process.stderr.read(1024).decode("utf-8", "replace").strip() if process.stderr else ""
+                    raise RuntimeError(detail or f"ScreenCaptureKit exited ({process.returncode})")
+                readable, _, _ = select.select([process.stdout], [], [], 0.1)
+                if not readable:
+                    continue
+                data = os.read(process.stdout.fileno(), frame_bytes * 10)
+                if not data:
+                    raise RuntimeError("ScreenCaptureKit audio stream closed")
+                pending.extend(data)
+                while len(pending) >= frame_bytes:
+                    self._queue_audio_chunk(bytes(pending[:frame_bytes]))
+                    del pending[:frame_bytes]
+        finally:
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except OSError:
+                    pass
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+            with self._lock:
+                if self._native_process is process:
+                    self._native_process = None
+
     def _capture_loop(self, stop_event: Optional[threading.Event] = None) -> None:
         try:
             import queue
@@ -3166,8 +3256,17 @@ class LocalAudioInputTrack(MediaStreamTrack):
         retry_delay = 0.25
         last_unavailable_detail = ""
         last_refresh_request_time = 0.0
+        native_capture_error = ""
 
         try:
+            if self.capture_loopback and self.sample_rate == 48000 and (helper := find_macos_system_audio_helper()):
+                try:
+                    self._capture_macos_system_audio(helper, stop_event)
+                except Exception as exc:
+                    if not stop_event.is_set():
+                        logger.warning("Built-in Mac sound capture unavailable; trying a routed loopback input: %s", exc)
+                        native_capture_error = str(exc)
+                        self._set_capture_error(native_capture_error)
             while not stop_event.is_set():
                 if pyaudio_instance is None:
                     try:
@@ -3281,19 +3380,12 @@ class LocalAudioInputTrack(MediaStreamTrack):
                             else:
                                 silent_chunks = 0
                                 silence_warning_logged = True
-                        try:
-                            self._audio_queue.put_nowait(data)
-                        except queue.Full:
-                            try:
-                                self._audio_queue.get_nowait()
-                            except queue.Empty:
-                                pass
-                            try:
-                                self._audio_queue.put_nowait(data)
-                            except queue.Full:
-                                pass
+                        self._queue_audio_chunk(data)
                 except Exception as exc:
-                    detail = str(exc)
+                    detail = (
+                        f"ScreenCaptureKit: {native_capture_error}; routed loopback: {exc}"
+                        if native_capture_error else str(exc)
+                    )
                     self._set_capture_error(detail)
                     if detail != last_unavailable_detail:
                         logger.warning(

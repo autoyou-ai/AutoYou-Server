@@ -3571,6 +3571,12 @@ compile_python_backend() {
     fi
 
     build_runtime_modules_bundle "$resources_root"
+    log "Building native macOS computer-sound capture..."
+    mkdir -p "$resources_root/runtime/macos"
+    MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -O \
+        "$SCRIPT_DIR/native/AutoYouAudioCapture.swift" \
+        -framework AVFoundation -framework CoreMedia -framework ScreenCaptureKit \
+        -o "$resources_root/runtime/macos/AutoYouAudioCapture"
     log "Syncing current admin assets into the backend bundle..."
     mkdir -p "$resources_root/assets"
     rsync -a "$PROJECT_ROOT/assets/" "$resources_root/assets/"
