@@ -3573,7 +3573,7 @@ compile_python_backend() {
     build_runtime_modules_bundle "$resources_root"
     log "Building native macOS computer-sound capture..."
     mkdir -p "$resources_root/runtime/macos"
-    MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -O \
+    MACOSX_DEPLOYMENT_TARGET=13.0 swiftc -parse-as-library -O \
         "$SCRIPT_DIR/native/AutoYouAudioCapture.swift" \
         -framework AVFoundation -framework CoreMedia -framework ScreenCaptureKit \
         -o "$resources_root/runtime/macos/AutoYouAudioCapture"
