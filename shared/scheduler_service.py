@@ -1732,12 +1732,24 @@ async def _deliver_reply_target_message(
                 reply_target,
                 list(manager.datachannel_managers.keys()) if hasattr(manager, "datachannel_managers") else "N/A",
             )
-            if not await manager.send_chat_to_reply_target(
-                reply_target,
-                normalized_message,
-                metadata=delivery_metadata,
-                user_id=server.get_configured_server_name(),
-            ):
+            # The scheduler has its own retry queue and backoff; do not also
+            # enqueue to the WebRTC offline queue on failure.
+            try:
+                sent = await manager.send_chat_to_reply_target(
+                    reply_target,
+                    normalized_message,
+                    metadata=delivery_metadata,
+                    user_id=server.get_configured_server_name(),
+                    queue_if_undelivered=False,
+                )
+            except TypeError:
+                sent = await manager.send_chat_to_reply_target(
+                    reply_target,
+                    normalized_message,
+                    metadata=delivery_metadata,
+                    user_id=server.get_configured_server_name(),
+                )
+            if not sent:
                 LOGGER.warning("_deliver_reply_target_message: send_chat_to_reply_target returned False for %s", reply_target)
                 
                 # 2. Fallback: If no datachannel exists but the user is connected via WebRTC voice, speak it aloud!

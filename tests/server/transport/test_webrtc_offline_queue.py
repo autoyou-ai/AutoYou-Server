@@ -774,3 +774,13 @@ async def test_enqueue_schedules_offline_nudge(monkeypatch):
     webrtc._enqueue_to_offline_queue("relay-9", _make_message("r"), label="chat reply")
     await asyncio.sleep(0)
     assert nudged == ["relay-9"]
+
+
+@pytest.mark.asyncio
+async def test_send_chat_to_reply_target_respects_queue_if_undelivered_false(monkeypatch, tmp_path):
+    webrtc, channel, paired, _ = connect_device(tmp_path, monkeypatch)
+    webrtc.datachannel_managers["synthetic-live"] = _SendCapture(succeed=False)
+    reply_target = {"transport": "webrtc", "session_id": "synthetic-live", "owner_key": paired.owner_key}
+    sent = await webrtc.send_chat_to_reply_target(reply_target, "Hello", queue_if_undelivered=False)
+    assert sent is False
+    assert not webrtc._offline_pending_messages.get("synthetic-live")
