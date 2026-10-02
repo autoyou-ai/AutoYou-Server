@@ -37,11 +37,16 @@ device or channel it is with. Two routes sit beside the read-only ones:
 A reply is delivered only while that device is connected. It arrives in the
 device's current conversation as a message from the server's name, and is kept
 in that conversation marked as yours (`author: "self"`, `human: true` in
-`GET /api/chat/session`). When the device is not connected the route answers
-`delivered: false` with a reason and stores nothing, so history never shows a
-reply nobody received. A guest relayed by another device has no connection of
+`GET /api/chat/session`). When the device is not connected, or the message
+cannot be sent, the route answers `delivered: false` with a reason, stores
+nothing, and does not keep the message for the device's next connection, so
+history never shows a reply nobody received and nothing arrives later that you
+were told had failed. `delivered: true` means the message was handed to the
+device's open connection. A guest relayed by another device has no connection of
 its own and cannot be answered this way. `GET /api/chat/sessions` adds
 `live: true` to conversations whose device is connected now.
+`GET /api/chat/session` accepts an optional `limit`: it then returns only the
+newest that many messages and adds `truncated: true`.
 
 The two run side by side on purpose. AutoYou AI keeps answering that device's
 turns, by text and by voice in a call, while you add your own words whenever

@@ -294,9 +294,13 @@ def _build_delivery_metadata(
         metadata["canonical_user_id"] = canonical_user_id
     if canonical_session_id:
         metadata["ai_agent_session_id"] = canonical_session_id
-    resolved_conversation_session_id = str(conversation_session_id or canonical_session_id or "").strip()
-    if resolved_conversation_session_id:
-        metadata["conversation_session_id"] = resolved_conversation_session_id
+    # Only the id the device was given for the conversation that asked is
+    # named, and the result is pinned to it. The history id and the id of a
+    # scheduled run are not ids a device holds, so with none to name the
+    # engine sends the result to the conversation the device is in now.
+    asked_conversation_session_id = str(conversation_session_id or "").strip()
+    if asked_conversation_session_id:
+        metadata["conversation_session_id"] = asked_conversation_session_id
         metadata["conversation_force_target"] = True
     normalized_reply_target = normalize_reply_target(reply_target)
     if normalized_reply_target:

@@ -21,6 +21,7 @@ ensure_repo_on_path()
 import rest_api
 import server as server_module
 from session_utils import MemoryIntegratedSessionManager
+from shared import session_execution
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
 from shared.session_execution import SessionExecutionManager
 
@@ -65,7 +66,7 @@ def _adk_turn(event_id, data):
     return SimpleNamespace(id=event_id, timestamp=1_790_000_000.0, actions=SimpleNamespace(state_delta={"event_data_raw": data}))
 
 
-def _client(manager, monkeypatch, *, captured=None, device_names=None, webrtc=None):
+def _client(manager, monkeypatch, *, captured=None, device_names=None, webrtc=None, conversations=False):
     fastapi = pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
@@ -93,6 +94,10 @@ def _client(manager, monkeypatch, *, captured=None, device_names=None, webrtc=No
         _resolve_conversation_identity=lambda identity: identity,
         LOGGER=server_module.LOGGER,
     )
+    if conversations:
+        # The server's own conversation threads and client-facing ids.
+        fake_server._resolve_conversation_identity = server_module._resolve_conversation_identity
+        fake_server._build_conversation_metadata = server_module._build_conversation_metadata
     admin_app = fastapi.FastAPI()
     admin_routes.register_routes(admin_app, fastapi.FastAPI(), fake_server)
     return TestClient(admin_app)
@@ -203,8 +208,8 @@ class _LiveDevices:
         user_id, conversation = self._sessions[session_id]
         return SimpleNamespace(canonical_user_id=user_id, canonical_session_id=conversation)
 
-    async def send_chat_to_session(self, session_id, message, *, metadata=None, user_id=None):
-        self.sent.append((session_id, message, dict(metadata or {}), user_id))
+    async def send_chat_to_session(self, session_id, message, *, metadata=None, user_id=None, queue_if_undelivered=True):
+        self.sent.append((session_id, message, dict(metadata or {}), user_id, queue_if_undelivered))
         return self._accepts
 
 
@@ -226,12 +231,14 @@ def test_an_owner_reply_reaches_the_connected_device_and_is_kept_as_the_owners(t
     response = client.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "  On my way  "}).json()
 
     assert response == {"success": True, "delivered": True, "user_id": PHONE, "session_id": "session::local:Phone-1::2"}
-    # Sent to the device as the owner, and never put to the AI.
+    # Sent to the device as the owner, never put to the AI, and never left
+    # to arrive later if it cannot be sent now.
     assert devices.sent == [(
         "synthetic-live",
         "On my way",
         {"source": "owner_reply", "human_reply": True, "agent_display_name": "Test Server"},
         "Test Server",
+        False,
     )]
     assert "request" not in captured
     assert len(saved) == 1
@@ -295,8 +302,162 @@ def test_history_shows_an_owner_reply_as_theirs_and_says_which_devices_are_conne
         ("assistant", None, None),
     ]
     assert detail["identity"]["kind"] == "device"
+    assert "truncated" not in detail
     assert rows[PHONE]["live"] is True
     assert rows["user::local:Tablet-2"]["live"] is False
+
+    # A reader may ask for only the newest turns; the title still comes from the first.
+    for limit in ("2", "0", "many", "99"):
+        latest = client.get("/api/chat/session", params={"user_id": PHONE, "session_id": "session::local:Phone-1", "limit": limit}).json()
+        expected = 2 if limit == "2" else 5
+        assert (len(latest["messages"]), latest.get("truncated", False)) == (expected, limit == "2"), limit
+        assert latest["title"] == "are you there?"
+    assert [item["content"] for item in client.get(
+        "/api/chat/session", params={"user_id": PHONE, "session_id": "session::local:Phone-1", "limit": "2"},
+    ).json()["messages"]] == ["forged", "pretend"]
+
+
+class _OpenChannel:
+    """A connected device's data channel."""
+
+    def __init__(self):
+        self.accepts = True
+        self.sent = []
+
+    async def send_message(self, message):
+        self.sent.append(message)
+        return self.accepts
+
+
+def _connected_phone(tmp_path, monkeypatch):
+    """The real engine, identity registry and history store, with one phone paired and connected."""
+    sessions = pytest.importorskip("google.adk.sessions")
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "root"))
+    monkeypatch.setattr(session_execution, "_GLOBAL_SESSION_EXECUTION_MANAGER", SessionExecutionManager())
+    manager = MemoryIntegratedSessionManager(
+        db_path=str(tmp_path / "sessions.db"),
+        adk_session_service=sessions.InMemorySessionService(),
+        cognee_memory_enabled=False,
+    )
+    monkeypatch.setattr(server_module, "_get_conversation_session_manager", lambda: manager)
+    webrtc = server_module.WebRTCManager()
+    identity = server_module.bind_transport_chat_owner("local", "Phone-1", raw_session_id="synthetic-live")
+    channel = _OpenChannel()
+    webrtc.datachannel_managers["synthetic-live"] = channel
+    return manager, webrtc, identity, channel
+
+
+async def _store_device_turn(manager, session_id):
+    manager.set_session_mapping(session_id, "internal-" + session_id, PHONE)
+    assert await manager.add_session_event(
+        user_id=PHONE,
+        session_id="internal-" + session_id,
+        event_type="chat_interaction",
+        event_data={
+            "user_message": "are you there?",
+            "agent_response": "The assistant answered.",
+            "timestamp": "2026-10-01T10:00:00",
+            "memory_metadata": {"client": "ios"},
+        },
+        external_session_id=session_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_owner_reply_follows_the_device_into_its_current_conversation(tmp_path, monkeypatch):
+    manager, webrtc, identity, channel = _connected_phone(tmp_path, monkeypatch)
+    assert identity.canonical_user_id == PHONE
+    await _store_device_turn(manager, "session::local:Phone-1")
+    # The phone has since started a new conversation.
+    manager.advance_conversation_thread(identity.owner_key)
+    current = server_module._resolve_conversation_identity(webrtc._resolve_chat_identity("synthetic-live"))
+    as_an_ai_reply = server_module._build_conversation_metadata(current)
+
+    import anyio
+
+    client = _client(manager, monkeypatch, webrtc=webrtc, conversations=True)
+    response = await anyio.to_thread.run_sync(
+        lambda: client.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "On my way"}).json())
+
+    assert response == {"success": True, "delivered": True, "user_id": PHONE, "session_id": "session::local:Phone-1::2"}
+    [message] = channel.sent
+    metadata = message.payload["metadata"]
+    assert (message.payload["message"], message.header.user_id) == ("On my way", "Test Server")
+    assert (metadata["source"], metadata["human_reply"], metadata["agent_display_name"]) == ("owner_reply", True, "Test Server")
+    # Addressed exactly as an AI reply to that conversation is. A device drops
+    # a message addressed to a conversation it has moved on from.
+    assert metadata["conversation_session_id"] == as_an_ai_reply["conversation_session_id"]
+    assert metadata["conversation_session_id"].endswith("::thread::2")
+    assert metadata["conversation_thread_id"] == 2
+    assert metadata["conversation_session_id"] != current.canonical_session_id
+
+    listing, detail = await anyio.to_thread.run_sync(lambda: (
+        client.get("/api/chat/sessions").json(),
+        client.get("/api/chat/session", params={"user_id": PHONE, "session_id": "session::local:Phone-1::2"}).json(),
+    ))
+    rows = {row["session_id"]: row for row in listing["sessions"]}
+    assert set(rows) == {"session::local:Phone-1", "session::local:Phone-1::2"}
+    assert rows["session::local:Phone-1::2"]["preview"] == "On my way"
+    assert all(row["live"] for row in rows.values())
+    assert [(item["role"], item.get("author"), item.get("human"), item["content"]) for item in detail["messages"]] == [
+        ("assistant", "self", True, "On my way"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_owner_reply_that_cannot_be_sent_never_arrives_later(tmp_path, monkeypatch):
+    manager, webrtc, _identity, channel = _connected_phone(tmp_path, monkeypatch)
+    await _store_device_turn(manager, "session::local:Phone-1")
+
+    import anyio
+
+    client = _client(manager, monkeypatch, webrtc=webrtc, conversations=True)
+
+    def reply():
+        return client.post("/api/chat/session/reply", json={"user_id": PHONE, "message": "On my way"}).json()
+
+    def history():
+        return client.get("/api/chat/sessions").json()["sessions"]
+
+    # The channel refuses the message: the owner is told, and it is dropped.
+    channel.accepts = False
+    refused = await anyio.to_thread.run_sync(reply)
+    assert refused["delivered"] is False and "could not be delivered" in refused["reason"]
+    assert len(channel.sent) == 1
+    assert webrtc._offline_pending_messages == {}
+
+    # A channel that has closed is not a connected device at all.
+    channel.connection_active = False
+    closed = await anyio.to_thread.run_sync(reply)
+    assert closed["delivered"] is False and "not connected" in closed["reason"]
+    assert len(channel.sent) == 1
+    rows = await anyio.to_thread.run_sync(history)
+    assert [(row["live"], row["message_count"], row["preview"]) for row in rows] == [(False, 1, "The assistant answered.")]
+
+    # Every other sender keeps the engine's default: an undelivered message waits.
+    channel.connection_active = True
+    assert await webrtc.send_chat_to_session("synthetic-live", "A reminder") is False
+    assert [len(waiting) for waiting in webrtc._offline_pending_messages.values()] == [1]
+
+
+def test_the_pairing_answer_names_the_owner_history_lists_a_device_by(monkeypatch):
+    import pairing_router
+
+    monkeypatch.setattr(session_execution, "_GLOBAL_SESSION_EXECUTION_MANAGER", SessionExecutionManager())
+    monkeypatch.setattr(server_module, "_get_conversation_session_manager", lambda: None)
+    identity = server_module.bind_transport_chat_owner("local", "Desktop-1", raw_session_id="synthetic-live")
+    stated = server_module._build_client_session_identity_payload(identity, pairing_mode="local_pair")
+    answer = pairing_router.PairingRouter._build_autopair_answer_payload(
+        {"type": "answer", "sdp": "v=0", **stated}, "synthetic-live")
+
+    # What a chat turn from that connection is stored under, and so what
+    # Chat & History lists it by.
+    stored_as = server_module.WebRTCManager._resolve_chat_identity("synthetic-live")
+    assert answer["canonical_user_id"] == stored_as.canonical_user_id == "user::local:Desktop-1"
+    # The conversation id a client is given is its own, and is not the one
+    # history files the conversation under.
+    assert answer["conversation_session_id"] != stored_as.canonical_session_id
+    assert answer["canonical_session_id"] == stored_as.canonical_session_id
 
 
 def test_a_request_carried_by_a_tunnel_is_not_an_app_on_this_computer():

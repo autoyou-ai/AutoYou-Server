@@ -11,6 +11,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import importlib.machinery
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -270,3 +271,145 @@ def test_audio_manager_passes_voice_conversation_context(monkeypatch, tmp_path):
     assert captured["text"] == "Hello"
     assert captured["context"] == "User sounds happy."
     assert captured["settings"]["tts"]["provider"] == "emotivoice"
+
+
+class _SpeechLane:
+    """A call's outbound speech track: keeps what is queued for the caller."""
+
+    def __init__(self):
+        self.queued = []
+
+    def stop_playback(self, *_args):
+        pass
+
+    def queue_audio_file(self, path, should_abort=None):
+        del should_abort
+        self.queued.append(Path(path).read_bytes())
+
+
+def _call_voice(monkeypatch, *, provider, chosen_voice_ready, system_voice_ready):
+    """A call's AudioManager with ``provider`` chosen and both synthesizers stood in for."""
+    spoken = []
+    monkeypatch.setattr(audio_manager, "emotivoice_status", lambda: {"ready": chosen_voice_ready})
+    monkeypatch.setattr(audio_manager, "custom_voice_model_ready", lambda *args, **kwargs: chosen_voice_ready)
+    # Whether the operating system's own voice can run depends on the host.
+    host_decides = audio_manager.voice_runtime_available
+    monkeypatch.setattr(
+        audio_manager,
+        "voice_runtime_available",
+        lambda settings: system_voice_ready if settings["tts"]["provider"] == "system" else host_decides(settings),
+    )
+
+    def system_voice(self, text, temp_path, settings):
+        spoken.append(("system", text, settings["tts"]["provider"]))
+        Path(temp_path).write_bytes(b"RIFF" + (b"\0" * 256))
+
+    def emotivoice(text, path, settings, *, context=""):
+        del context
+        spoken.append(("emotivoice", text, settings["tts"]["provider"]))
+        Path(path).write_bytes(b"RIFF" + (b"\0" * 256))
+
+    monkeypatch.setattr(AudioManager, "_synthesize_system_tts", system_voice)
+    monkeypatch.setattr(audio_manager, "synthesize_emotivoice", emotivoice)
+    manager = AudioManager(
+        on_text_callback=lambda _text: None,
+        settings_provider=lambda: {"tts": {"provider": provider, "rate": 1.0}, "stt": {"model": "tiny.en"}},
+        enable_stt=False,
+    )
+    lane = _SpeechLane()
+    manager.set_tts_track(lane)
+    return manager, lane, spoken
+
+
+def _finish_speaking():
+    for thread in threading.enumerate():
+        if thread.name == "TTS-Synthesizer":
+            thread.join(timeout=10)
+
+
+@pytest.mark.parametrize("provider", ["emotivoice", "openai", "azure", "custom"])
+def test_a_call_reply_uses_the_system_voice_while_the_chosen_voice_is_not_ready(monkeypatch, provider):
+    # EmotiVoice chosen before its models are downloaded, a cloud voice with
+    # no key, a custom voice with no trained model: none may mute a call.
+    manager, lane, spoken = _call_voice(
+        monkeypatch, provider=provider, chosen_voice_ready=False, system_voice_ready=True)
+    try:
+        assert manager.speak("Hello there.") is True
+        _finish_speaking()
+        # The choice is kept, so the chosen voice takes over once it is ready.
+        assert manager._current_settings()["tts"]["provider"] == provider
+    finally:
+        manager.close()
+
+    assert spoken == [("system", "Hello there", "system")]
+    assert len(lane.queued) == 1
+
+
+def test_the_not_ready_warning_says_why_without_listing_every_speaker(monkeypatch, caplog):
+    manager, _lane, _spoken = _call_voice(
+        monkeypatch, provider="emotivoice", chosen_voice_ready=False, system_voice_ready=True)
+    monkeypatch.setattr(
+        audio_manager,
+        "emotivoice_status",
+        lambda: {"ready": False, "models_ready": False, "speaker_ids": ["synthetic-speaker"] * 2000},
+    )
+    try:
+        with caplog.at_level("WARNING", logger="autoyou.audio"):
+            assert manager.speak("Hello there.") is True
+            _finish_speaking()
+    finally:
+        manager.close()
+
+    assert "'models_ready': False" in caplog.text
+    assert "synthetic-speaker" not in caplog.text
+
+
+def test_a_call_reply_uses_the_chosen_voice_when_it_is_ready(monkeypatch):
+    manager, lane, spoken = _call_voice(
+        monkeypatch, provider="emotivoice", chosen_voice_ready=True, system_voice_ready=True)
+    try:
+        assert manager.speak("Hello there.") is True
+        _finish_speaking()
+    finally:
+        manager.close()
+
+    assert spoken == [("emotivoice", "Hello there", "emotivoice")]
+    assert len(lane.queued) == 1
+
+
+def test_a_call_reply_is_skipped_when_no_voice_can_run(monkeypatch):
+    manager, lane, spoken = _call_voice(
+        monkeypatch, provider="emotivoice", chosen_voice_ready=False, system_voice_ready=False)
+    try:
+        assert manager.speak("Hello there.") is False
+        _finish_speaking()
+    finally:
+        manager.close()
+
+    assert spoken == [] and lane.queued == []
+
+
+def test_a_voice_that_is_turned_off_stays_silent(monkeypatch):
+    manager, lane, spoken = _call_voice(
+        monkeypatch, provider="off", chosen_voice_ready=False, system_voice_ready=True)
+    try:
+        assert manager.speak("Hello there.") is False
+        _finish_speaking()
+    finally:
+        manager.close()
+
+    assert spoken == [] and lane.queued == []
+
+
+def test_a_voice_note_does_not_borrow_the_system_voice(monkeypatch, tmp_path):
+    # A recorded reply to a messaging contact is sent as text instead when the
+    # chosen voice cannot run; only a live call falls back to the system voice.
+    manager, _lane, spoken = _call_voice(
+        monkeypatch, provider="emotivoice", chosen_voice_ready=False, system_voice_ready=True)
+    try:
+        with pytest.raises(RuntimeError, match="not ready"):
+            manager.synthesize_to_file("Hello.", output_path=str(tmp_path / "note.wav"))
+    finally:
+        manager.close()
+
+    assert spoken == []
