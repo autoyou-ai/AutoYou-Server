@@ -4451,7 +4451,10 @@ class WebRTCManager:
       metadata: Optional[Dict[str, Any]] = None,
       context: Optional[List[Dict[str, Any]]] = None,
       user_id: Optional[str] = None,
+      queue_if_undelivered: bool = True,
     ) -> bool:
+      # A message that cannot be sent now is kept for the device's next
+      # connection unless the caller reports the failure to a person instead.
       normalized_session_id = str(session_id or "").strip()
       normalized_message = str(message or "").strip()
       context_payload = [dict(item) for item in (context or []) if isinstance(item, dict)]
@@ -4487,6 +4490,12 @@ class WebRTCManager:
         requested_conversation_session_id = str(
           effective_metadata.get("conversation_session_id") or ""
         ).strip()
+        if not requested_conversation_session_id:
+          # No conversation was named, so this goes to the one the device is
+          # in now, as an AI reply does. The transport identity carries no
+          # thread: on its own it names the device's first conversation, and
+          # a client that has since started another ignores a message for it.
+          identity = _runtime._resolve_conversation_identity(identity)
         if not requested_conversation_session_id or requested_conversation_session_id == canonical_session_id:
           conversation_metadata = _runtime._build_conversation_metadata(identity)
           effective_metadata["conversation_session_id"] = conversation_metadata.get(
@@ -4515,10 +4524,12 @@ class WebRTCManager:
       )
       if not datachannel_manager:
         _runtime.LOGGER.warning(
-          "No live datachannel manager for outbound WebRTC chat to %s; queuing offline",
+          "No live datachannel manager for outbound WebRTC chat to %s; %s",
           normalized_session_id,
+          "queuing offline" if queue_if_undelivered else "not sent",
         )
-        self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
+        if queue_if_undelivered:
+          self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
         return False
 
       try:
@@ -4531,7 +4542,7 @@ class WebRTCManager:
         )
         sent = False
 
-      if not sent:
+      if not sent and queue_if_undelivered:
         self._enqueue_to_offline_queue(stable_session_id, response_message, label="chat message")
 
       return sent
@@ -4544,6 +4555,7 @@ class WebRTCManager:
       metadata: Optional[Dict[str, Any]] = None,
       context: Optional[List[Dict[str, Any]]] = None,
       user_id: Optional[str] = None,
+      queue_if_undelivered: bool = True,
     ) -> bool:
       normalized_transport = str((reply_target or {}).get("transport") or "").strip().lower()
       if normalized_transport not in {"webrtc", "webrtc-datachannel", "datachannel"}:
@@ -4560,6 +4572,7 @@ class WebRTCManager:
         metadata=metadata,
         context=context,
         user_id=user_id,
+        queue_if_undelivered=queue_if_undelivered,
       )
 
     def _resolve_audio_manager_for_reply_target(
