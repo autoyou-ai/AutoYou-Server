@@ -50,6 +50,9 @@ def _dependency_unavailable(module_name: str, exc: BaseException) -> RemoteDeskt
 
 def _lazy_import_mss() -> Any:
     try:
+        from shared.remote_desktop_keyboard import hide_macos_dock_icon
+
+        hide_macos_dock_icon()
         import mss  # type: ignore[import-not-found]
 
         return mss
@@ -336,6 +339,12 @@ $items | ConvertTo-Json -Depth 3
 
 
 def _list_windows_macos() -> List[Dict[str, Any]]:
+    try:
+        from shared.remote_desktop_keyboard import hide_macos_dock_icon
+
+        hide_macos_dock_icon()
+    except Exception as exc:
+        logger.debug("Could not hide the macOS Python Dock icon: %s", exc)
     try:
         import Quartz  # type: ignore[import-not-found]
 

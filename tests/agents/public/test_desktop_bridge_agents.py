@@ -1100,13 +1100,14 @@ def test_claude_usage_ring_is_sprite_matched_with_a_corner_fallback():
     assert bottom > top
 
 
-def test_pyautogui_failsafe_stays_enabled_for_local_desktop_control():
+def test_pyautogui_failsafe_stays_enabled_for_local_desktop_control(monkeypatch):
     """The corner-slam abort must remain armed for automation driving the user's own mouse.
 
     This module moves the real local pointer. With FAILSAFE off there is no way for a human to
     interrupt a misbehaving run, so a bad pack can hold the cursor indefinitely. Remote-desktop
     backends may keep it off - their "corner" is a remote screen - but not here.
     """
+    monkeypatch.setattr(desktop_app_control, "hide_macos_dock_icon", lambda: None)
     pyautogui = desktop_app_control._lazy_import_pyautogui()
     assert pyautogui.FAILSAFE is True
 
