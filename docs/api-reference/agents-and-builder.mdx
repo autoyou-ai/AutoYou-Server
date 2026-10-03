@@ -1,0 +1,130 @@
+---
+title: "Agents & Agent Builder APIs"
+description: "API specifications for agent lifecycle management, instruction tuning, tool execution testing, and frontend scaffolding."
+---
+
+# Agents & Agent Builder APIs
+
+These endpoints provide complete programmatic control over agent installation, instruction tuning, Python tool execution testing, web UI scaffolding, and security sandboxing.
+
+---
+
+## Agent Lifecycle & Workbench
+
+### `GET /api/agents/workbench/{agent_name}`
+Returns all editable metadata for an agent, including its declared tools, prompt sections, and web frontend status.
+
+#### Response (`200 OK`)
+```json
+{
+  "name": "weather_agent",
+  "domain": "Utility",
+  "description": "Fetches local weather and forecasts.",
+  "is_builtin": false,
+  "has_frontend": true,
+  "frontend_url": "http://127.0.0.1:8067/agent/weather_agent/",
+  "tools": [
+    {
+      "name": "get_current_weather",
+      "description": "Fetches real-time temperature and conditions.",
+      "parameters": {
+        "location": { "type": "string", "required": true }
+      }
+    }
+  ],
+  "security_profile": "Standard Agent"
+}
+```
+
+### `POST /api/agents/workbench/{agent_name}/test`
+Executes an isolated dry-run test of an individual Python tool defined on an agent.
+
+#### Request Payload
+```json
+{
+  "tool_name": "get_current_weather",
+  "arguments": {
+    "location": "San Francisco, CA"
+  }
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "success": true,
+  "output": {
+    "temperature_f": 64,
+    "condition": "Partly Cloudy",
+    "humidity": 72
+  },
+  "execution_time_ms": 142.8,
+  "stdout": "Querying weather API for San Francisco, CA\n"
+}
+```
+
+### `POST /api/agents/workbench/{agent_name}/frontend/scaffold`
+Generates starter web assets under `website/frontend/` (`index.html`, `app.js`, `style.css`) and registers the agent with the browser proxy on port `8067`.
+
+### `POST /api/agents/workbench/{agent_name}/publish`
+Commits the staged agent draft into the live dynamic registry (`agent_install_registry.json`) and triggers an atomic hot-reload of the agent orchestrator.
+
+---
+
+## Prompt & Instruction Management
+
+### `GET /api/agent-instructions`
+Fetches prompt sections for an agent.
+
+#### Query Parameters
+- `agent`: Agent identifier name.
+
+#### Response (`200 OK`)
+```json
+{
+  "agent": "weather_agent",
+  "sections": {
+    "identity": "You are a meteorological assistant. Be precise and concise.",
+    "tools": "Always invoke get_current_weather when a city is mentioned.",
+    "constraints": "Do not give medical advice."
+  },
+  "assembled_prompt": "You are a meteorological assistant..."
+}
+```
+
+### `POST /api/agent-instructions/sections`
+Updates modular prompt sections.
+
+### `POST /api/agent-instructions/revert`
+Reverts all custom instructions for an agent back to its factory package defaults.
+
+---
+
+## Agent Security & Sandbox Enforcement
+
+### `POST /api/agent-security/profiles/{profile_id}/assign`
+Binds an agent to a specific security policy.
+
+#### Request Payload
+```json
+{
+  "agent_name": "weather_agent"
+}
+```
+
+### `POST /api/agent-security/agents/{agent_name}/wipe`
+Securely removes all local caches, SQLite database records, temporary files, and cookies associated with the specified agent.
+
+---
+
+## Red-Team / Safety Override APIs
+
+### `POST /api/jailbreak/activate`
+Activates safety override mode for red-teaming and adversarial testing.
+
+#### Request Payload
+```json
+{
+  "acknowledgement": "I understand the risks of unconstrained testing."
+}
+```

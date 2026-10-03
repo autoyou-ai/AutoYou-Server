@@ -1,0 +1,82 @@
+---
+title: "System & Administration Agents"
+description: "Reference catalog for admin_agent, backup_agent, proxy_agent, hosting_agent, remote_desktop_agent, win_security_agent, and mac_security_agent."
+---
+
+# System & Administration Agents
+
+These agents govern server administration, security policies, backup management, network proxies, and remote desktop capabilities.
+
+---
+
+## 1. `admin_agent`
+- **Location**: `autoyou_agents/admin_agent/`
+- **Role**: Primary administrative assistant responsible for inspecting server health, reading diagnostics, managing configuration, and dispatching administrative commands.
+- **Frontend**: Integrated directly into the Admin Console at `/admin`.
+- **Key Tools**:
+  - `get_system_health()`: Returns CPU, memory, disk, and service telemetry.
+  - `restart_service(service_name: str)`: Requests a clean restart of a background subprocess.
+  - `scan_system_logs(lines: int = 50)`: Reads recent server execution logs.
+- **Security Scope**: Requires `System Admin` security profile privileges.
+
+---
+
+## 2. `backup_agent`
+- **Location**: `autoyou_agents/backup_agent/`
+- **Role**: Coordinates automated backups, filesystem snapshots, and safe cross-device transfers of user databases and keystores.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/backup_agent/`.
+- **Key Tools**:
+  - `create_backup(include_media: bool = False)`: Creates an encrypted archive of `sessions.db`, `page_feed.db`, and configuration vaults.
+  - `list_backups()`: Enumerates previous backup snapshots with timestamps and checksums.
+  - `restore_backup(backup_id: str)`: Restores state from an authenticated snapshot.
+
+---
+
+## 3. `proxy_agent`
+- **Location**: `autoyou_agents/proxy_agent/`
+- **Role**: Manages internal reverse-proxy routing, port mapping, and traffic filtering between the browser proxy on port `8067` and external services.
+- **Key Tools**:
+  - `register_route(path: str, target_port: int)`: Adds a dynamic route to the proxy table.
+  - `list_active_routes()`: Inspects current proxy route mappings.
+
+---
+
+## 4. `hosting_agent`
+- **Location**: `autoyou_agents/hosting_agent/`
+- **Role**: Publishes local agent websites and media assets to the public web using Tunnelmole or custom domain reverse proxies.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/hosting_agent/`.
+- **Key Tools**:
+  - `publish_site(agent_name: str)`: Generates a public HTTPS URL forwarding to the agent's web frontend.
+  - `revoke_public_access(agent_name: str)`: Disables the public tunnel immediately.
+
+---
+
+## 5. `remote_desktop_agent`
+- **Location**: `autoyou_agents/remote_desktop_agent/`
+- **Role**: Enables full remote desktop viewing, monitor switching, and simulated keyboard/mouse control over WebRTC and WebSockets.
+- **Frontend**: Integrated with the Live View panel at `/admin` and at `/agent/remote_desktop_agent/`.
+- **Key Tools**:
+  - `capture_screen(monitor_index: int = 0)`: Takes a full-resolution screenshot buffer.
+  - `send_input_event(event_type: str, data: dict)`: Injects synthesized clicks, mouse scrolls, or keystrokes.
+- **Platform Dependencies**: Uses `mss` on Windows/Linux and native Quartz/CoreGraphics on macOS.
+
+---
+
+## 6. `win_security_agent`
+- **Location**: `autoyou_agents/win_security_agent/`
+- **Role**: Windows-specific security agent that monitors host firewall rules, Antivirus/Defender status, and validates Authenticode signatures on loaded modules.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/win_security_agent/`.
+- **Key Tools**:
+  - `audit_windows_defender()`: Queries Windows Security Center status via WMI.
+  - `inspect_open_listeners()`: Verifies that sensitive admin ports remain bound to loopback.
+
+---
+
+## 7. `mac_security_agent`
+- **Location**: `autoyou_agents/mac_security_agent/`
+- **Role**: macOS-specific security agent monitoring App Sandbox entitlements, Keychain access, and macOS privacy permissions (Camera, Microphone, Screen Recording).
+- **Backend Listener**: Operates a dedicated internal loopback backend on port **8101** so it does not interfere with the primary browser proxy on port 8067.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/mac_security_agent/`.
+- **Key Tools**:
+  - `check_tcc_permissions()`: Audits Transparency, Consent, and Control (TCC) system permissions.
+  - `verify_code_signature()`: Checks Developer ID and notarization ticket on the running bundle.

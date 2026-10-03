@@ -1,0 +1,50 @@
+---
+title: "Model Context Protocol (MCP) Integration"
+description: "How to connect Claude Desktop, Cursor, and external MCP tool servers to AutoYou Server."
+---
+
+# Model Context Protocol (MCP) Integration
+
+AutoYou Server implements bidirectional support for the **Model Context Protocol (MCP)**:
+1. **AutoYou as an MCP Server**: Allows external AI tools (Claude Desktop, Cursor, Zed) to invoke AutoYou's 42+ agents and tools.
+2. **AutoYou as an MCP Client**: Connects external MCP tool servers (Postgres, GitHub, Slack) to AutoYou's local agents.
+
+---
+
+## 1. Connecting Claude Desktop to AutoYou Server
+
+To allow Claude Desktop to execute AutoYou tools (e.g. searching local notes, controlling the desktop, or playing audio):
+
+1. Locate your Claude Desktop configuration file:
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+2. Add the AutoYou Server MCP configuration block:
+
+```json claude_desktop_config.json
+{
+  "mcpServers": {
+    "autoyou-server": {
+      "command": "python",
+      "args": [
+        "-m", "plugins.autoyou_mcp.client",
+        "--server-url", "http://127.0.0.1:8001"
+      ]
+    }
+  }
+}
+```
+
+3. Restart Claude Desktop. You will see the AutoYou hammer icon appear with access to tools like `notes_create`, `search_audio_library`, and `get_system_health`.
+
+---
+
+## 2. Connecting External MCP Servers into AutoYou
+
+To equip AutoYou agents with external tools:
+
+1. Open the Admin Console at `http://127.0.0.1:8001/admin`.
+2. Navigate to **Agent Settings** $\rightarrow$ **MCP Servers**.
+3. Register the external command or SSE endpoint:
+   - **Name**: `sqlite-explorer`
+   - **Command**: `npx -y @modelcontextprotocol/server-sqlite --db-path ./data.db`
+4. The ADK dynamically discovers the tools and presents them to `coding_agent` and `admin_agent` automatically.

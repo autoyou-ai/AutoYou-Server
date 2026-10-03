@@ -1,0 +1,31 @@
+---
+title: "Communication & Task Agents"
+description: "Reference catalog for notify_agent and tasks_agent."
+---
+
+# Communication & Task Agents
+
+These agents handle user notification delivery, task scheduling, reminders, and calendar coordination.
+
+---
+
+## 1. `notify_agent`
+- **Location**: `autoyou_agents/notify_agent/`
+- **Role**: Dispatches real-time alerts and audio chimes across multiple client surfaces (desktop notifications, mobile push, and voice call announcements).
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/notify_agent/`.
+- **Key Tools**:
+  - `send_desktop_notification(title: str, message: str, urgency: str = "normal")`: Fires an OS desktop toast alert on the host machine.
+  - `send_push_notification(device_id: str, title: str, body: str)`: Sends a push alert via Apple APNs or Google FCM.
+  - `play_alert_chime(chime_type: str = "bell")`: Triggers an audible alert through the server audio output or active WebRTC session.
+
+---
+
+## 2. `tasks_agent`
+- **Location**: `autoyou_agents/tasks_agent/`
+- **Role**: Intelligent personal task manager and scheduler. Tracks to-do lists, schedules recurring cron triggers, and monitors project deadlines.
+- **Frontend**: Integrated with the task scheduler panel in the Admin UI.
+- **Key Tools**:
+  - `add_task(title: str, due_date: str = None, priority: str = "medium")`: Adds a task to the queue.
+  - `list_tasks(status: str = "pending")`: Lists incomplete tasks sorted by due date.
+  - `schedule_reminder(reminder_text: str, trigger_time_utc: str)`: Registers a one-time reminder alarm.
+  - `schedule_cron_job(cron_expression: str, prompt_to_run: str)`: Registers a recurring agent execution job.

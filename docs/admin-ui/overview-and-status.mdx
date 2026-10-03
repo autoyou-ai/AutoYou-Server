@@ -1,0 +1,71 @@
+---
+title: "Admin UI: Overview & System Health"
+description: "Telemetry dashboard, hardware monitoring, service lifecycle indicators, and operational health views in admin-ui.js."
+---
+
+# Overview & System Health
+
+The **Overview** view (`renderOverview()` in `assets/admin-ui.js`) serves as the primary mission control dashboard for AutoYou Server operators. It delivers a real-time summary of hardware metrics, active client sessions, background service statuses, and scheduled tasks.
+
+---
+
+## Screen Layout & Sub-Panels
+
+```
++-------------------------------------------------------------------------+
+| [Header] AutoYou Server | Status: HEALTHY | Uptime: 4d 12h | Mode: Secure|
++-------------------------------------------------------------------------+
+| Quick Controls: [Restart Server] [Clear Cache] [Toggle Mic Sharing]    |
++-------------------------------------------------------------------------+
+| System Telemetry:                                                       |
+|  CPU: [||||||||||        ] 42%      Memory: [||||||||||||||    ] 8.2/16GB |
+|  Disk: [||||||           ] 35%      GPU VRAM: [||||||||        ] 4.1/8GB  |
++-------------------------------------------------------------------------+
+| Services:                                                               |
+|  * FastAPI Core       : RUNNING (Port 8001)                             |
+|  * Agent Web Proxy    : RUNNING (Port 8067)                             |
+|  * WebRTC Engine      : ACTIVE (2 PeerConnections, 1 DataChannel)       |
+|  * Node WhatsApp      : CONNECTED (Session Authenticated)               |
+|  * Signal Daemon      : STANDBY                                         |
+|  * Ollama LLM Runner  : READY (Port 11434, llama3:8b loaded)            |
++-------------------------------------------------------------------------+
+| Access & Network Endpoints:                                             |
+|  Local Address : http://192.168.1.145:8001/admin                        |
+|  Loopback      : http://127.0.0.1:8001/admin                            |
+|  Proxy URL     : http://127.0.0.1:8067/                                 |
++-------------------------------------------------------------------------+
+```
+
+---
+
+## Component Breakdown in `admin-ui.js`
+
+### 1. `renderOverviewQuickControls()`
+Renders interactive action chips for immediate system operations:
+- **Restart Server Core**: Dispatches `POST /ai-agent-server/restart` to reboot agent workers without dropping WebRTC connections.
+- **Toggle Screen Listen**: Toggles passive desktop activity observation via `POST /api/screen-listen`.
+- **Purge Temporary Files**: Cleans up expired cache files, dangling audio temporary files, and stale database WAL checkpoints.
+
+### 2. `renderOverviewServiceRow()`
+Iterates over all internal and companion subprocesses returned by `GET /api/status` and `GET /api/autoyou-page-service/status`:
+- Displays green/amber/red operational badges.
+- Displays restart buttons beside failing services.
+- Surfaces companion process crash logs directly in collapsible drawer dialogs.
+
+### 3. `renderOverviewAccessPanel()`
+Calculates and renders all reachable network routes:
+- **LAN Local Pair IP**: Resolved dynamically by `shared/local_network_info.py`.
+- **Agent Websites Directory**: Quick links to open active agent web apps on port `8067`.
+- **Public Tunnel Status**: Shows Tunnelmole HTTPS domain if active.
+
+### 4. `renderSchedulerQueue()`
+Pulls real-time telemetry from `GET /api/scheduler/live-summary` and renders:
+- Pending scheduled notifications (e.g. reminders, cron triggers).
+- Active background tasks and progress bars.
+- Alarms and pending agent invocation jobs.
+
+### 5. `renderBootSweepHistory()`
+Presents an audit log of startup initialization checks:
+- Keystore integrity verification.
+- Database schema migrations and index checks.
+- Optional dependencies scan (Node, Docker, Ollama, Playwright).
