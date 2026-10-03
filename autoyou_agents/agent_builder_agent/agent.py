@@ -79,9 +79,9 @@ _AGENTS_ROOT = _get_writable_agents_root()
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
 def _registry_agents_root_for(agent_name: str) -> Path:
-    if (_AGENTS_ROOT / agent_name).is_dir():
+    if (_AGENTS_ROOT / agent_name / "agent.py").is_file():
         return _AGENTS_ROOT
-    if (_EMBEDDED_AGENTS_ROOT / agent_name).is_dir():
+    if (_EMBEDDED_AGENTS_ROOT / agent_name / "agent.py").is_file():
         return _EMBEDDED_AGENTS_ROOT
     return _AGENTS_ROOT
 
