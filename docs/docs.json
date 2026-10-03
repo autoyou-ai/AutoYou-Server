@@ -1,0 +1,170 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "AutoYou Server",
+  "colors": {
+    "primary": "#0066FF",
+    "light": "#38BDF8",
+    "dark": "#0284C7"
+  },
+  "favicon": "/images/favicon.ico",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Architecture & Core Engine",
+            "pages": [
+              "architecture/overview",
+              "architecture/security-and-auth",
+              "architecture/webrtc-and-datachannels",
+              "architecture/pairing-and-discovery",
+              "architecture/cloud-and-remote"
+            ]
+          },
+          {
+            "group": "Admin UI Console (admin-ui.js)",
+            "pages": [
+              "admin-ui/architecture",
+              "admin-ui/overview-and-status",
+              "admin-ui/security-console",
+              "admin-ui/live-view-and-media",
+              "admin-ui/ai-and-speech",
+              "admin-ui/messaging-bridges",
+              "admin-ui/agent-workbench-ui",
+              "admin-ui/setup-and-recipes"
+            ]
+          },
+          {
+            "group": "REST & WebSocket API Reference",
+            "pages": [
+              "api-reference/admin-and-system",
+              "api-reference/security-and-totp",
+              "api-reference/pairing-and-signaling",
+              "api-reference/chat-and-sessions",
+              "api-reference/webrtc-and-streaming",
+              "api-reference/models-and-speech",
+              "api-reference/messaging-gateways",
+              "api-reference/cloud-and-peer",
+              "api-reference/agents-and-builder",
+              "api-reference/websites-and-bookmarks",
+              "api-reference/mcp-server"
+            ]
+          },
+          {
+            "group": "Agent Framework & Runtime",
+            "pages": [
+              "agent-framework/architecture",
+              "agent-framework/building-agents",
+              "agent-framework/agent-web-frontends",
+              "agent-framework/security-and-permissions",
+              "agent-framework/agent-workbench"
+            ]
+          },
+          {
+            "group": "Agent Catalog Reference",
+            "pages": [
+              "agents/developer-and-tooling",
+              "agents/media-and-creative",
+              "agents/intelligence-and-models",
+              "agents/web-and-automation",
+              "agents/communication-and-tasks",
+              "agents/monetization-and-utility"
+            ]
+          },
+          {
+            "group": "Developer Guides",
+            "pages": [
+              "guides/custom-agent-tutorial",
+              "guides/custom-api-router",
+              "guides/mcp-integration",
+              "guides/production-deployment"
+            ]
+          },
+          {
+            "group": "Technical Specs & Legal",
+            "pages": [
+              "technical/server",
+              "technical/architecture",
+              "technical/webrtc",
+              "technical/pairing-protocols",
+              "technical/memory-system",
+              "security/security-modes",
+              "security/encryption",
+              "security/data-privacy",
+              "legal/open-source-commitment",
+              "legal/security-contact",
+              "glossary"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "index"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Admin UI & APIs",
+        "groups": [
+          {
+            "group": "REST & WebSocket API Reference",
+            "pages": [
+              "api-reference/overview"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Agent Ecosystem",
+        "groups": [
+          {
+            "group": "Agent Catalog Reference",
+            "pages": [
+              "agents/system-and-admin"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "AutoYou Website",
+        "href": "https://www.autoyou.me"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/autoyou-ai/AutoYou"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/autoyou-ai/AutoYou"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/autoyou-ai/AutoYou",
+      "x": "https://twitter.com/autoyou_ai"
+    }
+  }
+}

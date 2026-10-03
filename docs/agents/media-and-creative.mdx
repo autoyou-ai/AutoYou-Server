@@ -1,0 +1,67 @@
+---
+title: "Media & Creative Agents"
+description: "Reference catalog for audio_agent, media_generation_agent, voice_training_agent, notes_agent, and files_agent."
+---
+
+# Media & Creative Agents
+
+These agents power media playback, voice synthesis, image and media generation, rich note-taking, and file management.
+
+---
+
+## 1. `audio_agent`
+- **Location**: `autoyou_agents/audio_agent/`
+- **Role**: Comprehensive music player, playlist editor, and audio library manager. Streams audio over WebRTC data channels or HTTP Range (206) requests.
+- **Frontend**: Full-featured web app at `http://127.0.0.1:8067/agent/audio_agent/`.
+- **Key Features**:
+  - Incremental library pagination via `GET /api/library` with scroll memory.
+  - Integration with AmplitudeJS for background playback handoff.
+  - Playlist creation, tagging, and track search.
+- **Key Tools**:
+  - `play_track(track_id: str)`: Initiates playback on the server or connected client.
+  - `search_audio_library(query: str)`: Searches artist, album, and track metadata.
+  - `create_playlist(name: str, tracks: list)`: Saves a new playlist.
+
+---
+
+## 2. `media_generation_agent`
+- **Location**: `autoyou_agents/media_generation_agent/`
+- **Role**: Coordinates local and cloud text-to-image models (Stable Diffusion, FLUX), video clip generation, and audio sound effect synthesis.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/media_generation_agent/`.
+- **Key Tools**:
+  - `generate_image(prompt: str, aspect_ratio: str = "1:1")`: Synthesizes an image.
+  - `inspect_generated_media()`: Returns recently generated visual assets.
+
+---
+
+## 3. `voice_training_agent`
+- **Location**: `autoyou_agents/voice_training_agent/`
+- **Role**: Interactive voice cloning and speech profile management studio.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/voice_training_agent/`.
+- **Key Tools**:
+  - `record_voice_sample(sample_name: str, audio_bytes: bytes)`: Stores a clean reference audio clip.
+  - `extract_speaker_embedding(sample_name: str)`: Generates a neural voice embedding for EmotiVoice or Kokoro.
+  - `test_voice_synthesis(text: str, voice_id: str)`: Generates a test audio clip.
+
+---
+
+## 4. `notes_agent`
+- **Location**: `autoyou_agents/notes_agent/`
+- **Role**: Rich Markdown note-taking and personal knowledge base with full-text search and media attachment support.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/notes_agent/`.
+- **Storage**: Dedicated SQLite database inside the mutable data root (`autoyou_notes_agent/notes.db`).
+- **Key Tools**:
+  - `create_note(title: str, content: str, tags: list = None)`: Creates a new note.
+  - `search_notes(query: str)`: Performs full-text keyword search across all notes.
+  - `attach_media_to_note(note_id: str, media_id: str)`: Links an image or audio recording to a note.
+
+---
+
+## 5. `files_agent`
+- **Location**: `autoyou_agents/files_agent/`
+- **Role**: Safe local file explorer and secure transfer manager for exchanging documents, code archives, and media between the server and mobile/desktop clients.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/files_agent/`.
+- **Key Tools**:
+  - `browse_directory(path: str)`: Lists files with size, type, and modified dates.
+  - `prepare_file_download(file_path: str)`: Generates a signed, single-use download token.
+  - `quarantine_file(file_path: str)`: Moves suspicious files into an isolated quarantine vault.

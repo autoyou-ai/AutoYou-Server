@@ -1,0 +1,122 @@
+---
+title: "Pairing & WebRTC Signaling APIs"
+description: "Specifications for AutoPair, Local Pair discovery, WebRTC SDP signaling, and QR code mobile bootstrapping."
+---
+
+# Pairing & WebRTC Signaling APIs
+
+These endpoints coordinate client authentication, network address resolution, and the initial WebRTC signaling exchange required to establish encrypted DataChannels and media streams.
+
+---
+
+## AutoPair Handshake
+
+### `POST /api/autopair_hello`
+First contact from a client attempting zero-touch pairing over loopback or local LAN.
+
+#### Request Payload
+```json
+{
+  "client_name": "MacBook-Pro",
+  "client_version": "81.0.0",
+  "platform": "macos",
+  "client_id": "client_mac_8f9a2b"
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "server_name": "Studio-Host",
+  "server_version": "81.0.0",
+  "supported_tiers": ["normal", "secure", "secure_professional"],
+  "challenge_nonce": "9a38f7c1d2e4b5a60123456789abcdef"
+}
+```
+
+### `POST /api/autopair`
+Submits challenge response and receives session authorization credentials.
+
+#### Request Payload
+```json
+{
+  "client_id": "client_mac_8f9a2b",
+  "challenge_response": "derived_hmac_proof...",
+  "password": "" // Empty if in local zero-touch profile
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "authenticated": true,
+  "session_id": "sess_01J8YXZ0QW4T9P",
+  "session_token": "sec_token_9a12b3c4d5",
+  "browser_proxy_port": 8067,
+  "ice_servers": [
+    { "urls": ["stun:stun.l.google.com:19302"] }
+  ]
+}
+```
+
+---
+
+## WebRTC Signaling (`/signal/{session_id}`)
+
+### `POST /signal/{session_id}`
+Submits the client's WebRTC SDP Offer and ICE candidates, receiving the server's SDP Answer.
+
+#### Request Payload
+```json
+{
+  "sdp": "v=0\r\no=- 4239842 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1\r\n...",
+  "type": "offer",
+  "candidates": [
+    {
+      "candidate": "candidate:842163049 1 udp 1677729535 192.168.1.145 54128 typ host...",
+      "sdpMid": "0",
+      "sdpMLineIndex": 0
+    }
+  ]
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "sdp": "v=0\r\no=- 9842398 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1\r\n...",
+  "type": "answer",
+  "candidates": [
+    {
+      "candidate": "candidate:1049281 1 udp 2130706431 192.168.1.145 59002 typ host...",
+      "sdpMid": "0",
+      "sdpMLineIndex": 0
+    }
+  ]
+}
+```
+
+---
+
+## Local Pair Information
+
+### `GET /api/local-pair-info`
+Provides LAN IP and port information to clients browsing local mDNS beacons.
+
+#### Response (`200 OK`)
+```json
+{
+  "lan_ip": "192.168.1.145",
+  "admin_port": 8001,
+  "proxy_port": 8067,
+  "server_name": "Studio-Desktop",
+  "device_ownership": "own"
+}
+```
+
+---
+
+## QR Code Export
+
+### `GET /api/settings/export-qr`
+Generates a mobile pairing bundle encoded as a QR code SVG or Base64 data URL.

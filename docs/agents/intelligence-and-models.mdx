@@ -1,0 +1,63 @@
+---
+title: "Intelligence & Model Agents"
+description: "Reference catalog for memory_agent, persona_agent, model_picker_agent, fine_tuning_agent, data_collector_agent, openclaw_agent, and hermes_agent."
+---
+
+# Intelligence & Model Agents
+
+These agents govern long-term semantic memory, persona customization, hardware-aware model selection, local model fine-tuning, and advanced cognitive bridges.
+
+---
+
+## 1. `memory_agent`
+- **Location**: `autoyou_agents/memory_agent/`
+- **Role**: Long-term semantic memory subagent. Maintains a searchable vector and keyword index of user facts, preferences, past conversations, and project context.
+- **Key Tools**:
+  - `store_memory(fact: str, category: str = "general")`: Stores a permanent memory entry.
+  - `search_memory(query: str, limit: int = 5)`: Retrieves relevant historical facts using cosine similarity or keyword ranking.
+  - `forget_memory(memory_id: str)`: Removes a memory entry upon user request.
+
+---
+
+## 2. `persona_agent`
+- **Location**: `autoyou_agents/persona_agent/`
+- **Role**: Manages user-authored self-data profiles and persona definitions in Markdown format (`persona.md`). Enables tailoring tone, communication style, and domain expertise.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/persona_agent/`.
+- **Key Tools**:
+  - `get_active_persona()`: Reads current persona profile Markdown.
+  - `update_persona(content: str)`: Updates persona guidelines and voice characteristics.
+
+---
+
+## 3. `model_picker_agent`
+- **Location**: `autoyou_agents/model_picker_agent/`
+- **Role**: Hardware-aware local model selector powered by **LLMFit**. Scans host hardware (RAM, VRAM, CPU architecture, GPU compute capability) and recommends optimal model quantization parameters (Q4_K_M, Q5_K_M, Q8_0) that will run without out-of-memory crashes.
+- **Key Tools**:
+  - `scan_hardware_capabilities()`: Returns available VRAM and compute tier.
+  - `recommend_models()`: Proposes the fastest and most capable models for the host system.
+
+---
+
+## 4. `fine_tuning_agent`
+- **Location**: `autoyou_agents/fine_tuning_agent/`
+- **Role**: Manages local LoRA (Low-Rank Adaptation) and QLoRA fine-tuning runs. Formats session datasets, dumps training hyperparameters, and supervises training worker subprocesses.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/fine_tuning_agent/`.
+- **Key Tools**:
+  - `prepare_dataset(session_ids: list)`: Formats conversation histories into JSONL instruction pairs.
+  - `start_tuning_run(config: dict)`: Launches background fine-tuning worker.
+  - `get_tuning_progress(run_id: str)`: Polls loss curves, epoch count, and ETA.
+
+---
+
+## 5. `data_collector_agent`
+- **Location**: `autoyou_agents/data_collector_agent/`
+- **Role**: Non-invasive context collector that records approved agent sessions, tool execution metrics, and developer interactions to produce high-quality training datasets.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/data_collector_agent/`.
+
+---
+
+## 6. `openclaw_agent` & `hermes_agent`
+- **Location**: `autoyou_agents/openclaw_agent/` & `hermes_agent/`
+- **Role**: Bridges AutoYou to external high-autonomy reasoning frameworks:
+  - **OpenClaw**: Orchestrates multi-agent workflows, code generation graphs, and tool chains.
+  - **Hermes**: Connects to the Hermes function-calling model family for structured JSON task routing.

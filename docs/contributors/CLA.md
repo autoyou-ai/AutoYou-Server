@@ -1,4 +1,4 @@
-<!-- Have counsel review this agreement before you rely on it. -->
+{/* Have counsel review this agreement before you rely on it. */}
 
 # AutoYou Contributor License Agreement
 

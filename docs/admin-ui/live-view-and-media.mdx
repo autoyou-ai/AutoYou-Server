@@ -1,0 +1,107 @@
+---
+title: "Admin UI: Live View & Media Controls"
+description: "Real-time WebRTC media inspection, camera and desktop screen capture, virtual video injection, and low-latency input in admin-ui.js."
+---
+
+# Live View & Media Controls
+
+The **Live View** screen (`renderLiveViewScreen()` in `assets/admin-ui.js`) is the real-time visual monitoring and media interaction surface of AutoYou Server. It embeds an interactive HTML5 WebRTC video player connected directly to the server's streaming engine.
+
+---
+
+## Live View Architecture
+
+```mermaid
+graph LR
+    subgraph Browser: admin-ui.js
+        VideoElem[<video> HTML5 Element]
+        MediaControls[Media Selectors & Input Capture]
+        StatsOverlay[WebRTC Stats: FPS, Bitrate, RTT]
+    end
+
+    subgraph FastAPI Server: :8001
+        SignalingRoute[/signal/{session_id} /api/chat/call/offer]
+        WebRTC[/api/webrtc/* Endpoints]
+        GameWS[/api/webrtc/hosted-game/api/game/native-input]
+    end
+
+    subgraph Host OS Capture
+        ScreenCap[Desktop Screen Capture: mss]
+        CamCap[Camera Capture: OpenCV]
+        VirtualVideo[Video File Player: PyAV]
+        OSInput[OS Input Injector: PyAutoGUI]
+    end
+
+    MediaControls -->|Select Source| WebRTC
+    MediaControls -->|Send Game Input| GameWS
+    GameWS --> OSInput
+
+    SignalingRoute <--> VideoElem
+    ScreenCap --> VideoElem
+    CamCap --> VideoElem
+    VirtualVideo --> VideoElem
+    VideoElem --> StatsOverlay
+```
+
+---
+
+## Screen & Camera Source Selection
+
+The toolbar above the live player lets the operator switch active video feeds:
+
+### 1. Monitor & Desktop Sharing
+- Fetches available screens via `GET /api/webrtc/monitors`.
+- Allows selecting the primary display, secondary monitors, or virtual head-less frames.
+- Captures full desktop frames at 30–60 FPS with minimal CPU impact using direct memory buffer copies.
+
+### 2. Physical Camera Devices
+- Enumerates connected USB webcams and virtual cameras via `GET /api/webrtc/camera-devices`.
+- Dynamically attaches the selected camera track to the active WebRTC PeerConnection without interrupting the call.
+
+---
+
+## Audio Devices & Microphone Sharing
+
+Managed via `initialAudioSources()`:
+- **Audio Inputs**: Enumerates available microphone inputs via `GET /api/webrtc/audio-devices`.
+- **Microphone Sharing Toggle**: By default, host server microphones remain closed. Toggling the microphone switch dispatches:
+  ```http
+  PUT /api/webrtc/microphone-sharing HTTP/1.1
+  Host: 127.0.0.1:8001
+  Content-Type: application/json
+
+  {
+    "enabled": true,
+    "device_id": "default"
+  }
+  ```
+
+---
+
+## Virtual Video File Injection
+
+For automated testing, demonstrations, or agent video processing, the Live View panel supports uploading and injecting pre-recorded video files directly into the active WebRTC stream:
+
+```
++-------------------------------------------------------------------------+
+| Virtual Video Stream Injection                                          |
++-------------------------------------------------------------------------+
+| [ Upload MP4/WebM ]  demo_screencast.mp4 (48.2 MB)                     |
+| Status: Playing | Position: 01:24 / 04:15 | Loop: [x]                   |
+| Controls: [ Pause ] [ Resume ] [ Stop ] [ Loop Track ]                  |
++-------------------------------------------------------------------------+
+```
+
+1. **Upload**: Sends binary multipart video data to `POST /api/webrtc/video-file/upload`.
+2. **Playback**: Starts streaming frames with `POST /api/webrtc/video-file/play`.
+3. **Control**: Controls playback position via `/pause`, `/resume`, and `/stop`.
+
+---
+
+## Native Game & Remote Desktop Input
+
+When controlling a remote machine or playing games running on the host, the Live View canvas captures user interaction events:
+
+- **Mouse Delta Tracking**: Captures pointer lock (`requestPointerLock`) and transmits raw $(\Delta x, \Delta y)$ mouse movements.
+- **Keyboard Codes**: Dispatches standard `KeyboardEvent.code` values.
+- **WebSocket Transport**: All inputs stream over a dedicated low-overhead WebSocket connection to `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`.

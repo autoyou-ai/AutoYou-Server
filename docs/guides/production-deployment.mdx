@@ -1,0 +1,98 @@
+---
+title: "Production Deployment & Hardening"
+description: "Hardening checklists, systemd service configuration, Docker Compose deployment, reverse proxies, and TLS termination."
+---
+
+# Production Deployment & Hardening
+
+When deploying AutoYou Server in production environments, dedicated office servers, or cloud virtual machines, follow these hardening and reliability guidelines.
+
+---
+
+## 1. Production Security Hardening Checklist
+
+- [ ] **Activate Secure Professional Tier**: Set `AUTOYOU_SECURITY_MODE=secure_professional` in `.env` or via API.
+- [ ] **Enforce TOTP 2FA**: Complete authenticator enrollment immediately upon initial boot.
+- [ ] **Restrict Loopback Listeners**: Verify `AUTOYOU_HOST=127.0.0.1` so sensitive admin ports cannot be queried from untrusted network interfaces.
+- [ ] **Rotate Storage Keys Regularly**: Trigger atomic re-encryption via `POST /api/admin/security/storage/rotate`.
+- [ ] **Disable Unverified Senders**: In the Telegram/Signal settings, require explicit operator approval for discovered senders.
+
+---
+
+## 2. Docker Compose Production Stack
+
+Use the production `docker-compose.yml` to supervise the server, companion Node workers, and Redis queues:
+
+```yaml docker-compose.yml
+version: "3.8"
+
+services:
+  autoyou-server:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:8067:8067"
+    environment:
+      - AUTOYOU_SECURITY_MODE=secure_professional
+      - OLLAMA_API_BASE=http://host.docker.internal:11434
+    volumes:
+      - ./data:/app/data
+      - ./config.keystore.enc:/app/config.keystore.enc
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+```
+
+---
+
+## 3. Linux Systemd Service Setup
+
+To run AutoYou Server as an automatic background daemon on Linux:
+
+Create `/etc/systemd/system/autoyou.service`:
+
+```ini
+[Unit]
+Description=AutoYou Server Core
+After=network.target
+
+[Service]
+Type=simple
+User=autoyou
+WorkingDirectory=/opt/AutoYou/AutoYou-Server
+ExecStart=/opt/AutoYou/AutoYou-Server/.venv/bin/python server.py
+Restart=always
+RestartSec=5
+Environment=AUTOYOU_SECURITY_MODE=secure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now autoyou
+```
+
+---
+
+## 4. Reverse Proxy & TLS with Caddy or Nginx
+
+When exposing agent websites or Cloud Relay over the public internet, place a reverse proxy in front of AutoYou Server:
+
+### Example Caddyfile
+```caddy
+server.example.com {
+    reverse_proxy 127.0.0.1:8001 {
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+apps.example.com {
+    reverse_proxy 127.0.0.1:8067
+}
+```

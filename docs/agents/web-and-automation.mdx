@@ -1,0 +1,62 @@
+---
+title: "Web & Automation Agents"
+description: "Reference catalog for browser_agent, client_browser_control_agent, internet_agent, page_agent, and website_agent."
+---
+
+# Web & Automation Agents
+
+These agents enable real browser automation, web search, web scraping, and social feed publishing.
+
+---
+
+## 1. `browser_agent`
+- **Location**: `autoyou_agents/browser_agent/`
+- **Role**: Headless and headful real-browser automation engine. Supports Chromium via Playwright, as well as native WKWebView on macOS for sandboxed App Store compliance.
+- **Key Features**:
+  - Private network filtering and DNS pinning to prevent SSRF attacks.
+  - Parent-owned pipe control instead of remote debugger ports.
+  - Automated screenshot capture and DOM element interaction.
+- **Key Tools**:
+  - `navigate_url(url: str)`: Loads a webpage safely.
+  - `click_element(selector: str)`: Clicks DOM buttons or links.
+  - `fill_form(selector: str, text: str)`: Inputs text into form fields.
+  - `take_page_screenshot()`: Captures full-page visual rendering.
+
+---
+
+## 2. `client_browser_control_agent`
+- **Location**: `autoyou_agents/client_browser_control_agent/`
+- **Role**: Allows the server to orchestrate web browsing directly within a connected client's native browser window (e.g. on AutoYou Connect or an iPad).
+- **Key Tools**:
+  - `open_client_tab(url: str)`: Requests that the client device open a new tab.
+  - `close_client_tab(tab_id: str)`: Closes an active client tab.
+
+---
+
+## 3. `internet_agent`
+- **Location**: `autoyou_agents/internet_agent/`
+- **Role**: Provides fast, safe internet search and article summarization without launching a full browser.
+- **Key Tools**:
+  - `search_web(query: str, num_results: int = 5)`: Executes web queries against DuckDuckGo, SearXNG, or Google.
+  - `fetch_page_content(url: str)`: Downloads and parses HTML into clean Markdown text.
+
+---
+
+## 4. `page_agent`
+- **Location**: `autoyou_agents/page_agent/`
+- **Role**: Backs the **AutoYou Page** social community feed (`page_feed.db`). Publishes articles, media cards, user updates, and structured agent outputs.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/page_agent/`.
+- **Key Tools**:
+  - `publish_post(title: str, content: str, media_urls: list = None)`: Creates a new post in the feed.
+  - `search_feed(query: str)`: Searches published feed posts.
+  - `delete_post(post_id: str)`: Deletes an authored post.
+
+---
+
+## 5. `website_agent`
+- **Location**: `autoyou_agents/website_agent/`
+- **Role**: Website scraper and site monitor. Monitors competitor pages or documentation sites for content changes.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/website_agent/`.
+- **Key Tools**:
+  - `extract_structured_data(url: str, schema: dict)`: Scrapes structured JSON records from HTML tables and cards.
+  - `monitor_url(url: str, frequency_hours: int = 24)`: Registers a recurring change-detection monitor.

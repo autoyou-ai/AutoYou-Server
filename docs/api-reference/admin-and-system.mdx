@@ -1,0 +1,144 @@
+---
+title: "Admin & System APIs"
+description: "API specifications for system status, configuration management, scheduler telemetry, setup recipes, and process control."
+---
+
+# Admin & System APIs
+
+These endpoints provide complete administrative management over the AutoYou Server core, process life cycles, task schedulers, and configuration states.
+
+---
+
+## System Status & Telemetry
+
+### `GET /api/status`
+Returns real-time health metrics, memory usage, CPU load, and background service statuses.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://127.0.0.1:8001/api/status \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+```python Python
+import requests
+
+resp = requests.get(
+    "http://127.0.0.1:8001/api/status",
+    headers={"Authorization": "Bearer <TOKEN>"}
+)
+print(resp.json())
+```
+</CodeGroup>
+
+#### Response Payload (`200 OK`)
+```json
+{
+  "status": "healthy",
+  "version": "81.0.0",
+  "uptime_seconds": 389241,
+  "system": {
+    "cpu_percent": 14.2,
+    "memory_used_mb": 8420,
+    "memory_total_mb": 16384,
+    "disk_free_gb": 128.4
+  },
+  "services": {
+    "webrtc": { "active_connections": 2, "state": "healthy" },
+    "whatsapp": { "running": true, "authenticated": true },
+    "signal": { "running": true },
+    "ollama": { "running": true, "endpoint": "http://127.0.0.1:11434" }
+  },
+  "security_mode": "normal"
+}
+```
+
+---
+
+## Bootstrap & Configuration
+
+### `GET /api/admin/bootstrap`
+Pulls initial capabilities, theme preferences, and platform flags required to render the Admin UI.
+
+#### Response Payload (`200 OK`)
+```json
+{
+  "server_name": "Studio-Workstation",
+  "platform": "windows",
+  "has_embedded_server": true,
+  "security_mode": "normal",
+  "totp_active": false,
+  "theme": "dark",
+  "ports": {
+    "admin": 8001,
+    "browser_proxy": 8067
+  }
+}
+```
+
+### `POST /api/admin/config`
+Updates one or more configuration properties stored within the encrypted keystore.
+
+#### Request Payload
+```json
+{
+  "server_name": "Production-Host",
+  "theme": "dark",
+  "browser_proxy_port": 8067,
+  "enable_screen_listen": true
+}
+```
+
+---
+
+## Task Scheduler & Notifications
+
+### `GET /api/scheduler/live-summary`
+Returns pending jobs, recurring alarms, and active agent background threads.
+
+#### Response Payload (`200 OK`)
+```json
+{
+  "active_tasks_count": 3,
+  "tasks": [
+    {
+      "id": "task_reminder_01",
+      "agent": "tasks_agent",
+      "scheduled_time": "2026-10-04T09:00:00Z",
+      "description": "Daily standup notification"
+    }
+  ],
+  "notification_queue_length": 0
+}
+```
+
+---
+
+## Configuration Recipes
+
+### `POST /api/setup/recipe/preview`
+Generates a diff preview showing what keys and services will be modified before applying a configuration recipe.
+
+#### Request Payload
+```json
+{
+  "recipe": "desktop_assistant"
+}
+```
+
+### `POST /api/setup/recipe/apply`
+Atomically applies the selected configuration recipe and restarts affected background services.
+
+---
+
+## Process Lifecycle Controls
+
+### `POST /ai-agent-server/restart`
+Restarts the Agent Development Kit (ADK) worker process. Active WebRTC streams and HTTP sessions remain connected while the agent environment reloads cleanly.
+
+### `POST /shutdown`
+Initiates a graceful server shutdown:
+1. Flushes database WAL checkpoints (`sessions.db`, `page_feed.db`).
+2. Closes all active WebRTC PeerConnections and companion workers.
+3. Scrubs all cryptographic master keys from RAM.
+4. Terminates the process.

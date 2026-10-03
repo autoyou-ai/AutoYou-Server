@@ -1,0 +1,80 @@
+---
+title: "Admin UI: Messaging Bridges"
+description: "Integrating and supervising WhatsApp, Signal, and Telegram communication gateways from admin-ui.js."
+---
+
+# Messaging Bridges
+
+AutoYou Server bridges multi-modal AI agents to real-world messaging platforms. The **Messaging Screen** (`renderMessagingScreen()` in `assets/admin-ui.js`) provides live controls, QR code login flows, message approval queues, and companion process management for WhatsApp, Signal, and Telegram.
+
+---
+
+## Messaging Architecture Overview
+
+```mermaid
+graph LR
+    subgraph Admin UI: admin-ui.js
+        MsgScreen[Messaging Screen: renderMessagingScreen]
+    end
+
+    subgraph Messaging Routers: routers/messaging.py
+        WARoutes[/api/whatsapp/*]
+        SignalRoutes[/api/signal/*]
+        TGUserRoutes[/api/telegram-user/*]
+        TGBotRoutes[/api/telegram/*]
+    end
+
+    subgraph Companion Services
+        WANode[Node.js Puppeteer Worker: node/whatsapp/]
+        SignalCli[Signal CLI Daemon: signal_service.py]
+        TGClient[Telegram TDLib Worker: telegram_user_service.py]
+    end
+
+    MsgScreen --> WARoutes --> WANode
+    MsgScreen --> SignalRoutes --> SignalCli
+    MsgScreen --> TGUserRoutes --> TGClient
+    MsgScreen --> TGBotRoutes
+```
+
+---
+
+## WhatsApp Integration
+
+The WhatsApp gateway runs as an isolated Node.js child process using Puppeteer to manage a headless WhatsApp Web instance:
+
+### Operator Flow in `admin-ui.js`
+1. **Status Inspection**: Fetches `GET /api/whatsapp/status`. Displays connection state (`INITIALIZING`, `SCAN_QR_CODE`, `CONNECTED`, or `DISCONNECTED`).
+2. **QR Code Pairing**: If unlinked, queries `GET /api/whatsapp/qr` and renders the dynamic WhatsApp Web QR code canvas in the browser.
+3. **Session Reset**: If session state becomes corrupt, clicking **"Reset WhatsApp"** dispatches `POST /api/whatsapp/reset`, clearing browser profile caches and restarting Puppeteer cleanly.
+4. **Manual Message Test**: Allows the operator to send a test message to any phone number (`+1234567890`) via `POST /api/whatsapp/send`.
+
+---
+
+## Signal Integration
+
+The Signal bridge operates through the local `signal-cli` daemon supervised by `signal_service.py`:
+
+### Capabilities
+- **Status & Device Identification**: `GET /api/signal/status` and `GET /api/signal/device-name` return the registered Signal username and account UUID.
+- **Link Device via QR Code**: `GET /api/signal/qr` returns a standard `tsdevice:/` pairing URI rendered as a QR code for linking as a secondary device from the official Signal mobile app.
+- **Message Inspection**: `GET /api/signal/messages` fetches recently received encrypted messages.
+- **Daemon Restart & Cache Cleanup**: `POST /api/signal/restart` and `POST /api/signal/cleanup`.
+
+---
+
+## Telegram Integration (Dual Modality)
+
+AutoYou Server supports two distinct Telegram operational modes:
+
+### 1. Telegram Bot (Official Bot API)
+Connects an official bot created via `@BotFather`:
+- **Discovered Senders Queue** (`renderTelegramDiscoveredSenders()`): When an unknown Telegram user messages the bot, their message is held in an approval queue (`GET /api/telegram/senders`).
+- **Sender Approval**: Operators can click **"Approve"** (`POST /api/telegram/senders/approve`) to allow the user to converse with AutoYou agents.
+- **Allow Code**: `POST /api/admin/telegram/allow-code` generates an authorization code that users can paste into Telegram chat to self-verify.
+
+### 2. Telegram User Client (`renderTelegramUserManagementBody()`)
+Operates directly as a real user account using TDLib / Telethon:
+- **QR Code & Phone Login**: Connects via `GET /api/telegram-user/qr`.
+- **2FA Cloud Password**: If the account has Telegram two-step verification enabled, the UI prompts for the password, dispatching `POST /api/telegram-user/2fa`.
+- **Message Streams**: `GET /api/telegram-user/messages` retrieves recent conversation logs.
+- **Session Control**: `POST /api/telegram-user/disconnect` terminates the session securely.

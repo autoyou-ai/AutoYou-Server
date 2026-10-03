@@ -1,0 +1,135 @@
+---
+title: "Models & Speech APIs"
+description: "API specifications for the local LLM model library, Ollama integration, Whisper STT, and neural speech synthesis."
+---
+
+# Models & Speech APIs
+
+These endpoints manage local LLM weight downloads, catalog discovery, inference providers, and speech recognition/synthesis assets.
+
+---
+
+## Local LLM Model Library
+
+### `GET /api/model-library/local`
+Returns all local LLM weights stored on disk ready for inference.
+
+#### Response (`200 OK`)
+```json
+{
+  "models": [
+    {
+      "name": "llama3:8b",
+      "size_gb": 4.7,
+      "format": "gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 8192,
+      "is_active": true
+    },
+    {
+      "name": "qwen2.5-coder:7b",
+      "size_gb": 4.5,
+      "format": "gguf",
+      "quantization": "Q4_K_M",
+      "context_length": 32768,
+      "is_active": false
+    }
+  ]
+}
+```
+
+### `GET /api/model-library/catalog`
+Retrieves the curated catalog of recommended open-source models available for one-click installation.
+
+### `POST /api/model-library/download`
+Spawns an asynchronous background download job for a model from Hugging Face or Ollama.
+
+#### Request Payload
+```json
+{
+  "model_name": "llama3:8b",
+  "quantization": "Q4_K_M"
+}
+```
+
+#### Response (`202 Accepted`)
+```json
+{
+  "job_id": "job_dl_01J8YXZ90A",
+  "status": "queued",
+  "model_name": "llama3:8b"
+}
+```
+
+### `GET /api/model-library/downloads/{job_id}`
+Polls progress for an active download job.
+
+#### Response (`200 OK`)
+```json
+{
+  "job_id": "job_dl_01J8YXZ90A",
+  "status": "downloading",
+  "progress_percent": 68.4,
+  "downloaded_bytes": 3280000000,
+  "total_bytes": 4800000000,
+  "speed_mbps": 24.5
+}
+```
+
+---
+
+## Speech Recognition Models (STT)
+
+### `GET /api/speech-models/status`
+Returns installed Whisper models and hardware acceleration device information.
+
+#### Response (`200 OK`)
+```json
+{
+  "backend": "faster-whisper",
+  "compute_device": "cuda",
+  "installed_models": ["base.en", "small", "medium"],
+  "active_model": "small"
+}
+```
+
+### `POST /api/speech-models/download`
+Downloads additional Whisper model variants (`tiny.en`, `base`, `small`, `medium`, `large-v3`).
+
+---
+
+## AI Providers & Telemetry
+
+### `GET /api/ai/ollama/status`
+Checks the local Ollama daemon at `http://127.0.0.1:11434`.
+
+#### Response (`200 OK`)
+```json
+{
+  "running": true,
+  "version": "0.3.12",
+  "loaded_models": ["llama3:8b"],
+  "vram_allocated_mb": 4512
+}
+```
+
+---
+
+## Inference Parameters & Behavior
+
+### `GET /api/model-behavior`
+Fetches active hyperparameter defaults.
+
+### `POST /api/model-behavior`
+Updates generation parameters:
+
+#### Request Payload
+```json
+{
+  "temperature": 0.7,
+  "top_p": 0.9,
+  "frequency_penalty": 0.1,
+  "presence_penalty": 0.0,
+  "max_tokens": 4096
+}
+```

@@ -1,0 +1,90 @@
+---
+title: "MCP (Model Context Protocol) Server APIs"
+description: "Specifications for AutoYou Server's embedded Model Context Protocol (MCP) server, JSON-RPC 2.0 endpoints, and tool sharing."
+---
+
+# MCP Server APIs
+
+AutoYou Server implements the open **Model Context Protocol (MCP)** specification, allowing external AI hosts (such as Claude Desktop, Zed, Cursor, and IDE extensions) to discover and execute tools exposed by AutoYou agents over standard JSON-RPC 2.0 transports.
+
+---
+
+## MCP Server Capabilities
+
+```mermaid
+graph LR
+    ExternalHost[External MCP Client: Claude Desktop / Cursor]
+    
+    subgraph AutoYou Server (:8001)
+        MCPRouter[/api/v1/mcp/*]
+        ToolAdapter[MCP Tool Adapter]
+        ADK[ADK Agent Tool Registry]
+    end
+
+    ExternalHost -->|JSON-RPC 2.0 Over HTTP/WS| MCPRouter
+    MCPRouter --> ToolAdapter
+    ToolAdapter --> ADK
+    ADK -->|Execute Tools| LocalOS[Local File / System / Media APIs]
+```
+
+---
+
+## Endpoints
+
+### `GET /api/v1/mcp/status`
+Returns server capability status, protocol versions supported, and registered tool counts.
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "ready",
+  "protocol_version": "2024-11-05",
+  "server_info": {
+    "name": "AutoYou-MCP-Server",
+    "version": "81.0.0"
+  },
+  "tools_available": 64,
+  "active_sessions": 1
+}
+```
+
+### `GET /api/v1/mcp/sessions`
+Lists all active external MCP client sessions connected to this server.
+
+### `POST /api/v1/mcp/send/{session_id}`
+Sends a raw JSON-RPC 2.0 message envelope to a specific MCP session.
+
+#### Request Payload
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "notes_create",
+    "arguments": {
+      "title": "Meeting Notes",
+      "content": "Discussed Q4 roadmap and WebRTC optimisations."
+    }
+  },
+  "id": 1
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Note 'Meeting Notes' created successfully with ID note_94a2b1."
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+### `POST /api/v1/mcp/chat`
+Allows an external MCP client to invoke a full agent conversation pass, utilizing both local and remote MCP tools.
