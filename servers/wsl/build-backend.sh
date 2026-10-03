@@ -45,6 +45,7 @@ INCLUDE_COGNEE=false
 INCLUDE_TUNING=false
 SKIP_VERIFY=false
 UNOFFICIAL=false
+ACCEPT_TERMS=false
 
 include_cognee_enabled() {
     local env_value
@@ -113,6 +114,7 @@ Options:
   --include-tuning        Install the optional local Fine Tuning Agent stack.
   --skip-verify           Skip packaged import and hardening verification.
   --unofficial            Build a local development artifact without official release gates.
+  --accept-terms          Record local license acknowledgment without an interactive prompt.
   --help                  Show this help.
 EOF
 }
@@ -153,6 +155,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --unofficial)
             UNOFFICIAL=true
+            shift
+            ;;
+        --accept-terms)
+            ACCEPT_TERMS=true
             shift
             ;;
         --help|-h)
@@ -204,6 +210,11 @@ if [[ "$UNOFFICIAL" == false ]]; then
     }
 else
     echo "Building an unofficial local WSL backend; release authorization is required for official packaging."
+    if [[ "$ACCEPT_TERMS" == true ]]; then
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" --accept-terms
+    else
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/acknowledge_local_build.py"
+    fi
 fi
 
 if [[ "$CLEAN" == true ]]; then

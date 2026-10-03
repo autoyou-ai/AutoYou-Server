@@ -204,8 +204,48 @@ granted when the authorized user OAuth account alone signs it. Do not remove, by
 or weaken those controls, and do not present an unofficial build as an official
 AutoYou release.
 
-Local source builds may run without official-build credentials, but official release,
-signing, notarization, MSIX, and archive workflows must pass
+### Personal source and private builds
+
+These commands do not require an AutoYou account, email, OAuth, or a request to
+AutoYou's build-authorization service. They build or run an unofficial private
+copy under the Personal Use terms in [LICENSE](LICENSE). Dependency setup may
+download packages from their respective upstream registries.
+
+Run directly from source:
+
+```bash
+./run_autoyou.sh --profile full
+```
+
+On Windows:
+
+```powershell
+.\run_autoyou.bat --profile full
+```
+
+Private compiled builds from the command line:
+
+```bash
+# macOS: unsigned development build
+./servers/macos/build-all.sh --no-sign --dev
+
+# Linux/WSL: local backend build, without release gates
+./servers/wsl/build-backend.sh --unofficial
+```
+
+```powershell
+# Windows: Debug build, without release authorization gates
+.\servers\windows\build-all.ps1 -Configuration Debug
+```
+
+The first private build displays the current `LICENSE` and
+`THIRD-PARTY-NOTICES.md` and asks you to type `I AGREE`. The anonymous receipt
+is stored on the device and invalidated when either notice changes. For an
+explicit noninteractive build, add `--accept-terms` (PowerShell:
+`-AcceptTerms`). This records only the local acknowledgment; it does not change
+the license or grant redistribution or commercial rights.
+
+Official release, signing, notarization, MSIX, and archive workflows must pass
 `scripts/check_official_build_authorization.py --required` with a signed
 authorization payload matching the artifact profile.
 
