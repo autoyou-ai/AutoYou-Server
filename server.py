@@ -1276,10 +1276,15 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 from autoyou_agents.shared_tools.frontend_manifest import discover_frontend_manifests, load_frontend_manifest
-from autoyou_agents.shared_tools.frontend_registry import refresh_frontend_registry, load_frontend_registry
+from autoyou_agents.shared_tools.frontend_registry import (
+    get_frontend_registry_path,
+    load_frontend_registry,
+    refresh_frontend_registry,
+)
 from autoyou_agents.shared_tools.agent_install_registry import (
     can_install_agent_in_runtime,
     discover_agent_directories,
+    get_agent_install_registry_path,
     is_builtin_agent_name,
     load_agent_install_registry,
     refresh_agent_install_registry,
@@ -5297,6 +5302,8 @@ def _secure_storage_scan_roots() -> List[Path]:
         roots.append(get_voice_training_dir())
     except Exception:
         pass
+    # Source-mode registries live in the checkout, outside config/data roots.
+    roots.extend((get_agent_install_registry_path(), get_frontend_registry_path()))
     return roots
 
 

@@ -350,6 +350,51 @@ def test_downgrade_unseals_files_and_sqlite_back_to_plaintext(tmp_path):
         assert connection.execute("SELECT v FROM scores").fetchone()[0] == "synthetic-high-score"
 
 
+def test_downgrade_recovery_scans_source_mode_registries(tmp_path, monkeypatch):
+    """Source-mode registries outside config/data roots must be recovered too."""
+    import server
+    from autoyou_agents.shared_tools.agent_install_registry import (
+        load_agent_install_registry,
+    )
+    from shared import voice_training_storage
+
+    config_root = tmp_path / "config"
+    data_root = tmp_path / "data"
+    voice_root = tmp_path / "voice"
+    workspace = tmp_path / "workspace"
+    agent_registry = workspace / "agent_install_registry.json"
+    frontend_registry = workspace / "agent_frontends_registry.json"
+    password = "synthetic-spm-recovery-password"
+
+    monkeypatch.setattr(server, "get_mutable_data_dir", lambda *args, **kwargs: data_root)
+    monkeypatch.setattr(voice_training_storage, "get_voice_training_dir", lambda: voice_root)
+    monkeypatch.setattr(server, "get_agent_install_registry_path", lambda: agent_registry)
+    monkeypatch.setattr(server, "get_frontend_registry_path", lambda: frontend_registry)
+
+    enable_secure_storage(app_name="AutoYou", root=config_root, password=password)
+    save_secure_json(agent_registry, {"agents": {"donation_agent": {"installed": True}}})
+    save_secure_json(frontend_registry, {"frontends": []})
+    assert agent_registry.read_bytes().startswith(FILE_HEADER)
+    assert frontend_registry.read_bytes().startswith(FILE_HEADER)
+    disable_secure_storage()
+
+    report = recover_stranded_envelopes(
+        app_name="AutoYou",
+        root=config_root,
+        scan_roots=server._secure_storage_scan_roots(),
+        password=password,
+    )
+
+    assert report["recovered"] == 2
+    assert report["unrecoverable"] == []
+    assert load_secure_json(agent_registry) == {
+        "agents": {"donation_agent": {"installed": True}}
+    }
+    assert load_secure_json(frontend_registry) == {"frontends": []}
+    installed = load_agent_install_registry(registry_path=agent_registry)["installed_agents"]
+    assert "donation_agent" in installed
+
+
 def test_rotation_rekeys_agent_db_whose_dir_name_is_not_discovery_skipped(tmp_path):
     """Owned agent DBs must survive rotation even when opened by another process.
 
