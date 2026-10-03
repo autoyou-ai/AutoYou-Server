@@ -1,0 +1,137 @@
+---
+title: "Building Custom Agents"
+description: "Step-by-step developer tutorial for authoring custom agents, implementing typed Python tools, and configuring prompts."
+---
+
+# Building Custom Agents
+
+Creating a custom agent in AutoYou Server requires only a Python file (`agent.py`) and an optional metadata manifest (`manifest.json`). This guide walks you through authoring a fully functional, production-ready agent.
+
+---
+
+## 1. Create the Agent Directory
+
+Create a new directory under `autoyou_agents/` (or in the dynamic agents root returned by `get_dynamic_agents_root()`):
+
+```bash
+mkdir -p autoyou_agents/currency_agent
+cd autoyou_agents/currency_agent
+```
+
+---
+
+## 2. Implement `agent.py`
+
+Create `agent.py` and define your agent's identity, system instructions, and tool functions:
+
+```python
+"""Currency Conversion Agent for AutoYou Server."""
+
+import httpx
+from typing import Dict, Any, Optional
+from autoyou_agents.shared_tools import tool
+
+AGENT_NAME = "currency_agent"
+AGENT_TITLE = "Currency Converter"
+AGENT_DESCRIPTION = "Real-time foreign exchange rates and conversions."
+
+SYSTEM_PROMPT = """
+You are an expert financial assistant specializing in foreign exchange conversions.
+When the user asks to convert money between currencies, always use the 'convert_currency' tool.
+Provide clear summaries with the exchange rate and date.
+"""
+
+@tool
+async def convert_currency(
+    amount: float,
+    from_currency: str,
+    to_currency: str
+) -> Dict[str, Any]:
+    """
+    Converts an amount from one fiat or crypto currency to another.
+
+    Args:
+        amount: The numerical amount of money to convert.
+        from_currency: Three-letter ISO currency code (e.g. 'USD', 'EUR', 'GBP').
+        to_currency: Three-letter ISO target currency code (e.g. 'JPY', 'CAD').
+    """
+    from_currency = from_currency.upper().strip()
+    to_currency = to_currency.upper().strip()
+
+    # Using public Open Exchange Rates or free exchange API
+    url = f"https://open.er-api.com/v6/latest/{from_currency}"
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(url)
+        if response.status_code != 200:
+            return {
+                "error": f"Failed to fetch rates for {from_currency}",
+                "status_code": response.status_code
+            }
+        
+        data = response.json()
+        rates = data.get("rates", {})
+        
+        if to_currency not in rates:
+            return {
+                "error": f"Unsupported target currency: {to_currency}",
+                "available_examples": list(rates.keys())[:10]
+            }
+            
+        rate = rates[to_currency]
+        converted = amount * rate
+        
+        return {
+            "amount": amount,
+            "from_currency": from_currency,
+            "to_currency": to_currency,
+            "exchange_rate": rate,
+            "converted_amount": round(converted, 2),
+            "updated_at": data.get("time_last_update_utc")
+        }
+
+def create_agent():
+    """ADK Factory entrypoint."""
+    return {
+        "name": AGENT_NAME,
+        "title": AGENT_TITLE,
+        "description": AGENT_DESCRIPTION,
+        "prompt": SYSTEM_PROMPT,
+        "tools": [convert_currency]
+    }
+```
+
+---
+
+## 3. Tool Best Practices & Rules
+
+1. **Explicit Type Annotations**: The ADK automatically parses standard Python type annotations (`str`, `int`, `float`, `bool`, `List[T]`, `Dict[str, Any]`, `Optional[T]`) to generate JSON Schema definitions for the LLM.
+2. **Comprehensive Docstrings**: Include both a high-level tool description and an `Args:` block describing every parameter. The LLM uses these descriptions to decide when and how to invoke the tool.
+3. **Graceful Error Handling**: Do not let unhandled network exceptions crash the tool. Catch HTTP or parsing errors and return a structured dictionary containing `"error": "..."`. The LLM will read the error and explain the issue helpfully to the user.
+4. **Asynchronous Execution**: Mark network- or disk-bound tools with `async def` so the server event loop remains responsive during I/O.
+
+---
+
+## 4. Testing Your Agent with Pytest
+
+Create a contract test under `tests/agents/public/test_currency_agent.py`:
+
+```python
+import pytest
+from autoyou_agents.currency_agent.agent import create_agent, convert_currency
+
+@pytest.mark.asyncio
+async def test_currency_agent_tool():
+    agent = create_agent()
+    assert agent["name"] == "currency_agent"
+    assert len(agent["tools"]) == 1
+    
+    # Test tool directly
+    result = await convert_currency(100.0, "USD", "EUR")
+    assert "converted_amount" in result or "error" in result
+```
+
+Run the test:
+```bash
+pytest tests/agents/public/test_currency_agent.py -v
+```

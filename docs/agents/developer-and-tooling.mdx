@@ -1,0 +1,71 @@
+---
+title: "Developer & Tooling Agents"
+description: "Reference catalog for agent_builder_agent, skills_agent, coding_agent, cli_agent, claude_cli_agent, claude_desktop_agent, codex_desktop_agent, and build_prompt_agent."
+---
+
+# Developer & Tooling Agents
+
+These agents empower developers to build, test, refactor, and extend software systems, terminals, prompts, and external AI bridges.
+
+---
+
+## 1. `agent_builder_agent`
+- **Location**: `autoyou_agents/agent_builder_agent/`
+- **Role**: Powers the visual Agent Builder in the Admin Console. Manages the lifecycle of dynamic custom agents, writes boilerplates, and coordinates publishing to `agent_install_registry.json`.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/agent_builder_agent/`.
+- **Key Tools**:
+  - `scaffold_new_agent(name: str, domain: str)`: Creates initial files and directories.
+  - `generate_tool_boilerplate(tool_name: str, params: dict)`: Emits typed `@tool` code.
+  - `validate_manifest(manifest_data: dict)`: Ensures metadata complies with the ADK contract.
+
+---
+
+## 2. `skills_agent`
+- **Location**: `autoyou_agents/skills_agent/`
+- **Role**: Provides dynamic toolset expansion. Exposes the `DynamicSkillToolset` class which can import and mount external Python modules as live tools on the fly.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/skills_agent/`.
+- **Key Tools**:
+  - `load_skill_package(path_or_url: str)`: Dynamically inspects and registers new tools.
+  - `list_active_skills()`: Returns currently loaded dynamic toolsets.
+
+---
+
+## 3. `coding_agent`
+- **Location**: `autoyou_agents/coding_agent/`
+- **Role**: Automated coding assistant capable of reading codebases, proposing multi-file diffs, executing linters, and verifying test suites.
+- **Key Tools**:
+  - `read_source_file(path: str)`: Inspects code with syntax highlighting.
+  - `apply_unified_patch(path: str, patch_content: str)`: Applies unified diffs atomically.
+  - `run_project_tests(test_target: str)`: Executes pytest or language-specific test runners.
+
+---
+
+## 4. `cli_agent`
+- **Location**: `autoyou_agents/cli_agent/`
+- **Role**: Manages interactive pseudo-terminal (PTY) shell sessions with virtual ANSI screen buffers (`_AnsiScreenBuffer`, `_PosixPtyTerminalBackend`, `_ConPtyCoord`).
+- **Key Tools**:
+  - `open_terminal_session(shell: str = "bash")`: Spawns an interactive PTY session.
+  - `send_terminal_input(session_id: str, input_text: str)`: Writes stdin keystrokes.
+  - `read_terminal_buffer(session_id: str)`: Captures rendered ANSI terminal text.
+
+---
+
+## 5. `claude_cli_agent` & `claude_desktop_agent`
+- **Location**: `autoyou_agents/claude_cli_agent/` & `claude_desktop_agent/`
+- **Role**: Bridges AutoYou agents to Anthropic's Claude CLI and Claude Desktop applications via Model Context Protocol (MCP) tool adapters.
+
+---
+
+## 6. `codex_desktop_agent`
+- **Location**: `autoyou_agents/codex_desktop_agent/`
+- **Role**: Desktop bridge enabling OpenAI Codex integration and local code completion hooks.
+
+---
+
+## 7. `build_prompt_agent`
+- **Location**: `autoyou_agents/build_prompt_agent/`
+- **Role**: Meta-prompt engineering assistant. Analyzes user descriptions of desired agent behaviors and generates structured, production-ready system prompts with clear constraints and formatting rules.
+- **Frontend**: Available at `http://127.0.0.1:8067/agent/build_prompt_agent/`.
+- **Key Tools**:
+  - `optimize_prompt(raw_prompt: str)`: Restructures prompts for better model instruction adherence.
+  - `evaluate_prompt(prompt: str, test_cases: list)`: Simulates outputs against test queries.

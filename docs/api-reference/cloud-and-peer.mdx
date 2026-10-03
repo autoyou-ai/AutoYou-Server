@@ -1,0 +1,104 @@
+---
+title: "Cloud & Peer Rendezvous APIs"
+description: "Specifications for remote Cloud Relay, Tunnelmole HTTPS reverse proxy, and client-to-client peer rendezvous."
+---
+
+# Cloud & Peer Rendezvous APIs
+
+These endpoints govern remote connectivity, public reverse proxy tunnels, mobile push notifications, and decentralized client-to-client peer connections.
+
+---
+
+## Cloud Relay Management
+
+### `GET /api/cloud/status`
+Returns the status of the server's registration with the AutoYou Cloud rendezvous network.
+
+#### Response (`200 OK`)
+```json
+{
+  "active": true,
+  "registered_server_id": "srv_01J8YXZ0QW4T9P",
+  "cloud_endpoint": "https://auth.autoyou.me",
+  "turn_relays_active": 4,
+  "last_heartbeat": "2026-10-03T16:54:10Z"
+}
+```
+
+### `POST /api/cloud/activate`
+Activates remote Cloud Relay using operator credentials.
+
+#### Request Payload
+```json
+{
+  "auth_token": "usr_token_9a1b2c3d...",
+  "allow_remote_browsing": true
+}
+```
+
+### `POST /api/cloud/notify-client`
+Sends an Apple Push Notification (APNs) or Google Cloud Messaging (FCM) wakeup signal to a sleeping phone or tablet.
+
+#### Request Payload
+```json
+{
+  "device_id": "dev_ios_iphone17",
+  "title": "Incoming AutoYou Call",
+  "body": "AutoYou Server is requesting a voice session."
+}
+```
+
+---
+
+## Tunnelmole Public HTTPS Hosting
+
+### `GET /api/tunnelmole/website-hosting`
+Returns the current state and public HTTPS address of the embedded Tunnelmole proxy.
+
+#### Response (`200 OK`)
+```json
+{
+  "enabled": true,
+  "status": "connected",
+  "public_url": "https://a1b2c3d4.tm.autoyou.me",
+  "target_port": 8067,
+  "bytes_transferred": 1420950
+}
+```
+
+### `POST /tunnelmole/start`
+Starts the background Tunnelmole process and allocates a public domain.
+
+### `POST /tunnelmole/stop`
+Shuts down the public tunnel immediately, closing external access.
+
+---
+
+## Peer Rendezvous Protocol
+
+### `POST /v1/peer/rendezvous/open`
+Opens a rendezvous invitation slot, enabling another client to connect directly and relay through this machine.
+
+#### Request Payload
+```json
+{
+  "role": "host",
+  "expires_in_seconds": 300,
+  "relay_capabilities": ["chat", "browser_proxy", "calls"]
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "invitation_id": "inv_01J8YXZ789AB",
+  "expires_at": 1728000000000,
+  "rendezvous_url": "https://app.autoyou.me/peer/add?id=inv_01J8YXZ789AB"
+}
+```
+
+### `GET /v1/peer/rendezvous/{invitation_id}/offer`
+The joining guest client fetches the host's WebRTC SDP offer.
+
+### `POST /v1/peer/rendezvous/{invitation_id}/answer`
+The guest client posts its matching SDP answer to finalize the peer link.

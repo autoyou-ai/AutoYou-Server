@@ -1,0 +1,141 @@
+---
+title: "Chat & Sessions APIs"
+description: "Specifications for submitting conversational turns, querying conversation history, delivering human replies, and screen listening."
+---
+
+# Chat & Sessions APIs
+
+AutoYou Server maintains complete conversation histories for all connected clients, pairing sessions, and messaging bridges inside `sessions.db`.
+
+---
+
+## Conversational Turns
+
+### `POST /api/chat`
+Submits a user prompt or multimodal turn to the AutoYou AI orchestrator.
+
+#### Request Payload
+```json
+{
+  "message": "Summarize the latest system logs and check storage status.",
+  "session_id": "sess_01J8YXZ0QW4T9P",
+  "agent_override": null, // Optional target agent name e.g. "coding_agent"
+  "stream": false
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "reply": "System logs show 0 errors in the last 24 hours. Free disk space is 128.4 GB.",
+  "author": "AutoYou AI",
+  "agent": "admin_agent",
+  "tools_invoked": ["check_disk_space", "scan_system_logs"],
+  "timestamp": 1727999120456
+}
+```
+
+---
+
+## Session Management & History
+
+### `GET /api/chat/sessions`
+Lists all conversations stored on this server, including active connection flags (`live: true/false`).
+
+#### Response (`200 OK`)
+```json
+{
+  "sessions": [
+    {
+      "session_id": "sess_01J8YXZ0QW4T9P",
+      "title": "System Diagnostics & Notes",
+      "user_id": "usr_desktop_owner",
+      "last_activity": "2026-10-03T16:50:00Z",
+      "message_count": 14,
+      "live": true
+    },
+    {
+      "session_id": "sess_98a7b6c5d4",
+      "title": "Audio Library Management",
+      "user_id": "usr_iphone17",
+      "last_activity": "2026-10-03T14:22:10Z",
+      "message_count": 8,
+      "live": false
+    }
+  ]
+}
+```
+
+### `GET /api/chat/session`
+Fetches the ordered message transcript for a specific conversation.
+
+#### Query Parameters
+- `session_id` (string, required): Session identifier.
+- `limit` (int, optional): Return only the most recent $N$ messages.
+
+#### Response (`200 OK`)
+```json
+{
+  "session_id": "sess_01J8YXZ0QW4T9P",
+  "truncated": false,
+  "messages": [
+    {
+      "id": "msg_001",
+      "author": "user",
+      "text": "What is the CPU usage?",
+      "timestamp": 1727998900000
+    },
+    {
+      "id": "msg_002",
+      "author": "AutoYou AI",
+      "text": "Current CPU usage is 14%.",
+      "timestamp": 1727998901200
+    }
+  ]
+}
+```
+
+---
+
+## Human Operator Direct Reply
+
+### `POST /api/chat/session/reply`
+Allows the operator at the server machine to send words directly to a connected client device without prompting the AI:
+
+#### Request Payload
+```json
+{
+  "session_id": "sess_01J8YXZ0QW4T9P",
+  "user_id": "usr_iphone17",
+  "message": "I will be back at my desk in 15 minutes."
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "delivered": true,
+  "recipient": "usr_iphone17",
+  "timestamp": 1727999200000
+}
+```
+
+<Note>
+If the target device is disconnected, this route immediately returns `delivered: false` with reason `"Device not connected"`. It intentionally does not queue stale messages for future delivery.
+</Note>
+
+---
+
+## Ambient Screen Listening
+
+### `GET /api/screen-listen`
+Returns the status of passive visual observation.
+
+### `POST /api/screen-listen`
+Enables or disables periodic passive screenshot sampling for contextual agent memory:
+```json
+{
+  "enabled": true,
+  "interval_seconds": 60
+}
+```

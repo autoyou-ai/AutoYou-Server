@@ -1,0 +1,114 @@
+---
+title: "Agent Websites & Bookmarks APIs"
+description: "Specifications for the agent website gateway, route mode configuration, RFC 10008 QUERY search, and browser bookmarks."
+---
+
+# Agent Websites & Bookmarks APIs
+
+These endpoints govern how agent web frontends are served over port `8067`, route modes, session revocation, and browser bookmarks.
+
+---
+
+## Agent Websites Gateway
+
+### `GET /agent/{agent_name}/`
+Served on port **`8067`**. Renders the static or dynamic web frontend bundled with an agent (`autoyou_agents/{agent_name}/website/frontend/index.html`).
+
+#### Example URLs
+- Audio Agent: `http://127.0.0.1:8067/agent/audio_agent/`
+- Notes Agent: `http://127.0.0.1:8067/agent/notes_agent/`
+- Files Agent: `http://127.0.0.1:8067/agent/files_agent/`
+
+---
+
+## RFC 10008 Agent Website Search
+
+### `QUERY /api/agent-websites`
+Implements the [RFC 10008 HTTP QUERY](https://www.rfc-editor.org/rfc/rfc10008.html) specification for rich searching across registered agent frontends without passing parameters in the URL query string.
+
+<CodeGroup>
+```bash cURL
+curl -X QUERY http://127.0.0.1:8067/api/agent-websites \
+  -H "Content-Type: application/json" \
+  -H "Accept-Query: application/json" \
+  -d '{
+    "query": "audio player and recording",
+    "limit": 10
+  }'
+```
+
+```python Python
+import requests
+
+resp = requests.request(
+    "QUERY",
+    "http://127.0.0.1:8067/api/agent-websites",
+    json={"query": "audio player and recording", "limit": 10}
+)
+print(resp.json())
+```
+</CodeGroup>
+
+#### Response (`200 OK`)
+```json
+{
+  "matches": [
+    {
+      "name": "audio_agent",
+      "title": "Audio Player & Library",
+      "route": "/agent/audio_agent/",
+      "description": "Full playback library, playlist management, and local audio streaming.",
+      "relevance_score": 0.94
+    },
+    {
+      "name": "voice_training_agent",
+      "title": "Voice Training Studio",
+      "route": "/agent/voice_training_agent/",
+      "description": "Record audio samples and train voice cloning embeddings.",
+      "relevance_score": 0.72
+    }
+  ]
+}
+```
+
+---
+
+## Website Route Modes & Security
+
+### `GET /api/agent-websites/security`
+Returns routing modes for all agent websites (`path_proxy` vs `direct_forward`).
+
+#### Response (`200 OK`)
+```json
+{
+  "routes": {
+    "audio_agent": { "route_mode": "path_proxy", "port": 8067 },
+    "mac_security_agent": { "route_mode": "direct_forward", "port": 8101 }
+  }
+}
+```
+
+### `POST /api/agent-websites/sessions/sign-out-all`
+Immediately invalidates all active session cookies and tokens across all hosted agent websites.
+
+---
+
+## Browser Bookmarks Management
+
+### `GET /api/bookmarks`
+Returns saved bookmarks used by the internal browser agent and connected desktop clients.
+
+### `POST /api/bookmarks`
+Saves a new bookmark into the local SQLite database.
+
+#### Request Payload
+```json
+{
+  "title": "FastAPI Documentation",
+  "url": "https://fastapi.tiangolo.com",
+  "category": "Development"
+}
+```
+
+### `DELETE /api/bookmarks/{bookmark_id}`
+Deletes an individual bookmark.

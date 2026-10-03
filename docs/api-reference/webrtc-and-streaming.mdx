@@ -1,0 +1,123 @@
+---
+title: "WebRTC & Media Streaming APIs"
+description: "Specifications for device discovery, video streaming, virtual file injection, and low-latency input WebSocket channels."
+---
+
+# WebRTC & Media Streaming APIs
+
+These endpoints govern hardware capture devices, live audio/video transceivers, call controls, and low-latency input injection over WebRTC and WebSockets.
+
+---
+
+## Hardware Device Discovery
+
+### `GET /api/webrtc/audio-devices`
+Returns all host audio capture inputs (microphones) discovered on the system.
+
+#### Response (`200 OK`)
+```json
+{
+  "devices": [
+    { "id": "default", "name": "Default Audio Device", "is_default": true },
+    { "id": "mic_usb_01", "name": "Rode PodMic USB", "channels": 2, "sample_rate": 48000 }
+  ]
+}
+```
+
+### `GET /api/webrtc/camera-devices`
+Returns physical and virtual video capture cameras.
+
+#### Response (`200 OK`)
+```json
+{
+  "cameras": [
+    { "id": "cam_0", "name": "Logitech Brio 4K", "resolutions": ["1920x1080", "3840x2160"], "max_fps": 60 }
+  ]
+}
+```
+
+### `GET /api/webrtc/monitors`
+Lists all attached physical displays and virtual monitors.
+
+#### Response (`200 OK`)
+```json
+{
+  "monitors": [
+    { "id": 1, "name": "Primary Display", "width": 2560, "height": 1440, "is_primary": true },
+    { "id": 2, "name": "Secondary Display", "width": 1920, "height": 1080, "is_primary": false }
+  ]
+}
+```
+
+---
+
+## Live Call Management
+
+### `POST /api/chat/call/offer`
+Initiates an audio/video voice call session.
+
+#### Request Payload
+```json
+{
+  "session_id": "sess_01J8YXZ0QW4T9P",
+  "call_type": "audio_video", // "audio_only" | "audio_video"
+  "enable_transcription": true
+}
+```
+
+### `POST /api/chat/call/close`
+Terminates an active voice or video call.
+
+---
+
+## Virtual Video File Injection
+
+### `POST /api/webrtc/video-file/upload`
+Uploads a pre-recorded MP4 or WebM video file to stream into the WebRTC session.
+- **Content-Type**: `multipart/form-data`
+- **Body**: `file` (binary video asset)
+
+### `POST /api/webrtc/video-file/play`
+Begins streaming the uploaded video into the active video track.
+
+#### Request Payload
+```json
+{
+  "filename": "screencast_demo.mp4",
+  "loop": true
+}
+```
+
+---
+
+## High-Frequency Game Input WebSocket
+
+### `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`
+Establishes a low-latency bidirectional WebSocket connection for injecting mouse, keyboard, and gamepad commands.
+
+#### Client Frame Format (JSON or Binary)
+```json
+{
+  "type": "mouse_move",
+  "dx": 14,
+  "dy": -8,
+  "buttons": 1
+}
+```
+
+```json
+{
+  "type": "key_event",
+  "code": "KeyW",
+  "action": "down"
+}
+```
+
+#### Server Frame Format (Keepalive)
+```json
+{
+  "type": "ack",
+  "frame_id": 10482,
+  "rtt_ms": 1.4
+}
+```

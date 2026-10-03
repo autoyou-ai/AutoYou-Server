@@ -1,0 +1,92 @@
+---
+title: "API Reference Overview"
+description: "General conventions, base URLs, authentication headers, error formats, and HTTP method policies for AutoYou Server APIs."
+---
+
+# API Reference Overview
+
+AutoYou Server exposes a comprehensive suite of RESTful HTTP endpoints, WebSocket channels, and WebRTC signaling gateways. This section provides detailed documentation of endpoints across all operational domains.
+
+---
+
+## Base URLs & Port Allocations
+
+- **Admin & Core APIs**: `http://127.0.0.1:8001`
+- **Agent Websites & Directory Proxy**: `http://127.0.0.1:8067`
+- **Private macOS Security Agent Backend**: `http://127.0.0.1:8101`
+
+<Note>
+When accessing the server over a local network or remote Cloud Relay, replace `127.0.0.1` with the LAN IP (`192.168.x.x`) or tunnel host.
+</Note>
+
+---
+
+## Authentication & Authorization Headers
+
+Depending on the operational mode and the endpoint's sensitivity, requests must include one of the following authentication headers:
+
+### 1. Bearer Session Token
+Returned upon completing login or AutoPair handshake:
+```http
+Authorization: Bearer sec_01J8YXZ0QW4T9P8K3M7N6B2V1X
+```
+
+### 2. Session ID Header
+Used by WebRTC signaling, chat turns, and multi-tenant agent sessions:
+```http
+X-Session-ID: sess_94a7e2b10c
+```
+
+### 3. TOTP Second-Factor Verification Code
+Required when operating under `secure_professional` tier for administrative mutations:
+```http
+X-AutoYou-TOTP: 492108
+```
+
+---
+
+## Standard Error Response Format
+
+All API errors return RFC 7807 compliant JSON error structures:
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Invalid or expired session token provided.",
+  "code": 401,
+  "timestamp": 1727998900123,
+  "details": {
+    "required_mode": "secure_professional",
+    "totp_missing": true
+  }
+}
+```
+
+### Common HTTP Status Codes
+- **`200 OK`**: Successful synchronous operation.
+- **`202 Accepted`**: Background task or download scheduled.
+- **`400 Bad Request`**: Malformed payload, invalid schema, or missing arguments.
+- **`401 Unauthorized`**: Authentication missing, bad password, or invalid session token.
+- **`403 Forbidden`**: Operation not permitted by current security tier or agent sandbox.
+- **`404 Not Found`**: Requested agent, session, model, or file does not exist.
+- **`429 Too Many Requests`**: Rate limit exceeded (e.g. repeated invalid password attempts).
+- **`500 Internal Server Error`**: Unexpected exception in server worker.
+
+---
+
+## Content-Type & RFC 10008 QUERY Support
+
+In addition to standard `GET`, `POST`, `PUT`, and `DELETE` methods, AutoYou Server natively supports **RFC 10008 HTTP QUERY** for querying complex filters without putting sensitive queries in URL query strings:
+
+```http
+QUERY /api/agent-websites HTTP/1.1
+Host: 127.0.0.1:8067
+Content-Type: application/json
+Accept-Query: application/json
+
+{
+  "query": "audio generation",
+  "category": "media",
+  "limit": 10
+}
+```

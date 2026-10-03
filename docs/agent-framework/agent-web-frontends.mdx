@@ -1,0 +1,114 @@
+---
+title: "Agent Web Frontends"
+description: "How to build, package, and serve dedicated HTML5/JavaScript web applications for AutoYou agents over port 8067."
+---
+
+# Agent Web Frontends
+
+Many AutoYou agents provide rich visual user interfaces in addition to conversational abilities. The browser proxy on **port 8067** serves these static and dynamic web frontends under `http://127.0.0.1:8067/agent/{agent_name}/`.
+
+---
+
+## Directory Structure
+
+To equip an agent with a web interface, create a `website/frontend/` folder inside the agent package:
+
+```
+autoyou_agents/currency_agent/
+├── agent.py
+├── manifest.json
+└── website/
+    └── frontend/
+        ├── index.html       # Single-page UI entrypoint
+        ├── app.js           # Client logic and API fetch calls
+        ├── style.css        # Responsive styling
+        └── icon.png         # 64x64 agent icon
+```
+
+---
+
+## Starter Web Frontend Example
+
+### 1. `index.html`
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Currency Converter</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="card">
+    <h2>Currency Converter</h2>
+    <div class="form-group">
+      <input type="number" id="amount" value="100" />
+      <select id="from-currency">
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="GBP">GBP</option>
+      </select>
+      <span>to</span>
+      <select id="to-currency">
+        <option value="EUR">EUR</option>
+        <option value="USD">USD</option>
+        <option value="JPY">JPY</option>
+      </select>
+      <button onclick="handleConvert()">Convert</button>
+    </div>
+    <div id="result" class="result-box"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+### 2. `app.js`
+Communicates with the server using standard Fetch APIs:
+
+```javascript
+async function handleConvert() {
+  const amount = parseFloat(document.getElementById('amount').value);
+  const from = document.getElementById('from-currency').value;
+  const to = document.getElementById('to-currency').value;
+
+  const resultBox = document.getElementById('result');
+  resultBox.textContent = 'Calculating...';
+
+  try {
+    // Invoke agent tool via server chat or dedicated endpoint
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `Convert ${amount} ${from} to ${to}`,
+        agent_override: 'currency_agent'
+      })
+    });
+
+    const data = await response.json();
+    resultBox.textContent = data.reply;
+  } catch (err) {
+    resultBox.textContent = `Error: ${err.message}`;
+  }
+}
+```
+
+---
+
+## Route Modes (`manifest.json`)
+
+In `manifest.json`, configure how the browser proxy handles requests:
+
+```json
+{
+  "name": "currency_agent",
+  "has_frontend": true,
+  "route_mode": "path_proxy",
+  "proxy_port": 8067
+}
+```
+
+- **`path_proxy` (Default)**: Static files are served directly by the FastAPI web gateway on port `8067` at `/agent/{agent_name}/`.
+- **`direct_forward`**: Used for agents running a separate internal HTTP server (such as Node.js or a Python FastAPI instance on port `8101`). Requests are reverse-proxied to that internal port.

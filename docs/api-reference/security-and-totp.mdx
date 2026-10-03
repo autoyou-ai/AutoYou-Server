@@ -1,0 +1,117 @@
+---
+title: "Security & TOTP APIs"
+description: "API reference for security tier selection, password updates, TOTP 2FA lifecycle, and storage key rotation."
+---
+
+# Security & TOTP APIs
+
+These endpoints govern authentication, two-factor authentication (2FA), zero-knowledge unlocking, and keystore cryptographic key rotation.
+
+---
+
+## Security Tiers & Mode
+
+### `POST /api/admin/security/mode`
+Switches the operational security mode of the server.
+
+#### Request Payload
+```json
+{
+  "mode": "secure_professional" // "normal" | "secure" | "secure_professional"
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "mode": "secure_professional",
+  "totp_required": true
+}
+```
+
+---
+
+## Password Management & Key Rotation
+
+### `POST /api/admin/password`
+Updates the primary administrative password protecting the server.
+
+#### Request Payload
+```json
+{
+  "current_password": "oldPassword123!",
+  "new_password": "NewUltraSecurePassphrase2026!"
+}
+```
+
+### `POST /api/admin/security/storage/rotate`
+Re-derives a fresh master encryption key via Argon2id and re-encrypts the `config.keystore.enc` file in place.
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "rotated",
+  "re_encrypted_at": "2026-10-03T16:55:00Z",
+  "checksum": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+}
+```
+
+---
+
+## Two-Factor Authentication (TOTP 2FA)
+
+### `POST /admin/security/totp/generate`
+Generates a new random Base32 secret for authenticator setup.
+
+#### Response (`200 OK`)
+```json
+{
+  "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+  "step": 30,
+  "digits": 6,
+  "algorithm": "SHA1"
+}
+```
+
+### `POST /admin/security/totp/show`
+Returns the `otpauth://` URI and ready-to-render QR code SVG or Base64 PNG.
+
+#### Response (`200 OK`)
+```json
+{
+  "uri": "otpauth://totp/AutoYou:Studio-Host?secret=JBSWY3DPEHPK3PXP&issuer=AutoYou",
+  "qr_data_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0..."
+}
+```
+
+### `POST /api/native/security/totp/confirm`
+Finalizes TOTP enrollment by submitting the first verified code from the user's authenticator app.
+
+#### Request Payload
+```json
+{
+  "code": "481920"
+}
+```
+
+### `POST /admin/security/totp/delete`
+Revokes TOTP authentication (requires physical loopback access).
+
+---
+
+## Headless Unlock Protocol
+
+### `GET /v1/unlock/status`
+Checks whether the server keystore is currently locked or unlocked in memory.
+
+#### Response (`200 OK`)
+```json
+{
+  "locked": false,
+  "unlocked_at": "2026-10-03T08:12:00Z"
+}
+```
+
+### `POST /v1/unlock/verify`
+Submits the master passphrase to decrypt the keystore into RAM upon boot.

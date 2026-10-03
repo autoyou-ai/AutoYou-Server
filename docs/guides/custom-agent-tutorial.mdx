@@ -1,0 +1,172 @@
+---
+title: "Tutorial: Building a Custom Agent"
+description: "A comprehensive end-to-end tutorial demonstrating how to create, test, and deploy a custom agent with typed Python tools and a web frontend."
+---
+
+# Tutorial: Building a Custom Agent
+
+In this tutorial, we will build a complete, production-ready custom agent called **`github_agent`**. This agent can inspect GitHub repositories, check issues, and present an interactive web dashboard to the user.
+
+---
+
+## Step 1: Scaffold the Agent Structure
+
+Create the project directory inside `autoyou_agents/github_agent/`:
+
+```bash
+mkdir -p autoyou_agents/github_agent/website/frontend
+cd autoyou_agents/github_agent
+```
+
+---
+
+## Step 2: Define `manifest.json`
+
+Create `manifest.json` to register the agent's identity, permissions, and browser proxy route:
+
+```json manifest.json
+{
+  "name": "github_agent",
+  "version": "1.0.0",
+  "title": "GitHub Explorer",
+  "description": "Examines GitHub repositories, commits, and open pull requests.",
+  "author": "Your Name",
+  "has_frontend": true,
+  "route_mode": "path_proxy",
+  "proxy_port": 8067,
+  "permissions": {
+    "network_outbound": true,
+    "filesystem_access": "sandbox_only",
+    "shell_execution": false
+  }
+}
+```
+
+---
+
+## Step 3: Implement `agent.py`
+
+Create `agent.py` with typed `@tool` functions:
+
+```python agent.py
+"""GitHub Explorer Agent for AutoYou Server."""
+
+import httpx
+from typing import Dict, Any, List
+from autoyou_agents.shared_tools import tool
+
+AGENT_NAME = "github_agent"
+AGENT_TITLE = "GitHub Explorer"
+AGENT_DESCRIPTION = "Examines GitHub repositories, commits, and open pull requests."
+
+SYSTEM_PROMPT = """
+You are an expert software intelligence agent specializing in GitHub repositories.
+When a user asks about a repository, open issues, or stars, use the 'get_repo_summary' tool.
+Summarize repository health, primary language, and open pull requests clearly.
+"""
+
+@tool
+async def get_repo_summary(owner: str, repo: str) -> Dict[str, Any]:
+    """
+    Fetches public metadata, stars, and open issues for a GitHub repository.
+
+    Args:
+        owner: GitHub user or organization name (e.g. 'autoyou-ai').
+        repo: Repository name (e.g. 'AutoYou').
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    headers = {"User-Agent": "AutoYou-Server-GitHub-Agent/1.0"}
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        res = await client.get(url, headers=headers)
+        if res.status_code == 404:
+            return {"error": f"Repository '{owner}/{repo}' not found."}
+        if res.status_code != 200:
+            return {"error": f"GitHub API error: {res.status_code}"}
+
+        data = res.json()
+        return {
+            "full_name": data.get("full_name"),
+            "description": data.get("description"),
+            "stars": data.get("stargazers_count"),
+            "forks": data.get("forks_count"),
+            "open_issues": data.get("open_issues_count"),
+            "primary_language": data.get("language"),
+            "license": (data.get("license") or {}).get("spdx_id", "None")
+        }
+
+def create_agent():
+    return {
+        "name": AGENT_NAME,
+        "title": AGENT_TITLE,
+        "description": AGENT_DESCRIPTION,
+        "prompt": SYSTEM_PROMPT,
+        "tools": [get_repo_summary]
+    }
+```
+
+---
+
+## Step 4: Create the Web Frontend
+
+Create `website/frontend/index.html`:
+
+```html website/frontend/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GitHub Explorer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0A0E1A; color: #F1F5F9; padding: 2rem; }
+    .card { max-width: 500px; margin: 0 auto; background: #1E293B; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
+    input { width: 70%; padding: 0.5rem; border-radius: 6px; border: 1px solid #475569; background: #0F172A; color: #fff; }
+    button { padding: 0.5rem 1rem; border-radius: 6px; background: #0066FF; color: #fff; border: none; cursor: pointer; }
+    .stat { margin-top: 1rem; padding: 1rem; background: #0F172A; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>GitHub Explorer</h2>
+    <input id="repo-input" placeholder="owner/repo" value="autoyou-ai/AutoYou" />
+    <button onclick="inspectRepo()">Inspect</button>
+    <div id="output" class="stat">Enter a repository above...</div>
+  </div>
+  <script>
+    async function inspectRepo() {
+      const target = document.getElementById('repo-input').value.trim();
+      const out = document.getElementById('output');
+      out.textContent = 'Fetching metadata...';
+      const [owner, repo] = target.split('/');
+      
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Give me a full summary of repository ${owner}/${repo}`,
+          agent_override: 'github_agent'
+        })
+      });
+      const data = await res.json();
+      out.textContent = data.reply;
+    }
+  </script>
+</body>
+</html>
+```
+
+---
+
+## Step 5: Test and Verify
+
+1. Run unit tests on your agent:
+   ```bash
+   pytest tests/agents/public/ -k "github_agent"
+   ```
+2. Start the server:
+   ```bash
+   python server.py
+   ```
+3. Open your browser and navigate to:
+   👉 `http://127.0.0.1:8067/agent/github_agent/`
+4. Ask in chat: `"How many stars does autoyou-ai/AutoYou have?"` The AI will invoke `get_repo_summary` and report the live metrics!

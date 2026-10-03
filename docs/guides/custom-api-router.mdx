@@ -1,0 +1,88 @@
+---
+title: "Adding Custom API Routers"
+description: "How to extend AutoYou Server with new domain-specific FastAPI routers and mount them to the composition root."
+---
+
+# Adding Custom API Routers
+
+AutoYou Server organizes its HTTP endpoints into domain-specific modules under `routers/` rather than treating `server.py` as a monolith. This guide explains how to author and register a new router.
+
+---
+
+## 1. Create the Router File
+
+Create `routers/analytics.py`:
+
+```python routers/analytics.py
+"""Analytics and telemetry router for AutoYou Server."""
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+
+def register_routes(app: FastAPI, get_server_state=None) -> None:
+    """Registers analytics routes onto the main FastAPI instance."""
+
+    @app.get("/api/analytics/summary")
+    async def get_analytics_summary(request: Request):
+        """Returns aggregated agent interaction metrics."""
+        # Optional: verify admin session token
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Missing authorization header")
+
+        return JSONResponse({
+            "status": "success",
+            "metrics": {
+                "total_agent_turns_today": 128,
+                "active_sessions": 3,
+                "average_response_ms": 340.5
+            }
+        })
+```
+
+---
+
+## 2. Mount in `server.py`
+
+Open `server.py` and register the new module in the application startup sequence:
+
+```python
+# Import the new router
+from routers import analytics
+
+# Inside configure_routes() or router registration block:
+analytics.register_routes(app, get_server_state=get_state)
+```
+
+<Warning>
+**Formatting Constraint**: Maintain the project's strict 4-line blank space rule between top-level functional blocks in `server.py`.
+</Warning>
+
+---
+
+## 3. Authoring Router Tests
+
+Create `tests/server/api/test_analytics_router.py`:
+
+```python
+import pytest
+from httpx import AsyncClient, ASGITransport
+from server import app
+
+@pytest.mark.asyncio
+async def test_analytics_summary_endpoint():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Test missing auth
+        res_unauth = await client.get("/api/analytics/summary")
+        assert res_unauth.status_code == 401
+
+        # Test authenticated call
+        res_auth = await client.get(
+            "/api/analytics/summary",
+            headers={"Authorization": "Bearer test_token"}
+        )
+        assert res_auth.status_code == 200
+        data = res_auth.json()
+        assert "metrics" in data
+```
