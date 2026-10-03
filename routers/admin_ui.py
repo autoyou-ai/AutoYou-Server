@@ -1565,11 +1565,8 @@ def register_routes(
                 # credential must leave all protected state untouched.
                 server._configure_secure_storage_for_config(cfg, password=normalized_password)
             except server.SecureStorageError as exc:
-                detail = (
-                    "Secure Professional Maximus storage could not be initialized. "
-                    "Allow access to the existing system credential and try again."
-                )
-                server.LOGGER.warning("admin_login: %s: %s", detail, exc)
+                detail = f"Secure Professional Maximus storage could not be initialized: {exc}"
+                server.LOGGER.warning("admin_login: %s", detail)
                 return locked_config_response(detail)
 
             if agreement_pending_unlock:

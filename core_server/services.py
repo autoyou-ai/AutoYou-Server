@@ -3779,10 +3779,7 @@ async def main():
             runtime._update_startup_status(
                 status="error",
                 headline="Secure storage needs credential access",
-                detail=(
-                    "Saved configuration remains protected. Allow AutoYou access to its existing "
-                    "system credential, then unlock again."
-                ),
+                detail=f"Saved configuration remains protected: {exc}",
                 step=0,
                 total_steps=8,
                 error="secure_storage_credential_unavailable",

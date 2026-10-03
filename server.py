@@ -5423,6 +5423,7 @@ def _configure_secure_storage_for_config(
         or os.getenv("AUTOYOU_SERVER_PASSWORD")
         or ""
     ).strip() or None
+    storage_was_enabled = secure_storage_enabled()
     status = enable_secure_storage(
         app_name="AutoYou",
         root=_CONFIG_DIR,
@@ -5430,6 +5431,24 @@ def _configure_secure_storage_for_config(
         operation_timeout_seconds=operation_timeout_seconds,
         allow_key_creation=allow_key_creation,
     )
+    try:
+        # These registries are read during startup and every agent install.
+        # Validate existing envelopes before background services or migrations
+        # can use a stale automatically loaded password-derived key.
+        seen: set[Path] = set()
+        for registry_path in (get_agent_install_registry_path(), get_frontend_registry_path()):
+            resolved_path = Path(registry_path).expanduser().resolve()
+            if resolved_path in seen or not resolved_path.is_file():
+                continue
+            seen.add(resolved_path)
+            read_secure_file(resolved_path, migrate_plaintext=False)
+    except SecureStorageError:
+        # This validation has not migrated plaintext files. If this call created
+        # the context, drop it so explicit password unlock can retry with the
+        # operator-supplied credential instead of reusing the bad key.
+        if not storage_was_enabled:
+            disable_secure_storage()
+        raise
     _migrate_secure_control_files()
     return status
 
