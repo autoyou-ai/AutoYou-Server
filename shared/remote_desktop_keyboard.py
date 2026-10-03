@@ -25,6 +25,26 @@ from typing import Any, Dict, Optional
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-a6789c436b181fcccfd97305"
 
+_MACOS_DOCK_ICON_HIDDEN = False
+
+
+def hide_macos_dock_icon() -> None:
+    """Keep Python.app's interpreter tile out of the Dock during automation."""
+
+    global _MACOS_DOCK_ICON_HIDDEN
+    if sys.platform != "darwin" or _MACOS_DOCK_ICON_HIDDEN:
+        return
+    try:
+        from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+
+        _MACOS_DOCK_ICON_HIDDEN = bool(
+            NSApplication.sharedApplication().setActivationPolicy_(
+                NSApplicationActivationPolicyAccessory
+            )
+        )
+    except Exception:
+        pass
+
 
 def ensure_x11_authority_exists() -> None:
     """Best-effort fix for python-xlib hard-failing when no Xauthority file
@@ -57,6 +77,7 @@ def ensure_x11_authority_exists() -> None:
 def load_pyautogui() -> Any:
     """Import PyAutoGUI without letting an incomplete OpenCV install block input."""
 
+    hide_macos_dock_icon()
     ensure_x11_authority_exists()
     try:
         import cv2  # type: ignore[import-not-found]

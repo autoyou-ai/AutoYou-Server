@@ -41,6 +41,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 import psutil
 
 from ._subprocess_env import scrubbed_subprocess_env as _scrubbed_subprocess_env
+from shared.remote_desktop_keyboard import hide_macos_dock_icon
 from .desktop_app_manifest import (
     load_desktop_app_manifest,
     normalize_platform_tag,
@@ -567,6 +568,7 @@ _USER_ABORT_STATE: Dict[str, float] = {"at": 0.0}
 
 
 def _lazy_import_pyautogui():
+    hide_macos_dock_icon()
     try:
         import cv2  # type: ignore[import-not-found]
         if not hasattr(cv2, "__version__"):
@@ -615,6 +617,7 @@ def user_abort_active() -> bool:
 
 
 def _lazy_import_mss():
+    hide_macos_dock_icon()
     import mss  # type: ignore[import-not-found]
 
     return mss
@@ -1415,6 +1418,7 @@ def _window_bounds_windows(title_hint: Optional[str], process_name: Optional[str
 
 
 def _list_windows_macos(process_name: str) -> List[Dict[str, Any]]:
+    hide_macos_dock_icon()
     script = (
         "tell application \"System Events\"\n"
         f"  if exists process {json.dumps(process_name)} then\n"
