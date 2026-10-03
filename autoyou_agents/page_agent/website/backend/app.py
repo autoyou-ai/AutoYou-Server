@@ -32,6 +32,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from contextlib import suppress
 from datetime import datetime, timedelta
@@ -249,6 +250,33 @@ class PageFeedService:
     def _read_blob_bytes(path: str | Path) -> bytes:
         candidate = Path(path)
         return read_secure_file(candidate)
+
+    # A video is fetched as many byte ranges in a row. Without this each range
+    # opened (and, when sealed, decrypted) the whole file again.
+    _RECENT_BLOB_SECONDS = 30.0
+    _RECENT_BLOB_MAX_BYTES = 256 * 1024 * 1024
+
+    def _recent_blob_bytes(self, path: str | Path) -> bytes:
+        candidate = Path(path)
+        try:
+            stat = candidate.stat()
+            key = (str(candidate), stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            return self._read_blob_bytes(candidate)
+        recent = getattr(self, "_recent_blob", None)
+        now = time.monotonic()
+        if recent and recent[0] == key and now - recent[2] <= self._RECENT_BLOB_SECONDS:
+            self._recent_blob = (key, recent[1], now)
+            return recent[1]
+        data = self._read_blob_bytes(candidate)
+        # Reading can seal a plain file in place; key on what is there now.
+        try:
+            stat = candidate.stat()
+            key = (str(candidate), stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            return data
+        self._recent_blob = (key, data, now) if len(data) <= self._RECENT_BLOB_MAX_BYTES else None
+        return data
 
     @classmethod
     def _blob_plain_size(cls, path: str | Path) -> int:
@@ -1949,9 +1977,13 @@ class PageFeedService:
 
                 blob_bytes: Optional[bytes] = None
                 if str(mime or "").lower().startswith("audio/"):
-                    blob_bytes = self._read_blob_bytes(path)
+                    blob_bytes = self._recent_blob_bytes(path)
                     if is_adts_aac(blob_bytes):
                         mime = "audio/aac"
+                elif secure_storage_enabled():
+                    # A sealed blob has to be opened to learn its size; keep
+                    # what was opened instead of opening it again to send it.
+                    blob_bytes = self._recent_blob_bytes(path)
                 file_size = len(blob_bytes) if blob_bytes is not None else self._blob_plain_size(path)
                 range_header = request.headers.get("Range")
                 start = 0
@@ -1972,7 +2004,7 @@ class PageFeedService:
                         end = file_size - 1
 
                 def iter_file(p: str, s: int, e: int, chunk: int = 65536):
-                    data = blob_bytes if blob_bytes is not None else self._read_blob_bytes(p)
+                    data = blob_bytes if blob_bytes is not None else self._recent_blob_bytes(p)
                     position = max(0, int(s))
                     end_position = min(len(data) - 1, int(e))
                     while position <= end_position:
@@ -2031,6 +2063,11 @@ class PageFeedService:
                 resp.headers["Referrer-Policy"] = "no-referrer"
                 if preview_requested:
                     resp.headers["X-AutoYou-Blob-Preview"] = "1"
+                # A blob id never changes what it names, so an AutoYou app may
+                # keep photos, video and audio in its own encrypted store. This
+                # is deliberately not Cache-Control: ordinary browsers keep nothing.
+                if not force_attachment and mime_lc.split("/", 1)[0] in {"image", "video", "audio"}:
+                    resp.headers["X-AutoYou-Media-Cache"] = "private, max-age=604800, immutable"
                 return resp
             except HTTPException:
                 raise
