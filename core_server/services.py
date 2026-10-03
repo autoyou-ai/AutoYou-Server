@@ -32,7 +32,7 @@ from shared.platform_runtime import (
     strip_windows_extended_path_prefix,
 )
 from shared.process_lifecycle import add_parent_pid_environment, process_spawn_kwargs
-from shared.secure_storage import append_secure_file, secure_storage_enabled
+from shared.secure_storage import SecureStorageError, append_secure_file, secure_storage_enabled
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-ff135044a8a0df0e00e21353"
 
@@ -2531,6 +2531,12 @@ async def start_ai_agent_server_background() -> bool:
         except FileNotFoundError as exc:
             runtime.LOGGER.warning("Could not sync managed frontend backends (agents path issue): %s", exc)
             runtime.LOGGER.info("Server will continue running with limited agent management")
+        except SecureStorageError as exc:
+            runtime.LOGGER.warning(
+                "Could not sync managed frontend backends (protected registry unavailable); "
+                "server will continue with limited agent management: %s",
+                exc,
+            )
 
     # A live worker PID is not enough: the admin startup path can call this
     # while an earlier autostart task is still warming the ADK app. Treat the
