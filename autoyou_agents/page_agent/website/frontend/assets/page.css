@@ -468,7 +468,11 @@ body[data-can-manage="0"] .requires-manage {
 }
 
 .hero-cover {
+  display: block;
+  width: 100%;
   height: 150px;
+  padding: 0;
+  border: 0;
   background: var(--teal-bg);
 }
 
