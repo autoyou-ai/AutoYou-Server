@@ -20,7 +20,7 @@ def run_acknowledgement(test_root: Path, *args: str) -> subprocess.CompletedProc
         [sys.executable, str(ACK_SCRIPT), *args],
         cwd=REPO_ROOT,
         env=environment,
-        stdin=subprocess.DEVNULL,
+        input="",
         capture_output=True,
         text=True,
         check=False,
