@@ -22,6 +22,7 @@
 #   --release-profile PROFILE  Release profile: "binary-default" (default) or "connector-full"
 #   --full          Use all connector features including voice/audio (same as --requirements full --release-profile connector-full)
 #   --include-cognee Include optional Cognee memory backend in the packaged runtime
+#   --accept-terms  Record local acceptance without an interactive prompt
 #   --python PYTHON Python executable to pass to build-backend.sh
 #   --jobs N        Nuitka parallel compilation jobs to pass to build-backend.sh
 #   --certificate-name NAME   Specify certificate (default: "Developer ID Application")
@@ -79,6 +80,7 @@ BACKEND_PYTHON=""
 # Either flag preserves $BUILD_DIR (clean_build must not wipe the reusable output).
 SKIP_BACKEND=false
 SKIP_BACKEND_COMPILE=false
+ACCEPT_TERMS=false
 
 # Parse command line arguments
 parse_args() {
@@ -107,6 +109,10 @@ parse_args() {
                 ;;
             --include-cognee)
                 INCLUDE_COGNEE=true
+                shift
+                ;;
+            --accept-terms)
+                ACCEPT_TERMS=true
                 shift
                 ;;
             --requirements)
@@ -297,6 +303,15 @@ run_official_build_authorization_gate() {
     }
 }
 
+acknowledge_private_build() {
+    if [[ "$BUILD_TYPE" == "release" || "$NOTARIZE_ENABLED" == true ]]; then
+        return 0
+    fi
+    local ack_args=()
+    [[ "$ACCEPT_TERMS" == true ]] && ack_args+=(--accept-terms)
+    python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
+}
+
 # Setup build directories
 setup_directories() {
     log "Setting up build directories..."
@@ -409,6 +424,9 @@ build_backend() {
     [[ -n "$BACKEND_PYTHON" ]] && backend_args+=("--python" "$BACKEND_PYTHON")
     [[ -n "$NUITKA_JOBS" ]] && backend_args+=("--jobs" "$NUITKA_JOBS")
     [[ "$INCLUDE_COGNEE" == true ]] && backend_args+=("--include-cognee")
+    if [[ "$BUILD_TYPE" == "release" || "$NOTARIZE_ENABLED" == true ]]; then
+        backend_args+=("--skip-local-build-ack")
+    fi
 
     # Skip signing in backend if not needed (defer to sign-and-compress for release builds)
     [[ "$SIGN_APP" == false ]] && backend_args+=("--no-sign")
@@ -629,6 +647,7 @@ main() {
     validate_prerequisites
     run_strict_release_legal_gate
     run_official_build_authorization_gate
+    acknowledge_private_build
     setup_directories
     clean_build
     

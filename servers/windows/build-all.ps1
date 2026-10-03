@@ -8,6 +8,7 @@ param(
     [string]$Configuration = "Release",
     [switch]$Clean,
     [switch]$SkipBackend,
+    [switch]$AcceptTerms,
     [ValidateSet("clang", "msvc", "zig")]
     [string]$BackendCompiler = "clang",
     [switch]$IncludeCognee,
@@ -74,6 +75,7 @@ $publishArguments = @{
     Configuration = $Configuration
     Clean = [bool]$Clean
     SkipBackend = [bool]$SkipBackend
+    AcceptTerms = [bool]$AcceptTerms
     BackendCompiler = $BackendCompiler
     IncludeCognee = [bool]$IncludeCognee
     AllowOpenReleaseBlockers = [bool]$AllowOpenReleaseBlockers
