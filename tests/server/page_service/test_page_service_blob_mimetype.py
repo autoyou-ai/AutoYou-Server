@@ -167,3 +167,25 @@ def test_blob_preview_route_returns_jpeg_preview_for_large_image(monkeypatch, tm
     assert response.headers["x-autoyou-blob-preview"] == "1"
     assert response.content != blob_path.read_bytes()
     assert list((Path(service.uploads_dir) / ".previews").glob("*.jpg"))
+
+
+def test_recent_blob_bytes_reuses_unchanged_file_and_invalidates_changed_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    blob_path = tmp_path / "synthetic-video.mp4"
+    blob_path.write_bytes(b"first")
+    reads = []
+
+    def read_blob(path):
+        reads.append(path)
+        return Path(path).read_bytes()
+
+    monkeypatch.setattr(PageFeedService, "_read_blob_bytes", staticmethod(read_blob))
+    service = PageFeedService()
+
+    assert service._recent_blob_bytes(blob_path) == b"first"
+    assert service._recent_blob_bytes(blob_path) == b"first"
+    assert reads == [blob_path]
+
+    blob_path.write_bytes(b"updated")
+    assert service._recent_blob_bytes(blob_path) == b"updated"
+    assert reads == [blob_path, blob_path]
