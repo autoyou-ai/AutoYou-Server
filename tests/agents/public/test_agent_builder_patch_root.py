@@ -68,7 +68,10 @@ def test_patch_root_agent_updates_registry_without_rewriting_prompt(tmp_path, mo
 def test_patch_root_agent_falls_back_to_embedded_root_for_builtin_agents(tmp_path, monkeypatch):
     writable_root = tmp_path / "writable"
     embedded_root = tmp_path / "embedded"
-    (embedded_root / "claude_desktop_agent").mkdir(parents=True)
+    (writable_root / "claude_desktop_agent").mkdir(parents=True)
+    embedded_agent_dir = embedded_root / "claude_desktop_agent"
+    embedded_agent_dir.mkdir(parents=True)
+    (embedded_agent_dir / "agent.py").write_text("# packaged agent source\n", encoding="utf-8")
     captured = {}
 
     monkeypatch.setattr(builder_agent, "_AGENTS_ROOT", writable_root)
