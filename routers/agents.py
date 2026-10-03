@@ -24,6 +24,21 @@ from shared.odysseus_gateway import probe_odysseus, reset_odysseus_cache
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-a8b9cd0a195d9bffe3078258"
 
 
+def _agent_registry_storage_error(exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "success": False,
+            "error": (
+                "Agent installation is blocked because the protected install registry cannot be "
+                "decrypted. Restore the matching Secure Professional Maximus key or recover the "
+                "registry, then retry."
+            ),
+            "storage_error": str(exc),
+        },
+    )
+
+
 def register_routes(
     admin_app: FastAPI,
     auth_app: FastAPI,
@@ -871,7 +886,14 @@ def register_routes(
                 },
             )
 
-        available_agents = set(server.refresh_agent_install_registry(agents_root=server._AUTOYOU_AGENTS_ROOT).get("agents", {}).keys())
+        try:
+            available_agents = set(
+                server.refresh_agent_install_registry(agents_root=server._AUTOYOU_AGENTS_ROOT)
+                .get("agents", {})
+                .keys()
+            )
+        except server.SecureStorageError as exc:
+            return _agent_registry_storage_error(exc)
         if agent_name not in available_agents:
             return JSONResponse(
                 status_code=404,
@@ -968,10 +990,13 @@ def register_routes(
             payload = {}
         payload = payload if isinstance(payload, dict) else {}
 
-        install_result = server.install_builder_suite_agents(
-            agents_root=server._AUTOYOU_AGENTS_ROOT,
-            source="admin_builder_suite",
-        )
+        try:
+            install_result = server.install_builder_suite_agents(
+                agents_root=server._AUTOYOU_AGENTS_ROOT,
+                source="admin_builder_suite",
+            )
+        except server.SecureStorageError as exc:
+            return _agent_registry_storage_error(exc)
         await server.sync_managed_frontend_backends()
         result = server._build_agent_builder_listing_payload()
         server._sync_frontend_registry_from_builder_payload(result)
@@ -1033,6 +1058,8 @@ def register_routes(
                 status_code=404,
                 content={"success": False, "error": f"Agent '{agent_name}' was not found on disk."},
             )
+        except server.SecureStorageError as exc:
+            return _agent_registry_storage_error(exc)
         except Exception as exc:
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 

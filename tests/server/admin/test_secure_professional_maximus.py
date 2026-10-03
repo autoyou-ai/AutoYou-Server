@@ -90,6 +90,54 @@ def test_file_json_and_path_materialization_are_encrypted(tmp_path):
     assert not materialized.exists()
 
 
+def test_configure_maximus_rejects_wrong_key_before_registry_migration(tmp_path, monkeypatch):
+    import server
+
+    config_root = tmp_path / "config"
+    registry_path = tmp_path / "workspace" / "agent_install_registry.json"
+    registry_path.parent.mkdir()
+    enable_secure_storage(
+        app_name="AutoYou",
+        root=config_root,
+        password="synthetic-correct-storage-password",
+    )
+    save_secure_json(registry_path, {"installed_agents": ["notes_agent"]})
+    encrypted_registry = registry_path.read_bytes()
+    disable_secure_storage()
+
+    monkeypatch.setattr(server, "_CONFIG_DIR", config_root)
+    monkeypatch.setattr(server, "get_agent_install_registry_path", lambda: registry_path)
+    monkeypatch.setattr(server, "get_frontend_registry_path", lambda: registry_path.parent / "frontends.json")
+    monkeypatch.setattr(server, "_migrate_secure_control_files", lambda: None)
+
+    with pytest.raises(SecureStorageError, match="Cannot decrypt protected file agent_install_registry.json"):
+        server._configure_secure_storage_for_config(
+            {"security": {"mode": "secure_professional_maximus"}},
+            password="synthetic-wrong-storage-password",
+            allow_key_creation=False,
+        )
+
+    assert registry_path.read_bytes() == encrypted_registry
+    assert not secure_storage_enabled()
+
+    server._configure_secure_storage_for_config(
+        {"security": {"mode": "secure_professional_maximus"}},
+        password="synthetic-correct-storage-password",
+        allow_key_creation=False,
+    )
+    agents_root = tmp_path / "agents"
+    agent_dir = agents_root / "synthetic_install_agent"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "agent.py").write_text("AGENT_NAME = 'synthetic_install_agent'\n", encoding="utf-8")
+    installed_registry = server.set_agent_installed(
+        "synthetic_install_agent",
+        True,
+        agents_root=agents_root,
+        registry_path=registry_path,
+    )
+    assert "synthetic_install_agent" in installed_registry["installed_agents"]
+
+
 def test_external_plaintext_can_be_read_without_migration(tmp_path):
     external = tmp_path / "external.jsonl"
     payload = b'{"synthetic":"external"}\n'

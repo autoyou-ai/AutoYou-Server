@@ -206,7 +206,7 @@ def register_routes(
                 status_code=503,
                 content={
                     "success": False,
-                    "error": "Secure Professional Maximus storage needs access to its existing system credential.",
+                    "error": f"Secure Professional Maximus storage could not be initialized: {exc}",
                 },
             )
 
