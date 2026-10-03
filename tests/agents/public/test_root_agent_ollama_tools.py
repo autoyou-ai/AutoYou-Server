@@ -13,6 +13,7 @@ import pytest
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 import google.adk.models.lite_llm as adk_lite_llm
+from shared.secure_storage import SecureStorageError
 
 import autoyou_agents.agent as root_agent_module
 
@@ -70,6 +71,31 @@ def _routable_names(root_agent) -> set[str]:
     return {_tool_name(tool) for tool in root_agent.tools} | set(
         root_agent_module._SPECIALIST_AGENT_TOOLS
     )
+
+
+def test_unreadable_agent_registry_keeps_selected_ollama_model(monkeypatch, caplog):
+    model = LiteLlm(model="ollama_chat/synthetic-model", api_base="http://localhost:11434")
+
+    def fail_registry_read(**_kwargs):
+        raise SecureStorageError("Cannot decrypt protected file agent_install_registry.json")
+
+    monkeypatch.setattr(root_agent_module, "get_model_config", lambda _: model)
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", fail_registry_read)
+    monkeypatch.setattr(root_agent_module, "get_service_manager", lambda: SimpleNamespace(
+        config=SimpleNamespace(internet_search_enabled=False, audio_playback_enabled=False)
+    ))
+    monkeypatch.setattr(root_agent_module, "_reload_prompt_from_disk", lambda: None)
+    monkeypatch.setattr(root_agent_module, "_build_registry_defined_agent_sections", lambda *args, **kwargs: ([], []))
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: False)
+    monkeypatch.setattr(root_agent_module, "_two_stage_routing_enabled", lambda: False)
+    monkeypatch.setenv("AUTOYOU_TWO_STAGE_ROUTER", "0")
+
+    with caplog.at_level("WARNING"):
+        root = root_agent_module.initialize_root_agent()
+
+    assert root.model.model == "ollama_chat/synthetic-model"
+    assert not root.sub_agents
+    assert "running the core agent without optional specialists" in caplog.text
 
 
 def test_effective_instruction_filters_factory_catalog_to_installed_agents(monkeypatch):
@@ -370,6 +396,7 @@ def test_initialize_root_agent_wraps_desktop_bridges_as_tools_for_ollama(monkeyp
     monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda agents_root=None: installed_agents)
     monkeypatch.setattr(root_agent_module, "_load_agent_factory", lambda agent_name: factory_map.get(agent_name))
     monkeypatch.setattr(root_agent_module, "_reload_prompt_from_disk", lambda: None)
+    monkeypatch.setenv("AUTOYOU_TWO_STAGE_ROUTER", "1")
 
     root_agent = root_agent_module.initialize_root_agent()
 
@@ -412,6 +439,7 @@ def test_initialize_root_agent_keeps_desktop_graph_when_provider_starts_late(mon
     monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda agents_root=None: installed_agents)
     monkeypatch.setattr(root_agent_module, "_load_agent_factory", lambda agent_name: factory_map.get(agent_name))
     monkeypatch.setattr(root_agent_module, "_reload_prompt_from_disk", lambda: None)
+    monkeypatch.setenv("AUTOYOU_TWO_STAGE_ROUTER", "1")
 
     root_agent = root_agent_module.initialize_root_agent()
 

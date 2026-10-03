@@ -73,6 +73,7 @@ from autoyou_agents.shared_tools.memory_tool import (
 from shared.platform_runtime import is_compiled
 from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
+from shared.secure_storage import SecureStorageError
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-771e42c122d9d6385dd07e2f"
 
@@ -4752,7 +4753,17 @@ def initialize_root_agent():
             model_config = _build_resilient_fallback_model()
         logger.info("Successfully configured model: %s", getattr(model_config, "model", model_config))
 
-        installed_agents = get_installed_agent_names(agents_root=_AGENTS_ROOT)
+        try:
+            installed_agents = get_installed_agent_names(agents_root=_AGENTS_ROOT)
+        except SecureStorageError as exc:
+            # Keep the selected root model usable when only optional-agent
+            # install state is unreadable. Never infer or rewrite that state.
+            logger.warning(
+                "Agent install registry is unavailable; running the core agent "
+                "without optional specialists: %s",
+                exc,
+            )
+            installed_agents = []
         logger.info(
             "Installed sub-agents at startup: %s",
             ", ".join(installed_agents) if installed_agents else "(none)",
