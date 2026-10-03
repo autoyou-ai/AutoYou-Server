@@ -17,6 +17,7 @@
 #   --type TYPE         Build type: "dev" (default) or "release"
 #   --requirements TYPE Requirements: "binary-default" (default), "full", "training-full", "base", or "server-macos"
 #   --include-cognee    Install the optional Cognee memory backend for packaging
+#   --accept-terms      Accept current notices for a local noninteractive build
 #   --full              Use connector/full features (same as --requirements full)
 #   --python PYTHON     Python executable (default: python3)
 #   --jobs N            Parallel compilation jobs (default: auto)
@@ -95,6 +96,8 @@ GOOGLE_NUITKA_INCLUDE_MODE="${AUTOYOU_MACOS_NUITKA_GOOGLE_INCLUDE_MODE:-broad}"
 # equivalent of the Windows `build-all.ps1 -SkipBackend` fast path: it avoids
 # the ~3.5h launcher recompile when iterating on post-compile fixes.
 SKIP_NUITKA=false
+ACCEPT_TERMS=false
+SKIP_LOCAL_BUILD_ACK=false
 
 case "$GOOGLE_NUITKA_INCLUDE_MODE" in
     broad|targeted|runtime)
@@ -986,6 +989,14 @@ parse_args() {
                 INCLUDE_COGNEE=true
                 shift
                 ;;
+            --accept-terms)
+                ACCEPT_TERMS=true
+                shift
+                ;;
+            --skip-local-build-ack)
+                SKIP_LOCAL_BUILD_ACK=true
+                shift
+                ;;
             --verbose)
                 VERBOSE=true
                 shift
@@ -1005,7 +1016,7 @@ parse_args() {
                 shift
                 ;;
             --help)
-                head -n 25 "$0" | tail -n 23
+                head -n 35 "$0" | tail -n 33
                 exit 0
                 ;;
             *)
@@ -1055,6 +1066,15 @@ run_official_build_authorization_gate() {
         log_error "Official build authorization failed. Complete the SignToROSS/OpenSign build-access agreement before release packaging."
         exit 1
     }
+}
+
+acknowledge_private_build() {
+    if [[ "$BUILD_TYPE" == "release" || "$SKIP_LOCAL_BUILD_ACK" == true ]]; then
+        return 0
+    fi
+    local ack_args=()
+    [[ "$ACCEPT_TERMS" == true ]] && ack_args+=(--accept-terms)
+    python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
 }
 
 # Ensure required macOS system dependencies are installed via Homebrew.
@@ -4064,6 +4084,7 @@ main() {
 
     run_official_build_authorization_gate
     run_strict_release_legal_gate
+    acknowledge_private_build
 
     step_header "Ensure system dependencies (Homebrew)"
     ensure_system_deps

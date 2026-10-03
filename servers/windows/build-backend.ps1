@@ -12,6 +12,8 @@ param(
     [string]$Requirements = "binary-default",
     [switch]$IncludeCognee,
     [switch]$DesktopV2,
+    [switch]$AcceptTerms,
+    [switch]$SkipLocalBuildAcknowledgement,
     [string]$Version,
     [int]$JobCount = 0  # 0 = auto-detect CPU cores
 )
@@ -42,6 +44,21 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot "..\..")).Path
 $defaultPythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $backendRuntimePinPackages = @("google-adk", "google-genai", "google-cloud-aiplatform", "fastapi", "sqlalchemy")
+
+if (-not $SkipLocalBuildAcknowledgement) {
+    $pythonCommand = if (Test-Path $defaultPythonExe) {
+        $defaultPythonExe
+    } else {
+        $candidate = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $candidate) { $candidate = Get-Command py -ErrorAction SilentlyContinue }
+        if (-not $candidate) { throw "Could not find Python to record the local build license acknowledgment." }
+        $candidate.Source
+    }
+    $acknowledgementArguments = @((Join-Path $repoRoot "scripts\acknowledge_local_build.py"))
+    if ($AcceptTerms) { $acknowledgementArguments += "--accept-terms" }
+    & $pythonCommand @acknowledgementArguments
+    if ($LASTEXITCODE -ne 0) { throw "Local build license acknowledgment failed." }
+}
 
 function Resolve-BackendFileVersion {
     param(

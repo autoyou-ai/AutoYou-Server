@@ -8,6 +8,7 @@ param(
     [string]$Configuration = "Release",
     [switch]$Clean,
     [switch]$SkipBackend,
+    [switch]$AcceptTerms,
     [ValidateSet("clang", "msvc", "zig")]
     [string]$BackendCompiler = "clang",
     [switch]$IncludeCognee,
@@ -440,8 +441,21 @@ if ($IncludeCognee -or ("$env:AUTOYOU_INCLUDE_COGNEE".Trim().ToLower() -in @("1"
 
 Invoke-OfficialBuildAuthorizationGate
 
+if ($Configuration -ne "Release") {
+    $acknowledgementScript = Join-Path $repoRoot "scripts\acknowledge_local_build.py"
+    $pythonExe = Resolve-PythonExe
+    $acknowledgementArguments = @($acknowledgementScript)
+    if ($AcceptTerms) {
+        $acknowledgementArguments += "--accept-terms"
+    }
+    & $pythonExe @acknowledgementArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Local build license acknowledgment failed."
+    }
+}
+
 if (-not $SkipBackend) {
-    & (Join-Path $scriptRoot "build-backend.ps1") -Clean:$Clean -BackendCompiler $BackendCompiler -IncludeCognee:$IncludeCognee -Requirements $releaseSettings.Requirements -Version $appVersion -JobCount $JobCount
+    & (Join-Path $scriptRoot "build-backend.ps1") -Clean:$Clean -BackendCompiler $BackendCompiler -IncludeCognee:$IncludeCognee -Requirements $releaseSettings.Requirements -Version $appVersion -JobCount $JobCount -SkipLocalBuildAcknowledgement
     if ($LASTEXITCODE -ne 0) {
         throw "Backend build failed."
     }

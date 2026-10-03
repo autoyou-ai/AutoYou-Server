@@ -42,7 +42,10 @@ From the repository root:
 ./servers/macos/build-all.sh --no-sign --dev
 ```
 
-That is the fastest path for local packaging validation.
+The first private build displays the current license and third-party notices
+and asks you to type `I AGREE`. Use `--accept-terms` to record acceptance
+explicitly for a noninteractive build. The receipt stays on this device and is
+invalidated when the notices change.
 
 The default release profile is `binary-default`. Use the broader connector-capable lane only when you explicitly need it:
 
