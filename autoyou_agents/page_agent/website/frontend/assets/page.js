@@ -382,6 +382,7 @@
       ? `That's everything · ${formatCount(state.items.length)} ${state.items.length === 1 ? "item" : "items"}`
       : "";
     $("play-feed").disabled = !state.items.length;
+    $("hero-cover").disabled = !state.items.length;
     syncReel();
   }
 
@@ -2237,6 +2238,10 @@
     showReelHint();
   }
 
+  function openFirstReel(trigger) {
+    if (state.items.length && !reel.open) openReel(state.items[0].id, trigger);
+  }
+
   function closeReel({ fromHistory = false } = {}) {
     if (!reel.open) {
       return;
@@ -2534,11 +2539,8 @@
     $("reel-sound").addEventListener("click", toggleSound);
     $("reel-prev").addEventListener("click", () => goReel(-1));
     $("reel-next").addEventListener("click", () => goReel(1));
-    $("play-feed").addEventListener("click", (event) => {
-      if (state.items.length) {
-        openReel(state.items[0].id, event.currentTarget);
-      }
-    });
+    $("play-feed").addEventListener("click", (event) => openFirstReel(event.currentTarget));
+    $("hero-cover").addEventListener("click", (event) => openFirstReel(event.currentTarget));
     $("photo-close").addEventListener("click", () => closePhoto());
     $("photo-size").addEventListener("click", () => togglePhotoZoom(null));
     $("photo-scroll").addEventListener("click", onPhotoClick);
