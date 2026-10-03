@@ -495,6 +495,30 @@ def test_start_ai_agent_server_background_checks_ollama_for_healthy_existing_wor
         server.STATE.ai_agent_start_task = original_task
 
 
+def test_healthy_ai_worker_survives_unreadable_agent_registry_sync(monkeypatch):
+    original_process = server.STATE.agent_process
+    original_task = server.STATE.ai_agent_start_task
+    existing_process = _FakePopen(cmd=["python", "worker"])
+
+    async def fail_registry_sync():
+        raise server.SecureStorageError("Cannot decrypt protected file agent_install_registry.json")
+
+    monkeypatch.setattr(server, "sync_managed_frontend_backends", fail_registry_sync)
+    monkeypatch.setattr(server, "_is_ai_agent_server_healthy", lambda host, port: True)
+    monkeypatch.setattr(server, "_ensure_local_ollama_runtime_ready", lambda: None)
+    monkeypatch.setattr(server, "SERVER_BIND_HOST", "127.0.0.1")
+    monkeypatch.setattr(server, "AI_AGENT_SERVER_PORT", 8081)
+
+    server.STATE.agent_process = existing_process
+    server.STATE.ai_agent_start_task = None
+    try:
+        assert asyncio.run(server.start_ai_agent_server_background()) is True
+        assert server.STATE.agent_process is existing_process
+    finally:
+        server.STATE.agent_process = original_process
+        server.STATE.ai_agent_start_task = original_task
+
+
 def test_create_ai_agent_fastapi_app_requires_persistent_session_storage(monkeypatch):
     captured = []
 
