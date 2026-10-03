@@ -156,3 +156,15 @@ def test_build_live_agent_source_info_marks_importable_packaged_agent_as_existin
     assert result["agent_dir"] is None
     assert result["source_kind"] == "embedded"
     assert result["prompt_importable"] is True
+
+
+def test_resolve_live_agent_dir_skips_data_only_dynamic_folder(tmp_path, monkeypatch):
+    dynamic_root = tmp_path / "dynamic"
+    embedded_root = tmp_path / "embedded"
+    (dynamic_root / "location_agent" / "location_agent").mkdir(parents=True)
+    embedded_agent_dir = embedded_root / "location_agent"
+    embedded_agent_dir.mkdir(parents=True)
+    (embedded_agent_dir / "agent.py").write_text("# location agent\n", encoding="utf-8")
+    monkeypatch.setattr(agent_workbench, "_live_roots", lambda: (dynamic_root, embedded_root))
+
+    assert agent_workbench.resolve_live_agent_dir("location_agent") == embedded_agent_dir.resolve()

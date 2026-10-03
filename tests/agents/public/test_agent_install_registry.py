@@ -124,6 +124,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "education_agent",
         "files_agent",
         "fine_tuning_agent",
+        "game_agent",
         "hosting_agent",
         "ionos_agent",
         "ionos_cloudflare_agent",
@@ -277,6 +278,29 @@ def test_compiled_registry_omits_private_agent_names_by_default(tmp_path, monkey
     for agent_name in PRIVATE_AGENT_PACKAGE_NAMES:
         assert agent_name not in payload["agents"]
         assert agent_name not in payload["available_agents"]
+
+
+def test_compiled_registry_installs_builtin_without_source_files(tmp_path, monkeypatch):
+    embedded_root = tmp_path / "embedded_agents"
+    dynamic_root = tmp_path / "dynamic_agents"
+    embedded_root.mkdir()
+    dynamic_root.mkdir()
+
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(
+        platform_runtime,
+        "iter_agent_roots",
+        lambda anchor, app_name="AutoYou": (dynamic_root, embedded_root),
+    )
+
+    payload = set_agent_installed(
+        "location_agent",
+        True,
+        agents_root=dynamic_root,
+        registry_path=tmp_path / "compiled_registry.json",
+    )
+
+    assert "location_agent" in payload["installed_agents"]
 
 
 def test_compiled_registry_accepts_only_agents_named_in_server_bundle(tmp_path, monkeypatch):

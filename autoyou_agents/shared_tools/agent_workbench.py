@@ -379,7 +379,7 @@ def resolve_live_agent_dir(agent_name: str) -> Optional[Path]:
     normalized = _normalize_agent_name(agent_name)
     for root in _live_roots():
         candidate = root / normalized
-        if candidate.is_dir():
+        if (candidate / "agent.py").is_file():
             return candidate.resolve()
     return None
 
