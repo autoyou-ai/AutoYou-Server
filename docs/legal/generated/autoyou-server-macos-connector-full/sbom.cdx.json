@@ -1762,11 +1762,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "litellm>=1.84.0,<2.0.0"
-        },
-        {
-          "name": "specifier",
-          "value": ">=1.84.0,<2.0.0"
+          "value": "litellm==1.89.7"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1777,8 +1773,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/litellm",
-      "type": "library"
+      "purl": "pkg:pypi/litellm@1.89.7",
+      "type": "library",
+      "version": "1.89.7"
     },
     {
       "licenses": [
@@ -2059,11 +2056,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opencv-python>=4.9.0,<5"
+          "value": "opencv-python>=4.9.0.80,<5"
         },
         {
           "name": "specifier",
-          "value": ">=4.9.0,<5"
+          "value": ">=4.9.0.80,<5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2404,11 +2401,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "pydantic>=2.0.0,<3.0.0"
+          "value": "pydantic>=2.10.0,<3.0.0"
         },
         {
           "name": "specifier",
-          "value": ">=2.0.0,<3.0.0"
+          "value": ">=2.10.0,<3.0.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2854,11 +2851,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "requests>=2.32.4"
+          "value": "requests>=2.33.0"
         },
         {
           "name": "specifier",
-          "value": ">=2.32.4"
+          "value": ">=2.33.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3319,11 +3316,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "urllib3>=2.7.0,<3"
+          "value": "urllib3>=2.8.0,<3"
         },
         {
           "name": "specifier",
-          "value": ">=2.7.0,<3"
+          "value": ">=2.8.0,<3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3796,16 +3793,26 @@
       ],
       "type": "application"
     },
-    "timestamp": "2026-10-04T01:29:05+00:00",
+    "properties": [
+      {
+        "name": "autoyou:inventoryScope",
+        "value": "manifest-and-manual-declarations"
+      },
+      {
+        "name": "autoyou:inventoryLimitations",
+        "value": "Not a resolved environment or an inspected release artifact."
+      }
+    ],
+    "timestamp": "2026-10-04T02:51:56+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
         "vendor": "AutoYou",
-        "version": "1"
+        "version": "2"
       }
     ]
   },
-  "serialNumber": "urn:uuid:cf9e88b9-dd19-47b6-88a1-3b2a1200a0c6",
+  "serialNumber": "urn:uuid:bdef0479-bde9-4748-84d7-f12840269ae7",
   "specVersion": "1.5",
   "version": 1
 }

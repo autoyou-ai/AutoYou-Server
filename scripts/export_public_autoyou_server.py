@@ -29,8 +29,6 @@ __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-8e65e7a8b7176ef7eb3c461f
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = REPO_ROOT / "build" / "public-autoyou-server-source"
 SERVER_README = "docs/legal/member-server-readme.md"
-SERVER_CHECKLIST = "docs/legal/member-server-compliance-checklist.md"
-PUBLIC_CHECKLIST = "docs/legal/release-compliance-checklist.md"
 
 PUBLIC_PREFIXES = (
     "assets/",
@@ -108,6 +106,8 @@ PUBLIC_GITHUB_PATHS = {
     ".github/ISSUE_TEMPLATE/feature_request.yml",
     ".github/workflows/codeql.yml",
     ".github/workflows/public-checks.yml",
+    ".github/workflows/dependency-advisories.yml",
+    ".github/workflows/macos-audio-capture.yml",
 }
 
 PUBLIC_VENDOR_PATHS = {
@@ -153,14 +153,68 @@ PUBLIC_DOC_PREFIXES = (
 )
 
 PUBLIC_DOC_EXACT_PATHS = {
+    # Standalone server documentation; new paths require explicit review.
+    'docs/admin-ui/agent-workbench-ui.mdx',
+    'docs/admin-ui/ai-and-speech.mdx',
+    'docs/admin-ui/architecture.mdx',
+    'docs/admin-ui/live-view-and-media.mdx',
+    'docs/admin-ui/messaging-bridges.mdx',
+    'docs/admin-ui/overview-and-status.mdx',
+    'docs/admin-ui/security-console.mdx',
+    'docs/admin-ui/setup-and-recipes.mdx',
+    'docs/agent-framework/agent-web-frontends.mdx',
+    'docs/agent-framework/agent-workbench.mdx',
+    'docs/agent-framework/architecture.mdx',
+    'docs/agent-framework/building-agents.mdx',
+    'docs/agent-framework/core-agent-engine.mdx',
+    'docs/agent-framework/security-and-permissions.mdx',
+    'docs/agent-framework/self-improvement-and-harness-testing.mdx',
+    'docs/agent-framework/shared-tools-and-subsystems.mdx',
+    'docs/agent-framework/vendor-and-memory.mdx',
+    'docs/agents/ai-and-training.mdx',
+    'docs/agents/coding-and-building.mdx',
+    'docs/agents/communication-and-tasks.mdx',
+    'docs/agents/intelligence-and-models.mdx',
+    'docs/agents/media-and-creative.mdx',
+    'docs/agents/monetization.mdx',
+    'docs/agents/system-and-admin.mdx',
+    'docs/agents/utility.mdx',
+    'docs/agents/web-and-automation.mdx',
+    'docs/api-reference/admin-and-system.mdx',
+    'docs/api-reference/admin-app.mdx',
+    'docs/api-reference/agents-and-builder.mdx',
+    'docs/api-reference/ai-agent-worker.mdx',
+    'docs/api-reference/auth-app.mdx',
+    'docs/api-reference/chat-and-sessions.mdx',
+    'docs/api-reference/cloud-and-peer.mdx',
+    'docs/api-reference/mcp-server.mdx',
+    'docs/api-reference/messaging-gateways.mdx',
+    'docs/api-reference/models-and-speech.mdx',
+    'docs/api-reference/overview.mdx',
+    'docs/api-reference/pairing-and-signaling.mdx',
+    'docs/api-reference/security-and-totp.mdx',
+    'docs/api-reference/webrtc-and-streaming.mdx',
+    'docs/api-reference/website-gateway.mdx',
+    'docs/api-reference/websites-and-bookmarks.mdx',
+    'docs/architecture/cloud-and-remote.mdx',
+    'docs/architecture/overview.mdx',
+    'docs/architecture/pairing-and-discovery.mdx',
+    'docs/architecture/security-and-auth.mdx',
+    'docs/architecture/webrtc-and-datachannels.mdx',
+    'docs/docs.json',
+    'docs/guides/custom-agent-tutorial.mdx',
+    'docs/guides/custom-api-router.mdx',
+    'docs/guides/mcp-integration.mdx',
+    'docs/guides/production-deployment.mdx',
+    'docs/index.mdx',
+    'docs/mint.json',
+    'docs/quickstart.mdx',
     "docs/glossary.md",
     "docs/index.md",
     "docs/legal/release-artifacts.json",
-    "docs/legal/release-compliance-checklist.md",
     "docs/legal/release-model.md",
     "docs/legal/security-contact.md",
     "docs/legal/messaging-partner-policy.md",
-    "docs/legal/maintainer-release-record.md",
     "docs/legal/open-source-commitment.md",
     "docs/legal/optional-integrations.md",
     "docs/legal/source-publication-manifest.md",
@@ -783,13 +837,6 @@ def build_export_plan(entries: list[GitEntry]) -> tuple[list[GitEntry], list[str
             return included, ["Committed server-specific README is missing"]
         if template is not None:
             included = [replace(entry, object_id=template.object_id) if entry.path == "README.md" else entry
-                        for entry in included]
-    checklist = next((entry for entry in entries if entry.path == SERVER_CHECKLIST and entry.mode == "100644"), None)
-    if any(entry.path == PUBLIC_CHECKLIST for entry in included):
-        if template is not None and checklist is None:
-            return included, ["Committed server-specific release checklist is missing"]
-        if checklist is not None:
-            included = [replace(entry, object_id=checklist.object_id) if entry.path == PUBLIC_CHECKLIST else entry
                         for entry in included]
     failures = audit_public_source_paths([entry.path for entry in included])
     failures.extend(audit_public_source_content(included))

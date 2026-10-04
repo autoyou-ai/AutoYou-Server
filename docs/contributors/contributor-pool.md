@@ -12,8 +12,10 @@ commits to in the
 
 ## Current period
 
-These are the only values OpenStorey needs to set. Until OpenStorey announces
-them for a period, the pool for that period is zero.
+OpenStorey announces payment mechanics for each period. Until those mechanics
+are announced, no individual award is promised. The commitment to allocate at
+least 15% of qualifying net receipts continues to apply; unallocated or unpaid
+amounts must remain accounted for in the funding ledger.
 
 | Setting | Value |
 | --- | --- |
@@ -65,10 +67,9 @@ earn points: whitespace, typo, or link-only changes; bulk or automated changes;
 duplicates; Contributions reverted in the same period; and anything that broke
 the rules in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
-Your payout for a period is the pool divided by all points earned that period,
-multiplied by Your points. OpenStorey may cap any one person's share to keep the
-pool broad. An amount below the minimum payout carries forward to the next
-period.
+Points inform proposed awards; they are not a debt, wage, or fixed conversion
+rate. Approved award calculations and any cap or minimum are announced for the
+period. An approved amount below the announced minimum carries forward.
 
 ## Rules that keep the pool fair
 
@@ -106,5 +107,6 @@ anyone without their agreement.
 ## Changes
 
 OpenStorey may change, pause, or end the program for future periods at any time.
-A change does not affect a payout already calculated for a closed period. Nothing
-in this document creates an obligation to pay.
+A change does not withdraw an award already approved in writing or erase the
+published allocation commitment for receipts already received. Statutory rights
+and separate payment agreements remain unaffected.

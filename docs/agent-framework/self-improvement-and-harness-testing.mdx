@@ -39,7 +39,7 @@ graph TD
 
 ## 1. The Self-Improvement Engine: `goal_loop.py`
 
-[`autoyou_agents/self_improvement/goal_loop.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/self_improvement/goal_loop.py) is intentionally written as **ordinary Python**, not as another LLM-driven ADK agent. This guarantees that test execution is deterministic, reproducible, and immune to model failure loops.
+[`autoyou_agents/self_improvement/goal_loop.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/self_improvement/goal_loop.py) is intentionally written as **ordinary Python**, not as another LLM-driven ADK agent. The orchestration uses explicit program logic. Model output, external dependencies, and tests can still fail; inspect the recorded results.
 
 ### CLI Synopsis & Configuration Flags
 

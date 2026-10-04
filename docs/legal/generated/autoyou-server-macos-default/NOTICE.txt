@@ -4,9 +4,11 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS binary-default build (autoyou-server-macos-default)
 Release profile: binary-default
 Dependency profile: binary-default
-Generated: 2026-10-04T01:29:05+00:00
+Generated: 2026-10-04T02:51:56+00:00
+Inventory scope: Repository manifests and manual component declarations.
+This inventory does not establish actual installed or bundled versions.
 
-First signed macOS commercial server binary profile using the local-first binary-default dependency profile.
+Declared dependency profile for building the macOS server with the binary-default selection.
 
 AutoYou License
 ---------------
@@ -60,7 +62,7 @@ Third-Party Components
 - idna [pypi] - BSD-3-Clause - requirements/base.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
-- litellm [pypi] - MIT - requirements/base.txt
+- litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
 - ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt

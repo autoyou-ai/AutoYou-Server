@@ -125,7 +125,6 @@ AutoYou Server binds distinct local network ports for isolation and security:
 | :--- | :--- | :--- | :--- |
 | **`8001`** | HTTP / WebSocket | `127.0.0.1` | **Primary Admin & Core API**. Serves the Admin Console UI (`/admin`), REST APIs (`/api/*`), WebRTC signaling (`/signal/*`), and pairing handshakes. |
 | **`8067`** | HTTP | `127.0.0.1` | **Agent Website Proxy & Directory**. Routes traffic to embedded agent frontends (`/agent/{name}/`), serves public agent assets, and processes RFC 10008 `QUERY` discovery requests. |
-| **`8101`** | HTTP | `127.0.0.1` | **macOS Security Agent Backend**. Dedicated internal loopback backend for the private macOS Security Agent, keeping port 8067 free for standard browser proxies. |
 | **`11434`** | HTTP | `127.0.0.1` | **Ollama Local LLM Runner**. Default port for local LLM inference engines monitored by `ollama_service.py`. |
 
 ---

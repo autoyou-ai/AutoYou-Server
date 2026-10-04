@@ -90,7 +90,7 @@ If an agent requires an interactive web UI, the workbench automates frontend gen
 
 ## 5. Draft Lifecycle & Hot-Publishing
 
-To guarantee stability, modifications are staged as isolated drafts:
+Modifications are staged as drafts for review:
 - **Clone Agent**: `POST /api/agents/workbench/{name}/clone` creates an independent copy under a new name.
 - **Publish Draft**: `POST /api/agents/workbench/{name}/publish` commits the draft into the dynamic agent registry. The orchestrator reloads the agent worker dynamically without dropping client connections.
 - **Discard Draft**: `POST /api/agents/workbench/{name}/discard` reverts all staged changes cleanly.

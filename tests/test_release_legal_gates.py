@@ -13,7 +13,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import copy
 
 from scripts import check_release_legal_gates as legal_gates
-from scripts.generate_release_legal_artifacts import expand_artifact_profiles, load_config
+from scripts.generate_release_legal_artifacts import build_notice, build_sbom, expand_artifact_profiles, load_config
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-9373534ec8f2ef341a029959"
 
@@ -39,6 +39,17 @@ def test_current_generated_server_bundles_are_fresh() -> None:
     assert report.ok, report.failures
 
 
+def test_manifest_inventories_describe_their_scope() -> None:
+    profile = {"id": "synthetic-profile", "displayName": "Synthetic declaration inventory"}
+    timestamp = "2026-10-04T00:00:00+00:00"
+    sbom = build_sbom(profile, [], timestamp=timestamp)
+    metadata = {item["name"]: item["value"] for item in sbom["metadata"]["properties"]}
+    assert metadata["autoyou:inventoryScope"] == "manifest-and-manual-declarations"
+    assert "Not a resolved environment" in metadata["autoyou:inventoryLimitations"]
+    notice = build_notice(profile, [], timestamp=timestamp)
+    assert "does not establish actual installed or bundled versions" in notice
+
+
 def test_current_server_legal_gate_has_no_automatic_failures() -> None:
     report = legal_gates.run_gates(
         load_config(),
@@ -48,6 +59,57 @@ def test_current_server_legal_gate_has_no_automatic_failures() -> None:
     )
 
     assert report.ok, report.failures
+
+
+def test_private_review_is_optional_only_for_contributor_checks(monkeypatch) -> None:
+    monkeypatch.delenv("AUTOYOU_RELEASE_CHECKLIST", raising=False)
+    metadata = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(metadata, allow_open_release_blockers=True)
+    assert metadata.ok
+    assert metadata.warnings
+    release = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(release, allow_open_release_blockers=False)
+    assert not release.ok
+
+
+def test_private_review_stays_external_and_does_not_leak_details(tmp_path, monkeypatch) -> None:
+    public_root = tmp_path / "public-server"
+    public_root.mkdir()
+    monkeypatch.setattr(legal_gates, "REPO_ROOT", public_root)
+    review = tmp_path / "private-review.md"
+    review.write_text("- [ ] Synthetic confidential reviewer note\n", encoding="utf-8")
+    report = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(
+        report, allow_open_release_blockers=False, checklist_path=review
+    )
+    assert not report.ok
+    assert "1 open item" in report.failures[0]
+    assert "confidential" not in str(report.to_json())
+    assert str(review) not in str(report.to_json())
+    review.write_text("- [x] Synthetic completed review\n", encoding="utf-8")
+    monkeypatch.setenv("AUTOYOU_RELEASE_CHECKLIST", str(review))
+    complete = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(complete, allow_open_release_blockers=False)
+    assert complete.ok
+    inside = public_root / "private-review.md"
+    inside.write_text(review.read_text(encoding="utf-8"), encoding="utf-8")
+    rejected = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(
+        rejected, allow_open_release_blockers=False, checklist_path=inside
+    )
+    assert not rejected.ok
+    assert "outside" in rejected.failures[0]
+
+
+def test_empty_private_review_cannot_approve_a_release(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(legal_gates, "REPO_ROOT", tmp_path / "public-server")
+    review = tmp_path / "empty-review.md"
+    review.write_text("No review decisions\n", encoding="utf-8")
+    report = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(
+        report, allow_open_release_blockers=False, checklist_path=review
+    )
+    assert not report.ok
 
 
 def test_source_profile_records_external_service_terms() -> None:
