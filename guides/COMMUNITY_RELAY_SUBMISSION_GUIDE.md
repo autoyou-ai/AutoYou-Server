@@ -42,8 +42,7 @@ the website.
 
 ### Donor machine
 
-Copy `autoyou-core/autoyou-distributed/.env.example` to `.env` and set the
-images and token:
+Create a `.env` file (or copy from the release package) and set the images and token:
 
 ```dotenv
 AUTOYOU_COMMUNITY_RELAY_COTURN_IMAGE=openstorey/community-relay-coturn:8.0.8.0
@@ -52,8 +51,7 @@ PROVIDER_ENROLL_TOKEN=<token-from-dashboard>
 ```
 
 Keep the remaining cloud endpoint, bind, and port defaults unless the dashboard
-gave you different assignments. Start both services from
-`autoyou-core/autoyou-distributed/`:
+gave you different assignments. Start both services:
 
 ```bash
 docker compose up -d

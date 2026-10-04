@@ -87,38 +87,13 @@ def test_timeline_exposes_recent_sharing_status(tmp_path, monkeypatch):
     assert response.json()["sharing"]["sharing_sessions"] == 1
 
 
-def test_location_agent_import_is_lazy_and_native_clients_use_datachannel_ingest(tmp_path, monkeypatch):
+def test_location_agent_import_is_lazy(tmp_path, monkeypatch):
     runtime_root = tmp_path / "runtime"
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(runtime_root))
     importlib.import_module(".agent", package=__package__)
     assert not (runtime_root / "location_agent" / "locations.sqlite3").exists()
 
-    repo_root = PROJECT_ROOT
-    android_source = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/location/LocationBeacon.kt").read_text(encoding="utf-8")
-    android_buffer = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/messaging/BufferMessageManager.kt").read_text(encoding="utf-8")
-    # from __debug_provenance_u__ import usdt
-    android_connection = (repo_root / "clients/android/app/src/main/java/com/autoyou/app/repository/ConnectionRepository.kt").read_text(encoding="utf-8")
-    ios_source = (repo_root / "clients/ios/AutoYouApp/Managers/ConnectionManager.swift").read_text(encoding="utf-8")
-    ios_buffer = (repo_root / "clients/ios/AutoYouApp/Managers/BufferMessageManager.swift").read_text(encoding="utf-8")
-    python_beacon = (repo_root / "clients/python/location_beacon.py").read_text(encoding="utf-8")
-    windows_calls = (repo_root / "v2/windows/src/AutoYou.App/Views/CallsPage.xaml.cs").read_text(encoding="utf-8")
-    windows_manifest = (repo_root / "v2/windows/package-msix.ps1").read_text(encoding="utf-8")
-    macos_packager = (repo_root / "v2/tools/build_macos.py").read_text(encoding="utf-8")
     frontend_source = (Path(__file__).parent / "website/frontend/assets/app.js").read_text(encoding="utf-8")
-
-    assert "LocationManager" in android_source
-    assert "sendLocationSample" in android_source
-    assert 'locationSample?.let { put("location", it) }' in android_buffer
-    assert "sendPing(locationSample = sample)" in android_buffer
-    assert "settings.locationSharingEnabled && serverLocationRecordingEnabled" in android_connection
-    assert "CLLocationManager" in ios_source
-    assert "sendLocationSample" in ios_source
-    assert 'payload["location"] = pendingLocationSample' in ios_buffer
-    assert "clearLocationSample()" in ios_buffer
-    assert "bufferMessageManager?.clearLocationSample()" in ios_source
-    assert "Geolocator.request_access_async()" not in python_beacon
-    assert "Geolocator.RequestAccessAsync()" in windows_calls
-    assert '<DeviceCapability Name="location" />' in windows_manifest
-    assert '"NSLocationUsageDescription"' in macos_packager
     assert "navigator.geolocation" not in frontend_source
     assert "browser_permission" not in frontend_source
+

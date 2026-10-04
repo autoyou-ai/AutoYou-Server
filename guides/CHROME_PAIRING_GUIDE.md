@@ -260,12 +260,9 @@ browser surface for a connection that has already been paired.
 - [ ] Chat was tested before calls, Browser Control, or Remote Desktop.
 - [ ] No password, OTP, QR image, authenticator secret, or SDP was published.
 
-## Maintainer references
+## Server reference endpoints
 
-- Browser client source: `clients/chrome/`
-- Local pairing implementation: `clients/chrome/src/pairing/localpair.js`
-- Chrome local-origin helper: `clients/chrome/src/pairing/local-transport.js`
-- Browser settings renderer: `clients/chrome/src/ui/settings-view.js`
-- Chrome screenshots: `screenshots/chrome/`
-- Python GUI pairing reference: `clients/python/autoyou_client_gui.py`
-- Python TUI pairing client: `clients/python/autoyou_client_tui.py`
+- WebRTC pairing endpoint: `/api/pair/webrtc`
+- Local pairing discovery: `/api/connect/discover`
+- Local token validation: `/api/connect/verify`
+

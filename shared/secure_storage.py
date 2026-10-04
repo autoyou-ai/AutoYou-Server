@@ -89,7 +89,6 @@ _DISCOVERY_SKIP_DIRECTORIES = frozenset(
         ".llm",
         ".run",
         "DO_NOT_UPLOAD",
-        "autoyou-outreach",
         "build",
         "cognee",
         "core_server",
@@ -102,19 +101,9 @@ _DISCOVERY_SKIP_DIRECTORIES = frozenset(
         "shared",
         "tests",
         "vendor",
-        "clients",
         "servers",
-        "research",
         "openclaw",
         "whatsapp",
-        "autoyou-core",
-        "autoyou-website",
-        # autoyou_lite runs its OWN separate Maximus boundary (app_name
-        # "AutoYouLite") with a DIFFERENT key. Its sealed output lives under
-        # this subtree inside the repo, which is a full-server scan root - the
-        # full server must never walk into it or rotation/unseal trips over
-        # envelopes it cannot decrypt with its own key.
-        "autoyou_lite",
     }
 )
 

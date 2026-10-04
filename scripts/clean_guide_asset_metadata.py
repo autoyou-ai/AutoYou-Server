@@ -128,8 +128,8 @@ def _clean_image(path: Path, write: bool) -> tuple[list[str], list[str], tuple[i
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--site-root", type=Path, default=Path("autoyou-website"))
-    parser.add_argument("--guides-root", type=Path, default=Path("autoyou-website/guides"))
+    parser.add_argument("--site-root", type=Path, default=Path("."))
+    parser.add_argument("--guides-root", type=Path, default=Path("guides"))
     parser.add_argument("--write", action="store_true", help="Rewrite referenced release images in place.")
     args = parser.parse_args()
 
