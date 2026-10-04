@@ -139,3 +139,63 @@ Enables or disables periodic passive screenshot sampling for contextual agent me
   "interval_seconds": 60
 }
 ```
+
+---
+
+## AI Agent Worker Process Endpoints (`routers/ai_agent.py`)
+
+When the AI Agent engine runs as a dedicated worker (port `8081` loopback or LAN HTTPS), it exposes direct conversational and session inspection endpoints:
+
+### `GET /api/sessions/{user_id}/{session_id}`
+
+Retrieves detailed conversation state, token counters, and metadata for a specific user and session.
+
+#### Response (`200 OK`)
+```json
+{
+  "user_id": "operator",
+  "session_id": "sess_8f29ab01",
+  "created_at": 1727998900000,
+  "last_updated": 1727999120456,
+  "turn_count": 6,
+  "active_agent": "coding_agent",
+  "model": "qwen2.5-coder:7b"
+}
+```
+
+### `GET /api/status`
+
+Returns live telemetry from the AI worker process:
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "healthy",
+  "service": "AutoYou AI Agent",
+  "loaded_agents": ["admin_agent", "coding_agent", "browser_agent"],
+  "active_sessions": 2,
+  "memory_rss_mb": 420.5
+}
+```
+
+### `POST /api/internal/runtime-settings`
+
+Dynamically applies parent-authorized settings without restarting the worker subprocess. Requires `AUTOYOU_AI_AGENT_INTERNAL_TOKEN`.
+
+#### Request Payload
+```json
+{
+  "temperature": 0.4,
+  "max_tokens": 4096,
+  "system_instruction_override": null
+}
+```
+
+### `GET /dev/build_graph/{app_name}`
+
+Returns the structured DOT graph representation of the Google ADK multi-agent execution hierarchy for `{app_name}`.
+
+### `GET /dev/build_graph_image/{app_name}`
+
+Returns the rendered graphical diagram (SVG/PNG) visualizing the agent routing tree and tool connections.
+
