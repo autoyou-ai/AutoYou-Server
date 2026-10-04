@@ -9,15 +9,53 @@ These endpoints govern how agent web frontends are served over port `8067`, rout
 
 ---
 
-## Agent Websites Gateway
+## In-Process Website Gateway & Page Service (`routers/website_gateway.py`)
+
+In standard home network deployments (`path_proxy` mode), only the admin port listens beyond loopback. A remote browser on another device authenticates over HTTPS and reaches every hosted agent web application under `/agent/{agent_name}/` on that same origin.
+
+Each request is handed directly to the **Page Service in-process**: no second listener, no extra hop, and identical media streaming and WebSocket capabilities.
+
+### In-Process Gateway Routes (Admin Origin: `:8123` / `:8443`)
+
+The following paths are intercepted on the admin origin and forwarded in-process to the page service:
+
+```http
+GET   /websites
+GET   /agent-websites
+GET   /agent-frontends
+GET   /api/websites
+GET   /api/agent-websites
+QUERY /api/agent-websites
+GET   /api/agent-frontends
+GET   /api/agent-directory
+ALL   /agent/{agent_name}
+ALL   /agent/{agent_name}/{proxy_path:path}
+```
 
 ### `GET /agent/{agent_name}/`
-Served on port **`8067`**. Renders the static or dynamic web frontend bundled with an agent (`autoyou_agents/{agent_name}/website/frontend/index.html`).
+Renders the single-page application bundled with an agent (`autoyou_agents/{agent_name}/website/frontend/index.html`).
 
 #### Example URLs
-- Audio Agent: `http://127.0.0.1:8067/agent/audio_agent/`
-- Notes Agent: `http://127.0.0.1:8067/agent/notes_agent/`
-- Files Agent: `http://127.0.0.1:8067/agent/files_agent/`
+- Audio Agent: `http://127.0.0.1:8123/agent/audio_agent/` (or port `8067` directly)
+- Notes Agent: `http://127.0.0.1:8123/agent/notes_agent/`
+- Files Agent: `http://127.0.0.1:8123/agent/files_agent/`
+- Education Agent: `http://127.0.0.1:8123/agent/education_agent/`
+
+### Remote Browser Identity Translation
+When a paired tablet, phone, or laptop browser accesses an agent website through the gateway, the server automatically stamps and forwards remote identity headers (`REMOTE_BROWSER_IDENTITY_HEADERS`), ensuring the agent frontend receives the client's authenticated role without re-challenging for administrative credentials.
+
+---
+
+## Page Feed Process & Social Publisher (`page_feed.db`)
+
+Powers `page_agent` to publish social feed items, media updates, and agent outputs to connected client streams.
+
+- **Storage**: SQLite database at `page_feed.db`.
+- **Feed Features**:
+  - Full-text search across authored posts and media cards.
+  - Video and audio chunk streaming supporting HTTP 206 Partial Content range requests.
+  - Atomic post deletion and draft caching.
+
 
 ---
 
