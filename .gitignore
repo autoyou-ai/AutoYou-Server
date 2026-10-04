@@ -1,89 +1,149 @@
-# Environment variables
+# ==============================================================================
+# AutoYou Server (.gitignore)
+# Scoped specifically to AutoYou-Server (backend, routers, agents, and native hosts)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Local Configuration Secrets
+# ------------------------------------------------------------------------------
 .env
 /private/
 /config/donations.json
-# Provenance manifest (generated per-build by scripts/provenance_watermark.py)
-PROVENANCE_MANIFEST.json
-.venv/
-.run/
-.trae/
-.pytest_cache/
-# Config data
+config/server_unlock.json
+config/local-services.json
 config.encrypted
 config.encrypted.bak
-agent_frontends_registry.json
-agent_desktop_apps_registry.json
-# WhatsApp data
-.wwebjs_auth/
-.wwebjs_cache/
-# Internet Agent Profile
-chrome_profile/
-# Signal Messaging Partner
-signal_data/
-# Database files
+config.keystore.enc
+*.private.pem
+/release-keys/
+tls/server.key
+tls/ca.key
+tls/ca.crt
+tls/server.crt
+.secure-professional-maximus.key-mode
+tests/.phase3_test_keys/
+
+# ------------------------------------------------------------------------------
+# 2. Virtual Environments, IDE & OS Metadata
+# ------------------------------------------------------------------------------
+.venv/
+.venv-build312/
+.venv-wheel-*/
+.run/
+.trae/
+.vscode/
+/.vs/
+.pytest_cache/
+.DS_Store
+__pycache__/
+*.pickle
+node_modules/
+
+# ------------------------------------------------------------------------------
+# 3. Server Runtime State, Databases & Logs
+# ------------------------------------------------------------------------------
 *.db
 *.db-shm
 *.db-wal
-# Private Windows Security Agent runtime state
-/win_security_agent/network.sqlite3
-/autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
-# Private macOS Security Agent runtime state
-/mac_security_agent/network.sqlite3
-/autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
-/logs/codex-live-test/
-# Node modules
-node_modules/
-DO_NOT_UPLOAD/
-# Python cache
-__pycache__/
-chrome_profile/
-firefox_profile/
-uploads/
-media/
-# Runtime media dirs only; test suites named media stay tracked.
-!tests/**/media/
-ios/DerivedData/
-web/
-smoke/
-.DS_Store
-trae_agent.log
-clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcuserdata/
-# Per-developer Xcode state for the iOS 16 project, same as the line above.
-clients/ios/AutoYouAppIOS16.xcodeproj/xcuserdata/
-clients/ios/AutoYouAppIOS16.xcodeproj/project.xcworkspace/xcuserdata/
-clients/ios/build_output.txt
-ollama_data/
-*.log
-corehost-trace.txt
-# Miscellaneous
-output.txt
-/=[0-9]*
 *.db.bak
+*.log
+trae_agent.log
+corehost-trace.txt
+output.txt
 build_log.txt
 build_output.txt
+nuitka-crash-report.xml
+/logs/codex-live-test/
+.codex-build-logs/
+.codex/hooks.json
+output/
+scratch/
+.tmp/
+tmp/
+tmp/pdfs/
+tmp.*.txt
+tmp_agents_preview.html
+/=[0-9]*
+trace.trace
+trace.trace/
+systemd/user/
+/admin_profile/
+
+# ------------------------------------------------------------------------------
+# 4. Registries, Sessions & User Preferences
+# ------------------------------------------------------------------------------
+agent_install_registry.json
+agent_frontends_registry.json
+agent_desktop_apps_registry.json
+agent_ui_sessions.json
+ui_preferences.json
+reminders.json
+cron_tasks.json
+check_tasks.py
+
+# ------------------------------------------------------------------------------
+# 5. Third-Party Messaging Bridges & Browser Profiles
+# ------------------------------------------------------------------------------
+.wwebjs_auth/
+.wwebjs_cache/
+signal_data/
+chrome_profile/
+firefox_profile/
+ollama_data/
+.playwright-cli/
+.playwright-mcp/
+${PLAYWRIGHT_BROWSERS_PATH}
+
+# ------------------------------------------------------------------------------
+# 6. Media & Audio Storage
+# ------------------------------------------------------------------------------
+uploads/
+media/
+!tests/**/media/
+conversation_media/
+*.mp3
+test.wav
+test.*.wav
+
+# ------------------------------------------------------------------------------
+# 7. Subagent Runtime Workspaces & Calibrated Assets
+# ------------------------------------------------------------------------------
+/win_security_agent/network.sqlite3
+/autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
+/mac_security_agent/network.sqlite3
+/autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
+/audio_agent/library_settings.json
+shared/earnings_agent/pending_ad_credits.json
+shared/voice_training/
+voice_training_storage.json
+autoyou_agents/ionos_agent/ionos_agent/
+autoyou_agents/ionos_cloudflare_agent/ionos_cloudflare_agent/
+autoyou_agents/mail_agent/mail_agent/
+autoyou_agents/fine_tuning_agent/fine_tuning_agent/
+autoyou_agents/data_collector_agent/data_collector_agent/
+autoyou_agents/persona_agent/persona_agent/*.md
+autoyou_agents/media_generation_agent/config/video.json
+autoyou_agents/robinhood_agent/robinhood/runtime_state.json
+autoyou_agents/robinhood_agent/robinhood/instruments_cache.json
+
+# User-calibrated desktop app data is never committed or shipped.
+# Keep the generic manifest templates and setup prompts tracked.
+/autoyou_agents/claude_desktop_agent/desktop_assets/*
+!/autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md
+/autoyou_agents/codex_desktop_agent/desktop_assets/*
+!/autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
+
+# ------------------------------------------------------------------------------
+# 8. Server Build & Native Packaging Artifacts
+# ------------------------------------------------------------------------------
 build/
 !tests/server/build/
-!/.llm/build/
-!/.llm/build/*.md
+server.dist/
 local.properties
-clients/android/.gradle/
-clients/android/build/
-clients/android/.idea/
-clients/android/build/reports/
-clients/ios/AutoYouApp.xcodeproj/project.xcworkspace/xcuserdata/
-clients/android/build/reports/problems/problems-report.html
-clients/android/app/build/
-/.vs
-build/AutoYou/
-dist/AutoYou
-dist/releases/
-clients/windows/build/
-clients/windows/dist/
-clients/windows/build-audio-fix-*/
-clients/windows/dist-audio-fix-*/
-clients/windows/build-chatbar-fix-*/
-clients/windows/dist-chatbar-fix-*/
-clients/windows/venv/
+
+# Native Windows Host Build Products
 servers/windows/build/
 servers/windows/dist/
 servers/windows/artifacts/
@@ -95,209 +155,29 @@ servers/windows/AutoYouWindowsHost/corehost-trace.txt
 servers/windows/AutoYouWindowsHost/*.user
 servers/windows/AutoYouWindowsHost/*.suo
 servers/windows/AutoYouWindowsHost/*.userprefs
-clients/linux/build/
-clients/linux/dist/
-clients/linux/venv/
-dist/AutoYou Connect/
-servers/macos/apple/.build/
-clients/ios/Packages/*/.build/
-clients/ios/Packages/*/.swiftpm/
-clients/macos/apple/build/
-clients/macos/apple/dist/
-clients/macos/apple/venv/
-autoyou_lite/dist/
-autoyou_lite/build/
 
-# AutoYou Release Configuration
-release.jks
-keystore.properties
-/release-keys/
-*.private.pem
-
-clients/android/build_errors.txt
-output/
-autoyou-core/autoyou-auth/member-source/
-autoyou-website/.superdesign/
-agent_install_registry.json
-agent_frontends_registry.json
-nuitka-crash-report.xml
+# Native macOS Host Build Products
 servers/macos/build/
-${PLAYWRIGHT_BROWSERS_PATH}
-
-.claude/settings.local.json
-.claude/
-!.claude/
-.claude/*
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/autoyou-system-operator/
-!.claude/skills/autoyou-system-operator/SKILL.md
-!.claude/skills/autoyou-system-operator/agents/
-!.claude/skills/autoyou-system-operator/agents/openai.yaml
-config/local-services.json
-openclaw/openclaw/
-test.*.wav
-tmp.*.txt
-.vscode/
-CLAUDE.md
-config.keystore.enc
-test.wav
-tests/.phase3_test_keys/
-autoyou-website/playwright-report/data/
-autoyou-website/test-results/
-ui_preferences.json
-reminders.json
-# Audio Agent source-selection settings (machine-local runtime state)
-/audio_agent/library_settings.json
-# Optional Cognee memory backend: local runtime data and upstream checkout.
-# Keep upstream Cognee out of AutoYou unless carrying AutoYou-specific patches.
-/cognee/
-/vendor/cognee/
-# Upstream brag (github.com/latent-spaces/brag) is its own project; we keep a
-# local checkout to render clips, and commit only the output it produces.
-/vendor/brag/
-# Optional Odysseus AI upstream checkout.  The tracked AutoYou adapter talks
-# to its Docker service over localhost and does not bundle AGPL source.
-/vendor/odysseus/
-# Public repo, developed here and pushed to github.com/autoyou-ai/signtoross.
-# Tracked there, never here.
-/vendor/signtoross/
-.venv-build312/
-cron_tasks.json
-
-# Local agent/tool outputs
-.codex/hooks.json
-.llm/private-local/
-autoyou_agents/ionos_agent/ionos_agent/
-autoyou_agents/ionos_cloudflare_agent/ionos_cloudflare_agent/
-autoyou_agents/mail_agent/mail_agent/
-
-# User-calibrated desktop app data is never committed or shipped. Keep the
-# generic manifest template and setup prompt tracked.
-/autoyou_agents/claude_desktop_agent/desktop_assets/*
-!/autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json
-!/autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md
-/autoyou_agents/codex_desktop_agent/desktop_assets/*
-!/autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
-!/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
-
-
-.tmp/
-*.mp3
-reference/
-autoyou-website/files/
-agent_ui_sessions.json
-clients/python/new_autoyou_client/
-tmp-test-anchor/ios-crashpull*/
-trace.trace
-trace.trace/
-*.pickle
-.playwright-mcp/
-tmp_agents_preview.html
-scratch/
-docs/legal/generated/
-docs/legal/generated/manifest-summary.json
-docs/legal/generated/README.md
-docs/legal/generated/android-app/NOTICE.txt
-docs/legal/generated/android-app/sbom.cdx.json
-docs/legal/generated/autoyou-lite-server/NOTICE.txt
-docs/legal/generated/autoyou-lite-server/sbom.cdx.json
-docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt
-docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json
-docs/legal/generated/autoyou-server-macos-default/NOTICE.txt
-docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json
-docs/legal/generated/autoyou-server-source-full/NOTICE.txt
-docs/legal/generated/autoyou-server-source-full/sbom.cdx.json
-docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt
-docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json
-docs/legal/generated/autoyou-server-windows-default/NOTICE.txt
-docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json
-docs/legal/generated/ios-app/NOTICE.txt
-docs/legal/generated/ios-app/sbom.cdx.json
-docs/legal/generated/macos-connect/NOTICE.txt
-docs/legal/generated/macos-connect/sbom.cdx.json
-docs/legal/generated/python-client-gui/NOTICE.txt
-docs/legal/generated/python-client-gui/sbom.cdx.json
-docs/legal/generated/windows-connect/NOTICE.txt
-docs/legal/generated/windows-connect/sbom.cdx.json
-shared/voice_training/
-voice_training_storage.json
-# Kept conversation media (voice notes, spoken replies, generated files)
-conversation_media/
-tools/signtosross/
-tools/opensign/
-tools/mike/
-
-# release-e2e skill per-run artifacts (build logs, rc, state)
+servers/macos/apple/.build/
+servers/macos/apple/.build.prebuild-backup/
+servers/macos/intel/build/
+servers/macos/intel/dist/
 servers/macos/e2e-server-build.*
 servers/macos/e2e-package.log
-clients/macos/apple/e2e-*.log
-clients/android/e2e-*.log
-clients/ios/e2e-*.log
-clients/ios/build/e2e-deriveddata/
-.claude/skills/release-e2e/STATE.json
-.claude/skills/release-e2e/scripts/__pycache__/
-clients/macos/intel/dist/
-clients/macos/intel/venv/
-servers/macos/intel/dist/
-clients/macos/intel/build/
-servers/macos/intel/build/
-docs/legal/drafts/
-# Fine-tuning agent runtime workspace (DB, datasets, dumps, hf_cache, vendored tools)
-autoyou_agents/fine_tuning_agent/fine_tuning_agent/
-autoyou_agents/data_collector_agent/data_collector_agent/
-# Generated by bootstrap_autoyou.py from locked.txt
-requirements/.locked.constraints.generated.txt
-.codex-build-logs/
-LICENSE_ACKNOWLEDGEMENT
-shared/earnings_agent/pending_ad_credits.json
-server.dist/
 
-# Machine-specific user systemd units
-systemd/user/
-tmp/pdfs/
-autoyou_agents/persona_agent/persona_agent/*.md
-.playwright-cli/
-tuning/data/
-clients/macos/apple/build
-clients/macos/apple/build.prebuild-backup/
-clients/macos/apple/dist.prebuild-backup/
-clients/macos/apple/dist/
-clients/macos/apple/venv/
-clients/macos/apple/venv.prebuild-backup/
-servers/macos/apple/.build.prebuild-backup/
-clients/macos/apple/dist-local/
-clients/macos/apple/venv-local/
-config/server_unlock.json
-tls/server.key
-tls/ca.key
-tls/ca.crt
-tls/server.crt
-# AutoYou Lite runtime keystore backups and generated local TLS material
-autoyou_lite/autoyou_lite/config.keystore.enc*
-autoyou_lite/autoyou_lite/tls/
-autoyou_lite/MagicMock/
-.secure-professional-maximus.key-mode
-screenshots/ios/android/
-.venv-wheel-*/
+# ------------------------------------------------------------------------------
+# 9. Optional Vendored Dependencies & Adapters
+# ------------------------------------------------------------------------------
+# Pinned upstream checkouts are pulled per vendor/INSTRUCTIONS.md and never committed
+/cognee/
+/vendor/cognee/
+/vendor/brag/
+/vendor/odysseus/
+/vendor/signtoross/
 
-autoyou_agents/media_generation_agent/config/video.json
-check_tasks.py
-autoyou_agents/robinhood_agent/robinhood/runtime_state.json
-autoyou_agents/robinhood_agent/robinhood/instruments_cache.json
-
-# Isolated checkouts created by training/worktree.py for autonomous agent tasks
-.worktrees/
-
-# AutoYou brain (training/): everything generated is large and regenerable -
-# extracted corpora, SFT datasets, BM25 index, LoRA adapters, merged weights,
-# GGUF exports and run logs. Only the pipeline source is tracked.
-training/data/
-training/.venv/
-training/vendor/
-
-# Model artefacts anywhere in the tree. None are tracked today; these patterns
-# keep a multi-GB export from being committed by accident.
+# ------------------------------------------------------------------------------
+# 10. Large Model Checkpoints & Binary Weights
+# ------------------------------------------------------------------------------
 *.gguf
 *.safetensors
 *.onnx
@@ -305,56 +185,15 @@ training/vendor/
 *.pth
 adapter_model.bin
 
-# Raw development-history captures. The DataCollector corpus is read in place
-# from its own drive and must never be copied into the repository.
-DataCollector/
-collected_context/
-**/collected_context/
-servers/macos/apple_lite/.build/
-
-# Support brain artifacts (models, corpora, runs)
-support_training/data/
-# Superdesign temporary exports
-.superdesign/tmp/
-
-# Cloudflare Wrangler local account and deployment cache
-.wrangler/
-
-# LaTeX build products. latexmk regenerates all of these from the .tex and
-# .bib; .fdb_latexmk and .fls additionally bake in absolute paths from the
-# machine that built them, so committing them breaks a fresh clone's first run.
-research/paper/*.aux
-research/paper/*.bbl
-research/paper/*.blg
-research/paper/*.fdb_latexmk
-research/paper/*.fls
-research/paper/*.log
-research/paper/*.out
-research/paper/*.synctex.gz
-research/paper/*.toc
-
-
-# autoyou-research is its own PUBLIC repository (github.com/autoyou-ai/autoyou-research)
-# nested inside this private one. Its contents are tracked there, never here.
-/autoyou-research/
-
-# Material that stays private: product-integration specifications naming
-# internal source files, and marketing copy. Deliberately kept out of the
-# public research repository.
-# (tracked here; listed for orientation, not ignored)
-
-# Graphify structural AST outputs (disposable, generated)
+# ------------------------------------------------------------------------------
+# 11. Legal Drafts & Provenance Tracking
+# ------------------------------------------------------------------------------
+docs/legal/drafts/
+PROVENANCE_MANIFEST.json
+LICENSE_ACKNOWLEDGEMENT
+requirements/.locked.constraints.generated.txt
 graphify-out/
 **/graphify-out/
-
-# Local environment and tracking
 .gemini/
 .source-revision
-# Per-instance operator profile photo stored by the running server.
-/admin_profile/
-scripts/provenance_watermark.py
-shared/ai_training_detection.py
-shared/source_provenance.py
-tests/test_ai_training_detection.py
-tests/test_source_provenance.py
-scripts/provenance.py
+DO_NOT_UPLOAD/
