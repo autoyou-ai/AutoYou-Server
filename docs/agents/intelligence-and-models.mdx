@@ -1,63 +1,68 @@
 ---
 title: "Intelligence & Model Agents"
-description: "Reference catalog for memory_agent, persona_agent, model_picker_agent, fine_tuning_agent, data_collector_agent, openclaw_agent, and hermes_agent."
+description: "Reference catalog for memory_agent, persona_agent, model_picker_agent, openclaw_agent, and hermes_agent."
 ---
 
 # Intelligence & Model Agents
 
-These agents govern long-term semantic memory, persona customization, hardware-aware model selection, local model fine-tuning, and advanced cognitive bridges.
+Intelligence & Model agents govern long-term semantic memory recall, dynamic user personas, hardware-aware model selection, external multi-agent bridges, and advanced reasoning architectures.
 
 ---
 
 ## 1. `memory_agent`
+
 - **Location**: `autoyou_agents/memory_agent/`
-- **Role**: Long-term semantic memory subagent. Maintains a searchable vector and keyword index of user facts, preferences, past conversations, and project context.
+- **Role**: Long-term semantic memory subagent. Maintains a searchable vector and keyword index of user facts, preferences, past conversations, and project context across sessions.
+- **Underlying Engine**: Integrated with SQLite-vec and optional Cognee knowledge graph indexing.
 - **Key Tools**:
-  - `store_memory(fact: str, category: str = "general")`: Stores a permanent memory entry.
+  - `store_memory(fact: str, category: str = "general")`: Stores a permanent memory entry with timestamp and semantic embeddings.
   - `search_memory(query: str, limit: int = 5)`: Retrieves relevant historical facts using cosine similarity or keyword ranking.
-  - `forget_memory(memory_id: str)`: Removes a memory entry upon user request.
+  - `forget_memory(memory_id: str)`: Removes a memory entry upon user request to honor privacy and data deletion rights.
+  - `list_memories(category: str = None)`: Enumerates stored memories grouped by category.
 
 ---
 
 ## 2. `persona_agent`
+
 - **Location**: `autoyou_agents/persona_agent/`
-- **Role**: Manages user-authored self-data profiles and persona definitions in Markdown format (`persona.md`). Enables tailoring tone, communication style, and domain expertise.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/persona_agent/`.
+- **Role**: Manages user-authored self-data profiles and persona definitions in Markdown format (`persona.md`). Enables tailoring tone, communication style, boundary rules, and domain expertise for all interacting agents.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/persona_agent/`.
 - **Key Tools**:
-  - `get_active_persona()`: Reads current persona profile Markdown.
-  - `update_persona(content: str)`: Updates persona guidelines and voice characteristics.
+  - `get_active_persona()`: Reads current persona profile Markdown and extracted attribute tags.
+  - `update_persona(content: str)`: Updates persona guidelines and voice characteristics atomically.
+  - `reset_persona_to_default()`: Restores baseline helpful, neutral assistant persona.
 
 ---
 
 ## 3. `model_picker_agent`
+
 - **Location**: `autoyou_agents/model_picker_agent/`
 - **Role**: Hardware-aware local model selector powered by **LLMFit**. Scans host hardware (RAM, VRAM, CPU architecture, GPU compute capability) and recommends optimal model quantization parameters (Q4_K_M, Q5_K_M, Q8_0) that will run without out-of-memory crashes.
 - **Key Tools**:
-  - `scan_hardware_capabilities()`: Returns available VRAM and compute tier.
-  - `recommend_models()`: Proposes the fastest and most capable models for the host system.
+  - `scan_hardware_capabilities()`: Returns available VRAM, total RAM, GPU device name, and compute tier.
+  - `recommend_models()`: Proposes the fastest and most capable Ollama or LiteLLM models tailored to the host system.
+  - `benchmark_model_speed(model_name: str)`: Measures token generation latency (tokens/sec) and time-to-first-token.
 
 ---
 
-## 4. `fine_tuning_agent`
-- **Location**: `autoyou_agents/fine_tuning_agent/`
-- **Role**: Manages local LoRA (Low-Rank Adaptation) and QLoRA fine-tuning runs. Formats session datasets, dumps training hyperparameters, and supervises training worker subprocesses.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/fine_tuning_agent/`.
+## 4. `openclaw_agent`
+
+- **Location**: `autoyou_agents/openclaw_agent/`
+- **Role**: Protocol bridge and tool translation layer connecting AutoYou agents to external OpenClaw multi-agent swarms.
+- **Key Features**:
+  - Translates AutoYou Google ADK tool schemas to OpenClaw action frames.
+  - Supports decentralized agent federation and remote task delegation over encrypted transports.
 - **Key Tools**:
-  - `prepare_dataset(session_ids: list)`: Formats conversation histories into JSONL instruction pairs.
-  - `start_tuning_run(config: dict)`: Launches background fine-tuning worker.
-  - `get_tuning_progress(run_id: str)`: Polls loss curves, epoch count, and ETA.
+  - `dispatch_openclaw_task(task_payload: dict)`: Sends a high-level goal to the OpenClaw coordinator.
+  - `query_openclaw_status(task_id: str)`: Polls progress and intermediate execution steps.
+  - `cancel_openclaw_task(task_id: str)`: Aborts a remote multi-agent workflow.
 
 ---
 
-## 5. `data_collector_agent`
-- **Location**: `autoyou_agents/data_collector_agent/`
-- **Role**: Non-invasive context collector that records approved agent sessions, tool execution metrics, and developer interactions to produce high-quality training datasets.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/data_collector_agent/`.
+## 5. `hermes_agent`
 
----
-
-## 6. `openclaw_agent` & `hermes_agent`
-- **Location**: `autoyou_agents/openclaw_agent/` & `hermes_agent/`
-- **Role**: Bridges AutoYou to external high-autonomy reasoning frameworks:
-  - **OpenClaw**: Orchestrates multi-agent workflows, code generation graphs, and tool chains.
-  - **Hermes**: Connects to the Hermes function-calling model family for structured JSON task routing.
+- **Location**: `autoyou_agents/hermes_agent/`
+- **Role**: Specialized interface for Hermes-series models (e.g. Nous Hermes 3). Optimized for complex multi-step reasoning, structured XML/JSON function calling, and deep agentic workflows.
+- **Key Tools**:
+  - `invoke_hermes_reasoning(prompt: str, context: dict = None)`: Executes complex reasoning chains with explicit scratchpad/thinking traces.
+  - `verify_tool_call_compatibility(schema: dict)`: Validates that tool specifications match Hermes function calling conventions.

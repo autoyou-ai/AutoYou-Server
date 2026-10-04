@@ -1,0 +1,71 @@
+---
+title: "Utility Agents"
+description: "Reference catalog for remote_desktop_agent, education_agent, game_agent, location_agent, and proxy_agent."
+---
+
+# Utility Agents
+
+Utility agents provide WebRTC remote desktop streaming, private educational study sessions, client-side gaming bridges, geolocation services, and internal HTTP/SOCKS reverse-proxy target validation.
+
+---
+
+## 1. `remote_desktop_agent`
+
+- **Location**: `autoyou_agents/remote_desktop_agent/`
+- **Role**: Enables full remote desktop viewing, monitor switching, and simulated keyboard/mouse control over WebRTC and WebSockets.
+- **Frontend**: Integrated with the Live View panel at `/admin` and available via the internal agent proxy at `http://127.0.0.1:8067/agent/remote_desktop_agent/`.
+- **Platform Backends**: Uses `mss` on Windows and Linux; native Quartz/CoreGraphics on macOS.
+- **Key Tools**:
+  - `capture_screen(monitor_index: int = 0)`: Takes a full-resolution screenshot buffer of the specified display.
+  - `send_input_event(event_type: str, data: dict)`: Injects synthesized clicks, mouse scrolls, or keystrokes into the host operating system.
+  - `list_monitors()`: Enumerates connected display outputs, resolutions, and refresh rates.
+  - `get_remote_desktop_settings()`: Inspects streaming quality, frame rate limits, and input permissions.
+
+---
+
+## 2. `education_agent`
+
+- **Location**: `autoyou_agents/education_agent/`
+- **Role**: Private, low-overhead learning and mentoring workspace. Helps teachers, tutors, and study groups monitor live WebRTC sessions, review voice transcripts, and inspect shared study media without technical complexity.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/education_agent/`.
+- **Key Features**:
+  - Live WebRTC text chat and voice transcript visibility.
+  - Active client/session and datachannel status indicators.
+  - Inbound video frame preview and calm, low-overhead monitoring.
+  - Operates directly against runtime state and session storage after local OTP authentication.
+
+---
+
+## 3. `game_agent`
+
+- **Location**: `autoyou_agents/game_agent/`
+- **Role**: Gaming bridge and streaming assistant for AutoYou's native Android and iOS clients. Supports host-rendered games and browser-based games streamed over WebRTC and loopback WebSockets.
+- **Protocol**: Implements the `autoyou_game_v1` frame protocol for touch events, sensor inputs, analog axes, physical buttons, mouse, and keyboard.
+- **Built-in Demos**:
+  - Built-in Neon Horizon demo hosted at `/play` running in the host browser and accepting native mobile controller input.
+  - Unreal Engine source plugin available at `/api/game/unreal-plugin` (`OnFrame`, `OnSessionReset`).
+  - Supports up to four operator-configured virtual buttons mapped to engine input actions.
+
+---
+
+## 4. `location_agent`
+
+- **Location**: `autoyou_agents/location_agent/`
+- **Role**: User-consented location timeline manager. Stores GPS coordinates from paired mobile devices, resolves place information, and provides bounded timeline queries for travel and context recall.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/location_agent/`.
+- **Storage**: Persistent SQLite store (`LocationStore`) opened on-demand.
+- **Key Tools**:
+  - `record_location(latitude: float, longitude: float, device_id: str = "...", accuracy_m: float = None)`: Records a consented location point with timestamp and accuracy radius.
+  - `query_location_timeline(device_id: str = "", since: str = "", until: str = "", limit: int = 100)`: Retrieves a bounded location history timeline for authenticated devices.
+  - `get_location_status()`: Queries aggregate point counts, registered devices, and tracking summary without mutating state.
+
+---
+
+## 5. `proxy_agent`
+
+- **Location**: `autoyou_agents/proxy_agent/`
+- **Role**: Internal reverse-proxy manager and target validation gate. Ensures that outgoing HTTP and WebSocket proxying requests through port `8067` only reach verified public targets and do not leak internal loopback endpoints.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/proxy_agent/`.
+- **Key Tools**:
+  - `inspect_proxy_target(url: str)`: Normalizes and inspects a target URL, validating protocol and hostname safety without making a network request.
+  - `validate_outbound_route(target_url: str)`: Verifies that the destination target adheres to loopback isolation and SSRF prevention rules.

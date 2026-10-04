@@ -1,0 +1,56 @@
+---
+title: "AI & Training Agents"
+description: "Reference catalog for data_collector_agent, fine_tuning_agent, and voice_training_agent."
+---
+
+# AI & Training Agents
+
+AI & Training agents govern local dataset collection, conversation provenance logging, LoRA/QLoRA model fine-tuning runs, and custom neural voice cloning and training.
+
+---
+
+## 1. `data_collector_agent`
+
+- **Location**: `autoyou_agents/data_collector_agent/`
+- **Role**: Non-invasive, privacy-preserving context collector that records user-approved agent sessions, developer tool call traces, and messaging histories to synthesize high-quality training datasets without leaking private identifiers.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/data_collector_agent/`.
+- **Key Tools**:
+  - `get_data_collector_status()`: Queries configured collection sources, dataset sizes, and active collection job statuses.
+  - `get_data_collector_capabilities()`: Inspects which local communication sources (WhatsApp, Telegram, local IDE logs) are available and consented.
+  - `collect_local_conversations(dry_run: bool = False)`: Collects approved conversation transcripts into the private training workspace.
+  - `cancel_data_collection()`: Safely terminates a running data collection job.
+  - `collect_selected_application(application: str, options: dict)`: Collects data from a single consented application with time range filters.
+  - `create_data_collector_training_export(title: str = None)`: Packages collected conversations into a standardized JSONL export ready for `fine_tuning_agent`.
+
+---
+
+## 2. `fine_tuning_agent`
+
+- **Location**: `autoyou_agents/fine_tuning_agent/`
+- **Role**: Supervises local LoRA and QLoRA fine-tuning workflows. Formats datasets into instruction tuning pairs, manages training parameters (epochs, learning rate, rank, alpha), monitors loss convergence, and installs finished checkpoints into Ollama.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/fine_tuning_agent/`.
+- **Key Tools**:
+  - `create_dataset_from_datacollector_handoff(export_id: str)`: Imports and validates conversation datasets emitted by `data_collector_agent`.
+  - `create_dataset_from_folder(folder_path: str)`: Loads raw JSONL or text files from a local directory.
+  - `list_datasets()`: Enumerates ready datasets with sample counts, tokens, and split ratios.
+  - `start_training_job(dataset_id: str, base_model: str, config: dict)`: Launches background training subprocess with GPU memory management.
+  - `get_fine_tuning_status(job_id: str)`: Polls training progress, epoch step, loss curve, and estimated time remaining.
+  - `tail_fine_tuning_job_log(job_id: str, lines: int = 50)`: Streams recent training logs and gradient metrics.
+  - `cancel_fine_tuning_job(job_id: str)`: Gracefully stops an active training run and saves intermediate checkpoints.
+  - `install_fine_tuned_model(job_id: str, model_name: str)`: Converts LoRA adapters into GGUF format and installs them directly into Ollama for immediate use.
+
+---
+
+## 3. `voice_training_agent`
+
+- **Location**: `autoyou_agents/voice_training_agent/`
+- **Role**: Custom neural voice cloning and speech synthesis training studio. Manages voice reference recording sessions, validates audio acoustic quality, and configures local TTS engines (Kokoro, EmotiVoice, Piper).
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/voice_training_agent/`.
+- **Key Tools**:
+  - `list_voice_transcripts()`: Lists recorded training audio clips and their corresponding transcript texts.
+  - `get_voice_transcript(transcript_id: str)`: Retrieves transcript text and audio waveform metadata.
+  - `start_voice_training(voice_name: str)`: Kicks off feature extraction and voice embedding generation.
+  - `get_training_status()`: Queries the status, epoch count, and validation loss of the voice training pipeline.
+  - `test_synthesize_voice(text: str, voice_name: str)`: Synthesizes a test speech sample using the freshly trained voice profile.
+  - `install_custom_voice_tts_provider(voice_name: str)`: Registers the new custom voice as a selectable voice option in the AutoYou speech engine.
+  - `get_voice_training_storage()`: Queries disk consumption and storage paths for voice training datasets.
