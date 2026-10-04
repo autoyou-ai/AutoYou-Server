@@ -4,7 +4,7 @@ google-adk==2.9.2
 google-genai==2.25.0
 google-cloud-aiplatform==1.156.0
 # Safe build metadata support for the packaged runtime and optional torch stack.
-setuptools>=83,<84
+setuptools>=84.0.0,<85
 opentelemetry-api==1.42.1
 opentelemetry-sdk==1.42.1
 opentelemetry-semantic-conventions==0.63b1
