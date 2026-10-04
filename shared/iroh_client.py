@@ -56,9 +56,13 @@ class IrohClientService:
         self._peer: tuple[str, str] | None = None
         self._recovery: asyncio.Task | None = None
         self._closing = False
+        self._history_deletion = False
+        self._lifecycle_revision = 0
 
     async def start(self, *, enroll: bool = True, unlocked_password: str | None = None) -> None:
         async with self._gate:
+            if self._history_deletion:
+                raise SessionDenied("local history deletion is in progress")
             if self.runtime is not None:
                 return
             if self._closing:
@@ -115,6 +119,9 @@ class IrohClientService:
             raise ConnectionError("client endpoint is not running")
         await self._cancel_recovery()
         async with self._gate:
+            if self._history_deletion:
+                raise SessionDenied("local history deletion is in progress")
+            self._lifecycle_revision += 1
             future = self._new_future()
             request = None
             try:
@@ -139,6 +146,9 @@ class IrohClientService:
 
     async def reconnect(self, endpoint_id: str, ticket: str) -> Any:
         """Explicit reconnect to a previously paired, still-authorized endpoint."""
+        if self._history_deletion:
+            raise SessionDenied("local history deletion is in progress")
+        self._lifecycle_revision += 1
         await self._cancel_recovery()
         self._peer = (endpoint_id, ticket)
         return await self._connect_existing(endpoint_id, ticket)
@@ -147,6 +157,8 @@ class IrohClientService:
         if self.runtime is None or self._closing:
             raise ConnectionError("client endpoint is not running")
         async with self._gate:
+            if self._history_deletion:
+                raise SessionDenied("local history deletion is in progress")
             grant = await asyncio.to_thread(self.grants.grant_for_endpoint, endpoint_id)
             floor = await asyncio.to_thread(self.grants.generation_floor, endpoint_id)
             future = self._new_future()
@@ -217,6 +229,7 @@ class IrohClientService:
                         authorization_epoch=proposed.authorization_epoch, expires_at_ms=proposed.expires_at_ms,
                         scopes=proposed.scopes)
                     self._channel = runtime.admit(context, binding)
+                    self._channel.application_capabilities = dict(self._capabilities)
                     await self.on_prepared(runtime, context, self._channel)
                 if action.ready:
                     if self._channel is None or self._channel.binding.transport_id != context.transport_id:
@@ -275,7 +288,7 @@ class IrohClientService:
             await self._notify()
 
     def _schedule_recovery(self) -> None:
-        if self._peer is not None and self.core.snapshot().phase == self.runtime.api.ClientPhase.RECOVERING and \
+        if not self._history_deletion and self._peer is not None and self.core.snapshot().phase == self.runtime.api.ClientPhase.RECOVERING and \
                 (self._recovery is None or self._recovery.done()):
             self._recovery = asyncio.create_task(self._recover(), name="iroh-client-recovery")
 
@@ -324,16 +337,47 @@ class IrohClientService:
             self.core.network_changed(self.core.snapshot().operation, False)
 
     async def suspend(self) -> None:
+        self._lifecycle_revision += 1
         if self.core is not None:
             self.core.suspend()
         await self._disconnect_owned()
         await self._notify()
 
     async def disconnect(self) -> None:
+        self._lifecycle_revision += 1
         if self.core is not None:
             self.core.disconnect()
         await self._disconnect_owned()
         await self._notify()
+
+    async def quiesce_for_history_delete(self, delete: Callable) -> Any:
+        """Fence dials and join retired writers before cancelling durable bodies."""
+        async with self._gate:
+            if self._history_deletion or self._closing:
+                raise SessionDenied("client history cannot be changed now")
+            self._history_deletion = True
+        peer = self._peer
+        active = completed = False
+        revision = self._lifecycle_revision
+        try:
+            active = self.core is not None and self.core.snapshot().phase in {
+                self.runtime.api.ClientPhase.ONLINE, self.runtime.api.ClientPhase.CHANGING_PATH,
+                self.runtime.api.ClientPhase.RECOVERING, self.runtime.api.ClientPhase.CONNECTING,
+                self.runtime.api.ClientPhase.AUTHORIZING, self.runtime.api.ClientPhase.ENROLLING}
+            contexts = tuple(self._contexts.values())
+            if active:
+                await self.suspend()
+            revision = self._lifecycle_revision
+            if self.runtime is not None:
+                for context in contexts:
+                    await self.runtime.join_disconnected(context)
+            result = await delete()
+            completed = True
+            return result
+        finally:
+            self._history_deletion = False
+            if completed and active and peer is not None and not self._closing and revision == self._lifecycle_revision:
+                await self._connect_existing(*peer)
 
     async def _disconnect_owned(self) -> None:
         self._fail(ConnectionError("client connection was canceled"))

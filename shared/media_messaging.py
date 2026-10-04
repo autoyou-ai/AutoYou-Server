@@ -614,6 +614,26 @@ def inline_context_for_client(
     return [{"source": source, "attachments": inline}] if inline else []
 
 
+def application_context_for_client(attachments: Iterable[Dict[str, Any]], *,
+                                   native_files: bool, source: str = "media_reply") -> List[Dict[str, Any]]:
+    """Keep host sources bounded until the native channel commits raw bodies."""
+    if not native_files:
+        return inline_context_for_client(attachments, source=source)
+    references = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict) or not any(attachment.get(key) is not None for key in ("path", "data", "file_ref")):
+            continue
+        item = dict(attachment)
+        mime = attachment_mimetype(item)
+        item["filename"] = safe_filename(item.get("filename") or item.get("path"), mime)
+        item["mimetype"] = mime
+        meta = dict(item.get("meta") or {}) if isinstance(item.get("meta"), dict) else {}
+        meta.setdefault("kind", "video" if mime.startswith("video/") else "image")
+        meta.setdefault("role", "media_reply"); item["meta"] = meta
+        references.append(item)
+    return [{"source": source, "attachments": references}] if references else []
+
+
 def data_url_attachment(attachment: Dict[str, Any]) -> Optional[str]:
     converted = inline_attachment_for_client(attachment)
     if not converted:

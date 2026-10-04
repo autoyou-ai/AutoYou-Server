@@ -235,6 +235,12 @@ class MessageType(Enum):
     HTTP_WS_UPGRADE = "http_ws_upgrade"
     HTTP_WS_DATA = "http_ws_data"
     HTTP_WS_CLOSE = "http_ws_close"
+    # Native file records use the binary lane. Only bounded descriptor/status
+    # controls become application envelopes; file bytes never enter JSON.
+    BINARY_TRANSFER_OPEN = "binary_transfer_open"
+    BINARY_TRANSFER_CONTROL = "binary_transfer_control"
+    TRANSPORT_TRANSFER_LIMITS = "transport_transfer_limits"
+    APPLICATION_DELIVERY_CONTROL = "application_delivery_control"
 
 @dataclass
 class MessageHeader:

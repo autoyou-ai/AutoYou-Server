@@ -87,7 +87,7 @@ def _safe_path_component(value: Optional[str], fallback: str) -> str:
 
 
 def _get_temp_media_dir() -> str:
-    base = os.path.join(tempfile.gettempdir(), "autoyou_media")
+    base = os.path.join(os.environ.get("AUTOYOU_TEST_ROOT") or tempfile.gettempdir(), "autoyou_media")
     Path(base).mkdir(parents=True, exist_ok=True)
     return base
 

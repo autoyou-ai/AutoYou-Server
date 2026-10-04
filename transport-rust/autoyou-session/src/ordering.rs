@@ -10,19 +10,24 @@ pub const MAX_SEQUENCE_GAP: u64 = 128;
 const MAX_RETIREMENT_RANGES: usize = 1024;
 
 /// Retired IDs are never reusable within a connection generation. Sequential
-/// IDs compress to one interval, while a hostile sparse flood is bounded.
+/// IDs compress to one interval per allocation parity, while a hostile sparse
+/// flood is bounded. Initiator/acceptor IDs advance by two to avoid collision.
 #[derive(Default)]
-pub struct RetiredStreams { lanes: HashMap<u8, Vec<(u64,u64)>> }
+pub struct RetiredStreams { lanes: HashMap<(u8,u8), Vec<(u64,u64)>> }
 impl RetiredStreams {
     pub fn contains(&self, lane: u8, stream_id: u64) -> bool {
-        self.lanes.get(&lane).is_some_and(|ranges| {
+        let parity = (stream_id % 2) as u8;
+        let stream_id = stream_id / 2;
+        self.lanes.get(&(lane,parity)).is_some_and(|ranges| {
             let index = ranges.partition_point(|(start,_)| *start <= stream_id);
             index > 0 && stream_id <= ranges[index - 1].1
         })
     }
     pub fn retire(&mut self, lane: u8, stream_id: u64) -> Result<(), ProtocolError> {
         if self.contains(lane, stream_id) { return Ok(()); }
-        let ranges = self.lanes.entry(lane).or_default();
+        let parity = (stream_id % 2) as u8;
+        let stream_id = stream_id / 2;
+        let ranges = self.lanes.entry((lane,parity)).or_default();
         let index = ranges.partition_point(|(start,_)| *start < stream_id);
         let merge_left = index > 0 && ranges[index-1].1.checked_add(1) == Some(stream_id);
         let merge_right = index < ranges.len() && stream_id.checked_add(1) == Some(ranges[index].0);
@@ -113,16 +118,26 @@ mod tests {
     fn retirement_fences_late_frames_without_unbounded_tombstones() {
         let mut retired = RetiredStreams::default();
         for id in 0..100_000 { retired.retire(Lane::Http as u8, id).unwrap(); }
-        assert_eq!(retired.lanes[&(Lane::Http as u8)], [(0,99_999)]);
+        assert_eq!(retired.lanes[&(Lane::Http as u8,0)], [(0,49_999)]);
+        assert_eq!(retired.lanes[&(Lane::Http as u8,1)], [(0,49_999)]);
         retired.retire(Lane::Http as u8, u64::MAX).unwrap();
         assert!(retired.contains(Lane::Http as u8, u64::MAX));
         assert!(!retired.contains(Lane::Binary as u8, 5));
         assert!(!retired.contains(Lane::Http as u8, 100_000));
         let mut sparse = RetiredStreams::default();
-        for id in 0..MAX_RETIREMENT_RANGES as u64 { sparse.retire(4, 2*id).unwrap(); }
-        assert!(sparse.retire(4, 2*MAX_RETIREMENT_RANGES as u64).is_err());
-        sparse.retire(4, 1).unwrap();
-        assert!(sparse.contains(4, 0) && sparse.contains(4, 1) && sparse.contains(4, 2));
-        assert!(sparse.retire(4, 2*MAX_RETIREMENT_RANGES as u64).is_ok());
+        for id in 0..MAX_RETIREMENT_RANGES as u64 { sparse.retire(4, 4*id).unwrap(); }
+        assert!(sparse.retire(4, 4*MAX_RETIREMENT_RANGES as u64).is_err());
+        sparse.retire(4, 2).unwrap();
+        assert!(sparse.contains(4, 0) && sparse.contains(4, 2) && sparse.contains(4, 4));
+        assert!(!sparse.contains(4, 1));
+        assert!(sparse.retire(4, 4*MAX_RETIREMENT_RANGES as u64).is_ok());
+    }
+    #[test]
+    fn retirement_of_ongoing_parity_allocated_uploads_does_not_exhaust_the_connection() {
+        let mut retired = RetiredStreams::default();
+        for id in (3..200_003).step_by(2) { retired.retire(4,id).unwrap(); }
+        assert_eq!(retired.lanes[&(4,1)].len(),1);
+        assert!(retired.contains(4,200_001));
+        assert!(!retired.contains(4,200_000));
     }
 }

@@ -382,7 +382,9 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
     try:
         with materialize_secure_file(path) as readable_path:
             segments, _info = model.transcribe(str(readable_path), language=language, beam_size=beam_size)
-        text = " ".join((segment.text or "").strip() for segment in segments).strip()
+            # Segment iterators may read/decode lazily. Keep the owned plaintext
+            # materialization alive until the provider finishes consuming it.
+            text = " ".join((segment.text or "").strip() for segment in segments).strip()
         return text
     except Exception as exc:
         LOGGER.error("Voice note transcription failed for %s: %s", path, exc)

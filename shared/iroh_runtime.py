@@ -49,6 +49,8 @@ class _Connection:
     user_disconnected: bool = False
     ready: bool = False
     deferred: list[Any] = field(default_factory=list)
+    stream_queues: dict[int, asyncio.Queue] = field(default_factory=dict)
+    stream_workers: dict[int, asyncio.Task] = field(default_factory=dict)
 
 
 class IrohSessionRuntime:
@@ -189,6 +191,25 @@ class IrohSessionRuntime:
         if not self._closing:
             self.endpoint.network_changed()
 
+    async def join_disconnected(self, context: ConnectionContext) -> None:
+        """Join dispatch, storage and the host cleanup callback after disconnect."""
+        connection = self._connections.get(context.connection_id)
+        if connection is None:
+            return
+        if connection.context != context or connection.worker is asyncio.current_task():
+            raise SessionDenied("cannot join a different or executing connection")
+        worker = connection.worker
+        if worker is not None:
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError as cancellation:
+                while not worker.done():
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        continue
+                raise cancellation
+
     async def _poll_loop(self) -> None:
         try:
             while not self._closing:
@@ -251,7 +272,7 @@ class IrohSessionRuntime:
                         connection.deferred.append(event.frame)
                         retained = True
                     else:
-                        await self._dispatch_frame(connection, event.frame)
+                        retained = await self._dispatch_frame(connection, event.frame)
                 finally:
                     if not retained:
                         self._dispatch_bytes -= size
@@ -259,10 +280,12 @@ class IrohSessionRuntime:
                 if connection.ready:
                     while connection.deferred:
                         frame = connection.deferred.pop(0)
+                        retained = False
                         try:
-                            await self._dispatch_frame(connection, frame)
+                            retained = await self._dispatch_frame(connection, frame)
                         finally:
-                            self._dispatch_bytes -= len(frame.payload)
+                            if not retained:
+                                self._dispatch_bytes -= len(frame.payload)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -271,6 +294,17 @@ class IrohSessionRuntime:
             except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
                 pass
         finally:
+            for worker in connection.stream_workers.values():
+                worker.cancel()
+            if connection.stream_workers:
+                await asyncio.gather(*connection.stream_workers.values(), return_exceptions=True)
+            for queue in connection.stream_queues.values():
+                while not queue.empty():
+                    frame = queue.get_nowait()
+                    self._dispatch_bytes -= len(frame.payload)
+                    queue.task_done()
+            connection.stream_workers.clear()
+            connection.stream_queues.clear()
             self._dispatch_bytes -= sum(len(frame.payload) for frame in connection.deferred)
             connection.deferred.clear()
             while not connection.queue.empty():
@@ -290,14 +324,53 @@ class IrohSessionRuntime:
             except Exception:
                 _LOG.error("Iroh session cleanup callback failed")
 
-    async def _dispatch_frame(self, connection: _Connection, frame: Any) -> None:
-        if frame.lane in {7, 8, 9}:
+    async def _dispatch_frame(self, connection: _Connection, frame: Any) -> bool:
+        if frame.lane in {3, 4, 5, 6, 7}:
+            # A blocked browser writer or file fsync cannot pin cancellation,
+            # pongs, chat or input. Each lane remains ordered and has a bounded
+            # owned queue; all retained bytes still count against the global cap.
+            if frame.lane == 7 and self.on_binary_frame is None:
+                raise SessionDenied("file capability is not attached")
+            queue = connection.stream_queues.get(frame.lane)
+            if queue is None:
+                queue = connection.stream_queues[frame.lane] = asyncio.Queue(maxsize=64)
+                connection.stream_workers[frame.lane] = asyncio.create_task(
+                    self._dispatch_stream_lane(connection, queue), name="iroh-stream-dispatch")
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                raise SessionDenied("stream dispatch capacity is exhausted") from None
+            return True
+        if frame.lane in {8, 9}:
             self.registry.check(connection.channel.binding)
             if self.on_binary_frame is None:
                 raise SessionDenied("binary capability is not attached")
             await self.on_binary_frame(connection.channel, frame)
         else:
             await connection.channel.receive_frame(frame)
+        return False
+
+    async def _dispatch_stream_lane(self, connection: _Connection, queue: asyncio.Queue) -> None:
+        try:
+            while not self._closing:
+                frame = await queue.get()
+                try:
+                    self.registry.check(connection.channel.binding,
+                        scope="chat" if frame.lane == 3 else "files" if frame.lane == 7 else "browser")
+                    if frame.lane == 7:
+                        await self.on_binary_frame(connection.channel, frame)
+                    else:
+                        await connection.channel.receive_frame(frame)
+                finally:
+                    self._dispatch_bytes -= len(frame.payload)
+                    queue.task_done()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            try:
+                self.disconnect(connection.context, user_requested=False)
+            except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
+                pass
 
     async def close(self) -> None:
         if self._shutdown_task is None:

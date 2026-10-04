@@ -10,6 +10,13 @@ use autoyou_session::host::{EndpointHost as RustEndpointHost, EndpointPolicy, Ho
 use std::sync::{Arc, Mutex};
 use autoyou_session::client::{ClientSession as RustClientSession, ClientContext, ClientError, Phase};
 
+mod byte_stream;
+pub use byte_stream::*;
+mod file_store;
+pub use file_store::*;
+mod delivery_store;
+pub use delivery_store::*;
+
 uniffi::setup_scaffolding!();
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -189,6 +196,7 @@ pub fn validate_envelope(payload: Vec<u8>) -> Result<Vec<u8>, BindingError> {
 
 #[uniffi::export]
 pub fn application_lane(payload: Vec<u8>) -> Result<u8, BindingError> {
+    if payload.len() > autoyou_protocol::MAX_CONTROL_BYTES { return Ok(prepare_browser_message(payload)?.lane); }
     Ok(Envelope::from_slice(&payload).map_err(|_| BindingError::InvalidInput)?.lane() as u8)
 }
 
@@ -288,6 +296,13 @@ pub fn validate_endpoint_id(endpoint_id: String) -> Result<(), BindingError> {
     Ok(())
 }
 
+#[uniffi::export]
+pub fn endpoint_id_from_key(mut secret_key: Vec<u8>) -> Result<String, BindingError> {
+    if secret_key.len()!=32 { secret_key.fill(0); return Err(BindingError::InvalidInput); }
+    let key: [u8;32]=secret_key.as_slice().try_into().map_err(|_|BindingError::InvalidInput)?;
+    secret_key.fill(0); Ok(autoyou_session::host::endpoint_id_from_key(key))
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum BindingError {
     #[error("invalid transport input")] InvalidInput,
@@ -298,6 +313,10 @@ pub enum BindingError {
     #[error("transport session permission denied")] PermissionDenied,
     #[error("unknown transport connection")] UnknownConnection,
     #[error("transport operation timed out")] Timeout,
+    #[error("protected file storage is unavailable")] StorageUnavailable,
+    #[error("protected file storage capacity is exhausted")] StorageCapacity,
+    #[error("file operation was deleted or expired")] FileDeleted,
+    #[error("file digest did not match")] DigestMismatch,
 }
 
 impl From<HostError> for BindingError {
@@ -332,6 +351,7 @@ pub struct TransportDiagnostics {
     pub generation: u64, pub authorization_epoch: u64,
     pub path_kind: String, pub open_paths: u32, pub rtt_ms: Option<u64>,
     pub queued_send_bytes: u64, pub held_send_bytes: u64, pub held_receive_bytes: u64,
+    pub active_logical_streams: u32, pub pending_stream_receipts: u32,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -385,7 +405,8 @@ impl SharedEndpoint {
         Ok(TransportDiagnostics { generation: value.generation, authorization_epoch: value.authorization_epoch,
             path_kind: value.path_kind.into(), open_paths: value.open_paths, rtt_ms: value.rtt_ms,
             queued_send_bytes: value.queued_send_bytes, held_send_bytes: value.held_send_bytes,
-            held_receive_bytes: value.held_receive_bytes })
+            held_receive_bytes: value.held_receive_bytes, active_logical_streams: value.active_logical_streams,
+            pending_stream_receipts: value.pending_stream_receipts })
     }
     pub fn dial(&self, ticket: String, expected_endpoint: String, pairing: bool) -> Result<u64, BindingError> {
         Ok(self.host.dial(&ticket, &expected_endpoint, pairing)?)
@@ -402,6 +423,24 @@ impl SharedEndpoint {
         self.host.send(connection_id, Frame { lane, generation: frame.generation,
             stream_id: frame.stream_id, sequence: 0, payload: frame.payload }, deadline_ms)?;
         Ok(())
+    }
+    pub fn send_browser_message(&self, connection_id: u64, generation: u64, payload: Vec<u8>) -> Result<u64, BindingError> {
+        let message = prepare_browser_message(payload)?;
+        let (lane, records) = byte_stream::message_records(message)?;
+        Ok(self.host.send_browser_records(connection_id, lane, generation, records)?)
+    }
+    pub fn send_browser_parts(&self, connection_id: u64, generation: u64, message: BrowserMessage) -> Result<u64, BindingError> {
+        let (lane, records) = byte_stream::message_records(message)?;
+        Ok(self.host.send_browser_records(connection_id, lane, generation, records)?)
+    }
+    pub fn allocate_byte_stream(&self, connection_id: u64, lane: u8) -> Result<u64, BindingError> {
+        Ok(self.host.allocate_stream(connection_id, Lane::try_from(lane).map_err(|_| BindingError::InvalidInput)?)?)
+    }
+    pub fn acknowledge_byte_stream(&self, connection_id: u64, lane: u8, stream_id: u64, total: u64, digest: Vec<u8>) -> Result<(), BindingError> {
+        Ok(self.host.acknowledge_stream(connection_id, lane, stream_id, total, digest)?)
+    }
+    pub fn acknowledge_byte_progress(&self,connection_id:u64,lane:u8,stream_id:u64,offset:u64)->Result<(),BindingError> {
+        Ok(self.host.acknowledge_progress(connection_id,lane,stream_id,offset)?)
     }
     pub fn activate(&self, connection_id: u64) -> Result<(), BindingError> {
         Ok(self.host.activate(connection_id)?)

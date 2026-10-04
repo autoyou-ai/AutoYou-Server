@@ -29,6 +29,7 @@ import json, time, hashlib, os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+import runpy
 # Windows creates the event loop's self-pipe with an ephemeral loopback socket.
 # Construct it before denying all Python network operations in this fixture.
 qualification_loop = asyncio.new_event_loop()
@@ -116,10 +117,84 @@ server.admit(incoming.connection_id, grant(client_info.endpoint_id, 'synthetic-c
 client.admit(connection_id, grant(server_info.endpoint_id, 'synthetic-server'))
 server.activate(incoming.connection_id)
 client.activate(connection_id)
-client.send(connection_id, api.TransportFrame(lane=7, generation=1, stream_id=1,
-    sequence=0, payload=b'isolated generated Python to Iroh'), None)
-received = wait(server, api.TransportEventKind.FRAME)
-assert bytes(received.frame.payload) == b'isolated generated Python to Iroh'
+file_bytes = bytes([0, 255, 13, 10]) + b'isolated generated Python to Iroh'
+file_id = 'ab'*16
+descriptor = dict(transfer_id=file_id, purpose='attachment', filename='synthetic.bin', mime_type='application/octet-stream',
+    total=len(file_bytes), offset=0, sha256=list(hashlib.sha256(file_bytes).digest()), expires_at_ms=int(time.time()*1000)+60000, metadata={})
+scope = dict(local_endpoint=server_info.endpoint_id, remote_endpoint=client_info.endpoint_id, server_instance=server_info.endpoint_id,
+    device_id='synthetic-client', owner_key='synthetic-owner', canonical_user_id='synthetic-user', conversation_key='synthetic-conversation',
+    authorization_epoch=2, direction='incoming')
+file_root = str(root/'synthetic-file-store')
+store = api.FileTransferStore(file_root, bytes([94])*32, json.dumps(scope), True)
+file_metadata = bytes(api.binary_transfer_metadata(json.dumps(descriptor), 'synthetic-file-open'))
+assert json.loads(api.binary_transfer_descriptor(file_metadata)) == descriptor
+writer = api.ByteStreamWriter(7, api.ByteStreamContent.RAW_FILE, len(file_bytes), file_metadata)
+stream = client.allocate_byte_stream(connection_id, 7)
+for payload in [writer.open_record(), writer.data_record(file_bytes), writer.finish_record()]:
+    client.send(connection_id, api.TransportFrame(lane=7, generation=1, stream_id=stream, sequence=0, payload=bytes(payload)), None)
+receiver = api.FileTransferReceiver(store, 1)
+queried = json.loads(receiver.control(json.dumps(dict(event='query', descriptor=descriptor)), int(time.time()*1000)))
+assert queried['phase'] == 'pending' and queried['offset'] == 0
+completed = False
+deadline = time.monotonic()+5
+while not completed:
+    assert time.monotonic() < deadline, 'generated file stream timed out'
+    for event in server.poll(64):
+        if event.kind != api.TransportEventKind.FRAME:
+            continue
+        record = receiver.receive(event.frame.stream_id, bytes(event.frame.payload), int(time.time()*1000))
+        if record.kind == api.ByteStreamKind.FINISH:
+            commit = json.loads(record.control_json)
+            assert commit['phase'] == 'committed' and commit['prefix_sha256'] == descriptor['sha256']
+            assert bytes(store.read(file_id, 1, 0, 49152, int(time.time()*1000))) == file_bytes
+            status_wire = bytes(api.binary_transfer_control(record.control_json, 'synthetic-durable-receipt'))
+            assert json.loads(api.parse_binary_transfer_control(status_wire)) == commit
+            server.send(incoming.connection_id, api.TransportFrame(lane=2, generation=1, stream_id=0, sequence=0, payload=status_wire), None)
+            server.acknowledge_byte_stream(incoming.connection_id, 7, record.receipt.stream_id, record.receipt.total, bytes(record.receipt.digest))
+            completed = True
+    time.sleep(0.005)
+durable_receipts = []
+for _ in range(10):
+    for event in client.poll(64):
+        if event.kind == api.TransportEventKind.FRAME:
+            durable_receipts.append(json.loads(api.parse_binary_transfer_control(bytes(event.frame.payload))))
+    time.sleep(0.005)
+assert len(durable_receipts) == 1 and durable_receipts[0]['phase'] == 'committed'
+receiver.shutdown()
+store.release(file_id)
+reopened = api.FileTransferStore(file_root, bytes([94])*32, json.dumps(scope), False)
+assert reopened.checkpoint(file_id, int(time.time()*1000)).phase == api.FileTransferPhase.COMMITTED
+reopened.delete(file_id, 1, int(time.time()*1000))
+try:
+    reopened.stage(json.dumps(descriptor), 2, int(time.time()*1000))
+except api.BindingError.FileDeleted:
+    pass
+else:
+    raise AssertionError('generated file store resurrected deleted data')
+inbox = api.ApplicationDeliveryStore(str(root/'synthetic-inbox'), bytes([91])*32, json.dumps(scope), True)
+outbox_scope = dict(scope, direction='outgoing')
+outbox = api.ApplicationDeliveryStore(str(root/'synthetic-outbox'), bytes([92])*32, json.dumps(outbox_scope), True)
+revision = inbox.revision(1)
+outbox.align_revision(revision, 1, int(time.time()*1000))
+prompt_wire = json.dumps(dict(header=dict(message_id='synthetic-prompt-operation', message_type='chat', timestamp=1),
+    payload=dict(message='synthetic private prompt'))).encode()
+operation = outbox.queue(prompt_wire, 1, int(time.time()*1000), int(time.time()*1000)+60000)
+assert operation.phase == api.DeliveryPhase.QUEUED and operation.envelope
+request = dict(event='query', operation_id=operation.operation_id, digest=list(operation.digest),
+    revision=operation.revision, expires_at_ms=operation.expires_at_ms)
+wire = bytes(api.application_delivery_control(json.dumps(request), 'synthetic-prompt-query'))
+assert api.application_lane(wire) == 2 and json.loads(api.parse_application_delivery_control(wire)) == request
+first = inbox.begin(bytes(operation.envelope), 1, int(time.time()*1000))
+assert first.execute and not inbox.begin(bytes(operation.envelope), 1, int(time.time()*1000)).execute
+accepted = inbox.finish(operation.operation_id, 1, int(time.time()*1000), True)
+assert accepted.phase == api.DeliveryPhase.ACCEPTED
+outbox.receipt(operation.operation_id, bytes(operation.digest), operation.revision, operation.expires_at_ms,
+    accepted.phase, 1, int(time.time()*1000))
+assert not outbox.pending(2, int(time.time()*1000))
+new_revision = inbox.reset_revision(1)
+assert new_revision != revision
+assert inbox.query(operation.operation_id, bytes(operation.digest), revision, operation.expires_at_ms, 1,
+    int(time.time()*1000)).phase == api.DeliveryPhase.DELETED
 server.network_changed()
 client.shutdown()
 server.shutdown()
@@ -140,12 +215,14 @@ class SyntheticKeys:
         return bytes([self.seed])*32
 
 async def qualify_runtime():
-    contexts, enrollment, closed = {}, [], []
+    contexts, enrollment, closed, files, file_services = {}, [], [], {}, {}
     async def connected(runtime, context):
         contexts[runtime.role] = context
     async def proof(runtime, context, payload):
         enrollment.append(payload)
     async def disconnected(context, binding, user_requested):
+        for service in file_services.values():
+            await service.closed(binding)
         closed.append((binding, user_requested))
     server_keys, client_keys = SyntheticKeys('synthetic-runtime-server', 84), SyntheticKeys('synthetic-runtime-client', 85)
     server = await IrohSessionRuntime.start(api=api, policy=json.loads(policy), keys=server_keys, role='server',
@@ -168,7 +245,7 @@ async def qualify_runtime():
                 owner_key='synthetic-owner', canonical_user_id='synthetic-canonical-user',
                 conversation_key='synthetic-conversation', transport_id=context.transport_id,
                 generation=1, authorization_epoch=2, expires_at_ms=int(time.time()*1000)+60000,
-                scopes=frozenset(['chat','files']), transport=TransportKind.IROH)
+                scopes=frozenset(['chat','files','browser']), transport=TransportKind.IROH)
         # This component fixture supplies the trusted authorization result.
         # The application proof/service matrix remains a separate requirement.
         server_channel = server.admit(contexts['server'], verified(contexts['server'], 'synthetic-client-device'))
@@ -193,6 +270,144 @@ async def qualify_runtime():
             pass
         else:
             raise AssertionError('wire rebinding changed verified identity')
+        from shared.iroh_body import EncryptedBody, BLOCK_BYTES
+        browser_requests, browser_responses, browser_chunks = [], [], []
+        async def browser_request(message):
+            body = getattr(message, 'native_http_body', None)
+            try:
+                raw = await body.read(maximum_bytes=512*1024) if body else b''
+                browser_requests.append((message.header.user_id, raw))
+                await server_channel.send_message(DataChannelMessage(MessageHeader('synthetic-browser-response',
+                    MessageType.HTTP_RESPONSE, time.time()), dict(request_id=message.payload['request_id'], status_code=206,
+                    body='synthetic-response-🙂'*20000, headers={'Content-Type':'text/plain; charset=utf-8'},
+                    raw_headers=[['Set-Cookie','a=1'],['Set-Cookie','b=2']])))
+            finally:
+                if body: body.close()
+        async def browser_response(message):
+            browser_responses.append(message)
+        async def browser_chunk(message):
+            browser_chunks.append(message.payload['seq'])
+        server_channel.register_handler(MessageType.HTTP_REQUEST, browser_request)
+        client_channel.register_handler(MessageType.HTTP_RESPONSE, browser_response)
+        client_channel.register_handler(MessageType.HTTP_STREAM_DATA, browser_chunk)
+        raw = bytes(range(256))*1500
+        body = EncryptedBody(total=len(raw), associated_data=b'synthetic-native-upload')
+        try:
+            for offset in range(0,len(raw),BLOCK_BYTES): body.append(raw[offset:offset+BLOCK_BYTES])
+            body.verify()
+            request = DataChannelMessage(MessageHeader('synthetic-browser-request', MessageType.HTTP_REQUEST,
+                time.time(), 'forged-session', 'forged-user'), dict(method='POST',url='/synthetic',headers={},
+                request_id='synthetic-browser-operation',compressed=False,body_base64=False))
+            assert await client_channel.send_http_request(request, body)
+            await until(lambda: len(browser_responses) == 1)
+        finally: body.close()
+        assert browser_requests == [('synthetic-canonical-user',raw)]
+        assert browser_responses[0].payload['body'] == 'synthetic-response-🙂'*20000
+        assert browser_responses[0].payload['raw_headers'] == [['Set-Cookie','a=1'],['Set-Cookie','b=2']]
+        for seq in range(1,41):
+            assert await server_channel.send_message(DataChannelMessage(MessageHeader('synthetic-stream-chunk',
+                MessageType.HTTP_STREAM_DATA,time.time()),dict(request_id='synthetic-ordering',seq=seq,data='£🙂'*1000)))
+        await until(lambda: len(browser_chunks) == 40)
+        assert browser_chunks == list(range(1,41))
+        websocket_received = []
+        async def websocket_echo(message):
+            assert await server_channel.send_message(message)
+        async def websocket_result(message):
+            websocket_received.append(message.payload)
+        server_channel.register_handler(MessageType.HTTP_WS_DATA, websocket_echo)
+        client_channel.register_handler(MessageType.HTTP_WS_DATA, websocket_result)
+        import base64
+        websocket_bytes = bytes(range(256)) * (4*1024*1024//256)
+        assert await client_channel.send_message(DataChannelMessage(MessageHeader('synthetic-large-ws',
+            MessageType.HTTP_WS_DATA,time.time()),dict(request_id='synthetic-large-ws',opcode='binary',binary=True,
+                data_b64=base64.b64encode(websocket_bytes).decode('ascii'))))
+        await until(lambda: len(websocket_received) == 1)
+        assert base64.b64decode(websocket_received[0]['data_b64'],validate=True) == websocket_bytes
+        websocket_received.clear()
+        websocket_text = '\x00' * (4*1024*1024)
+        assert await client_channel.send_message(DataChannelMessage(MessageHeader('synthetic-large-ws-text',
+            MessageType.HTTP_WS_DATA,time.time()),dict(request_id='synthetic-large-ws',data=websocket_text,opcode='text')))
+        await until(lambda: len(websocket_received) == 1)
+        assert websocket_received[0]['data'] == websocket_text
+        slow_started, slow_release = asyncio.Event(), asyncio.Event()
+        async def slow_browser(message):
+            slow_started.set()
+            await slow_release.wait()
+        client_channel.register_handler(MessageType.HTTP_STREAM_DATA, slow_browser)
+        assert await server_channel.send_message(DataChannelMessage(MessageHeader('synthetic-slow-browser',
+            MessageType.HTTP_STREAM_DATA,time.time()),dict(request_id='synthetic-slow-stream',seq=1,data='slow')))
+        await asyncio.wait_for(slow_started.wait(),1)
+        assert await server_channel.send_ping_and_wait(timeout=1)
+        slow_release.set()
+        # A receipt retires the finite upload without erasing the ordered
+        # browser-message stream or exhausting the logical-stream budget.
+        await until(lambda: not server_channel._browser_streams and not client_channel._browser_streams)
+        assert server_channel._browser_buffered_bytes == client_channel._browser_buffered_bytes == 0
+        from shared.iroh_files import IrohFileService
+        committed_files = []
+        file_progress_started, file_progress_release = asyncio.Event(), asyncio.Event()
+        async def progress(descriptor, offset, status):
+            if descriptor['filename'] == 'blocked.bin' and offset == 0:
+                file_progress_started.set()
+                await file_progress_release.wait()
+        for role, runtime, channel in [('server', server, server_channel), ('client', client, client_channel)]:
+            file_services[role] = IrohFileService(root=Path(os.environ['AUTOYOU_TEST_ROOT'])/('synthetic-files-'+role),
+                key=bytes([96 if role == 'server' else 97])*32,
+                attachment_max_bytes=262144 if role == 'client' else 1073741824)
+            await file_services[role].prepared(runtime, contexts[role], channel)
+            files[role] = channel.native_files
+            files[role].on_progress = progress if role == 'server' else None
+            files[role].on_committed = lambda descriptor: committed_files.append(descriptor['transfer_id'])
+            runtime.on_binary_frame = file_services[role].receive
+        for role, channel in [('server', server_channel), ('client', client_channel)]:
+            await file_services[role].ready(channel)
+        file_bytes = (bytes(range(256))*600) + bytes([0,255,13,10])
+        descriptor = await files['client'].stage_bytes(file_bytes, filename='native-attachment.bin', mime_type='application/octet-stream')
+        receipt = await asyncio.wait_for(files['client'].send(descriptor, timeout=5), 5)
+        assert receipt['phase'] == 'committed' and receipt['prefix_sha256'] == list(hashlib.sha256(file_bytes).digest())
+        assert files['server'].remote_limits['attachment_max_bytes'] == 262144
+        excessive = await files['server'].stage_bytes(bytes([21])*262145, filename='consumer-over-limit.bin', mime_type='application/octet-stream')
+        try:
+            await files['server'].send(excessive, timeout=5)
+            raise AssertionError('peer consumer size bound was ignored')
+        except ValueError:
+            pass
+        assert files['client'].incoming.checkpoint(excessive['transfer_id'], int(time.time()*1000)) is None
+        restored, offset = bytearray(), 0
+        while offset < len(file_bytes):
+            block = await files['server'].read(descriptor['transfer_id'], offset)
+            assert 0 < len(block) <= 49152
+            restored.extend(block); offset += len(block)
+        assert bytes(restored) == file_bytes and committed_files == [descriptor['transfer_id']]
+        # A repeat uses the durable receipt, without resending bytes or notifying
+        # the application twice. This is file commit dedupe, not tool replay.
+        assert (await files['client'].send(descriptor, timeout=5))['phase'] == 'committed'
+        assert committed_files == [descriptor['transfer_id']]
+        selection = Path(os.environ['AUTOYOU_TEST_ROOT'])/'synthetic-selected-file.bin'
+        selection_hash = hashlib.sha256()
+        with selection.open('wb') as output:
+            for _ in range(86):
+                block = bytes([17])*49152
+                selection_hash.update(block); output.write(block)
+            selection_hash.update(bytes([0,255,13,10])); output.write(bytes([0,255,13,10]))
+        selected = await files['client'].stage_path(selection, mime_type='application/octet-stream')
+        assert selected['total'] > 4*1024*1024 and selected['sha256'] == list(selection_hash.digest())
+        assert (await files['client'].send(selected, timeout=5))['phase'] == 'committed'
+        assert bytes(await files['server'].read(selected['transfer_id'], selected['total'] - 4)) == bytes([0,255,13,10])
+        blocked = await files['client'].stage_bytes(bytes([32])*400000, filename='blocked.bin', mime_type='application/octet-stream')
+        sending = asyncio.create_task(files['client'].send(blocked, timeout=5))
+        await asyncio.wait_for(file_progress_started.wait(), 2)
+        assert await client_channel.send_ping_and_wait(timeout=1)
+        await files['client'].cancel(blocked)
+        file_progress_release.set()
+        try:
+            await sending
+        except (ConnectionError, api.BindingError.FileDeleted):
+            pass
+        else:
+            raise AssertionError('explicit file cancellation was acknowledged as committed')
+        assert blocked['transfer_id'] not in committed_files
+        await until(lambda: files['server'].receiver.active_count() == 0)
     finally:
         await asyncio.gather(client.close(), server.close())
     assert server._dispatch_bytes == client._dispatch_bytes == 0
@@ -496,6 +711,31 @@ async def qualify_business_service():
         assert client.snapshot()['state'] == 'suspended' and not client.is_ready
         await client.reconnect(service.endpoint.endpoint_info.endpoint_id, service.endpoint.endpoint_info.ticket)
         assert channels['client'].binding.generation > first_generation and client.snapshot()['state'] == 'online'
+        history_generation = channels['client'].binding.generation
+        async def local_history_delete():
+            assert not client.runtime._connections and 'client' not in channels
+            try:
+                await client.reconnect(service.endpoint.endpoint_info.endpoint_id, service.endpoint.endpoint_info.ticket)
+            except SessionDenied:
+                pass
+            else:
+                raise AssertionError('a new dial crossed local history deletion')
+        await client.quiesce_for_history_delete(local_history_delete)
+        assert channels['client'].binding.generation > history_generation and client.snapshot()['state'] == 'online'
+        async def failed_history_delete():
+            raise OSError('synthetic protected cleanup failure')
+        try:
+            await client.quiesce_for_history_delete(failed_history_delete)
+        except OSError:
+            pass
+        else:
+            raise AssertionError('failed cleanup was reported as complete')
+        assert client.snapshot()['state'] == 'suspended' and not client.runtime._connections
+        await client.reconnect(service.endpoint.endpoint_info.endpoint_id, service.endpoint.endpoint_info.ticket)
+        async def user_disconnect_during_history_delete():
+            await client.disconnect()
+        await client.quiesce_for_history_delete(user_disconnect_during_history_delete)
+        assert client.snapshot()['state'] == 'user_disconnected' and not client.runtime._connections
         await client.disconnect()
         await until(lambda: not service.endpoint._connections and not client.runtime._connections)
         assert client.snapshot()['state'] == 'user_disconnected' and not client._recovery
@@ -519,6 +759,8 @@ async def qualify_business_service():
     assert not service.pairing._issued and not service.pairing._pending
     assert not client._contexts and not client._requests and client.runtime is None
 with asyncio.Runner(loop_factory=lambda: qualification_loop) as runner:
+    delivery_fixture = runpy.run_path(str(Path(os.environ['AUTOYOU_QUALIFICATION_REPO_ROOT'])/'tests/server/transport/fixtures/iroh_delivery_fixture.py'))
+    runner.run(delivery_fixture['qualify_delivery'](api, root))
     runner.run(qualify_runtime())
     runner.run(qualify_paired_admission())
     runner.run(qualify_business_service())
@@ -527,9 +769,12 @@ print('generated binding binary ownership, concurrent calls and shutdown passed'
     let mut command = if cfg!(windows) {
         let mut command = Command::new("py"); command.arg("-3"); command
     } else { Command::new("python3") };
-    let result = command.args(["-c", script]).current_dir(&out)
+    let script_path = out.join("generated_host_qualification.py");
+    fs::write(&script_path, script).unwrap();
+    let result = command.arg(&script_path).current_dir(&out)
         .env("PYTHONPATH", PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap())
         .env("AUTOYOU_TEST_ROOT", &out)
+        .env("AUTOYOU_QUALIFICATION_REPO_ROOT", PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().parent().unwrap())
         .env("PYTHONDONTWRITEBYTECODE", "1").output().unwrap();
     assert!(result.status.success(), "Python binding test: {}", String::from_utf8_lossy(&result.stderr));
     assert!(String::from_utf8_lossy(&result.stdout).contains("shutdown passed"));

@@ -4,6 +4,8 @@
 use autoyou_protocol::{Frame, Lane, Principal};
 use autoyou_session::host::{EndpointHost, EndpointPolicy, HostError, HostEvent};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use autoyou_protocol::{Envelope, byte_stream::{Writer, Receiver, Record, Kind, Content, MAX_DATA_BYTES}};
+use sha2::{Digest, Sha256};
 
 fn wait(host: &EndpointHost, predicate: impl Fn(&HostEvent) -> bool) -> HostEvent {
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -61,9 +63,17 @@ fn owned_host_restricts_pre_auth_then_delivers_in_order_and_shuts_down() {
     assert_eq!(diagnostics.path_kind, "direct");
     assert!(diagnostics.open_paths > 0 && diagnostics.rtt_ms.is_some());
     assert!(diagnostics.held_send_bytes <= 16*1024*1024 && diagnostics.held_receive_bytes <= 16*1024*1024);
-    for index in 0..32 {
-        client.send(client_connection, frame(Lane::Binary, 1, 1, &[index]), None).unwrap();
+    assert!(matches!(client.send(client_connection, frame(Lane::Binary, 1, 3, b"unframed file bytes"), None), Err(HostError::NotAuthorized)));
+    let data: Vec<u8> = (0..32).flat_map(|index| vec![index; MAX_DATA_BYTES]).collect();
+    let metadata = serde_json::to_vec(&serde_json::json!({"header":{"message_id":"synthetic-file", "message_type":"binary_transfer_open", "timestamp":1.0},
+        "payload":{"transfer_id":"abababababababababababababababab", "purpose":"attachment", "filename":"synthetic.bin", "mime_type":"application/octet-stream",
+            "total":data.len(), "offset":0, "sha256":Sha256::digest(&data).to_vec(), "expires_at_ms":60000, "metadata":{}}})).unwrap();
+    let (mut writer, open) = Writer::open(Lane::Binary, Content::RawFile, data.len() as u64, metadata).unwrap();
+    client.send(client_connection, frame(Lane::Binary, 1, 3, &open.encode(Lane::Binary).unwrap()), None).unwrap();
+    for bytes in data.chunks(MAX_DATA_BYTES) {
+        client.send(client_connection, frame(Lane::Binary, 1, 3, &writer.data(bytes.to_vec()).unwrap().encode(Lane::Binary).unwrap()), None).unwrap();
     }
+    client.send(client_connection, frame(Lane::Binary, 1, 3, &writer.finish().unwrap().encode(Lane::Binary).unwrap()), None).unwrap();
     client.send(client_connection, frame(Lane::Enrollment, 0, 0, b"synthetic-confirmation"), None).unwrap();
     // App data stays in the bounded Rust queue until the host activates the
     // session. Enrollment can progress even while that data is deferred.
@@ -75,19 +85,78 @@ fn owned_host_restricts_pre_auth_then_delivers_in_order_and_shuts_down() {
     server.activate(server_connection).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut received = Vec::new();
-    while received.len() < 32 {
+    let mut receiver = Receiver::default(); let mut sequence = 0; let mut finished = false;
+    while !finished {
         for event in server.poll(64).unwrap() {
             if let HostEvent::Frame { frame, .. } = event {
-                assert_eq!(frame.sequence, received.len() as u64);
-                received.push(frame.payload[0]);
+                assert_eq!(frame.sequence, sequence); sequence += 1;
+                let record = Record::decode(Lane::Binary, &frame.payload).unwrap(); receiver.accept(Lane::Binary, 3, &record).unwrap();
+                match record.kind {
+                    Kind::Open => { assert_eq!(Envelope::from_slice(&record.metadata).unwrap().lane(), Lane::Binary); }
+                    Kind::Data => { received.push(record.data[0]); assert!(record.data.iter().all(|value| *value == record.data[0])); }
+                    Kind::Finish => { server.acknowledge_stream(server_connection, Lane::Binary as u8, 3, record.total, record.digest.to_vec()).unwrap(); finished = true; }
+                    _ => panic!("unexpected local file abort"),
+                }
             }
         }
         assert!(Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(received, (0..32).collect::<Vec<u8>>());
-    client.retire_stream(client_connection, Lane::Binary as u8, 1).unwrap();
-    assert!(matches!(client.send(client_connection, frame(Lane::Binary, 1, 1, b"retired"), None), Err(HostError::NotAuthorized)));
+    assert_eq!(receiver.active_count(), 0);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        client.poll(64).unwrap();
+        if client.diagnostics(client_connection).unwrap().pending_stream_receipts == 0 { break; }
+        assert!(Instant::now() < deadline); std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(matches!(client.send(client_connection, frame(Lane::Binary, 1, 3, &open.encode(Lane::Binary).unwrap()), None), Err(HostError::NotAuthorized)));
+    // Abort consumes a prefix, including an empty prefix. Its receipt must
+    // preserve this connection instead of being compared with the full length.
+    for (lane, content, declared, consumed, stream) in [
+        (Lane::Binary, Content::RawFile, (MAX_DATA_BYTES * 2) as u64, MAX_DATA_BYTES, 5),
+        (Lane::Http, Content::RawBody, 8, 0, 7),
+        (Lane::Http, Content::RawBody, u64::MAX, 4, 9),
+    ] {
+        let metadata = if lane == Lane::Binary {
+            serde_json::to_vec(&serde_json::json!({"header":{"message_id":"synthetic-aborted-file", "message_type":"binary_transfer_open", "timestamp":1.0},
+                "payload":{"transfer_id":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd", "purpose":"attachment", "filename":"synthetic-aborted.bin", "mime_type":"application/octet-stream",
+                    "total":declared, "offset":0, "sha256":Sha256::digest(vec![5; declared as usize]).to_vec(), "expires_at_ms":60000, "metadata":{}}})).unwrap()
+        } else {
+            br#"{"header":{"message_id":"synthetic-aborted-upload","message_type":"http_request","timestamp":1.0},"payload":{"request_id":"synthetic-aborted-upload","method":"PUT","url":"/synthetic"}}"#.to_vec()
+        };
+        let (mut writer, open) = Writer::open(lane, content, declared, metadata).unwrap();
+        client.send(client_connection, frame(lane, 1, stream, &open.encode(lane).unwrap()), None).unwrap();
+        if consumed != 0 {
+            let data = writer.data(vec![5; consumed]).unwrap();
+            client.send(client_connection, frame(lane, 1, stream, &data.encode(lane).unwrap()), None).unwrap();
+        }
+        let abort = writer.cancel_at(consumed as u64).unwrap();
+        client.send(client_connection, frame(lane, 1, stream, &abort.encode(lane).unwrap()), None).unwrap();
+        let mut receiver = Receiver::default(); let mut aborted = false;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !aborted {
+            for event in server.poll(64).unwrap() {
+                if let HostEvent::Frame { frame, .. } = event {
+                    assert_eq!(frame.lane, lane); assert_eq!(frame.stream_id, stream);
+                    let record = Record::decode(lane, &frame.payload).unwrap(); receiver.accept(lane, stream, &record).unwrap();
+                    if record.kind == Kind::Abort {
+                        assert_eq!(record.offset, consumed as u64);
+                        server.acknowledge_stream(server_connection, lane as u8, stream, record.offset, record.digest.to_vec()).unwrap();
+                        aborted = true;
+                    }
+                }
+            }
+            assert!(Instant::now() < deadline); std::thread::sleep(Duration::from_millis(5));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            client.poll(64).unwrap();
+            if client.diagnostics(client_connection).unwrap().pending_stream_receipts == 0 { break; }
+            assert!(Instant::now() < deadline); std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(matches!(client.send(client_connection, frame(lane, 1, stream, &open.encode(lane).unwrap()), None), Err(HostError::NotAuthorized)));
+    }
     let chat = br#"{"header":{"message_id":"synthetic-chat","message_type":"chat","timestamp":1.0},"payload":{"text":"hello"}}"#;
     assert!(matches!(client.send(client_connection, frame(Lane::Control, 1, 2, chat), None), Err(HostError::NotAuthorized)));
     client.send(client_connection, frame(Lane::Application, 1, 2, chat), None).unwrap();

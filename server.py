@@ -2428,6 +2428,20 @@ def _rename_server_conversation(identity: Any, metadata: Any) -> Dict[str, Any]:
 
 
 async def _delete_server_conversation_history(identity: Any) -> Dict[str, Any]:
+    """Fence native delivery before deleting authoritative conversation state."""
+    if not str(getattr(identity, "canonical_session_id", "") or "").strip():
+        return await _delete_server_conversation_history_stores(identity)
+    from core_server.iroh_service import delete_transport_conversation_history
+    try:
+        return await delete_transport_conversation_history(sys.modules[__name__], identity,
+            lambda: _delete_server_conversation_history_stores(identity))
+    except Exception:
+        LOGGER.warning("Conversation deletion could not acquire its durable delivery fence")
+        return {"deleted": False, "scope": "server_conversation", "components": [],
+            "provider_history_retained": True, "reason": "delivery_history_fence_unavailable"}
+
+
+async def _delete_server_conversation_history_stores(identity: Any) -> Dict[str, Any]:
     """Delete one conversation from AutoYou-managed server stores."""
     canonical_session_id = str(getattr(identity, "canonical_session_id", "") or "").strip()
     canonical_user_id = str(getattr(identity, "canonical_user_id", "") or "").strip()

@@ -34,6 +34,10 @@ class IrohServerService:
                  capabilities: dict[str, Any], grant_seconds: int = 86400) -> None:
         if type(grant_seconds) is not int or not 60 <= grant_seconds <= 86400:
             raise ValueError("invalid transport grant duration")
+        capabilities = dict(capabilities, delivery=capabilities.get("chat") is True)
+        if capabilities.get("files") is True:
+            from shared.iroh_files import file_limits
+            capabilities["file_limits"] = file_limits()
         self.runtime, self.grants, self.capabilities = runtime, grants, capabilities
         self.grant_seconds = grant_seconds
         self.business = SessionBusinessAdapter(runtime=runtime, engine=runtime.WEBRTC, grants=grants)
@@ -41,13 +45,23 @@ class IrohServerService:
             on_prepared=self.business.prepared, on_ready=self.business.ready)
         self.pairing = VerifiedPairingRedemption(grants=grants, capabilities=capabilities)
         self.endpoint: IrohSessionRuntime | None = None
+        self.files: Any = None
         self._lifecycle_lock = asyncio.Lock()
 
     async def start(self, *, policy: dict[str, Any], unlocked_password: str | None,
-                    api: Any = None, keys: Any = None) -> None:
+                    api: Any = None, keys: Any = None, file_keys: Any = None, delivery_keys: Any = None) -> None:
         async with self._lifecycle_lock:
             if self.endpoint is not None:
                 return
+            if self.capabilities.get("chat") is True and self.business.delivery is None:
+                from shared.iroh_delivery import load_delivery_service
+                self.business.delivery = await load_delivery_service(delivery_keys or EndpointKeys(role="server", purpose="delivery"),
+                    unlocked_password=unlocked_password)
+            if self.capabilities.get("files") is True and self.files is None:
+                from shared.iroh_files import load_file_service
+                self.files = await load_file_service(file_keys or EndpointKeys(role="server", purpose="resume"),
+                    unlocked_password=unlocked_password)
+                self.business.attach_stream_handler(7, self.files)
             self.endpoint = await IrohSessionRuntime.start(role="server", policy=policy,
                 keys=keys or EndpointKeys(role="server"), enroll=True,
                 unlocked_password=unlocked_password, api=api, on_connected=self.connected,
@@ -82,6 +96,8 @@ class IrohServerService:
         # Selection of a conversation thread remains the history service's job.
         device_id = "iroh-device-" + hashlib.sha256(endpoint_id.encode("utf-8")).hexdigest()
         scopes = frozenset({"chat", "browser", "pairing"})
+        if self.capabilities.get("files") is True and self.files is not None:
+            scopes |= {"files"}
         grant = PairedEndpoint(endpoint_id=endpoint_id, device_id=device_id,
             owner_key=identity.owner_key, canonical_user_id=identity.canonical_user_id,
             conversation_key=identity.canonical_session_id, origin_transport=origin.transport,
@@ -138,7 +154,7 @@ async def _start_server_transport_locked(runtime: Any) -> None:
         unlocked_password=password), now_ms=lambda: int(time.time() * 1000))
     service = IrohServerService(runtime=runtime, grants=grants,
         capabilities={"transport": "iroh", "wire_version": 1, "chat": True, "browser": True,
-                      "pairing": True, "files": False, "media": False},
+                       "pairing": True, "files": True, "media": False},
         grant_seconds=config.get("grant_seconds", 86400))
     try:
         await service.start(policy=policy, unlocked_password=password)
@@ -154,3 +170,26 @@ async def stop_server_transport(runtime: Any) -> None:
         runtime.STATE.iroh_service = None
         if service is not None:
             await service.stop()
+
+
+async def delete_transport_conversation_history(runtime: Any, identity: Any, delete: Any) -> Any:
+    """Fence queued native prompts even when the endpoint/transport is stopped."""
+    async with _server_lifecycle_lock(runtime):
+        service = getattr(runtime.STATE, "iroh_service", None)
+        if service is not None and service.endpoint is not None and service.business.delivery is not None:
+            return await service.business.delivery.delete_history(api=service.endpoint.api,
+                endpoint_id=service.endpoint.endpoint_info.endpoint_id, identity=identity, delete=delete)
+        from shared.iroh_delivery import IrohDeliveryService, _joined_disk
+        from shared.iroh_binding import load_binding
+        keys = EndpointKeys(role="server", purpose="delivery")
+        if not keys.witness.exists() and not keys.password_store.exists() and not (keys.root / "operations").exists():
+            return await delete()
+        # Installed signed bindings and existing protected keys are required.
+        # Maintenance never enrolls/rotates keys or opens a network endpoint.
+        api = load_binding()
+        password = runtime.STATE.config_unlock_password or runtime.STATE.server_password
+        key = await _joined_disk(lambda: keys.load(enroll=False, unlocked_password=password))
+        identity_keys = EndpointKeys(role="server")
+        endpoint_id = await _joined_disk(lambda: api.endpoint_id_from_key(identity_keys.load(enroll=False, unlocked_password=password)))
+        delivery = IrohDeliveryService(root=keys.root / "operations", key=key)
+        return await delivery.delete_history(api=api, endpoint_id=endpoint_id, identity=identity, delete=delete)

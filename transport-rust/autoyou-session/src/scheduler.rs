@@ -50,6 +50,30 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Validate an entire reliable message before mutating the queue. A foreign
+    /// caller may retry Backpressure without replaying a partially queued body.
+    pub fn push_batch(&mut self, frames: Vec<Frame>) -> Result<(), QueueError> {
+        if self.closed { return Err(QueueError::Closed); }
+        if frames.is_empty() || frames.len() > MAX_QUEUED_FRAMES { return Err(QueueError::Full); }
+        let mut bytes = self.bytes; let mut count = self.frames;
+        for frame in &frames {
+            FrameHeader { stream_id: frame.stream_id, sequence: frame.sequence, lane: frame.lane,
+                generation: frame.generation, length: frame.payload.len() }.encode()?;
+            if frame.lane == Lane::Media { return Err(QueueError::InvalidDeadline); }
+            let control = frame.lane.priority() == 0;
+            let max_bytes = MAX_QUEUED_BYTES - if control { 0 } else { RESERVED_CONTROL_BYTES };
+            let max_frames = MAX_QUEUED_FRAMES - if control { 0 } else { RESERVED_CONTROL_FRAMES };
+            bytes = bytes.checked_add(frame.payload.len()).ok_or(QueueError::Full)?;
+            count += 1;
+            if count > max_frames || bytes > max_bytes { return Err(QueueError::Full); }
+        }
+        for frame in frames {
+            self.bytes += frame.payload.len(); self.frames += 1;
+            self.lanes[frame.lane.priority() as usize].push_back(Pending { frame, deadline_ms: None });
+        }
+        Ok(())
+    }
+
     pub fn pop(&mut self, now_ms: u64) -> Option<Frame> {
         self.pop_for_capacity(now_ms, true, true, |_| {})
     }
@@ -149,5 +173,15 @@ mod tests {
         assert_eq!(queue.queued_bytes(), 0);
         queue.push(frame(Lane::Application), None).unwrap();
         assert_eq!(queue.pop(u64::MAX).unwrap().lane, Lane::Application);
+    }
+    #[test]
+    fn atomic_browser_batch_backpressure_does_not_queue_a_partial_message() {
+        let mut queue = Scheduler::default();
+        while queue.push(frame(Lane::Http), None).is_ok() {}
+        let before = queue.queued_bytes();
+        assert_eq!(queue.push_batch(vec![frame(Lane::Http), frame(Lane::Http)]), Err(QueueError::Full));
+        assert_eq!(queue.queued_bytes(), before);
+        queue.push_batch(vec![Frame { payload: vec![1], ..frame(Lane::Control) }]).unwrap();
+        assert_eq!(queue.pop(0).unwrap().lane, Lane::Control);
     }
 }

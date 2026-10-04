@@ -1499,7 +1499,8 @@ class WebRTCManager:
         matched_session_id = session_id
 
         candidate_session_ids = [session_id]
-        for related_id in sorted(self._related_voice_session_ids(session_id)):
+        is_native = getattr(getattr(self, "datachannel_managers", {}).get(session_id), "transport_kind", None) == TransportKind.IROH
+        for related_id in ([] if is_native else sorted(self._related_voice_session_ids(session_id))):
             if related_id and related_id not in candidate_session_ids:
                 candidate_session_ids.append(related_id)
 
@@ -7848,6 +7849,8 @@ class WebRTCManager:
             metadata.update(_runtime._build_conversation_metadata(identity, reset=start_new_thread))
             metadata.update(self.client_name_history_metadata(identity))
             context = message.payload.get("context", [])
+            initial_channel = self._datachannel_manager_for_session(session_id, require_send_message=True)
+            native_file_replies = getattr(initial_channel, "transport_kind", None) == TransportKind.IROH
 
             _runtime.LOGGER.info(
                 "Received chat message from session %s (canonical=%s): %s",
@@ -7989,9 +7992,9 @@ class WebRTCManager:
 
             async def _send_immediate_media_reply(attachments: List[Dict[str, Any]]) -> bool:
                 try:
-                    from shared.media_messaging import inline_context_for_client, public_media_reply_metadata
+                    from shared.media_messaging import application_context_for_client, public_media_reply_metadata
 
-                    media_context = inline_context_for_client(attachments, source="media_reply")
+                    media_context = application_context_for_client(attachments, native_files=native_file_replies, source="media_reply")
                     if not media_context:
                         return False
                     media_metadata = {
@@ -8067,9 +8070,9 @@ class WebRTCManager:
             media_reply_attachments = list(getattr(chat_resp, "media_reply_attachments", []) or [])
             if media_reply_attachments:
                 try:
-                    from shared.media_messaging import inline_context_for_client, public_media_reply_metadata
+                    from shared.media_messaging import application_context_for_client, public_media_reply_metadata
 
-                    media_context = inline_context_for_client(media_reply_attachments, source="media_reply")
+                    media_context = application_context_for_client(media_reply_attachments, native_files=native_file_replies, source="media_reply")
                     if media_context:
                         media_metadata = {
                             "source": "media_reply",
@@ -8692,6 +8695,8 @@ class WebRTCManager:
             "x-original-url",
             "x-target-url",
             "x-autoyou-ads-account-summary",
+            "x-autoyou-application-transport",
+            "x-autoyou-agent-html-adapted",
             *REMOTE_BROWSER_IDENTITY_HEADERS,
         }
         browser_metadata = {"upgrade-insecure-requests"}
@@ -8911,8 +8916,43 @@ class WebRTCManager:
             )
         )
 
+    async def _preflight_native_http_request(self, message: 'DataChannelMessage') -> bool:
+        """Apply the existing browser authority before staging a native body."""
+        from shared.iroh_http_headers import InvalidHTTPHeaders, forward_header_pairs
+        from urllib.parse import urlsplit
+        payload = message.payload
+        request_id = payload.get("request_id") or message.header.message_id
+        try:
+            method = str(payload.get("method") or "GET").strip().upper()
+            url = payload.get("url", "/")
+            if not isinstance(url, str) or not method or len(method) > 32 or not method.isascii() or not method.isalpha():
+                raise InvalidHTTPHeaders("Invalid native HTTP request head")
+            headers = payload.get("headers", {})
+            if not isinstance(headers, dict):
+                raise InvalidHTTPHeaders("Invalid native HTTP header map")
+            path = urlsplit(url).path or "/"
+            websocket = str(headers.get("Upgrade", headers.get("upgrade", ""))).lower() == "websocket"
+            role = _runtime._get_remote_browser_access_role(_runtime.STATE.config or {})
+            if not _runtime.remote_http_request_allowed(role, method, path, websocket=websocket):
+                await self._send_remote_access_denied(message, request_id, method, url, websocket=websocket)
+                return False
+            target = self._resolve_autoyou_forward_url(url, websocket=websocket)
+            self._validate_remote_forward_target(target, websocket=websocket)
+            forward_header_pairs(payload.get("raw_headers"), headers,
+                sanitize=lambda source: self._sanitize_forward_headers(source, target, websocket=websocket), canonical={})
+            return True
+        except (_runtime.UnsafeURLError, InvalidHTTPHeaders, ValueError) as error:
+            response = _runtime.create_http_response_message(status_code=400 if isinstance(error, InvalidHTTPHeaders) else 403,
+                headers={"Content-Type": "text/plain"}, body="Remote request head rejected", request_id=request_id,
+                session_id=message.header.session_id, user_id=message.header.user_id, compressed=False)
+            channel = self._datachannel_manager_for_session(message.header.session_id, require_send_message=True)
+            if channel is not None:
+                await channel.send_message(response)
+            return False
+
     async def _handle_http_request(self, message: 'DataChannelMessage') -> None:
         """Handle HTTP requests received via datachannel with compression optimization."""
+        native_body = getattr(message, "native_http_body", None)
         try:
             # Extract HTTP request details from payload
             method = str(message.payload.get("method") or "GET").strip().upper() or "GET"
@@ -8957,9 +8997,8 @@ class WebRTCManager:
                     status_code = 405
                 elif method == "POST":
                     try:
-                        raw = _runtime._decode_datachannel_http_body(
-                            body, compressed=is_compressed, body_base64=body_base64,
-                        )
+                        raw = (await native_body.read(maximum_bytes=4096, compressed=is_compressed)) if native_body is not None else \
+                            _runtime._decode_datachannel_http_body(body, compressed=is_compressed, body_base64=body_base64)
                         if raw is None or len(raw) > 4096:
                             raise ValueError("Invalid settings body")
                         changes = _runtime.json.loads(raw)
@@ -9196,7 +9235,11 @@ class WebRTCManager:
                 return
 
             try:
-                content_bytes = _runtime._decode_datachannel_http_body(
+                if native_body is not None and is_compressed:
+                    decoded_body = await native_body.decoded()
+                    native_body.close()
+                    native_body = decoded_body
+                content_bytes = native_body.iterate() if native_body is not None else _runtime._decode_datachannel_http_body(
                     body,
                     compressed=is_compressed,
                     body_base64=body_base64,
@@ -9225,6 +9268,25 @@ class WebRTCManager:
                     source_headers=message.payload.get("headers", {}),
                 )
             )
+            native_channel = self._datachannel_manager_for_session(message.header.session_id, require_send_message=True)
+            from shared.session_transport import TransportKind
+            is_native_browser = getattr(native_channel, "transport_kind", None) == TransportKind.IROH
+            if is_native_browser:
+                from shared.iroh_http_headers import forward_header_pairs
+                canonical_headers = self._agent_frontend_context_headers(request_path, target_url,
+                    str(message.header.session_id or ""), source_headers=message.payload.get("headers", {}))
+                canonical_headers.update({name: value for name, value in headers.items()
+                    if name.lower() == REMOTE_BROWSER_HEADER.lower()})
+                from shared.iroh_http_headers import NATIVE_STREAM_HEADER
+                from urllib.parse import urlsplit as _native_header_split
+                if self._is_loopback_host(_native_header_split(target_url).hostname):
+                    canonical_headers[NATIVE_STREAM_HEADER] = "iroh"
+                if method == "GET" and _runtime._agent_name_from_browser_proxy_path(request_path) and not any(
+                    str(name).lower() == "range" for name in message.payload.get("headers", {})):
+                    canonical_headers["Accept-Encoding"] = "gzip, identity"
+                headers = forward_header_pairs(message.payload.get("raw_headers"), message.payload.get("headers", {}),
+                    sanitize=lambda source: self._sanitize_forward_headers(source, target_url, websocket=False),
+                    canonical=canonical_headers)
 
             _runtime.LOGGER.info(f"Forwarding HTTP {method} {url} to {target_url} (ID: {request_id}, compressed: {is_compressed})")
 
@@ -9251,11 +9313,11 @@ class WebRTCManager:
             }
 
             # Add body for methods that support it
-            if method in ["POST", "PUT", "PATCH", "QUERY"] and (content_bytes is not None):
+            if (native_body is not None or method in ["POST", "PUT", "PATCH", "QUERY"]) and (content_bytes is not None):
                 request_kwargs["content"] = content_bytes
 
             # If SSE is requested, stream the response as SSE events over datachannel
-            if sse_requested:
+            if sse_requested and not is_native_browser:
 
                 # Initiate streaming request
                 stream_ended = False
@@ -9412,6 +9474,10 @@ class WebRTCManager:
                 send_ok = await datachannel_manager.send_message(frame_message)
                 if not send_ok:
                     raise RuntimeError(f"HTTP stream stalled during {frame_name}")
+                if is_native_browser:
+                    # Even an in-memory upstream must share this loop with
+                    # another request, cancellation and interactive responses.
+                    await _runtime.asyncio.sleep(0)
 
             try:
                 async with self._http_client.stream(method, **request_kwargs) as resp:
@@ -9428,6 +9494,18 @@ class WebRTCManager:
                         raw_headers = []
 
                     upstream_response_headers = dict(response_headers)
+                    ct = (upstream_response_headers.get("Content-Type") or upstream_response_headers.get("content-type") or "").lower()
+                    import re as _re_ah
+                    _agent_html_m = _re_ah.match(r'^/agent/([^/?#]+)', request_path or '/')
+                    _is_agent_html = bool(_agent_html_m and 'text/html' in ct and method.upper() == 'GET')
+                    native_agent_html = is_native_browser and _is_agent_html and resp.status_code == 200 and \
+                        not any(str(name).lower() == "range" for name, _ in headers)
+                    from shared.iroh_http_headers import NATIVE_HTML_HEADER
+                    from urllib.parse import urlsplit as _native_split
+                    if native_agent_html and resp.headers.get(NATIVE_HTML_HEADER) == "1" and \
+                        self._is_loopback_host(_native_split(target_url).hostname) and \
+                        _native_split(target_url).port == self._get_autoyou_page_service_port():
+                        native_agent_html = False
                     stream_transport_headers = {
                         "connection",
                         "keep-alive",
@@ -9439,11 +9517,14 @@ class WebRTCManager:
                         "transfer-encoding",
                         "upgrade",
                         "content-transfer-encoding",
+                        NATIVE_HTML_HEADER.lower(),
+                        "x-autoyou-application-transport",
                     }
-                    stream_open_excluded_headers = stream_transport_headers | {
-                        "content-length",
-                        "content-encoding",
-                    }
+                    stream_open_excluded_headers = stream_transport_headers | {"content-length"}
+                    if not is_native_browser or native_agent_html:
+                        stream_open_excluded_headers.add("content-encoding")
+                    if native_agent_html:
+                        stream_open_excluded_headers.update({"etag", "content-md5", "content-digest", "digest"})
                     stream_open_headers: dict[str, str] = {}
                     for key, value in response_headers.items():
                         lower_key = str(key).lower()
@@ -9456,11 +9537,10 @@ class WebRTCManager:
                     stream_open_raw_headers = [
                         (key, value)
                         for key, value in raw_headers
-                        if str(key).lower() not in stream_transport_headers
+                        if str(key).lower() not in (stream_open_excluded_headers if is_native_browser else stream_transport_headers)
                     ]
 
                     # Decide content-type handling (text vs. binary)
-                    ct = (upstream_response_headers.get("Content-Type") or upstream_response_headers.get("content-type") or "").lower()
                     is_textual = (
                         ct.startswith("text/")
                         or "application/json" in ct
@@ -9473,13 +9553,17 @@ class WebRTCManager:
                     # Detect agent HTML responses: shim must be injected so that
                     # the admin UI JS routes absolute-path API calls through
                     # /agent/<name>/ instead of directly to the page service.
-                    import re as _re_ah
-                    _agent_html_m = _re_ah.match(r'^/agent/([^/?#]+)', url or '/')
-                    _is_agent_html = bool(
-                        _agent_html_m and 'text/html' in ct and method.upper() == 'GET'
-                    )
+                    if is_native_browser:
+                        # HTTP/SSE bodies retain their bytes and charset. The
+                        # browser owns event parsing and text decoding; no JSON
+                        # event rewrite or whole-response fallback is needed.
+                        is_textual = False
                     _agent_html_prefix = f"/agent/{_agent_html_m.group(1)}" if _agent_html_m else ""
                     _agent_html_shim_injected: str = ""
+                    if is_native_browser:
+                        # The native rewrite emits bounded chunks before EOF.
+                        # Only legacy adapters use the accumulated-page path.
+                        _is_agent_html = False
 
                     runtime_settings = (
                         _runtime.DataChannelRuntimeSettings.from_env()
@@ -9513,7 +9597,7 @@ class WebRTCManager:
                         session_id=session_id,
                         user_id=user_id,
                     )
-                    use_ack_backed_binary_stream = _runtime._should_use_ack_backed_binary_http_stream(
+                    use_ack_backed_binary_stream = False if is_native_browser else _runtime._should_use_ack_backed_binary_http_stream(
                         is_textual=is_textual,
                         content_type=ct,
                         url=url,
@@ -9526,6 +9610,11 @@ class WebRTCManager:
                         safe_chunk_size=safe_binary_stream_chunk_size,
                     )
                     text_stream_chunk_size = max(1, safe_text_stream_chunk_size)
+                    if is_native_browser:
+                        # Native records carry raw bytes and their own completion
+                        # checks; the legacy SCTP chunk ceiling is inapplicable.
+                        binary_stream_chunk_size = 48 * 1024
+                        text_stream_chunk_size = 12 * 1024
                     stream_read_chunk_size = text_stream_chunk_size if is_textual else binary_stream_chunk_size
                     text_stream_decoder = None
                     text_stream_encoding = "utf-8"
@@ -9573,6 +9662,8 @@ class WebRTCManager:
                         )
                     else:
                         response_body_capture_limit = 0
+                    if is_native_browser and not _is_agent_html:
+                        response_body_capture_limit = 0
                     response_body_capture_truncated = False
                     response_size_bytes = 0
 
@@ -9588,7 +9679,11 @@ class WebRTCManager:
                         if should_try_buffered_response
                         else stream_read_chunk_size
                     )
-                    body_stream = resp.aiter_bytes(chunk_size=body_fetch_chunk_size)
+                    if is_native_browser:
+                        from shared.iroh_http_stream import bounded_http_bytes
+                        body_stream = bounded_http_bytes(resp, decode=bool(native_agent_html))
+                    else:
+                        body_stream = resp.aiter_bytes(chunk_size=body_fetch_chunk_size)
                     prefetched_stream_chunks: list[bytes] = []
 
                     if should_try_buffered_response:
@@ -9673,6 +9768,8 @@ class WebRTCManager:
                         session_id=session_id,
                         user_id=user_id,
                       )
+                      if is_native_browser:
+                        open_msg.payload["content_decoded"] = bool(native_agent_html)
                       await _send_stream_frame_or_raise(open_msg, "HTTP_STREAM_OPEN")
 
                     async def _iter_response_chunks():
@@ -9687,8 +9784,20 @@ class WebRTCManager:
                             for offset in range(0, len(stream_chunk), stream_read_chunk_size):
                                 yield stream_chunk[offset:offset + stream_read_chunk_size]
 
+                    async def _iter_native_agent_chunks():
+                        from shared.iroh_agent_html import AgentHTMLStream
+                        adapter = AgentHTMLStream(_agent_html_prefix, self._inject_agent_proxy_shim)
+                        async for source in _iter_response_chunks():
+                            transformed = adapter.feed(source)
+                            for offset in range(0, len(transformed), stream_read_chunk_size):
+                                yield transformed[offset:offset + stream_read_chunk_size]
+                        transformed = adapter.finish()
+                        for offset in range(0, len(transformed), stream_read_chunk_size):
+                            yield transformed[offset:offset + stream_read_chunk_size]
+
                     # Stream bytes and forward as HTTP_STREAM_DATA; accumulate appropriately
-                    async for chunk in _iter_response_chunks():
+                    response_chunks = _iter_native_agent_chunks() if native_agent_html else _iter_response_chunks()
+                    async for chunk in response_chunks:
                         if not chunk:
                             continue
                         # Always accumulate raw bytes for final assembly
@@ -9711,7 +9820,7 @@ class WebRTCManager:
                                 chunk,
                                 encoding=text_stream_encoding,
                             )
-                            if piece_text:
+                            if piece_text and (not is_native_browser or _is_agent_html):
                                 response_text_accumulator.append(piece_text)
                         else:
                             import base64
@@ -9798,7 +9907,7 @@ class WebRTCManager:
                     # when the body was intentionally captured. Large binary
                     # streams are already fulfilled by HTTP_STREAM_* frames; do
                     # not retain and re-encode the whole video just to skip it.
-                    response_body_available_for_fallback = not response_body_capture_truncated
+                    response_body_available_for_fallback = not is_native_browser and not response_body_capture_truncated
                     if response_body_available_for_fallback:
                         encoded_response = _runtime.encode_http_proxy_response(
                             bytes(response_bytes_accumulator),
@@ -9894,7 +10003,8 @@ class WebRTCManager:
             _runtime.LOGGER.error(f"Failed to handle HTTP request: {e}")
             # Send error response
             try:
-                error_status = 403 if isinstance(e, _runtime.UnsafeURLError) else 500
+                from shared.iroh_http_headers import InvalidHTTPHeaders
+                error_status = 403 if isinstance(e, _runtime.UnsafeURLError) else 400 if isinstance(e, InvalidHTTPHeaders) else 500
                 error_response = _runtime.create_http_response_message(
                     status_code=error_status,
                     headers={"Content-Type": "text/plain"},
@@ -9917,6 +10027,9 @@ class WebRTCManager:
                     await datachannel_manager.send_message(error_response)
             except Exception as send_error:
                 _runtime.LOGGER.error(f"Failed to send error response: {send_error}")
+        finally:
+            if native_body is not None:
+                native_body.close()
 
     async def _handle_ws_upgrade(self, message: 'DataChannelMessage', url: str, headers: dict, request_id: str) -> None:
         """Relay a WebSocket connection through the DataChannel.
@@ -9934,6 +10047,8 @@ class WebRTCManager:
         if not datachannel_manager:
             _runtime.LOGGER.error(f"No datachannel manager for WS upgrade, session {session_id}")
             return
+        from shared.session_transport import TransportKind
+        is_native_browser = getattr(datachannel_manager, "transport_kind", None) == TransportKind.IROH
         if not _runtime.remote_http_request_allowed(_runtime._get_remote_browser_access_role(_runtime.STATE.config or {}), "GET", url, websocket=True):
             await self._send_remote_access_denied(message, request_id, "GET", url, websocket=True)
             return
@@ -9996,6 +10111,18 @@ class WebRTCManager:
                     "host",
                 )
             }
+            if is_native_browser:
+                from shared.iroh_http_headers import forward_header_pairs
+                from urllib.parse import urlsplit
+                handshake_fields = {"upgrade", "connection", "sec-websocket-key", "sec-websocket-version",
+                    "sec-websocket-extensions", "sec-websocket-protocol", "host"}
+                canonical = self._agent_frontend_context_headers(urlsplit(url).path or "/", ws_url, str(session_id), source_headers=headers)
+                canonical.update({name: value for name, value in sanitized_headers.items() if name.lower() == REMOTE_BROWSER_HEADER.lower()})
+                from shared.iroh_http_headers import NATIVE_STREAM_HEADER
+                if self._is_loopback_host(urlsplit(ws_url).hostname): canonical[NATIVE_STREAM_HEADER] = "iroh"
+                ws_headers = [(name, value) for name, value in forward_header_pairs(message.payload.get("raw_headers"), headers,
+                    sanitize=lambda source: self._sanitize_forward_headers(source, ws_url, websocket=True), canonical=canonical)
+                    if name.lower() not in handshake_fields]
             protocol_header = next(
                 (v for k, v in headers.items() if k.lower() == "sec-websocket-protocol"),
                 ""
@@ -10003,12 +10130,17 @@ class WebRTCManager:
             subprotocols = [item.strip() for item in str(protocol_header).split(",") if item.strip()]
 
             import inspect
-            if "additional_headers" in inspect.signature(websockets.connect).parameters:
+            connect_parameters = inspect.signature(websockets.connect).parameters
+            if "additional_headers" in connect_parameters:
                 connect_kwargs: Dict[str, Any] = {"additional_headers": ws_headers}
             else:
                 connect_kwargs: Dict[str, Any] = {"extra_headers": ws_headers}
             if subprotocols:
                 connect_kwargs["subprotocols"] = subprotocols
+            if is_native_browser:
+                connect_kwargs.update(max_size=4 * 1024 * 1024, max_queue=16)
+            if is_native_browser and "proxy" in connect_parameters:
+                connect_kwargs["proxy"] = None
             from urllib.parse import urlsplit
             parsed_ws_url = urlsplit(ws_url)
             if not self._is_loopback_host(parsed_ws_url.hostname):
@@ -10020,15 +10152,22 @@ class WebRTCManager:
             ws_conn = await websockets.connect(ws_url, **connect_kwargs)
             _runtime.LOGGER.info(f"WebSocket proxy connected to {ws_url} (ID: {request_id})")
 
-            await datachannel_manager.send_message(
-                _runtime.create_http_ws_upgrade_message(
+            upgrade_message = _runtime.create_http_ws_upgrade_message(
                     request_id=request_id,
                     status="connected",
                     url=ws_url,
                     session_id=session_id,
                     subprotocol=getattr(ws_conn, "subprotocol", None),
                 )
-            )
+            if is_native_browser:
+                response = getattr(ws_conn, "response", None)
+                upstream_headers = getattr(response, "headers", None) or getattr(ws_conn, "response_headers", None)
+                raw_items = getattr(upstream_headers, "raw_items", None)
+                upgrade_message.payload["status_code"] = 101
+                upgrade_message.payload["raw_headers"] = list(raw_items()) if callable(raw_items) else []
+            accepted = await datachannel_manager.send_message(upgrade_message)
+            if is_native_browser and not accepted:
+                raise RuntimeError("WebSocket upgrade delivery failed")
 
             if not hasattr(self, '_ws_connections'):
                 self._ws_connections: Dict[str, Any] = {}
@@ -10050,7 +10189,9 @@ class WebRTCManager:
                         data=ws_message,
                         session_id=session_id,
                     )
-                    await datachannel_manager.send_message(relay_message)
+                    accepted = await datachannel_manager.send_message(relay_message)
+                    if is_native_browser and not accepted:
+                        raise RuntimeError("WebSocket frame delivery failed")
             except websockets.exceptions.ConnectionClosed as cc:
                 _runtime.LOGGER.info(f"WebSocket closed for {ws_url}: {cc.code} {cc.reason}")
             finally:
@@ -10082,16 +10223,26 @@ class WebRTCManager:
             if hasattr(self, '_ws_session_requests') and session_id in self._ws_session_requests:
                 self._ws_session_requests[session_id].discard(request_id)
             try:
-                await datachannel_manager.send_message(
-                    _runtime.create_http_ws_close_message(
+                failure = _runtime.create_http_ws_close_message(
                         request_id=request_id,
                         code=1011,
                         reason=str(e),
                         session_id=session_id,
                     )
-                )
+                if is_native_browser:
+                    failure = _runtime.create_http_ws_upgrade_message(request_id=request_id, status="rejected", url=ws_url, session_id=session_id)
+                    response = getattr(e, "response", None)
+                    status = getattr(response, "status_code", 502)
+                    failure.payload["status_code"] = status if isinstance(status, int) and 400 <= status <= 599 else 502
+                await datachannel_manager.send_message(failure)
             except Exception:
                 pass
+        finally:
+            if ws_conn is not None:
+                try:
+                    await ws_conn.close()
+                except Exception:
+                    pass
 
     async def _handle_ws_data_from_client(self, message: 'DataChannelMessage') -> None:
         """Handle WebSocket data sent by client to relay through to the upstream WS."""

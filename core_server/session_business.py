@@ -23,6 +23,7 @@ class SessionBusinessAdapter:
         self.runtime, self.engine, self.grants = runtime, engine, grants
         self._channels: dict[str, Any] = {}
         self._streams: dict[int, SessionStreamHandler] = {}
+        self.delivery: Any = None
 
     def attach_stream_handler(self, lane: int, handler: SessionStreamHandler) -> None:
         if lane not in {7, 8, 9} or lane in self._streams:
@@ -57,16 +58,49 @@ class SessionBusinessAdapter:
         self.engine.remember_device_ownership(identity, grant.device_ownership)
         self._channels[context.transport_id] = channel
         self.engine.datachannel_managers[context.transport_id] = channel
+        channel.http_request_preflight = getattr(self.engine, "_preflight_native_http_request", None)
+        if self.delivery is not None:
+            await self.delivery.prepared(transport, context, channel)
+        for handler in self._streams.values():
+            prepare = getattr(handler, "prepared", None)
+            if prepare is not None:
+                await prepare(transport, context, channel)
+                transport.registry.check(binding)
+                if self.engine.datachannel_managers.get(context.transport_id) is not channel:
+                    raise SessionDenied("application adapter was replaced during stream preparation")
 
-        async def received(message: Any) -> None:
+        async def dispatch(message: Any) -> None:
             transport.registry.check(binding)
             if self.engine.datachannel_managers.get(context.transport_id) is not channel:
                 raise SessionDenied("application adapter has been replaced")
+            if message.header.message_type == MessageType.CHAT and message.payload.get("context"):
+                files = getattr(channel, "native_files", None)
+                from shared.iroh_context import incoming_context, needs_file_capability
+                if files is None and needs_file_capability(message.payload["context"]):
+                    raise SessionDenied("attachment capability is unavailable")
+                if files is not None:
+                    message.payload = dict(message.payload, context=await incoming_context(files, message.payload["context"]))
+                transport.registry.check(binding)
+                if self.engine.datachannel_managers.get(context.transport_id) is not channel:
+                    raise SessionDenied("application adapter was replaced during attachment promotion")
             if await dispatch_bound_control_message(self.engine, message,
                     trusted_transport_id=context.transport_id, channel=channel):
                 return
             await dispatch_application_message(self.engine, message,
                 trusted_transport_id=context.transport_id, session_id=context.transport_id)
+
+        async def received(message: Any) -> None:
+            if message.header.message_type == MessageType.CHAT:
+                delivery = getattr(channel, "native_delivery", None)
+                tagged = "delivery" in getattr(message, "wire_extensions", {})
+                if tagged:
+                    if delivery is None:
+                        raise SessionDenied("application delivery capability is unavailable")
+                    await delivery.admit(message, dispatch)
+                    return
+                if delivery is not None and channel.api.delivery_prompt_supported(channel._wire(message)):
+                    raise SessionDenied("ordinary native prompts require durable admission")
+            await dispatch(message)
 
         for kind in (MessageType.CHAT, MessageType.HTTP_REQUEST, MessageType.HTTP_REQUEST_CANCEL,
                 MessageType.HTTP_STREAM_ABORT, MessageType.ERROR, MessageType.VOICE_CALL_CONTROL,
@@ -77,6 +111,11 @@ class SessionBusinessAdapter:
     async def ready(self, _transport: Any, context: Any, channel: Any) -> None:
         if self._channels.get(context.transport_id) is not channel or not channel.is_ready:
             raise SessionDenied("application adapter is not ready")
+        for handler in self._streams.values():
+            ready = getattr(handler, "ready", None)
+            if ready is not None: await ready(channel)
+        if self.delivery is not None:
+            await self.delivery.ready(channel)
         bootstrap_application_session(self.engine, context.transport_id, runtime=self.runtime)
 
     async def closed(self, context: Any, binding: Any, _user_requested: bool) -> None:
@@ -96,6 +135,8 @@ class SessionBusinessAdapter:
                     cleanup = [self.engine._cancel_session_message_tasks(context.transport_id)]
                     if binding is not None:
                         cleanup.extend(handler.closed(binding) for handler in self._streams.values())
+                        if self.delivery is not None:
+                            cleanup.append(self.delivery.closed(binding))
                     results = await asyncio.gather(*cleanup, return_exceptions=True)
                     if any(isinstance(result, BaseException) for result in results):
                         raise RuntimeError("application adapter cleanup failed")

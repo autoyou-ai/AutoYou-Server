@@ -10,6 +10,10 @@ use sha2::{Digest, Sha256};
 
 pub mod media;
 pub mod enrollment;
+pub mod byte_stream;
+pub mod http_body;
+pub mod binary;
+pub mod delivery;
 
 pub const PAIR_ALPN: &[u8] = b"autoyou/pair/1";
 pub const SESSION_ALPN: &[u8] = b"autoyou/session/1";
@@ -183,7 +187,8 @@ pub enum MessageType {
     HttpStreamOpen, HttpStreamData, HttpStreamEnd, HttpStreamAbort,
     Ping, Pong, VoiceCallControl, RoomBridgeControl, PairingControl,
     PeerControl, RoomControl, RoomChat, RoomFederationControl, RoomFederationChat,
-    Chunk, ChunkAck, Error, HttpWsUpgrade, HttpWsData, HttpWsClose,
+    Chunk, ChunkAck, Error, HttpWsUpgrade, HttpWsData, HttpWsClose, TransportStreamReceipt, TransportStreamProgress,
+    BinaryTransferOpen, BinaryTransferControl, TransportTransferLimits, ApplicationDeliveryControl,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,17 +219,21 @@ impl Envelope {
             Chat | RoomChat | RoomFederationChat => Lane::Application,
             HttpRequest | HttpResponse | HttpStreamOpen | HttpStreamData | HttpStreamEnd => Lane::Http,
             HttpSseStart | HttpSseEvent | HttpSseEnd => Lane::ServerEvents,
-            HttpWsUpgrade | HttpWsData => Lane::WebSocket,
+            HttpWsUpgrade | HttpWsData | HttpWsClose => Lane::WebSocket,
+            BinaryTransferOpen => Lane::Binary,
             _ => Lane::Control,
         }
     }
     pub fn required_scope(&self) -> Option<&'static str> {
         use MessageType::*;
         match self.header.message_type {
-            Chat | RoomChat | RoomFederationChat => Some("chat"),
+            Chat | RoomChat | RoomFederationChat | ApplicationDeliveryControl => Some("chat"),
             HttpRequest | HttpResponse | HttpRequestCancel | HttpStreamOpen | HttpStreamData |
                 HttpStreamEnd | HttpStreamAbort | HttpSseStart | HttpSseEvent | HttpSseEnd |
-                HttpWsUpgrade | HttpWsData | HttpWsClose => Some("browser"),
+                  HttpWsUpgrade | HttpWsData | HttpWsClose => Some("browser"),
+            TransportStreamReceipt => if self.payload.get("lane").and_then(Value::as_u64) == Some(Lane::Binary as u64) { Some("files") } else { Some("browser") },
+            TransportStreamProgress => Some("browser"),
+            BinaryTransferOpen | BinaryTransferControl | TransportTransferLimits => Some("files"),
             VoiceCallControl => Some("media"), PairingControl => Some("pairing"),
             PeerControl => Some("peer"), RoomBridgeControl | RoomControl => Some("room"),
             RoomFederationControl => Some("room_federation"), _ => None,

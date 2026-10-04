@@ -141,6 +141,8 @@ pub struct HostDiagnostics {
     pub queued_send_bytes: u64,
     pub held_send_bytes: u64,
     pub held_receive_bytes: u64,
+    pub active_logical_streams: u32,
+    pub pending_stream_receipts: u32,
 }
 
 impl HostEvent {
@@ -164,6 +166,39 @@ impl Events {
 struct Outbound {
     scheduler: Scheduler, sequences: HashMap<(u8,u64),u64>,
     allocations: HashMap<(u8,u64,u64), OwnedSemaphorePermit>,
+    next_stream: u64,
+    receipts: HashMap<(u8,u64), (u64, Vec<u8>)>,
+    uploads: UploadCredits,
+}
+const UPLOAD_WINDOW_BYTES:u64=8*autoyou_protocol::byte_stream::MAX_DATA_BYTES as u64;
+const UPLOAD_POOL_BYTES:u64=4*1024*1024;
+#[derive(Default)]
+struct UploadCredits { pending:HashMap<(u8,u64),(u64,u64)> }
+impl UploadCredits {
+    fn plan(&self,key:(u8,u64),record:&autoyou_protocol::byte_stream::Record)->Result<Option<(u64,u64)>,HostError> {
+        use autoyou_protocol::byte_stream::{Kind,Content,MAX_ACTIVE_STREAMS};
+        if key.0==Lane::Http as u8 && key.1>=2 && record.kind==Kind::Open && record.content==Content::RawBody &&
+            Envelope::from_slice(&record.metadata).map_err(|_|HostError::InvalidConfig)?.header.message_type==autoyou_protocol::MessageType::HttpRequest {
+            if self.pending.contains_key(&key) { return Err(HostError::InvalidConfig); }
+            if self.pending.len()>=MAX_ACTIVE_STREAMS { return Err(HostError::Backpressure); }
+            return Ok(Some((0,0)));
+        }
+        if record.kind==Kind::Data {
+            if let Some(&(sent,consumed))=self.pending.get(&key) {
+                if record.content!=Content::RawBody || record.offset!=sent { return Err(HostError::InvalidConfig); }
+                let next=sent.checked_add(record.data.len() as u64).ok_or(HostError::InvalidConfig)?;
+                let pool:u64=self.pending.values().map(|(sent,consumed)|sent-consumed).sum();
+                if next-consumed>UPLOAD_WINDOW_BYTES || pool+record.data.len() as u64>UPLOAD_POOL_BYTES { return Err(HostError::Backpressure); }
+                return Ok(Some((next,consumed)));
+            }
+        }
+        Ok(None)
+    }
+    fn consumed(&mut self,key:(u8,u64),offset:u64)->Result<(),HostError> {
+        let (sent,consumed)=self.pending.get_mut(&key).ok_or(HostError::NotAuthorized)?;
+        if offset<*consumed || offset>*sent { return Err(HostError::NotAuthorized); }
+        *consumed=offset;Ok(())
+    }
 }
 struct Receiver {
     ordering: OrderedReceiver,
@@ -228,6 +263,13 @@ pub fn endpoint_bytes(value: &str) -> Result<[u8;32], HostError> {
     if value.len() > 128 { return Err(HostError::InvalidConfig); }
     let id: iroh::EndpointId = value.parse().map_err(|_| HostError::InvalidConfig)?;
     Ok(*id.as_bytes())
+}
+
+/// Public identity derivation for protected-store maintenance while the
+/// transport is stopped. This does not create an endpoint or network runtime.
+pub fn endpoint_id_from_key(mut key: [u8;32]) -> String {
+    let endpoint = iroh::SecretKey::from_bytes(&key).public().to_string();
+    key.fill(0); endpoint
 }
 
 impl EndpointHost {
@@ -344,10 +386,102 @@ impl EndpointHost {
         let allocation = self.shared.send_bytes.clone().try_acquire_many_owned(frame.payload.len() as u32)
             .map_err(|_| HostError::Backpressure)?;
         frame.sequence = sequence;
+        let mut upload_credit=None;
+        let completion = if frame.payload.starts_with(&autoyou_protocol::byte_stream::MAGIC) {
+            let record = autoyou_protocol::byte_stream::Record::decode(frame.lane, &frame.payload)
+                .map_err(|_| HostError::InvalidConfig)?;
+            upload_credit=outbound.uploads.plan(key,&record)?;
+            match record.kind {
+                autoyou_protocol::byte_stream::Kind::Finish => Some((record.total, record.digest.to_vec())),
+                // Abort acknowledges the bytes actually queued/consumed, not
+                // the body's original declared length or unknown-total marker.
+                autoyou_protocol::byte_stream::Kind::Abort => Some((record.offset, record.digest.to_vec())),
+                _ => None,
+            }
+        } else { None };
         outbound.scheduler.push(frame, deadline_ms).map_err(|_| HostError::Backpressure)?;
+        if let Some(credit)=upload_credit { outbound.uploads.pending.insert(key,credit); }
         outbound.allocations.insert((key.0,key.1,sequence), allocation);
         outbound.sequences.insert(key, next);
+        if let Some(completion) = completion { outbound.receipts.insert(key, completion); }
         self.shared.wake.notify_one(); Ok(())
+    }
+    pub fn allocate_stream(&self, id: u64, lane: Lane) -> Result<u64, HostError> {
+        if !matches!(lane, Lane::Http | Lane::ServerEvents | Lane::WebSocket | Lane::Binary) { return Err(HostError::InvalidConfig); }
+        let slot = self.slot(id)?;
+        if !slot.activated.load(Ordering::Acquire) { return Err(HostError::NotAuthorized); }
+        let mut outbound = slot.outbound.lock().map_err(|_| HostError::Worker)?;
+        if outbound.sequences.len() >= 128 { return Err(HostError::Backpressure); }
+        let stream = outbound.next_stream;
+        outbound.next_stream = stream.checked_add(2).ok_or(HostError::Closed)?;
+        Ok(stream)
+    }
+    pub fn send_browser_records(&self, id: u64, lane: Lane, generation: u64, payloads: Vec<Vec<u8>>) -> Result<u64, HostError> {
+        if payloads.is_empty() || payloads.len() > 128 ||
+            !matches!(lane, Lane::Http | Lane::ServerEvents | Lane::WebSocket) { return Err(HostError::InvalidConfig); }
+        let slot = self.slot(id)?;
+        if !slot.activated.load(Ordering::Acquire) { return Err(HostError::NotAuthorized); }
+        let mut frames = Vec::with_capacity(payloads.len()); let mut permits = Vec::with_capacity(payloads.len());
+        let mut validator = autoyou_protocol::byte_stream::Receiver::default(); let mut completion = None;
+        let count = payloads.len();
+        for (index, payload) in payloads.into_iter().enumerate() {
+            let record = autoyou_protocol::byte_stream::Record::decode(lane, &payload).map_err(|_| HostError::InvalidConfig)?;
+            let expected_kind = if index == 0 { autoyou_protocol::byte_stream::Kind::Open }
+                else if index + 1 == count { autoyou_protocol::byte_stream::Kind::Finish }
+                else { autoyou_protocol::byte_stream::Kind::Data };
+            if record.kind != expected_kind { return Err(HostError::InvalidConfig); }
+            validator.accept(lane, 2, &record).map_err(|_| HostError::InvalidConfig)?;
+            if record.kind == autoyou_protocol::byte_stream::Kind::Finish { completion = Some((record.total, record.digest.to_vec())); }
+            let frame = Frame { lane, generation, stream_id: 2, sequence: index as u64, payload };
+            authorize_header(&slot, &FrameHeader { lane, generation, stream_id: 2, sequence: frame.sequence, length: frame.payload.len() }, false)?;
+            authorize_payload(&slot, &frame)?;
+            permits.push(self.shared.send_bytes.clone().try_acquire_many_owned(frame.payload.len() as u32).map_err(|_| HostError::Backpressure)?);
+            frames.push(frame);
+        }
+        let completion = completion.ok_or(HostError::InvalidConfig)?;
+        if validator.active_count() != 0 { return Err(HostError::InvalidConfig); }
+        let mut outbound = slot.outbound.lock().map_err(|_| HostError::Worker)?;
+        if outbound.sequences.len() >= 128 { return Err(HostError::Backpressure); }
+        // The ordered business-message lane remains one persistent logical
+        // stream. Independent message streams would allow STREAM_END to overtake
+        // an earlier chunk or a WebSocket message. Large request bodies use
+        // separately allocated IDs >=2 and do not block this metadata stream.
+        let stream_id = 1;
+        let first = *outbound.sequences.get(&(lane as u8, stream_id)).unwrap_or(&0);
+        for frame in &mut frames { frame.stream_id = stream_id; frame.sequence += first; }
+        let count = frames.len() as u64;
+        let next = first.checked_add(count).ok_or(HostError::Closed)?;
+        outbound.scheduler.push_batch(frames).map_err(|_| HostError::Backpressure)?;
+        for (index, permit) in permits.into_iter().enumerate() { outbound.allocations.insert((lane as u8, stream_id, first + index as u64), permit); }
+        outbound.sequences.insert((lane as u8, stream_id), next);
+        let _ = completion; self.shared.wake.notify_one(); Ok(stream_id)
+    }
+    pub fn acknowledge_stream(&self, id: u64, lane: u8, stream_id: u64, total: u64, digest: Vec<u8>) -> Result<(), HostError> {
+        let slot = self.slot(id)?;
+        let generation = match &*slot.admission.lock().map_err(|_| HostError::Worker)? {
+            Admission::Admitted(principal) => principal.generation, _ => return Err(HostError::NotAuthorized),
+        };
+        let receipt = autoyou_protocol::byte_stream::Receipt { lane, stream_id, total, digest };
+        let envelope = Envelope { header: autoyou_protocol::MessageHeader { message_id: "byte-stream-receipt".into(),
+            message_type: autoyou_protocol::MessageType::TransportStreamReceipt, timestamp: 0.0, session_id: None, user_id: None,
+            extensions: Default::default() }, payload: serde_json::to_value(receipt).map_err(|_| HostError::InvalidConfig)?
+                .as_object().ok_or(HostError::InvalidConfig)?.clone(), extensions: Default::default() };
+        autoyou_protocol::byte_stream::Receipt::from_envelope(&envelope).map_err(|_| HostError::InvalidConfig)?;
+        self.send(id, Frame { lane: Lane::Control, generation, stream_id: 0, sequence: 0,
+            payload: envelope.to_vec().map_err(|_| HostError::InvalidConfig)? }, None)?;
+        self.retire_stream(id, lane, stream_id)
+    }
+    pub fn acknowledge_progress(&self,id:u64,lane:u8,stream_id:u64,offset:u64)->Result<(),HostError> {
+        let slot=self.slot(id)?;
+        let generation=match &*slot.admission.lock().map_err(|_|HostError::Worker)? {
+            Admission::Admitted(principal)=>principal.generation,_=>return Err(HostError::NotAuthorized),
+        };
+        let progress=autoyou_protocol::byte_stream::Progress {lane,stream_id,offset};
+        let envelope=Envelope {header:autoyou_protocol::MessageHeader {message_id:"byte-stream-progress".into(),
+            message_type:autoyou_protocol::MessageType::TransportStreamProgress,timestamp:0.0,session_id:None,user_id:None,extensions:Default::default()},
+            payload:serde_json::to_value(progress).map_err(|_|HostError::InvalidConfig)?.as_object().ok_or(HostError::InvalidConfig)?.clone(),extensions:Default::default()};
+        autoyou_protocol::byte_stream::Progress::from_envelope(&envelope).map_err(|_|HostError::InvalidConfig)?;
+        self.send(id,Frame {lane:Lane::Control,generation,stream_id:0,sequence:0,payload:envelope.to_vec().map_err(|_|HostError::InvalidConfig)?},None)
     }
     pub fn activate(&self, id: u64) -> Result<(), HostError> {
         let slot = self.slot(id)?;
@@ -388,7 +522,43 @@ impl EndpointHost {
             events.bytes -= event.bytes();
             result.push(event);
         }
-        Ok(result)
+        drop(events);
+        let mut delivered = Vec::with_capacity(result.len());
+        for event in result {
+            if let HostEvent::Frame { connection_id, frame, .. } = &event {
+                if frame.lane == Lane::Control {
+                    let envelope = Envelope::from_slice(&frame.payload).map_err(|_| HostError::NotAuthorized)?;
+                    if envelope.header.message_type == autoyou_protocol::MessageType::TransportStreamReceipt {
+                        let Some(slot) = self.shared.slots.lock().map_err(|_| HostError::Worker)?.get(connection_id).cloned() else { continue; };
+                        let Ok(receipt) = autoyou_protocol::byte_stream::Receipt::from_envelope(&envelope) else {
+                            slot.connection.close(1u32.into(), b"invalid stream receipt"); continue;
+                        };
+                        let expected = slot.outbound.lock().map_err(|_| HostError::Worker)?.receipts
+                            .get(&(receipt.lane, receipt.stream_id)).cloned();
+                        // Duplicate receipts for already retired streams are harmless;
+                        // a peer cannot retire another body's pending bytes by guessing.
+                        if expected.is_none() && slot.retired.lock().map_err(|_| HostError::Worker)?.contains(receipt.lane, receipt.stream_id) { continue; }
+                        if expected != Some((receipt.total, receipt.digest)) {
+                            slot.connection.close(1u32.into(), b"invalid stream receipt"); continue;
+                        }
+                        self.retire_stream(*connection_id, receipt.lane, receipt.stream_id)?; continue;
+                    }
+                    if envelope.header.message_type==autoyou_protocol::MessageType::TransportStreamProgress {
+                        let Some(slot)=self.shared.slots.lock().map_err(|_|HostError::Worker)?.get(connection_id).cloned() else {continue;};
+                        let Ok(progress)=autoyou_protocol::byte_stream::Progress::from_envelope(&envelope) else {
+                            slot.connection.close(1u32.into(),b"invalid stream progress");continue;
+                        };
+                        if slot.retired.lock().map_err(|_|HostError::Worker)?.contains(progress.lane,progress.stream_id) {continue;}
+                        if slot.outbound.lock().map_err(|_|HostError::Worker)?.uploads.consumed((progress.lane,progress.stream_id),progress.offset).is_err() {
+                            slot.connection.close(1u32.into(),b"invalid stream progress");
+                        }
+                        continue;
+                    }
+                }
+            }
+            delivered.push(event);
+        }
+        Ok(delivered)
     }
     pub fn network_changed(&self) -> Result<(), HostError> {
         self.open()?; self.commands.try_send(Command::NetworkChanged).map_err(|_| HostError::Backpressure)
@@ -407,11 +577,13 @@ impl EndpointHost {
             if path.is_relay() { "relay" } else if path.is_ip() { "direct" } else { "other" }
         });
         let rtt_ms = selected.map(|path| path.rtt().as_millis().min(u64::MAX as u128) as u64);
+        let outbound = slot.outbound.lock().map_err(|_| HostError::Worker)?;
         Ok(HostDiagnostics { generation: principal.generation, authorization_epoch: principal.authorization_epoch,
             path_kind, open_paths: paths.len().min(u32::MAX as usize) as u32, rtt_ms,
-            queued_send_bytes: slot.outbound.lock().map_err(|_| HostError::Worker)?.scheduler.queued_bytes() as u64,
+            queued_send_bytes: outbound.scheduler.queued_bytes() as u64,
             held_send_bytes: (16*1024*1024-self.shared.send_bytes.available_permits()) as u64,
-            held_receive_bytes: (16*1024*1024-self.shared.read_bytes.available_permits()) as u64 })
+            held_receive_bytes: (16*1024*1024-self.shared.read_bytes.available_permits()) as u64,
+            active_logical_streams: outbound.sequences.len() as u32, pending_stream_receipts: outbound.receipts.len() as u32 })
     }
     pub fn disconnect(&self, id: u64) -> Result<(), HostError> {
         self.open()?;
@@ -445,6 +617,8 @@ impl EndpointHost {
             allocations.remove(&(lane,stream_id,frame.sequence));
         });
         outbound.sequences.remove(&(lane,stream_id));
+        outbound.uploads.pending.remove(&(lane,stream_id));
+        outbound.receipts.remove(&(lane,stream_id));
         Ok(())
     }
     pub fn shutdown(&self) -> Result<(), HostError> {
@@ -525,10 +699,34 @@ fn authorize_header(slot: &Slot, header: &FrameHeader, inbound: bool) -> Result<
 }
 
 fn authorize_payload(slot: &Slot, frame: &Frame) -> Result<(), HostError> {
+    if matches!(frame.lane, Lane::Http | Lane::ServerEvents | Lane::WebSocket | Lane::Binary) &&
+        frame.payload.starts_with(&autoyou_protocol::byte_stream::MAGIC) {
+        autoyou_protocol::byte_stream::Record::decode(frame.lane, &frame.payload)
+            .map_err(|_| HostError::NotAuthorized)?;
+        if frame.stream_id == 0 || (frame.lane == Lane::Binary && frame.stream_id < 2) { return Err(HostError::NotAuthorized); }
+        let header = FrameHeader { lane: frame.lane, generation: frame.generation,
+            stream_id: frame.stream_id, sequence: frame.sequence, length: frame.payload.len() };
+        slot.admission.lock().map_err(|_| HostError::Worker)?
+            .check(&header, Some(if frame.lane == Lane::Binary { "files" } else { "browser" }), now_ms()).map_err(|_| HostError::NotAuthorized)?;
+        return Ok(());
+    }
+    if frame.lane == Lane::Binary { return Err(HostError::NotAuthorized); }
     if !matches!(frame.lane, Lane::Control | Lane::Application | Lane::Http | Lane::ServerEvents | Lane::WebSocket) {
         return Ok(());
     }
     let envelope = Envelope::from_slice(&frame.payload).map_err(|_| HostError::NotAuthorized)?;
+    if envelope.header.message_type == autoyou_protocol::MessageType::TransportStreamReceipt {
+        autoyou_protocol::byte_stream::Receipt::from_envelope(&envelope).map_err(|_| HostError::NotAuthorized)?;
+    }
+    if envelope.header.message_type==autoyou_protocol::MessageType::TransportStreamProgress {
+        autoyou_protocol::byte_stream::Progress::from_envelope(&envelope).map_err(|_|HostError::NotAuthorized)?;
+    }
+    if envelope.header.message_type == autoyou_protocol::MessageType::BinaryTransferControl {
+        autoyou_protocol::binary::Control::from_envelope(&envelope).map_err(|_| HostError::NotAuthorized)?;
+    }
+    if envelope.header.message_type == autoyou_protocol::MessageType::ApplicationDeliveryControl {
+        autoyou_protocol::delivery::Control::from_envelope(&envelope).map_err(|_| HostError::NotAuthorized)?;
+    }
     if envelope.lane() != frame.lane { return Err(HostError::NotAuthorized); }
     let header = FrameHeader { lane: frame.lane, generation: frame.generation,
         stream_id: frame.stream_id, sequence: frame.sequence, length: frame.payload.len() };
@@ -587,7 +785,8 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                                 Err(_) => { shared.pending_dials.lock().unwrap().remove(&id); connection.close(1u32.into(), b"binding unavailable"); continue; }
                             };
                             let slot = Arc::new(Slot { connection, admission: Mutex::new(Admission::default()),
-                                outbound: Mutex::new(Outbound { scheduler: Scheduler::default(), sequences: HashMap::new(), allocations: HashMap::new() }),
+                                outbound: Mutex::new(Outbound { scheduler: Scheduler::default(), sequences: HashMap::new(), allocations: HashMap::new(),
+                                    next_stream: if initiator { 3 } else { 2 }, receipts: HashMap::new(), uploads:UploadCredits::default() }),
                                 receiver: Mutex::new(Receiver { ordering: OrderedReceiver::default(), allocations: HashMap::new() }), preauth_frames: AtomicU64::new(0),
                                 preauth_bytes: AtomicU64::new(0), read_slots: Arc::new(Semaphore::new(16)),
                                 retired: Mutex::new(RetiredStreams::default()), activated: AtomicBool::new(false), closed: AtomicBool::new(false) });
@@ -743,6 +942,38 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn upload_fixture()->(autoyou_protocol::byte_stream::Writer,autoyou_protocol::byte_stream::Record) {
+        use autoyou_protocol::byte_stream::{Writer,Content};
+        let metadata=br#"{"header":{"message_id":"synthetic-upload","message_type":"http_request","timestamp":1},"payload":{"request_id":"synthetic-upload","method":"POST","url":"/synthetic"}}"#.to_vec();
+        Writer::open(Lane::Http,Content::RawBody,2*1024*1024,metadata).unwrap()
+    }
+    #[test]
+    fn upload_consumer_window_rejects_future_credit_and_preserves_a_blocked_record() {
+        let (mut writer,open)=upload_fixture();let key=(4,3);let mut credits=UploadCredits::default();
+        credits.pending.insert(key,credits.plan(key,&open).unwrap().unwrap());
+        for _ in 0..8 {let record=writer.data(vec![7;49152]).unwrap();let next=credits.plan(key,&record).unwrap().unwrap();credits.pending.insert(key,next);}
+        let blocked=writer.data(vec![7;49152]).unwrap();
+        assert!(matches!(credits.plan(key,&blocked),Err(HostError::Backpressure)));
+        assert_eq!(credits.pending[&key],(UPLOAD_WINDOW_BYTES,0));
+        assert!(credits.consumed(key,UPLOAD_WINDOW_BYTES+1).is_err());
+        credits.consumed(key,49152).unwrap();credits.consumed(key,49152).unwrap();
+        assert!(credits.consumed(key,1).is_err());assert!(credits.consumed((4,5),49152).is_err());
+        let next=credits.plan(key,&blocked).unwrap().unwrap();credits.pending.insert(key,next);
+        assert_eq!(credits.pending[&key],(9*49152,49152));
+    }
+    #[test]
+    fn upload_connection_pool_caps_parallel_unconsumed_prefixes() {
+        let mut credits=UploadCredits::default();
+        for stream in 0..10 {
+            let (mut writer,open)=upload_fixture();let key=(4,3+2*stream);
+            credits.pending.insert(key,credits.plan(key,&open).unwrap().unwrap());
+            for _ in 0..8 {let record=writer.data(vec![7;49152]).unwrap();let next=credits.plan(key,&record).unwrap().unwrap();credits.pending.insert(key,next);}
+        }
+        let (mut writer,open)=upload_fixture();let key=(4,23);credits.pending.insert(key,credits.plan(key,&open).unwrap().unwrap());
+        for _ in 0..5 {let record=writer.data(vec![7;49152]).unwrap();let next=credits.plan(key,&record).unwrap().unwrap();credits.pending.insert(key,next);}
+        let blocked=writer.data(vec![7;49152]).unwrap();assert!(matches!(credits.plan(key,&blocked),Err(HostError::Backpressure)));
+        credits.consumed((4,3),UPLOAD_WINDOW_BYTES).unwrap();assert!(credits.plan(key,&blocked).is_ok());
+    }
     #[test]
     fn canceling_an_owned_pending_dial_ends_handshake_without_publishing_connection() {
         let host = EndpointHost::start(EndpointPolicy::local(), [67;32]).unwrap();

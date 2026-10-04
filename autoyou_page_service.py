@@ -445,6 +445,8 @@ class AutoYouPageService:
             "transfer-encoding",
             "x-forwarded-host",
             "x-forwarded-proto",
+            "x-autoyou-application-transport",
+            "x-autoyou-agent-html-adapted",
         }
         proxied = {
             key: value
@@ -731,6 +733,8 @@ class AutoYouPageService:
             "sec-websocket-version",
             "transfer-encoding",
             "upgrade",
+            "x-autoyou-application-transport",
+            "x-autoyou-agent-html-adapted",
         }
         return {
             key: value
@@ -748,6 +752,9 @@ class AutoYouPageService:
         if websockets is None:
             await websocket.close(code=1011, reason="WebSocket proxy unavailable")
             return
+
+        from shared.iroh_http_headers import NATIVE_STREAM_HEADER, forward_header_pairs
+        native = self._peer_is_this_computer(websocket.client.host if websocket.client else "") and websocket.headers.get(NATIVE_STREAM_HEADER) == "iroh"
 
         home_network_role = None
         if self._is_home_network_browser(websocket.client.host if websocket.client else ""):
@@ -790,9 +797,12 @@ class AutoYouPageService:
             if item.strip()
         ]
         connect_kwargs: Dict[str, Any] = {
-            "max_size": None,
+            "max_size": 4 * 1024 * 1024 if native else None,
             "subprotocols": requested_protocols or None,
         }
+        if native:
+            connect_kwargs["max_queue"] = 16
+            if "proxy" in inspect.signature(websockets.connect).parameters: connect_kwargs["proxy"] = None
         if agent_name == "game_agent":
             origin = urlparse(str(websocket.headers.get("origin") or ""))
             if (
@@ -804,6 +814,8 @@ class AutoYouPageService:
             ):
                 connect_kwargs["origin"] = f"http://127.0.0.1:{proxy_port}"
         extra_headers = self._proxy_websocket_headers(dict(websocket.headers))
+        if native:
+            extra_headers = forward_header_pairs(list(websocket.headers.items()), {}, sanitize=self._proxy_websocket_headers, canonical={})
         if home_network_role is not None:
             extra_headers = {
                 key.decode("latin-1"): value.decode("latin-1")
@@ -823,7 +835,14 @@ class AutoYouPageService:
 
         try:
             async with websockets.connect(target_url, **connect_kwargs) as upstream:
-                await websocket.accept(subprotocol=getattr(upstream, "subprotocol", None))
+                if native:
+                    response = getattr(upstream, "response", None)
+                    upstream_headers = getattr(response, "headers", None) or getattr(upstream, "response_headers", None)
+                    raw_items = getattr(upstream_headers, "raw_items", None)
+                    accepted_headers = self._native_websocket_response_headers(list(raw_items()) if callable(raw_items) else [])
+                    await websocket.accept(subprotocol=getattr(upstream, "subprotocol", None), headers=accepted_headers)
+                else:
+                    await websocket.accept(subprotocol=getattr(upstream, "subprotocol", None))
 
                 async def _client_to_upstream() -> None:
                     while True:
@@ -833,12 +852,18 @@ class AutoYouPageService:
                             await upstream.close()
                             return
                         if "text" in message and message["text"] is not None:
+                            if native and len(message["text"].encode("utf-8")) > 4 * 1024 * 1024:
+                                await websocket.close(code=1009, reason="WebSocket message exceeds its bound"); return
                             await upstream.send(message["text"])
                         elif "bytes" in message and message["bytes"] is not None:
+                            if native and len(message["bytes"]) > 4 * 1024 * 1024:
+                                await websocket.close(code=1009, reason="WebSocket message exceeds its bound"); return
                             await upstream.send(message["bytes"])
 
                 async def _upstream_to_client() -> None:
                     async for message in upstream:
+                        if native and len(message if isinstance(message, bytes) else str(message).encode("utf-8")) > 4 * 1024 * 1024:
+                            await websocket.close(code=1009, reason="WebSocket message exceeds its bound"); return
                         if isinstance(message, bytes):
                             await websocket.send_bytes(message)
                         else:
@@ -846,21 +871,141 @@ class AutoYouPageService:
 
                 client_task = asyncio.create_task(_client_to_upstream())
                 upstream_task = asyncio.create_task(_upstream_to_client())
-                done, pending = await asyncio.wait(
-                    {client_task, upstream_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for task in pending:
-                    task.cancel()
-                for task in done:
-                    with suppress(Exception):
-                        task.result()
+                try:
+                    done, _ = await asyncio.wait({client_task, upstream_task}, return_when=asyncio.FIRST_COMPLETED)
+                    for task in done:
+                        with suppress(Exception): task.result()
+                finally:
+                    for task in (client_task, upstream_task):
+                        if not task.done(): task.cancel()
+                    async def join(): await asyncio.gather(client_task, upstream_task, return_exceptions=True)
+                    joining = asyncio.create_task(join())
+                    try: await asyncio.shield(joining)
+                    except asyncio.CancelledError as cancellation:
+                        while not joining.done():
+                            try: await asyncio.shield(joining)
+                            except asyncio.CancelledError: continue
+                        raise cancellation
+                if native and websocket.application_state.name == "CONNECTED":
+                    code = getattr(upstream, "close_code", None) or 1000
+                    if not isinstance(code, int) or not (1000 <= code <= 1014 and code not in {1004, 1005, 1006} or 3000 <= code <= 4999): code = 1011
+                    reason = str(getattr(upstream, "close_reason", "") or "").encode("utf-8")[:123].decode("utf-8", errors="ignore")
+                    await websocket.close(code=code, reason=reason)
         except WebSocketDisconnect:
             return
         except Exception as exc:
+            if native and await self._native_websocket_denial(websocket, exc): return
             LOGGER.warning("Agent website WebSocket proxy failed for %s: %s", agent_name, exc)
             with suppress(Exception):
                 await websocket.close(code=1011, reason=AGENT_WEBSITE_PUBLIC_DETAIL)
+
+    @staticmethod
+    def _native_websocket_response_headers(pairs):
+        from shared.iroh_http_headers import forward_header_pairs
+        blocked = {"connection", "upgrade", "sec-websocket-accept", "sec-websocket-extensions", "sec-websocket-protocol",
+            "content-length", "transfer-encoding", "x-autoyou-application-transport", "x-autoyou-agent-html-adapted"}
+        accepted = forward_header_pairs(pairs, {},
+            sanitize=lambda values: {name: value for name, value in values.items() if name.lower() not in blocked}, canonical={})
+        return [(name.lower().encode("ascii"), value.encode("latin-1")) for name, value in accepted]
+
+    async def _native_websocket_denial(self, websocket: WebSocket, error) -> bool:
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None) or getattr(error, "status_code", None)
+        if not isinstance(status, int) or not 400 <= status <= 599 or websocket.application_state.name != "CONNECTING": return False
+        headers = getattr(response, "headers", None) or getattr(error, "headers", None)
+        raw_items = getattr(headers, "raw_items", None)
+        denial = Response(content=b"WebSocket request rejected", status_code=status)
+        denial.raw_headers = self._native_websocket_response_headers(list(raw_items()) if callable(raw_items) else [])
+        try: await websocket.send_denial_response(denial); return True
+        except RuntimeError: return False
+
+    def _native_frontend_http_client(self):
+        import httpx
+        return httpx.AsyncClient(trust_env=False, follow_redirects=False,
+            timeout=httpx.Timeout(30.0, connect=5.0, read=None),
+            limits=httpx.Limits(max_connections=2, max_keepalive_connections=0))
+
+    async def _proxy_native_frontend_request(self, request: Request, *, agent_name: str, target_url: str) -> Response:
+        from shared.iroh_body import BLOCK_BYTES, MAX_BODY_BYTES, BodyUnavailable
+        from shared.iroh_agent_html import AgentHTMLStream
+        from shared.iroh_http_headers import forward_header_pairs, NATIVE_HTML_HEADER
+        from shared.iroh_http_stream import bounded_http_bytes
+        from starlette.background import BackgroundTask
+        import httpx
+
+        forwarded = {"X-Forwarded-Host": str(request.headers.get("host") or ""),
+            "X-Forwarded-Proto": str(request.url.scheme or "")}
+        # HTML is the only entity this proxy transforms. Negotiate the bounded
+        # decoder before opening that entity; range responses retain raw bytes.
+        if request.method == "GET" and "range" not in request.headers:
+            forwarded["Accept-Encoding"] = "gzip, identity"
+        headers = forward_header_pairs(list(request.headers.items()), {},
+            sanitize=self._proxy_request_headers, canonical=forwarded)
+
+        async def upload():
+            total = 0
+            async for chunk in request.stream():
+                total += len(chunk)
+                if total > MAX_BODY_BYTES: raise BodyUnavailable("native website upload exceeded its bound")
+                for offset in range(0, len(chunk), BLOCK_BYTES): yield chunk[offset:offset + BLOCK_BYTES]
+
+        client = self._native_frontend_http_client()
+        upstream = None
+        close_task = None
+        async def cleanup():
+            nonlocal close_task
+            async def close():
+                try:
+                    if upstream is not None: await upstream.aclose()
+                finally: await client.aclose()
+            if close_task is None: close_task = asyncio.create_task(close())
+            try: await asyncio.shield(close_task)
+            except asyncio.CancelledError as cancellation:
+                while not close_task.done():
+                    try: await asyncio.shield(close_task)
+                    except asyncio.CancelledError: continue
+                close_task.result()
+                raise cancellation
+        try:
+            upstream = await client.send(client.build_request(request.method, target_url,
+                headers=headers, content=upload()), stream=True)
+            rewrite = request.method == "GET" and upstream.status_code == 200 and "range" not in request.headers and \
+                "text/html" in upstream.headers.get("content-type", "").lower()
+            blocked = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection",
+                "te", "trailer", "transfer-encoding", "upgrade", "date", "server", "x-powered-by",
+                "x-autoyou-application-transport", NATIVE_HTML_HEADER.lower()}
+            if rewrite: blocked.update({"content-length", "content-encoding", "etag", "digest", "content-digest", "content-md5", "cache-control", "pragma", "expires"})
+            accepted_headers = forward_header_pairs([(name.decode("latin-1"), value.decode("latin-1")) for name, value in upstream.headers.raw], {},
+                sanitize=lambda values: {name: value for name, value in values.items() if name.lower() not in blocked}, canonical={})
+            raw_headers = []
+            for name, value in accepted_headers:
+                if name.lower() == "location": value = self._rewrite_proxy_location(agent_name, value) or value
+                raw_headers.append((name.lower().encode("ascii"), value.encode("latin-1")))
+            if rewrite:
+                raw_headers.extend([(b"cache-control", b"no-store"), (b"pragma", b"no-cache"), (b"expires", b"0"),
+                    (NATIVE_HTML_HEADER.lower().encode("ascii"), b"1")])
+
+            async def response_bytes():
+                try:
+                    adapter = AgentHTMLStream(f"/agent/{agent_name}", lambda data, _prefix: self._inject_agent_proxy_shim(data, agent_name),
+                        page_paths=(b"/websites", b"/agent-websites", b"/agent-frontends", b"/api/websites", b"/api/agent-websites",
+                            b"/api/agent-frontends", b"/api/agent-directory")) if rewrite else None
+                    if request.method == "HEAD": return
+                    async for chunk in bounded_http_bytes(upstream, decode=rewrite):
+                        output = adapter.feed(chunk) if adapter else chunk
+                        for offset in range(0, len(output), BLOCK_BYTES): yield output[offset:offset + BLOCK_BYTES]
+                    output = adapter.finish() if adapter else b""
+                    for offset in range(0, len(output), BLOCK_BYTES): yield output[offset:offset + BLOCK_BYTES]
+                finally: await cleanup()
+            response = StreamingResponse(response_bytes(), status_code=upstream.status_code, background=BackgroundTask(cleanup))
+            response.raw_headers = raw_headers
+            return response
+        except (httpx.HTTPError, BodyUnavailable, ValueError) as error:
+            await cleanup()
+            return self._agent_website_fail_closed(request, agent_name=agent_name,
+                reason="Native website upstream request failed.", exc=error)
+        except BaseException:
+            await cleanup(); raise
 
     async def _proxy_agent_frontend_request(
         self,
@@ -893,6 +1038,10 @@ class AutoYouPageService:
         target_url = f"http://127.0.0.1:{proxy_port}{target_path}"
         if request.url.query:
             target_url = f"{target_url}?{request.url.query}"
+
+        from shared.iroh_http_headers import NATIVE_STREAM_HEADER
+        if self._peer_is_this_computer(request.client.host if request.client else "") and request.headers.get(NATIVE_STREAM_HEADER) == "iroh":
+            return await self._proxy_native_frontend_request(request, agent_name=agent_name, target_url=target_url)
 
         body = await request.body()
         is_media_stream = request.method.upper() != "HEAD" and "/api/stream/" in target_path.lower()

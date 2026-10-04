@@ -15,6 +15,9 @@ pub mod ordering;
 pub mod host;
 pub mod client;
 pub mod client_store;
+pub mod file_store;
+pub mod delivery_store;
+pub mod file_receiver;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
