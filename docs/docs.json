@@ -16,6 +16,7 @@
           {
             "group": "Getting Started",
             "pages": [
+              "index",
               "quickstart"
             ]
           },
@@ -27,63 +28,6 @@
               "architecture/webrtc-and-datachannels",
               "architecture/pairing-and-discovery",
               "architecture/cloud-and-remote"
-            ]
-          },
-          {
-            "group": "Admin UI Console (admin-ui.js)",
-            "pages": [
-              "admin-ui/architecture",
-              "admin-ui/overview-and-status",
-              "admin-ui/security-console",
-              "admin-ui/live-view-and-media",
-              "admin-ui/ai-and-speech",
-              "admin-ui/messaging-bridges",
-              "admin-ui/agent-workbench-ui",
-              "admin-ui/setup-and-recipes"
-            ]
-          },
-          {
-            "group": "REST & WebSocket API Reference",
-            "pages": [
-              "api-reference/admin-and-system",
-              "api-reference/security-and-totp",
-              "api-reference/pairing-and-signaling",
-              "api-reference/chat-and-sessions",
-              "api-reference/webrtc-and-streaming",
-              "api-reference/models-and-speech",
-              "api-reference/messaging-gateways",
-              "api-reference/cloud-and-peer",
-              "api-reference/agents-and-builder",
-              "api-reference/websites-and-bookmarks",
-              "api-reference/mcp-server"
-            ]
-          },
-          {
-            "group": "Agent Framework & Runtime",
-            "pages": [
-              "agent-framework/architecture",
-              "agent-framework/core-agent-engine",
-              "agent-framework/shared-tools-and-subsystems",
-              "agent-framework/self-improvement-and-harness-testing",
-              "agent-framework/vendor-and-memory",
-              "agent-framework/building-agents",
-              "agent-framework/agent-web-frontends",
-              "agent-framework/security-and-permissions",
-              "agent-framework/agent-workbench"
-            ]
-          },
-          {
-            "group": "Agent Catalog Reference",
-            "pages": [
-              "agents/system-and-admin",
-              "agents/media-and-creative",
-              "agents/intelligence-and-models",
-              "agents/web-and-automation",
-              "agents/coding-and-building",
-              "agents/communication-and-tasks",
-              "agents/ai-and-training",
-              "agents/monetization",
-              "agents/utility"
             ]
           },
           {
@@ -114,23 +58,50 @@
         ]
       },
       {
-        "tab": "Documentation",
-        "groups": [
-          {
-            "group": "Getting Started",
-            "pages": [
-              "index"
-            ]
-          }
-        ]
-      },
-      {
         "tab": "Admin UI & APIs",
         "groups": [
           {
-            "group": "REST & WebSocket API Reference",
+            "group": "Admin UI Console (admin-ui.js)",
             "pages": [
-              "api-reference/overview"
+              "admin-ui/architecture",
+              "admin-ui/overview-and-status",
+              "admin-ui/security-console",
+              "admin-ui/live-view-and-media",
+              "admin-ui/ai-and-speech",
+              "admin-ui/messaging-bridges",
+              "admin-ui/agent-workbench-ui",
+              "admin-ui/setup-and-recipes"
+            ]
+          },
+          {
+            "group": "Core Gateway Architecture",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/auth-app",
+              "api-reference/admin-app",
+              "api-reference/ai-agent-worker",
+              "api-reference/website-gateway"
+            ]
+          },
+          {
+            "group": "Core Services & Security APIs",
+            "pages": [
+              "api-reference/admin-and-system",
+              "api-reference/security-and-totp",
+              "api-reference/pairing-and-signaling",
+              "api-reference/chat-and-sessions",
+              "api-reference/webrtc-and-streaming"
+            ]
+          },
+          {
+            "group": "Integration & Bridge APIs",
+            "pages": [
+              "api-reference/models-and-speech",
+              "api-reference/messaging-gateways",
+              "api-reference/cloud-and-peer",
+              "api-reference/agents-and-builder",
+              "api-reference/websites-and-bookmarks",
+              "api-reference/mcp-server"
             ]
           }
         ]
@@ -139,9 +110,31 @@
         "tab": "Agent Ecosystem",
         "groups": [
           {
+            "group": "Agent Framework & Runtime",
+            "pages": [
+              "agent-framework/architecture",
+              "agent-framework/core-agent-engine",
+              "agent-framework/shared-tools-and-subsystems",
+              "agent-framework/self-improvement-and-harness-testing",
+              "agent-framework/vendor-and-memory",
+              "agent-framework/building-agents",
+              "agent-framework/agent-web-frontends",
+              "agent-framework/security-and-permissions",
+              "agent-framework/agent-workbench"
+            ]
+          },
+          {
             "group": "Agent Catalog Reference",
             "pages": [
-              "agents/system-and-admin"
+              "agents/system-and-admin",
+              "agents/media-and-creative",
+              "agents/intelligence-and-models",
+              "agents/web-and-automation",
+              "agents/coding-and-building",
+              "agents/communication-and-tasks",
+              "agents/ai-and-training",
+              "agents/monetization",
+              "agents/utility"
             ]
           }
         ]
