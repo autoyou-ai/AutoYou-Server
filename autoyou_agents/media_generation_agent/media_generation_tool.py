@@ -28,12 +28,7 @@ from shared.secure_storage import SecureStorageError, append_secure_file, read_s
 
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7042fe33e640c65dd9fd49d9"
 
-
-# Ensure autoyou-outreach path is in sys.path so we can import outreach modules if needed
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUTREACH_ROOT = PROJECT_ROOT / "autoyou-outreach"
-if OUTREACH_ROOT.exists() and str(OUTREACH_ROOT) not in sys.path:
-    sys.path.insert(0, str(OUTREACH_ROOT))
 
 MEDIA_DATA_DIR = get_service_data_dir("media_generation_agent", anchor=__file__)
 DB_PATH = MEDIA_DATA_DIR / "media_history.db"

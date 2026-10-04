@@ -63,7 +63,6 @@ python3 scripts/prepare_intent_router.py
 python3 -m pip install -r requirements/local-llm.txt
 AUTOYOU_TEST_ROOT="$(mktemp -d)" AUTOYOU_TEST_INTENT_MODEL=1 \
   python3 -m pytest tests/server/runtime/test_intent_router.py -q
-AUTOYOU_TEST_INTENT_MODEL=1 swift test --package-path clients/ios/Packages/AutoYouPeerLink
 ```
 
 The iOS build phase, Android `preBuild`, v2 macOS builder, native server builders,

@@ -478,7 +478,8 @@ def build_notice(profile: dict[str, Any], components: list[dict[str, Any]], *, t
         "",
         "Repository Notice Index",
         "-----------------------",
-        "See THIRD-PARTY-NOTICES.md and autoyou-website/attributions/index.html for the broader notice index.",
+        "See THIRD-PARTY-NOTICES.md and https://autoyou.me/attributions/ for the broader notice index.",
+
         "",
     ])
     return "\n".join(lines)

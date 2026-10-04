@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-09-30T23:38:30+00:00
+Generated: 2026-10-04T01:29:05+00:00
 
 Optional separately approved macOS connector build with the full voice/server dependency profile, including compiled EmotiVoice inference modules; model checkpoints remain administrator-downloaded user data.
 
@@ -176,4 +176,4 @@ Special Release Obligations
 
 Repository Notice Index
 -----------------------
-See THIRD-PARTY-NOTICES.md and autoyou-website/attributions/index.html for the broader notice index.
+See THIRD-PARTY-NOTICES.md and https://autoyou.me/attributions/ for the broader notice index.
