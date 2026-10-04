@@ -1074,7 +1074,11 @@ acknowledge_private_build() {
     fi
     local ack_args=()
     [[ "$ACCEPT_TERMS" == true ]] && ack_args+=(--accept-terms)
-    python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
+    if [[ ${#ack_args[@]} -gt 0 ]]; then
+        python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
+    else
+        python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py"
+    fi
 }
 
 # Ensure required macOS system dependencies are installed via Homebrew.

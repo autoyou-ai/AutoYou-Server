@@ -158,6 +158,7 @@
         { id: "page", label: "Websites & Browser", icon: "page" },
         { id: "messaging", label: "Messaging", icon: "msg" },
         { id: "video", label: "Video & Calls", icon: "video" },
+        { id: "permissions", label: "Permissions", icon: "shield" },
         { id: "speech", label: "Speech", icon: "mic" },
         { id: "connectivity", label: "Connectivity", icon: "wifi" },
         { id: "security", label: "Security", icon: "shield" },
@@ -3203,11 +3204,14 @@
             aiAgent: {
                 enabled: Boolean(getByPath(cfg, "ai_agent.enabled", true)),
                 auto_start: Boolean(getByPath(cfg, "ai_agent.auto_start", true)),
-                record_messages_in_database: Boolean(getByPath(cfg, "ai_agent.record_messages_in_database", true)),
                 memory_backend: getByPath(cfg, "ai_agent.memory_backend", "legacy"),
                 port: getByPath(cfg, "ai_agent.port", 8081),
                 internet_search_enabled: Boolean(getByPath(cfg, "ai_agent.internet_search_enabled", true)),
-                lan_access_enabled: Boolean(getByPath(cfg, "ai_agent.lan_access_enabled", false))
+                lan_access_enabled: Boolean(getByPath(cfg, "ai_agent.lan_access_enabled", false)),
+                record_messages_in_database: Boolean(getByPath(cfg, "ai_agent.record_messages_in_database", true))
+            },
+            audioPlayback: {
+                enabled: asBoolean(getByPath(cfg, "audio_playback.enabled", true), true)
             },
             clientIdentity: {
                 store_client_names_in_history: Boolean(getByPath(cfg, "client_identity.store_client_names_in_history", false))
@@ -5702,7 +5706,8 @@
             : "Only the admin port listens on the home network. Website apps open at /agent/<name>/ on it after signing in over HTTPS; the AI Agent and websites ports stay on this computer.";
     }
 
-    function renderHomeNetworkSecurity(home, exposed, httpsNextBoot, remoteAccessRole) {
+    function renderHomeNetworkSecurity(home, exposed, httpsNextBoot) {
+        var remoteAccessRole = getByPath(state.forms, "page.remote_access_role", "viewer");
         var parts = [];
         if (exposed && !httpsNextBoot) {
             parts.push("<div class=\"ayu-note ayu-note-red ayu-network-alert\"><strong>Home network without HTTPS</strong><p>Other devices on your network would open pages, notes and the sign-in page over plain HTTP, readable by anyone on the same Wi-Fi. HTTPS is the default whenever home network access is on.</p><div class=\"ayu-inline-actions\">" + button("Turn on HTTPS (recommended)", "overview-https:enable", "primary", "shield", "sm") + "</div></div>");
@@ -5787,7 +5792,6 @@
         var bluetoothRuntime = getByPath(status, "bluetooth_pairing", {});
         var bluetoothRunning = Boolean(getByPath(bluetoothRuntime, "running", false));
         var adminFrontendEnabled = asBoolean(getByPath(state.forms, "page.admin_frontend_enabled", getByPath(cfg, "agent_frontends.admin_agent", false)), false);
-        var remoteAccessRole = normalizeRemoteAccessRole(getByPath(state.forms, "page.remote_access_role", getByPath(cfg, "autoyou_page.remote_access_role", "viewer")));
         var nextHostHelp = nextHost === "0.0.0.0"
             ? "Advertise " + serverName + " to the home network on next boot. Requires shutdown."
             : "Boot local-only on 127.0.0.1 next time. Requires shutdown.";
@@ -5832,11 +5836,6 @@
                 value: adminFrontendEnabled ? "Advertised" : "Not advertised",
                 help: adminFrontendEnabled ? "The admin shell can be surfaced through Websites & Browser." : "The admin shell is not registered as an agent website."
             },
-            {
-                label: "Remote client role",
-                value: remoteAccessRoleLabel(remoteAccessRole),
-                help: remoteAccessRoleHelp(remoteAccessRole)
-            }
         ]);
         var accessActionHost = liveHostKnown ? normalizeOverviewBindHost(liveHost) : nextHost;
         var accessAction = accessActionHost === "0.0.0.0"
@@ -5857,19 +5856,16 @@
         var httpsNote = httpsEnabled
             ? "<div class=\"ayu-note ayu-note-blue\"><strong>Local HTTPS:</strong> After restart, Admin and Websites & Browser are also reachable over https://. To make them trusted (no browser warnings), each device installs this server's certificate one time: <a href=\"/ca.crt\" download>Download CA certificate</a>. Safari, iOS and Android never trust a private certificate automatically  -  this one-time install is expected.</div>"
             : "";
-        var roleActions = ["viewer", "editor", "admin"].map(function (role) {
-            return button(remoteAccessRoleLabel(role), "overview-remote-role:" + role, role === remoteAccessRole ? "primary" : "secondary", role === "admin" ? "shield" : "eye", "sm");
-        }).join("");
         var noteTone = nextHost === "0.0.0.0" || nativeUnlockEnabled ? "amber" : "green";
         var nextHostSummary = nextHost === "0.0.0.0" ? "home network access" : "local-only access";
         var credentialNote = "<div class=\"ayu-note ayu-note-gray\"><strong>Credentials stay on this computer.</strong> Connected devices can sign in and see settings their role allows, but passwords, two-factor, security mode and network exposure only change here or in an HTTPS admin session opened directly on this computer.</div>";
         var homeNetworkNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>Home network:</strong> " + escapeHtml(homeNetworkWebsitesHelp(websitesMode)) + "<p>Website route and nearby discovery apply right away; turning the home network itself on or off needs a restart.</p></div><div class=\"ayu-inline-actions\">" + websitesActions + discoveryAction + "</div>";
         return rows
-            + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsEnabled, remoteAccessRole)
+            + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsEnabled)
             + homeNetworkNote
-            + "<div class=\"ayu-note ayu-note-blue\"><strong>Remote client access:</strong> " + escapeHtml(remoteAccessRoleHelp(remoteAccessRole)) + "</div><div class=\"ayu-inline-actions\">" + roleActions + "</div>"
+            + "<div class=\"ayu-inline-actions\">" + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div>"
             + credentialNote
-            + "<div class=\"ayu-note ayu-note-" + escapeHtml(noteTone) + "\"><strong>Requires shutdown.</strong> Next boot: " + escapeHtml(nextHostSummary) + (nextHost === "0.0.0.0" ? (httpsEnabled ? " with HTTPS" : " without HTTPS") : "") + ". Network binding, HTTPS and keychain unlock are read when AutoYou starts; remote client role applies after save.</div><div class=\"ayu-inline-actions\">" + accessAction + unlockAction + httpsAction + "</div>" + httpsNote;
+            + "<div class=\"ayu-note ayu-note-" + escapeHtml(noteTone) + "\"><strong>Requires shutdown.</strong> Next boot: " + escapeHtml(nextHostSummary) + (nextHost === "0.0.0.0" ? (httpsEnabled ? " with HTTPS" : " without HTTPS") : "") + ". Network binding, HTTPS and keychain unlock are read when AutoYou starts.</div><div class=\"ayu-inline-actions\">" + accessAction + unlockAction + httpsAction + "</div>" + httpsNote;
     }
 
     function renderOverviewMediaPanel() {
@@ -5926,7 +5922,7 @@
                 value: asBoolean(getByPath(video, "record_my_video", false), false) ? prettyLabel(getByPath(video, "recording_mode", "video")) : "Off",
                 help: "Detailed capture folders and image interval live under Video & Calls."
             }
-        ]) + "<div class=\"ayu-inline-actions\">" + button("Open Video & Calls", "nav:video", "secondary", "video", "sm") + button("Open Speech", "nav:speech", "ghost", "mic", "sm") + "</div>";
+        ]) + "<div class=\"ayu-inline-actions\">" + button("Open Permissions", "nav:permissions", "secondary", "shield", "sm") + button("Open Video & Calls", "nav:video", "ghost", "video", "sm") + button("Open Speech", "nav:speech", "ghost", "mic", "sm") + "</div>";
     }
 
     function renderOverview() {
@@ -6515,7 +6511,7 @@
             "Store client names in chat history",
             "Off by default. When off - or in Incognito - names are only visible while the client is connected."
         ) + "<div class=\"ayu-note ayu-note-" + (storeClientNames ? "green" : "amber") + "\"><strong>" + escapeHtml(storeClientNames ? "Client names can be saved with chat history." : "Client names are live-only.") + "</strong><p style=\"margin:6px 0 0;\">Incognito and message-storage-off modes always keep client names out of history.</p></div>";
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>AI & Models</h1><p>Choose the AI path that powers AutoYou on this machine, then manage local models separately from provider selection so the screen only shows the settings that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh AI data", "ai-refresh", "secondary", "refresh") + button("Open Agent Studio", "nav:agents", "ghost", "agents") + "</div></div><div class=\"ayu-grid-2\">" + panel("AI provider", "Pick the local or cloud AI path first. Secret fields stay unchanged unless you enter new values.", renderAiProviderSettingsBody()) + panel("AutoYou AI", "Controls for AutoYou's own agent host.", checkbox("aiAgent.enabled", "AutoYou AI enabled") + checkbox("aiAgent.auto_start", "Auto-start AutoYou AI on server boot") + checkbox("aiAgent.record_messages_in_database", "Save chat and event memory") + clientNameMarkup + field("Memory backend", select("aiAgent.memory_backend", [{ value: "legacy", label: "AutoYou SQLite" }, { value: "cognee", label: "Cognee self-hosted" }]), "AutoYou SQLite keeps long-term chat and event memory. Cognee adds graph/vector memory when installed.") + webSearchMarkup + field("AutoYou AI port", input("aiAgent.port", { type: "number" })) + checkbox("aiAgent.lan_access_enabled", "Allow AI Agent access from home network", "Off by default: the AI Agent port (8081) stays loopback-only even when the admin UI is bound to your home network. Turning this on adds a separate HTTPS port protected by a one-time code - it never removes the loopback listener's own behavior.") + "<div class=\"ayu-inline-actions\">" + button("Save AI settings", "save-ai-agent", "primary", "save") + button("Start", "service:ai:start", "green", "play", "sm") + button("Stop", "service:ai:stop", "secondary", "stop", "sm") + button("Restart", "service:ai:restart", "ghost", "refresh", "sm") + button(webSearchOn ? "Turn web search off" : "Turn web search on", "ai-toggle-internet", "secondary", "bolt", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Model behavior", "Tune AutoYou AI rather than the model catalog.", renderModelBehaviorBody()) + panel("Manage Models", "Browse the local Ollama library, search catalogs, and keep downloads visible in one place.", renderManageModelsBody()) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>AI & Models</h1><p>Choose the AI path that powers AutoYou on this machine, then manage local models separately from provider selection so the screen only shows the settings that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh AI data", "ai-refresh", "secondary", "refresh") + button("Open Agent Studio", "nav:agents", "ghost", "agents") + button("Open Permissions", "nav:permissions", "ghost", "shield", "sm") + "</div></div><div class=\"ayu-grid-2\">" + panel("AI provider", "Pick the local or cloud AI path first. Secret fields stay unchanged unless you enter new values.", renderAiProviderSettingsBody()) + panel("AutoYou AI", "Controls for AutoYou's own agent host.", checkbox("aiAgent.enabled", "AutoYou AI enabled") + checkbox("aiAgent.auto_start", "Auto-start AutoYou AI on server boot") + clientNameMarkup + field("Memory backend", select("aiAgent.memory_backend", [{ value: "legacy", label: "AutoYou SQLite" }, { value: "cognee", label: "Cognee self-hosted" }]), "AutoYou SQLite keeps long-term chat and event memory. Cognee adds graph/vector memory when installed.") + webSearchMarkup + field("AutoYou AI port", input("aiAgent.port", { type: "number" })) + "<div class=\"ayu-inline-actions\">" + button("Save AI settings", "save-ai-agent", "primary", "save") + button("Start", "service:ai:start", "green", "play", "sm") + button("Stop", "service:ai:stop", "secondary", "stop", "sm") + button("Restart", "service:ai:restart", "ghost", "refresh", "sm") + button(webSearchOn ? "Turn web search off" : "Turn web search on", "ai-toggle-internet", "secondary", "bolt", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Model behavior", "Tune AutoYou AI rather than the model catalog.", renderModelBehaviorBody()) + panel("Manage Models", "Browse the local Ollama library, search catalogs, and keep downloads visible in one place.", renderManageModelsBody()) + "</div></div>";
     }
 
     function isMainAdminAgentName(name) {
@@ -6759,9 +6755,7 @@
 
         var forwardingMarkup = checkbox("page.custom_forward_enabled", "Enable custom forwarding", "When enabled, remote browser traffic prefers the custom port over the Websites & Browser port.")
             + field("Custom forward port", input("page.custom_forward_port", { type: "number" }), "Leave equal to the page port to disable the override.")
-            + field("Remote client role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "viewer")))
-            + checkbox("page.admin_frontend_enabled", "Expose the Admin website to paired browsers", "Uses the direct same-port route for admin access; disable to keep admin local only.")
-            + "<div class=\"ayu-inline-actions\">" + button("Save browser access", "save-page-access", "primary", "save") + "</div>";
+            + "<div class=\"ayu-inline-actions\">" + button("Save forwarding", "save-page-access", "primary", "save") + button("Manage permissions", "nav:permissions", "ghost", "shield", "sm") + "</div>";
 
         var addWebsiteMarkup = "<div class=\"ayu-note ayu-note-blue\">Use advertised websites for explicit same-port localhost mirroring. Normal agent websites stay on the primary browser port under /agent/name/.</div><div class=\"ayu-soft-divider\"></div><div class=\"ayu-grid-2\">" + field("Port", input("page.newWebsite.port", { type: "number", placeholder: "3000" })) + field("Label", input("page.newWebsite.label", { placeholder: "Docs UI" })) + field("Description", input("page.newWebsite.description", { placeholder: "Short description" })) + field("Forward URL", input("page.newWebsite.target_url", { placeholder: "Optional explicit target URL" })) + "</div>" + checkbox("page.newWebsite.enabled", "Add as enabled") + checkbox("page.newWebsite.websocket_enabled", "Allow live app connections for the new site") + "<div class=\"ayu-inline-actions\">" + button("Add & save website", "page-add-website", "secondary", "plus") + button("Save website edits", "save-page", "primary", "save") + "</div>";
 
@@ -6780,7 +6774,7 @@
             + field("Shared session length (days)", input("page.agentWebsitesSecurity.shared_session_ttl_days", { type: "number" }))
             + "<div class=\"ayu-inline-actions\">" + button("Save", "agent-websites-security-save", "primary", "save", "sm") + button("Sign out of all agent sessions", "agent-sessions-sign-out-all", "danger", "bolt", "sm") + "</div>";
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Forwarding & remote admin", "Admin access and custom browser forwarding share the same browser route contract.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div></div><div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Browser forwarding", "Choose the port used when paired browsers reach local websites.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
     }
 
     function formatTimestamp(value) {
@@ -7311,7 +7305,7 @@
         var liveControlMarkup = "<div class=\"ayu-note\">" + escapeHtml(getByPath(playback, "enabled", false) ? "Audio playback is enabled for connected clients." : "Audio playback is currently disabled in server settings.") + "</div>" + renderStatusRows([
             { label: "Connected clients", value: String(getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0))) },
             { label: "Music library dirs", value: (Array.isArray(getByPath(playback, "music_library_dirs", [])) && getByPath(playback, "music_library_dirs", []).length) ? getByPath(playback, "music_library_dirs", []).join(", ") : "None reported" }
-        ]) + renderDatachannelSessionList(datachannel) + input("liveOps.session_id", { type: "hidden" }) + input("liveOps.owner_key", { type: "hidden" }) + "<div class=\"ayu-note\">" + escapeHtml("Choose a connected client above before sending a message or playing audio.") + "</div>" + field("Browser message", textarea("liveOps.webrtc_message", { rows: 5 }), "Choose a connected client above to send a message.") + "<div class=\"ayu-inline-actions\">" + button("Send browser message", "send-webrtc-direct", "primary", "msg", "sm") + button(getByPath(playback, "enabled", false) ? "Disable playback" : "Enable playback", "toggle-playback-enabled", getByPath(playback, "enabled", false) ? "secondary" : "primary", "bolt", "sm") + button("Refresh status", "ops-refresh", "ghost", "refresh", "sm") + "</div><div class=\"ayu-soft-divider\"></div>" + field("Playback file path", input("liveOps.playback_file_path", { placeholder: "/absolute/path/to/file.mp3" }), "Use a server-local path for the audio file you want to play into the selected client.") + "<div class=\"ayu-inline-actions\">" + button("Playback status", "webrtc-playback-status", "secondary", "info", "sm") + button("Play", "webrtc-playback-play", "primary", "play", "sm") + button("Pause", "webrtc-playback-pause", "secondary", "stop", "sm") + button("Resume", "webrtc-playback-resume", "ghost", "refresh", "sm") + button("Stop", "webrtc-playback-stop", "danger", "trash", "sm") + "</div>" + (state.operations.playbackStatus ? renderJsonNote(state.operations.playbackStatus, getByPath(state.operations, "playbackStatus.state", "") === "error" ? "red" : "green") : "");
+        ]) + renderDatachannelSessionList(datachannel) + input("liveOps.session_id", { type: "hidden" }) + input("liveOps.owner_key", { type: "hidden" }) + "<div class=\"ayu-note\">" + escapeHtml("Choose a connected client above before sending a message or playing audio. Choose the server audio file under Video & Calls.") + "</div>" + field("Browser message", textarea("liveOps.webrtc_message", { rows: 5 }), "Choose a connected client above to send a message.") + "<div class=\"ayu-inline-actions\">" + button("Send browser message", "send-webrtc-direct", "primary", "msg", "sm") + button("Manage playback permission", "nav:permissions", "secondary", "shield", "sm") + button("Refresh status", "ops-refresh", "ghost", "refresh", "sm") + "</div><div class=\"ayu-soft-divider\"></div>" + "<div class=\"ayu-inline-actions\">" + button("Playback status", "webrtc-playback-status", "secondary", "info", "sm") + button("Play", "webrtc-playback-play", "primary", "play", "sm") + button("Pause", "webrtc-playback-pause", "secondary", "stop", "sm") + button("Resume", "webrtc-playback-resume", "ghost", "refresh", "sm") + button("Stop", "webrtc-playback-stop", "danger", "trash", "sm") + "</div>" + (state.operations.playbackStatus ? renderJsonNote(state.operations.playbackStatus, getByPath(state.operations, "playbackStatus.state", "") === "error" ? "red" : "green") : "");
 
         var serverNameMarkup = field(
             "Server name",
@@ -7348,6 +7342,82 @@
                 panel("Signal health & recent messages", "Linked device name, pairing state, service health, and recent messages.", signalDiagnosticsMarkup) +
             "</div></div>"
         );
+    }
+
+    function renderPermissionsScreen() {
+        var video = getByPath(state.forms, "videoCall", {});
+        var paths = getByPath(state.bootstrap, "metadata.recording_paths", {});
+        var editable = asBoolean(getByPath(state.bootstrap, "metadata.permissions_editable", false), false);
+        var accessNote = editable
+            ? "<div class=\"ayu-note ayu-note-green\"><strong>Local admin controls are available.</strong> Permission changes save to this computer immediately after you save this section.</div>"
+            : "<div class=\"ayu-note ayu-note-amber\"><strong>View only from this connection.</strong> Open the admin page on this computer at 127.0.0.1 and sign in as admin to change its permissions.</div>";
+        function localOnly(markup) {
+            return editable ? markup : "<fieldset disabled style=\"border:0;padding:0;margin:0;min-width:0\">" + markup + "</fieldset>";
+        }
+        var audioPermissions = checkbox("videoCall.enabled", "Allow video calls", "Lets paired devices start video calls.")
+            + checkbox("videoCall.audio_enabled", "Allow audio calls", "Lets paired devices start voice calls and send microphone audio.")
+            + checkbox("audioPlayback.enabled", "Allow audio file playback", "Allows server audio files to be played into connected clients.")
+            + checkbox("videoCall.audio_microphone", "Share this computer's microphone", "Sends this computer's selected microphone to connected calls.")
+            + checkbox("videoCall.audio_speaker_loopback", "Share this computer's sound", "Captures and sends the computer's audio output during calls.")
+            + checkbox("videoCall.ai_audio_replies_enabled", "Play spoken AI replies in calls", "Allows AI voice replies to play into active calls.")
+            + checkbox("videoCall.disable_autoyou_agents", "Disable AutoYou Agents for call audio", "When enabled, call audio is not transcribed or sent to AI agents.")
+            + checkbox("speech.voice_training_capture_enabled", "Record voice calls", "Saves voice-call audio samples and transcripts in the Voice Training folder.")
+            + checkbox("videoCall.background_mode_enabled", "Allow phone background mode", "Keeps paired phones connected in the background; the phone microphone remains off unless a call or safety recording is active.")
+            + checkbox("videoCall.silent_recording_enabled", "Allow safety recording", "Allows a paired phone to send microphone audio for local recording without transcription or AI processing.")
+            + checkbox("videoCall.location_recording_enabled", "Allow device location recording", "Accepts new location samples from a connected device that also enabled location sharing and granted its OS permission.")
+            + checkbox("videoCall.wuift_enabled", "Allow Wait Until I Finish Talking", "Lets callers hold transcription across pauses before sending a turn.")
+            + "<div class=\"ayu-inline-actions\">" + button("Save audio permissions", "save-permissions-audio", "primary", "save") + "</div>";
+        var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "Saves the connected phone's camera frames on this computer.")
+            + checkbox("videoCall.remote_desktop.enabled", "Allow screen capture", "Authorizes native capture of this computer's display.")
+            + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Includes the selected monitor in active video calls.")
+            + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
+            + checkbox("videoCall.outbound_camera", "Allow webcam sharing", "Makes the selected webcam an available video source.")
+            + checkbox("videoCall.outbound_api", "Allow API video input", "Accepts JPEG frames pushed through the server API.")
+            + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call.")
+            + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
+            + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
+            + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
+        var dataPermissions = checkbox("aiAgent.record_messages_in_database", "Save chat and event memory", "Stores AutoYou AI chat and event memory in the local database shown below.")
+            + checkbox("aiAgent.lan_access_enabled", "Allow AutoYou AI access from the home network", "Exposes the AI Agent on a separate HTTPS port protected by a one-time code.")
+            + "<div class=\"ayu-inline-actions\">" + button("Save data and network permissions", "save-permissions-data", "primary", "save") + "</div>";
+        var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "viewer")))
+            + checkbox("page.admin_frontend_enabled", "Share this computer's Admin website with paired browsers", "When enabled, paired browsers can open the Admin website. Its password and authenticator checks still apply.")
+            + "<div class=\"ayu-inline-actions\">" + button("Save browser permissions", "save-permissions-web", "primary", "save") + "</div>";
+        var storagePaths = renderStatusRows([
+            { label: "Safety recording folder", value: getByPath(paths, "safety_recording.resolved_dir", "Unavailable"), mono: true },
+            { label: "Video recording folder", value: getByPath(paths, "video_recording.resolved_dir", "Unavailable"), mono: true },
+            { label: "Voice training folder", value: getByPath(paths, "voice_training.active_dir", getByPath(paths, "voice_training.default_dir", "Unavailable")), mono: true },
+            { label: "Location history database", value: getByPath(paths, "location_recording.database_path", "Unavailable"), mono: true },
+            { label: "Saved chat transcripts and event memory database", value: getByPath(paths, "chat_memory.database_path", "Unavailable"), mono: true }
+        ]);
+        var statusMarkup = renderStatusRows([
+            { label: "Video calls", value: yesNo(getByPath(video, "enabled", false)) },
+            { label: "Audio calls", value: yesNo(getByPath(video, "audio_enabled", false)) },
+            { label: "Audio file playback", value: yesNo(getByPath(state.forms, "audioPlayback.enabled", true)) },
+            { label: "Voice-call recording", value: yesNo(getByPath(state.forms, "speech.voice_training_capture_enabled", false)) },
+            { label: "Safety recording", value: yesNo(getByPath(video, "silent_recording_enabled", false)) },
+            { label: "Location recording", value: yesNo(getByPath(video, "location_recording_enabled", false)) },
+            { label: "Phone background mode", value: yesNo(getByPath(video, "background_mode_enabled", false)) },
+            { label: "Wait Until I Finish Talking", value: yesNo(getByPath(video, "wuift_enabled", true)) },
+            { label: "Received video recording", value: yesNo(getByPath(video, "record_my_video", false)) },
+            { label: "Computer microphone", value: yesNo(getByPath(video, "audio_microphone", false)) },
+            { label: "Computer audio passthrough", value: yesNo(getByPath(video, "audio_speaker_loopback", false)) },
+            { label: "Screen capture allowed", value: yesNo(getByPath(video, "remote_desktop.enabled", false)) },
+            { label: "Screen sending allowed", value: yesNo(getByPath(video, "remote_desktop.send_screen", false)) },
+            { label: "Screen call source selected", value: yesNo(getByPath(video, "outbound_remote_desktop", false)) },
+            { label: "Webcam source", value: yesNo(getByPath(video, "outbound_camera", false)) },
+            { label: "API video input", value: yesNo(getByPath(video, "outbound_api", false)) },
+            { label: "Video file playback", value: yesNo(getByPath(video, "outbound_video_file", false)) },
+            { label: "Spoken AI replies", value: yesNo(getByPath(video, "ai_audio_replies_enabled", true)) },
+            { label: "AutoYou Agents in call audio", value: getByPath(video, "disable_autoyou_agents", false) ? "Disabled" : "Allowed" },
+            { label: "Remote Desktop control", value: yesNo(getByPath(video, "remote_desktop.control_enabled", false)) },
+            { label: "Game mode", value: yesNo(getByPath(video, "remote_desktop.game_enabled", false)) },
+            { label: "Chat and event memory", value: yesNo(getByPath(state.forms, "aiAgent.record_messages_in_database", true)) },
+            { label: "Home network AI access", value: yesNo(getByPath(state.forms, "aiAgent.lan_access_enabled", false)) },
+            { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "viewer")) },
+            { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) }
+        ]);
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat, memory, and network access", "Chat retention and AutoYou AI reachability.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
     }
 
     function renderVideoScreen() {
@@ -7692,42 +7762,28 @@
         var recordMyVideoSelected = asBoolean(getByPath(state.forms, "videoCall.record_my_video", false), false);
         var imagesModeSelected = String(getByPath(state.forms, "videoCall.recording_mode", "video")) === "images";
         var safetyRecordingSelected = asBoolean(getByPath(state.forms, "videoCall.silent_recording_enabled", false), false);
-        var callPolicyNote = "<div class=\"ayu-note ayu-note-blue\"><strong>How these switches work.</strong> Enable audio calls is the master switch for Background Mode and Safety Recording. Background Mode keeps the phone connected with its microphone off; Safety Recording is the separate idle mode that writes phone microphone audio to files and may show iOS's microphone indicator. Start a voice call first, then upgrade that active call to video.</div>";
-        var videoSettingsMarkup = callPolicyNote + checkbox("videoCall.enabled", "Enable video calls", "Allow paired phones to start video calls and send their camera.")
-            + checkbox("videoCall.audio_enabled", "Enable audio calls", "Receive phone microphone audio and send speech or audio playback.")
-            + checkbox("videoCall.audio_microphone", "Share this computer's microphone", "Send this computer's microphone to connected phones.")
-            + field("Microphone", select("videoCall.input_audio_source", audioDeviceOptions, micShareSelected ? "" : "disabled"), micShareSelected ? "Mixed into the call audio phones hear." : "Turn on \"Share this computer's microphone\" above to choose a device.")
-            + checkbox("videoCall.audio_speaker_loopback", "Share this computer's sound", "Send the default speaker output. macOS and Linux need an installed loopback audio device.")
+        var callPolicyNote = "<div class=\"ayu-note ayu-note-blue\"><strong>Permission controls moved.</strong> Call availability, audio capture, recording, location, screen sharing, and remote control are now managed in Permissions. This page keeps the computer's device, source, quality, and storage settings.</div>";
+        var videoSettingsMarkup = callPolicyNote
+            + field("Microphone device", select("videoCall.input_audio_source", audioDeviceOptions), "This device is used when Permissions allows the computer microphone to be shared.")
             + (loopbackAvailable === false ? "<div class=\"ayu-note ayu-note-red\"><strong>Computer sound unavailable.</strong><p style=\"margin:6px 0 0;\">" + escapeHtml(loopbackReason) + " Install a supported loopback audio device, then select Refresh devices.</p></div>" : "")
-            + checkbox("videoCall.ai_audio_replies_enabled", "Play spoken AI replies", "Turn off for text-only AI replies while calls still transcribe and show responses.")
-            + checkbox("videoCall.disable_autoyou_agents", "Disable AutoYou Agents", "Do not transcribe microphone audio or send voice-call text to AI agents. Video streaming and recording still follow the settings below.")
-            + checkbox("speech.voice_training_capture_enabled", "Record audio calls", "During active voice calls, save microphone clips and transcripts to the Voice Training folder. The Voice Training app and Audio Player can review them later; neither has to be open. If Audio Player is already open, select Rescan to show a new recording.")
-            + checkbox("videoCall.background_mode_enabled", "Background mode", "Lets paired phones stay connected when the app is in the background. The phone microphone stays off unless a call or Safety Recording is active.")
-            + checkbox("videoCall.silent_recording_enabled", "Safety recording", "When the mobile app turns on Safety Recording, the phone can send microphone audio only to create files on this server. AutoYou does not send audio back, transcribe it, or call AI.")
-            + checkbox("videoCall.location_recording_enabled", "Record device location", "Allow a connected device that has also enabled Location Sharing and granted native permission to send location to the Location Timeline agent. Switching this off stops new samples; existing history remains.")
-            + field("Safety recording location", input("videoCall.silent_recording_dir", { placeholder: defaultSafetyRecordingDir, extraAttrs: safetyRecordingSelected ? "" : "disabled" }), safetyRecordingSelected ? "Leave blank to use: " + defaultSafetyRecordingDir : "Turn on Safety recording above to change this.")
-            + field("Safety recording batch seconds", input("videoCall.silent_recording_batch_seconds", { type: "number", placeholder: "3599", extraAttrs: "min=\"1\" max=\"3599\" step=\"1\"" + (safetyRecordingSelected ? "" : " disabled") }), "Each WAV file rotates before one hour to avoid large in-memory batches.")
-            + checkbox("videoCall.wuift_enabled", "Wait Until I Finish Talking (WUIFT)", "Lets callers hold transcription across pauses and press the WUIFT button to send everything said so far as one message. Clients only show the button when this is on.")
-            + checkbox("videoCall.record_my_video", "Record my video", "Save received phone camera frames on this computer during active video calls. The finished video file is published after the call ends.")
             + field("Recording format", select("videoCall.recording_mode", [
                 { value: "video", label: "Video file" },
                 { value: "images", label: "Images every X seconds" }
-            ], recordMyVideoSelected ? "" : "disabled"), recordMyVideoSelected ? "Video file is the default. Images mode saves lightweight JPEG snapshots on the interval below." : "Turn on \"Record my video\" above to change this.")
-            + field("Image interval seconds", input("videoCall.image_interval_seconds", { type: "number", placeholder: "5", extraAttrs: "min=\"1\" max=\"3600\" step=\"1\"" + (recordMyVideoSelected && imagesModeSelected ? "" : " disabled") }), "Used only when recording format is Images.")
-            + field("Save location", input("videoCall.recording_dir", { placeholder: defaultVideoRecordingDir, extraAttrs: recordMyVideoSelected ? "" : "disabled" }), "Leave blank to use: " + defaultVideoRecordingDir)
+            ]), "Video recording can be enabled in Permissions. Images mode saves JPEG snapshots on the interval below.")
+            + field("Image interval seconds", input("videoCall.image_interval_seconds", { type: "number", placeholder: "5", extraAttrs: "min=\"1\" max=\"3600\" step=\"1\"" }), "Used only when recording format is Images.")
+            + field("Video recording location", input("videoCall.recording_dir", { placeholder: defaultVideoRecordingDir }), "Leave blank to use: " + defaultVideoRecordingDir)
+            + field("Safety recording location", input("videoCall.silent_recording_dir", { placeholder: defaultSafetyRecordingDir }), "Leave blank to use: " + defaultSafetyRecordingDir)
+            + field("Safety recording batch seconds", input("videoCall.silent_recording_batch_seconds", { type: "number", placeholder: "3599", extraAttrs: "min=\"1\" max=\"3599\" step=\"1\"" }), "Each WAV file rotates before one hour to avoid large in-memory batches.")
             + "<div class=\"ayu-soft-divider\"></div>"
             + renderStatusRows([
                 { label: "Safety folder", value: resolvedSafetyRecordingDir, mono: true },
                 { label: "Video folder", value: resolvedVideoRecordingDir, mono: true },
                 { label: "Voice training folder", value: voiceTrainingDir, mono: true }
             ])
-            + "<div class=\"ayu-inline-actions\">" + button("Save video settings", "save-video-call", "primary", "save") + button("Refresh status", "ops-refresh", "secondary", "refresh", "sm") + "</div>";
-        var outboundSettingsMarkup = checkbox("videoCall.outbound_remote_desktop", "Share this computer's screen", "Phones can see the selected monitor when a video call starts.")
-            + checkbox("videoCall.outbound_api", "Realtime video input", "Accepts JPEG frames pushed through the server API. Audio is mixed separately.")
-            + field("API source id", input("videoCall.api_video_source_id", { placeholder: "default", extraAttrs: apiShareSelected ? "" : "disabled" }), apiShareSelected ? "Use this id when posting frames to the server." : "Turn on Realtime video input above to choose the frame stream.")
-            + checkbox("videoCall.outbound_video_file", "Play a video file", "Streams a local video file into the call. Its soundtrack stops when the caller starts speaking so AutoYou can listen; the looping video keeps playing. Press Play again to restart its sound.")
-            + field("Server video file", select("videoCall.video_file.path", videoFileOptions, videoFileSelected ? "" : "disabled"), videoFileSelected ? "Choose a file already uploaded to this AutoYou server, or type its path below." : "Turn on Play a video file above to select a server file.")
-            + field("Server path", input("videoCall.video_file.path", { placeholder: "Absolute path on this computer", extraAttrs: videoFileSelected ? "" : "disabled" }), videoFileSelected ? "Paste a path only when that file already exists on this computer." : "Turn on Play a video file above to enter a path.")
+            + "<div class=\"ayu-inline-actions\">" + button("Save device and storage settings", "save-video-call", "primary", "save") + button("Refresh status", "ops-refresh", "secondary", "refresh", "sm") + "</div>";
+        var outboundSettingsMarkup = field("Realtime video source id", input("videoCall.api_video_source_id", { placeholder: "default" }), "Used by API-pushed JPEG frames when Realtime video input is enabled in Permissions.")
+            + field("Server video file", select("videoCall.video_file.path", videoFileOptions), "Choose a file already uploaded to this AutoYou server, or type its path below.")
+            + field("Server path", input("videoCall.video_file.path", { placeholder: "Absolute path on this computer" }), "Use a file path that already exists on this computer.")
             + checkbox("videoCall.video_file.loop", "Loop video", "Restart the video automatically when it reaches the end.")
             + "<input class=\"ayu-file-input\" type=\"file\" accept=\"video/*\" data-role=\"video-file-input\" tabindex=\"-1\" aria-hidden=\"true\">"
             + "<div class=\"ayu-inline-actions\">" + button("Upload from browser", "video-file-select", "secondary", "upload", "sm") + button("Play", "video-file-play", "primary", "play", "sm") + button("Pause", "video-file-pause", "secondary", "pause", "sm") + button("Restart", "video-file-restart", "ghost", "refresh", "sm") + "</div>"
@@ -7741,18 +7797,12 @@
                 { label: "Playback", value: videoFilePlaying ? "Playing" : (videoFilePaused ? "Paused" : (videoFileEnded ? "Ended" : "Not started")) },
                 { label: "API frames", value: apiShareSelected ? apiSourceId : "Off" }
             ])
-            + checkbox(
-                "videoCall.outbound_camera",
-                "Add this computer's webcam",
-                noWebcamDetected
-                    ? "No webcam was found on this computer. Connect one, then select Refresh devices."
-                    : "Place one webcam beside the screen feed.",
-                noWebcamDetected && !cameraShareSelected ? "disabled" : ""
-            )
-            + (noWebcamDetected && cameraShareSelected
+            + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Audio file playback</h3>"
+            + field("Server audio file path", input("liveOps.playback_file_path", { placeholder: "/absolute/path/to/file.mp3" }), "Use a server-local audio file path. Allow audio file playback in Permissions, then choose a connected client and start playback from Messaging.")
+            + (noWebcamDetected
                 ? "<div class=\"ayu-note ayu-note-amber\"><strong>No webcam found.</strong><p style=\"margin:6px 0 0;\">Calls show the screen only  -  the webcam pane stays hidden until a camera is connected. Connect a webcam and select Refresh devices, or turn this off.</p></div>"
                 : "")
-            + field("Webcam / Camera device", select("videoCall.camera_device_id", cameraDeviceOptions, cameraShareSelected && !noWebcamDetected ? "" : "disabled"), noWebcamDetected ? "Connect a webcam, then select Refresh devices to choose it." : cameraShareSelected ? "The webcam phones see during video calls." : "Turn on \"Add this computer's webcam\" above to choose a camera.")
+            + field("Webcam / Camera device", select("videoCall.camera_device_id", cameraDeviceOptions, noWebcamDetected ? "disabled" : ""), noWebcamDetected ? "Connect a webcam, then select Refresh devices to choose it." : "The selected camera is used when Permissions allows webcam sharing.")
             + renderStatusRows([
                 { label: "Selected sources", value: selectedOutboundSources.length ? selectedOutboundSources.map(outboundSourceLabel).join(", ") : "None" },
                 { label: "Ready to send", value: activeOutboundSources.length ? activeOutboundSources.map(outboundSourceLabel).join(", ") : "None" },
@@ -7763,20 +7813,17 @@
             ])
             + "<div class=\"ayu-inline-actions\">" + button("Save source", "save-video-call", "primary", "save") + button("Refresh status", "ops-refresh", "secondary", "refresh", "sm") + "</div>";
         var remoteSettingsMarkup = remoteDesktopNudge
-            + checkbox("videoCall.remote_desktop.enabled", "Allow this computer's screen in video calls", "Authorizes native screen capture for authenticated video calls.")
-            + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Phones can see this screen when a video call starts.")
-            + field("Display / monitor", select("videoCall.remote_desktop.monitor_id", monitorDeviceOptions, remoteSettingsActive ? "" : "disabled"), remoteSettingsActive ? "Choose all displays or one physical monitor. Refresh devices after connecting or rearranging displays." : "Select and enable screen sharing above to choose a monitor.")
+            + "<div class=\"ayu-note ayu-note-blue\">Screen sharing, Remote Desktop control, and game mode are controlled in Permissions.</div>"
+            + field("Display / monitor", select("videoCall.remote_desktop.monitor_id", monitorDeviceOptions), "Choose all displays or one physical monitor. Refresh devices after connecting or rearranging displays.")
             + "<div class=\"ayu-grid-2\">"
             + field("Capture quality", select("videoCall.remote_desktop.quality", [
                 { value: "low", label: "Low - 960 px, 8 FPS" },
                 { value: "balanced", label: "Balanced - 1280 px, 12 FPS" },
                 { value: "high", label: "High - 1920 px, 20 FPS" },
                 { value: "ultra", label: "Ultra - 2560 px, 24 FPS" }
-            ], remoteSettingsActive ? "" : "disabled"), "Higher settings improve desktop text clarity but use more CPU, GPU, and network bandwidth.")
-            + field("Maximum video bitrate (kbps)", input("videoCall.remote_desktop.bitrate_kbps", { type: "number", placeholder: "1500", extraAttrs: "min=\"250\" max=\"3000\" step=\"50\"" + (remoteSettingsActive ? "" : " disabled") }), "Applies to active desktop tracks. An existing connection may need one reconnect when increasing above 1500 kbps.")
+            ]), "Higher settings improve desktop text clarity but use more CPU, GPU, and network bandwidth.")
+            + field("Maximum video bitrate (kbps)", input("videoCall.remote_desktop.bitrate_kbps", { type: "number", placeholder: "1500", extraAttrs: "min=\"250\" max=\"3000\" step=\"50\"" }), "Applies to active desktop tracks. An existing connection may need one reconnect when increasing above 1500 kbps.")
             + "</div>"
-            + checkbox("videoCall.remote_desktop.control_enabled", "Control Remote Desktop from supported clients", "Allows mouse, touch, and keyboard input only during an authenticated, active, full-screen Linux, macOS, Windows, iOS, Android, or Chrome video session. Leave off for view-only screen sharing.", remoteSettingsActive ? "" : "disabled")
-            + checkbox("videoCall.remote_desktop.game_enabled", "Enable game mode", "Stream this computer's screen and sound to authenticated clients, with native touch, controller, mouse, and keyboard input. Computer sound uses the audio setting above. Active game control targets 30 fps at the selected resolution; WebRTC adjusts bitrate for the connection.", remoteSettingsActive && remoteControlConfigured ? "" : "disabled")
             + field("Game buttons", input("videoCall.remote_desktop.game_buttons", { placeholder: "A:action_a, B:action_b" }), "Up to four comma-separated Label:button_name controls on iOS and Android. Labels are 1-12 characters without commas or colons. Leave empty for joystick only. Names use letters, digits, underscore, dot, or hyphen and must start with a letter.")
             + "<div class=\"ayu-remote-desktop-runtime ayu-note ayu-note-" + (remoteControlEnabled ? "green" : (remoteControlConfigured && !remoteControlAvailable ? "red" : "blue")) + "\"><strong>" + escapeHtml(remoteControlEnabled ? "Screen control is ready." : (remoteControlConfigured && !remoteControlAvailable ? "Screen control is unavailable on this host." : "Screen viewing is read-only.")) + "</strong><p>" + escapeHtml(remoteControlEnabled ? "iOS and Android provide native full-screen touch, fixed-pointer mode, and game controls. macOS and Windows provide mouse and keyboard; Chrome supports pointer lock. Control pauses when you switch away or leave full screen." : (remoteControlConfigured && remoteControlAvailable ? "Save these settings to enable full-screen input." : "Turn on Control Remote Desktop to permit full-screen input.")) + "</p></div>"
             + renderStatusRows([
@@ -7787,7 +7834,7 @@
                 { label: "Native control", value: remoteControlEnabled ? "Ready" : (remoteControlConfigured ? (remoteControlAvailable ? "Save to enable" : "Unavailable") : "View only") },
                 { label: "Screen stream ready", value: yesNo(remoteTrackAvailable) }
             ])
-            + "<div class=\"ayu-inline-actions\">" + button("Save remote desktop", "save-video-call", "primary", "save") + (remoteAgentInstalled ? button("Open optional web console", "nav:agents", "ghost", "agents", "sm") : "") + "</div>";
+            + "<div class=\"ayu-inline-actions\">" + button("Save system settings", "save-video-call", "primary", "save") + button("Open Permissions", "nav:permissions", "ghost", "shield", "sm") + (remoteAgentInstalled ? button("Open optional web console", "nav:agents", "ghost", "agents", "sm") : "") + "</div>";
         var capabilityMarkup = capabilityError + renderStatusRows([
             { label: "Video enabled", value: yesNo(getByPath(videoCaps, "enabled", false)) },
             { label: "Receives phone camera", value: yesNo(getByPath(videoCaps, "receive_enabled", false)) },
@@ -7799,6 +7846,7 @@
             { label: "Records audio calls", value: yesNo(getByPath(state.forms, "speech.voice_training_capture_enabled", false)) },
             { label: "Voice training location", value: voiceTrainingDir, mono: true },
             { label: "Audio enabled", value: yesNo(getByPath(audioCaps, "enabled", false)) },
+            { label: "Audio file playback allowed", value: yesNo(getByPath(state.forms, "audioPlayback.enabled", true)) },
             { label: "Background mode", value: yesNo(getByPath(audioCaps, "background_mode.enabled", getByPath(state.forms, "videoCall.background_mode_enabled", false))) },
             { label: "Background audio available", value: yesNo(getByPath(audioCaps, "background_mode.available", false)) },
             { label: "Background audio direction", value: "iOS " + getByPath(audioCaps, "background_mode.ios_client_audio_direction", getByPath(audioCaps, "background_mode.client_audio_direction", "recvonly")) + " / Android " + getByPath(audioCaps, "background_mode.android_client_audio_direction", "inactive") },
@@ -7819,7 +7867,7 @@
             { label: "Computer video sources", value: selectedOutboundSources.length ? selectedOutboundSources.map(outboundSourceLabel).join(", ") : "None" },
             { label: "Connected clients", value: String(getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0))) }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the audio and video sources paired phones receive during calls.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh devices", "refresh-webrtc-devices", "primary", "refresh") + button("Live QR connect", "live-pair", "primary", "qr") + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "</div></div><div class=\"ayu-grid-2\">" + panel("Call sources", "Current mixed audio and video sources for paired phones.", callSourcesMarkup) + panel("Video call settings", "Core call availability, listening, and recording choices.", videoSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Computer video source", "Choose screen sharing, webcam, both, or neither.", outboundSettingsMarkup) + panel("Remote Desktop settings", "Control whether this computer may share its screen in video calls.", remoteSettingsMarkup) + "</div>" + panel("Phone media state", "Current capabilities phones receive when calls connect.", capabilityMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the computer devices, capture profiles, playback inputs, and storage locations used by calls.</p></div><div class=\"ayu-inline-actions\">" + button("Open Permissions", "nav:permissions", "primary", "shield") + button("Refresh devices", "refresh-webrtc-devices", "secondary", "refresh") + button("Live QR connect", "live-pair", "ghost", "qr") + button("Refresh status", "ops-refresh", "ghost", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Computer audio and video devices", "Select microphones and cameras for computer media sources.", videoSettingsMarkup) + panel("Playback and input sources", "Choose files and source ids for video playback and API-fed frames.", outboundSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Display and capture quality", "Choose the monitor, resolution profile, and bitrate for computer screen video.", remoteSettingsMarkup) + panel("Current permission status", "Read-only status from the settings managed in Permissions.", capabilityMarkup) + "</div>" + panel("Current audio mix", "Active computer audio sources and current connection state.", callSourcesMarkup) + "</div>";
     }
 
     function renderSpeechProviderSettingsBody() {
@@ -7924,7 +7972,7 @@
             { label: "Voice training location", value: voiceTrainingDir, mono: true },
             { label: "Installed models", value: String(Array.isArray(installedModels) ? installedModels.length : 0) },
             { label: "Cache directory", value: getByPath(statusPayload, "cache_dir", "Unknown"), mono: true }
-        ]) + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-note\"><strong>Voice Training app does not have to be open.</strong><p style=\"margin:6px 0 0;\">Turn capture on here to save call samples. Open the Voice Training app later when you want to review or train from them.</p></div>" + checkbox("speech.voice_training_capture_enabled", "Record voice-call training samples", "When speech recognition produces a transcript, save the matching microphone audio to the Voice Training folder. Long or noisy calls are still saved with quality warnings and may be skipped by training filters.") + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-grid-2\">" + field("STT model", select("speech.stt_model", buildSpeechModelOptions())) + field("STT language", input("speech.stt_language", { placeholder: "en" })) + field("STT device", select("speech.stt_device", buildSimpleOptions(getByPath(statusPayload, "stt_device_suggestions", []), getByPath(state.forms, "speech.stt_device", "cpu")))) + field("STT compute type", select("speech.stt_compute_type", buildSimpleOptions(getByPath(statusPayload, "stt_compute_type_suggestions", []), getByPath(state.forms, "speech.stt_compute_type", "float32")))) + field("Silero sensitivity", input("speech.stt_silero_sensitivity", { placeholder: "0.4" })) + field("Post-speech silence", input("speech.stt_post_speech_silence_duration", { placeholder: "0.6" })) + "</div><div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "secondary", "save") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Speech model library</h3>" + libraryMarkup + "<div class=\"ayu-soft-divider\"></div>" + field("Model name", select("speech.download_model", buildSpeechModelOptions()), "Use the library name reported by the speech model helper.") + "<div class=\"ayu-inline-actions\">" + button("Download STT model", "speech-download", "primary", "plus") + button("Open speech guide", "open-guide:/guides/speech", "secondary", "book") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
+        ]) + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-note\">Voice-call recording is controlled in <a href=\"#\" data-action=\"nav:permissions\">Permissions</a>. The Voice Training app does not need to be open when capture is enabled.</div><div class=\"ayu-soft-divider\"></div><div class=\"ayu-grid-2\">" + field("STT model", select("speech.stt_model", buildSpeechModelOptions())) + field("STT language", input("speech.stt_language", { placeholder: "en" })) + field("STT device", select("speech.stt_device", buildSimpleOptions(getByPath(statusPayload, "stt_device_suggestions", []), getByPath(state.forms, "speech.stt_device", "cpu")))) + field("STT compute type", select("speech.stt_compute_type", buildSimpleOptions(getByPath(statusPayload, "stt_compute_type_suggestions", []), getByPath(state.forms, "speech.stt_compute_type", "float32")))) + field("Silero sensitivity", input("speech.stt_silero_sensitivity", { placeholder: "0.4" })) + field("Post-speech silence", input("speech.stt_post_speech_silence_duration", { placeholder: "0.6" })) + "</div><div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "secondary", "save") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Speech model library</h3>" + libraryMarkup + "<div class=\"ayu-soft-divider\"></div>" + field("Model name", select("speech.download_model", buildSpeechModelOptions()), "Use the library name reported by the speech model helper.") + "<div class=\"ayu-inline-actions\">" + button("Download STT model", "speech-download", "primary", "plus") + button("Open speech guide", "open-guide:/guides/speech", "secondary", "book") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
     }
 
     function renderSpeechScreen() {
@@ -8564,6 +8612,8 @@
             markup = renderMessagingScreen();
         } else if (state.screen === "video") {
             markup = renderVideoScreen();
+        } else if (state.screen === "permissions") {
+            markup = renderPermissionsScreen();
         } else if (state.screen === "speech") {
             markup = renderSpeechScreen();
         } else if (state.screen === "connectivity") {
@@ -8780,9 +8830,6 @@
                     silero_sensitivity: source.stt_silero_sensitivity,
                     post_speech_silence_duration: source.stt_post_speech_silence_duration
                 },
-                voice_training: {
-                    capture_enabled: asBoolean(source.voice_training_capture_enabled, false)
-                }
             }
         };
         if (hasValue(source.openai_api_key)) {
@@ -8797,37 +8844,60 @@
     function videoCallFormPayload() {
         var source = getByPath(state.forms, "videoCall", {});
         var payload = JSON.parse(JSON.stringify(source || {}));
-        var audioSources = [];
-        if (asBoolean(source.audio_microphone, false)) {
-            audioSources.push("microphone");
+        [
+            "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
+            "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+            "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
+            "outbound_sources", "outbound_source", "audio_microphone", "audio_speaker_loopback",
+            "outbound_remote_desktop", "outbound_api", "outbound_video_file", "outbound_camera"
+        ].forEach(function (key) { delete payload[key]; });
+        if (payload.remote_desktop && typeof payload.remote_desktop === "object") {
+            ["enabled", "send_screen", "control_enabled", "game_enabled"].forEach(function (key) {
+                delete payload.remote_desktop[key];
+            });
         }
-        if (asBoolean(source.audio_speaker_loopback, false)) {
-            audioSources.push("speaker_loopback");
-        }
-        var videoSources = [];
-        if (asBoolean(source.outbound_remote_desktop, false)) {
-            videoSources.push("remote_desktop");
-        }
-        if (asBoolean(source.outbound_api, false)) {
-            videoSources.push("api");
-        }
-        if (asBoolean(source.outbound_video_file, false)) {
-            videoSources.push("video_file");
-        }
-        if (asBoolean(source.outbound_camera, false)) {
-            videoSources.push("camera");
-        }
-        payload.audio_sources = audioSources;
-        payload.capture_audio = audioSources.length > 0;
-        payload.outbound_sources = videoSources;
-        payload.outbound_source = videoSources[0] || "remote_desktop";
-        delete payload.audio_microphone;
-        delete payload.audio_speaker_loopback;
-        delete payload.outbound_remote_desktop;
-        delete payload.outbound_api;
-        delete payload.outbound_video_file;
-        delete payload.outbound_camera;
         return payload;
+    }
+
+    async function savePermissions(fields, successMessage) {
+        var formPaths = {
+            video_call_enabled: "videoCall.enabled",
+            audio_call_enabled: "videoCall.audio_enabled",
+            audio_playback_enabled: "audioPlayback.enabled",
+            computer_microphone: "videoCall.audio_microphone",
+            computer_sound: "videoCall.audio_speaker_loopback",
+            ai_audio_replies_enabled: "videoCall.ai_audio_replies_enabled",
+            autoyou_agents_disabled: "videoCall.disable_autoyou_agents",
+            voice_call_recording_enabled: "speech.voice_training_capture_enabled",
+            background_mode_enabled: "videoCall.background_mode_enabled",
+            safety_recording_enabled: "videoCall.silent_recording_enabled",
+            location_recording_enabled: "videoCall.location_recording_enabled",
+            wuift_enabled: "videoCall.wuift_enabled",
+            video_call_recording_enabled: "videoCall.record_my_video",
+            webcam_sharing_enabled: "videoCall.outbound_camera",
+            screen_capture_enabled: "videoCall.remote_desktop.enabled",
+            screen_send_enabled: "videoCall.remote_desktop.send_screen",
+            screen_source_enabled: "videoCall.outbound_remote_desktop",
+            api_video_input_enabled: "videoCall.outbound_api",
+            video_file_playback_enabled: "videoCall.outbound_video_file",
+            remote_desktop_control_enabled: "videoCall.remote_desktop.control_enabled",
+            game_mode_enabled: "videoCall.remote_desktop.game_enabled",
+            chat_memory_enabled: "aiAgent.record_messages_in_database",
+            ai_agent_lan_access_enabled: "aiAgent.lan_access_enabled",
+            admin_frontend_enabled: "page.admin_frontend_enabled",
+            remote_access_role: "page.remote_access_role"
+        };
+        var payload = {};
+        fields.forEach(function (fieldName) {
+            var path = formPaths[fieldName];
+            if (!path) return;
+            var value = getByPath(state.forms, path, false);
+            payload[fieldName] = fieldName === "remote_access_role"
+                ? normalizeRemoteAccessRole(value)
+                : Boolean(value);
+        });
+        await postJson("/api/admin/permissions", payload);
+        await refreshBootstrap(successMessage);
     }
 
     async function handleAction(action, element) {
@@ -9269,12 +9339,6 @@
             await patchConfig({ security: { native_unlock_enabled: nativeUnlockEnabled } }, nativeUnlockEnabled ? "System credential unlock will be available after restart." : "System credential unlock will be disabled after restart.");
             return;
         }
-        if (action.indexOf("overview-remote-role:") === 0) {
-            var remoteRole = normalizeRemoteAccessRole(action.split(":")[1]);
-            setByPath(state.forms, "page.remote_access_role", remoteRole);
-            await patchConfig({ autoyou_page: { remote_access_role: remoteRole } }, "Remote client access updated.");
-            return;
-        }
         if (action.indexOf("service:") === 0) {
             await handleServiceAction(action);
             return;
@@ -9316,8 +9380,11 @@
             return;
         }
         if (action === "save-ai-agent") {
+            var aiAgentSettings = clone(getByPath(state.forms, "aiAgent", {}));
+            delete aiAgentSettings.record_messages_in_database;
+            delete aiAgentSettings.lan_access_enabled;
             await patchConfig({
-                ai_agent: getByPath(state.forms, "aiAgent", {}),
+                ai_agent: aiAgentSettings,
                 client_identity: getByPath(state.forms, "clientIdentity", {})
             }, "AutoYou AI settings updated.");
             return;
@@ -9696,7 +9763,6 @@
                     auto_start: getByPath(state.forms, "page.auto_start", true),
                     feed_window_days: getByPath(state.forms, "page.feed_window_days", 0),
                     theme: getByPath(state.forms, "page.theme", "light"),
-                    remote_access_role: normalizeRemoteAccessRole(getByPath(state.forms, "page.remote_access_role", "viewer")),
                     custom_forward_enabled: getByPath(state.forms, "page.custom_forward_enabled", false),
                     custom_forward_port: getByPath(state.forms, "page.custom_forward_port", 8067),
                     advertised_websites: getByPath(state.forms, "page.advertisedWebsites", []),
@@ -9709,13 +9775,33 @@
             await patchConfig({
                 autoyou_page: {
                     custom_forward_enabled: getByPath(state.forms, "page.custom_forward_enabled", false),
-                    custom_forward_port: getByPath(state.forms, "page.custom_forward_port", 8067),
-                    remote_access_role: normalizeRemoteAccessRole(getByPath(state.forms, "page.remote_access_role", "viewer"))
-                },
-                admin_frontend: {
-                    enabled: getByPath(state.forms, "page.admin_frontend_enabled", false)
+                    custom_forward_port: getByPath(state.forms, "page.custom_forward_port", 8067)
                 }
-            }, "Remote admin access updated.");
+            }, "Browser forwarding updated.");
+            return;
+        }
+        if (action === "save-permissions-audio") {
+            await savePermissions([
+                "video_call_enabled", "audio_call_enabled", "audio_playback_enabled", "computer_microphone", "computer_sound",
+                "ai_audio_replies_enabled", "autoyou_agents_disabled", "voice_call_recording_enabled",
+                "background_mode_enabled", "safety_recording_enabled", "location_recording_enabled", "wuift_enabled"
+            ], "Audio permissions updated.");
+            return;
+        }
+        if (action === "save-permissions-video") {
+            await savePermissions([
+                "video_call_recording_enabled", "webcam_sharing_enabled", "screen_capture_enabled",
+                "screen_send_enabled", "screen_source_enabled",
+                "api_video_input_enabled", "video_file_playback_enabled", "remote_desktop_control_enabled", "game_mode_enabled"
+            ], "Video and computer permissions updated.");
+            return;
+        }
+        if (action === "save-permissions-data") {
+            await savePermissions(["chat_memory_enabled", "ai_agent_lan_access_enabled"], "Data and network permissions updated.");
+            return;
+        }
+        if (action === "save-permissions-web") {
+            await savePermissions(["remote_access_role", "admin_frontend_enabled"], "Paired browser permissions updated.");
             return;
         }
         if (action === "page-add-website") {
@@ -10169,14 +10255,6 @@
             setByPath(state.forms, "liveOps.webrtc_message", "");
             await ensureOperationsData(true);
             setNotice("success", "Browser message sent.");
-            return;
-        }
-        if (action === "toggle-playback-enabled") {
-            state.operations.playback = await postJson("/api/webrtc/playback/enabled", {
-                enabled: !Boolean(getByPath(state.operations, "playback.enabled", false))
-            });
-            renderApp();
-            setNotice("success", "Playback setting updated.");
             return;
         }
         if (action === "webrtc-playback-status") {

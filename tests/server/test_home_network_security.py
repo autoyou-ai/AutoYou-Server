@@ -203,6 +203,107 @@ def test_remote_browser_cannot_widen_access_through_config():
     assert server._remote_browser_config_change_error(_request(), {"autoyou_page": {"remote_access_role": "admin"}}) is None
 
 
+def test_capture_and_access_permissions_require_self_localhost_but_device_settings_do_not():
+    remote = _request(client=(SYNTHETIC_LAN_ADDRESS, 50000))
+    for payload in (
+        {"video_call": {"enabled": False}},
+        {"video_call": {"remote_desktop": {"control_enabled": True}}},
+        {"speech": {"voice_training": {"capture_enabled": True}}},
+        {"ai_agent": {"record_messages_in_database": False}},
+        {"autoyou_page": {"remote_access_role": "admin"}},
+        {"admin_frontend": {"enabled": True}},
+    ):
+        response = server._permission_config_change_error(remote, payload)
+        assert response is not None and response.status_code == 403, payload
+
+    assert server._permission_config_change_error(remote, {
+        "video_call": {
+            "input_audio_source": "synthetic-microphone",
+            "recording_dir": "C:/AutoYou/test-recordings",
+            "remote_desktop": {"monitor_id": 1, "quality": "high", "bitrate_kbps": 900},
+        }
+    }) is None
+    local = _request()
+    assert server._permission_config_change_error(local, {"video_call": {"enabled": False}}) is None
+    proxied_local = _request({REMOTE_BROWSER_HEADER: "webrtc"})
+    response = server._permission_config_change_error(proxied_local, {"video_call": {"enabled": False}})
+    assert response is not None and response.status_code == 403
+
+
+def test_permissions_api_only_reads_and_writes_from_direct_loopback_admin(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setattr(server, "_require_api_login", lambda _request: None)
+    monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+    cfg = server._default_config()
+    monkeypatch.setattr(server.STATE, "config", cfg, raising=False)
+
+    async def apply_update(patch):
+        updated, _touched, _theme = server._apply_admin_ui_config_patch(server.STATE.config, patch)
+        server.STATE.config = updated
+        return {"success": True}
+
+    monkeypatch.setattr(server, "_apply_admin_ui_config_update", apply_update)
+
+    def apply_audio_playback(enabled):
+        server.STATE.config.setdefault("audio_playback", {})["enabled"] = bool(enabled)
+        return server.STATE.config
+
+    monkeypatch.setattr(server, "_apply_audio_playback_enabled", apply_audio_playback)
+    monkeypatch.setattr(server, "WEBRTC", None)
+
+    async def bootstrap_payload():
+        return {"metadata": {}}
+
+    monkeypatch.setattr(server, "_build_admin_ui_bootstrap_payload", bootstrap_payload)
+    local = TestClient(
+        server.admin_app,
+        base_url="http://127.0.0.1:8001",
+        client=("127.0.0.1", 50000),
+    )
+    assert local.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is True
+    snapshot = local.get("/api/admin/permissions")
+    assert snapshot.status_code == 200
+    assert snapshot.json()["paths"]["location_recording"].endswith("location_agent/locations.sqlite3")
+    assert not (tmp_path / "location_agent" / "locations.sqlite3").exists()
+    assert snapshot.json()["screen_capture_enabled"] is True
+    assert snapshot.json()["screen_send_enabled"] is True
+    assert snapshot.json()["screen_source_enabled"] is True
+
+    saved = local.post("/api/admin/permissions", json={
+        "audio_call_enabled": False,
+        "audio_playback_enabled": False,
+        "chat_memory_enabled": False,
+        "screen_capture_enabled": False,
+        "screen_send_enabled": True,
+        "screen_source_enabled": False,
+    })
+    assert saved.status_code == 200
+    assert saved.json()["audio_call_enabled"] is False
+    assert saved.json()["audio_playback_enabled"] is False
+    assert saved.json()["chat_memory_enabled"] is False
+    assert server.STATE.config["video_call"]["audio_enabled"] is False
+    assert server.STATE.config["audio_playback"]["enabled"] is False
+    assert server.STATE.config["ai_agent"]["record_messages_in_database"] is False
+    assert server.STATE.config["video_call"]["remote_desktop"]["enabled"] is False
+    assert server.STATE.config["video_call"]["remote_desktop"]["send_screen"] is True
+    assert "remote_desktop" not in server.STATE.config["video_call"]["outbound_sources"]
+
+    lan = TestClient(
+        server.admin_app,
+        base_url="http://192.0.2.20:8001",
+        client=("192.0.2.21", 50000),
+    )
+    assert lan.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is False
+    assert lan.get("/api/admin/permissions").status_code == 403
+    assert lan.post("/api/admin/permissions", json={"audio_call_enabled": True}).status_code == 403
+    assert lan.post("/api/webrtc/playback/enabled", json={"enabled": True}).status_code == 403
+    assert local.get("/api/admin/permissions", headers={REMOTE_BROWSER_HEADER: "webrtc"}).status_code == 403
+    assert local.post("/api/admin/permissions", json={
+        "audio_call_enabled": True,
+    }, headers={REMOTE_BROWSER_HEADER: "webrtc"}).status_code == 403
+    assert local.get("/api/admin/bootstrap", headers={REMOTE_BROWSER_HEADER: "webrtc"}).json()["metadata"]["permissions_editable"] is False
+
+
 def test_remote_browser_cannot_change_credentials_whatever_its_role(monkeypatch):
     # An unlocked server, so earlier locked-state guards do not answer first.
     monkeypatch.setattr(server, "_has_loaded_config_session", lambda: True)
