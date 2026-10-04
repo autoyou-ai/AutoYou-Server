@@ -45,5 +45,5 @@ flatbuffers>=2.0
 # stream2sentence is intentionally omitted from this stack:
 # - it pulls stanza via transitive deps and introduced a CVE path in scanning.
 # - sentence-stream is the minimal-risk API-level replacement when streaming segmentation is needed.
-azure-cognitiveservices-speech>=1.30.0
+azure-cognitiveservices-speech>=1.52.0
 elevenlabs>=0.2.26

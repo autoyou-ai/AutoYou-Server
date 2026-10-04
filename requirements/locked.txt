@@ -252,13 +252,13 @@ av==16.1.0 \
     #   -r requirements/base.txt
     #   aiortc
     #   faster-whisper
-azure-cognitiveservices-speech==1.50.0 \
-    --hash=sha256:2621d1c95741c0864d418f88c59d1355bde0d893beb57c609b6ae4819c99e591 \
-    --hash=sha256:44279ad5430db7484ef412d89599f926e623b184a365a2258056f4ffdee34e55 \
-    --hash=sha256:828891baac849137d9773d980910939c0541cbfc4653265597fea592684efafd \
-    --hash=sha256:a199cac027f4f3c4972b9c76efb425dd7479eabd4beb9c613140fe5549c649c6 \
-    --hash=sha256:c600bdab8bcc12b3e7e1297c0026dbe09edf90d9b399a719303132c216bc8002 \
-    --hash=sha256:e58faf51d82963b395c06a7e65dd6bead71c242e013695c62949ff8b9607d77e
+azure-cognitiveservices-speech==1.52.0 \
+    --hash=sha256:521814286e6dea4d98ee4561b93ad2f1866ce88441c14ed70e52e78c01797019 \
+    --hash=sha256:9d0697b29ca7f489508a73c9982ebcbb90e19e6db8677a72da01f02965225d6a \
+    --hash=sha256:ad4563b39f916da636de7780a00769d355c4d990f9fb2411d5200106489cd5e4 \
+    --hash=sha256:baf3ae9bdd1e75336a22f859d854a3c0f9dd7078b9144f2d432441e77be9f91c \
+    --hash=sha256:e422eb31733864d383a44b94801babc2ca4b48597695c99bf314b92316a3580d \
+    --hash=sha256:fce8d3cfc7d83a95f245bd7004bec7316a72114e2622c7c65b426cc45693ca6a
     # via -r requirements/voice.txt
 azure-core==1.41.0 \
     --hash=sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d \
