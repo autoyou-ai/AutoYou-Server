@@ -1,6 +1,8 @@
 # Contributing to AutoYou Server
 
-AutoYou Server is source-available under the [LICENSE](LICENSE). It is not an OSI-approved open-source project; personal-use and commercial-use restrictions apply. Contributions are welcome, and accepted contributions can earn a share of the [Contributor Pool](docs/contributors/contributor-pool.md). Questions and conversation live in the [community](https://www.autoyou.me/community/), and product help is at [www.autoyou.me/support](https://www.autoyou.me/support/).
+AutoYou Server is currently source-available under the [LICENSE](LICENSE) and is on an active path toward becoming a fully open-source project. **We are committed to making this Open Sourced soon!** Upon reaching our initial community milestone ($5M), the server codebase will be relicensed under an OSI-approved open-source license (such as Apache 2.0 or MIT). 
+
+We actively invite developers worldwide to contribute, build agents, and improve AutoYou Server. When you contribute, you can earn monetary rewards and bounties from our community-funded [Contributor Pool](docs/contributors/contributor-pool.md) — OpenStorey commits at least 15% of all sponsorship and donation revenue directly to approved contributors. Questions and conversation live in the [community](https://www.autoyou.me/community/), and product help is at [www.autoyou.me/support](https://www.autoyou.me/support/).
 
 ## How to contribute
 
