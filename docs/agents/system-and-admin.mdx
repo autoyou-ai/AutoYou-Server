@@ -1,82 +1,77 @@
 ---
 title: "System & Administration Agents"
-description: "Reference catalog for admin_agent, backup_agent, proxy_agent, hosting_agent, remote_desktop_agent, win_security_agent, and mac_security_agent."
+description: "Reference catalog for admin_agent, backup_agent, hosting_agent, win_security_agent, and mac_security_agent."
 ---
 
 # System & Administration Agents
 
-These agents govern server administration, security policies, backup management, network proxies, and remote desktop capabilities.
+System & Administration agents govern server runtime health, service orchestration, automated backups, external domain hosting, and host-level OS security policies on Windows and macOS.
 
 ---
 
 ## 1. `admin_agent`
+
 - **Location**: `autoyou_agents/admin_agent/`
-- **Role**: Primary administrative assistant responsible for inspecting server health, reading diagnostics, managing configuration, and dispatching administrative commands.
+- **Role**: Primary administrative controller responsible for inspecting server health, reading system diagnostics, managing configuration, coordinating service lifecycles, and verifying security permissions.
 - **Frontend**: Integrated directly into the Admin Console at `/admin`.
+- **Security Scope**: Requires `System Admin` security profile privileges and TOTP session elevation.
 - **Key Tools**:
-  - `get_system_health()`: Returns CPU, memory, disk, and service telemetry.
-  - `restart_service(service_name: str)`: Requests a clean restart of a background subprocess.
-  - `scan_system_logs(lines: int = 50)`: Reads recent server execution logs.
-- **Security Scope**: Requires `System Admin` security profile privileges.
+  - `get_system_health()`: Returns real-time host metrics including CPU utilization, RAM usage, storage availability, and background process status.
+  - `restart_service(service_name: str)`: Requests a graceful restart of a managed background subprocess or gateway listener.
+  - `scan_system_logs(lines: int = 50)`: Retrieves recent server runtime execution logs with automatic credential and personal identifier redaction.
+  - `check_admin_session()`: Verifies if the active administrative session token is valid and unexpired.
+  - `verify_admin_totp(totp_code: str)`: Validates a 6-digit TOTP code against the encrypted keystore to elevate privileges.
+  - `revoke_admin_session()`: Invalidates the current administrative session immediately.
 
 ---
 
 ## 2. `backup_agent`
+
 - **Location**: `autoyou_agents/backup_agent/`
-- **Role**: Coordinates automated backups, filesystem snapshots, and safe cross-device transfers of user databases and keystores.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/backup_agent/`.
+- **Role**: Coordinates automated database backups, filesystem snapshots, encrypted state export, and cross-device recovery of user data, sessions, and configuration stores.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/backup_agent/`.
 - **Key Tools**:
-  - `create_backup(include_media: bool = False)`: Creates an encrypted archive of `sessions.db`, `page_feed.db`, and configuration vaults.
-  - `list_backups()`: Enumerates previous backup snapshots with timestamps and checksums.
-  - `restore_backup(backup_id: str)`: Restores state from an authenticated snapshot.
+  - `create_backup(include_media: bool = False)`: Creates an encrypted timestamped snapshot archive of `sessions.db`, `page_feed.db`, `login_ui_state.db`, and configuration vaults.
+  - `list_backups()`: Enumerates previous backup archives with timestamps, size, and SHA-256 integrity checksums.
+  - `restore_backup(backup_id: str)`: Restores server state from an authenticated snapshot, validating schema versions before applying mutations.
+  - `verify_backup_integrity(backup_id: str)`: Audits snapshot cryptographic signatures and database consistency.
 
 ---
 
-## 3. `proxy_agent`
-- **Location**: `autoyou_agents/proxy_agent/`
-- **Role**: Manages internal reverse-proxy routing, port mapping, and traffic filtering between the browser proxy on port `8067` and external services.
-- **Key Tools**:
-  - `register_route(path: str, target_port: int)`: Adds a dynamic route to the proxy table.
-  - `list_active_routes()`: Inspects current proxy route mappings.
+## 3. `hosting_agent`
 
----
-
-## 4. `hosting_agent`
 - **Location**: `autoyou_agents/hosting_agent/`
-- **Role**: Publishes local agent websites and media assets to the public web using Tunnelmole or custom domain reverse proxies.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/hosting_agent/`.
+- **Role**: Publishes local agent websites, portals, and media endpoints to the public internet using Tunnelmole tunnels or custom domain reverse proxies with automated SSL certificates.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/hosting_agent/`.
 - **Key Tools**:
-  - `publish_site(agent_name: str)`: Generates a public HTTPS URL forwarding to the agent's web frontend.
-  - `revoke_public_access(agent_name: str)`: Disables the public tunnel immediately.
+  - `publish_site(agent_name: str)`: Generates a public HTTPS URL forwarding securely to the specified agent's local web frontend.
+  - `revoke_public_access(agent_name: str)`: Disables the public tunnel immediately and clears active domain bindings.
+  - `get_hosting_status()`: Queries active public tunnels, connection latency, bandwidth consumption, and SSL certificate expiration.
+  - `configure_custom_domain(domain_name: str, target_port: int)`: Provisions DNS and SSL routing for operator-owned custom domains.
 
 ---
 
-## 5. `remote_desktop_agent`
-- **Location**: `autoyou_agents/remote_desktop_agent/`
-- **Role**: Enables full remote desktop viewing, monitor switching, and simulated keyboard/mouse control over WebRTC and WebSockets.
-- **Frontend**: Integrated with the Live View panel at `/admin` and at `/agent/remote_desktop_agent/`.
-- **Key Tools**:
-  - `capture_screen(monitor_index: int = 0)`: Takes a full-resolution screenshot buffer.
-  - `send_input_event(event_type: str, data: dict)`: Injects synthesized clicks, mouse scrolls, or keystrokes.
-- **Platform Dependencies**: Uses `mss` on Windows/Linux and native Quartz/CoreGraphics on macOS.
+## 4. `win_security_agent`
 
----
-
-## 6. `win_security_agent`
 - **Location**: `autoyou_agents/win_security_agent/`
-- **Role**: Windows-specific security agent that monitors host firewall rules, Antivirus/Defender status, and validates Authenticode signatures on loaded modules.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/win_security_agent/`.
+- **Role**: Windows-specific host security agent that monitors host firewall rules, Windows Defender status, loopback listener boundaries, UAC elevations, and Authenticode binary signatures.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/win_security_agent/`.
 - **Key Tools**:
-  - `audit_windows_defender()`: Queries Windows Security Center status via WMI.
-  - `inspect_open_listeners()`: Verifies that sensitive admin ports remain bound to loopback.
+  - `audit_windows_defender()`: Queries Windows Security Center via WMI to verify real-time protection and antivirus definitions.
+  - `inspect_open_listeners()`: Audits active TCP/UDP ports to ensure administrative endpoints (`8123`, `8067`, `8068`) remain bound strictly to loopback (`127.0.0.1`).
+  - `audit_firewall_rules()`: Inspects Windows Filtering Platform (WFP) rules and WinDivert bindings.
+  - `check_privilege_level()`: Verifies whether the server process is running with standard mediumIL or elevated administrator rights.
 
 ---
 
-## 7. `mac_security_agent`
+## 5. `mac_security_agent`
+
 - **Location**: `autoyou_agents/mac_security_agent/`
-- **Role**: macOS-specific security agent monitoring App Sandbox entitlements, Keychain access, and macOS privacy permissions (Camera, Microphone, Screen Recording).
+- **Role**: macOS-specific security agent that monitors App Sandbox entitlements, Keychain access, Gatekeeper notarization, and macOS privacy permissions (Camera, Microphone, Accessibility, Screen Recording).
 - **Backend Listener**: Operates a dedicated internal loopback backend on port **8101** so it does not interfere with the primary browser proxy on port 8067.
-- **Frontend**: Available at `http://127.0.0.1:8067/agent/mac_security_agent/`.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/mac_security_agent/`.
 - **Key Tools**:
-  - `check_tcc_permissions()`: Audits Transparency, Consent, and Control (TCC) system permissions.
-  - `verify_code_signature()`: Checks Developer ID and notarization ticket on the running bundle.
+  - `audit_tcc_permissions()`: Audits Transparency, Consent, and Control (TCC) grant states for camera, microphone, screen capture, and accessibility.
+  - `verify_code_signature()`: Validates Apple Developer code signatures and hardened runtime flags against the macOS Security framework.
+  - `inspect_open_listeners()`: Confirms administrative listeners remain locked to local loopback.
+  - `audit_keychain_status()`: Validates that cryptographic secrets are securely anchored in the macOS Keychain Services API.
