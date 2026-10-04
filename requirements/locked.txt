@@ -1152,9 +1152,9 @@ greenlet==3.5.2 \
     # via
     #   playwright
     #   sqlalchemy
-grpc-google-iam-v1==0.14.4 \
-    --hash=sha256:392b3796947ed6334e61171d9ab06bf7eb357f554e5fc7556ad7aab6d0e17038 \
-    --hash=sha256:412facc320fcbd94034b4df3d557662051d4d8adfa86e0ddb4dca70a3f739964
+grpc-google-iam-v1==0.14.5 \
+    --hash=sha256:07fd3a9fafb586588e771831fbfc8f6597050181d0c3b45e039d18b8fdc1aab5 \
+    --hash=sha256:0f5e680b20aa0a9441e68c769da04d94d70fca4e43751a82d8abb8aa6a7181ca
     # via google-cloud-resource-manager
 grpcio==1.81.1 \
     --hash=sha256:0490c30c261eded63f3f354979f9dc4502a9fb944cccb60cd9dc85f5a7349854 \
