@@ -62,23 +62,15 @@ intent routing, and the local admin web interface. Client applications and
 hosted account services are distributed separately; see the
 [AutoYou ecosystem](https://www.autoyou.me/ecosystem/).
 
-## License and use
+## License, Open Source Commitment and Contributor Rewards
 
-AutoYou Server is source-available under the
-[AutoYou Source-Available Personal-Use License](LICENSE). It is not an
-OSI-approved open-source project. Personal use is free for private individual
-use as described in the license; commercial, enterprise, organizational,
-hosted, managed, and distribution uses require separate licensing by working
-directly with [www.autoyou.me](https://www.autoyou.me/).
+AutoYou Server is currently source-available under the [AutoYou Source-Available Personal-Use License](LICENSE) while the initial community foundation is established.
 
-**Why source-available.** AutoYou commits at least 15% of the money it receives
-to approved contributors, the developers who improve AutoYou. The open-source
-developers credited at
-[www.autoyou.me/attributions](https://www.autoyou.me/attributions/) are welcome
-to take part in the same way. Keeping the
-source available, but closed to AI training, resale, and hosting by others, is
-what lets it keep that commitment. Read the
-[Open-Source Commitment](docs/legal/open-source-commitment.md).
+**We are committed to making this Open Sourced soon!** As outlined in our [Community Milestone Roadmap](https://www.autoyou.me/donate/), once our initial community target ($5M) is reached, AutoYou Server will be officially released under an OSI-approved open-source license (such as Apache 2.0 or MIT).
+
+**Contribute and Earn Monetary Rewards:** We actively invite developers from all backgrounds to contribute to AutoYou Server! OpenStorey commits to allocate at least 15% of all sponsorship, donation, and community funding directly to approved contributors. By building agent modules, fixing bugs, creating client connectors, or optimizing inference routines, you can earn monetary payouts and bounties from our community-funded [Contributor Pool](docs/contributors/contributor-pool.md). 
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to claim an issue and start building today! Read our [Open-Source Commitment](docs/legal/open-source-commitment.md) for full details on contributor allocation and transparency.
 
 ## Quick start
 
