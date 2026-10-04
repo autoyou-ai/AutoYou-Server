@@ -71,14 +71,28 @@
       ]
     },
     {
-      "group": "REST & WebSocket API Reference",
+      "group": "Core Gateway Architecture",
       "pages": [
         "api-reference/overview",
+        "api-reference/auth-app",
+        "api-reference/admin-app",
+        "api-reference/ai-agent-worker",
+        "api-reference/website-gateway"
+      ]
+    },
+    {
+      "group": "Core Services & Security APIs",
+      "pages": [
         "api-reference/admin-and-system",
         "api-reference/security-and-totp",
         "api-reference/pairing-and-signaling",
         "api-reference/chat-and-sessions",
-        "api-reference/webrtc-and-streaming",
+        "api-reference/webrtc-and-streaming"
+      ]
+    },
+    {
+      "group": "Integration & Bridge APIs",
+      "pages": [
         "api-reference/models-and-speech",
         "api-reference/messaging-gateways",
         "api-reference/cloud-and-peer",
