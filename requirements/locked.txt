@@ -189,9 +189,9 @@ auto-browser-client==1.4.2 \
     # via
     #   -r requirements/internet.txt
     #   auto-browser-mcp
-auto-browser-langchain==1.4.2 \
-    --hash=sha256:04404124c3f0f63052eb3cfa72b944ae3d8e9fc4cf93a0b02c5a2de0a5b6315e \
-    --hash=sha256:2197da00ef57b821ff8b8abbb1a02e6115d889c667d18cba509093903ea55824
+auto-browser-langchain==1.8.1 \
+    --hash=sha256:099baebc74f9ae6679f7af60357914ec6b87663ff0f687b0fc4386c750f7cd96 \
+    --hash=sha256:e5ade2ee6ce57a3c6a091d2618ccf4709d8bc6ffe0a8f4c9975aa8a395c454ec
     # via -r requirements/internet.txt
 auto-browser-mcp==1.4.2 \
     --hash=sha256:1a40ac88419474c9a8871568bef9123d93fa3584671abd405da79ff871ba68b3 \
