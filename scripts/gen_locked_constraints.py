@@ -12,10 +12,10 @@
 
 The pip-compile lockfile (``requirements/locked.txt``) carries ``--hash`` lines and
 ``name[extra]`` forms, neither of which pip accepts in a ``-c`` constraints file.
-This strips it to bare ``name==version`` pins so that installs from the *range*
-profile files (base.txt, requirements.txt, ...) resolve to the exact AUDITED
-(pip-audit-clean) versions - closing the gap between what was audited and what
-actually ships, without abandoning the component/profile model.
+This strips it to bare ``name==version`` pins for matching names in profile
+installs. Hashes and environment markers are not enforced by this output.
+Optional dependencies absent from the lock remain outside its constraints;
+advisory status and the actual packaged inventory require separate checks.
 
 Usage:
     python scripts/gen_locked_constraints.py [LOCKED_TXT] [OUTPUT_TXT]
@@ -57,8 +57,8 @@ def generate(locked_path: Path, output_path: Path) -> Path | None:
     if not specs:
         return None
     header = (
-        "# AUTO-GENERATED from requirements/locked.txt. Pins installs to the audited\n"
-        "# (pip-audit-clean) versions. Do not edit by hand.\n"
+        "# AUTO-GENERATED from requirements/locked.txt. Version constraints only.\n"
+        "# Does not enforce hashes or certify advisory status. Do not edit by hand.\n"
     )
     output_path.write_text(header + "\n".join(sorted(specs)) + "\n", encoding="utf-8")
     return output_path

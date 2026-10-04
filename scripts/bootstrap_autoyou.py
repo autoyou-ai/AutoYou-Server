@@ -961,10 +961,9 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
 
     The lockfile itself cannot be used as a pip ``-c`` constraints file (it carries
     ``--hash`` lines and ``name[extra]`` forms, both rejected for constraints). We
-    strip those down to bare pins so that profile installs from the *range* files
-    resolve to the exact AUDITED versions (pip-audit-clean), closing the drift gap
-    between what was audited and what actually ships - without abandoning the
-    component/profile model. Set ``AUTOYOU_IGNORE_LOCKFILE=1`` to opt out.
+    strip those down to bare pins for matching packages in profile installs.
+    This does not enforce hashes or cover packages absent from the lock, and
+    does not certify advisory status. Set ``AUTOYOU_IGNORE_LOCKFILE=1`` to opt out.
     """
     if str(os.environ.get("AUTOYOU_IGNORE_LOCKFILE", "")).strip().lower() in {"1", "true", "yes", "on"}:
         return None
@@ -989,7 +988,7 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
     dest = REQUIREMENTS_DIR / ".locked.constraints.generated.txt"
     header = (
         "# AUTO-GENERATED from requirements/locked.txt by bootstrap_autoyou.py.\n"
-        "# Pins profile installs to the audited (pip-audit-clean) versions. Do not edit.\n"
+        "# Version constraints only; no hash enforcement or advisory certification. Do not edit.\n"
     )
     dest.write_text(header + "\n".join(sorted(specs)) + "\n", encoding="utf-8")
     return dest

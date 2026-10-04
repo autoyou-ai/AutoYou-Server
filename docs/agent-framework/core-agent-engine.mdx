@@ -372,7 +372,7 @@ System instructions are structured into independent, composable blocks:
 
 ### Strict Behavioral Rules
 
-The prompt enforces strict software engineering guarantees:
+The prompt requests the following engineering behavior. Prompt instructions alone are not enforcement or an execution sandbox:
 1. **Never Output JSON Wrappers**: Text replies must be plain markdown. Models must not wrap their final reply in `{"role": "assistant", "content": "..."}` or planner objects.
 2. **Never Call Self as Tool**: `autoyou_agent` is explicitly forbidden from invoking `autoyou_agent` (which would trigger an infinite recursion loop).
 3. **No Specialist Progress Echoing**: Never forward a raw planning line (*"I'll look into it"*) as a final answer.

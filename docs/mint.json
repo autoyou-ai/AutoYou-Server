@@ -18,12 +18,12 @@
     },
     {
       "name": "GitHub",
-      "url": "https://github.com/autoyou-ai/AutoYou"
+      "url": "https://github.com/autoyou-ai/AutoYou-Server"
     }
   ],
   "topbarCtaButton": {
     "type": "github",
-    "url": "https://github.com/autoyou-ai/AutoYou"
+    "url": "https://github.com/autoyou-ai/AutoYou-Server"
   },
   "tabs": [
     {
@@ -156,7 +156,7 @@
     }
   ],
   "footerSocials": {
-    "github": "https://github.com/autoyou-ai/AutoYou",
+    "github": "https://github.com/autoyou-ai/AutoYou-Server",
     "x": "https://twitter.com/autoyou_ai"
   }
 }

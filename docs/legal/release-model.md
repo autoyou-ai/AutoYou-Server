@@ -1,26 +1,29 @@
 ---
-title: Release Model
-description: How AutoYou separates source installs from signed commercial binaries.
+title: Distribution model
+description: Server source, local builds, and separately distributed clients.
 ---
 
-# Release Model
+# Distribution model
 
-AutoYou uses a dual-track release model.
+AutoYou Server can be run from source using the root bootstrap scripts or
+compiled using the Windows, macOS, and WSL/Linux build tools in this repository.
+Dependency selection and platform support vary by profile.
 
-## Source and Bootstrap
+Separately distributed AutoYou client applications connect to a running server.
+Installation of a client does not by itself install the server's dependency
+stack or supply a hosted server entitlement.
 
-The source/bootstrap track supports users and developers who install AutoYou from source. It can include optional local model, messaging, voice, browser, and connector dependencies depending on the setup the owner chooses.
+Source and unofficial compiled distributions are governed by [LICENSE](../../LICENSE).
+Free sharing is permitted subject to its conditions. Official signing,
+publication, service access, and Enterprise use have separate authorization
+requirements; local compilation does not confer those permissions.
 
-## Signed Binaries
+Any distributed artifact must carry the licenses and notices for its actual
+contents. Build profiles and generated source inventories do not establish
+what a particular compiled artifact contains. Before release, inspect the
+resolved dependency inventory, advisories, provenance, notices, and applicable
+source or relinking obligations.
 
-Official signed Windows and macOS binaries are packaged as local-first desktop releases. They include legal attribution material such as NOTICE files, license information, software bill of materials where applicable, and release-profile metadata.
-
-Signed binaries may intentionally ship with a narrower default feature set than source installs while platform, provider, and licensing approvals are reviewed.
-
-## Connector Builds
-
-Connector-capable builds are separate release artifacts. They should only be distributed when the relevant provider, platform, and licensing approvals are current for that release.
-
-## Verification
-
-Before public release packaging, AutoYou runs a release legal gate to check attribution coverage, third-party licensing metadata, and release-profile expectations.
+Release operators retain their approval records outside this repository.
+A passing metadata check is not legal approval, platform approval, or a
+guarantee of security.

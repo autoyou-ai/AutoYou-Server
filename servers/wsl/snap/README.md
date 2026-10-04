@@ -41,7 +41,7 @@ background network daemon under `devmode` is unlikely to pass as-is.
   the WSL2 network needs the operator's own port-forwarding/firewall setup,
   same as running the unpackaged binary — the snap does not change that.
 - **Legal/build-access gate**: the default `build-backend.sh` path requires
-  signed SignToROSS/OpenSign authorization for the `autoyou-server-source-full`
+  signed official-build authorization for the `autoyou-server-source-full`
   artifact profile. A backend built with `--unofficial` is marked and this
   Snap scaffold refuses to package it. See
   `docs/legal/license-build-control-strategy.md`.

@@ -37,4 +37,4 @@ jobs:
           --allow-open-release-blockers
           --report "$RUNNER_TEMP/legal-gate-report.json"
       - name: Run public Python checks
-        run: python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_official_build_authorization.py tests/test_release_legal_gates.py -q --no-header -p no:cacheprovider
+        run: python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_official_build_authorization.py tests/test_release_legal_gates.py tests/test_dependency_advisories.py -q --no-header -p no:cacheprovider

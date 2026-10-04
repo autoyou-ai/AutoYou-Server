@@ -6,7 +6,7 @@ temporary `AUTOYOU_TEST_ROOT` by default.
 ## Fast public checks
 
 ```powershell
-python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_release_legal_gates.py -q --no-header -p no:cacheprovider
+python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_official_build_authorization.py tests/test_release_legal_gates.py tests/test_dependency_advisories.py -q --no-header -p no:cacheprovider
 python scripts/export_public_autoyou_server.py --worktree --check
 python scripts/check_release_legal_gates.py --no-generate --artifact-scope server --strict-unknown-license --allow-open-release-blockers
 ```

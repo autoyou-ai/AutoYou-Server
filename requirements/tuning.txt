@@ -8,7 +8,7 @@ torchvision
 transformers>=5.12.1,<6
 # datasets 5.0.0 still caps fsspec at <=2026.4.0. Keep the tuning profile
 # explicit so it can be installed beside the main runtime lock without drift.
-datasets>=5.0.0,<6
+datasets>=5.0.1,<6
 fsspec[http]>=2025.9.0,<=2026.4.0
 peft>=0.12.0
 accelerate>=0.33.0
@@ -16,5 +16,5 @@ safetensors>=0.4.3
 # CUDA 4-bit loading is optional. It is not required by the CPU, ROCm, or
 # Apple MPS paths and does not ship a portable macOS runtime.
 bitsandbytes>=0.43.0; platform_system == "Linux" or platform_system == "Windows"
-sentencepiece>=0.2.0
+sentencepiece>=0.2.1
 psutil>=5.9.0

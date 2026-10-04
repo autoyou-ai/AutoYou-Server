@@ -90,7 +90,6 @@ Evidence: `output/e2e-evidence/run-20260923-212447/RUN_REPORT.md`.
 | Shared Swift Peer Link package | 82 passed, including actual-model vectors |
 | v2 Python / Swift | 87 passed and 1 skipped / 30 passed |
 | License and release policy checks | 69 passed |
-| macOS native app | Signed development build 8019 at `v2/dist/validation/AutoYou.app`, rebuilt with `main` at `5f79eb863` plus this change |
 | iOS main / iOS 16 targets | Simulator builds passed; iOS 16 target compiled for arm64 and x86_64 |
 | Android packaging | Debug and minified benchmark builds passed; packaged model hash and retained ONNX JNI classes checked |
 | Real server connection | Encrypted WebRTC text, agent routing, image-to-website, speech recognition and audible speech reply passed |

@@ -21,4 +21,12 @@ servers/macos/intel/build/AutoYou-macOS-x86_64.dmg
 servers/macos/intel/build/AutoYou-macOS-x86_64.dmg.sha256
 ```
 
-Review `servers/macos/intel/build/AutoYou.app/Contents/Resources/Legal/LICENSE`, `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json` before use. Use constitutes agreement to the AutoYou Terms of Use (EULA), License, Privacy Policy, responsibility terms, warranty disclaimer, and liability limits.
+Review `servers/macos/intel/build/AutoYou.app/Contents/Resources/Legal/LICENSE`,
+`THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json` before use.
+Use constitutes agreement to the applicable license terms, including the
+warranty disclaimer and liability limits to the extent permitted by law.
+Separate services have separate terms. The optional voice/full profile is not
+validated for Intel macOS: its NumPy declarations conflict with the shared
+lock, and selected native packages do not provide macOS x86_64 wheels. This
+wrapper's existence does not establish a successful build of every profile.
+See [dependency guidance](../../../requirements/README.md).

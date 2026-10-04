@@ -1013,7 +1013,15 @@ def register_routes(
         auth_error = server._require_api_login(request)
         if auth_error:
             return auth_error
-        return server._json_response_no_store(await server._build_admin_ui_bootstrap_payload())
+        payload = await server._build_admin_ui_bootstrap_payload()
+        metadata = payload.setdefault("metadata", {})
+        if isinstance(metadata, dict):
+            peer = request.client.host if request.client else None
+            metadata["permissions_editable"] = bool(
+                server._is_loopback_client_host(peer)
+                and not server._request_via_remote_browser_proxy(request)
+            )
+        return server._json_response_no_store(payload)
 
     @admin_app.post("/api/setup/recipe/preview")
     async def admin_setup_recipe_preview(request: Request):
@@ -1071,6 +1079,9 @@ def register_routes(
         remote_error = server._remote_browser_config_change_error(request, payload)
         if remote_error:
             return remote_error
+        permission_error = server._permission_config_change_error(request, payload)
+        if permission_error:
+            return permission_error
 
         try:
             return server._json_response_no_store(await server._apply_admin_ui_config_update(payload))
@@ -1078,6 +1089,46 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_update_config failed: %s", exc, exc_info=True)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+
+    @admin_app.get("/api/admin/permissions")
+    async def admin_ui_read_permissions(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        peer = request.client.host if request.client else None
+        if not server._is_loopback_client_host(peer) or server._request_via_remote_browser_proxy(request):
+            return JSONResponse(status_code=403, content={
+                "success": False,
+                "error": "Computer permissions can only be read from an admin session on localhost.",
+            })
+        return server._json_response_no_store(server._admin_permissions_snapshot())
+
+    @admin_app.post("/api/admin/permissions")
+    async def admin_ui_update_permissions(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        peer = request.client.host if request.client else None
+        if not server._is_loopback_client_host(peer) or server._request_via_remote_browser_proxy(request):
+            return JSONResponse(status_code=403, content={
+                "success": False,
+                "error": "Permissions and media capture settings can only be changed by an admin connected to this computer on localhost.",
+            })
+        block_reason = server._config_write_block_reason()
+        if block_reason:
+            return server._json_config_write_blocked_response(block_reason)
+        try:
+            raw = await request.body()
+            if len(raw) > 4096:
+                raise ValueError("Invalid permissions body")
+            payload = server.json.loads(raw)
+            result = await server._save_admin_permissions(payload)
+            return server._json_response_no_store(result)
+        except (ValueError, TypeError, UnicodeError) as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            server.LOGGER.error("admin_ui_update_permissions failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
 
     @admin_app.post("/api/setup/recipe/apply")

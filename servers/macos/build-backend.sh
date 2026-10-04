@@ -1074,7 +1074,11 @@ acknowledge_private_build() {
     fi
     local ack_args=()
     [[ "$ACCEPT_TERMS" == true ]] && ack_args+=(--accept-terms)
-    python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
+    if [[ ${#ack_args[@]} -gt 0 ]]; then
+        python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" "${ack_args[@]}"
+    else
+        python3 "${PROJECT_ROOT}/scripts/acknowledge_local_build.py"
+    fi
 }
 
 # Ensure required macOS system dependencies are installed via Homebrew.
@@ -1860,9 +1864,8 @@ install_dependencies() {
     log "Installing packages from $(basename "$req_file")..."
     log "This may take several minutes - packages are being downloaded and compiled..."
 
-    # Pin the install to the audited (pip-audit-clean) lockfile versions so the
-    # packaged binary ships exactly what was security-audited in requirements/locked.txt
-    # rather than whatever the version ranges happen to resolve to. Set
+    # Constrain packages present in the shared lock. This does not enforce its
+    # hashes or cover every optional/build dependency; audit the resolved artifact. Set
     # AUTOYOU_IGNORE_LOCKFILE=1 to opt out.
     local pip_install_args=(-r "$req_file" --progress-bar on --no-color)
     local locked_constraints=""

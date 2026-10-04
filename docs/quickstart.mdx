@@ -1,199 +1,44 @@
 ---
 title: "Developer Quickstart"
-description: "Get AutoYou Server up and running locally from source, configure your environment, and test your first agent."
+description: "Run the standalone AutoYou Server source."
 ---
 
-# Developer Quickstart
+# Developer quickstart
 
-This guide walks you through setting up a development instance of AutoYou Server from source, starting the services, accessing the Admin Console, and executing your first agent interaction.
-
----
-
-## Prerequisites
-
-Before starting, ensure your host system satisfies the following requirements:
-
-- **Operating System**: Windows 10/11 (x64/ARM64), macOS 13+ (Apple Silicon or Intel), or Linux (Ubuntu 22.04+, Debian 12+, Arch).
-- **Python**: Python `3.10`, `3.11`, or `3.12` (Python 3.12 is recommended for native builds).
-- **Node.js**: Node.js `v18+` or `v20+` LTS (required for the WhatsApp companion bridge and web automation services).
-- **Git**: Modern Git client with submodules enabled.
-- **Hardware (Optional)**: Modern GPU with CUDA or Apple Metal if running local LLM/Whisper inference.
-
----
-
-## 1. Clone the Repository
-
-Clone the `AutoYou` repository and ensure submodules are initialized:
-
-<CodeGroup>
-```bash Terminal
-git clone https://github.com/autoyou-ai/AutoYou.git
-cd AutoYou/AutoYou-Server
-```
-
-```powershell PowerShell (Windows)
-git clone https://github.com/autoyou-ai/AutoYou.git
-cd AutoYou\AutoYou-Server
-```
-</CodeGroup>
-
----
-
-## 2. Prepare Virtual Environment & Dependencies
-
-Create and activate an isolated Python virtual environment, then install the core dependencies:
-
-<CodeGroup>
-```bash macOS / Linux
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-```
-
-```powershell Windows
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip setuptools wheel
-pip install -r requirements.txt
-```
-</CodeGroup>
-
-<Note>
-If you plan to use local speech recognition (`faster-whisper`), text-to-speech (`EmotiVoice` or `Kokoro`), or local LLMs (`Ollama`), install the supplementary requirements:
-```bash
-pip install -r requirements/speech.txt
-```
-</Note>
-
----
-
-## 3. Configure Environment Variables
-
-AutoYou Server operates with secure loopback defaults out of the box. You can customize runtime behavior by creating a `.env` file in `AutoYou-Server/`:
-
-```env .env
-# Core Binding Configuration
-AUTOYOU_HOST=127.0.0.1
-AUTOYOU_PORT=8001
-AUTOYOU_BROWSER_PORT=8067
-
-# Security & Authentication
-AUTOYOU_SECURITY_MODE=normal        # normal | secure | secure_professional
-AUTOYOU_PASSWORD=adminsecret123     # Optional initial seed password
-
-# Model & Provider Integrations
-OLLAMA_API_BASE=http://127.0.0.1:11434
-OPENAI_API_KEY=                     # Optional cloud fallback
-ANTHROPIC_API_KEY=                  # Optional cloud fallback
-
-# Messaging Connectors
-TELEGRAM_BOT_TOKEN=                 # Optional Telegram Bot token
-```
-
----
-
-## 4. Launch the Server
-
-You can launch AutoYou Server using the canonical bootstrap script or directly through Python:
-
-<Tabs>
-  <Tab title="Bootstrap Launcher (Recommended)">
-    The bootstrap script verifies requirements, prepares companion services, handles port collisions, and monitors process health:
-    ```bash
-    python scripts/bootstrap_autoyou.py --service autoyou
-    ```
-    On Windows, you can also execute:
-    ```powershell
-    .\run_autoyou.bat
-    ```
-  </Tab>
-  <Tab title="Direct Source Execution">
-    Launch the FastAPI composition root directly via Uvicorn:
-    ```bash
-    python server.py
-    ```
-    The server will initialize internal databases (`sessions.db`, `page_feed.db`, `agent_security.db`), load keystores, and bind the listeners.
-  </Tab>
-  <Tab title="Docker Compose">
-    Run a containerized AutoYou Server stack:
-    ```bash
-    docker compose up --build
-    ```
-    This spins up the server core, Node WhatsApp worker, and Redis queue container.
-  </Tab>
-</Tabs>
-
-When initialized, the server outputs the active listener URLs:
-
-```text
-============================================================
- AutoYou Server Running
- Admin Console:    http://127.0.0.1:8001/admin
- API Root:         http://127.0.0.1:8001/api/status
- Agent Proxy:      http://127.0.0.1:8067/
- Security Mode:    normal
-============================================================
-```
-
----
-
-## 5. Explore the Admin Console
-
-Open your web browser and navigate to:
-
-👉 **`http://127.0.0.1:8001/admin`**
-
-The single-page administrative interface implemented in `assets/admin-ui.js` loads immediately:
-
-1. **First-Run Wizard**: If launching for the first time, you will be prompted to set an administrative password and choose your initial security tier.
-2. **Overview Screen**: Observe real-time CPU/memory utilization, local network IP addresses, active WebRTC connections, and service health.
-3. **Agent Catalog**: Navigate to the **Agents** tab to explore all 42 pre-installed agents.
-4. **Live View**: Test WebRTC camera and screen-sharing pipelines directly in your browser.
-
----
-
-## 6. Accessing Agent Web Frontends
-
-Many agents in `autoyou_agents/` feature standalone web frontends hosted through the internal proxy listener on port **8067**:
-
-- **Audio Agent**: `http://127.0.0.1:8067/agent/audio_agent/` — Music player, playlist editor, and audio library.
-- **Notes Agent**: `http://127.0.0.1:8067/agent/notes_agent/` — Rich Markdown notebook with media attachments.
-- **Files Agent**: `http://127.0.0.1:8067/agent/files_agent/` — Local file explorer and safe transfer manager.
-- **Agent Builder**: `http://127.0.0.1:8067/agent/agent_builder_agent/` — In-browser visual agent creator.
-
----
-
-## 7. Connecting a Client Application
-
-To pair an AutoYou client (such as **AutoYou Connect** for Windows or macOS):
-
-1. Launch AutoYou Connect.
-2. Click **Use this PC** / **Use this Mac**.
-3. In local loopback mode, the client performs zero-touch handshake with `http://127.0.0.1:8001/api/autopair` and establishes an end-to-end encrypted WebRTC DataChannel connection automatically!
-
----
-
-## 8. Running Test Suites
-
-Validate your environment and agent integrity by running pytest:
+Obtain the standalone public repository when available:
 
 ```bash
-# Run public agent contract tests
-pytest tests/agents/public/ -q
-
-# Run server router and admin tests
-pytest tests/server/admin/ tests/server/api/ -q
-
-# Run full project regression gate
-python scripts/e2e_validate.py changed
+git clone https://github.com/autoyou-ai/AutoYou-Server.git
+cd AutoYou-Server
 ```
 
----
+Read [LICENSE](../LICENSE), [SECURITY.md](../SECURITY.md), and
+[dependency guidance](../requirements/README.md). Use a dedicated environment
+and review setup scripts before allowing dependency installation.
 
-## Next Steps
+Windows:
 
-- Review the [Server Architecture](/architecture/overview) to understand the process model.
-- Learn about the [Admin UI Architecture](/admin-ui/architecture) in `admin-ui.js`.
-- Explore the [API Reference](/api-reference/overview) to automate server operations.
-- Build your first agent in the [Custom Agent Tutorial](/guides/custom-agent-tutorial).
+```powershell
+.\run_autoyou.bat --profile base
+```
+
+macOS or Linux:
+
+```bash
+./run_autoyou.sh --profile base
+```
+
+The root launchers also request the internet component. Optional profiles add
+local model, messaging, Bluetooth, voice, and automation dependencies. See the
+[README](../README.md) for composition and platform build links.
+
+Open `http://127.0.0.1:8001/`, choose a unique password, and review settings
+before enabling remote access. Never commit a configuration containing real
+credentials. External providers and models have their own terms and may charge
+fees.
+
+Separately distributed client apps connect to the running server. They do not
+provision its dependencies or create a hosted server entitlement.
+
+To propose changes, follow [CONTRIBUTING.md](../CONTRIBUTING.md) and the
+[isolated testing guide](contributors/TESTING.md).

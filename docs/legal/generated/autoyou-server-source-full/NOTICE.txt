@@ -4,7 +4,9 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server source/full profile (autoyou-server-source-full)
 Release profile: source-full
 Dependency profile: full
-Generated: 2026-10-04T01:29:05+00:00
+Generated: 2026-10-04T02:51:56+00:00
+Inventory scope: Repository manifests and manual component declarations.
+This inventory does not establish actual installed or bundled versions.
 
 Full source/bootstrap AutoYou server profile with optional messaging partners, voice features, local LLM integrations, WhatsApp Node bridge, and Tunnelmole bridge; WSL full-profile builds compile the EmotiVoice inference modules.
 
@@ -76,7 +78,7 @@ Third-Party Components
 - jieba [pypi] - MIT - requirements/voice.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
-- litellm [pypi] - MIT - requirements/base.txt
+- litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - modelscope [pypi] - Apache-2.0 - requirements/voice.txt
