@@ -8,7 +8,7 @@ use autoyou_client_bindings::FrameQueue;
 fn generated_python_binding_has_binary_ownership_and_shutdown_safety() {
     // Referencing the library makes Cargo compile the cdylib as an intrinsic
     // test dependency. This is not an application/distribution build.
-    FrameQueue::new().close().unwrap();
+    FrameQueue::new().shutdown().unwrap();
     let root = PathBuf::from(std::env::var("AUTOYOU_TEST_ROOT").expect("isolated test root required"));
     let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
     let out = root.join(format!("binding-qualification-{}-{unique}", std::process::id()));
@@ -24,7 +24,7 @@ fn generated_python_binding_has_binary_ownership_and_shutdown_safety() {
     }).unwrap();
     fs::copy(&library, out.join(filename)).unwrap();
     let script = r#"
-import gc, socket
+import gc, socket, sys
 import json, time, hashlib, os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -59,7 +59,7 @@ with ThreadPoolExecutor(max_workers=4) as workers:
 frames = queue.poll(0, 64)
 assert len(frames) == 32 and {item.generation for item in frames} == set(range(1, 33))
 assert all(bytes(item.payload) == bytes([item.generation-1])*4096 for item in frames)
-queue.close()
+queue.shutdown()
 try:
     queue.send(api.TransportFrame(lane=7, generation=1, stream_id=1, sequence=0, payload=b'x'), None)
 except api.BindingError.Closed:
@@ -68,7 +68,7 @@ else:
     raise AssertionError('closed queue accepted a frame')
 for _ in range(100):
     temporary = api.FrameQueue()
-    temporary.close()
+    temporary.shutdown()
     del temporary
 gc.collect()
 policy = json.dumps(dict(bind_addresses=['127.0.0.1:0'], local_only=True))
@@ -356,8 +356,7 @@ async def qualify_business_service():
     from shared.iroh_grants import EndpointGrantRegistry
     from shared.iroh_state_store import ProtectedTransportState
     from shared.iroh_keys import EndpointKeys
-    from shared.iroh_admission import PairedEndpointAdmission
-    from shared.iroh_pairing import ClientPairingRedemption
+    from shared.iroh_client import IrohClientService
     from shared.session_execution import SessionExecutionManager
     from core_server.iroh_service import IrohServerService, VerifiedPairingOrigin
     from core_server import session_dispatch
@@ -405,34 +404,78 @@ async def qualify_business_service():
         role='client', purpose='grants')), now_ms=lambda: int(time.time()*1000))
     service = IrohServerService(runtime=runtime, grants=server_grants,
         capabilities={'chat':True, 'media':False})
-    pairing = ClientPairingRedemption(grants=client_grants)
     async def prepare(client, context, channel):
         channels['client'] = channel
         async def response(message):
             received.append(message)
         channel.register_handler(MessageType.CHAT, response)
-    admission = PairedEndpointAdmission(grants=client_grants, role='client',
-        capabilities={'chat':True, 'media':False}, on_prepared=prepare)
-    async def connected(client, context):
-        await (pairing if context.protocol == 'autoyou/pair/1' else admission).connected(client, context)
-    async def enrollment(client, context, payload):
-        await (pairing if context.protocol == 'autoyou/pair/1' else admission).enrollment(client, context, payload)
+    async def ready(client, context, channel, capabilities):
+        assert capabilities['chat'] is True and capabilities['media'] is False
     async def closed(context, binding, requested):
-        await pairing.closed(context, binding, requested)
-        await admission.closed(context, binding, requested)
-    client = None
+        channels.pop('client', None)
+    client = IrohClientService(api=api, keys=SyntheticKeys('synthetic-service-client',89),
+        grants=client_grants, policy=json.loads(policy), on_prepared=prepare, on_ready=ready, on_closed=closed)
+    # When tested from the monorepo, exercise its real application enrollment
+    # adapter too. A standalone Server checkout still qualifies the native
+    # service without claiming unavailable desktop-source coverage.
+    application = None
+    client_source = Path(os.environ['PYTHONPATH']).parent/'clients'/'python'
+    if client_source.is_dir():
+        sys.path.insert(0, str(client_source))
+        from autoyou_client import AutoYouClient
+        application = AutoYouClient(server_password='synthetic-password', release_generation='iroh',
+            security_mode='normal', allow_interactive_prompts=False, voice_calls_enabled=False)
+        application._iroh_client = client
+        application.fetch_browser_server_status = bootstrap
+        original_prepare, original_ready, original_closed = prepare, ready, closed
+        async def prepare(runtime, context, channel):
+            await application._iroh_prepared(runtime, context, channel)
+            await original_prepare(runtime, context, channel)
+        async def ready(runtime, context, channel, capabilities):
+            await application._iroh_ready(runtime, context, channel, capabilities)
+            await original_ready(runtime, context, channel, capabilities)
+        async def closed(context, binding, requested):
+            await application._iroh_closed(context, binding, requested)
+            await original_closed(context, binding, requested)
+        client.on_prepared, client.on_ready, client.on_closed = prepare, ready, closed
     try:
         await service.start(policy=json.loads(policy), unlocked_password=None, api=api,
             keys=SyntheticKeys('synthetic-service-server',88))
-        client = await IrohSessionRuntime.start(api=api, policy=json.loads(policy),
-            keys=SyntheticKeys('synthetic-service-client',89), role='client',
-            on_connected=connected, on_enrollment=enrollment, on_closed=closed, on_dial_failed=pairing.dial_failed)
+        await client.start()
         answer = await service.issue_after_verified_pairing({'transport':'iroh','version':1,
-            'endpoint_id':client.endpoint_info.endpoint_id}, origin=VerifiedPairingOrigin(
+            'endpoint_id':client.offer()['endpoint_id']}, origin=VerifiedPairingOrigin(
                 'direct','synthetic-service-owner','pair','shared'), raw_session_id='synthetic-verified-proof')
         assert answer['transport'] == 'iroh' and 'sdp' not in answer
-        await asyncio.wait_for(pairing.begin_after_verified_answer(client, answer['iroh']), 5)
-        client.dial(service.endpoint.endpoint_info.ticket, service.endpoint.endpoint_info.endpoint_id)
+        if application is None:
+            await asyncio.wait_for(client.pair_after_verified_answer(answer['iroh']), 5)
+        else:
+            offer = await application.prepare_connection_offer()
+            assert offer['transport'] == 'iroh' and application.pc is application.data_channel is None
+            assert 'iceServers' not in json.loads(application.build_local_pair_offer_body(offer)[0])
+            assert await asyncio.wait_for(application.process_autopair_answer(json.dumps(answer)), 5)
+            assert application.session_is_ready and application.pc is application.data_channel is None
+            assert application.active_conversation_session_id == channels['client'].binding.conversation_key
+            assert application.server_conversation_user_id == channels['client'].binding.canonical_user_id
+            assert await application.check_connection(timeout=1)
+        assert client.snapshot()['state'] == 'online' and client.is_ready
+        from shared.iroh_client_store import ClientGrantRegistry
+        from shared.iroh_state_store import ProtectedTransportStateUnavailable
+        from shared.session_transport import SessionDenied
+        assert isinstance(client.grants, ClientGrantRegistry)
+        protected = client.grants.store.path.read_bytes()
+        remote = service.endpoint.endpoint_info.endpoint_id
+        first = channels['client'].binding
+        for generation, scopes in ((first.generation, first.scopes),
+                (first.generation+1, first.scopes | {'synthetic-unapproved-scope'})):
+            try:
+                client.grants.binding_for_remote_generation(remote, 'synthetic-rejected-operation',
+                    generation=generation, authorization_epoch=first.authorization_epoch,
+                    expires_at_ms=first.expires_at_ms, scopes=scopes)
+            except SessionDenied:
+                pass
+            else:
+                raise AssertionError('client store admitted a stale or wider generation')
+            assert client.grants.store.path.read_bytes() == protected
         async def until(predicate):
             deadline = time.monotonic()+5
             while not predicate():
@@ -445,14 +488,36 @@ async def qualify_business_service():
         assert len(calls) == 1 and calls[0].header.user_id == 'user::direct:synthetic-service-owner'
         assert calls[0].header.session_id in engine.datachannel_managers
         assert received[0].payload['text'] == 'synthetic application reply'
+        first_generation = channels['client'].binding.generation
+        client.network_changed()
+        assert client.snapshot()['generation'] == first_generation and client.is_ready
+        await client.suspend()
+        await until(lambda: not service.endpoint._connections and not client.runtime._connections)
+        assert client.snapshot()['state'] == 'suspended' and not client.is_ready
+        await client.reconnect(service.endpoint.endpoint_info.endpoint_id, service.endpoint.endpoint_info.ticket)
+        assert channels['client'].binding.generation > first_generation and client.snapshot()['state'] == 'online'
+        await client.disconnect()
+        await until(lambda: not service.endpoint._connections and not client.runtime._connections)
+        assert client.snapshot()['state'] == 'user_disconnected' and not client._recovery
+        client.grants.store.transaction(lambda value: (dict(value, unsupported_schema_field=True), None),
+            default_factory=lambda: {'schema':1,'devices':{}})
+        try:
+            client.grants.grant_for_endpoint(remote)
+        except ProtectedTransportStateUnavailable:
+            pass
+        else:
+            raise AssertionError('client store silently recovered corrupt authorization state')
     finally:
         await service.stop()
-        if client:
+        if application is not None:
+            await application.cleanup()
+        else:
             await client.close()
         session_dispatch.flush_pending_scheduler_notifications = original_scheduler
     assert service.endpoint is None and not engine.datachannel_managers and not tasks
     assert not service.business._channels and not service.admission._pending
     assert not service.pairing._issued and not service.pairing._pending
+    assert not client._contexts and not client._requests and client.runtime is None
 with asyncio.Runner(loop_factory=lambda: qualification_loop) as runner:
     runner.run(qualify_runtime())
     runner.run(qualify_paired_admission())

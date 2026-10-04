@@ -136,6 +136,14 @@ class EndpointGrantRegistry:
             raise SessionDenied("endpoint pairing grant has expired")
         return grant
 
+    def generation_floor(self, endpoint_id: str) -> int:
+        """Read the protected counter; an in-memory retry cannot rewind it."""
+        state = self._state(self.store.read(default_factory=self._empty))
+        row = next((row for row in state["devices"].values() if self._grant(row).endpoint_id == endpoint_id), None)
+        if row is None or row["revoked"] or self._grant(row).expires_at_ms <= self.now_ms():
+            raise SessionDenied("endpoint has no active pairing grant")
+        return row["generation"]
+
     def binding_for_remote_generation(self, endpoint_id: str, transport_id: str, *, generation: int,
                                       authorization_epoch: int, expires_at_ms: int,
                                       scopes: frozenset[str]) -> SessionBinding:

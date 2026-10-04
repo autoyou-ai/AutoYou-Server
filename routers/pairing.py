@@ -303,11 +303,10 @@ def register_routes(
         session_id = auth_result.get("session_id")
         server_id = server._get_stable_server_id()
         server_identity_key = server._get_server_identity_key()
-        return {
+        result = {
             "success": True,
             "session_id": session_id,  # Android compatibility
             "sessionId": session_id,   # tunnelmole/python compatibility
-            "iceServers": await server._get_pairing_ice_servers_async(),
             "server_name": server.get_configured_server_name(),
             "serverName": server.get_configured_server_name(),
             "server_id": server_id,
@@ -316,6 +315,11 @@ def register_routes(
             "serverIdentityKey": server_identity_key,
             "session": auth_result.get("session") or {},
         }
+        if auth_result.get("transport") == "iroh":
+            result.update(transport="iroh", iroh=auth_result["iroh"])
+        else:
+            result["iceServers"] = await server._get_pairing_ice_servers_async()
+        return result
 
     @auth_app.post("/signal/{session_id}")
     async def signal_endpoint(session_id: str, request: Request):
@@ -349,6 +353,8 @@ def register_routes(
 
         if not authenticated_session:
             return JSONResponse(status_code=401, content={"success": False, "error": "Session not authenticated"})
+        if not server._legacy_pair_session_allowed(session_id):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Session transport does not permit signaling"})
 
         try:
             if signal_type == "offer":
@@ -381,6 +387,8 @@ def register_routes(
         """Compatibility polling endpoint for trickle ICE clients."""
         if not server._is_authenticated_pair_session(session_id):
             return JSONResponse(status_code=401, content={"success": False, "error": "Session not authenticated"})
+        if not server._legacy_pair_session_allowed(session_id):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Session transport does not permit signaling"})
         messages = server.WEBRTC.pop_outgoing_trickle_candidates(session_id)
         return {"success": True, "messages": messages}
 

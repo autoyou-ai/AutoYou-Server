@@ -184,6 +184,7 @@ struct Slot {
 struct DeviceFloor { generation: u64, epoch: u64, endpoint_id: String }
 struct Shared {
     slots: Mutex<HashMap<u64, Arc<Slot>>>,
+    pending_dials: Mutex<HashMap<u64, Arc<PendingDial>>>,
     device_floors: Mutex<HashMap<String, DeviceFloor>>,
     events: Mutex<Events>,
     info: Mutex<(String,String)>,
@@ -197,8 +198,10 @@ struct Shared {
     scheduling_cursor: AtomicU64,
 }
 
+struct PendingDial { canceled: AtomicBool, wake: Notify }
+
 enum Command {
-    Dial { id: u64, address: EndpointAddr, pair: bool }, NetworkChanged,
+    Dial { id: u64, address: EndpointAddr, pair: bool, pending: Arc<PendingDial> }, NetworkChanged,
     #[cfg(test)] Crash,
 }
 
@@ -231,7 +234,7 @@ impl EndpointHost {
     pub fn start(policy: EndpointPolicy, key: [u8;32]) -> Result<Self, HostError> {
         policy.validate()?;
         let shared = Arc::new(Shared {
-            slots: Mutex::new(HashMap::new()), device_floors: Mutex::new(HashMap::new()),
+            slots: Mutex::new(HashMap::new()), pending_dials: Mutex::new(HashMap::new()), device_floors: Mutex::new(HashMap::new()),
             events: Mutex::new(Events::default()), info: Mutex::new((String::new(), String::new())),
             closed: AtomicBool::new(false), next_id: AtomicU64::new(1), wake: Notify::new(),
             read_bytes: Arc::new(Semaphore::new(16*1024*1024)),
@@ -288,7 +291,13 @@ impl EndpointHost {
         self.open()?;
         let address = self.policy.ticket_address(ticket, expected_endpoint)?;
         let id = self.shared.next_id.fetch_add(1, Ordering::Relaxed);
-        self.commands.try_send(Command::Dial { id, address, pair }).map_err(|_| HostError::Backpressure)?;
+        let pending = Arc::new(PendingDial { canceled: AtomicBool::new(false), wake: Notify::new() });
+        let mut dials = self.shared.pending_dials.lock().map_err(|_| HostError::Worker)?;
+        if dials.len() >= 32 { return Err(HostError::Backpressure); }
+        dials.insert(id, pending.clone());
+        if self.commands.try_send(Command::Dial { id, address, pair, pending }).is_err() {
+            dials.remove(&id); return Err(HostError::Backpressure);
+        }
         Ok(id)
     }
     pub fn admit(&self, id: u64, principal: Principal) -> Result<(), HostError> {
@@ -405,9 +414,19 @@ impl EndpointHost {
             held_receive_bytes: (16*1024*1024-self.shared.read_bytes.available_permits()) as u64 })
     }
     pub fn disconnect(&self, id: u64) -> Result<(), HostError> {
-        let slot = self.slot(id)?;
-        slot.admission.lock().map_err(|_| HostError::Worker)?.revoke();
-        slot.connection.close(0u32.into(), b"user disconnected"); Ok(())
+        self.open()?;
+        // Publication and cancellation lock slots before pending dials, so a
+        // completed handshake cannot slip between those two ownership states.
+        let slots = self.shared.slots.lock().map_err(|_| HostError::Worker)?;
+        if let Some(slot) = slots.get(&id) {
+            slot.admission.lock().map_err(|_| HostError::Worker)?.revoke();
+            slot.connection.close(0u32.into(), b"user disconnected");
+        } else {
+            let dials = self.shared.pending_dials.lock().map_err(|_| HostError::Worker)?;
+            let pending = dials.get(&id).ok_or(HostError::UnknownConnection)?;
+            pending.canceled.store(true, Ordering::Release); pending.wake.notify_one();
+        }
+        Ok(())
     }
     pub fn retire_stream(&self, id: u64, lane: u8, stream_id: u64) -> Result<(), HostError> {
         let slot = self.slot(id)?;
@@ -438,6 +457,7 @@ impl EndpointHost {
         self.shared.events.lock().unwrap_or_else(|error| error.into_inner()).deferred.clear();
         self.shared.events.lock().unwrap_or_else(|error| error.into_inner()).bytes = 0;
         self.shared.device_floors.lock().unwrap_or_else(|error| error.into_inner()).clear();
+        self.shared.pending_dials.lock().unwrap_or_else(|error| error.into_inner()).clear();
         result
     }
 }
@@ -536,16 +556,22 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
             }
             command = commands.recv() => {
                 match command {
-                    Some(Command::Dial { id, address, pair }) if handshakes.len() < 8 => {
+                    Some(Command::Dial { id, address, pair, pending }) if handshakes.len() < 8 => {
                         let endpoint = endpoint.clone();
                         handshakes.spawn(async move {
-                            let result = tokio::time::timeout(Duration::from_secs(10),
-                                endpoint.connect(address, if pair { PAIR_ALPN } else { SESSION_ALPN })).await
-                                .map_err(|_| HostError::Timeout).and_then(|result| result.map_err(|_| HostError::Worker));
+                            let result = if pending.canceled.load(Ordering::Acquire) { Err(HostError::Closed) } else { tokio::select! {
+                                _ = pending.wake.notified() => Err(HostError::Closed),
+                                result = tokio::time::timeout(Duration::from_secs(10),
+                                endpoint.connect(address, if pair { PAIR_ALPN } else { SESSION_ALPN }))
+                                    => result.map_err(|_| HostError::Timeout).and_then(|result| result.map_err(|_| HostError::Worker)),
+                            } };
                             (id, true, result)
                         });
                     }
-                    Some(Command::Dial { id, .. }) => { let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "busy" }); }
+                    Some(Command::Dial { id, .. }) => {
+                        shared.pending_dials.lock().unwrap().remove(&id);
+                        let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "busy" });
+                    }
                     Some(Command::NetworkChanged) => { endpoint.network_change().await; }
                     #[cfg(test)]
                     Some(Command::Crash) => { panic!("synthetic worker failure"); }
@@ -558,7 +584,7 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                         Ok(connection) => {
                             let exporter = match connection_binding(&connection, b"autoyou/admission/1") {
                                 Ok(value) => value,
-                                Err(_) => { connection.close(1u32.into(), b"binding unavailable"); continue; }
+                                Err(_) => { shared.pending_dials.lock().unwrap().remove(&id); connection.close(1u32.into(), b"binding unavailable"); continue; }
                             };
                             let slot = Arc::new(Slot { connection, admission: Mutex::new(Admission::default()),
                                 outbound: Mutex::new(Outbound { scheduler: Scheduler::default(), sequences: HashMap::new(), allocations: HashMap::new() }),
@@ -566,9 +592,17 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                                 preauth_bytes: AtomicU64::new(0), read_slots: Arc::new(Semaphore::new(16)),
                                 retired: Mutex::new(RetiredStreams::default()), activated: AtomicBool::new(false), closed: AtomicBool::new(false) });
                             let mut slots = shared.slots.lock().unwrap();
+                            let pending = shared.pending_dials.lock().unwrap().remove(&id);
+                            if initiator && pending.is_none_or(|dial| dial.canceled.load(Ordering::Acquire)) {
+                                slot.connection.close(0u32.into(), b"dial canceled");
+                                let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "canceled" });
+                                continue;
+                            }
                             if slots.len() >= MAX_CONNECTIONS * 2 ||
                                 slots.values().filter(|slot| !slot.closed.load(Ordering::Acquire)).count() >= MAX_CONNECTIONS {
-                                slot.connection.close(1u32.into(), b"connection limit"); continue;
+                                slot.connection.close(1u32.into(), b"connection limit");
+                                if initiator { let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "busy" }); }
+                                continue;
                             }
                             slots.insert(id, slot.clone()); drop(slots);
                             if shared.events.lock().unwrap().push(HostEvent::Connected { connection_id: id,
@@ -578,7 +612,10 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                             }
                             readers.spawn(read_connection(id, slot, shared.clone()));
                         }
-                        Err(_) => { let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "connection_failed" }); }
+                        Err(_) => {
+                            shared.pending_dials.lock().unwrap().remove(&id);
+                            let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "connection_failed" });
+                        }
                     }
                 } else { break; }
             }
@@ -600,6 +637,7 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
     while readers.join_next().await.is_some() {}
     while writers.join_next().await.is_some() {}
     shared.slots.lock().unwrap().clear();
+    shared.pending_dials.lock().unwrap().clear();
 }
 
 fn pump(shared: &Arc<Shared>, writers: &mut JoinSet<()>) {
@@ -705,6 +743,28 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn canceling_an_owned_pending_dial_ends_handshake_without_publishing_connection() {
+        let host = EndpointHost::start(EndpointPolicy::local(), [67;32]).unwrap();
+        let remote = SecretKey::from_bytes(&[68;32]).public();
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let ticket = EndpointTicket::new(EndpointAddr::new(remote).with_ip_addr(socket.local_addr().unwrap())).to_string();
+        let id = host.dial(&ticket, &remote.to_string(), false).unwrap();
+        host.disconnect(id).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut finished = false;
+        while !finished {
+            for event in host.poll(64).unwrap() {
+                assert!(!matches!(event, HostEvent::Connected { .. }));
+                if matches!(event, HostEvent::Failed { request_id, .. } if request_id == id) { finished = true; }
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(host.shared.pending_dials.lock().unwrap().is_empty());
+        assert!(host.shared.slots.lock().unwrap().is_empty());
+        host.shutdown().unwrap();
+    }
     #[test]
     fn relay_only_filters_direct_hints_but_rejects_unapproved_relays() {
         let relay: RelayUrl = "http://127.0.0.1:32123".parse().unwrap();

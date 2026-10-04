@@ -64,6 +64,8 @@ def load_binding(*, artifact_root: Path | None = None) -> ModuleType:
     distribution owns manifest authenticity; these checks also reject mixed
     generated wrappers, architectures and dependency graphs before startup.
     """
+    if sys.version_info < (3, 11):
+        raise IrohBindingUnavailable("the Iroh generation requires Python 3.11 or newer")
     test_root = os.environ.get("AUTOYOU_TEST_ROOT")
     if artifact_root is not None:
         root = Path(artifact_root).resolve()

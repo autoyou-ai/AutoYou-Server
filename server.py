@@ -7064,13 +7064,44 @@ async def _notify_cloud_client(
     except Exception as e:
         return {"success": False, "sent": False, "status_code": 502, "error": str(e)}
 
+def _pairing_transport_preflight(offer: Any) -> str:
+    """Policy check without consuming an OTP or loading a native artifact."""
+    from shared.session_transport import SessionDenied, TransportPolicy
+    if offer is not None and not isinstance(offer, dict):
+        raise SessionDenied("invalid session transport offer")
+    requested = offer.get("transport") if isinstance(offer, dict) else None
+    if requested not in {None, "legacy", "iroh"}:
+        raise SessionDenied("unsupported session transport offer")
+    config = (STATE.config or {}).get("session_transport", {})
+    if not isinstance(config, dict):
+        raise SessionDenied("invalid session transport policy")
+    try:
+        policy = TransportPolicy(config.get("mode", "legacy"))
+    except ValueError:
+        raise SessionDenied("invalid session transport policy") from None
+    if requested == "iroh":
+        if policy == TransportPolicy.LEGACY or STATE.iroh_service is None:
+            raise SessionDenied("Iroh transport is unavailable under the current server policy")
+        return "iroh"
+    if policy == TransportPolicy.IROH_ONLY:
+        raise SessionDenied("this server requires Iroh enrollment")
+    return "legacy"
+
+
+def _legacy_pair_session_allowed(session_id: str) -> bool:
+    row = STATE.session_cache.get(session_id)
+    if not isinstance(row, dict) or row.get("transport") == "iroh":
+        return False
+    try:
+        return _pairing_transport_preflight(None) == "legacy"
+    except PermissionError:
+        return False
+
+
 async def _handle_verified_autopair_offer(chat_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """Called only after the existing pairing entry point verifies its proof."""
     offer = payload.get("offer")
-    if isinstance(offer, dict) and offer.get("transport") not in {None, "legacy", "iroh"}:
-        from shared.session_transport import SessionDenied
-        raise SessionDenied("unsupported session transport offer")
-    if isinstance(offer, dict) and offer.get("transport") == "iroh":
+    if _pairing_transport_preflight(offer) == "iroh":
         from core_server.iroh_service import VerifiedPairingOrigin
         from shared.session_transport import SessionDenied
         service = STATE.iroh_service
@@ -19770,6 +19801,8 @@ async def handle_auth_request(auth_data: dict) -> dict:
         if not hash_value:
             return {"success": False, "error": "Missing hash parameter"}
 
+        selected_transport = _pairing_transport_preflight(auth_data.get("offer"))
+
         validation_result = validate_otp_hash(hash_value)
 
         if validation_result["valid"]:
@@ -19782,7 +19815,7 @@ async def handle_auth_request(auth_data: dict) -> dict:
                 auth_data.get("client_display_name")
             )
             offer = auth_data.get("offer")
-            if isinstance(offer, dict) and offer.get("transport") == "iroh":
+            if selected_transport == "iroh":
                 from core_server.iroh_service import VerifiedPairingOrigin
                 from shared.session_transport import SessionDenied
                 if STATE.iroh_service is None or not session_id:

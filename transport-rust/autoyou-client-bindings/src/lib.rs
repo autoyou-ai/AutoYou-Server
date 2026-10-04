@@ -8,8 +8,163 @@ use autoyou_protocol::{Envelope, Frame, Lane, Principal, SESSION_ALPN, transcrip
 use autoyou_session::scheduler::Scheduler;
 use autoyou_session::host::{EndpointHost as RustEndpointHost, EndpointPolicy, HostError, HostEvent};
 use std::sync::{Arc, Mutex};
+use autoyou_session::client::{ClientSession as RustClientSession, ClientContext, ClientError, Phase};
 
 uniffi::setup_scaffolding!();
+
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum ClientPhase { Idle, Enrolling, Connecting, Authorizing, Online, ChangingPath,
+    Recovering, Suspended, Revoked, NeedsPairing, UserDisconnected, Failed }
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ClientSnapshot {
+    pub operation: u64, pub phase: ClientPhase, pub generation: u64, pub authorization_epoch: u64,
+    pub retry_attempt: u32, pub next_retry_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ClientConnectionContext {
+    pub connection_id: u64, pub remote_endpoint: String, pub local_endpoint: String,
+    pub exporter: Vec<u8>, pub protocol: String, pub initiator: bool,
+}
+impl ClientConnectionContext {
+    fn core(self) -> Result<ClientContext, BindingError> {
+        Ok(ClientContext { connection_id: self.connection_id, remote_endpoint: self.remote_endpoint,
+            local_endpoint: self.local_endpoint, exporter: self.exporter.try_into().map_err(|_| BindingError::InvalidInput)?,
+            protocol: self.protocol, initiator: self.initiator })
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ClientAction {
+    pub outgoing: Option<Vec<u8>>, pub grant_json: Option<String>, pub generation: u64,
+    pub capabilities_json: Option<String>, pub ready: bool, pub close_connection: bool,
+    pub session_grant: Option<SessionGrant>,
+    pub outgoing_frame: Option<TransportFrame>,
+}
+impl From<ClientError> for BindingError {
+    fn from(error: ClientError) -> Self { match error {
+        ClientError::Invalid => Self::InvalidInput, ClientError::Closed => Self::Closed,
+        ClientError::Denied | ClientError::Stale => Self::PermissionDenied,
+    } }
+}
+fn client_action(step: autoyou_session::client::Step) -> Result<ClientAction, BindingError> {
+    let session_grant = step.grant.as_ref().map(|grant| session_grant(grant.principal(step.generation)));
+    let outgoing_frame = step.outgoing.as_ref().map(|payload| TransportFrame { lane: Lane::Enrollment as u8,
+        generation: 0, stream_id: 0, sequence: 0, payload: payload.clone() });
+    Ok(ClientAction { outgoing: step.outgoing, grant_json: step.grant.map(|grant| serde_json::to_string(&grant))
+        .transpose().map_err(|_| BindingError::InvalidInput)?, generation: step.generation,
+        capabilities_json: step.capabilities_json, ready: step.ready, close_connection: step.close_connection, session_grant, outgoing_frame })
+}
+
+fn session_grant(grant: Principal) -> SessionGrant {
+    SessionGrant { endpoint_id: grant.endpoint_id, device_id: grant.device_id, owner_id: grant.owner_id,
+        conversation_id: grant.conversation_id, generation: grant.generation, authorization_epoch: grant.authorization_epoch,
+        expires_at_ms: grant.expires_at_ms, scopes: grant.scopes }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct StoredClientPeer {
+    pub grant_json: String, pub generation_floor: u64, pub canonical_user_id: String,
+    pub device_ownership: String, pub session_grant: SessionGrant,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct ClientDialTarget { pub endpoint_id: String, pub ticket: String, pub pairing: bool }
+
+fn grant_from_json(json: &str) -> Result<autoyou_session::client::ClientGrant, BindingError> {
+    if json.len() > 16*1024 { return Err(BindingError::InvalidInput); }
+    serde_json::from_str(json).map_err(|_| BindingError::InvalidInput)
+}
+
+#[uniffi::export]
+pub fn empty_client_store() -> Vec<u8> { autoyou_session::client_store::empty() }
+
+#[uniffi::export]
+pub fn register_client_grant(state: Vec<u8>, grant_json: String, now_ms: u64) -> Result<Vec<u8>, BindingError> {
+    Ok(autoyou_session::client_store::register(&state, grant_from_json(&grant_json)?, now_ms)?)
+}
+
+#[uniffi::export]
+pub fn load_client_peer(state: Vec<u8>, endpoint_id: String, now_ms: u64) -> Result<StoredClientPeer, BindingError> {
+    let peer = autoyou_session::client_store::load(&state, &endpoint_id, now_ms)?;
+    Ok(StoredClientPeer { grant_json: serde_json::to_string(&peer.grant).map_err(|_| BindingError::InvalidInput)?,
+        generation_floor: peer.generation_floor, canonical_user_id: peer.grant.canonical_user_id.clone(),
+        device_ownership: peer.grant.device_ownership.clone(), session_grant: session_grant(peer.grant.principal(peer.generation_floor)) })
+}
+
+#[uniffi::export]
+pub fn admit_client_generation(state: Vec<u8>, grant_json: String, generation: u64, now_ms: u64) -> Result<Vec<u8>, BindingError> {
+    Ok(autoyou_session::client_store::admit(&state, &grant_from_json(&grant_json)?, generation, now_ms)?)
+}
+
+#[uniffi::export]
+pub fn revoke_client_grant(state: Vec<u8>, device_id: String, authorization_epoch: u64) -> Result<Vec<u8>, BindingError> {
+    Ok(autoyou_session::client_store::revoke(&state, &device_id, authorization_epoch)?)
+}
+
+/// One shared protocol/lifecycle owner; the enclosing adapter owns protected
+/// persistence and pumps this object with native endpoint events.
+#[derive(uniffi::Object)]
+pub struct ClientSession { session: Mutex<RustClientSession> }
+
+#[uniffi::export]
+impl ClientSession {
+    #[uniffi::constructor]
+    pub fn new(local_endpoint: String) -> Result<Arc<Self>, BindingError> {
+        Ok(Arc::new(Self { session: Mutex::new(RustClientSession::new(local_endpoint)?) }))
+    }
+    pub fn snapshot(&self) -> Result<ClientSnapshot, BindingError> {
+        let state = self.session.lock().map_err(|_| BindingError::Closed)?.snapshot();
+        Ok(ClientSnapshot { operation: state.operation, generation: state.generation,
+            authorization_epoch: state.authorization_epoch, retry_attempt: state.retry_attempt,
+            next_retry_ms: state.next_retry_ms, phase: match state.phase {
+                Phase::Idle => ClientPhase::Idle, Phase::Enrolling => ClientPhase::Enrolling,
+                Phase::Connecting => ClientPhase::Connecting, Phase::Authorizing => ClientPhase::Authorizing,
+                Phase::Online => ClientPhase::Online, Phase::ChangingPath => ClientPhase::ChangingPath,
+                Phase::Recovering => ClientPhase::Recovering, Phase::Suspended => ClientPhase::Suspended,
+                Phase::Revoked => ClientPhase::Revoked, Phase::NeedsPairing => ClientPhase::NeedsPairing,
+                Phase::UserDisconnected => ClientPhase::UserDisconnected, Phase::Failed => ClientPhase::Failed,
+            } })
+    }
+    pub fn begin_verified_pairing(&self, answer_json: String, now_ms: u64) -> Result<u64, BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.begin_verified_pairing(answer_json.as_bytes(),now_ms)?)
+    }
+    pub fn begin_session(&self, grant_json: String, ticket: String, generation_floor: u64, now_ms: u64) -> Result<u64, BindingError> {
+        if grant_json.len() > 16*1024 { return Err(BindingError::InvalidInput); }
+        let grant = serde_json::from_str(&grant_json).map_err(|_| BindingError::InvalidInput)?;
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.begin_session(grant,ticket,generation_floor,now_ms)?)
+    }
+    pub fn dial_target(&self) -> Result<ClientDialTarget, BindingError> {
+        let session = self.session.lock().map_err(|_| BindingError::Closed)?;
+        let phase = session.snapshot().phase;
+        if !matches!(phase, Phase::Enrolling | Phase::Connecting) { return Err(BindingError::PermissionDenied); }
+        Ok(ClientDialTarget { endpoint_id: session.peer().ok_or(BindingError::PermissionDenied)?.endpoint_id.clone(),
+            ticket: session.ticket().ok_or(BindingError::PermissionDenied)?.into(), pairing: phase == Phase::Enrolling })
+    }
+    pub fn bind_dial(&self, operation: u64, connection_id: u64) -> Result<(), BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.bind_dial(operation,connection_id)?)
+    }
+    pub fn connected(&self, operation: u64, context: ClientConnectionContext, now_ms: u64) -> Result<ClientAction, BindingError> {
+        client_action(self.session.lock().map_err(|_| BindingError::Closed)?.connected(operation,&context.core()?,now_ms)?)
+    }
+    pub fn receive(&self, operation: u64, context: ClientConnectionContext, payload: Vec<u8>, now_ms: u64) -> Result<ClientAction, BindingError> {
+        client_action(self.session.lock().map_err(|_| BindingError::Closed)?.receive(operation,&context.core()?,&payload,now_ms)?)
+    }
+    pub fn pairing_persisted(&self, operation: u64) -> Result<(), BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.pairing_persisted(operation)?)
+    }
+    pub fn network_changed(&self, operation: u64, usable_path: bool) -> Result<(), BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.network_changed(operation,usable_path)?)
+    }
+    pub fn lost(&self, operation: u64, now_ms: u64, jitter_ms: u64) -> Result<(), BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.lost(operation,now_ms,jitter_ms)?)
+    }
+    pub fn suspend(&self) -> Result<(), BindingError> { self.session.lock().map_err(|_| BindingError::Closed)?.suspend(); Ok(()) }
+    pub fn disconnect(&self) -> Result<(), BindingError> { self.session.lock().map_err(|_| BindingError::Closed)?.disconnect(); Ok(()) }
+    pub fn revoke(&self) -> Result<(), BindingError> { self.session.lock().map_err(|_| BindingError::Closed)?.revoke(); Ok(()) }
+    pub fn deny(&self) -> Result<(), BindingError> { self.session.lock().map_err(|_| BindingError::Closed)?.deny(); Ok(()) }
+}
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CoreInfo {
@@ -311,7 +466,7 @@ impl FrameQueue {
         }
         Ok(result)
     }
-    pub fn close(&self) -> Result<(), BindingError> {
+    pub fn shutdown(&self) -> Result<(), BindingError> {
         self.queue.lock().map_err(|_| BindingError::Worker)?.close();
         Ok(())
     }
@@ -327,7 +482,7 @@ mod tests {
         let frames = queue.poll(0, 1).unwrap();
         assert_eq!(frames[0].generation, 19); assert_eq!(frames[0].payload, [0, 255, 13, 10]);
         assert!(matches!(queue.send(TransportFrame { stream_id: 0, sequence: 0, lane: 99, generation: 1, payload: vec![] }, None), Err(BindingError::InvalidInput)));
-        queue.close().unwrap();
+        queue.shutdown().unwrap();
         assert!(matches!(queue.send(TransportFrame { stream_id: 0, sequence: 0, lane: 7, generation: 1, payload: vec![] }, None), Err(BindingError::Closed)));
     }
 }

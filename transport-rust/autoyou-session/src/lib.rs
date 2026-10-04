@@ -13,6 +13,8 @@ use std::net::SocketAddr;
 pub mod scheduler;
 pub mod ordering;
 pub mod host;
+pub mod client;
+pub mod client_store;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
