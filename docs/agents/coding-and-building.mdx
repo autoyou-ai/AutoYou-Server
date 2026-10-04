@@ -1,0 +1,136 @@
+---
+title: "Coding & Building Agents"
+description: "Reference catalog for skills_agent, files_agent, coding_agent, agent_builder_agent, website_agent, cli_agent, claude_cli_agent, claude_desktop_agent, codex_desktop_agent, and build_prompt_agent."
+---
+
+# Coding & Building Agents
+
+Coding & Building agents empower operators and developers to author, debug, refactor, and build software systems, web applications, dynamic agent skills, shell sessions, desktop application automations, and custom prompts.
+
+---
+
+## 1. `skills_agent`
+
+- **Location**: `autoyou_agents/skills_agent/`
+- **Role**: Provides dynamic runtime toolset expansion. Exposes the `DynamicSkillToolset` class which can import and mount external Python modules as live tools on the fly without restarting the server.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/skills_agent/`.
+- **Key Tools**:
+  - `load_skill_package(path_or_url: str)`: Dynamically inspects and registers new tools from Python source files or URLs.
+  - `list_active_skills()`: Returns currently loaded dynamic toolsets and their exposed signatures.
+  - `unload_skill_package(skill_name: str)`: Removes a previously mounted skill package.
+
+---
+
+## 2. `files_agent`
+
+- **Location**: `autoyou_agents/files_agent/`
+- **Role**: Workspace and filesystem management agent. Inspects local file structures, creates directories, renames, copies, and safely deletes files.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/files_agent/`.
+- **Security Scope**: Destructive filesystem mutations require `System Admin` TOTP confirmation.
+- **Key Tools**:
+  - `inspect_path(path: str)`: Returns file size, modification timestamp, permissions, and MIME type.
+  - `list_directory(path: str, depth: int = 1)`: Enumerates files and folders in a directory tree.
+  - `rename_path(old_path: str, new_path: str)`: Renames files or directories atomically.
+  - `move_path(source: str, destination: str)`: Moves files or folders across directory paths.
+  - `copy_path(source: str, destination: str)`: Copies files or directory trees recursively.
+  - `create_directory(path: str)`: Creates a new directory path, including intermediate parents.
+  - `delete_path(path: str, recursive: bool = False)`: Deletes specified files or directories after elevation.
+
+---
+
+## 3. `coding_agent`
+
+- **Location**: `autoyou_agents/coding_agent/`
+- **Role**: Automated coding assistant capable of reading complex codebases, proposing multi-file diffs, executing linters, and verifying test suites.
+- **Key Tools**:
+  - `read_source_file(path: str)`: Inspects code with syntax highlighting and line number indexing.
+  - `apply_unified_patch(path: str, patch_content: str)`: Applies unified diffs atomically with rollback support.
+  - `run_project_tests(test_target: str)`: Executes pytest or language-specific test runners and parses results.
+  - `format_source_code(path: str)`: Formats code via ruff, black, or prettier.
+
+---
+
+## 4. `agent_builder_agent`
+
+- **Location**: `autoyou_agents/agent_builder_agent/`
+- **Role**: Powers the visual Agent Builder in the Admin Console. Manages the lifecycle of dynamic custom agents, writes boilerplates, and coordinates publishing to `agent_install_registry.json`.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/agent_builder_agent/`.
+- **Key Tools**:
+  - `scaffold_new_agent(name: str, domain: str)`: Creates initial agent files, prompt templates, and directory scaffolding.
+  - `generate_tool_boilerplate(tool_name: str, params: dict)`: Emits typed Python `@tool` boilerplate functions.
+  - `validate_manifest(manifest_data: dict)`: Ensures metadata complies with the Google ADK and AutoYou runtime contracts.
+  - `publish_agent(agent_name: str)`: Installs and registers the newly created agent into the live server registry.
+
+---
+
+## 5. `website_agent`
+
+- **Location**: `autoyou_agents/website_agent/`
+- **Role**: Web development agent for building, previewing, scaffolding, and deploying static and dynamic web frontends. Bridges website creation workflows directly to `coding_agent`.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/website_agent/`.
+- **Key Tools**:
+  - `scaffold_website_split(agent_name: str, frontend_stack: str, backend_stack: str)`: Creates boilerplate frontend (HTML5/Vanilla/React) and backend stacks.
+  - `get_pending_website_handoff()`: Retrieves structured design requirements from preceding chat sessions.
+  - `register_website_port(agent_name: str, port: int)`: Binds a local development web server to the internal agent reverse proxy.
+  - `prepare_coding_handoff_from_website()`: Packages assets and passes execution context to `coding_agent`.
+
+---
+
+## 6. `cli_agent`
+
+- **Location**: `autoyou_agents/cli_agent/`
+- **Role**: Manages interactive pseudo-terminal (PTY) shell sessions with virtual ANSI screen buffers (`_AnsiScreenBuffer`, `_PosixPtyTerminalBackend`, `_ConPtyCoord`).
+- **Key Tools**:
+  - `open_terminal_session(shell: str = "bash")`: Spawns an interactive PTY terminal session.
+  - `send_terminal_input(session_id: str, input_text: str)`: Writes stdin keystrokes into an active terminal.
+  - `read_terminal_buffer(session_id: str)`: Captures rendered ANSI terminal text for agent consumption.
+  - `close_terminal_session(session_id: str)`: Terminates the background shell process.
+
+---
+
+## 7. `claude_cli_agent`
+
+- **Location**: `autoyou_agents/claude_cli_agent/`
+- **Role**: CLI bridge connecting AutoYou agents to Anthropic's Claude Code CLI. Enables delegating terminal-based tasks and capturing streaming output through Model Context Protocol (MCP) tool adapters.
+- **Key Tools**:
+  - `dispatch_claude_cli_command(command: str)`: Executes a command through the Claude CLI wrapper.
+  - `get_claude_cli_output(task_id: str)`: Retrieves stdout, stderr, and execution status.
+
+---
+
+## 8. `claude_desktop_agent`
+
+- **Location**: `autoyou_agents/claude_desktop_agent/`
+- **Role**: Desktop GUI automation bridge for the Claude Desktop application. Uses computer vision sprite matching (`desktop_assets/`) and OS accessibility APIs to automate prompt submission, project selection, and response extraction.
+- **Key Tools**:
+  - `get_claude_desktop_status()`: Checks whether Claude Desktop is running and visible.
+  - `send_prompt_to_claude_desktop(prompt: str)`: Enters and submits a prompt into Claude Desktop's input box.
+  - `select_claude_desktop_model(model_name: str)`: Automates dropdown selection for Sonnet, Opus, or Haiku.
+  - `wait_for_claude_desktop_final_response(timeout_seconds: int = 120)`: Monitors generation state until idle and extracts generated markdown.
+  - `get_claude_desktop_usage()`: Inspects message usage rings and subscription quotas.
+
+---
+
+## 9. `codex_desktop_agent`
+
+- **Location**: `autoyou_agents/codex_desktop_agent/`
+- **Role**: Desktop GUI automation bridge for Codex and OpenAI desktop applications. Coordinates window detection, keyboard/mouse emulation, prompt injection, and response scraping.
+- **Key Tools**:
+  - `get_codex_desktop_status()`: Verifies Codex desktop window state and responsiveness.
+  - `send_prompt_to_codex_desktop(prompt: str)`: Submits prompt text to the active Codex editor or chat window.
+  - `select_codex_desktop_model(model_name: str)`: Switches between GPT-4o, o1, and other available model checkpoints.
+  - `copy_codex_desktop_final_response()`: Copies rendered response text directly from the desktop clipboard.
+  - `get_codex_desktop_usage()`: Queries rate limits and token usage indicators.
+
+---
+
+## 10. `build_prompt_agent`
+
+- **Location**: `autoyou_agents/build_prompt_agent/`
+- **Role**: Interactive prompt engineering, template authoring, variable injection, and automated prompt benchmarking assistant.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/build_prompt_agent/`.
+- **Key Tools**:
+  - `build_prompt(template: str, variables: dict)`: Renders structured prompt templates with variable injection.
+  - `get_prompt(application_agent: str)`: Retrieves the currently configured system prompt for any agent.
+  - `execute_prompt(application_agent: str)`: Tests prompt execution against real test cases and logs outputs.
+  - `configure_prompt(application_agent: str, new_prompt: str)`: Persists prompt changes to agent configuration stores.

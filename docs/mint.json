@@ -101,12 +101,14 @@
       "group": "Agent Catalog Reference",
       "pages": [
         "agents/system-and-admin",
-        "agents/developer-and-tooling",
         "agents/media-and-creative",
         "agents/intelligence-and-models",
         "agents/web-and-automation",
+        "agents/coding-and-building",
         "agents/communication-and-tasks",
-        "agents/monetization-and-utility"
+        "agents/ai-and-training",
+        "agents/monetization",
+        "agents/utility"
       ]
     },
     {

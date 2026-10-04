@@ -1,0 +1,47 @@
+---
+title: "Monetization Agents"
+description: "Reference catalog for ads_watching_agent, earnings_agent, and donation_agent."
+---
+
+# Monetization Agents
+
+Monetization agents manage user engagement rewards, local compute credits, contributor funding requests, and creator donation links.
+
+---
+
+## 1. `ads_watching_agent`
+
+- **Location**: `autoyou_agents/ads_watching_agent/`
+- **Role**: Coordinates rewarded video and banner ad viewing workflows for free-tier users, verifying ad completion callbacks and crediting tokens to the user's local account.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/ads_watching_agent/`.
+- **Key Tools**:
+  - `request_rewarded_ad()`: Requests an eligible rewarded ad payload from configured publisher networks (e.g. Google AdSense / AdMob).
+  - `verify_ad_completion(transaction_id: str)`: Confirms viewing verification cryptographic token and accrues credit.
+  - `get_pending_ad_credit_summary()`: Queries accumulated ad watch credits and conversion rates without exposing account identifiers.
+
+---
+
+## 2. `earnings_agent`
+
+- **Location**: `autoyou_agents/earnings_agent/`
+- **Role**: Financial ledger, credit manager, and contributor support assistant for host operators who provide compute or host community agent services.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/earnings_agent/`.
+- **Operating Rules**:
+  - Treats credits strictly as internal AutoYou platform credits without making fiat or cryptocurrency speculation promises.
+  - Does not store or log bank account details, crypto private keys, or wallet seed phrases.
+- **Key Tools**:
+  - `prepare_earnings_action(action_type: str)`: Prepares an account action, funding page link, or contributor support submission.
+  - `get_pending_ad_credit_summary()`: Summarizes watched ad seconds multiplied by the displayed local rate.
+  - `get_contributor_support_status()`: Queries approval status of submitted contributor support requests.
+
+---
+
+## 3. `donation_agent`
+
+- **Location**: `autoyou_agents/donation_agent/`
+- **Role**: Facilitates voluntary user tipping, creator patronages, and open-source project contributions through Stripe Checkout and community funding links.
+- **Frontend**: Available via the internal agent proxy at `http://127.0.0.1:8067/agent/donation_agent/`.
+- **Key Tools**:
+  - `create_checkout_session(amount_usd: float)`: Generates a Stripe Checkout session URL for voluntary donations.
+  - `verify_donation(session_id: str)`: Validates receipt of a creator contribution and issues an acknowledgement token.
+  - `list_supported_causes()`: Lists official donation programs, developer grants, and open-source bounties.
