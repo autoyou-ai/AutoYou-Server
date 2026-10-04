@@ -500,6 +500,14 @@ class SessionExecutionManager:
             pairing_mode=normalized_pairing_mode,
         )
 
+    def release_transport_session(self, raw_session_id: str, *, expected_owner_key: str) -> bool:
+        """Retire one owned connection alias, preserving canonical owner/history."""
+        alias = build_webrtc_alias(raw_session_id)
+        if self._owner_aliases.get(alias) != expected_owner_key:
+            return False
+        del self._owner_aliases[alias]
+        return True
+
     def alias_webrtc_session(
         self,
         existing_session_id: str,

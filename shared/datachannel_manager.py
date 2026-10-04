@@ -786,6 +786,10 @@ class DataChannelManager:
             self._ack_window_size,
         )
 
+    @property
+    def is_ready(self) -> bool:
+        return self.connection_active and str(getattr(self.datachannel, "readyState", "") or "").lower() == "open"
+
     def register_handler(self, message_type: MessageType, handler: Callable):
         """Register a handler for a specific message type"""
         self.message_handlers[message_type] = handler

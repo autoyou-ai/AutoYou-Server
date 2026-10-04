@@ -69,6 +69,8 @@ from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
 from shared.live_pairing import LivePairing
+from core_server.session_dispatch import dispatch_application_message
+from shared.session_transport import session_channel_ready, TransportKind
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
@@ -364,8 +366,7 @@ class WebRTCManager:
         for session_id, manager in self.datachannel_managers.items():
             if same_machine_only and not self._same_machine_audio_session(session_id):
                 continue
-            channel = getattr(manager, "datachannel", None)
-            if str(getattr(channel, "readyState", "") or "").lower() != "open":
+            if not session_channel_ready(manager):
                 continue
             connections.add(id(manager))
         return len(connections)
@@ -3081,6 +3082,8 @@ class WebRTCManager:
             return False
         if getattr(datachannel_manager, "connection_active", True) is False:
             return False
+        if getattr(datachannel_manager, "transport_kind", None) == TransportKind.IROH:
+            return session_channel_ready(datachannel_manager)
         channel = getattr(datachannel_manager, "datachannel", None)
         ready_state = str(getattr(channel, "readyState", "") or "").strip().lower()
         return ready_state not in {"closing", "closed"}
@@ -5218,128 +5221,16 @@ class WebRTCManager:
                 self.datachannel_managers[identifier] = datachannel_manager
                 bound_client_session_ids: Set[str] = set()
 
-                async def _flush_pending_scheduler_notifications(session_id: str) -> None:
-                    normalized_session_id = str(session_id or "").strip()
-                    if not normalized_session_id:
-                        return
-                    try:
-                        identity = self._resolve_chat_identity(normalized_session_id)
-                    except Exception as exc:
-                        _runtime.LOGGER.debug(
-                            "Skipping queued scheduler notification flush for %s because identity resolution failed: %s",
-                            _redact_session_id(normalized_session_id),
-                            exc,
-                        )
-                        return
-
-                    owner_key = str(getattr(identity, "owner_key", "") or "").strip()
-                    canonical_user_id = str(getattr(identity, "canonical_user_id", "") or "").strip()
-                    if not owner_key and not canonical_user_id:
-                        return
-
-                    try:
-                        from shared import scheduler_service as _scheduler_svc
-
-                        results = await _scheduler_svc.flush_pending_notifications_for_owner(
-                            owner_key=owner_key,
-                            canonical_user_id=canonical_user_id,
-                        )
-                        delivered_count = sum(
-                            1
-                            for result in results.values()
-                            if str(result.get("status") or "").strip() == "success"
-                        )
-                        if delivered_count:
-                            _runtime.LOGGER.info(
-                                "Flushed %d queued scheduler notification(s) for session %s (owner=%s)",
-                                delivered_count,
-                                _redact_session_id(normalized_session_id),
-                                _redact_session_id(owner_key or canonical_user_id),
-                            )
-                    except Exception as exc:
-                        _runtime.LOGGER.warning(
-                            "Failed to flush queued scheduler notifications for %s: %s",
-                            _redact_session_id(normalized_session_id),
-                            exc,
-                        )
-
                 def _channel_is_sendable() -> bool:
                     ready_state = getattr(channel, "readyState", None)
                     normalized_ready_state = str(ready_state).lower() if ready_state is not None else ""
                     return ready_state is None or normalized_ready_state == "open"
 
                 def _bootstrap_datachannel_session(session_id: Optional[str]) -> None:
-                    normalized_session_id = str(session_id or "").strip()
-                    if not normalized_session_id or not _channel_is_sendable():
-                        return
-
-                    voice_call_status = self.voice_call_status_by_session.get(normalized_session_id)
-                    audio_manager_status = self._get_audio_manager_readiness_status(normalized_session_id)
-                    stored_voice_state = (
-                        str(voice_call_status.get("state") or "").lower()
-                        if isinstance(voice_call_status, dict)
-                        else ""
-                    )
-                    live_voice_state = (
-                        str(audio_manager_status.get("state") or "").lower()
-                        if isinstance(audio_manager_status, dict)
-                        else ""
-                    )
-                    if isinstance(audio_manager_status, dict) and (
-                        not isinstance(voice_call_status, dict)
-                        or (
-                            stored_voice_state == "warming"
-                            and live_voice_state != "warming"
-                        )
-                        or (
-                            stored_voice_state == "unavailable"
-                            and live_voice_state in {"warming", "ready"}
-                        )
-                    ):
-                        voice_call_status = audio_manager_status
-                    if isinstance(voice_call_status, dict):
-                        self._track_session_task(
-                            normalized_session_id,
-                            self._publish_voice_call_status(
-                                normalized_session_id,
-                                dict(voice_call_status),
-                            ),
-                            "voice_call_status_bootstrap",
-                        )
-                    if normalized_session_id in self.voice_call_playback_by_session:
-                        self._track_session_task(
-                            normalized_session_id,
-                            self._publish_voice_call_status(
-                                normalized_session_id,
-                                dict(self.voice_call_playback_by_session[normalized_session_id]),
-                            ),
-                            "voice_call_playback_bootstrap",
-                        )
-                    self._track_session_task(
-                        normalized_session_id,
-                        self._publish_webrtc_capabilities(normalized_session_id),
-                        "webrtc_capabilities_bootstrap",
-                    )
-                    self._track_session_task(
-                        normalized_session_id,
-                        self._prime_conversation_context_status(
-                            normalized_session_id,
-                            _runtime._resolve_conversation_identity(
-                                self._resolve_chat_identity(normalized_session_id)
-                            ),
-                        ),
-                        "conversation_context_bootstrap",
-                    )
-                    self._track_session_task(
-                        normalized_session_id,
-                        self._flush_pending_voice_chat_messages(normalized_session_id),
-                        "voice_chat_flush",
-                    )
-                    self._track_session_task(
-                        normalized_session_id,
-                        _flush_pending_scheduler_notifications(normalized_session_id),
-                        "scheduler_notification_flush",
-                    )
+                    from core_server.session_dispatch import bootstrap_application_session
+                    normalized = str(session_id or "").strip()
+                    if normalized and _channel_is_sendable():
+                        bootstrap_application_session(self, normalized, runtime=_runtime)
 
                 def _bootstrap_all_bound_datachannel_sessions() -> None:
                     session_ids = {str(identifier)}
@@ -5491,39 +5382,10 @@ class WebRTCManager:
                     # Room bridge authority is derived from this handler's
                     # captured, authenticated transport. Never bind or trust a
                     # client-supplied header session_id before authorizing it.
-                    if message.header.message_type == _runtime.MessageType.PAIRING_CONTROL:
-                        self._track_session_task(str(identifier),
-                            self._handle_live_pair_control(message, str(identifier), datachannel_manager),
-                            "live_pairing")
+                    from core_server.session_dispatch import dispatch_bound_control_message
+                    if await dispatch_bound_control_message(self, message,
+                            trusted_transport_id=str(identifier), channel=datachannel_manager):
                         return
-                    if message.header.message_type == _runtime.MessageType.ROOM_BRIDGE_CONTROL:
-                        self._track_session_task(
-                            str(identifier),
-                            self._handle_room_bridge_control(
-                                message,
-                                trusted_transport_id=str(identifier),
-                                datachannel_manager=datachannel_manager,
-                            ),
-                            "room_bridge_control",
-                        )
-                        return
-                    if message.header.message_type == _runtime.MessageType.CHAT:
-                        candidate_payload = message.payload if isinstance(message.payload, dict) else {}
-                        candidate_metadata = candidate_payload.get("metadata")
-                        if isinstance(candidate_metadata, dict) and isinstance(
-                            candidate_metadata.get("room_bridge"),
-                            dict,
-                        ):
-                            self._track_session_task(
-                                str(identifier),
-                                self._handle_room_bridge_chat(
-                                    message,
-                                    trusted_transport_id=str(identifier),
-                                    datachannel_manager=datachannel_manager,
-                                ),
-                                "room_bridge_chat",
-                            )
-                            return
 
                     if client_session_id and client_session_id != identifier:
                         if not bind_client_session_id(client_session_id):
@@ -5577,53 +5439,12 @@ class WebRTCManager:
                         )
                         return
 
-                    # Route to appropriate handler based on message type
-                    if message.header.message_type == _runtime.MessageType.CHAT:
-                        self._track_session_task(
-                            str(client_session_id or identifier),
-                            self._handle_chat_message(message),
-                            "chat",
-                            survive_disconnect=True,
-                        )
-                    elif message.header.message_type == _runtime.MessageType.HTTP_REQUEST_CANCEL:
-                      self._track_session_task(
-                        str(client_session_id or identifier),
-                        self._handle_http_request_cancel(message),
-                        "http_request_cancel",
-                      )
-                    elif message.header.message_type == _runtime.MessageType.HTTP_STREAM_ABORT:
-                      self._track_session_task(
-                        str(client_session_id or identifier),
-                        self._handle_http_stream_abort(message),
-                        "http_stream_abort",
-                      )
-
-                    elif message.header.message_type == _runtime.MessageType.HTTP_REQUEST:
-                      request_task = self._track_session_task(
-                        str(client_session_id or identifier),
-                        self._handle_http_request(message),
-                        "http_request",
-                      )
-                      self._remember_http_proxy_request_task(
-                        str(client_session_id or identifier),
-                        str((message.payload or {}).get("request_id") or message.header.message_id or ""),
-                        request_task,
-                      )
-                    elif message.header.message_type == _runtime.MessageType.VOICE_CALL_CONTROL:
-                        self._track_session_task(
-                            str(client_session_id or identifier),
-                            self._handle_voice_call_control_message(
-                                message,
-                                trusted_session_id=str(identifier),
-                            ),
-                            "voice_call_control",
-                        )
-                    elif message.header.message_type == _runtime.MessageType.HTTP_WS_DATA:
-                        self._track_session_task(str(client_session_id or identifier), self._handle_ws_data_from_client(message), "http_ws_data")
-                    elif message.header.message_type == _runtime.MessageType.HTTP_WS_CLOSE:
-                        self._track_session_task(str(client_session_id or identifier), self._handle_ws_close_from_client(message), "http_ws_close")
-                    elif message.header.message_type == _runtime.MessageType.ERROR:
-                        await self._handle_error_message(message)
+                    await dispatch_application_message(
+                        self,
+                        message,
+                        trusted_transport_id=str(identifier),
+                        session_id=str(client_session_id or identifier),
+                    )
 
                 # Register the unified message handler for all message types including PONG
                 datachannel_manager.register_handler(_runtime.MessageType.CHAT, unified_message_handler)

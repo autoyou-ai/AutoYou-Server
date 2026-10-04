@@ -533,7 +533,7 @@ def register_routes(
                     payload["_autoyou_loopback_pairing"] = True
                 payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
                 payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
-                answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
+                answer = await server._handle_verified_autopair_offer(client_sender_id, payload)
                 answer_text = await server.pairing_router._format_autopair_answer(
                     answer,
                     platform=client_platform,
@@ -564,8 +564,7 @@ def register_routes(
             payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
             if server.pairing_router is None:
                 return JSONResponse({"error": "Pairing subsystem not ready"}, status_code=503)
-            # Delegate to WebRTC manager
-            answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
+            answer = await server._handle_verified_autopair_offer(client_sender_id, payload)
             wrapped_answer = server.pairing_router._build_autopair_answer_payload(answer, client_sender_id)
             answer_text = "/autopair_answer\n" + _json.dumps(wrapped_answer, separators=(",", ":"))
             return PlainTextResponse(answer_text, status_code=200)

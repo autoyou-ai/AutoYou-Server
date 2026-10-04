@@ -1,0 +1,24 @@
+[package]
+name = "autoyou-client-bindings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license-file.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+sha2.workspace = true
+autoyou-protocol.workspace = true
+autoyou-session.workspace = true
+uniffi.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+uniffi = { workspace = true, features = ["bindgen"] }
+
+[lints]
+workspace = true

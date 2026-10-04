@@ -1111,6 +1111,8 @@ async def _initialize_services_on_startup() -> None:
             )
 
         # Configure pairing router helpers before any messaging services start
+        from core_server.iroh_service import start_server_transport
+        await start_server_transport(runtime)
         runtime._update_startup_status(
             status="initializing",
             headline="Preparing session and pairing services",
@@ -3599,6 +3601,8 @@ async def _stop_runtime_services_for_shutdown() -> None:
     runtime = _runtime()
     runtime.LOGGER.info("Initiating graceful shutdown...")
     all_clean = True
+    from core_server.iroh_service import stop_server_transport
+    all_clean &= await runtime._run_shutdown_step("Iroh session service", stop_server_transport(runtime), 15.0)
     all_clean &= await runtime._run_shutdown_step("Auth Server", runtime.stop_auth_server(), 10.0)
     all_clean &= await runtime._run_shutdown_step("AI Agent Server", runtime.stop_ai_agent_server(), 15.0)
     all_clean &= await runtime._run_shutdown_step("Managed frontend backends", runtime.stop_managed_frontend_backends(), 10.0)

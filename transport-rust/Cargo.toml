@@ -1,0 +1,31 @@
+[workspace]
+members = ["autoyou-protocol", "autoyou-session", "autoyou-client-bindings"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+publish = false
+license-file = "../LICENSE"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sha2 = "0.10"
+bytes = "1"
+iroh = { version = "=1.3.0", default-features = false, features = ["tls-ring", "metrics"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+autoyou-protocol = { path = "autoyou-protocol" }
+autoyou-session = { path = "autoyou-session" }
+iroh-tickets = "=1.0.0"
+uniffi = { version = "=0.32.2", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

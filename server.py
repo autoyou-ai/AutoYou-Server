@@ -7064,6 +7064,28 @@ async def _notify_cloud_client(
     except Exception as e:
         return {"success": False, "sent": False, "status_code": 502, "error": str(e)}
 
+async def _handle_verified_autopair_offer(chat_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Called only after the existing pairing entry point verifies its proof."""
+    offer = payload.get("offer")
+    if isinstance(offer, dict) and offer.get("transport") not in {None, "legacy", "iroh"}:
+        from shared.session_transport import SessionDenied
+        raise SessionDenied("unsupported session transport offer")
+    if isinstance(offer, dict) and offer.get("transport") == "iroh":
+        from core_server.iroh_service import VerifiedPairingOrigin
+        from shared.session_transport import SessionDenied
+        service = STATE.iroh_service
+        if service is None:
+            raise SessionDenied("Iroh transport is unavailable under the current server policy")
+        platform = str(payload.get("_autoyou_pairing_platform") or "").strip().lower()
+        sender = str(payload.get("_autoyou_sender_id") or "").strip()
+        if not platform or not sender:
+            raise SessionDenied("verified pairing origin is required")
+        mode = _resolve_pairing_mode_for_transport(platform, payload.get("_autoyou_pairing_mode"))
+        origin = VerifiedPairingOrigin(platform, sender, mode, payload.get("_autoyou_device_ownership"))
+        return await service.issue_after_verified_pairing(offer, origin=origin, raw_session_id=str(chat_id))
+    return await WEBRTC.handle_autopair_offer(chat_id, payload)
+
+
 def _configure_pairing_router_helpers() -> None:
     if pairing_router is None or not hasattr(pairing_router, "configure"):
         return
@@ -7097,7 +7119,7 @@ def _configure_pairing_router_helpers() -> None:
         start_tunnelmole_service_with_timer=start_tunnelmole_service_with_timer,
         ensure_auth_server_running=start_auth_server_background,
         generate_otp_hash_and_cache=generate_otp_hash_and_cache,
-        handle_autopair_offer=WEBRTC.handle_autopair_offer,
+        handle_autopair_offer=_handle_verified_autopair_offer,
         start_new_conversation=_start_new_conversation_for_owner,
         apply_remote_ice_candidates=_cloud_apply_remote_ice,
         get_trickle_candidates=_cloud_get_trickle_candidates,
@@ -19759,6 +19781,29 @@ async def handle_auth_request(auth_data: dict) -> dict:
             client_display_name = _client_display_name_from_transport(
                 auth_data.get("client_display_name")
             )
+            offer = auth_data.get("offer")
+            if isinstance(offer, dict) and offer.get("transport") == "iroh":
+                from core_server.iroh_service import VerifiedPairingOrigin
+                from shared.session_transport import SessionDenied
+                if STATE.iroh_service is None or not session_id:
+                    raise SessionDenied("Iroh transport is unavailable under the current server policy")
+                origin = VerifiedPairingOrigin("direct", client_id or session_id, "pair", "shared")
+                answer = await STATE.iroh_service.issue_after_verified_pairing(offer,
+                    origin=origin, raw_session_id=session_id)
+                session_payload.update({key: value for key, value in answer.items() if key != "iroh"})
+                if client_id:
+                    session_payload["stable_client_id"] = client_id
+                identity = _resolve_conversation_identity(resolve_webrtc_chat_identity(session_id))
+                try:
+                    session_payload["client_display_name"] = WEBRTC.remember_client_display_name(
+                        identity, client_display_name)
+                except Exception:
+                    session_payload["client_display_name"] = ""
+                session_payload.update(_build_client_session_identity_payload(identity, pairing_mode="pair"))
+                prune_session_cache()
+                STATE.session_cache[session_id] = session_payload
+                return {"success": True, "session_id": session_id, "session": session_payload,
+                        "transport": "iroh", "iroh": answer["iroh"]}
             if session_id:
                 try:
                     if client_id:

@@ -90,6 +90,8 @@ AUTOPAIR_FRAGMENT_MAX_TOTAL_LENGTH: int = 131072
 # allocate an unbounded output buffer.
 AUTOPAIR_DECOMPRESSED_MAX_LENGTH: int = 131072
 AUTOPAIR_ANSWER_METADATA_KEYS: Tuple[str, ...] = (
+    "transport",
+    "iroh",
     "owner_key",
     "canonical_user_id",
     "canonical_session_id",
@@ -456,8 +458,11 @@ class PairingRouter:
         offer = payload.get("offer")
         if not isinstance(offer, dict):
             return "Field 'offer' must be an object"
+        if offer.get("transport") not in {None, "legacy", "iroh"}:
+            return "Unsupported session transport offer"
 
-        for field in ("type", "sdp"):
+        required_offer_fields = ("type", "version", "endpoint_id") if offer.get("transport") == "iroh" else ("type", "sdp")
+        for field in required_offer_fields:
             if field not in offer:
                 return f"Missing required offer field: {field}"
 
@@ -490,7 +495,7 @@ class PairingRouter:
                 "Error processing autopair offer for %s:%s: %s", platform, sender_id, e
             )
             LOGGER.error(traceback.format_exc())
-            return f"WebRTC processing error: {e}"
+            return "Transport pairing failed" if offer.get("transport") == "iroh" else f"WebRTC processing error: {e}"
 
         return await self._format_autopair_answer(
             answer,
@@ -1416,6 +1421,8 @@ class PairingRouter:
             },
             "session_id": response_session_id,
         }
+        if raw_answer.get("transport") == "iroh":
+            wrapped_payload["answer"] = {"transport": "iroh", "version": 1}
         for key in AUTOPAIR_ANSWER_METADATA_KEYS:
             value = raw_answer.get(key)
             if isinstance(value, str):

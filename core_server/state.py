@@ -52,6 +52,8 @@ class ServerState:
     telegram_user_service = None
     initialized_services_on_startup: bool = False
     service_manager = None
+    iroh_service = None
+    iroh_transport_lock: Optional[asyncio.Lock] = None
     agent_process: Optional[Any] = None
     ai_agent_start_task: Optional[asyncio.Task] = None
     _main_loop: Optional[asyncio.AbstractEventLoop] = None
