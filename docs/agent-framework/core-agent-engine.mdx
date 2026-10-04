@@ -5,7 +5,7 @@ description: "In-depth engineering reference for AutoYou's root agent runtime, L
 
 # Core Agent Engine Architecture
 
-The core agent engine located in [`autoyou_agents/`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents) orchestrates all conversational turns, tool dispatches, model adaptations, and dynamic specialist subagents across AutoYou Server.
+The core agent engine located in [`autoyou_agents/`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents) orchestrates all conversational turns, tool dispatches, model adaptations, and dynamic specialist subagents across AutoYou Server.
 
 Rather than relying on high-level generic frameworks that fail on edge devices, AutoYou implements an asynchronous, fault-tolerant runtime designed specifically for local LLMs, edge GPUs, and on-device neural engines.
 
@@ -39,7 +39,7 @@ graph TD
 
 ## 1. Package Initialization: `autoyou_agents/__init__.py`
 
-The entrypoint file [`autoyou_agents/__init__.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/__init__.py) enforces a strict **lightweight import contract**.
+The entrypoint file [`autoyou_agents/__init__.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/__init__.py) enforces a strict **lightweight import contract**.
 
 ### Lightweight Import Contract
 
@@ -92,7 +92,7 @@ def __getattr__(name: str) -> Any:
 
 ## 2. Root Orchestrator: `autoyou_agents/agent.py`
 
-[`autoyou_agents/agent.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/agent.py) is the core operational engine of the AutoYou Agent Development Kit (ADK). Spanning nearly 5,000 lines of hardened Python, it resolves several systemic failure modes common in local open-weights LLMs.
+[`autoyou_agents/agent.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/agent.py) is the core operational engine of the AutoYou Agent Development Kit (ADK). Spanning nearly 5,000 lines of hardened Python, it resolves several systemic failure modes common in local open-weights LLMs.
 
 ### The LiteLLM Monkey-Patch (`_patched_acompletion`)
 
@@ -161,7 +161,7 @@ When running ultra-compact models (e.g. 3B parameters), presenting 40+ tool sche
 
 ## 3. Harness Progress Filtering: `autoyou_agents/agent_harness.py`
 
-[`autoyou_agents/agent_harness.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/agent_harness.py) decouples provider-specific orchestration quirks from individual agent definitions.
+[`autoyou_agents/agent_harness.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/agent_harness.py) decouples provider-specific orchestration quirks from individual agent definitions.
 
 ### The Progress-Only Anti-Pattern
 
@@ -233,7 +233,7 @@ When a progress-only line is detected, `nonfinal_tool_response()` replaces it wi
 
 ## 4. On-Device macOS Engine: `autoyou_agents/apple_intelligence.py`
 
-[`autoyou_agents/apple_intelligence.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/apple_intelligence.py) integrates Apple's on-device foundation models via Apple Silicon Neural Engine while allowing AutoYou to retain complete ownership of tool execution.
+[`autoyou_agents/apple_intelligence.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/apple_intelligence.py) integrates Apple's on-device foundation models via Apple Silicon Neural Engine while allowing AutoYou to retain complete ownership of tool execution.
 
 ### Guided Generation Schema Adaptation
 
@@ -279,7 +279,7 @@ When Apple Intelligence returns arguments for a tool call:
 
 ## 5. Sanitization & Normalization: `autoyou_agents/litellm_ollama_adapter.py`
 
-[`autoyou_agents/litellm_ollama_adapter.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/litellm_ollama_adapter.py) is a 2,260-line filter pipeline running between LiteLLM and local model runtimes.
+[`autoyou_agents/litellm_ollama_adapter.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/litellm_ollama_adapter.py) is a 2,260-line filter pipeline running between LiteLLM and local model runtimes.
 
 ### Stripping Reasoning Artifacts
 
@@ -330,7 +330,7 @@ def repair_missing_tool_results(messages: list[dict]) -> list[dict]:
 
 ## 6. Dynamic Provider Routing: `autoyou_agents/model_config.py`
 
-[`autoyou_agents/model_config.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/model_config.py) manages model profiles, memory footprints, and provider routing.
+[`autoyou_agents/model_config.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/model_config.py) manages model profiles, memory footprints, and provider routing.
 
 ### Supported AI Providers
 
@@ -360,7 +360,7 @@ Context windows (`num_ctx`) are calculated dynamically via `shared.ollama_contex
 
 ## 7. Modular System Instructions: `autoyou_agents/prompt.py`
 
-[`autoyou_agents/prompt.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/prompt.py) defines the foundational persona, constraints, and instructions for the root agent.
+[`autoyou_agents/prompt.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/prompt.py) defines the foundational persona, constraints, and instructions for the root agent.
 
 ### Composable Prompt Sections
 
@@ -382,7 +382,7 @@ The prompt enforces strict software engineering guarantees:
 
 ## 8. Server Integration & Security: `autoyou_agents/README.md`
 
-[`autoyou_agents/README.md`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/README.md) defines the boundary contracts between the agent layer and the rest of AutoYou Server.
+[`autoyou_agents/README.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/README.md) defines the boundary contracts between the agent layer and the rest of AutoYou Server.
 
 ### Full-Server Architecture Boundaries
 

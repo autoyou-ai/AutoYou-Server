@@ -267,8 +267,7 @@ def test_presence_matches_the_shared_contract():
     """The participant row is the product's central claim made checkable.
 
     A client renders these fields directly to everyone in the call, so the
-    reference and the corpus the clients read must not drift. See
-    ``clients/ios/Packages/AutoYouPeerLink/Tests/.../CallPresenceTests.swift``.
+    reference and the corpus the clients read must not drift.
     """
     import json
     import pathlib

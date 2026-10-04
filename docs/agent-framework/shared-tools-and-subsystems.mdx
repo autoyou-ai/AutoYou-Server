@@ -5,7 +5,7 @@ description: "Architecture and design of AutoYou's shared agent utilities: dynam
 
 # Shared Tools & Subsystems Architecture
 
-The directory [`autoyou_agents/shared_tools/`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools) provides reusable infrastructure, state registries, sandboxing harnesses, and hardware-control bridges shared across all 40+ built-in and dynamic agents.
+The directory [`autoyou_agents/shared_tools/`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools) provides reusable infrastructure, state registries, sandboxing harnesses, and hardware-control bridges shared across all 40+ built-in and dynamic agents.
 
 ```mermaid
 graph TD
@@ -39,7 +39,7 @@ graph TD
 
 ## 1. Dynamic Agent Registry: `agent_install_registry.py`
 
-[`agent_install_registry.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/agent_install_registry.py) manages the persistent installation state of all subagents in the system.
+[`agent_install_registry.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/agent_install_registry.py) manages the persistent installation state of all subagents in the system.
 
 ### Persistent State File: `agent_install_registry.json`
 
@@ -90,7 +90,7 @@ When an agent is uninstalled:
 
 ## 2. Sandbox Testing: `agent_workbench.py`
 
-[`agent_workbench.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/agent_workbench.py) provides an isolated execution harness for developers and operators to test agents and tool definitions without launching the full web server.
+[`agent_workbench.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/agent_workbench.py) provides an isolated execution harness for developers and operators to test agents and tool definitions without launching the full web server.
 
 ### Features
 
@@ -126,7 +126,7 @@ async def test_custom_agent():
 
 ## 3. Semantic Memory Interface: `memory_tool.py`
 
-[`memory_tool.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/memory_tool.py) bridges the root agent and specialist agents with persistent memory systems.
+[`memory_tool.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/memory_tool.py) bridges the root agent and specialist agents with persistent memory systems.
 
 ### Dual-Tier Memory Backing
 
@@ -168,7 +168,7 @@ async def remember_long_term_memory(fact: str, category: str = "general") -> dic
 
 ## 4. Real-Time Temporal Grounding: `datetime_tool.py`
 
-[`datetime_tool.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/datetime_tool.py) injects real-time temporal grounding into model context.
+[`datetime_tool.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/datetime_tool.py) injects real-time temporal grounding into model context.
 
 ### The Temporal Hallucination Problem
 
@@ -206,7 +206,7 @@ def get_current_datetime(timezone_name: str = "UTC") -> dict:
 
 ## 5. Multi-Agent Delegation: `coding_handoff.py`
 
-[`coding_handoff.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/coding_handoff.py) manages structured delegation protocols between orchestrator agents and implementation specialists (`coding_agent`, `files_agent`, `cli_agent`).
+[`coding_handoff.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/coding_handoff.py) manages structured delegation protocols between orchestrator agents and implementation specialists (`coding_agent`, `files_agent`, `cli_agent`).
 
 ### Handoff Protocol Flow
 
@@ -237,10 +237,10 @@ The handoff package encapsulates:
 ## 6. Desktop UI Automation Suite
 
 The desktop automation suite consists of:
-- [`desktop_app_control.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/desktop_app_control.py)
-- [`desktop_asset_store.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/desktop_asset_store.py)
-- [`desktop_asset_schema.json`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/desktop_asset_schema.json)
-- [`desktop_app_agent_shortcuts.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/desktop_app_agent_shortcuts.py)
+- [`desktop_app_control.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_app_control.py)
+- [`desktop_asset_store.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_asset_store.py)
+- [`desktop_asset_schema.json`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_asset_schema.json)
+- [`desktop_app_agent_shortcuts.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_app_agent_shortcuts.py)
 
 ### Multi-Modal Desktop Control
 
@@ -265,7 +265,7 @@ Rather than relying purely on brittle screen pixel coordinates:
 
 ## 7. Web Scaffolding & Security Gate: `website_scaffold.py`
 
-[`website_scaffold.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/website_scaffold.py) generates single-page browser frontends for agents.
+[`website_scaffold.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/website_scaffold.py) generates single-page browser frontends for agents.
 
 ### Automatic Injection of the Fail-Closed Security Gate
 
@@ -290,7 +290,7 @@ When an agent front-end is generated or hosted:
 
 ## 8. Sandboxed Process Environment: `_subprocess_env.py`
 
-[`_subprocess_env.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/autoyou_agents/shared_tools/_subprocess_env.py) provides safe process launching primitives:
+[`_subprocess_env.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/_subprocess_env.py) provides safe process launching primitives:
 - Strips production secrets, keystore credentials, and master encryption keys from the spawned process environment.
 - Enforces execution timeouts to prevent hanging subprocesses from locking up worker threads.
 - Redirects stderr and stdout to structured rotating log files for post-mortem analysis by the self-improvement loop.

@@ -5,7 +5,7 @@ description: "Architectural guide to AutoYou's vendored dependency isolation, Co
 
 # Vendor Integrations & Memory Subsystems
 
-AutoYou Server maintains a strict architectural separation between core server code and heavy external AI subsystems located in [`AutoYou-Server/vendor/`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/vendor).
+AutoYou Server maintains a strict architectural separation between core server code and heavy external AI subsystems located in [`AutoYou-Server/vendor/`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/vendor).
 
 Rather than bloating core runtime dependencies with multi-gigabyte vector databases or neural speech packages, external capabilities are decoupled through **vendored dependency boundaries**, pinned commit hashes, and isolated requirements bundles.
 
@@ -47,11 +47,11 @@ AutoYou's vendoring design enforces four core principles:
 
 ## 2. Cognee Semantic Memory (`vendor/cognee`)
 
-[`vendor/cognee`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/vendor/cognee) provides AutoYou with a high-dimensional vector memory graph for long-term associative memory across user sessions.
+[`vendor/cognee`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/vendor/cognee) provides AutoYou with a high-dimensional vector memory graph for long-term associative memory across user sessions.
 
 ### Upstream Pinning & Setup
 
-As detailed in [`vendor/INSTRUCTIONS.md`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/vendor/INSTRUCTIONS.md), Cognee is pinned to commit `1913271821c84cec1630dd5b15ceb17dee8ace55`:
+As detailed in [`vendor/INSTRUCTIONS.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/vendor/INSTRUCTIONS.md), Cognee is pinned to commit `1913271821c84cec1630dd5b15ceb17dee8ace55`:
 
 ```powershell
 # Clone exact upstream revision
@@ -64,7 +64,7 @@ python -m pip install -r requirements/cognee.txt
 
 ### Integration Bridge: `shared/cognee_memory.py`
 
-AutoYou interfaces with Cognee via [`shared/cognee_memory.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/shared/cognee_memory.py) through the `CogneeMemoryService` class.
+AutoYou interfaces with Cognee via [`shared/cognee_memory.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/shared/cognee_memory.py) through the `CogneeMemoryService` class.
 
 #### Loopback Isolation & Network Security
 By default, AutoYou refuses connections to remote Cognee instances to prevent sensitive user memories from leaking across untrusted networks:
@@ -126,7 +126,7 @@ If `AUTOYOU_COGNEE_MEMORY_ENABLED=false` or if the Cognee dependency bundle is n
 
 ## 3. EmotiVoice Neural Speech (`vendor/emotivoice`)
 
-[`vendor/emotivoice`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/vendor/emotivoice) provides on-device neural Text-to-Speech (TTS) and voice cloning for `voice_training_agent` and `audio_agent`.
+[`vendor/emotivoice`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/vendor/emotivoice) provides on-device neural Text-to-Speech (TTS) and voice cloning for `voice_training_agent` and `audio_agent`.
 
 ### In-Tree Architecture
 
@@ -138,7 +138,7 @@ Unlike Cognee, EmotiVoice is maintained as a focused **in-tree inference subset*
 
 ### Integration Bridge: `shared/emotivoice_tts.py`
 
-The bridge [`shared/emotivoice_tts.py`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/shared/emotivoice_tts.py) wraps EmotiVoice inference with hardware-specific optimizations:
+The bridge [`shared/emotivoice_tts.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/shared/emotivoice_tts.py) wraps EmotiVoice inference with hardware-specific optimizations:
 
 #### Chunking for SimBERT Position Limits
 `simbert-base-chinese` supports a maximum of 512 position embeddings. Generating speech for long agent replies without chunking causes a PyTorch tensor mismatch crash. 
@@ -213,8 +213,8 @@ flowchart TD
 4. **Legal & SBOM Compliance**:
    - Verify that the upstream license is compatible with AutoYou's Source-Available License (e.g., Apache-2.0, MIT, BSD-3-Clause).
    - Add attribution, copyright notices, and license text to:
-     - [`docs/legal/third-party-attributions.md`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/docs/legal/third-party-attributions.md)
-     - [`docs/legal/optional-integrations.md`](file:///c:/Users/You/Projects/AutoYou/AutoYou-Server/docs/legal/optional-integrations.md)
+     - [`docs/legal/third-party-attributions.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/docs/legal/third-party-attributions.md)
+     - [`docs/legal/optional-integrations.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/docs/legal/optional-integrations.md)
 
 5. **Hermetic Test Verification**:
    - Write pytest tests under `tests/server/` or `tests/agents/`.

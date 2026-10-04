@@ -53,8 +53,7 @@ def _extra_routes(app, agent_name):
     @app.post("/api/game/publish/{game_id}")
     async def publish_game(request: Request, game_id: str):
         auth = _smc._describe_chat_auth_state(request, agent_name)
-        server = _smc._runtime_server()
-        if not auth.get("authenticated") or (auth.get("auth_mode") == "open" and not server._is_logged_in(request)):
+        if not auth.get("authenticated"):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         if re.fullmatch(r"[a-z0-9-]{1,64}", game_id) is None:
             return JSONResponse({"success": False, "error": "Use a short lowercase game name"}, status_code=400)

@@ -10,7 +10,7 @@ aiortc_turn - make aiortc's single TURN choice a usable one.
 aiortc (1.14.0) builds its ICE transport from ``connection_kwargs()``, which
 keeps the FIRST STUN URI and the FIRST usable ``turn:``/``turns:`` URI across
 every RTCIceServer and silently drops the rest. Browsers and libwebrtc try all
-of them. Every TURN issuer AutoYou talks to (autoyou-core cred-issuer, the
+of them. Every TURN issuer AutoYou talks to (standard credential issuers, the
 provider prober, Twilio, Metered) lists UDP first, so a Python peer on a
 network that blocks outbound UDP only ever tries the UDP relay and never the
 TCP/TLS one that would have worked.
