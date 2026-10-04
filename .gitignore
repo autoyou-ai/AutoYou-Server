@@ -108,23 +108,14 @@ test.*.wav
 # ------------------------------------------------------------------------------
 # 7. Subagent Runtime Workspaces & Calibrated Assets
 # ------------------------------------------------------------------------------
-/win_security_agent/network.sqlite3
-/autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
-/mac_security_agent/network.sqlite3
-/autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
-/audio_agent/library_settings.json
-shared/earnings_agent/pending_ad_credits.json
-shared/voice_training/
-voice_training_storage.json
-autoyou_agents/ionos_agent/ionos_agent/
-autoyou_agents/ionos_cloudflare_agent/ionos_cloudflare_agent/
-autoyou_agents/mail_agent/mail_agent/
+autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
+autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
+autoyou_agents/audio_agent/library_settings.json
 autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 autoyou_agents/data_collector_agent/data_collector_agent/
 autoyou_agents/persona_agent/persona_agent/*.md
 autoyou_agents/media_generation_agent/config/video.json
-autoyou_agents/robinhood_agent/robinhood/runtime_state.json
-autoyou_agents/robinhood_agent/robinhood/instruments_cache.json
+
 
 # User-calibrated desktop app data is never committed or shipped.
 # Keep the generic manifest templates and setup prompts tracked.
