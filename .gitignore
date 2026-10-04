@@ -126,6 +126,12 @@ autoyou_agents/media_generation_agent/config/video.json
 !/autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
 !/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
 
+
+shared/voice_training/recordings/
+shared/voice_training/models/emotivoice/
+shared/audio_agent/library_settings.json
+shared/earnings_agents/pending_ad_credits.json
+shared/voice_training/transcripts.json
 # ------------------------------------------------------------------------------
 # 8. Server Build & Native Packaging Artifacts
 # ------------------------------------------------------------------------------
