@@ -185,7 +185,7 @@ Create the finalized Lite portable archive and Inno Setup installer:
 .\servers\windows\package-lite-release.ps1 `
   -Clean `
   -IncludeInstaller `
-  -InnoSetupCompiler "C:\Users\You\AppData\Local\Programs\Antigravity IDE\resources\app\node_modules\innosetup\bin\ISCC.exe"
+  -InnoSetupCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
 This produces an Inno Setup `.exe` installer and a `.zip` archive under
