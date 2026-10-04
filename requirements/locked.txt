@@ -193,9 +193,9 @@ auto-browser-langchain==1.4.2 \
     --hash=sha256:04404124c3f0f63052eb3cfa72b944ae3d8e9fc4cf93a0b02c5a2de0a5b6315e \
     --hash=sha256:2197da00ef57b821ff8b8abbb1a02e6115d889c667d18cba509093903ea55824
     # via -r requirements/internet.txt
-auto-browser-mcp==1.4.2 \
-    --hash=sha256:1a40ac88419474c9a8871568bef9123d93fa3584671abd405da79ff871ba68b3 \
-    --hash=sha256:d4fe8380c48e29a0fd7ea79ca2231d131e217ac080371b0a10b0661f85f893d8
+auto-browser-mcp==1.8.1 \
+    --hash=sha256:34e864c7be33b4a9bb68b6985945427fd35890e40ed0297a7af32f1070e87a37 \
+    --hash=sha256:4df7f3d4d91ff6bb59b3b56c7758964989f0e8d7aa17bf8de93b348a0cc908df
     # via -r requirements/internet.txt
 av==16.1.0 \
     --hash=sha256:05ad70933ac3b8ef896a820ea64b33b6cca91a5fac5259cb9ba7fa010435be15 \
