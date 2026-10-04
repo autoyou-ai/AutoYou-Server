@@ -8311,6 +8311,9 @@ def _remote_browser_credential_denied() -> JSONResponse:
 def _remote_browser_config_change_error(request: Request, payload: Any) -> Optional[JSONResponse]:
     if not isinstance(payload, dict) or not _request_via_remote_browser_proxy(request):
         return None
+    permission_error = _permission_config_change_error(request, payload)
+    if permission_error:
+        return permission_error
     if "cloud" in payload:
         return JSONResponse(status_code=403, content={"success": False, "error": REMOTE_BROWSER_CLOUD_CONFIG_DENIAL})
     for section, keys in _REMOTE_BROWSER_PROTECTED_CONFIG.items():
@@ -9391,6 +9394,18 @@ def _build_recording_paths_payload(cfg: Optional[Dict[str, Any]] = None) -> Dict
     video_cfg = _get_video_call_config(cfg=cfg)
     video_configured = str(video_cfg.get("recording_dir") or "").strip()
     safety_configured = str(video_cfg.get("silent_recording_dir") or "").strip()
+    current_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    try:
+        chat_memory_path = str(_resolve_ai_agent_memory_db_path())
+    except Exception:
+        chat_memory_path = ""
+    try:
+        from autoyou_agents.location_agent.store import _database_path as _location_database_path
+
+        location_database_path = str(_location_database_path())
+    except Exception:
+        location_database_path = ""
+    ai_agent_cfg = current_cfg.get("ai_agent") if isinstance(current_cfg.get("ai_agent"), dict) else {}
     return {
         "video_recording": {
             "configured_dir": video_configured,
@@ -9405,7 +9420,232 @@ def _build_recording_paths_payload(cfg: Optional[Dict[str, Any]] = None) -> Dict
             "using_custom_dir": bool(safety_configured),
         },
         "voice_training": _voice_training_recording_paths_payload(),
+        "location_recording": {
+            "database_path": location_database_path,
+            "enabled": _get_location_recording_enabled(cfg=cfg),
+        },
+        "chat_memory": {
+            "database_path": chat_memory_path,
+            "enabled": bool(ai_agent_cfg.get("record_messages_in_database", True)),
+        },
     }
+
+
+_ADMIN_PERMISSION_BOOLEAN_FIELDS = frozenset({
+    "video_call_enabled", "audio_call_enabled", "computer_microphone", "computer_sound",
+    "audio_playback_enabled",
+    "ai_audio_replies_enabled", "autoyou_agents_disabled", "voice_call_recording_enabled",
+    "background_mode_enabled", "safety_recording_enabled", "location_recording_enabled",
+    "wuift_enabled", "video_call_recording_enabled", "webcam_sharing_enabled",
+    "screen_capture_enabled", "screen_send_enabled", "screen_source_enabled",
+    "api_video_input_enabled", "video_file_playback_enabled",
+    "remote_desktop_control_enabled", "game_mode_enabled", "chat_memory_enabled",
+    "ai_agent_lan_access_enabled", "admin_frontend_enabled",
+})
+_ADMIN_PERMISSION_FIELDS = _ADMIN_PERMISSION_BOOLEAN_FIELDS | {"remote_access_role"}
+
+
+def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Return the privacy and access settings without exposing the full config."""
+    current = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    video_cfg = _get_video_call_config(cfg=current)
+    remote_cfg = video_cfg.get("remote_desktop") if isinstance(video_cfg.get("remote_desktop"), dict) else {}
+    audio_sources = _get_video_audio_sources(cfg=current)
+    outbound_sources = _get_video_outbound_sources(cfg=current)
+    speech = current.get("speech") if isinstance(current.get("speech"), dict) else {}
+    voice_training = speech.get("voice_training") if isinstance(speech.get("voice_training"), dict) else {}
+    ai_agent = current.get("ai_agent") if isinstance(current.get("ai_agent"), dict) else {}
+    autoyou_page = current.get("autoyou_page") if isinstance(current.get("autoyou_page"), dict) else {}
+    frontends = current.get("agent_frontends") if isinstance(current.get("agent_frontends"), dict) else {}
+    admin_frontend = frontends.get("admin_agent", False)
+    if isinstance(admin_frontend, dict):
+        admin_frontend = admin_frontend.get("enabled", False)
+    paths = _build_recording_paths_payload(current)
+    return {
+        "video_call_enabled": bool(video_cfg.get("enabled", True)),
+        "audio_call_enabled": bool(video_cfg.get("audio_enabled", True)),
+        "audio_playback_enabled": _get_audio_playback_enabled(cfg=current),
+        "computer_microphone": "microphone" in audio_sources,
+        "computer_sound": "speaker_loopback" in audio_sources,
+        "ai_audio_replies_enabled": bool(video_cfg.get("ai_audio_replies_enabled", True)),
+        "autoyou_agents_disabled": bool(video_cfg.get("disable_autoyou_agents", False)),
+        "voice_call_recording_enabled": bool(voice_training.get("capture_enabled", False)),
+        "background_mode_enabled": bool(video_cfg.get("background_mode_enabled", False)),
+        "safety_recording_enabled": bool(video_cfg.get("silent_recording_enabled", False)),
+        "location_recording_enabled": bool(video_cfg.get("location_recording_enabled", False)),
+        "wuift_enabled": bool(video_cfg.get("wuift_enabled", True)),
+        "video_call_recording_enabled": bool(video_cfg.get("record_my_video", False)),
+        "webcam_sharing_enabled": "camera" in outbound_sources,
+        "screen_capture_enabled": bool(remote_cfg.get("enabled", True)),
+        "screen_send_enabled": bool(remote_cfg.get("send_screen", True)),
+        "screen_source_enabled": "remote_desktop" in outbound_sources,
+        "api_video_input_enabled": "api" in outbound_sources,
+        "video_file_playback_enabled": "video_file" in outbound_sources,
+        "remote_desktop_control_enabled": bool(remote_cfg.get("control_enabled", False)),
+        "game_mode_enabled": bool(remote_cfg.get("game_enabled", False)),
+        "chat_memory_enabled": bool(ai_agent.get("record_messages_in_database", True)),
+        "ai_agent_lan_access_enabled": bool(ai_agent.get("lan_access_enabled", False)),
+        "admin_frontend_enabled": bool(admin_frontend),
+        "remote_access_role": normalize_remote_access_role(autoyou_page.get("remote_access_role", "viewer")),
+        "paths": {
+            "safety_recording": paths["safety_recording"]["resolved_dir"],
+            "video_recording": paths["video_recording"]["resolved_dir"],
+            "voice_training": paths["voice_training"]["active_dir"],
+            "location_recording": paths["location_recording"]["database_path"],
+            "chat_memory": paths["chat_memory"]["database_path"],
+        },
+    }
+
+
+async def _save_admin_permissions(changes: Any) -> Dict[str, Any]:
+    """Validate and persist one permissions change from the loopback admin UI."""
+    if not isinstance(changes, dict) or not changes or set(changes) - _ADMIN_PERMISSION_FIELDS:
+        raise ValueError("Choose valid permissions settings")
+    if any(type(changes[key]) is not bool for key in changes if key in _ADMIN_PERMISSION_BOOLEAN_FIELDS):
+        raise ValueError("Permission settings must be true or false")
+    if "remote_access_role" in changes and changes["remote_access_role"] not in {"viewer", "editor", "admin"}:
+        raise ValueError("Choose viewer, editor, or admin access")
+
+    current = STATE.config or {}
+    previous_audio_playback_enabled = _get_audio_playback_enabled(cfg=current)
+    video_cfg = _get_video_call_config(cfg=current)
+    video_patch: Dict[str, Any] = {}
+    speech_patch: Dict[str, Any] = {}
+    ai_patch: Dict[str, Any] = {}
+    page_patch: Dict[str, Any] = {}
+    frontend_patch: Dict[str, Any] = {}
+
+    direct_video_fields = {
+        "video_call_enabled": "enabled",
+        "audio_call_enabled": "audio_enabled",
+        "ai_audio_replies_enabled": "ai_audio_replies_enabled",
+        "autoyou_agents_disabled": "disable_autoyou_agents",
+        "background_mode_enabled": "background_mode_enabled",
+        "safety_recording_enabled": "silent_recording_enabled",
+        "location_recording_enabled": "location_recording_enabled",
+        "wuift_enabled": "wuift_enabled",
+        "video_call_recording_enabled": "record_my_video",
+    }
+    for field, config_field in direct_video_fields.items():
+        if field in changes:
+            video_patch[config_field] = changes[field]
+
+    audio_sources = list(_get_video_audio_sources(cfg=current))
+    for field, source in (("computer_microphone", "microphone"), ("computer_sound", "speaker_loopback")):
+        if field in changes:
+            if changes[field] and source not in audio_sources:
+                audio_sources.append(source)
+            elif not changes[field]:
+                audio_sources = [item for item in audio_sources if item != source]
+    if any(field in changes for field in ("computer_microphone", "computer_sound")):
+        video_patch["audio_sources"] = audio_sources
+        video_patch["capture_audio"] = bool(audio_sources)
+
+    outbound_sources = list(_get_video_outbound_sources(cfg=current))
+    for field, source in (
+        ("screen_source_enabled", "remote_desktop"),
+        ("webcam_sharing_enabled", "camera"),
+        ("api_video_input_enabled", "api"),
+        ("video_file_playback_enabled", "video_file"),
+    ):
+        if field in changes:
+            if changes[field] and source not in outbound_sources:
+                outbound_sources.append(source)
+            elif not changes[field]:
+                outbound_sources = [item for item in outbound_sources if item != source]
+    if any(field in changes for field in (
+        "screen_source_enabled", "webcam_sharing_enabled", "api_video_input_enabled", "video_file_playback_enabled",
+    )):
+        video_patch["outbound_sources"] = outbound_sources
+        video_patch["outbound_source"] = outbound_sources[0] if outbound_sources else "remote_desktop"
+
+    remote_patch: Dict[str, Any] = {}
+    if "screen_capture_enabled" in changes:
+        remote_patch["enabled"] = changes["screen_capture_enabled"]
+    if "screen_send_enabled" in changes:
+        remote_patch["send_screen"] = changes["screen_send_enabled"]
+    if "remote_desktop_control_enabled" in changes:
+        remote_patch["control_enabled"] = changes["remote_desktop_control_enabled"]
+        if not changes["remote_desktop_control_enabled"]:
+            remote_patch["game_enabled"] = False
+    if "game_mode_enabled" in changes:
+        current_control = bool(remote_patch.get("control_enabled", (video_cfg.get("remote_desktop") or {}).get("control_enabled", False)))
+        if changes["game_mode_enabled"] and not current_control:
+            raise ValueError("Game mode requires Remote Desktop control")
+        remote_patch["game_enabled"] = changes["game_mode_enabled"]
+    if remote_patch:
+        video_patch["remote_desktop"] = remote_patch
+
+    if "voice_call_recording_enabled" in changes:
+        speech_patch["voice_training"] = {"capture_enabled": changes["voice_call_recording_enabled"]}
+    if "chat_memory_enabled" in changes:
+        ai_patch["record_messages_in_database"] = changes["chat_memory_enabled"]
+    if "ai_agent_lan_access_enabled" in changes:
+        ai_patch["lan_access_enabled"] = changes["ai_agent_lan_access_enabled"]
+    if "remote_access_role" in changes:
+        page_patch["remote_access_role"] = changes["remote_access_role"]
+    if "admin_frontend_enabled" in changes:
+        frontend_patch["enabled"] = changes["admin_frontend_enabled"]
+
+    patch: Dict[str, Any] = {}
+    if video_patch:
+        patch["video_call"] = video_patch
+    if speech_patch:
+        patch["speech"] = speech_patch
+    if ai_patch:
+        patch["ai_agent"] = ai_patch
+    if page_patch:
+        patch["autoyou_page"] = page_patch
+    if frontend_patch:
+        patch["admin_frontend"] = frontend_patch
+    if patch:
+        await _apply_admin_ui_config_update(patch)
+    if "audio_playback_enabled" in changes:
+        enabled = changes["audio_playback_enabled"]
+        cfg = _apply_audio_playback_enabled(enabled)
+        if WEBRTC is not None and previous_audio_playback_enabled != enabled:
+            await WEBRTC.apply_video_call_settings(force_audio_rewire=True)
+    return _admin_permissions_snapshot(STATE.config or {})
+
+
+def _permission_config_change_error(request: Request, payload: Any) -> Optional[JSONResponse]:
+    """Permission and capture controls are editable only from this computer."""
+    if not isinstance(payload, dict):
+        return None
+    video_patch = payload.get("video_call")
+    remote_patch = video_patch.get("remote_desktop") if isinstance(video_patch, dict) else None
+    speech_patch = payload.get("speech")
+    ai_patch = payload.get("ai_agent")
+    page_patch = payload.get("autoyou_page")
+    frontend_patch = payload.get("admin_frontend")
+    agent_frontends_patch = payload.get("agent_frontends")
+    video_permission_fields = {
+        "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
+        "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+        "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
+        "outbound_sources", "outbound_source",
+    }
+    touches_permissions = (
+        (isinstance(video_patch, dict)
+         and (bool(video_permission_fields.intersection(video_patch))
+              or (isinstance(remote_patch, dict)
+                  and bool({"enabled", "send_screen", "control_enabled", "game_enabled"}.intersection(remote_patch)))))
+        or (isinstance(speech_patch, dict) and isinstance(speech_patch.get("voice_training"), dict)
+            and "capture_enabled" in speech_patch["voice_training"])
+        or (isinstance(ai_patch, dict) and bool({"record_messages_in_database", "lan_access_enabled"}.intersection(ai_patch)))
+        or (isinstance(page_patch, dict) and "remote_access_role" in page_patch)
+        or isinstance(frontend_patch, dict)
+        or (isinstance(agent_frontends_patch, dict) and "admin_agent" in agent_frontends_patch)
+    )
+    if not touches_permissions:
+        return None
+    peer = request.client.host if request.client else None
+    if _is_loopback_client_host(peer) and not _request_via_remote_browser_proxy(request):
+        return None
+    return JSONResponse(status_code=403, content={
+        "success": False,
+        "error": "Permissions and media capture settings can only be changed by an admin connected to this computer on localhost.",
+    })
 
 def _get_silent_recording_batch_seconds(
     *,
@@ -13233,7 +13473,12 @@ def _apply_admin_ui_config_patch(
 
     speech_payload = payload.get("speech")
     if isinstance(speech_payload, dict):
-        cfg["speech"] = normalize_speech_config(speech_payload)
+        normalized_speech = normalize_speech_config(speech_payload)
+        voice_training_payload = speech_payload.get("voice_training")
+        if not (isinstance(voice_training_payload, dict) and "capture_enabled" in voice_training_payload):
+            existing_speech = normalize_speech_config(cfg.get("speech"))
+            normalized_speech["voice_training"]["capture_enabled"] = existing_speech["voice_training"]["capture_enabled"]
+        cfg["speech"] = normalized_speech
         touched_sections.add("speech")
 
     security_payload = payload.get("security")

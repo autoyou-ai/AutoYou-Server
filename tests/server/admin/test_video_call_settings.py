@@ -1776,6 +1776,47 @@ def test_recording_default_paths_use_runtime_data_root(monkeypatch, tmp_path):
     assert paths["video_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "video-recordings")
     assert paths["safety_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "safety-recordings")
     assert paths["voice_training"]["default_dir"] == str(tmp_path / "AutoYou" / "voice_training")
+    assert paths["location_recording"]["database_path"] == str(tmp_path / "location_agent" / "locations.sqlite3")
+    assert not (tmp_path / "location_agent" / "locations.sqlite3").exists()
+
+
+def test_saving_speech_settings_preserves_the_permissions_capture_toggle():
+    config = server._default_config()
+    config["speech"]["voice_training"]["capture_enabled"] = True
+
+    updated, touched, _theme = server._apply_admin_ui_config_patch(config, {
+        "speech": {"stt": {"model": "tiny.en"}},
+    })
+
+    assert "speech" in touched
+    assert updated["speech"]["voice_training"]["capture_enabled"] is True
+
+
+def test_admin_ui_groups_capture_toggles_under_local_permissions():
+    from pathlib import Path
+
+    script = (Path(server.__file__).resolve().parent / "assets" / "admin-ui.js").read_text(encoding="utf-8")
+    permissions = script.split("function renderPermissionsScreen()", 1)[1].split("function renderVideoScreen()", 1)[0]
+    video_settings = script.split("function renderVideoScreen()", 1)[1].split("function renderSpeechRecognitionBody()", 1)[0]
+
+    assert 'id: "permissions", label: "Permissions"' in script
+    for control in (
+        'checkbox("videoCall.enabled"', 'checkbox("videoCall.audio_enabled"',
+        'checkbox("videoCall.audio_microphone"', 'checkbox("videoCall.record_my_video"',
+        'checkbox("videoCall.remote_desktop.send_screen"', 'checkbox("videoCall.outbound_remote_desktop"',
+        'checkbox("speech.voice_training_capture_enabled"',
+        'checkbox("aiAgent.record_messages_in_database"',
+        'checkbox("page.admin_frontend_enabled"',
+    ):
+        assert control in permissions
+        assert control not in video_settings
+    assert '"/api/admin/permissions"' in script
+    assert "permissions_editable" in script
+    assert "location_recording.database_path" in permissions
+    assert 'checkbox("audioPlayback.enabled", "Allow audio file playback"' in permissions
+    assert 'audio_playback_enabled: "audioPlayback.enabled"' in script
+    messaging = script.split("function renderMessagingScreen()", 1)[1].split("function renderPermissionsScreen()", 1)[0]
+    assert "toggle-playback-enabled" not in messaging
 
 
 def test_webrtc_capabilities_reflect_custom_audio_and_camera_settings(monkeypatch):
@@ -2456,6 +2497,9 @@ def test_admin_audio_playback_toggle_forces_live_call_audio_rewire(monkeypatch):
             self.force_audio_rewire = force_audio_rewire
 
     class MockRequest:
+        client = SimpleNamespace(host="127.0.0.1")
+        headers = {}
+
         async def json(self):
             return {"enabled": True}
 
@@ -2730,7 +2774,7 @@ def test_admin_ui_greys_out_webcam_option_when_no_webcam_is_detected():
     # instead of leaving a dead pane configurable.
     assert "cameraDevices.probe_enabled" in script
     assert "noWebcamDetected" in script
-    assert "No webcam was found on this computer. Connect one, then select Refresh devices." in script
+    assert "Connect a webcam and select Refresh devices, or turn this off." in script
     assert "No webcam found." in script
     assert "the webcam pane stays hidden until a camera is connected" in script
     assert "Not checked - select Refresh devices" in script
