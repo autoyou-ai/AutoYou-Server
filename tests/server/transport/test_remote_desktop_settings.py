@@ -42,7 +42,16 @@ async def test_remote_desktop_settings_viewer_editor_and_admin(tmp_path, monkeyp
 
     read = await request()
     assert read["status_code"] == 200
-    assert json.loads(read["body"])["computer_sound"] is True
+    values = json.loads(read["body"])
+    assert values["computer_sound"] is True
+    assert values["role"] == "viewer"
+    assert "paths" not in values
+    assert "admin_frontend_enabled" not in values
+    assert "remote_access_role" not in values
+    assert set(values) == {
+        "computer_sound", "control_enabled", "game_enabled", "location_recording_enabled",
+        "voice_call_recording_enabled", "video_call_recording_enabled", "role",
+    }
     assert (await request("POST", {"computer_sound": False}))["status_code"] == 403
 
     cfg["autoyou_page"]["remote_access_role"] = "editor"
