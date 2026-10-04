@@ -417,11 +417,15 @@ def build_sbom(profile: dict[str, Any], components: list[dict[str, Any]], *, tim
         "version": 1,
         "metadata": {
             "timestamp": timestamp,
+            "properties": [
+                {"name": "autoyou:inventoryScope", "value": "manifest-and-manual-declarations"},
+                {"name": "autoyou:inventoryLimitations", "value": "Not a resolved environment or an inspected release artifact."},
+            ],
             "tools": [
                 {
                     "vendor": "AutoYou",
                     "name": "generate_release_legal_artifacts.py",
-                    "version": "1",
+                    "version": "2",
                 }
             ],
             "component": application_component,
@@ -439,6 +443,8 @@ def build_notice(profile: dict[str, Any], components: list[dict[str, Any]], *, t
         f"Release profile: {profile.get('releaseProfile', 'unspecified')}",
         f"Dependency profile: {profile.get('dependencyProfile', 'unspecified')}",
         f"Generated: {timestamp}",
+        "Inventory scope: Repository manifests and manual component declarations.",
+        "This inventory does not establish actual installed or bundled versions.",
         "",
         profile.get("description", ""),
         "",
@@ -527,6 +533,10 @@ def generate_artifacts(config: dict[str, Any], *, only_artifact: str | None = No
             f"Generated at: {timestamp}",
             "",
             "Run `python scripts/generate_release_legal_artifacts.py` to refresh these files before release packaging.",
+            "",
+            "These inventories are derived from repository manifests and manual component declarations.",
+            "They do not establish actual installed or bundled versions and do not certify security or license compliance.",
+            "Inspect each release artifact and retain a resolved inventory, component hashes, and its required license materials.",
             "",
         ]
         for item in summary["artifacts"]:

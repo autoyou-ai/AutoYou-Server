@@ -1860,9 +1860,8 @@ install_dependencies() {
     log "Installing packages from $(basename "$req_file")..."
     log "This may take several minutes - packages are being downloaded and compiled..."
 
-    # Pin the install to the audited (pip-audit-clean) lockfile versions so the
-    # packaged binary ships exactly what was security-audited in requirements/locked.txt
-    # rather than whatever the version ranges happen to resolve to. Set
+    # Constrain packages present in the shared lock. This does not enforce its
+    # hashes or cover every optional/build dependency; audit the resolved artifact. Set
     # AUTOYOU_IGNORE_LOCKFILE=1 to opt out.
     local pip_install_args=(-r "$req_file" --progress-bar on --no-color)
     local locked_constraints=""

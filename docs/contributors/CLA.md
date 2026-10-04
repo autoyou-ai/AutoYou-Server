@@ -1,123 +1,89 @@
-{/* Have counsel review this agreement before you rely on it. */}
-
 # AutoYou Contributor License Agreement
 
-Version 1.0 (September 29, 2026)
+Version 1.1 (October 3, 2026)
 
-This agreement is between you ("You") and OpenStorey LLC, a California limited
-liability company ("OpenStorey"). It applies to every contribution You submit to
-AutoYou Server and takes effect when You agree to it as described in section 9.
+This agreement is between you and OpenStorey LLC ("OpenStorey") for contributions
+you intentionally submit for inclusion in AutoYou Server. It does not apply to
+an independent project merely because that project interoperates with AutoYou.
 
-You keep the copyright in Your Contributions. This agreement gives OpenStorey
-the permissions it needs to use them, and it lets everyone who receives AutoYou
-Server use them under the repository [LICENSE](../../LICENSE).
+## 1. Contributions and ownership
 
-## 1. Definitions
+A "Contribution" is code, documentation, a test, an asset, or other original
+material you intentionally submit for inclusion, unless clearly marked
+"Not a Contribution". Identify separately any material owned by someone else.
 
-- "Contribution" means any code, documentation, test, asset, or other work You
-  intentionally submit to OpenStorey for inclusion in AutoYou Server, for
-  example by pull request, patch, or issue attachment, unless You mark it in
-  writing as "Not a Contribution".
-- "Work" means AutoYou Server and the materials OpenStorey distributes with it.
-- "Third-Party Material" means anything in a Contribution that You did not
-  create yourself.
+You keep copyright in your original work. This is a non-exclusive license,
+not a copyright assignment. You may use and license your own work elsewhere,
+subject to any rights of others in material incorporated into it.
 
-## 2. Copyright license
+## 2. Copyright grant
 
-You grant OpenStorey and the recipients of the Work a perpetual, worldwide,
-non-exclusive, no-charge, royalty-free, irrevocable copyright license to
-reproduce, prepare derivative works of, publicly display, publicly perform,
-sublicense, and distribute Your Contributions and derivative works of them, in
-source and object form. OpenStorey may do this under the repository
-[LICENSE](../../LICENSE) or under any other license terms it chooses, including
-for commercial, hosted, and managed offerings.
+You grant OpenStorey a perpetual, worldwide, non-exclusive, no-charge,
+royalty-free, irrevocable copyright license to reproduce, modify, prepare
+derivative works of, publicly display, publicly perform, sublicense, and
+distribute your Contributions in source and object form.
 
-You keep every right in Your Contributions that this agreement does not grant.
-This agreement does not assign Your copyright and does not make Your grant to
-OpenStorey exclusive, so You may use Your Contributions Yourself and license
-them to anyone else, in other projects or otherwise, under any terms You choose.
+This expressly permits commercial use and distribution under the AutoYou
+license or other terms chosen by OpenStorey, including a future open-source
+license. Recipients receive rights under the license under which OpenStorey
+distributes the relevant material; this agreement does not independently
+relicense the rest of AutoYou Server to them.
 
-**A different license for a new file.** A file that You wrote entirely, and
-that is new to the Work, may carry a license other than the repository
-[LICENSE](../../LICENSE) if all of these are true: the license is MIT,
-BSD-2-Clause, BSD-3-Clause, Apache-2.0, or ISC; a maintainer approved it in the
-linked issue before You wrote the file; and the file starts with an SPDX license
-identifier. The file is then licensed to everyone under that license, and
-OpenStorey keeps every permission in this section and in section 3. A change to
-an existing file stays under the license of that file. The repository does not
-accept copyleft, non-commercial, field-of-use, all-rights-reserved, or
-unlicensed files. [CONTRIBUTING.md](../../CONTRIBUTING.md) explains the process.
+A separately licensed original file accepted under [CONTRIBUTING.md](../../CONTRIBUTING.md)
+retains its stated license as well as this grant. Changes to existing files
+retain their applicable distribution license. You cannot grant rights in
+third-party material beyond those you are authorized to grant.
 
-## 3. Patent license
+## 3. Patent grant
 
-You grant OpenStorey and the recipients of the Work a perpetual, worldwide,
-non-exclusive, no-charge, royalty-free, irrevocable patent license to make, have
-made, use, offer to sell, sell, import, and otherwise transfer the Work. The
-license covers only patent claims You can license that are necessarily infringed
-by Your Contribution alone or by combining it with the Work.
+You grant OpenStorey and recipients of your Contributions a perpetual,
+worldwide, non-exclusive, no-charge, royalty-free patent license to make,
+have made, use, offer for sale, sell, import, and otherwise transfer your
+Contributions. It covers only claims you can license that are necessarily
+infringed by your Contribution alone or its combination with the version of
+AutoYou Server to which you submitted it.
 
-If any entity brings a patent claim, including a cross-claim or counterclaim,
-alleging that Your Contribution or the Work infringes a patent, the patent
-licenses this agreement grants to that entity for that Contribution or Work end
-on the date the claim is filed.
+If a recipient initiates patent litigation alleging that your Contribution or
+that combination infringes a patent, the patent grant to that recipient for
+that Contribution ends when the claim is filed.
 
-## 4. What You confirm
+## 4. Authority and provenance
 
-You confirm that:
+You confirm that you have authority to make these grants, including any
+necessary employer or other rights-holder permission. Identify third-party
+material, its source, and its license before submission. Do not submit secrets,
+unauthorized personal data, malicious code, or material you cannot license.
+Notify the maintainers if you discover a material error in these confirmations.
 
-1. each Contribution is Your original work, or You have the right to submit it
-   under this agreement;
-2. if Your employer or another party has rights in Your Contribution, You have
-   their permission to submit it, or they have signed a separate agreement with
-   OpenStorey;
-3. You identified any Third-Party Material in the pull request, with its source
-   and license, and that license is compatible with the repository
-   [LICENSE](../../LICENSE);
-4. the Contribution contains no secrets, credentials, personal data, or
-   malicious code; and
-5. You know of nothing that makes these statements untrue, and You will tell
-   OpenStorey if one becomes untrue.
+AI assistance must be disclosed as required by CONTRIBUTING.md. A responsible
+person must review, understand, and take responsibility for the submission.
+AI involvement does not establish ownership, originality, or license compatibility.
 
-## 5. AI-assisted contributions
+## 5. Review, payment, and warranties
 
-You may use AI tools to help prepare a Contribution if a person, You, reviews
-every line, understands it, and takes responsibility for it. You confirm that
-You disclosed the tools You used in the pull request, that Your use of them was
-permitted by their terms, and that the Contribution does not reproduce
-third-party material without a compatible license. A pull request opened by an
-autonomous agent with no responsible person is not a Contribution under this
-agreement.
+OpenStorey may accept, modify, or decline a Contribution. Submission does not
+create employment, agency, partnership, a payment entitlement, or a commitment
+to merge. Any contributor award is subject to the
+[Contributor Pool policy](contributor-pool.md) or a separate written agreement.
 
-## 6. No obligation and no relationship
+Except for your confirmations above, Contributions are provided "as is",
+without additional warranties to the extent permitted by law. Nothing in this
+agreement excludes a duty or liability that cannot lawfully be excluded.
 
-OpenStorey may accept, change, or reject any Contribution and may stop using it
-at any time. Nothing in this agreement is a promise of payment, employment, or
-any other relationship. Any payment from the Contributor Pool is discretionary
-and governed only by the [Contributor Pool policy](contributor-pool.md). You are
-not OpenStorey's employee, agent, or partner.
+To the extent permitted by applicable law, you agree not to assert moral rights
+to prevent uses expressly authorized by this agreement. Non-waivable rights
+are unaffected.
 
-## 7. Provided as is
+## 6. Acceptance and versions
 
-Except for the confirmations in section 4, You provide Your Contributions "as
-is", without warranty of any kind.
+Accept this version explicitly using the pull request's CLA checkbox or another
+recorded written acceptance. A commit sign-off separately certifies the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/); a
+sign-off alone is not a substitute for explicit CLA acceptance.
 
-## 8. Moral rights
+Acceptance covers the identified submission. Later submissions must identify
+and accept the applicable agreement. A revised agreement does not retroactively
+change an earlier grant. Withdrawal applies only to future submissions.
 
-To the extent the law allows, You waive, or agree not to assert, any moral
-rights in Your Contributions against OpenStorey and the recipients of the Work.
-
-## 9. How You agree
-
-You agree to this agreement by checking the agreement box in the pull request
-template and by signing off every commit with `git commit -s`. The sign-off also
-certifies the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
-Your agreement covers that pull request and every later Contribution, unless You
-withdraw it in writing for future Contributions.
-
-If You contribute on behalf of a company, ask a maintainer for a corporate
-agreement before You submit anything.
-
-## 10. Changes
-
-OpenStorey may publish a new version of this agreement. A new version applies to
-Contributions submitted after it is published.
+California law governs, subject to mandatory applicable law. An unenforceable
+provision does not invalidate the remaining provisions.

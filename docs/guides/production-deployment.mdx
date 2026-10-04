@@ -5,6 +5,11 @@ description: "Hardening checklists, systemd service configuration, Docker Compos
 
 # Production Deployment & Hardening
 
+Deployment instructions do not grant additional license rights. Institutional
+Use and Commercial Exploitation require the separate Enterprise agreement
+described in [LICENSE](../../LICENSE). Review the selected dependency profile
+and actual resolved inventory before deployment.
+
 When deploying AutoYou Server in production environments, dedicated office servers, or cloud virtual machines, follow these hardening and reliability guidelines.
 
 ---
@@ -62,8 +67,8 @@ After=network.target
 [Service]
 Type=simple
 User=autoyou
-WorkingDirectory=/opt/AutoYou/AutoYou-Server
-ExecStart=/opt/AutoYou/AutoYou-Server/.venv/bin/python server.py
+WorkingDirectory=/opt/AutoYou-Server
+ExecStart=/opt/AutoYou-Server/.venv/bin/python server.py
 Restart=always
 RestartSec=5
 Environment=AUTOYOU_SECURITY_MODE=secure

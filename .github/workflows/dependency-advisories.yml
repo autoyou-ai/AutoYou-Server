@@ -1,0 +1,46 @@
+name: Dependency advisory review
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "19 8 * * 1"
+  pull_request:
+    paths:
+      - "requirements/**"
+      - "scripts/audit_dependency_advisories.py"
+      - ".github/workflows/dependency-advisories.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Query declared package releases without installing dependencies
+        run: python scripts/audit_dependency_advisories.py --all-manifests --include-minimums --output "$RUNNER_TEMP/dependency-advisories.json"
+      - name: Summarize results, including unresolved advisories
+        if: always()
+        shell: python
+        run: |
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "dependency-advisories.json"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("## Manifest advisory review\n\n")
+              if not path.exists():
+                  out.write("No report produced. The check did not establish advisory status.\n")
+              else:
+                  data = json.loads(path.read_text())
+                  out.write("```json\n" + json.dumps(data["counts"], indent=2) + "\n```\n\n")
+                  for result in data["results"]:
+                      if result.get("advisories") or result["status"] == "error":
+                          ids = ", ".join(item["id"] for item in result.get("advisories", []))
+                          out.write(f"- {result['name']} {result['version']}: {ids or 'lookup error'}\n")
+                  out.write("\nThis checks declarations, not a fully resolved environment. See docs/security/dependency-audit.md.\n")

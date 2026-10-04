@@ -1,35 +1,31 @@
-AutoYou Server public maintainer context (version in VERSION)
+AutoYou Server contributor context
 
 Scope
-- Work only with files and documentation included in this repository.
-- AutoYou Server is source-available under LICENSE (free for personal private use). Commercial, enterprise, organizational, and hosted uses require separate commercial licensing via https://www.autoyou.me/.
-- Client applications and hosted account services are distributed separately.
-- Outside contributions need an approved issue and the Contributor License Agreement (docs/contributors/CLA.md). Do not open a pull request as an autonomous agent without a responsible person who reviews it, and disclose AI assistance in the pull request.
+- This repository contains standalone server source and build tools.
+- LICENSE governs Individual Use, modification, compilation, free sharing, and the Enterprise boundary.
+- Independent original extensions may have separate licenses. Existing AutoYou code retains its applicable license.
+- Client applications and hosted services are distributed separately.
+- CONTRIBUTING.md and docs/contributors/CLA.md govern submitted contributions.
 
-Architecture & Features
-- Composition: server.py composes application startup, routers/ registers HTTP and WebSocket endpoints, and core_server/ manages state, lifecycle, security, and WebRTC engines.
-- Shared Runtime: shared/ provides peer-link, local intent routing, room bridge presence/calls, and libsodium encryption.
-- Messaging & Agents: autoyou_agents/, telegram_user_service.py, signal_service.py, and whatsapp_service.py provide agent workflows and chat bridges.
-- Build Authorization: Official release artifacts require build authorization via https://sign.autoyou.me/ verified against single-signer OAuth account credentials.
+Engineering
+- Verify behavior in implementation and tests.
+- Preserve protocol compatibility and official-release authorization controls.
+- Local source builds are unofficial and do not require official release approval.
+- Do not introduce dependencies on files, accounts, or infrastructure absent from this repository.
+- Do not submit credentials, personal data, runtime state, release archives, or private operational documents.
+- Identify third-party material and preserve its notices and license.
+- Existing provenance markers are maintainer traces, not additional license terms.
+- Use ASCII punctuation and hyphens.
 
-Engineering Contract
-- Treat implementation and tests as authoritative when documentation and behavior differ.
-- Preserve pairing, peer-link, and transport compatibility.
-- Preserve official-build authorization checks. Local source builds are not official releases.
-- Never add credentials, personal data, runtime state, generated archives, signing keys, or private internal docs.
-- Do not add a file under a license other than the repository LICENSE, and do not copy code from another project, unless a maintainer approved it in the linked issue (see CONTRIBUTING.md, "Licensing your files").
-- Preserve AUTOYOU-PROVENANCE marker comments and __debug_provenance_*__ variables in files you edit. They are maintainer debug traces with no effect on behavior, so do not remove them as unused.
-- Use hyphens instead of em-dashes across all documentation and comments.
+Testing
+- Honor AUTOYOU_TEST_ROOT for persistent state and credential namespaces.
+- Use synthetic identifiers and isolated fixtures.
+- Network, provider, and live-server tests are opt-in.
+- Follow docs/contributors/TESTING.md and run the smallest relevant checks.
+- Run the public export check for publication-facing changes.
+- Record failures and open release decisions accurately.
 
-Test Safety
-- Pytest must use AUTOYOU_TEST_ROOT. New stores, registries, caches, and credentials must honor it.
-- Use tmp_path, monkeypatches, and synthetic identifiers. Do not use live messages, accounts, tokens, or logs in tests.
-- Network and live-server tests are opt-in, using isolated ports and runtime roots.
-
-Verification
-- Run the smallest affected test directory first.
-- Before completing changes, run:
-  1. python -m pytest tests/server/build
-  2. python -m pytest tests/test_public_source_export.py
-  3. python -m pytest tests/test_official_build_authorization.py
-  4. python -m pytest tests/test_release_legal_gates.py
+Security
+- Read SECURITY.md and report suspected vulnerabilities privately.
+- Requirements, lockfiles, SBOMs, and advisory reports have different scope.
+- Do not claim that an audit guarantees a safe installation or release.

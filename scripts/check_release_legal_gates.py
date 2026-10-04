@@ -19,6 +19,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import argparse
 import json
+import os
 import re
 import ssl
 from dataclasses import dataclass, field
@@ -184,10 +185,6 @@ RUNTIME_ACCEPTANCE_MARKERS = (('Root license',
    'Do Not Publish In Source Releases',
    'production secrets, API keys, certificates, signing keys',
    'run the server release legal gate with `python scripts/check_release_legal_gates.py --artifact-scope server --strict-unknown-license`',
-   'Publication Evidence',
-   'publication URL or package source URL',
-   'source archive checksum',
-   'reviewer names or roles',
    'Publication of this source set does not publish or license OpenStorey-hosted services')),
  ('Server/Admin legal gate',
   ('server.py', 'routers/pairing.py', 'routers/admin_ui.py'),
@@ -281,7 +278,6 @@ PACKAGED_LEGAL_BUNDLES = (('Windows Server dist legal bundle',
   'servers/macos/build/AutoYou.app/Contents/Resources/Legal',
   ('binary-default', 'connector-full')))
 LEGAL_BUNDLE_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")
-RELEASE_CHECKLIST_PATH = REPO_ROOT / "docs" / "legal" / "release-compliance-checklist.md"
 HOSTED_LEGAL_PAGES = (
     ("privacy", "/privacy/", ("OpenStorey LLC", "Data Controller:", "CCPA", "not sell or share")),
     ("terms", "/terms/", ("OpenStorey LLC", "AutoYou Source-Available Personal-Use License", "Class action waiver")),
@@ -397,22 +393,47 @@ def check_runtime_acceptance_markers(report: GateReport) -> None:
             report.fail(f"{label} is missing legal acceptance marker(s): {', '.join(missing)}")
 
 
-def check_release_checklist_blockers(report: GateReport, *, allow_open_release_blockers: bool) -> None:
-    if not RELEASE_CHECKLIST_PATH.is_file():
-        report.fail(f"Release compliance checklist is missing: {_display_report_path(RELEASE_CHECKLIST_PATH)}")
+def check_release_checklist_blockers(
+    report: GateReport, *, allow_open_release_blockers: bool, checklist_path: Path | None = None
+) -> None:
+    """Read private release evidence only from an explicit external input.
+
+    Public contributor checks may omit this input. Official release checks fail
+    closed without it and never copy private review text into their output.
+    """
+    configured_path = checklist_path or os.environ.get("AUTOYOU_RELEASE_CHECKLIST")
+    if not configured_path:
+        message = "Private release review was not supplied; use --release-checklist or AUTOYOU_RELEASE_CHECKLIST."
+        if allow_open_release_blockers:
+            report.warn(message)
+        else:
+            report.fail(message)
+        return
+    path = Path(configured_path).expanduser().resolve()
+    if path.is_relative_to(REPO_ROOT.resolve()):
+        report.fail("Private release review must be stored outside the public server repository.")
+        return
+    if not path.is_file():
+        report.fail("The supplied private release review file is unavailable.")
+        return
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError):
+        report.fail("The supplied private release review file could not be read.")
+        return
+    checklist_items = [line for line in lines if re.match(r"^- \[[ xX]\] ", line)]
+    if not checklist_items:
+        report.fail("The supplied private release review contains no review items.")
         return
     open_items = [
         line.removeprefix("- [ ] ").strip()
-        for line in _read_text(RELEASE_CHECKLIST_PATH).splitlines()
+        for line in checklist_items
         if line.startswith("- [ ] ")
     ]
     if not open_items:
-        report.note("Release compliance checklist has no open blockers.")
+        report.note("The supplied private release review has no open items.")
         return
-    message = (
-        f"Release compliance checklist has {len(open_items)} open blocker(s): "
-        + " | ".join(open_items)
-    )
+    message = f"Private release review has {len(open_items)} open item(s); details remain in the external review file."
     if allow_open_release_blockers:
         report.warn(message)
     else:
@@ -659,7 +680,7 @@ def check_dependency_policies(
                         f"{profile['id']} allows strong copyleft dependency {label} ({license_name}) "
                         "without a separate/non-linked distribution boundary for compiled binaries."
                     )
-                report.note(f"{profile['id']} includes approved separate-boundary copyleft dependency {label} ({license_name}).")
+                report.note(f"{profile['id']} lists a separate-boundary copyleft dependency {label} ({license_name}); verify that boundary in the release artifact.")
 
             if license_name in commercial_blocking:
                 report.fail(
@@ -670,7 +691,7 @@ def check_dependency_policies(
             if license_name in review_copyleft and (normalized, license_name) not in allowed:
                 report.fail(f"{profile['id']} includes manual-review copyleft dependency {label} ({license_name}) without an explicit release condition.")
             elif license_name in review_copyleft:
-                report.note(f"{profile['id']} includes approved manual-review copyleft dependency {label} ({license_name}).")
+                report.note(f"{profile['id']} lists a copyleft dependency requiring manual review: {label} ({license_name}).")
 
             if license_name in proprietary and normalized not in reviewed:
                 report.fail(f"{profile['id']} includes proprietary/vendor dependency {label} ({license_name}) without proprietaryReview acknowledgement.")
@@ -853,6 +874,7 @@ def run_gates(
     allow_open_release_blockers: bool,
     artifact_scope: str = "server",
     hosted_legal_base_url: str | None = None,
+    release_checklist: Path | None = None,
 ) -> GateReport:
     report = GateReport()
     scoped_config = _config_for_scope(config, artifact_scope)
@@ -861,7 +883,9 @@ def run_gates(
         report.note(f"Generated {len(summary['artifacts'])} SBOM/NOTICE bundle(s).")
     check_legacy_legal_wording(report)
     check_runtime_acceptance_markers(report)
-    check_release_checklist_blockers(report, allow_open_release_blockers=allow_open_release_blockers)
+    check_release_checklist_blockers(
+        report, allow_open_release_blockers=allow_open_release_blockers, checklist_path=release_checklist
+    )
     if hosted_legal_base_url:
         check_hosted_legal_pages(report, hosted_legal_base_url)
     check_dependency_policies(scoped_config, report, strict_unknown_license=strict_unknown_license, artifact_scope=artifact_scope)
@@ -886,6 +910,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Warn instead of failing when the release compliance checklist still has open blocker items.",
     )
     parser.add_argument("--hosted-legal-base-url", help="Fetch hosted Privacy/Terms/License/Subscription/Support pages and require 2xx plus legal markers.")
+    parser.add_argument("--release-checklist", type=Path, help="External private release review file. Defaults to AUTOYOU_RELEASE_CHECKLIST; required for strict release checks.")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH)
     return parser
 
@@ -900,6 +925,7 @@ def main() -> int:
         allow_open_release_blockers=args.allow_open_release_blockers,
         artifact_scope=args.artifact_scope,
         hosted_legal_base_url=args.hosted_legal_base_url,
+        release_checklist=args.release_checklist,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8")

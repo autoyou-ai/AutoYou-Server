@@ -14,7 +14,7 @@
 -r desktop-automation.txt
 
 # The Admin Video & Calls page exposes local webcam sharing in signed builds.
-opencv-python>=4.9.0,<5
+opencv-python>=4.9.0.80,<5
 
 # Windows speaker sharing needs WASAPI loopback devices, which upstream PyAudio
 # does not expose. Other platforms use the upstream PortAudio bindings.

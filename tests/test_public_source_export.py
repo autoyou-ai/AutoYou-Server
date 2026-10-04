@@ -7,6 +7,8 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+import re
+
 import pytest
 
 from scripts import export_public_autoyou_server as exporter
@@ -25,14 +27,16 @@ def test_force_export_preserves_a_nested_git_checkout(tmp_path) -> None:
     assert marker.read_text(encoding="utf-8") == "synthetic"
 
 
-def test_public_checkout_uses_its_own_readme_and_checklist(monkeypatch) -> None:
+def test_public_checkout_uses_its_own_readme_and_excludes_private_review(monkeypatch) -> None:
     monkeypatch.setattr(exporter.subprocess, "check_output", lambda *args, **kwargs: b"public source")
     entries = [
         exporter.GitEntry(path, "100644", "blob", "0" * 40)
         for path in ("README.md", "docs/legal/release-compliance-checklist.md")
     ]
 
-    assert exporter.build_export_plan(entries)[1] == []
+    included, failures = exporter.build_export_plan(entries)
+    assert failures == []
+    assert [entry.path for entry in included] == ["README.md"]
 
 
 def test_public_export_preserves_public_dotfiles() -> None:
@@ -77,6 +81,16 @@ def test_public_export_preserves_public_dotfiles() -> None:
     ))
 
 
+def test_secret_scan_type_annotation_exceptions_work_with_windows_line_endings() -> None:
+    config = (exporter.REPO_ROOT / ".gitleaks.toml").read_text(encoding="utf-8")
+    patterns = [re.compile(value) for value in re.findall(r"'''(.*?)'''", config)]
+    annotation_type = "x25519.X25519PrivateKey"
+    for suffix in ("", "\r"):
+        assert any(pattern.fullmatch(f"    private_key: {annotation_type}{suffix}") for pattern in patterns)
+        assert any(pattern.fullmatch("    password_key: bytes" + suffix) for pattern in patterns)
+        assert not any(pattern.fullmatch('    private_key: "<synthetic-secret>"' + suffix) for pattern in patterns)
+
+
 def test_public_export_includes_reviewed_vendor_and_runtime_files() -> None:
     assert all(exporter.should_publish_path(path) for path in (
         "ai.txt",
@@ -94,6 +108,9 @@ def test_public_export_includes_reviewed_vendor_and_runtime_files() -> None:
 
 def test_public_export_excludes_private_release_material() -> None:
     private_paths = (
+        "docs/legal/release-compliance-checklist.md",
+        "docs/legal/member-server-compliance-checklist.md",
+        "docs/legal/maintainer-release-record.md",
         "AGENTS.md",
         "CLAUDE.md",
         "llm.txt",

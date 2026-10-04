@@ -1,40 +1,12 @@
 # AutoYou Server for macOS
 
-This folder contains the macOS packaging workflow for the full AutoYou server.
+These tools compile the server backend and native macOS server host. Client
+applications distributed separately require a running server.
 
-Use it when you want a native macOS app bundle for the full server rather than running from source.
+## Local build
 
-The full, Lite, and Intel server packaging paths read the repository `VERSION`
-file for generated bundle metadata. The tracked source plists currently match
-the canonical `81.0.0` release.
-
-## What it produces
-
-The main build outputs are:
-
-```text
-servers/macos/build/AutoYou.app
-servers/macos/build/AutoYou.dmg
-```
-
-The app bundle contains the packaged backend plus the native macOS host.
-
-Review `servers/macos/build/AutoYou.app/Contents/Resources/Legal/LICENSE`, `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json` before use. Use constitutes agreement to the AutoYou Terms of Use (EULA), License, Privacy Policy, responsibility terms, warranty disclaimer, and liability limits.
-
-## Requirements
-
-- macOS
-- Xcode command-line tools
-- Python 3.10 or newer
-- Node.js
-- npm
-- Swift toolchain
-
-If you want a signed public build, you need a `Developer ID Application`
-signing identity. An `Apple Development` identity is useful for local testing,
-but it is not accepted by Gatekeeper for public distribution.
-
-## Quick build
+Use macOS with Xcode command-line tools and Swift, Python, Node.js, and npm.
+Dependency wheels and native libraries must support the machine architecture.
 
 From the repository root:
 
@@ -42,78 +14,47 @@ From the repository root:
 ./servers/macos/build-all.sh --no-sign --dev
 ```
 
-The first private build displays the current license and third-party notices
-and asks you to type `I AGREE`. Use `--accept-terms` to record acceptance
-explicitly for a noninteractive build. The receipt stays on this device and is
-invalidated when the notices change.
+This is an unsigned development build and does not require official release
+authorization. Review the license and notices when prompted. Add
+`--accept-terms` only after reviewing them for an unattended build.
 
-The default release profile is `binary-default`. Use the broader connector-capable lane only when you explicitly need it:
-
-```bash
-./servers/macos/build-all.sh --release-profile connector-full --requirements full
-```
-
-For a package that must run Fine Tuning Agent jobs, select `training-full`.
-Data Collector's website/chat surface is bundled with the full server; this
-profile adds the optional ML dependencies used by the training worker:
+The default profile is `binary-default`. An expanded local build uses:
 
 ```bash
-./servers/macos/build-all.sh --requirements training-full
+./servers/macos/build-all.sh --no-sign --dev --release-profile connector-full --requirements full
 ```
 
-The packaged backend verifies both agents' website backends, chat facades, and
-static runtime assets. Fine Tuning cancellation is durable across the website
-and AI worker; Data Collector stops at safe collection boundaries without a
-server restart.
+Build scripts create or reuse an environment, install or reconcile dependencies,
+and may download native runtimes. Read [dependency guidance](../../requirements/README.md).
+Do not point an explicit Python override at an environment you cannot safely
+change.
 
-## Local signed build
+The [Intel wrapper](intel/README.md) uses the shared pipeline. The current
+Intel voice/full declarations conflict with the shared NumPy constraint;
+that profile needs a separately resolved compatible environment before it can
+be represented as supported. Do not disable all lock constraints as a substitute
+for resolving and auditing that conflict.
 
-Use Apple Development signing when validating macOS privacy prompts and local
-runtime behavior on a development machine:
+## Output and sharing
 
-```bash
-./servers/macos/build-all.sh \
-  --full \
-  --release \
-  --sign \
-  --certificate-name "Apple Development" \
-  --team-id TEAMID
-```
+Typical outputs are `servers/macos/build/AutoYou.app` and
+`servers/macos/build/AutoYou.dmg`; the exact outputs depend on build options.
+Version metadata comes from `VERSION`.
 
-## Developer ID release build
+Review `servers/macos/build/AutoYou.app/Contents/Resources/Legal/LICENSE`,
+`THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
+Use constitutes agreement to the applicable license terms, including the
+warranty disclaimer and liability limits to the extent permitted by law.
+Separate services have separate terms.
 
-```bash
-./servers/macos/build-all.sh \
-  --full \
-  --release \
-  --sign \
-  --certificate-name "Developer ID Application: Your Name (TEAMID)" \
-  --team-id TEAMID \
-  --notarize
-```
+Identify shared builds as unofficial and retain all required notices and source
+obligations under [LICENSE](../../LICENSE) and the bundled component licenses.
+Unsigned development output is not an official signed or notarized release.
 
-## What to launch
+## Official release tools
 
-For packaged testing, open:
-
-```text
-servers/macos/build/AutoYou.app
-```
-
-## Notes
-
-- This packaging flow is for the full server, not the lighter `AutoYou Connect` desktop client.
-- The build scripts bundle the backend, required runtimes, and release assets into the final app.
-- The full server app is intended for Developer ID distribution outside the Mac App Store, not Mac App Store sandboxing.
-
-## Troubleshooting
-
-- If the build cannot find Xcode tools, run `xcode-select --install`.
-- If backend packaging fails, verify Python, Node, and npm are available before retrying.
-- If signing fails, confirm the certificate name and team ID exactly match the values in your keychain and Apple account.
-
-## Related docs
-
-- [servers/README.md](../README.md)
-- [guides/MACOS_BUILD_GUIDE.md](../../guides/MACOS_BUILD_GUIDE.md)
-- [root README](../../README.md)
+Signing, notarization, and official packaging have separate authorization and
+release gates. They require the relevant operator's own credentials and
+approvals. This repository does not supply signing identities or store access.
+The strict release gate takes the operator's external review file through
+`AUTOYOU_RELEASE_CHECKLIST`; keep that private input outside this repository.

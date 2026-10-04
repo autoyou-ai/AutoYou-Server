@@ -1,8 +1,12 @@
 # Generated Release Legal Artifacts
 
-Generated at: 2026-10-04T01:29:05+00:00
+Generated at: 2026-10-04T02:51:56+00:00
 
 Run `python scripts/generate_release_legal_artifacts.py` to refresh these files before release packaging.
+
+These inventories are derived from repository manifests and manual component declarations.
+They do not establish actual installed or bundled versions and do not certify security or license compliance.
+Inspect each release artifact and retain a resolved inventory, component hashes, and its required license materials.
 
 - `autoyou-server-source-full`: `docs/legal/generated/autoyou-server-source-full/NOTICE.txt`, `docs/legal/generated/autoyou-server-source-full/sbom.cdx.json`
 - `autoyou-server-windows-default`: `docs/legal/generated/autoyou-server-windows-default/NOTICE.txt`, `docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json`

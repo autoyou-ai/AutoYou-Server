@@ -457,7 +457,7 @@
     {
       "id": "autoyou-server-windows-default",
       "displayName": "AutoYou Server Windows binary-default build",
-      "description": "First signed Windows commercial server binary profile using the local-first binary-default dependency profile.",
+      "description": "Declared dependency profile for building the Windows server with the binary-default selection.",
       "releaseProfile": "binary-default",
       "dependencyProfile": "binary-default",
       "legalBundle": "Legal",
@@ -571,7 +571,7 @@
     {
       "id": "autoyou-server-macos-default",
       "displayName": "AutoYou Server macOS binary-default build",
-      "description": "First signed macOS commercial server binary profile using the local-first binary-default dependency profile.",
+      "description": "Declared dependency profile for building the macOS server with the binary-default selection.",
       "releaseProfile": "binary-default",
       "dependencyProfile": "binary-default",
       "legalBundle": "Contents/Resources/Legal",

@@ -153,17 +153,17 @@
       },
       {
         "label": "GitHub",
-        "href": "https://github.com/autoyou-ai/AutoYou"
+        "href": "https://github.com/autoyou-ai/AutoYou-Server"
       }
     ],
     "primary": {
       "type": "github",
-      "href": "https://github.com/autoyou-ai/AutoYou"
+      "href": "https://github.com/autoyou-ai/AutoYou-Server"
     }
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/autoyou-ai/AutoYou",
+      "github": "https://github.com/autoyou-ai/AutoYou-Server",
       "x": "https://twitter.com/autoyou_ai"
     }
   }

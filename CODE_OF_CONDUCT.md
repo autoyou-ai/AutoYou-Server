@@ -1,17 +1,27 @@
-# Code of Conduct
+# Community code of conduct
 
-We want AutoYou Server discussions to be respectful, constructive, and safe for everyone.
+This policy applies to project issues, pull requests, discussions, and other
+community spaces maintained by OpenStorey.
 
-## Expected behavior
+Treat participants with respect. Discuss the work and its evidence. Welcome
+questions, credit others' contributions, respect privacy, and follow maintainer
+directions about scope and disclosure.
 
-- Be considerate and professional.
-- Focus feedback on ideas and code, not people.
-- Respect privacy, consent, and the source-available license boundary.
+Harassment, discrimination, threats, sexualized conduct, doxxing, impersonation,
+spam, malicious submissions, and deliberate disclosure of confidential or
+personal information are not acceptable. Do not pressure another participant
+for private contact or compensation.
 
-## Unacceptable behavior
+Report conduct concerns privately through
+[AutoYou support](https://www.autoyou.me/support/), identifying the community
+space and supplying only the information needed to investigate. Use
+[SECURITY.md](SECURITY.md) for software vulnerabilities.
 
-Harassment, discrimination, threats, doxxing, unwanted sexual attention, deliberate disclosure of non-public information, or attempts to bypass repository security controls are not acceptable.
+Maintainers may moderate content, request changes, restrict participation, or
+remove access according to the conduct and context. They will handle reports
+with reasonable care and share information only as needed for review,
+enforcement, or legal obligations; absolute confidentiality is not promised.
+Ask through the same support route for review of a moderation decision.
 
-## Enforcement
-
-Maintainers may remove content, reject contributions, or restrict participation when necessary to protect the project and its participants. Report conduct concerns at [support@autoyou.me](mailto:support@autoyou.me); do not include sensitive personal information in a public issue.
+This policy does not create employment, a payment entitlement, or an obligation
+to accept a contribution.

@@ -24,8 +24,8 @@ Tools used (if any):
 - [ ] Tests and fixtures use synthetic identifiers and do not modify live configuration.
 - [ ] I updated public documentation where needed.
 
-## Contributor agreement details
+## Dependency and licensing changes
 
-GitHub username:
-
-Legal name or company:
+List added or changed dependencies, upstream licenses, advisory checks, and
+any separately licensed original files. Do not put private identity or payment
+documents in this public pull request; arrange any required verification privately.

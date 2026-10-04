@@ -1543,9 +1543,8 @@ Invoke-CheckedCommand -FilePath $pythonExe -Arguments @(
 
 Write-Host "Ensuring AutoYou runtime dependencies are installed in the build environment..."
 Write-Host "Using backend requirements profile '$Requirements': $backendRuntimeRequirementsFile"
-# Pin the install to the audited (pip-audit-clean) lockfile versions so the
-# packaged binary ships exactly what was security-audited in requirements/locked.txt
-# rather than whatever the version ranges happen to resolve to. Set
+# Constrain packages present in the shared lock. This does not enforce its
+# hashes or cover every optional/build dependency; audit the resolved artifact. Set
 # AUTOYOU_IGNORE_LOCKFILE=1 to opt out.
 $pipInstallArgs = @("-m", "pip", "install", "-r", $backendRuntimeRequirementsFile)
 $ignoreLock = "$env:AUTOYOU_IGNORE_LOCKFILE".Trim().ToLower()
