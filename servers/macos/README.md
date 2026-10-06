@@ -39,7 +39,7 @@ for resolving and auditing that conflict.
 
 Typical outputs are `servers/macos/build/AutoYou.app` and
 `servers/macos/build/AutoYou.dmg`; the exact outputs depend on build options.
-Version metadata comes from `VERSION`.
+Version metadata comes from the repository `VERSION` file, currently `81.0.0`.
 
 Review `servers/macos/build/AutoYou.app/Contents/Resources/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
