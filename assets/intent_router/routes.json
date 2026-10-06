@@ -10,7 +10,9 @@
         "Show my saved preferences.",
         "Remember that I prefer short answers.",
         "Add a personal detail to my persona journal.",
-        "Update my personal profile."
+        "Update my personal profile.",
+        "Write in my diary that today was a good day.",
+        "Show my diary entry from yesterday."
       ]
     },
     {
@@ -41,6 +43,16 @@
         "Set a reminder for my appointment.",
         "Cancel that reminder.",
         "Send me a notification at five oclock."
+      ]
+    },
+    {
+      "id": "page_agent",
+      "examples": [
+        "Post this photo to my page.",
+        "Share this link on my page feed.",
+        "Show my page feed.",
+        "Publish an update to my public page.",
+        "Delete the last post from my page."
       ]
     },
     {

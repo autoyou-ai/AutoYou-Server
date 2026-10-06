@@ -31,7 +31,8 @@ SOURCE = Path(__file__).resolve().parents[1] / "assets/intent_router"
 def prepare(destination: Path) -> None:
     manifest = json.loads((SOURCE / "manifest.json").read_text())
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ("manifest.json", "routes.json", "MODEL_CARD.md", "NOTICE.txt", "LICENSE-APACHE-2.0.txt",
+    # native_routes.json is the phones' Local chat profile (Notes, Page, Diary, Profile).
+    for name in ("manifest.json", "routes.json", "native_routes.json", "MODEL_CARD.md", "NOTICE.txt", "LICENSE-APACHE-2.0.txt",
                  "LICENSE-ONNXRUNTIME.txt", "ONNXRUNTIME-ThirdPartyNotices.txt"):
         if destination.resolve() != SOURCE.resolve():
             shutil.copyfile(SOURCE / name, destination / name)

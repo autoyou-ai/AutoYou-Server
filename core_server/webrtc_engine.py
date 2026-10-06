@@ -10411,9 +10411,14 @@ class WebRTCManager:
                 "kind": kind, "value": value, "timestamp": now,
             })
             return
-        if self._screen_session_for_session(str(session_id or "")) is not None and event_name in {
-            "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard", "game_input",
-        }:
+        screen_session = self._screen_session_for_session(str(session_id or ""))
+        if screen_session is not None and (event_name == "game_input" or (
+            # Remote Desktop ("interactive") may control the screen when this
+            # computer's own control settings allow it; "watch" stays view-only.
+            screen_session["mode"] != "interactive" and event_name in {
+                "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard",
+            }
+        )):
             return
         if event_name == "remote_desktop_control":
             await self._handle_remote_desktop_control(str(session_id or ""), payload)

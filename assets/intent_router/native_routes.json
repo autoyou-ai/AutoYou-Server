@@ -1,0 +1,80 @@
+{
+  "purpose": "Phone Local chat routing (Notes, Page, Diary, Profile, general). Same MiniLM model as routes.json; never generates replies.",
+  "minimum_score": 0.45,
+  "minimum_margin": 0.1,
+  "routes": [
+    {
+      "id": "notes",
+      "examples": [
+        "Jot down that we need printer ink.",
+        "Write this down for me so I remember it.",
+        "Write down the plumber's phone number.",
+        "Make a shopping list with milk and eggs.",
+        "Save this idea for later.",
+        "Save the recipe for banana bread.",
+        "Keep track of where I parked the car.",
+        "Store the wifi password somewhere safe.",
+        "Remind me later that the gate code is 4417."
+      ]
+    },
+    {
+      "id": "page",
+      "examples": [
+        "Share this photo with my followers.",
+        "Publish this picture with a caption.",
+        "Post an update about my trip for everyone.",
+        "Put this video up for people to see.",
+        "Share this article publicly.",
+        "Publish my vacation photos.",
+        "Post that the shop is open today."
+      ]
+    },
+    {
+      "id": "diary",
+      "examples": [
+        "Today I went hiking with my friends.",
+        "I had a long day at work and felt tired.",
+        "This morning I woke up early and went for a run.",
+        "Yesterday we celebrated my sister's birthday.",
+        "I felt grateful for my family today.",
+        "We had dinner with my parents tonight.",
+        "Log how my day went."
+      ]
+    },
+    {
+      "id": "profile",
+      "examples": [
+        "I am vegetarian.",
+        "My name is Sam.",
+        "I work night shifts during the week.",
+        "I live in Lyon.",
+        "I'm allergic to peanuts.",
+        "I was born on June 3.",
+        "My favorite food is pasta.",
+        "Tell people I'm busy until five."
+      ]
+    },
+    {
+      "id": "general",
+      "examples": [
+        "Hello, how are you?",
+        "Tell me a joke.",
+        "Explain what photosynthesis means.",
+        "What is the capital of France?",
+        "Help me write an email to my landlord.",
+        "How do I cook rice?",
+        "Thank you for your help.",
+        "What do you think about this idea?",
+        "Translate good morning into Spanish.",
+        "I need help with my homework.",
+        "Write a poem about autumn.",
+        "Recommend a good book to read.",
+        "What should I make for dinner?",
+        "Summarize this topic for me.",
+        "Help me plan a party.",
+        "I need some advice."
+      ]
+    }
+  ],
+  "defer_pattern": "\\b(?:not|never|no|don't|doesn't|can't|cannot|won't|wouldn't|shouldn't|instead|ignore|unless|except|if)\\b"
+}

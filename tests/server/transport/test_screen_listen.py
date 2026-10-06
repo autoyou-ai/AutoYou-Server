@@ -132,12 +132,23 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
     assert manager.screen_listen_snapshot()["inputs"][-1]["value"] == "D"
     assert manager.screen_listen_snapshot()["participants"][0]["layout"] == "choices"
-    desktop_control = AsyncMock(side_effect=AssertionError("Screen session controlled the desktop"))
+    # Remote Desktop ("interactive") asks for screen control the same way a call
+    # does; the control handler applies this computer's control settings.
+    desktop_control = AsyncMock()
     monkeypatch.setattr(manager, "_handle_remote_desktop_control", desktop_control)
     message.payload = {"event": "remote_desktop_control", "action": "start"}
     asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
-    desktop_control.assert_not_awaited()
+    desktop_control.assert_awaited_once()
+    game_input = AsyncMock(side_effect=AssertionError("Screen session sent game input"))
+    monkeypatch.setattr(manager, "_handle_game_input", game_input)
+    message.payload = {"event": "game_input", "control_id": "synthetic", "input_type": "heartbeat"}
+    asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
+    game_input.assert_not_awaited()
     manager._set_screen_session(session_id, "watch")
+    # Watching is view-only.
+    message.payload = {"event": "remote_desktop_control", "action": "start"}
+    asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))
+    desktop_control.assert_awaited_once()
     manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\2\0")
     assert len(heard) == 1
     message.payload = {"event": "call_state", "active": False, "platform": "ios"}
