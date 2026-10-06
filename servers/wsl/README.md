@@ -1,8 +1,8 @@
 # AutoYou Server for WSL/Linux
 
 This directory builds a Linux/WSL standalone server backend with Nuitka.
-It uses the repository `VERSION` value and includes selected runtime packages
-and their legal notices.
+It uses the repository `VERSION` value, currently `81.0.0`, and includes selected
+runtime packages and their legal notices.
 
 ## Local build
 

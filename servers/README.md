@@ -4,6 +4,9 @@ These directories contain server packaging tools and native server hosts.
 Separately distributed client applications connect to a running server and
 are not built from these directories.
 
+Every server package takes its version from the repository root `VERSION` file,
+currently `81.0.0`.
+
 - [Windows](windows/README.md)
 - [macOS](macos/README.md), including [Intel](macos/intel/README.md)
 - [WSL/Linux](wsl/README.md)

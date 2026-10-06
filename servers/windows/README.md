@@ -39,7 +39,7 @@ servers/windows/dist/AutoYou-win-x64/
 ```
 
 It contains the native host, the packaged backend, and selected runtime files.
-Version metadata comes from the repository `VERSION` file.
+Version metadata comes from the repository `VERSION` file, currently `81.0.0`.
 
 Review `servers/windows/dist/AutoYou-win-x64/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
