@@ -41,8 +41,9 @@ import queue
 import secrets
 import sys
 import threading
+import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 __debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-b1bf459ac26864ea7ccbb6c3"
 
@@ -156,6 +157,83 @@ def _uses_synchronous_macos_keychain(timeout_seconds: Optional[float] = None) ->
     if timeout_seconds is not None or os.getenv("AUTOYOU_KEYRING_OPERATION_TIMEOUT_SECONDS", "").strip():
         return False
     return _backend_name().lower().startswith("keyring.backends.macos.")
+
+
+# ── Per-process credential memo ──────────────────────────────────────────────
+# macOS authorizes a legacy Keychain item one access at a time, and a plain "Allow" covers a
+# single access. One admin unlock reads the same config key and pairing password several times
+# (login check, config resolve, password check, status), so without a memo the person is asked
+# again for every read, and a denial is re-raised by every internal retry.
+#
+# The memo keeps what this process has already been given, for the life of the process (the
+# process holds those values in memory regardless), and replays a refusal for a few seconds so
+# one declined sheet is one refusal. It never grants access: a refusal stays a refusal, a new
+# unlock attempt after it expires asks again, and every write or delete here updates or drops
+# the entry so a changed credential is never served stale.
+_MEMO_LOCK = threading.RLock()
+_MEMO: Dict[Tuple[int, str, str], str] = {}
+_DENIED_UNTIL: Dict[Tuple[int, str, str], float] = {}
+_DENIAL_MEMO_SECONDS = 20.0
+_now = time.monotonic
+
+
+def _memo_key(service_name: str, username: str) -> Tuple[int, str, str]:
+    # A different backend (a test double, a switched keyring) must never share entries.
+    try:
+        backend_id = id(_keyring_mod.get_keyring()) if _keyring_mod is not None else 0
+    except Exception:
+        backend_id = 0
+    return (backend_id, service_name, username)
+
+
+def remember_credential(service_name: str, username: str, value: str) -> None:
+    """Record a credential this process has just read or written."""
+    if not isinstance(value, str) or not value:
+        return
+    key = _memo_key(service_name, username)
+    with _MEMO_LOCK:
+        _MEMO[key] = value
+        _DENIED_UNTIL.pop(key, None)
+
+
+def forget_credential(service_name: Optional[str] = None, username: Optional[str] = None) -> None:
+    """Drop one remembered credential, or every one when called with no arguments."""
+    with _MEMO_LOCK:
+        if service_name is None and username is None:
+            _MEMO.clear()
+            _DENIED_UNTIL.clear()
+            return
+        for table in (_MEMO, _DENIED_UNTIL):
+            for key in [k for k in table if k[1] == service_name and (username is None or k[2] == username)]:
+                table.pop(key, None)
+
+
+def _recalled_credential(service_name: str, username: str) -> Optional[str]:
+    with _MEMO_LOCK:
+        return _MEMO.get(_memo_key(service_name, username))
+
+
+def _remember_denial(service_name: str, username: str) -> None:
+    with _MEMO_LOCK:
+        _DENIED_UNTIL[_memo_key(service_name, username)] = _now() + _DENIAL_MEMO_SECONDS
+
+
+def _denial_active(service_name: str, username: str) -> bool:
+    key = _memo_key(service_name, username)
+    with _MEMO_LOCK:
+        until = _DENIED_UNTIL.get(key)
+        if until is None:
+            return False
+        if _now() < until:
+            return True
+        _DENIED_UNTIL.pop(key, None)
+        return False
+
+
+def _is_access_denial(exc: BaseException) -> bool:
+    """Whether Keychain refused because the person (or policy) said no, not because of a fault."""
+    text = str(exc).lower()
+    return "-128" in text or "-25293" in text or "access denied" in text or "user canceled" in text
 
 
 def call_keyring_operation(
@@ -277,18 +355,31 @@ def get_keyring_password(
     """
     if not keyring_available() or _keyring_mod is None:
         return None
+    recalled = _recalled_credential(service_name, username)
+    if recalled is not None:
+        return recalled
+    skip_ui = _should_skip_macos_keychain_ui(operation_timeout_seconds)
+    if not skip_ui and _denial_active(service_name, username):
+        # The sheet was just declined; do not raise it again for the next internal read.
+        return None
     try:
-        if _should_skip_macos_keychain_ui(operation_timeout_seconds):
-            return _read_macos_keyring_password_without_ui(service_name, username)
-        value = call_keyring_operation(
-            _keyring_mod.get_password,
-            service_name,
-            username,
-            operation_name="get_password",
-            timeout_seconds=operation_timeout_seconds,
-        )
-        return value if isinstance(value, str) else None
+        if skip_ui:
+            value = _read_macos_keyring_password_without_ui(service_name, username)
+        else:
+            value = call_keyring_operation(
+                _keyring_mod.get_password,
+                service_name,
+                username,
+                operation_name="get_password",
+                timeout_seconds=operation_timeout_seconds,
+            )
+        if isinstance(value, str):
+            remember_credential(service_name, username, value)
+            return value
+        return None
     except _KeyringError as exc:
+        if _is_access_denial(exc):
+            _remember_denial(service_name, username)
         logger.warning("Keystore read failed for service=%r: %s", service_name, exc)
         return None
     except Exception as exc:
@@ -308,15 +399,24 @@ def read_keyring_password_strict(service_name: str, username: str) -> Optional[s
     """
     if not keyring_available() or _keyring_mod is None:
         raise KeyringAccessError("The OS credential store is unavailable.")
+    recalled = _recalled_credential(service_name, username)
+    if recalled is not None:
+        return recalled
+    if _denial_active(service_name, username):
+        raise KeyringAccessError("Keychain access was just declined. Try again in a few seconds.")
     try:
         value = call_keyring_operation(
             _keyring_mod.get_password, service_name, username,
             operation_name="read_password", timeout_seconds=0,
         )
     except Exception as exc:
+        if _is_access_denial(exc):
+            _remember_denial(service_name, username)
         raise KeyringAccessError("The OS credential store could not be read.") from exc
     if value is not None and not isinstance(value, str):
         raise KeyringAccessError("The OS credential store returned an invalid credential.")
+    if value:
+        remember_credential(service_name, username, value)
     return value
 
 
@@ -333,6 +433,7 @@ def write_keyring_password(service_name: str, username: str, password: str) -> N
         raise KeyringAccessError("The OS credential store could not save this authenticator.") from exc
     if result is False:
         raise KeyringAccessError("The OS credential store could not save this authenticator.")
+    remember_credential(service_name, username, password)
 
 
 def delete_keyring_password(service_name: str, username: str) -> bool:
@@ -348,6 +449,7 @@ def delete_keyring_password(service_name: str, username: str) -> bool:
         raise KeyringAccessError("The OS credential store could not remove this authenticator.") from exc
     if result is False:
         raise KeyringAccessError("The OS credential store could not remove this authenticator.")
+    forget_credential(service_name, username)
     return True
 
 
@@ -396,15 +498,23 @@ def get_keystore_status(
     has_key: Optional[bool] = None if not include_has_key else False
     if include_has_key and available and _keyring_mod is not None:
         try:
-            has_key = bool(
-                call_keyring_operation(
+            if _recalled_credential(service_name, username) is not None:
+                has_key = True
+            elif _denial_active(service_name, username):
+                has_key = False
+            else:
+                stored = call_keyring_operation(
                     _keyring_mod.get_password,
                     service_name,
                     username,
                     operation_name="get_password",
                 )
-            )
-        except Exception:
+                has_key = bool(stored)
+                if isinstance(stored, str):
+                    remember_credential(service_name, username, stored)
+        except Exception as exc:
+            if _is_access_denial(exc):
+                _remember_denial(service_name, username)
             has_key = False
     return {
         "keyring_installed": _HAS_KEYRING,
@@ -464,6 +574,7 @@ def get_or_create_key(
         )
         if persisted is False:
             return None
+        remember_credential(service_name, username, encoded)
         logger.info(
             "Generated new config encryption key in OS keystore "
             "(service=%r, backend=%s).",
@@ -501,6 +612,8 @@ def replace_key(
             operation_name="set_password",
             default=False,
         )
+        if persisted is not False:
+            remember_credential(service_name, username, encoded)
         return persisted is not False
     except _KeyringError:
         return False
@@ -530,6 +643,7 @@ def delete_key(
         )
         if deleted is False:
             return False
+        forget_credential(service_name, username)
         logger.info(
             "Deleted config encryption key from OS keystore (service=%r).", service_name
         )
