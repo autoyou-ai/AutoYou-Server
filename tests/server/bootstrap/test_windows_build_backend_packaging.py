@@ -165,7 +165,7 @@ def test_windows_v2_publish_stages_the_compiled_desktop_worker():
     assert "WindowsAppSDKSelfContained=true" in publish
     assert "WindowsAppSdkBootstrapInitialize=false" in publish
     assert "AutoYouServer.exe" in publish
-    assert "runtime_modules\\\\v2\\\\runtime\\\\worker*.pyd" in publish
+    assert "runtime_modules\\v2\\runtime\\worker*.pyd" in publish
     assert "packaged_sibling_agents.json" in publish
 
 
@@ -204,4 +204,4 @@ def test_windows_native_publish_trims_paths_with_characters_not_strings():
     text = _private_source_text("v2/windows/publish.ps1")
 
     assert "$trimChars = [char[]]@('\\', '/')" in text
-    assert text.count(".TrimEnd($trimChars)") == 2
+    assert text.count(".TrimEnd($trimChars)") == 3  # the resolved path, its root and the dist root
