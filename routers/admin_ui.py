@@ -1401,7 +1401,8 @@ def register_routes(
         if not first_run and keystore_available and ks.exists() and not server._encrypted_config_exists() and ks.load() is None:
             detail = (
                 "Saved configuration is protected by the OS keystore, but it could not "
-                "be unlocked. The existing config was left unchanged."
+                "be unlocked. The existing config was left unchanged. If macOS asks for "
+                "Keychain access, choose Always Allow so it only asks once."
             )
             return locked_config_response(detail)
 

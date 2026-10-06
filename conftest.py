@@ -52,3 +52,16 @@ def _cleanup_autoyou_test_root() -> None:
 @pytest.fixture(scope="session")
 def autoyou_test_root() -> Path:
     return _AUTOYOU_TEST_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _forget_remembered_credentials():
+    """Credentials the process remembers from the OS keystore never leak between tests."""
+    try:
+        from shared.keystore import forget_credential
+    except Exception:  # pragma: no cover - keystore import is optional in minimal environments.
+        yield
+        return
+    forget_credential()
+    yield
+    forget_credential()

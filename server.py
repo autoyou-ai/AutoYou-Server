@@ -556,6 +556,8 @@ try:
     macos_keychain_bootstrap_timeout_seconds as _ks_macos_keychain_bootstrap_timeout_seconds,
     delete_key as _ks_delete_key,
     call_keyring_operation as _ks_call_keyring_operation,
+    remember_credential as _ks_remember_credential,
+    forget_credential as _ks_forget_credential,
     _SERVER_SERVICE_NAME as _KS_SERVICE_NAME,
     _DEFAULT_CRED_NAME as _KS_CRED_NAME,
   )
@@ -568,6 +570,8 @@ except ImportError:
   _ks_macos_keychain_bootstrap_timeout_seconds = lambda: None  # type: ignore[assignment]
   _ks_delete_key = lambda *a, **k: False  # type: ignore[assignment]
   _ks_call_keyring_operation = lambda operation, *a, **k: operation(*a)  # type: ignore[assignment]
+  _ks_remember_credential = lambda *a, **k: None  # type: ignore[assignment]
+  _ks_forget_credential = lambda *a, **k: None  # type: ignore[assignment]
   _KS_SERVICE_NAME = "autoyou-server"
   _KS_CRED_NAME = "config-encryption-key"
   _HAS_SERVER_KEYSTORE = False
@@ -2996,7 +3000,7 @@ def _persist_server_password(
                 "leaving the existing Keychain item unchanged."
             )
             return
-        _ks_call_keyring_operation(
+        stored = _ks_call_keyring_operation(
             _server_keyring.set_password,
             service_name,
             _KS_SERVER_PASSWORD_CRED_NAME,
@@ -3005,6 +3009,9 @@ def _persist_server_password(
             default=False,
             timeout_seconds=operation_timeout_seconds,
         )
+        if stored is not False:
+            # Keep this process's memo in step so a changed password is never served stale.
+            _ks_remember_credential(service_name, _KS_SERVER_PASSWORD_CRED_NAME, normalized)
     except _ServerKeyringError as exc:
         LOGGER.warning("Failed to persist server password in OS keystore: %s", exc)
     except Exception as exc:
@@ -3022,6 +3029,7 @@ def _clear_persisted_server_password() -> None:
             operation_name="delete_server_password",
             default=False,
         )
+        _ks_forget_credential(service_name, _KS_SERVER_PASSWORD_CRED_NAME)
     except _ServerKeyringError:
         return
     except Exception as exc:
