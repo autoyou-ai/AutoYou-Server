@@ -8279,13 +8279,23 @@ def _request_forwarded_from_elsewhere(request: Request) -> bool:
         return False
 
 
+def _request_is_from_this_computer(request: Request) -> bool:
+    """Whether an app on this computer itself sent the request.
+
+    A loopback peer is not enough: AutoYou's own browser proxy and any tunnel or
+    reverse proxy on this computer also arrive from loopback. Gates that mean
+    "only the person at this computer" (permissions, Local Pair ownership) must
+    use this, not the peer address alone.
+    """
+    peer = request.client.host if request.client else None
+    return (_is_loopback_client_host(peer)
+            and not _request_via_remote_browser_proxy(request)
+            and not _request_forwarded_from_elsewhere(request))
+
+
 def _local_pair_device_ownership(request: Request) -> str:
     """Local Pair from this computer itself is the owner's; from anywhere else it is shared."""
-    peer = request.client.host if request.client else None
-    if (_is_loopback_client_host(peer) and not _request_via_remote_browser_proxy(request)
-            and not _request_forwarded_from_elsewhere(request)):
-        return DEVICE_OWN
-    return DEVICE_SHARED
+    return DEVICE_OWN if _request_is_from_this_computer(request) else DEVICE_SHARED
 
 
 def _is_same_machine_audio_client(request: Request) -> bool:
@@ -9178,7 +9188,10 @@ def _apply_agent_frontend_route_policy(
         admin_url = f"http://127.0.0.1:{ADMIN_WEB_SERVICE_PORT}{entry_path}"
         entry["direct_forward_port"] = ADMIN_WEB_SERVICE_PORT
         entry["proxy_port"] = ADMIN_WEB_SERVICE_PORT
+        entry["recommended_port"] = ADMIN_WEB_SERVICE_PORT
         entry["local_url"] = admin_url
+        entry["server_local_url"] = admin_url
+        entry["open_url"] = admin_url
         if entry.get("launch_url"):
             entry["launch_url"] = admin_url
     proxy_path = _frontend_proxy_path(entry)
@@ -9639,8 +9652,7 @@ def _permission_config_change_error(request: Request, payload: Any) -> Optional[
     )
     if not touches_permissions:
         return None
-    peer = request.client.host if request.client else None
-    if _is_loopback_client_host(peer) and not _request_via_remote_browser_proxy(request):
+    if _request_is_from_this_computer(request):
         return None
     return JSONResponse(status_code=403, content={
         "success": False,
@@ -11467,6 +11479,7 @@ def _build_browser_port_routes_from_frontend_registry(
                 "description": str(policy_entry.get("description") or "").strip() or None,
                 "port": route_port,
                 "local_url": local_url,
+                "server_local_url": local_url,
                 "path": entry_path,
                 "proxy_path": proxy_path,
                 "launch_path": proxy_path,
