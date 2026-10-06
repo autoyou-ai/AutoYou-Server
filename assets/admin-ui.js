@@ -216,7 +216,9 @@
     var noticeTimer = null;
     var renderState = {
         passiveQueued: false,
-        composing: false
+        composing: false,
+        pointerDown: false,
+        pointerTimer: null
     };
 
     var interactTimer = null;
@@ -462,7 +464,9 @@
     }
 
     function hasActiveAdminControl() {
-        return renderState.composing || Boolean(activeAdminControl());
+        // A pressed pointer counts too: a background render between mousedown and
+        // mouseup replaces the button under the cursor and the click is lost.
+        return renderState.composing || renderState.pointerDown || Boolean(activeAdminControl());
     }
 
     function attrSelector(name, value) {
@@ -10796,6 +10800,33 @@
         }
         flushPassiveRenderSoon();
     });
+
+    function releaseAdminPointer() {
+        if (renderState.pointerTimer) {
+            window.clearTimeout(renderState.pointerTimer);
+            renderState.pointerTimer = null;
+        }
+        if (!renderState.pointerDown) {
+            return;
+        }
+        renderState.pointerDown = false;
+        // The click event fires right after pointerup, so flush on the next tick.
+        flushPassiveRenderSoon();
+    }
+
+    document.addEventListener("pointerdown", function (event) {
+        if (!root || !root.contains(event.target)) {
+            return;
+        }
+        renderState.pointerDown = true;
+        window.clearTimeout(renderState.pointerTimer);
+        // Watchdog: never let a missed pointerup freeze live updates.
+        renderState.pointerTimer = window.setTimeout(releaseAdminPointer, 5000);
+    }, true);
+    document.addEventListener("pointerup", releaseAdminPointer, true);
+    document.addEventListener("pointercancel", releaseAdminPointer, true);
+    document.addEventListener("dragend", releaseAdminPointer, true);
+    window.addEventListener("blur", releaseAdminPointer);
 
     document.addEventListener("focusout", function (event) {
         if (!root || !root.contains(event.target)) {
