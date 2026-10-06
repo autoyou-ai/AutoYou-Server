@@ -5320,6 +5320,14 @@ class WebRTCManager:
                         self._publish_webrtc_capabilities(normalized_session_id),
                         "webrtc_capabilities_bootstrap",
                     )
+                    # Chat clients show the Computer's display picture beside
+                    # its conversations, so it must arrive on connect and not
+                    # only once a voice call starts.
+                    self._track_session_task(
+                        normalized_session_id,
+                        self.send_server_profile_to_session(normalized_session_id),
+                        "server_profile_bootstrap",
+                    )
                     self._track_session_task(
                         normalized_session_id,
                         self._prime_conversation_context_status(
@@ -10348,12 +10356,14 @@ class WebRTCManager:
             return False
 
     async def broadcast_server_profile(self) -> None:
+        """Push a changed name or picture to every live client, in a call or not."""
         sent_managers: Set[int] = set()
-        for session_id, active in list(self.voice_call_client_active_by_session.items()):
-            if not active:
-                continue
-            manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
-            if manager is None or id(manager) in sent_managers:
+        for session_id, manager in list(self.datachannel_managers.items()):
+            if (
+                not hasattr(manager, "send_message")
+                or id(manager) in sent_managers
+                or not self._datachannel_manager_is_live(manager)
+            ):
                 continue
             sent_managers.add(id(manager))
             await self.send_server_profile_to_session(session_id)
