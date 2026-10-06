@@ -43,6 +43,8 @@ def register_routes(
             and not any(connection.headers.get(name) for name in (
                 "forwarded", "x-forwarded-for", "x-real-ip", *REMOTE_BROWSER_IDENTITY_HEADERS,
             ))
+            # Also every other mark a tunnel leaves (CF-Connecting-IP, the bridge's client address).
+            and not server._request_forwarded_from_elsewhere(connection)
         )
 
     @admin_app.get("/api/webrtc/hosted-game/play")

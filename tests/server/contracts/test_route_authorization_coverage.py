@@ -49,6 +49,11 @@ AUTH_HINTS = (
     "_request_uses_shutdown_token",
     "_require_local_service_callback", "_require_", "auth_error", "auth_response",
     "_verify_", "_authorize", "_is_loopback", "_guard",
+    # Listen (screen-listen) requires an admin login AND the this-computer surface.
+    "_local_listen_access",
+    # The hosted game page and its native-input channel answer only a loopback peer that names a
+    # loopback host and carries no proxy or forwarding header (the local game engine, never a tunnel).
+    "local_game_page_allowed",
 )
 
 #: Routes that are pre-authentication *by design*. Each entry is a deliberate
