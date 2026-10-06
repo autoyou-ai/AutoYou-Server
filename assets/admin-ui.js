@@ -1256,7 +1256,7 @@
         }
 
         var mcpStatus = getByPath(state.bootstrap, "status.mcp", {});
-        var serverEndpoint = new URL(String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp")));
+        var serverEndpoint = new URL(String(getByPath(mcpStatus, "server_endpoint", defaultMcpEndpoint())));
         var adapterUrl = new URL(String(getByPath(mcpStatus, "adapter_url", "http://127.0.0.1:8071")));
         var isLoopback = function (hostname) {
             var host = String(hostname || "").toLowerCase();
@@ -1667,6 +1667,14 @@
         return providerNote + runtimeMarkup + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Local model library</h3>" + localMarkup + "<div class=\"ayu-inline-actions\">" + button("Refresh local library", "ai-refresh-local", "secondary", "refresh") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Model catalog</h3><div class=\"ayu-grid-2\">" + field("Search query", input("agentWorkbench.catalog_query", { placeholder: "llama, qwen, mistral...", extraAttrs: "data-virtual-bind=\"aiLibrary.query\" value=\"" + valueAttr(state.aiLibrary.query) + "\"" })) + field("Source", "<select class=\"ayu-select\" data-action=\"ai-source\">" + sourceOptions.map(function (option) {
             return "<option value=\"" + escapeHtml(option.value) + "\"" + (state.aiLibrary.source === option.value ? " selected" : "") + ">" + escapeHtml(option.label) + "</option>";
         }).join("") + "</select>") + "</div><div class=\"ayu-inline-actions\">" + button("Search catalog", "ai-search-catalog", "primary", "search") + "</div>" + renderAiCatalogMarkup() + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
+    }
+
+    // The admin page is served by the same app that hosts /api/v1/mcp, so its own
+    // origin is the right default; 8001 is only the standalone-server fallback.
+    function defaultMcpEndpoint() {
+        return typeof window !== "undefined" && window.location && window.location.origin
+            ? window.location.origin + "/api/v1/mcp"
+            : "http://127.0.0.1:8001/api/v1/mcp";
     }
 
     function getByPath(source, path, fallbackValue) {
@@ -7232,7 +7240,7 @@
         var configured = Boolean(getByPath(mcpStatus, "configured", false));
         var generated = Boolean(getByPath(state.mcpSetup, "generatedToken", ""));
         var adapterUrl = String(getByPath(mcpStatus, "adapter_url", getByPath(state.forms, "messaging.mcp.adapter_url", "http://127.0.0.1:8071")) || "http://127.0.0.1:8071");
-        var serverEndpoint = String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp"));
+        var serverEndpoint = String(getByPath(mcpStatus, "server_endpoint", defaultMcpEndpoint()));
         var developerModeHelpUrl = "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt";
         var statusMessage = !enabled
             ? "AutoYou MCP is disabled. Enable it and generate a private adapter token to continue."
@@ -7373,7 +7381,7 @@
             + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
             + checkbox("videoCall.outbound_camera", "Allow webcam sharing", "Makes the selected webcam an available video source.")
             + checkbox("videoCall.outbound_api", "Allow API video input", "Accepts JPEG frames pushed through the server API.")
-            + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call.")
+            + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call. Its soundtrack stops when the caller starts speaking so AutoYou can listen; the looping video keeps playing. Press Play again to restart its sound.")
             + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
             + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
