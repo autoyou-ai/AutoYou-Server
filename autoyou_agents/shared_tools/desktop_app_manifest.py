@@ -202,6 +202,8 @@ def _merge_selection_controls(
                         if isinstance(option_value, dict) and isinstance(options.get(option_name), dict):
                             merged_option = dict(options[option_name])
                             merged_option.update(option_value)
+                            if "target_id" in option_value and "steps" not in option_value:
+                                merged_option.pop("steps", None)
                             options[option_name] = merged_option
                         else:
                             options[option_name] = option_value

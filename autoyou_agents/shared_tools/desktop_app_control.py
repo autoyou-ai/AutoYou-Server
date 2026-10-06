@@ -3049,7 +3049,13 @@ def _perform_selection_option(
             "available_options": available,
         }
 
-    open_target_id = str(control.get("open_target_id") or "").strip()
+    option_name, option = option_match
+    open_target_id = str(
+        option.get("open_target_id")
+        or (control.get("effort_open_target_id") if option_group == "effort_options" else None)
+        or control.get("open_target_id")
+        or ""
+    ).strip()
     if open_target_id:
         # The opener is a toggle, so a menu still open from a previous selection would be closed
         # by it and every following step would click straight through to the page - which can
@@ -3064,8 +3070,6 @@ def _perform_selection_option(
         if open_result.get("status") != "success":
             return open_result
         time.sleep(float(control.get("post_open_delay_seconds") or 0.2))
-
-    option_name, option = option_match
     pyautogui = prepared["pyautogui"]
     time.sleep(float(option.get("delay_before_seconds") or 0.0))
     steps = option.get("steps")
@@ -3129,6 +3133,12 @@ def _perform_selection_option(
         return {"status": "error", "message": f"Selection option '{option_name}' has no executable action."}
 
     time.sleep(float(option.get("delay_after_seconds") or control.get("post_select_delay_seconds") or 0.25))
+    post_key = str(option.get("post_key") or "").strip()
+    if post_key:
+        try:
+            pyautogui.press(post_key)
+        except Exception:
+            pass
     # Approval-mode and model changes can raise a modal that blocks the change (the Full Access
     # consent) or silently reverses it (the "try the new model" promo), so settle it here rather
     # than returning a success the app has not actually applied.

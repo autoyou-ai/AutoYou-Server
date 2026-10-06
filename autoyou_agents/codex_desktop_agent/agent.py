@@ -131,16 +131,14 @@ def select_codex_desktop_model(
 ) -> Dict[str, Any]:
     """Select the Codex / ChatGPT Codex model, reasoning effort, and/or speed.
 
-    Works on both the legacy Codex app and the 26.707 "ChatGPT Codex" rebrand (the right pack is
-    chosen automatically from the installed version). Any argument is optional.
+    Works on legacy Codex, 26.707 "ChatGPT Codex", and modern 26.803 builds (the right pack
+    is chosen automatically from the installed version). Any argument is optional.
 
-    Models (26.707): "5.6 Sol", "5.5", "5.6 Terra", "5.6 Luna", "5.4", "5.4 Mini",
-      "5.3 Codex Spark". Legacy names like "GPT-5.5"/"GPT-5.4" still resolve.
-    Effort (26.707): light, medium, high, extra high, ultra ("low" maps to Light).
-    Speed: "standard". The selector menu is Model / Effort / Speed / Reset-to-default; each of
-      Model/Effort/Speed opens a fly-out submenu. (``advanced`` is accepted for forward
-      compatibility but is a no-op on current builds, which show 'Reset to default' instead of
-      an Advanced section.)
+    Models: "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6 Sol", "GPT-6 Luna", "GPT-5.6 Sol",
+      "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
+    Effort: low, medium, high, extra high, max (or ultra). On modern 26.803 builds,
+      effort is selected via the 5-point slider popup (Low, Medium, High, Extra High, Max).
+    Speed: "standard".
     """
     return select_desktop_app_model(
         _AGENT_DIR,
