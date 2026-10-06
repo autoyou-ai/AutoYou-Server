@@ -241,6 +241,7 @@ class BuilderAgentPortLocalhostTest(unittest.TestCase):
                         "description": "Direct admin dashboard",
                         "port": 8001,
                         "local_url": "http://127.0.0.1:8001/",
+                        "server_local_url": "http://127.0.0.1:8001/",
                         "path": "/",
                         "proxy_path": "/agent/admin_agent/",
                         "launch_path": "/agent/admin_agent/",
