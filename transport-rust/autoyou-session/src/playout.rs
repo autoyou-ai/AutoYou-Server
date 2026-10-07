@@ -187,13 +187,18 @@ impl Playout {
         self.open(now_ms)?; self.clock_tick(local_us)?; self.expire(now_ms);
         if arrival_us > local_us { return Err(ProtocolError::InvalidFrame); }
         if connection_generation != self.principal.generation { return Err(ProtocolError::StaleGeneration); }
-        self.permissions.check(&frame.header,true,now_ms)?;
         autoyou_protocol::media_codec::validate(&frame.header,&frame.data)?;
+        if frame.header.authorization_epoch != self.principal.authorization_epoch { return Err(ProtocolError::Revoked); }
+        if frame.header.timestamp_us > i64::MAX as u64 || local_us > i64::MAX as u64 { return Err(ProtocolError::InvalidFrame); }
         let id = frame.header.source_id;
+        // Foreign queues can deliver an already admitted packet after End or
+        // source replacement. Discard it without ending the application session.
+        if self.permissions.retired(id,true,now_ms) || self.sources.get(&id)
+            .is_some_and(|source| frame.header.generation < source.lease.media_generation) { return Ok(false); }
+        self.permissions.check(&frame.header,true,now_ms)?;
         let source = &self.sources[&id];
         let header = &frame.header;
-        if header.timestamp_us > i64::MAX as u64 || local_us > i64::MAX as u64 ||
-            source.queue.range(..header.sequence).next_back().is_some_and(|(_,previous)| previous.frame.header.timestamp_us >= header.timestamp_us) ||
+        if source.queue.range(..header.sequence).next_back().is_some_and(|(_,previous)| previous.frame.header.timestamp_us >= header.timestamp_us) ||
             header.sequence.checked_add(1).and_then(|next|source.queue.range(next..).next())
                 .is_some_and(|(_,next)| next.frame.header.timestamp_us <= header.timestamp_us) {
             return Err(ProtocolError::InvalidFrame);
@@ -393,11 +398,35 @@ mod tests {
         let played = playout.take(16,1_060_000,1060).unwrap();
         assert_eq!(played[0].presentation_us,played[1].presentation_us);
         assert!(playout.push(6,audio(1),1_061_000,1061).is_err());
-        playout.revoke(1); assert!(playout.push(7,audio(1),1_062_000,1062).is_err());
+        playout.revoke(1); assert!(!playout.push(7,audio(1),1_062_000,1062).unwrap());
         assert!(playout.approve(lease(1,false),1062).is_err());
         let mut replacement=lease(1,false); replacement.media_generation=3;
-        playout.approve(replacement,1062).unwrap(); assert!(playout.push(7,audio(1),1_063_000,1063).is_err());
+        playout.approve(replacement,1062).unwrap(); assert!(!playout.push(7,audio(1),1_063_000,1063).unwrap());
         assert!(playout.take(16,1_000_000,1063).is_err());
+    }
+    #[test]
+    fn queued_retired_frames_do_not_end_playout_or_reauthorize_sources() {
+        let mut playout = Playout::new(principal(),1000).unwrap();
+        assert!(playout.push(7,audio(0),1_000_000,1000).is_err()); // Never approved.
+        playout.approve(lease(1,false),1000).unwrap();
+        playout.revoke(1);
+        assert!(!playout.push(7,audio(0),1_001_000,1001).unwrap());
+        assert!(playout.take(4,1_002_000,1002).unwrap().is_empty());
+        assert!(playout.approve(lease(1,false),1002).is_err()); // Floor survives End.
+        assert!(playout.push(6,audio(0),1_003_000,1003).is_err());
+        let mut bad_epoch = audio(0); bad_epoch.header.authorization_epoch = 4;
+        assert!(playout.push(7,bad_epoch,1_004_000,1004).is_err());
+        let mut malformed = audio(0); malformed.data.pop();
+        assert!(playout.push(7,malformed,1_005_000,1005).is_err());
+        let mut unknown = audio(0); unknown.header.source_id = 99;
+        assert!(playout.push(7,unknown,1_006_000,1006).is_err());
+        let mut replacement = lease(1,false); replacement.media_generation = 3;
+        playout.approve(replacement,1006).unwrap();
+        assert!(!playout.push(7,audio(0),1_007_000,1007).unwrap());
+        let mut fresh = audio(0); fresh.header.generation = 3;
+        assert!(playout.push(7,fresh,1_008_000,1008).unwrap());
+        let played = playout.take(4,1_070_000,1070).unwrap();
+        assert_eq!(played.len(),1); assert_eq!(played[0].frame.header.generation,3);
     }
     #[test]
     fn playout_bounds_future_timestamps_queue_pressure_expiry_and_close() {
