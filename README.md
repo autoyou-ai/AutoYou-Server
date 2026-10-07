@@ -18,10 +18,11 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#highlights">Highlights</a> ·
+  <a href="#your-one-stop-devserver-build-apps--cut-token-costs">Devserver & Tokens</a> ·
   <a href="#what-the-full-profile-enables">Capabilities</a> ·
   <a href="#see-it">Admin UI</a> ·
   <a href="docs/admin-ui/agent-workbench-ui.mdx">Agent Builder</a> ·
-  <a href="guides/README.md">Docs</a> ·
+  <a href="docs/">Docs</a> ·
   <a href="CONTRIBUTING.md">Contribute</a> ·
   <a href="LICENSE">License</a>
 </p>
@@ -57,6 +58,17 @@ No network port-forwarding gymnastics. No forced cloud telemetry. Your data stay
 - 🔌 **Universal MCP & messaging bridges:** Native Model Context Protocol (MCP) server bridge to connect standard developer tools, plus optional bridges for Telegram, Signal, and WhatsApp.
 - 📱 **Seamless device pairing:** Pair phones, tablets, or secondary laptops using simple QR or OTP pairing over encrypted WebRTC DataChannels (libsodium).
 - 🔒 **Private & sovereign:** Binds to secure loopback defaults out of the box. Single-user password gate, encrypted key store, and total ownership.
+
+## Your one-stop devserver: Build apps & cut token costs
+
+When building AI applications, specialized agents, or web frontends with tools like Cursor, Claude, or ChatGPT, developers often waste tens of thousands of tokens prompting LLMs to generate standard plumbing—WebRTC signaling, session auth, encrypted keystores, SQLite memory pools, audio streaming pipelines, and secure mobile tunneling.
+
+**AutoYou Server already has all of this built, integrated, and verified out of the box.**
+
+- 🛠️ **Batteries included:** AutoYou provides ready-made FastAPI routers, WebRTC audio/video/datachannel engines, and an Agent Development Kit (ADK) with 42+ pre-built agents. Use it as your local devserver rather than spending hours prompting AI to scaffold backend services.
+- 💡 **Drastic token savings:** Stop burning API tokens asking coding assistants to write custom authentication handshakes, media streaming loops, or mobile proxies. Plug your custom code directly into AutoYou's intent router, MCP server (`:8000`), or Agent Web Proxy (`:8067`).
+- 📱 **Instant web apps to phone:** Drop HTML/JS apps into AutoYou and they are automatically tunneled across WebRTC SCTP DataChannels directly to connected iOS and Android phones—no domain names, public IPs, port forwarding, or cloud relays required.
+- 📚 **Mintlify documentation:** Full architectural diagrams, API references (150+ endpoints), and step-by-step developer tutorials are ready in [`docs/`](docs/).
 
 ## What the full profile enables
 
@@ -171,22 +183,28 @@ the current dependency review.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
-  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your phone, laptop or browser reach the AutoYou Server over end-to-end encrypted WebRTC and over Telegram, Signal or WhatsApp Auto-Pair; the server runs a Google ADK agent harness with AutoYou agents, OpenClaw and Hermes Agent, routes models through LiteLLM to Ollama or optional cloud providers, keeps memory in SQLite with optional Cognee, and does local speech with faster-whisper, system voices and optional EmotiVoice; Agent Apps are tunneled as encrypted HTTP over the SCTP data channel to a local web server on the phone." width="100%">
+  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: connected clients (iOS/Android mobile apps with local web server and on-device models, desktop clients, MCP clients) connect via an E2E-encrypted WebRTC backbone (Opus media streams and SCTP data channels); the phone mirrors server-side Agent Apps locally through an encrypted HTTP-over-SCTP tunnel; the server runs a Google ADK agent harness with 42+ agents, routes models via LiteLLM to Ollama or cloud, preserves memory in SQLite and keystores, and handles local voice." width="100%">
 </picture>
 
-- **Pair and connect.** Auto-Pair exchanges an encrypted pairing message between your device and your
-  server through a Telegram, Signal or WhatsApp workflow you configure. After pairing, your devices talk
-  to the server over end-to-end encrypted WebRTC for chat, voice and video.
-- **Agent Apps reach your phone.** Agent websites and web apps are tunneled as encrypted HTTP over the
-  WebRTC SCTP data channel to a small local web server on the phone, which serves them the way the
-  server would.
-- **One harness, many agents.** A Google ADK harness runs the built-in AutoYou agents and bridges
-  OpenClaw and Hermes Agent. Model calls go through LiteLLM to Ollama on your machine, or to cloud
-  providers only if you add them.
-- **Local voice and memory.** Speech-to-text uses faster-whisper. Text-to-speech uses system voices, or
-  EmotiVoice if you install it. Memory is SQLite by default, with Cognee as an optional richer backend.
-- **Local chat on the phone.** The phone can chat on its own with LFM2.5 350M, Apple Intelligence on
-  iPhone, or Gemini Nano on supported Android phones.
+- **⚡ E2E-encrypted WebRTC backbone.** All communication between your client devices (iOS, Android, macOS,
+  Windows, Chrome extension) and the server runs across a high-performance WebRTC connection (`aiortc`),
+  providing low-latency bi-directional Opus audio and VP8/H.264 video media pipelines alongside reliable,
+  chunk-acknowledged SCTP DataChannels (`autoyou-control` and `autoyou-data`).
+- **📱 Phone local web server & SCTP tunnel.** Inside the mobile app, a local web server / localhost proxy
+  bridges directly to the phone's WebRTC engine. It tunnels HTTP, SSE, and WebSocket traffic across the
+  encrypted SCTP DataChannel to AutoYou Server's Agent Web Proxy (`:8067`), serving dynamic agent frontends
+  smoothly inside the mobile WebView without opening any router ports or exposing public IPs.
+- **🔐 Out-of-band Auto-Pair signaling.** Pairing exchanges cryptographic envelopes between your device
+  and server through your configured Telegram Bot, Signal daemon, or WhatsApp bridge, or instantly over local
+  LAN discovery (`_autoyou._tcp.local.`).
+- **🤖 One harness, 42+ agents.** A Google ADK harness orchestrates 42+ built-in AutoYou agents and bridges
+  OpenClaw and Hermes Agent. Model invocations route through LiteLLM to Ollama on your machine or to optional
+  cloud providers (OpenAI, Anthropic, Gemini) only if configured.
+- **🎙️ Local voice & persistent memory.** Speech-to-text uses faster-whisper. Text-to-speech uses system voices
+  or optional local neural EmotiVoice. Memory is stored in SQLite and protected by an Argon2id encrypted
+  keystore, with Cognee as an optional graph/vector memory backend.
+- **✨ On-device AI on the phone.** The mobile app runs on-device small language models (LFM2.5 350M, Apple
+  Intelligence on iPhone, or Gemini Nano on supported Android devices) for offline tasks and instant responses.
 
 Dashed orange boxes are external projects and integrations you can add or leave out. You choose which
 models, agents, and connections to enable. WebRTC connections encrypt traffic between their endpoints.
