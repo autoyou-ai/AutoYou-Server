@@ -1,0 +1,67 @@
+%% AutoYou architecture (dark palette). Edit this file, then re-render the README image with:
+%%   npx @mermaid-js/mermaid-cli -i docs/images/architecture-dark.mmd -o docs/images/architecture-dark.png -c docs/images/architecture-render-config.json -b "#0d1117" -s 2 -w 1100
+%% Keep architecture.mmd (light) and architecture-dark.mmd in step; only the classDef and style colors differ.
+flowchart TB
+    classDef you fill:#16243f,stroke:#5b8cff,color:#dbe6ff
+    classDef core fill:#12301f,stroke:#3fb97a,color:#d6f5e3
+    classDef vendor fill:#3a2a0c,stroke:#f0a030,stroke-dasharray:5 3,color:#ffe7bf
+    classDef cloud fill:#21262d,stroke:#8b949e,stroke-dasharray:5 3,color:#d0d7de
+
+    subgraph you["Your devices"]
+        direction LR
+        apps["AutoYou apps<br/>Phone · Laptop · Browser"]
+        localchat["On-device chat<br/>LFM2.5 350M · Apple Intelligence<br/>Gemini Nano"]
+        phoneweb["Local web server on the phone<br/>mirrors the Agent Apps server"]
+        mcp["MCP clients<br/>Cursor · Claude"]
+    end
+
+    msg["Telegram · Signal · WhatsApp"]
+
+    subgraph server["AutoYou Server · your machine"]
+        direction TB
+        router["Intent router"]
+        admin["Admin console :8001"]
+        subgraph harness["Agent harness · Google ADK"]
+            direction LR
+            own["AutoYou agents<br/>Notes · Page · Browser · Files"]
+            oc["OpenClaw<br/>bridged agent"]
+            hermes["Hermes Agent<br/>bridged agent"]
+        end
+        webapps["Agent Apps<br/>and web apps"]
+        llm["LiteLLM gateway"]
+        tools["Playwright · Files<br/>Audio engine"]
+        voice["Local voice<br/>STT: faster-whisper<br/>TTS: system voices"]
+        mem["Memory<br/>SQLite by default"]
+        router --> harness
+        admin --- router
+        harness --> llm
+        harness --> tools
+        harness --> voice
+        harness --> mem
+        own --> webapps
+    end
+
+    ollama["Ollama<br/>local models · GGUF"]
+    cloud["Optional cloud providers<br/>OpenAI · Anthropic · others"]
+    emoti["EmotiVoice<br/>optional local neural TTS"]
+    cognee["Cognee<br/>optional graph + vector memory"]
+
+    apps <-->|"Auto-Pair (encrypted message)"| msg
+    msg <-->|"messaging bridge"| router
+    apps <==>|"E2E-encrypted WebRTC · chat, voice, video"| router
+    phoneweb <==>|"Tunneled: encrypted HTTP over the SCTP data channel"| webapps
+    mcp -->|"MCP bridge"| router
+
+    llm --> ollama
+    llm -.-> cloud
+    voice -.-> emoti
+    mem -.-> cognee
+
+    class apps,localchat,phoneweb,mcp you
+    class admin,router,own,webapps,llm,voice,mem,tools core
+    class oc,hermes,ollama,emoti,cognee vendor
+    class cloud,msg cloud
+
+    style you fill:#0f1a2e,stroke:#35508f,color:#dbe6ff
+    style server fill:#0d1f16,stroke:#2c6b48,color:#d6f5e3
+    style harness fill:#0d1117,stroke:#2c6b48,color:#d6f5e3
