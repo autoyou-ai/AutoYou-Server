@@ -605,6 +605,26 @@ a {
   opacity: 0.7;
 }
 
+.note-attachments {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 4px;
+  min-width: 0;
+  color: var(--accent-fg, var(--primary-text));
+  font-weight: 600;
+}
+
+.note-attachments .ic {
+  width: 15px;
+  height: 15px;
+}
+
+.note-attachments span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .note-category {
   overflow: hidden;
   text-overflow: ellipsis;
