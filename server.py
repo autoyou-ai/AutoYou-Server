@@ -1285,6 +1285,7 @@ from autoyou_agents.shared_tools.frontend_registry import (
     load_frontend_registry,
     refresh_frontend_registry,
 )
+from shared.agent_apps import describe_agent_app
 from autoyou_agents.shared_tools.agent_install_registry import (
     can_install_agent_in_runtime,
     discover_agent_directories,
@@ -11605,6 +11606,8 @@ def _build_agent_website_routes_from_frontend_registry(
                 "websocket_enabled": bool(_coerce_enabled_flag(policy_entry.get("websocket_enabled", False))),
                 "auth_mode": auth_settings.get("auth_mode", "totp"),
                 "shared_session_eligible": bool(auth_settings.get("shared_session_eligible", True)),
+                # How the Agent Apps store draws this website (icon, colours, section).
+                "app": describe_agent_app(policy_entry),
             }
         )
 
@@ -11663,7 +11666,10 @@ def _agent_name_from_browser_proxy_path(path: str) -> str:
 def _browser_path_uses_page_service(path: str, cfg: Optional[Dict[str, Any]] = None) -> bool:
     normalized_path = str(path or "/")
     if (
-        normalized_path == "/agent-frontends"
+        normalized_path == "/websites"
+        or normalized_path.startswith("/websites/")
+        or normalized_path == "/api/websites"
+        or normalized_path == "/agent-frontends"
         or normalized_path.startswith("/agent-frontends/")
         or normalized_path == "/agent-websites"
         or normalized_path.startswith("/agent-websites/")
@@ -12474,7 +12480,7 @@ def _resolve_default_agent_website(cfg: Optional[Dict[str, Any]] = None) -> str:
 
     Precedence: ``autoyou_page.default_agent_website`` then top-level
     ``default_agent_website``; defaults to ``page_agent``. The sentinel
-    ``agent_websites`` means "land on the Agent Websites directory page".
+    ``agent_websites`` means "land on the Agent Apps store page".
     """
     config = cfg if isinstance(cfg, dict) else (STATE.config or {})
     page_cfg = config.get("autoyou_page") if isinstance(config, dict) else None
@@ -12503,7 +12509,7 @@ def _build_default_website_payload(
     config = cfg if isinstance(cfg, dict) else (STATE.config or {})
     default_agent = _resolve_default_agent_website(config)
     if default_agent == "agent_websites":
-        return {"agent_name": "agent_websites", "kind": "directory", "title": "Agent Websites", "open_url": "/agent-websites"}
+        return {"agent_name": "agent_websites", "kind": "directory", "title": "Agent Apps", "open_url": "/websites"}
     resolved_routes = routes if routes is not None else _build_agent_website_routes(config)
     for route in resolved_routes:
         if str(route.get("agent_name") or "") == default_agent:

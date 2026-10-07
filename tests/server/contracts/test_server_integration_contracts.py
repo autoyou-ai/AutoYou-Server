@@ -775,6 +775,13 @@ def test_browser_forwarding_preserves_reserved_routes_agent_frontends_and_advert
 
         webrtc = server.WebRTCManager()
 
+        # Agent Apps (the store page and its search API) stay on the page service
+        # even while a custom forward port is configured.
+        assert webrtc._resolve_autoyou_forward_url("/websites") == "http://127.0.0.1:8067/websites"
+        assert webrtc._resolve_autoyou_forward_url("/websites?q=notes") == "http://127.0.0.1:8067/websites?q=notes"
+        assert webrtc._resolve_autoyou_forward_url("/api/websites") == "http://127.0.0.1:8067/api/websites"
+        assert server._browser_path_uses_page_service("/websites")
+        assert server._browser_path_uses_page_service("/api/websites")
         assert webrtc._resolve_autoyou_forward_url("/agent-frontends") == "http://127.0.0.1:8067/agent-frontends"
         assert webrtc._resolve_autoyou_forward_url("/api/agent-directory") == "http://127.0.0.1:8067/api/agent-directory"
         assert webrtc._resolve_autoyou_forward_url("/api/chat") == "http://127.0.0.1:8081/api/chat"

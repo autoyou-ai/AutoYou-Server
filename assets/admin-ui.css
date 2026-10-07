@@ -1538,6 +1538,47 @@ code,
     gap: 12px;
 }
 
+.ayu-apps-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.ayu-app-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 4px 12px 4px 4px;
+    border-radius: 999px;
+    background: var(--ayu-surface-strong);
+    border: 1px solid var(--ayu-border);
+}
+
+.ayu-app-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.ayu-app-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--ayu-text);
+}
+
 .ayu-telegram-onboarding {
     display: grid;
     gap: 14px;

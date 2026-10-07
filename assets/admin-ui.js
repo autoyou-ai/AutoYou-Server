@@ -6703,6 +6703,39 @@
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + renderDesktopAssetSetupPanel() + "</div>";
     }
 
+    function agentAppsUrl() {
+        return browserPageRouteUrl("/websites");
+    }
+
+    function agentAppTile(route) {
+        var app = route.app || {};
+        var colors = Array.isArray(app.colors) ? app.colors : [];
+        var safe = function (value, fallback) {
+            return /^#[0-9a-f]{3,8}$/i.test(String(value || "")) ? String(value) : fallback;
+        };
+        var title = String(route.title || route.agent_name || "App");
+        var tip = route.description ? title + " - " + route.description : title;
+        return "<span class=\"ayu-app-chip\" title=\"" + valueAttr(tip) + "\"><span class=\"ayu-app-icon\" style=\"background:linear-gradient(150deg," + safe(colors[0], "#8e9bff") + "," + safe(colors[1], "#6a3df0") + ")\">" + escapeHtml(title.charAt(0).toUpperCase()) + "</span><span class=\"ayu-app-name\">" + escapeHtml(title) + "</span></span>";
+    }
+
+    function renderAgentAppsPanel(routes) {
+        var apps = (Array.isArray(routes) ? routes : []).filter(function (route) {
+            return String(route.agent_name || "");
+        });
+        var browser = getByPath(state.bootstrap, "status.browser", {});
+        var isHome = String(getByPath(browser, "default_website.agent_name", "") || "") === "agent_websites";
+        var strip = apps.length
+            ? "<div class=\"ayu-apps-strip\">" + apps.map(agentAppTile).join("") + "</div>"
+            : "<div class=\"ayu-empty\">No website apps are ready yet. Turn one on in Agents and it appears here and on every connected device.</div>";
+        var url = agentAppsUrl();
+        var actions = "<div class=\"ayu-inline-actions\"><a class=\"ayu-link-btn ayu-btn ayu-btn-primary ayu-btn-sm\" href=\"" + escapeHtml(url) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open Agent Apps</span></a>"
+            + button("Copy link", "apps-copy-link", "ghost", "copy", "sm")
+            + (isHome ? badge("Home page for connected browsers", "green") : button("Use as home page", "set-default-website:agent_websites", "secondary", "bolt", "sm"))
+            + "</div>";
+        var note = "<div class=\"ayu-note ayu-note-blue\">Phones, desktops and browsers on your home network open this as an app store. Touch or hover to read about an app, hold and drag to rearrange, pinch to resize. Each person's layout is saved in their own browser, so nothing here changes it.</div>";
+        return panel("Agent Apps", "Every website app on this computer, as one launcher.", strip + note + actions);
+    }
+
     function renderPageScreen() {
         var routes = browserWebsiteRoutes();
         var websites = getByPath(state.forms, "page.advertisedWebsites", []);
@@ -6786,7 +6819,7 @@
             + field("Shared session length (days)", input("page.agentWebsitesSecurity.shared_session_ttl_days", { type: "number" }))
             + "<div class=\"ayu-inline-actions\">" + button("Save", "agent-websites-security-save", "primary", "save", "sm") + button("Sign out of all agent sessions", "agent-sessions-sign-out-all", "danger", "bolt", "sm") + "</div>";
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div></div><div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Browser forwarding", "Choose the port used when paired browsers reach local websites.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div></div>" + renderAgentAppsPanel(routes) + "<div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Browser forwarding", "Choose the port used when paired browsers reach local websites.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
     }
 
     function formatTimestamp(value) {
@@ -7083,7 +7116,7 @@
                 return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + actions + "</div></div>";
             }).join("") + "</div>"
             : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
-        var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Websites directory is the default", "green") : button("Use Agent Websites directory as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
+        var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Apps is the home page", "green") : button("Use Agent Apps as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
         return note + list + directoryAction;
     }
 
@@ -9944,6 +9977,14 @@
             var bookmarkRemoveIndex = Number(action.split(":")[1]);
             getByPath(state.forms, "page.bookmarks", []).splice(bookmarkRemoveIndex, 1);
             await persistBookmarks("Bookmark removed.", pageDraftForBookmarkRemove);
+            return;
+        }
+        if (action === "apps-copy-link") {
+            var appsLink = agentAppsUrl();
+            if (appsLink) {
+                await copyText(/^[a-z][a-z0-9+.-]*:/i.test(appsLink) ? appsLink : window.location.origin + appsLink);
+                setNotice("success", "Agent Apps link copied to clipboard.");
+            }
             return;
         }
         if (action.indexOf("page-copy-bookmark:") === 0) {

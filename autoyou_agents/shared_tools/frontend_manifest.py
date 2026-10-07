@@ -60,6 +60,30 @@ def normalize_entry_path(entry_path: Optional[str]) -> str:
     return raw
 
 
+# Optional Agent Apps presentation hints. ``icon`` names a glyph from the
+# built-in set, ``accent`` is a ``#rrggbb`` colour for the icon gradient,
+# ``category`` is one of the store sections and ``keywords`` extend search.
+# They are passed through as trimmed text; shared.agent_apps validates them
+# when it draws the store, so a bad value falls back to an inferred one.
+_PRESENTATION_TEXT_FIELDS = ("icon", "accent", "category")
+
+
+def _normalize_presentation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    hints: Dict[str, Any] = {}
+    for field in _PRESENTATION_TEXT_FIELDS:
+        value = str(payload.get(field) or "").strip()[:32]
+        if value:
+            hints[field] = value
+    keywords = payload.get("keywords")
+    if isinstance(keywords, str):
+        keywords = [part for part in keywords.replace(";", ",").split(",")]
+    if isinstance(keywords, (list, tuple)):
+        cleaned = [str(word).strip()[:40] for word in keywords if str(word).strip()]
+        if cleaned:
+            hints["keywords"] = cleaned[:12]
+    return hints
+
+
 # Valid declared auth defaults for an agent website. "inherit" (the default
 # when the field is absent) reproduces the platform's existing gated-by-default
 # fallback, so agents that don't touch this field are completely unaffected.
@@ -86,8 +110,12 @@ def build_frontend_manifest(
     shared_session_eligible: bool = True,
     bypass_global_otp: bool = False,
     backend_stack: str = DEFAULT_BACKEND_STACK,
+    icon: Optional[str] = None,
+    accent: Optional[str] = None,
+    category: Optional[str] = None,
+    keywords: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
-    return {
+    manifest: Dict[str, Any] = {
         "agent_name": str(agent_name).strip(),
         "title": str(title).strip() or str(agent_name).strip(),
         "description": str(description).strip(),
@@ -111,6 +139,12 @@ def build_frontend_manifest(
         # Watching. An explicit per-agent admin override still wins.
         "bypass_global_otp": bool(bypass_global_otp),
     }
+    manifest.update(
+        _normalize_presentation(
+            {"icon": icon, "accent": accent, "category": category, "keywords": list(keywords or [])}
+        )
+    )
+    return manifest
 
 
 def write_frontend_manifest(agent_dir: Path, manifest: Dict[str, Any]) -> Path:
@@ -161,6 +195,7 @@ def _normalize_frontend_manifest_payload(
             direct_forward_port = None
 
     return {
+        **_normalize_presentation(payload),
         "agent_name": normalized_agent_name,
         "title": title,
         "description": description,

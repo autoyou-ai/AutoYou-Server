@@ -8661,8 +8661,9 @@ class WebRTCManager:
           the WebRTC DataChannel browser from any connected iOS/Android/Python client.
 
         Reserved AutoYou UX routes:
-        - ``/agent-frontends``, ``/api/agent-frontends``, and ``/api/agent-directory`` always
-          resolve to the built-in page service, even when a custom forward target is configured.
+        - ``/websites`` (Agent Apps), ``/api/websites``, ``/agent-frontends``,
+          ``/api/agent-frontends``, and ``/api/agent-directory`` always resolve to the
+          built-in page service, even when a custom forward target is configured.
 
         Fallback: route to the AutoYou Page port (``_get_autoyou_forward_target_port()``).
         """
@@ -8703,7 +8704,10 @@ class WebRTCManager:
         scheme = "ws" if websocket else "http"
 
         if (
-            path_only == "/agent-frontends"
+            path_only == "/websites"
+            or path_only.startswith("/websites/")
+            or path_only == "/api/websites"
+            or path_only == "/agent-frontends"
             or path_only.startswith("/agent-frontends/")
             or path_only == "/agent-websites"
             or path_only.startswith("/agent-websites/")
@@ -8962,8 +8966,10 @@ class WebRTCManager:
         import re as _re
         prefix_b = prefix.encode("utf-8")
         page_service_paths = (
+            b"/websites",
             b"/agent-websites",
             b"/agent-frontends",
+            b"/api/websites",
             b"/api/agent-websites",
             b"/api/agent-frontends",
             b"/api/agent-directory",
@@ -9011,7 +9017,7 @@ class WebRTCManager:
             + f'<base href="{prefix}/">'
             f'<script>(function(){{'
             f'var _B="{prefix}";'
-            f'function _g(u){{return /^(?:\\/agent-websites|\\/agent-frontends|\\/api\\/agent-websites|\\/api\\/agent-frontends|\\/api\\/agent-directory)(?:[\\/?#]|$)/.test(u);}}'
+            f'function _g(u){{return /^(?:\\/websites|\\/agent-websites|\\/agent-frontends|\\/api\\/websites|\\/api\\/agent-websites|\\/api\\/agent-frontends|\\/api\\/agent-directory)(?:[\\/?#]|$)/.test(u);}}'
             f'function _r(u){{'
             f'if(typeof u==="string"&&u.startsWith("/")&&!u.startsWith(_B)&&!u.startsWith("//")&&!u.startsWith("/agent/")&&!_g(u))'
             f'{{return _B+u;}}return u;}}'
