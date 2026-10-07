@@ -208,6 +208,7 @@ struct Receiver {
 }
 struct Slot {
     connection: Connection,
+    initiator: bool,
     admission: Mutex<Admission>,
     outbound: Mutex<Outbound>,
     receiver: Mutex<Receiver>,
@@ -219,11 +220,18 @@ struct Slot {
     read_slots: Arc<Semaphore>,
     closed: AtomicBool,
 }
+impl Slot {
+    fn device_floor_key(&self, device: &str) -> (Option<String>, String) {
+        // A remote Computer issues its own device namespace. Incoming grants
+        // still use this endpoint's single authoritative device registry.
+        (self.initiator.then(|| self.connection.remote_id().to_string()), device.to_owned())
+    }
+}
 struct DeviceFloor { generation: u64, epoch: u64, endpoint_id: String }
 struct Shared {
     slots: Mutex<HashMap<u64, Arc<Slot>>>,
     pending_dials: Mutex<HashMap<u64, Arc<PendingDial>>>,
-    device_floors: Mutex<HashMap<String, DeviceFloor>>,
+    device_floors: Mutex<HashMap<(Option<String>, String), DeviceFloor>>,
     events: Mutex<Events>,
     info: Mutex<(String,String)>,
     closed: AtomicBool,
@@ -350,22 +358,23 @@ impl EndpointHost {
         if principal.expires_at_ms <= now_ms() { return Err(HostError::NotAuthorized); }
         let slot = self.slot(id)?;
         if slot.connection.alpn() != SESSION_ALPN { return Err(HostError::NotAuthorized); }
+        let key = slot.device_floor_key(&principal.device_id);
         let mut floors = self.shared.device_floors.lock().map_err(|_| HostError::Worker)?;
-        if let Some(floor) = floors.get(&principal.device_id) {
+        if let Some(floor) = floors.get(&key) {
             if principal.generation <= floor.generation || principal.authorization_epoch < floor.epoch ||
                 principal.endpoint_id != floor.endpoint_id { return Err(HostError::NotAuthorized); }
         } else if floors.len() >= MAX_DEVICE_FLOORS { return Err(HostError::Backpressure); }
-        if floors.iter().any(|(device, floor)| device != &principal.device_id && floor.endpoint_id == principal.endpoint_id) {
+        if floors.iter().any(|(device, floor)| device.0 == key.0 && device != &key && floor.endpoint_id == principal.endpoint_id) {
             return Err(HostError::NotAuthorized);
         }
         slot.admission.lock().map_err(|_| HostError::Worker)?
             .admit(principal.clone(), &slot.connection.remote_id().to_string()).map_err(|_| HostError::NotAuthorized)?;
-        floors.insert(principal.device_id.clone(), DeviceFloor { generation: principal.generation,
+        floors.insert(key.clone(), DeviceFloor { generation: principal.generation,
             epoch: principal.authorization_epoch, endpoint_id: principal.endpoint_id.clone() });
         for (old_id, old) in self.shared.slots.lock().map_err(|_| HostError::Worker)?.iter() {
             if *old_id != id {
                 let mut admission = old.admission.lock().map_err(|_| HostError::Worker)?;
-                if matches!(&*admission, Admission::Admitted(old) if old.device_id == principal.device_id) {
+                if matches!(&*admission, Admission::Admitted(previous) if old.device_floor_key(&previous.device_id) == key) {
                     admission.revoke(); old.connection.close(1u32.into(), b"session superseded");
                 }
             }
@@ -849,7 +858,7 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                                 Ok(value) => value,
                                 Err(_) => { shared.pending_dials.lock().unwrap().remove(&id); connection.close(1u32.into(), b"binding unavailable"); continue; }
                             };
-                            let slot = Arc::new(Slot { connection, admission: Mutex::new(Admission::default()),
+                            let slot = Arc::new(Slot { connection, initiator, admission: Mutex::new(Admission::default()),
                                 outbound: Mutex::new(Outbound { scheduler: Scheduler::default(), sequences: HashMap::new(), allocations: HashMap::new(),
                                     next_stream: if initiator { 3 } else { 2 }, receipts: HashMap::new(), uploads:UploadCredits::default() }),
                                 receiver: Mutex::new(Receiver { ordering: OrderedReceiver::default(), allocations: HashMap::new() }),

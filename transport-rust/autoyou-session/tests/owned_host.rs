@@ -28,6 +28,50 @@ fn frame(lane: Lane, generation: u64, stream_id: u64, payload: &[u8]) -> Frame {
 }
 
 #[test]
+fn outgoing_device_floors_are_remote_authority_scoped_and_incoming_pins_remain_global() {
+    let first = EndpointHost::start(EndpointPolicy::local(), [141;32]).unwrap();
+    let second = EndpointHost::start(EndpointPolicy::local(), [143;32]).unwrap();
+    let client = EndpointHost::start(EndpointPolicy::local(), [145;32]).unwrap();
+    let clone = EndpointHost::start(EndpointPolicy::local(), [147;32]).unwrap();
+    let (client_id, _) = client.endpoint_info().unwrap();
+    let connect = |target: &EndpointHost, generation| {
+        let (remote, ticket) = target.endpoint_info().unwrap();
+        let outgoing = client.dial(&ticket, &remote, false).unwrap();
+        wait(&client, |event| matches!(event, HostEvent::Connected { connection_id, .. } if *connection_id == outgoing));
+        let incoming = match wait(target, |event| matches!(event, HostEvent::Connected { .. })) {
+            HostEvent::Connected { connection_id, .. } => connection_id, _ => unreachable!(),
+        };
+        target.admit(incoming, principal(client_id.clone(), "synthetic-local-device", generation)).unwrap();
+        // These independently approved authorities may use the same device ID.
+        client.admit(outgoing, principal(remote, "synthetic-local-device", generation)).unwrap();
+        target.activate(incoming).unwrap(); client.activate(outgoing).unwrap();
+        outgoing
+    };
+    let a = connect(&first, 1);
+    let b = connect(&second, 1);
+    let chat = br#"{"header":{"message_id":"synthetic-authority-chat","message_type":"chat","timestamp":1.0},"payload":{"text":"synthetic"}}"#;
+    for (host, connection) in [(&first, a), (&second, b)] {
+        client.send(connection, frame(Lane::Application, 1, 2, chat), None).unwrap();
+        assert!(matches!(wait(host, |event| matches!(event, HostEvent::Frame { .. })), HostEvent::Frame { .. }));
+    }
+    let replacement = connect(&first, 2);
+    let (first_id, ticket) = first.endpoint_info().unwrap();
+    assert!(matches!(client.admit(replacement, principal(first_id.clone(), "synthetic-local-device", 2)), Err(HostError::NotAuthorized)));
+    assert!(matches!(client.admit(replacement, principal(first_id.clone(), "synthetic-alias", 3)), Err(HostError::NotAuthorized)));
+    // Superseding first must leave the unrelated authority's generation alive.
+    client.send(b, frame(Lane::Application, 1, 2, chat), None).unwrap();
+    assert!(matches!(wait(&second, |event| matches!(event, HostEvent::Frame { .. })), HostEvent::Frame { .. }));
+    clone.dial(&ticket, &first_id, false).unwrap();
+    wait(&clone, |event| matches!(event, HostEvent::Connected { .. }));
+    let incoming = match wait(&first, |event| matches!(event, HostEvent::Connected { .. })) {
+        HostEvent::Connected { connection_id, .. } => connection_id, _ => unreachable!(),
+    };
+    let (clone_id, _) = clone.endpoint_info().unwrap();
+    assert!(matches!(first.admit(incoming, principal(clone_id, "synthetic-local-device", 3)), Err(HostError::NotAuthorized)));
+    clone.shutdown().unwrap(); client.shutdown().unwrap(); first.shutdown().unwrap(); second.shutdown().unwrap();
+}
+
+#[test]
 fn owned_host_restricts_pre_auth_then_delivers_in_order_and_shuts_down() {
     let server = EndpointHost::start(EndpointPolicy::local(), [31;32]).unwrap();
     let client = EndpointHost::start(EndpointPolicy::local(), [32;32]).unwrap();

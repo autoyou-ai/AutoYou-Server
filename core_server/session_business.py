@@ -10,6 +10,7 @@ choose another owner or erase a replacement channel's resources.
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any
 from core_server.session_dispatch import (bootstrap_application_session,
     dispatch_application_message, dispatch_bound_control_message)
@@ -149,8 +150,11 @@ class SessionBusinessAdapter:
                 try:
                     cleanup = [self.engine._cancel_session_message_tasks(context.transport_id)]
                     if binding is not None:
-                        from shared.iroh_website_input import close_website_views
-                        cleanup.append(close_website_views(binding))
+                        # Creating a view loads its owner. Unrelated disconnects
+                        # must not load the optional media/device stack.
+                        website_input = sys.modules.get("shared.iroh_website_input")
+                        if website_input is not None:
+                            cleanup.append(website_input.close_website_views(binding))
                         cleanup.extend(handler.closed(binding) for handler in self._streams.values())
                         if self.delivery is not None:
                             cleanup.append(self.delivery.closed(binding))
