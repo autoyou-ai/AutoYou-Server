@@ -26,6 +26,18 @@
   <a href="LICENSE">License</a>
 </p>
 
+<p align="center">
+  <img src="docs/images/hero.gif" alt="AutoYou pairing a phone, chatting with local AI, calling, browsing a private Page and controlling a computer's screen" width="860">
+</p>
+
+<p align="center">
+  <a href="https://apps.apple.com/us/app/autoyou/id6760363728"><img src="https://img.shields.io/badge/App%20Store-iPhone%20%26%20iPad-0D96F6?logo=apple&logoColor=white" alt="Get AutoYou on the App Store"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.autoyou.app"><img src="https://img.shields.io/badge/Google%20Play-Android-34A853?logo=googleplay&logoColor=white" alt="Get AutoYou on Google Play"></a>
+  <a href="https://apps.microsoft.com/detail/9mw8l2wfw7wv?hl=en-US&gl=US"><img src="https://img.shields.io/badge/Microsoft%20Store-Windows-0078D4?logo=windows&logoColor=white" alt="Get AutoYou from the Microsoft Store"></a>
+  <a href="https://www.autoyou.me/downloads/"><img src="https://img.shields.io/badge/Download-macOS%20%7C%20Linux-111827?logo=apple&logoColor=white" alt="Download AutoYou for macOS or Linux"></a>
+  <a href="https://www.autoyou.me/ecosystem/"><img src="https://img.shields.io/badge/Ecosystem-autoyou.me-536DFE" alt="The AutoYou ecosystem"></a>
+</p>
+
 ---
 
 ### **You are not the product.**
@@ -63,7 +75,30 @@ Features depend on the selected profile, hardware, permissions, and configured
 integrations. AutoYou client apps are distributed separately; server-backed
 features need a server you run or compile.
 
+## The apps
+
+AutoYou Server runs on your computer. The apps reach it from anywhere, and the
+phone apps also carry a local AI of their own for when no computer is around.
+
+| Pair any way you like | Chat with your own AI | Nearby Lobbies | Local AI on the phone |
+| --- | --- | --- | --- |
+| <img src="docs/images/apps/android-pairing.png" alt="Pairing modes: Local, Auto, Bluetooth, Cloud, OTP and Peer Link" width="200"> | <img src="docs/images/apps/ios-chat.png" alt="Chatting with an AI agent running on your own computer" width="200"> | <img src="docs/images/apps/ios-lobbies.png" alt="Discovering and hosting nearby Lobbies over Wi-Fi and Bluetooth" width="200"> | <img src="docs/images/apps/android-local-ai.png" alt="Local AI chat that runs on the phone" width="200"> |
+
+- **Local AI, no computer needed.** Tap *Local* in Chat for an assistant that runs on the phone
+  (LFM 2.5 350M, Gemini Nano or Apple Intelligence), and ask it to keep Notes, Page items, a Diary and a Profile.
+- **Lobbies.** Host or join nearby rooms over Wi-Fi and Bluetooth, without GPS, with chat plus audio and video
+  for up to 6 guests and the host.
+- **Peer Link.** Connect one AutoYou app to another; the receiving app approves each link, and optional AI replies
+  answer for you using only what you told it.
+- **Remote desktop.** View and control your computer's screen with touch and hardware modifier keys.
+
+Explore the whole AutoYou ecosystem at [autoyou.me/ecosystem](https://www.autoyou.me/ecosystem/).
+
 ## See it
+
+<p align="center">
+  <img src="docs/images/admin-tour.gif" alt="A tour of the AutoYou admin console: server overview, devices and live activity, access and security" width="760">
+</p>
 
 The local admin interface brings setup, models, agents, connections, and
 security controls together. These repository screenshots use example account
