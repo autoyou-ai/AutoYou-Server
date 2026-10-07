@@ -259,7 +259,7 @@ def register_routes(
         if auth_error:
             return auth_error
         cfg = server.STATE.config or server._default_config()
-        options = [{"agent_name": "agent_websites", "title": "Agent Websites (directory)", "kind": "directory"}]
+        options = [{"agent_name": "agent_websites", "title": "Agent Apps (store)", "kind": "directory"}]
         for route in server._build_agent_website_routes(cfg):
             name = str(route.get("agent_name") or "").strip()
             if name:
