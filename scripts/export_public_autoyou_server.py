@@ -503,6 +503,8 @@ REVIEWED_ASSET_PATHS = {
     "docs/images/admin/overview.png",
     "docs/images/admin/security.png",
     "docs/images/admin-tour.gif",
+    "docs/images/architecture-dark.png",
+    "docs/images/architecture-light.png",
     "docs/images/hero.gif",
     "docs/images/apps/android-local-ai.png",
     "docs/images/apps/android-pairing.png",

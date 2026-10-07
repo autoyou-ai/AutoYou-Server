@@ -169,28 +169,29 @@ the current dependency review.
 
 ## How it fits together
 
-```mermaid
-flowchart LR
-    devices["Your Phone, Laptop, or Browser"] -->|E2E Encrypted WebRTC| server
-    messaging["Telegram / Signal / WhatsApp"] --> server
-    mcp["Cursor / Claude / MCP Clients"] -->|MCP Bridge| server
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
+  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your phone, laptop or browser reach the AutoYou Server over end-to-end encrypted WebRTC and over Telegram, Signal or WhatsApp Auto-Pair; the server runs a Google ADK agent harness with AutoYou agents, OpenClaw and Hermes Agent, routes models through LiteLLM to Ollama or optional cloud providers, keeps memory in SQLite with optional Cognee, and does local speech with faster-whisper, system voices and optional EmotiVoice; Agent Apps are tunneled as encrypted HTTP over the SCTP data channel to a local web server on the phone." width="100%">
+</picture>
 
-    subgraph server["AutoYou Server (Your Machine)"]
-        direction TB
-        admin["Local Admin Console (:8001)"]
-        intent["Local Intent Router"]
-        agents["Agent Workbench & Builder"]
-        tools["Playwright · Files · Audio Engine"]
-        intent --> agents --> tools
-    end
+- **Pair and connect.** Auto-Pair exchanges an encrypted pairing message between your device and your
+  server through a Telegram, Signal or WhatsApp workflow you configure. After pairing, your devices talk
+  to the server over end-to-end encrypted WebRTC for chat, voice and video.
+- **Agent Apps reach your phone.** Agent websites and web apps are tunneled as encrypted HTTP over the
+  WebRTC SCTP data channel to a small local web server on the phone, which serves them the way the
+  server would.
+- **One harness, many agents.** A Google ADK harness runs the built-in AutoYou agents and bridges
+  OpenClaw and Hermes Agent. Model calls go through LiteLLM to Ollama on your machine, or to cloud
+  providers only if you add them.
+- **Local voice and memory.** Speech-to-text uses faster-whisper. Text-to-speech uses system voices, or
+  EmotiVoice if you install it. Memory is SQLite by default, with Cognee as an optional richer backend.
+- **Local chat on the phone.** The phone can chat on its own with LFM2.5 350M, Apple Intelligence on
+  iPhone, or Gemini Nano on supported Android phones.
 
-    agents --> local_ai["Local Models (Ollama / GGUF)"]
-    agents -.-> cloud_ai["Optional Cloud Fallback (OpenAI / Anthropic)"]
-```
-
-You choose which models, agents, and connections to enable. WebRTC connections
-encrypt traffic between their endpoints. Remote discovery, relays, provider
-APIs, and messaging bridges have their own data flows and terms.
+Dashed orange boxes are external projects and integrations you can add or leave out. You choose which
+models, agents, and connections to enable. WebRTC connections encrypt traffic between their endpoints.
+Remote discovery, relays, provider APIs, and messaging bridges have their own data flows and terms.
+The diagram source is [docs/images/architecture.mmd](docs/images/architecture.mmd) (Mermaid), with a dark-palette copy next to it.
 
 ## Build something yours
 
