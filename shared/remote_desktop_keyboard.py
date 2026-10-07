@@ -158,7 +158,7 @@ def _normalize_typed_text(text: str) -> str:
     return "".join(char for char in text if char in "\n\t\b" or ord(char) <= 127)
 
 
-def normalize_remote_desktop_keyboard_payload(payload: Any) -> Optional[Dict[str, Any]]:
+def normalize_remote_desktop_keyboard_payload(payload: Any, *, preserve_unicode: bool = False) -> Optional[Dict[str, Any]]:
     """Return a bounded protocol payload, or ``None`` when it is invalid."""
 
     if not isinstance(payload, dict):
@@ -187,7 +187,13 @@ def normalize_remote_desktop_keyboard_payload(payload: Any) -> Optional[Dict[str
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         if any(ord(char) < 32 and char not in "\n\t\b" for char in text):
             return None
-        text = _normalize_typed_text(text)[:MAX_TEXT_LENGTH]
+        if preserve_unicode:
+            # Native committed text is a Unicode scalar string, not a series
+            # of layout-dependent ASCII key presses. Do not alter punctuation.
+            if any(0xD800 <= ord(char) <= 0xDFFF or 0x7F <= ord(char) <= 0x9F for char in text):
+                return None
+        else:
+            text = _normalize_typed_text(text)[:MAX_TEXT_LENGTH]
         if not text:
             return None
         normalized["text"] = text
@@ -249,7 +255,7 @@ def release_stuck_modifiers(pyautogui: Any = None) -> None:
             pass
 
 
-def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool:
+def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None, *, release_modifiers: bool = True) -> bool:
     """Apply one validated native keyboard event to the local desktop.
 
     ``pyautogui`` is intentionally imported lazily so importing the shared
@@ -285,7 +291,8 @@ def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool
             # If a chip was armed (keyDown) and the user types instead of
             # pressing a toolbar key, release it first so a normal letter
             # can't land as an unintended host shortcut (e.g. armed Ctrl + "w").
-            release_stuck_modifiers(pyautogui)
+            if release_modifiers:
+                release_stuck_modifiers(pyautogui)
             for char in text:
                 if char == "\n":
                     pyautogui.press("enter")

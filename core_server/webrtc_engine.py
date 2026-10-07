@@ -12,7 +12,11 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
+import asyncio
 import hashlib
+import heapq
+import os
+import stat
 import inspect
 import json
 import re
@@ -81,6 +85,29 @@ _MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="defaul
                     b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
                     b'media-src data:; connect-src \'none\'; form-action \'none\'">')
 _MOBILE_GAME_MAX_BYTES = 512 * 1024
+_MOBILE_GAME_READERS = asyncio.Semaphore(4)
+
+
+def _load_mobile_game_html(path):
+    """Read one bounded regular file and digest the exact sandboxed bytes."""
+    limit = _MOBILE_GAME_MAX_BYTES - len(_MOBILE_GAME_CSP)
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+        raise ValueError("Game asset is unavailable")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as source:
+        opened = os.fstat(source.fileno())
+        if not stat.S_ISREG(opened.st_mode) or opened.st_size > limit or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise ValueError("Game asset changed during open")
+        html = source.read(limit + 1)
+    if len(html) > limit:
+        raise ValueError("Game asset exceeds the mobile download limit")
+    html.decode("utf-8")
+    head = re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE)
+    if head is None:
+        raise ValueError("Game HTML needs a head element")
+    return html[:head.end()] + _MOBILE_GAME_CSP + html[head.end():]
 _HOSTED_GAME_LOOP = Path(__file__).resolve().parents[1] / "autoyou_agents/game_agent/website/frontend/assets/audio/stream-loop.wav"
 
 
@@ -381,6 +408,7 @@ class WebRTCManager:
 
     async def _rewire_outbound_audio_for_host(self) -> None:
         """Rebuild live outbound tracks after the host capture owner changes."""
+        self._reconcile_native_audio_policy()
         seen: Set[int] = set()
         for session_id in list(self.audio_transceivers):
             _, transceiver = self._audio_transceiver_for_session(session_id)
@@ -466,6 +494,34 @@ class WebRTCManager:
         if dropped_count:
             _runtime.LOGGER.info("Dropped %d offline voice-call agent message(s): %s", dropped_count, reason)
 
+    def _reconcile_native_speech_policy(self) -> None:
+        seen: set[int] = set()
+        for channel in tuple(self.datachannel_managers.values()):
+            owner = getattr(getattr(channel, "native_media", None), "call_owner", None)
+            if owner is None or id(owner) in seen or getattr(owner, "_closing", False):
+                continue
+            seen.add(id(owner))
+            owner.reconcile_speech_policy()
+
+    def _reconcile_native_audio_policy(self) -> None:
+        seen: set[int] = set()
+        for channel in tuple(self.datachannel_managers.values()):
+            owner = getattr(getattr(channel, "native_media", None), "call_owner", None)
+            if owner is None or id(owner) in seen or getattr(owner, "_closing", False):
+                continue
+            seen.add(id(owner))
+            owner.reconcile_audio_policy()
+
+    def _reconcile_native_video_policy(self) -> None:
+        seen: set[int] = set()
+        for channel in tuple(self.datachannel_managers.values()):
+            owner = getattr(getattr(channel, "native_media", None), "call_owner", None)
+            video = getattr(owner, "_video", None)
+            if video is None or id(video) in seen or getattr(owner, "_closing", False):
+                continue
+            seen.add(id(video))
+            video.reconcile_video_policy()
+
     async def _stop_video_call_agent_processing(
         self,
         *,
@@ -506,6 +562,12 @@ class WebRTCManager:
         if not preserve_audio_runtime:
             closed_audio_managers: List[Any] = []
             for session_id, audio_manager in list(getattr(_runtime.STATE, "audio_managers", {}).items()):
+                if getattr(audio_manager, "_native_media", False):
+                    # The native session retains physical cleanup ownership.
+                    # Agent policy suspends speech; it cannot purge that owner.
+                    audio_manager.set_native_speech_enabled(False)
+                    audio_manager.stop_speaking(source="video_call_agents_disabled")
+                    continue
                 if audio_manager is None or any(audio_manager is current for current in closed_audio_managers):
                     _runtime.STATE.audio_managers.pop(session_id, None)
                     continue
@@ -525,6 +587,9 @@ class WebRTCManager:
         video_enabled = _runtime._get_video_call_enabled(cfg=cfg)
         audio_enabled = _runtime._get_video_call_audio_enabled(cfg=cfg)
         agent_processing_enabled = _runtime._get_video_call_agent_processing_enabled(cfg=cfg)
+        self._reconcile_native_speech_policy()
+        self._reconcile_native_video_policy()
+        self._reconcile_native_audio_policy()
         recording_enabled = bool(video_enabled and _runtime._get_video_record_my_video_enabled(cfg=cfg))
         recording_dir = _runtime._resolve_video_recording_dir(cfg=cfg)
         recording_mode = _runtime._get_video_recording_mode(cfg=cfg)
@@ -562,6 +627,8 @@ class WebRTCManager:
             )
         if not self._background_audio_consumer_enabled(cfg=cfg):
             self.background_audio_state_by_session.clear()
+        self._reconcile_native_speech_policy()
+        self._reconcile_native_audio_policy()
 
         if not agent_processing_enabled:
             reason = (
@@ -801,6 +868,16 @@ class WebRTCManager:
 
     async def _publish_voice_call_status(self, session_id: str, payload: Dict[str, Any]) -> None:
         raw_payload = dict(payload or {}) if isinstance(payload, dict) else {}
+        if "native_voice_call" in raw_payload:
+            channel = self.datachannel_managers.get(session_id)
+            owner = getattr(getattr(channel,"native_media",None),"call_owner",None)
+            voice_call = raw_payload["native_voice_call"]
+            if owner is None or not owner.accepts_playback_scope(raw_payload.get("native_audio_scope")) or \
+                    not isinstance(voice_call,dict) or set(voice_call)!={"version","call_id","expires_at_ms"} or \
+                    type(voice_call.get("version")) is not int or voice_call["version"]!=1 or \
+                    type(voice_call.get("expires_at_ms")) is not int or \
+                    (voice_call["call_id"],voice_call["expires_at_ms"])!=(owner._call_id,owner._call_expiry):
+                return
         event_name = str(raw_payload.get("event") or "readiness").strip().lower() or "readiness"
         if event_name == "playback":
             existing = self.voice_call_playback_by_session.get(session_id)
@@ -808,6 +885,8 @@ class WebRTCManager:
             existing = self.voice_call_status_by_session.get(session_id)
 
         normalized = dict(existing) if isinstance(existing, dict) else {}
+        normalized.pop("native_voice_call",None)
+        normalized.pop("native_audio_scope",None)
         normalized.update(raw_payload)
         normalized["event"] = event_name
         normalized.setdefault("timestamp_ms", int(_runtime.time.time() * 1000))
@@ -1947,7 +2026,13 @@ class WebRTCManager:
         if not isinstance(local_tracks, dict):
             return
         for session_id in list(session_ids or []):
-            tracks = local_tracks.pop(str(session_id or "").strip(), None)
+            normalized_session_id = str(session_id or "").strip()
+            native_manager = getattr(_runtime.STATE, "audio_managers", {}).get(normalized_session_id)
+            native_owner = getattr(getattr(self.datachannel_managers.get(normalized_session_id), "native_media", None),
+                "call_owner", None)
+            if native_owner is not None or getattr(native_manager, "_native_media", False):
+                continue  # Its source owner retains capture through physical cleanup.
+            tracks = local_tracks.pop(normalized_session_id, None)
             if tracks is None:
                 continue
             if not isinstance(tracks, (list, tuple, set)):
@@ -2557,6 +2642,10 @@ class WebRTCManager:
             normalized_session_id = str(session_id or "").strip()
             if not normalized_session_id:
                 continue
+            recorder = self.silent_recorders.get(normalized_session_id)
+            if getattr(recorder,"_native_media",False):
+                recorder.fence()
+                continue  # Its async source owner joins IO before dropping aliases.
             recorder = self.silent_recorders.pop(normalized_session_id, None)
             if recorder is None or any(recorder is current for current in closed_recorders):
                 continue
@@ -2567,14 +2656,21 @@ class WebRTCManager:
                 _runtime.LOGGER.warning("Failed to close silent recording writer for %s: %s", normalized_session_id, exc)
 
     def _get_or_create_silent_recorder(self, session_id: str) -> Optional[Any]:
+        channel = self.datachannel_managers.get(session_id)
+        if getattr(channel,"native_media",None) is not None:
+            recorder = self.silent_recorders.get(session_id)
+            if not getattr(recorder,"_native_media",False):
+                raise RuntimeError("native recording has no approved physical owner")
+            return recorder
         if _runtime.StreamingWavBatchRecorder is None:
             return None
         alias_ids = self._ordered_related_session_ids(session_id)
         for alias_id in alias_ids:
             recorder = self.silent_recorders.get(alias_id)
-            if recorder is not None:
+            if recorder is not None and not getattr(recorder,"_native_media",False):
                 for register_alias in alias_ids:
-                    self.silent_recorders[register_alias] = recorder
+                    if not getattr(self.silent_recorders.get(register_alias),"_native_media",False):
+                        self.silent_recorders[register_alias] = recorder
                 return recorder
 
         recorder_session_id = str(alias_ids[0] if alias_ids else session_id or "session").strip() or "session"
@@ -2584,8 +2680,16 @@ class WebRTCManager:
             max_batch_seconds=_runtime._get_silent_recording_batch_seconds(cfg=(_runtime.STATE.config or {})),
         )
         for alias_id in alias_ids:
-            self.silent_recorders[alias_id] = recorder
+            if not getattr(self.silent_recorders.get(alias_id),"_native_media",False):
+                self.silent_recorders[alias_id] = recorder
         return recorder
+
+    async def _join_native_silent_recorder(self, recorder: Any) -> None:
+        recorder.fence()
+        await recorder.close()
+        for alias_id,current in tuple(self.silent_recorders.items()):
+            if current is recorder:
+                self.silent_recorders.pop(alias_id,None)
 
     def _write_silent_recording_chunk(self, session_id: str, chunk: bytes) -> bool:
         state = self._background_audio_state_for_session(session_id)
@@ -2602,6 +2706,8 @@ class WebRTCManager:
         try:
             recorder.write(chunk)
         except Exception as exc:
+            if getattr(recorder,"_native_media",False):
+                raise
             _runtime.LOGGER.warning("Failed to write silent recording chunk for %s: %s", session_id, exc)
         return True
 
@@ -3168,6 +3274,10 @@ class WebRTCManager:
         reply_target["session_id"] = resolved_session_id
       if len(reply_target) == 1:
         return None
+      channel = self.datachannel_managers.get(resolved_session_id)
+      native_owner = getattr(getattr(channel,"native_media",None),"call_owner",None)
+      if native_owner is not None:
+        reply_target["native_audio_scope"] = native_owner.playback_scope()
       return reply_target
 
     def _preferred_datachannel_session_id(
@@ -3359,10 +3469,18 @@ class WebRTCManager:
             allow_single_live_fallback=allow_single_live_fallback,
           )
           if not error and target_session_id and manager is not None:
-            lease = self._remote_desktop_keyboard_lease_for_session(str(target_session_id), "")
-            candidate = str((lease or {}).get("keyboard_state") or "").strip().lower()
-            if candidate in {"visible", "hidden"}:
-              keyboard_state = candidate
+            if getattr(manager, "transport_kind", None) == TransportKind.IROH:
+              media = getattr(manager, "native_media", None)
+              controller = getattr(getattr(getattr(media, "call_owner", None), "_video", None), "_desktop_control", None)
+              lease = getattr(controller, "_lease", None)
+              if lease is not None:
+                manager.registry.check(manager.binding, scope="control"); lease._check()
+                keyboard_state = "visible" if getattr(controller, "_browser_keyboard_lease", None) is lease else "hidden"
+            else:
+              lease = self._remote_desktop_keyboard_lease_for_session(str(target_session_id), "")
+              candidate = str((lease or {}).get("keyboard_state") or "").strip().lower()
+              if candidate in {"visible", "hidden"}:
+                keyboard_state = candidate
         except Exception:
           pass
       proof["keyboard_state"] = keyboard_state
@@ -3645,17 +3763,31 @@ class WebRTCManager:
       lease = self._remote_desktop_control_lease_for_session(session_id, control_id)
       if lease is None or (expected_lease is not None and lease is not expected_lease):
         return False
+      from shared.iroh_input import LegacyInputCleanupBarrier
+      from shared.iroh_media import _join_owned
+      job = lease.get("input_cleanup_task")
+      if job is None:
+        barrier = LegacyInputCleanupBarrier(lease)
+        lease["native_cleanup_barrier"] = barrier
+        job = _runtime.asyncio.create_task(self._release_desktop_control_owned(
+          session_id, lease, barrier, _runtime.asyncio.current_task()), name="legacy-desktop-control-release")
+        lease["input_cleanup_task"] = job
+      await _join_owned(job)
+      return True
+
+    async def _release_desktop_control_owned(self, session_id, lease, barrier, caller):
       for alias_id, candidate in list(self.remote_desktop_control_leases_by_session.items()):
         if candidate is lease:
           self.remote_desktop_control_leases_by_session.pop(alias_id, None)
       expiry_task = lease.pop("expiry_task", None)
-      if isinstance(expiry_task, _runtime.asyncio.Task) and expiry_task is not _runtime.asyncio.current_task():
+      if isinstance(expiry_task, _runtime.asyncio.Task) and expiry_task is not caller:
         expiry_task.cancel()
         await _runtime.asyncio.gather(expiry_task, return_exceptions=True)
       held_buttons = set(lease.get("held_buttons") or ())
       held_keys = set(lease.get("held_keys") or ())
-      lease["held_buttons"] = set()
-      lease["held_keys"] = set()
+      physical = lease.get("physical_input_task")
+      if physical is not None:
+        await _runtime.asyncio.gather(physical, return_exceptions=True)
       lease["expires_at"] = 0.0
       if lease.get("mode") == "game":
         self._stop_hosted_game_audio(lease)
@@ -3666,9 +3798,16 @@ class WebRTCManager:
         still_active = any(candidate.get("mode") == "game" and candidate.get("track") is track
                            for candidate in self.remote_desktop_control_leases_by_session.values())
         self._apply_game_capture_rate(track, game_active=still_active)
+      release_error = lease.get("physical_release_error")
+      held_buttons.difference_update(lease.get("release_attempted_buttons", ()))
+      held_keys.difference_update(lease.get("release_attempted_keys", ()))
       await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_buttons,
-                                     **({"held_keys": held_keys} if held_keys else {}))
-      return True
+                                     strict=True, **({"held_keys": held_keys} if held_keys else {}))
+      if release_error is not None:
+        raise release_error
+      lease["held_buttons"] = set()
+      lease["held_keys"] = set()
+      barrier.release()
 
     async def _release_remote_desktop_control(
       self,
@@ -3853,6 +3992,13 @@ class WebRTCManager:
             session_id,
             str(existing.get("control_id") or ""),
           )
+        from shared.iroh_input import native_host_input_busy
+        if native_host_input_busy():
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=False,
+            reason="Another controller is using screen control. Stop it before requesting control.",
+          )
+          return
         lease = self._store_remote_desktop_control_lease(
           session_id,
           control_id=control_id,
@@ -3904,10 +4050,7 @@ class WebRTCManager:
         held_buttons = set(lease.get("held_buttons") or ())
         held_keys = set(lease.get("held_keys") or ())
         if held_buttons or held_keys:
-          await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs,
-                                           held_buttons, held_keys=held_keys)
-        lease["held_buttons"] = set()
-        lease["held_keys"] = set()
+          await self._release_owned_remote_inputs(session_id, lease, buttons=held_buttons, keys=held_keys)
         lease["mouse_touch_id"] = None
         lease["mouse_point"] = None
         lease["engine_input"] = True
@@ -3956,6 +4099,57 @@ class WebRTCManager:
         reason="The server host stopped accepting remote input.",
       )
 
+    async def _apply_owned_remote_input(self, session_id, lease, frame, *, keyboard=False):
+      from shared.iroh_media import _join_owned
+      buttons, keys = lease.setdefault("held_buttons", set()), lease.setdefault("held_keys", set())
+      if keyboard and frame.get("action") == "text" and keys:
+        await self._release_owned_remote_inputs(session_id, lease, keys=set(keys))
+      phase = frame.get("phase")
+      if keyboard and frame.get("action") == "key" and phase != "up":
+        keys.add(frame["key"])
+      elif not keyboard and frame.get("input_type") == "button" and phase != "up":
+        buttons.add(frame["button"])
+      def apply():
+        current, _reason = self._remote_desktop_control_state(session_id, lease["control_id"])
+        if current is not lease:
+          return False
+        if keyboard:
+          return _runtime.execute_remote_desktop_keyboard(frame, release_modifiers=False)
+        return _runtime.execute_remote_desktop_input(frame, track=lease["track"])
+      job = _runtime.asyncio.create_task(_runtime.asyncio.to_thread(apply), name="legacy-owned-host-input")
+      lease["physical_input_task"] = job
+      try:
+        applied = await _join_owned(job)
+      except BaseException:
+        await self._release_remote_desktop_control_locked(session_id, expected_lease=lease)
+        raise
+      if applied:
+        if keyboard and frame.get("action") == "key" and phase != "down":
+          keys.discard(frame["key"])
+        elif not keyboard and frame.get("input_type") == "button" and phase != "down":
+          buttons.discard(frame["button"])
+      return applied
+
+    async def _release_owned_remote_inputs(self, session_id, lease, *, buttons=(), keys=()):
+      from shared.iroh_media import _join_owned
+      job = _runtime.asyncio.create_task(_runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs,
+        buttons, held_keys=keys, strict=True), name="legacy-owned-input-release")
+      lease["physical_input_task"] = job
+      try:
+        await _join_owned(job)
+      except BaseException:
+        if job.done() and not job.cancelled() and job.exception() is None:
+          lease["held_buttons"].difference_update(buttons)
+          lease["held_keys"].difference_update(keys)
+        else:
+          lease["physical_release_error"] = job.exception() if job.done() and not job.cancelled() else RuntimeError("Owned physical release did not finish")
+          lease["release_attempted_buttons"] = set(buttons)
+          lease["release_attempted_keys"] = set(keys)
+        await self._release_remote_desktop_control_locked(session_id, expected_lease=lease)
+        raise
+      lease["held_buttons"].difference_update(buttons)
+      lease["held_keys"].difference_update(keys)
+
     async def _handle_remote_desktop_input(
       self,
       session_id: str,
@@ -3978,11 +4172,7 @@ class WebRTCManager:
           return
         if await self._forward_game_engine_input_locked(session_id, lease, normalized):
           return
-        applied = await _runtime.asyncio.to_thread(
-          _runtime.execute_remote_desktop_input,
-          normalized,
-          track=lease.get("track"),
-        )
+        applied = await self._apply_owned_remote_input(session_id, lease, normalized)
         if not applied:
           await self._report_remote_desktop_input_failure_locked(session_id, lease)
           return
@@ -4006,11 +4196,8 @@ class WebRTCManager:
       touch = points[0] if len(points) == 1 and not lease.get("mouse_blocked") else None
       old_id = lease.get("mouse_touch_id")
       if old_id is not None and (touch is None or touch["id"] != old_id):
-        released = await _runtime.asyncio.to_thread(
-          _runtime.execute_remote_desktop_input,
-          {"control_id": frame["control_id"], "input_type": "button", "button": "left", "phase": "up"},
-          track=lease["track"],
-        )
+        released = await self._apply_owned_remote_input(session_id, lease,
+          {"control_id": frame["control_id"], "input_type": "button", "button": "left", "phase": "up"})
         if not released:
           await self._report_remote_desktop_input_failure_locked(session_id, lease)
           return False
@@ -4029,9 +4216,7 @@ class WebRTCManager:
         else:
           command = None
         if command is not None:
-          applied = await _runtime.asyncio.to_thread(
-            _runtime.execute_remote_desktop_input, command, track=lease["track"],
-          )
+          applied = await self._apply_owned_remote_input(session_id, lease, command)
           if not applied:
             await self._report_remote_desktop_input_failure_locked(session_id, lease)
             return False
@@ -4078,9 +4263,9 @@ class WebRTCManager:
             key = {"action_a": "space", "jump": "space", "action_b": "right",
                    "left": "left", "right": "right"}.get(frame["button"])
           if key:
-            applied = await _runtime.asyncio.to_thread(_runtime.execute_remote_desktop_keyboard, {
+            applied = await self._apply_owned_remote_input(session_id, lease, {
               "action": "key", "key": key, "phase": "press", "control_id": frame["control_id"],
-            })
+            }, keyboard=True)
             if not applied:
               await self._report_remote_desktop_input_failure_locked(session_id, lease)
               return
@@ -4116,11 +4301,8 @@ class WebRTCManager:
           return
         if action == "hide":
           keys = set(lease.get("held_keys") or ())
-          lease["held_keys"] = set()
           if keys:
-            await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_keys=keys)
-          else:
-            await _runtime.asyncio.to_thread(_runtime.release_stuck_modifiers)
+            await self._release_owned_remote_inputs(session_id, lease, keys=keys)
         elif action in {"input", "key"}:
           held_keys = lease.setdefault("held_keys", set())
           if action == "key" and normalized["phase"] == "down" and len(held_keys) >= 128:
@@ -4128,7 +4310,7 @@ class WebRTCManager:
             await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=False,
                                                           reason="Screen control stopped after too many held keys.")
             return
-          applied = await _runtime.asyncio.to_thread(_runtime.execute_remote_desktop_keyboard, normalized)
+          applied = await self._apply_owned_remote_input(session_id, lease, normalized, keyboard=True)
           if not applied:
             await self._report_remote_desktop_input_failure_locked(session_id, lease)
             return
@@ -4199,6 +4381,46 @@ class WebRTCManager:
         ):
           self.remote_desktop_keyboard_leases_by_session.pop(alias_id, None)
 
+    async def _send_native_keyboard_control(self, manager, session_id, payload, resolution):
+      """A website keyboard uses the exact already approved native input lease."""
+      from shared.session_transport import SessionDenied
+      media = getattr(manager, "native_media", None)
+      call = getattr(media, "call_owner", None)
+      video = getattr(call, "_video", None)
+      controller = getattr(video, "_desktop_control", None)
+      lease = getattr(controller, "_lease", None)
+      result = {"success": False, "triggered_count": 0, "resolution": resolution}
+      if lease is None:
+        return False, {**result, "status": "needs_screen_approval", "reason": "Approve control of the native screen before opening its keyboard."}
+      action = payload.get("action")
+      requested = str(payload.get("control_id") or "")
+      control_id = lease.authority.control_id
+      if requested and requested != control_id:
+        return False, {**result, "reason": "The keyboard request belongs to a replaced control lease."}
+      try:
+        manager.registry.check(manager.binding, scope="control")
+        lease._check()
+        if controller._lease is not lease:
+          raise SessionDenied("native keyboard owner changed")
+        message = _runtime.create_voice_call_control_message(payload={**payload, "control_id": control_id,
+          "native_input": lease.authority.record(), "timestamp_ms": int(_runtime.time.time() * 1000)},
+          session_id=session_id, user_id=_runtime.get_configured_server_name())
+        try:
+          sent = bool(await manager.send_message(message))
+          if sent:
+            lease._check()
+            if controller._lease is not lease: raise SessionDenied("native keyboard owner changed")
+        finally:
+          if action == "hide":
+            # Closing the keyboard joins only this exact owner, including held input.
+            if controller._lease is lease: await controller.end()
+        if not sent:
+          return False, {**result, "reason": "The native keyboard message was not accepted."}
+        controller._browser_keyboard_lease = lease if action == "show" else None
+        return True, {**result, "success": True, "triggered_count": 1, "status": "sent", "control_id": control_id}
+      except Exception:
+        return False, {**result, "reason": "The native screen control lease is no longer available."}
+
     async def send_remote_desktop_keyboard_control_to_reply_target(
       self,
       reply_target: Dict[str, Any],
@@ -4238,6 +4460,9 @@ class WebRTCManager:
           "owner_key": owner_key,
           "resolution": resolution,
         }
+
+      if getattr(manager, "transport_kind", None) == TransportKind.IROH:
+        return await self._send_native_keyboard_control(manager, str(target_session_id), control_payload, resolution)
 
       self._prune_remote_desktop_keyboard_leases()
       existing_lease = self._remote_desktop_keyboard_lease_for_session(str(target_session_id), "")
@@ -4584,16 +4809,22 @@ class WebRTCManager:
         ) -> Tuple[Optional[str], Optional[Any]]:
             normalized_reply_target = dict(reply_target or {})
             target_session_id = str(normalized_reply_target.get("session_id") or "").strip()
+            channel = self.datachannel_managers.get(target_session_id)
+            native_owner = getattr(getattr(channel,"native_media",None),"call_owner",None)
+            if "native_audio_scope" in normalized_reply_target or native_owner is not None:
+                if native_owner is None or not native_owner.accepts_playback_scope(normalized_reply_target.get("native_audio_scope")):
+                    return target_session_id or None, None
+                return target_session_id, native_owner.manager
             if target_session_id:
                 audio_manager = _runtime.STATE.audio_managers.get(target_session_id)
                 if audio_manager is not None:
-                    return target_session_id, audio_manager
+                    return target_session_id, None if getattr(audio_manager,"_native_media",False) else audio_manager
 
             resolved_session_id = self._resolve_webrtc_reply_target_session_id(normalized_reply_target)
             if resolved_session_id:
                 audio_manager = _runtime.STATE.audio_managers.get(resolved_session_id)
                 if audio_manager is not None:
-                    return resolved_session_id, audio_manager
+                    return resolved_session_id, None if getattr(audio_manager,"_native_media",False) else audio_manager
 
             target_owner_key = str(normalized_reply_target.get("owner_key") or "").strip()
             if not target_owner_key and resolved_session_id:
@@ -4606,7 +4837,7 @@ class WebRTCManager:
 
             if target_owner_key:
                 for candidate_session_id, candidate_audio_manager in list(_runtime.STATE.audio_managers.items()):
-                    if candidate_audio_manager is None:
+                    if candidate_audio_manager is None or getattr(candidate_audio_manager,"_native_media",False):
                         continue
                     try:
                         identity = self._resolve_chat_identity(str(candidate_session_id))
@@ -4738,6 +4969,13 @@ class WebRTCManager:
                 }
             return dict(audio_manager.get_playback_status())
 
+    def _native_voice_turn_allowed(self, session_id: str, native_turn: Any) -> bool:
+        channel = self.datachannel_managers.get(session_id)
+        owner = getattr(getattr(channel,"native_media",None),"call_owner",None)
+        if native_turn is None:
+            return owner is None  # Native transcripts must carry their captured consent.
+        return bool(native_turn.owner is owner and native_turn.current())
+
     async def _voice_command_worker(self, session_id: str):
         """Process queued voice commands sequentially per session."""
         queue_ref = self.voice_command_queues.get(session_id)
@@ -4754,6 +4992,7 @@ class WebRTCManager:
                     text = item
                     transcript_already_mirrored = False
                     queued_identity = None
+                    native_turn = None
                     if isinstance(item, tuple):
                         if item:
                             text = item[0]
@@ -4761,12 +5000,19 @@ class WebRTCManager:
                             transcript_already_mirrored = bool(item[1])
                         if len(item) > 2:
                             queued_identity = item[2]
+                        if len(item) > 3:
+                            native_turn = item[3]
+
+                    if not self._native_voice_turn_allowed(session_id,native_turn):
+                        continue
+                    native_options = {"native_turn":native_turn} if native_turn is not None else {}
 
                     await self._process_voice_command(
                         session_id,
                         text,
                         transcript_already_mirrored=bool(transcript_already_mirrored),
                         identity=queued_identity,
+                        **native_options,
                     )
                 except Exception as e:
                     _runtime.LOGGER.error(f"Voice command worker error for {session_id}: {e}")
@@ -4775,10 +5021,12 @@ class WebRTCManager:
         finally:
             _runtime.LOGGER.info(f"Stopped voice command worker for {session_id}")
 
-    async def _enqueue_voice_command(self, session_id: str, text: str):
+    async def _enqueue_voice_command(self, session_id: str, text: str, *, native_turn: Any = None):
         """Enqueue STT transcript for sequential processing."""
         normalized = (text or "").strip()
         if not normalized:
+            return
+        if not self._native_voice_turn_allowed(session_id,native_turn):
             return
         if not _runtime._get_video_call_agent_processing_enabled(cfg=(_runtime.STATE.config or {})):
             _runtime.LOGGER.info(
@@ -4788,6 +5036,8 @@ class WebRTCManager:
             return
 
         dc_session_id = self._resolve_voice_chat_session_id(session_id)
+        if native_turn is not None:
+            dc_session_id = session_id
         identity = _runtime._resolve_conversation_identity(self._resolve_chat_identity(dc_session_id))
 
         # Use the latest client-facing session_id (iOS/Android UUID) for both UI
@@ -4834,6 +5084,7 @@ class WebRTCManager:
                 metadata={
                     "source": "voice_call",
                     "is_transcription": True,
+                    **(native_turn.metadata() if native_turn is not None else {}),
                     **_runtime._build_conversation_metadata(identity),
                 },
             )
@@ -4848,6 +5099,8 @@ class WebRTCManager:
         except Exception as dc_err:
             _runtime.LOGGER.warning(f"Failed to mirror user STT to datachannel for {session_id}: {dc_err}")
 
+        if not self._native_voice_turn_allowed(session_id,native_turn):
+            return
         if queue_ref.full():
             try:
                 dropped = queue_ref.get_nowait()
@@ -4857,13 +5110,16 @@ class WebRTCManager:
             except Exception:
                 _runtime.LOGGER.warning(f"Voice command queue full for {session_id}; failed to drop oldest item")
 
-        queue_ref.put_nowait((normalized, transcript_already_mirrored, identity))
+        item = (normalized, transcript_already_mirrored, identity)
+        queue_ref.put_nowait(item + (native_turn,) if native_turn is not None else item)
         _runtime.LOGGER.info(f"Queued voice transcript for {session_id}; pending={queue_ref.qsize()}")
 
-    def _enqueue_voice_command_threadsafe(self, session_id: str, text: str, loop: asyncio.AbstractEventLoop):
+    def _enqueue_voice_command_threadsafe(self, session_id: str, text: str, loop: asyncio.AbstractEventLoop,
+                                         *, native_turn: Any = None):
         """Thread-safe enqueue for STT callbacks running outside the main event loop."""
         try:
-            fut = _runtime.asyncio.run_coroutine_threadsafe(self._enqueue_voice_command(session_id, text), loop)
+            options = {"native_turn":native_turn} if native_turn is not None else {}
+            fut = _runtime.asyncio.run_coroutine_threadsafe(self._enqueue_voice_command(session_id,text,**options),loop)
             def _done(f):
                 try:
                     f.result()
@@ -6771,12 +7027,17 @@ class WebRTCManager:
             recorder = expected_silent_recorders.get(cleanup_id, missing)
             if recorder is missing:
                 continue
-            pop_if_current(self.silent_recorders, cleanup_id, recorder)
+            native = getattr(recorder,"_native_media",False)
+            if not native:
+                pop_if_current(self.silent_recorders, cleanup_id, recorder)
             if any(recorder is current for current in closed_silent_recorders):
                 continue
             closed_silent_recorders.append(recorder)
             try:
-                recorder.close()
+                if native:
+                    await self._join_native_silent_recorder(recorder)
+                else:
+                    recorder.close()
                 _runtime.LOGGER.info("Closed silent recording writer for %s", cleanup_id)
             except Exception as e:
                 _runtime.LOGGER.warning("Error closing silent recording writer for %s: %s", cleanup_id, e)
@@ -8228,8 +8489,11 @@ class WebRTCManager:
         text: str,
         transcript_already_mirrored: bool = False,
         identity: Any = None,
+        native_turn: Any = None,
     ):
         """Process voice command text via chat API, speak, and mirror to chat UI."""
+        if not self._native_voice_turn_allowed(session_id,native_turn):
+            return
         voice_reply_message_id = str(_runtime.uuid.uuid4())
 
         # Resolve the client-facing session_id so that voice transcript/reply DC
@@ -8237,10 +8501,15 @@ class WebRTCManager:
         # client conversation after normal OTP pair rekeys the datachannel.
         raw_session_id = str(session_id or "").strip()
         dc_session_id = self._resolve_voice_chat_session_id(session_id)
-        resolved_identity = _runtime._resolve_conversation_identity(self._resolve_chat_identity(dc_session_id))
+        if native_turn is not None:
+            dc_session_id = session_id
+        resolved_identity = (
+            identity if native_turn is not None and identity is not None else
+            _runtime._resolve_conversation_identity(self._resolve_chat_identity(dc_session_id))
+        )
         if identity is None:
             identity = resolved_identity
-        else:
+        elif native_turn is None:
             current_owner_key = str(getattr(identity, "owner_key", "") or "").strip()
             resolved_owner_key = str(getattr(resolved_identity, "owner_key", "") or "").strip()
             if (
@@ -8252,6 +8521,8 @@ class WebRTCManager:
                 identity = resolved_identity
 
         async def _mirror_voice_feedback(message_text: str, *, is_progress: bool = False) -> None:
+            if native_turn is not None and not native_turn.current():
+                return
             try:
                 feedback_message = _runtime.create_chat_message(
                     message=message_text,
@@ -8264,6 +8535,7 @@ class WebRTCManager:
                         "original_message_id": voice_reply_message_id,
                         "is_streaming": bool(is_progress),
                         "is_progress": bool(is_progress),
+                        **(native_turn.metadata() if native_turn is not None else {}),
                         **_runtime._build_conversation_metadata(identity),
                     },
                 )
@@ -8299,6 +8571,7 @@ class WebRTCManager:
                         metadata={
                             "source": "voice_call",
                             "is_transcription": True,
+                            **(native_turn.metadata() if native_turn is not None else {}),
                             **_runtime._build_conversation_metadata(identity),
                         },
                     )
@@ -8332,10 +8605,13 @@ class WebRTCManager:
                 await _mirror_voice_feedback(progress_text, is_progress=True)
 
             async def _execute_chat_request():
+                if native_turn is not None and not native_turn.current():
+                    return None  # Consent may end while the session execution queue waits.
                 request_metadata: Dict[str, Any] = {
                     "source": "voice_call",
                     "client": "autoyou-datachannel",
                     "canonical_owner_key": identity.owner_key,
+                    **(native_turn.metadata() if native_turn is not None else {}),
                     **_runtime._build_conversation_metadata(identity),
                     "session_execution": {
                         "queue_position": execution_state["queue_position"],
@@ -8344,6 +8620,8 @@ class WebRTCManager:
                 request_metadata.update(self.client_name_history_metadata(identity))
                 reply_target = self._build_webrtc_reply_target(dc_session_id, identity)
                 if reply_target:
+                    if native_turn is not None:
+                        reply_target["native_audio_scope"] = native_turn.playback_scope()
                     request_metadata["reply_target"] = reply_target
 
                 chat_req = ChatRequest(
@@ -8362,6 +8640,8 @@ class WebRTCManager:
                 on_status=_on_execution_status,
                 label="webrtc-voice",
             )
+            if native_turn is not None and (chat_resp is None or not native_turn.same_session()):
+                return
             reply = chat_resp.response or "(no response)"
             _runtime.LOGGER.info(f"🤖 AI Response: {reply}")
 
@@ -8371,7 +8651,8 @@ class WebRTCManager:
                 playback_status_after_turn,
             )
             ai_audio_replies_enabled = _runtime._get_ai_audio_replies_enabled(cfg=(_runtime.STATE.config or {}))
-            suppress_reply_tts = audio_playback_started or not ai_audio_replies_enabled
+            native_output_stopped = native_turn is not None and not native_turn.output_current()
+            suppress_reply_tts = audio_playback_started or not ai_audio_replies_enabled or native_output_stopped
 
             if suppress_reply_tts:
                 if audio_playback_started:
@@ -8384,6 +8665,10 @@ class WebRTCManager:
                         "Skipping spoken voice reply for %s because spoken AI replies are disabled.",
                         session_id,
                     )
+            elif native_turn is not None:
+                if not native_turn.speak(reply,context=text):
+                    suppress_reply_tts = True
+                    native_output_stopped = not native_turn.output_current()
             elif session_id in _runtime.STATE.audio_managers:
                 _speak_audio_manager(_runtime.STATE.audio_managers[session_id], reply, context=text)
             else:
@@ -8405,12 +8690,16 @@ class WebRTCManager:
                     "original_message_id": voice_reply_message_id,
                     "is_streaming": False,
                     "voice_reply_tts_suppressed": bool(suppress_reply_tts),
+                    **(native_turn.metadata() if native_turn is not None else {}),
                     **_runtime._build_conversation_metadata(identity),
                 }
             )
             if suppress_reply_tts:
                 response_metadata["voice_reply_tts_suppression_reason"] = (
-                    "audio_playback_started" if audio_playback_started else "ai_audio_replies_disabled"
+                    "native_call_ended_or_replaced" if native_turn is not None and not native_turn.current() else
+                    "speech_output_stopped" if native_output_stopped else
+                    "audio_playback_started" if audio_playback_started else
+                    "ai_audio_replies_disabled" if not ai_audio_replies_enabled else "speech_output_unavailable"
                 )
             response_message = _runtime.create_chat_message(
                 message=reply,
@@ -8429,28 +8718,38 @@ class WebRTCManager:
                 canonical_session_id=identity.canonical_session_id,
                 metadata=response_metadata,
             )
+            if native_turn is not None and not native_turn.same_session():
+                return
             delivery_state = await self._deliver_voice_chat_message(
                 dc_session_id,
                 response_message,
                 label="voice reply",
             )
             context_usage = response_metadata.get("context_usage")
-            if isinstance(context_usage, dict):
+            if isinstance(context_usage, dict) and (native_turn is None or native_turn.current()):
                 await self._publish_voice_call_status(
                     dc_session_id,
-                    {"context_usage": context_usage},
+                    {"context_usage": context_usage,
+                        **(native_turn.metadata() if native_turn is not None else {}),
+                        **({"native_audio_scope":native_turn.playback_scope()} if native_turn is not None else {})},
                 )
             if delivery_state == "failed":
                 _runtime.LOGGER.warning("No datachannel_manager for %s - voice reply could not be queued for chat UI", session_id)
         except _runtime.SessionQueueFullError as e:
             _runtime.LOGGER.info("Voice command rejected for %s because the session queue is full", session_id)
             if session_id in _runtime.STATE.audio_managers and _runtime._get_ai_audio_replies_enabled(cfg=(_runtime.STATE.config or {})):
-                _runtime.STATE.audio_managers[session_id].speak(e.status.message)
+                if native_turn is not None:
+                    native_turn.speak(e.status.message)
+                else:
+                    _runtime.STATE.audio_managers[session_id].speak(e.status.message)
             await _mirror_voice_feedback(e.status.message)
         except _runtime.SessionTurnTimeoutError as e:
             _runtime.LOGGER.info("Voice command timed out for %s", session_id)
             if session_id in _runtime.STATE.audio_managers and _runtime._get_ai_audio_replies_enabled(cfg=(_runtime.STATE.config or {})):
-                _runtime.STATE.audio_managers[session_id].speak(e.status.message)
+                if native_turn is not None:
+                    native_turn.speak(e.status.message)
+                else:
+                    _runtime.STATE.audio_managers[session_id].speak(e.status.message)
             await _mirror_voice_feedback(e.status.message)
         except Exception as e:
             _runtime.LOGGER.error(f"Voice command processing error for {session_id}: {e!r}")
@@ -8458,7 +8757,10 @@ class WebRTCManager:
 
             _runtime.LOGGER.error(traceback.format_exc())
             if session_id in _runtime.STATE.audio_managers and _runtime._get_ai_audio_replies_enabled(cfg=(_runtime.STATE.config or {})):
-                _runtime.STATE.audio_managers[session_id].speak("Sorry, I encountered an error.")
+                if native_turn is not None:
+                    native_turn.speak("Sorry, I encountered an error.")
+                else:
+                    _runtime.STATE.audio_managers[session_id].speak("Sorry, I encountered an error.")
 
     def _get_autoyou_forward_target_port(self) -> int:
         """Resolve the current AutoYou browser forward target from admin config."""
@@ -8696,6 +8998,7 @@ class WebRTCManager:
             "x-target-url",
             "x-autoyou-ads-account-summary",
             "x-autoyou-application-transport",
+            "x-autoyou-transport",
             "x-autoyou-agent-html-adapted",
             *REMOTE_BROWSER_IDENTITY_HEADERS,
         }
@@ -8762,6 +9065,9 @@ class WebRTCManager:
             "X-AutoYou-Remote-Access-Role": _runtime._get_remote_browser_access_role(_runtime.STATE.config or {}),
             DEVICE_OWNERSHIP_HEADER: self.device_ownership_for_session(normalized_session_id),
         }
+        channel = self._datachannel_manager_for_session(normalized_session_id, require_send_message=True)
+        if getattr(channel, "transport_kind", None) == TransportKind.IROH:
+            headers["X-AutoYou-Transport"] = "iroh"
         try:
             identity = self._resolve_chat_identity(normalized_session_id)
             owner_key = str(getattr(identity, "owner_key", "") or "").strip()
@@ -9121,33 +9427,32 @@ class WebRTCManager:
                     _runtime.get_mutable_data_dir("AutoYou", anchor=_runtime.__file__) / "mobile_games",
                 )
 
-                def load_game(path):
-                    if path.is_symlink() or not path.is_file() or path.stat().st_size > _MOBILE_GAME_MAX_BYTES - len(_MOBILE_GAME_CSP):
-                        raise ValueError("Game asset is unavailable")
-                    html = path.read_bytes()
-                    if len(html) > _MOBILE_GAME_MAX_BYTES - len(_MOBILE_GAME_CSP):
-                        raise ValueError("Game asset exceeds the mobile download limit")
-                    html.decode("utf-8")
-                    head = re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE)
-                    if head is None:
-                        raise ValueError("Game HTML needs a head element")
-                    return html[:head.end()] + _MOBILE_GAME_CSP + html[head.end():]
+                async def game_io(operation, *args):
+                    from shared.iroh_media import _join_owned
+                    async with _MOBILE_GAME_READERS:
+                        job = _runtime.asyncio.create_task(_runtime.asyncio.to_thread(operation, *args))
+                        return await _join_owned(job)
+
+                async def load_game(path):
+                    return await game_io(_load_mobile_game_html, path)
 
                 if status_code == 200:
                     if request_path == "/api/v1/games":
                         available_games = {}
                         for game_dir in game_dirs:
-                            for game_file in sorted(game_dir.glob("*.html"))[:64]:
+                            files = await game_io(lambda directory: heapq.nsmallest(64, directory.glob("*.html")), game_dir)
+                            for game_file in files:
                                 game_id = game_file.stem
                                 if (not game_id or len(game_id) > 64
                                         or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789-" for ch in game_id)):
                                     continue
                                 try:
-                                    load_game(game_file)
+                                    content = await load_game(game_file)
                                 except (OSError, ValueError, UnicodeError):
                                     continue
-                                available_games[game_id] = game_file
-                        games = [{"id": game_id, "title": game_id.replace("-", " ").title()}
+                                available_games[game_id] = (len(content), hashlib.sha256(content).hexdigest())
+                        games = [{"id": game_id, "title": game_id.replace("-", " ").title(),
+                                  "bytes": available_games[game_id][0], "sha256": available_games[game_id][1]}
                                  for game_id in sorted(available_games)[:64]]
                         response_body = _runtime.json.dumps({"games": games}, separators=(",", ":"))
                     else:
@@ -9158,10 +9463,18 @@ class WebRTCManager:
                         else:
                             for game_dir in reversed(game_dirs):
                                 try:
-                                    game_html = load_game(game_dir / f"{game_id}.html")
+                                    game_html = await load_game(game_dir / f"{game_id}.html")
                                 except (OSError, ValueError, UnicodeError):
                                     continue
                                 response_headers["Content-Type"] = "text/html; charset=utf-8"
+                                digest = hashlib.sha256(game_html).hexdigest()
+                                expected = next((value for key, value in headers.items() if key.lower() == "x-autoyou-game-sha256"), None)
+                                if expected is not None and expected != digest:
+                                    status_code = 409
+                                    response_headers["Content-Type"] = "application/json"
+                                    response_body = _runtime.json.dumps({"error": "Game changed. Reload the catalog."}, separators=(",", ":"))
+                                    break
+                                response_headers["X-AutoYou-Game-SHA256"] = digest
                                 encoded = _runtime.encode_http_proxy_response(game_html, headers=response_headers)
                                 response_headers, response_body, compressed = encoded.headers, encoded.body, encoded.compressed
                                 break
@@ -10491,8 +10804,10 @@ class WebRTCManager:
             )
             if not active:
                 await self._release_remote_desktop_control(str(session_id or ""))
-                self._drop_local_capture_audio_tracks_for_ids(alias_ids)
-                self._clear_outbound_audio_track_for_idle(str(session_id or ""))
+                channel = self.datachannel_managers.get(str(session_id or ""))
+                if getattr(channel, "native_media", None) is None:
+                    self._drop_local_capture_audio_tracks_for_ids(alias_ids)
+                    self._clear_outbound_audio_track_for_idle(str(session_id or ""))
             if local_call and previous_host_owner != self.host_audio_owner():
                 await self._rewire_outbound_audio_for_host()
             return
@@ -10876,6 +11191,9 @@ class WebRTCManager:
             _runtime.LOGGER.info("Skipping STT mute flush for %s because no audio manager is active", session_id)
             return
 
+        native_generation = (getattr(audio_manager, "_stt_generation", None)
+            if getattr(audio_manager, "_native_media", False) else None)
+
         if _runtime.VOICE_CALL_MUTE_FLUSH_GRACE_SECONDS > 0:
             await _runtime.asyncio.sleep(_runtime.VOICE_CALL_MUTE_FLUSH_GRACE_SECONDS)
 
@@ -10883,6 +11201,8 @@ class WebRTCManager:
         if current_audio_manager is not audio_manager:
             _runtime.LOGGER.info("Skipping stale STT mute flush for %s because the audio manager changed", session_id)
             return
+        if native_generation is not None and native_generation != audio_manager._stt_generation:
+            return  # A delayed mute belongs to the speech consent it captured.
 
         normalized_timestamp_ms = None
         if isinstance(timestamp_ms, (int, float)):
@@ -10893,12 +11213,10 @@ class WebRTCManager:
             except Exception:
                 normalized_timestamp_ms = None
 
-        flush_queued = bool(
-            audio_manager.flush_utterance(
-                source=f"{platform}:{session_id}",
-                timestamp_ms=normalized_timestamp_ms,
-            )
-        )
+        flush_kwargs = {"source": f"{platform}:{session_id}", "timestamp_ms": normalized_timestamp_ms}
+        if native_generation is not None:
+            flush_kwargs["expected_generation"] = native_generation
+        flush_queued = bool(audio_manager.flush_utterance(**flush_kwargs))
         _runtime.LOGGER.info(
             "Voice call mute flush %s for %s after %.0fms grace",
             "queued" if flush_queued else "skipped",
@@ -10974,7 +11292,7 @@ class WebRTCManager:
         self.screen_inputs.clear()
         await _runtime.asyncio.to_thread(self.screen_listen_mixer.close)
         self.background_audio_state_by_session.clear()
-        self.silent_recorders.clear()
+        # Native writers remain owned until physical IO/protection is joined.
         self.voice_command_queues.clear()
         self.voice_command_workers.clear()
         self.pending_voice_chat_messages.clear()
@@ -11092,11 +11410,14 @@ class WebRTCManager:
 
             for session_id, recorder in list(self.silent_recorders.items()):
                 try:
-                    recorder.close()
+                    if getattr(recorder,"_native_media",False):
+                        await self._join_native_silent_recorder(recorder)
+                    else:
+                        self.silent_recorders.pop(session_id,None)
+                        recorder.close()
                     _runtime.LOGGER.info(f"Closed orphan silent recording writer during shutdown: {session_id}")
                 except Exception as e:
                     _runtime.LOGGER.warning(f"Error closing orphan silent recording writer {session_id}: {e}")
-            self.silent_recorders.clear()
             self.background_audio_state_by_session.clear()
             self._voice_chat_flush_locks.clear()
             self._offline_queue_flush_locks.clear()

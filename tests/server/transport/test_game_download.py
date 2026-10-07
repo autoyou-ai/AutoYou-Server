@@ -3,15 +3,81 @@
 import base64
 import asyncio
 import gzip
+import hashlib
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from io import BytesIO
+import threading
 
 import pytest
 
 import server
 from core_server import webrtc_engine
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
+
+
+def test_game_loader_is_bounded_even_if_a_selected_file_grows_after_stat(tmp_path, monkeypatch):
+    asset = tmp_path / "synthetic-growing.html"
+    asset.write_text("<head></head>")
+    metadata = asset.stat()
+    class Source(BytesIO):
+        def fileno(self): return 79
+        def read(self, maximum):
+            assert maximum == webrtc_engine._MOBILE_GAME_MAX_BYTES-len(webrtc_engine._MOBILE_GAME_CSP)+1
+            return super().read(maximum)
+    with monkeypatch.context() as scope:
+        scope.setattr(webrtc_engine.os, "open", lambda *args: 79)
+        scope.setattr(webrtc_engine.os, "fstat", lambda *args: metadata)
+        scope.setattr(webrtc_engine.os, "fdopen", lambda *args: Source(b"x"*(512*1024+1)))
+        with pytest.raises(ValueError, match="limit"):
+            webrtc_engine._load_mobile_game_html(asset)
+
+
+def test_game_loader_rejects_opened_file_identity_changes(tmp_path, monkeypatch):
+    asset = tmp_path / "synthetic-selected.html"
+    asset.write_text("<head></head>")
+    metadata = asset.stat()
+    with monkeypatch.context() as scope:
+        scope.setattr(webrtc_engine.os, "fstat", lambda *args: SimpleNamespace(st_mode=metadata.st_mode,st_size=metadata.st_size,
+            st_dev=metadata.st_dev,st_ino=metadata.st_ino+1))
+        with pytest.raises(ValueError, match="changed"):
+            webrtc_engine._load_mobile_game_html(asset)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_game_catalog_joins_the_selected_file_worker(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "runtime"))
+    monkeypatch.setattr(server, "APP_ROOT", tmp_path)
+    asset = tmp_path / "assets/game/synthetic-game.html"
+    asset.parent.mkdir(parents=True); asset.write_text("<head></head>")
+    config = server._default_config(); config["autoyou_page"]["remote_access_role"] = "admin"
+    monkeypatch.setattr(server.STATE, "config", config, raising=False)
+    entered, release, exited = threading.Event(), threading.Event(), threading.Event()
+    capacity = asyncio.Semaphore(1)
+    monkeypatch.setattr(webrtc_engine, "_MOBILE_GAME_READERS", capacity)
+    def load(path):
+        assert path == asset
+        entered.set()
+        try:
+            assert release.wait(5)
+            return b"<head></head>"
+        finally:
+            exited.set()
+    monkeypatch.setattr(webrtc_engine, "_load_mobile_game_html", load)
+    manager = server.WebRTCManager(); channel = SimpleNamespace(send_message=AsyncMock(return_value=True))
+    manager.datachannel_managers["synthetic-session"] = channel
+    message = DataChannelMessage(MessageHeader("synthetic-request",MessageType.HTTP_REQUEST,0.0,"synthetic-session","synthetic-user"),
+        {"request_id":"synthetic-request","method":"GET","url":"/api/v1/games","headers":{}})
+    task = asyncio.create_task(manager._handle_http_request(message))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        task.cancel(); await asyncio.sleep(0.01)
+        assert not task.done() and not exited.is_set() and capacity.locked()
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError): await task
+    assert exited.is_set() and channel.send_message.await_count == 0 and not capacity.locked()
 
 
 @pytest.mark.asyncio
@@ -30,18 +96,20 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
     channel = SimpleNamespace(send_message=AsyncMock(return_value=True))
     webrtc.datachannel_managers["synthetic-session"] = channel
 
-    async def request(path="/api/v1/games", method="GET"):
+    async def request(path="/api/v1/games", method="GET", expected_digest=None):
         message = DataChannelMessage(
             header=MessageHeader("synthetic-message", MessageType.HTTP_REQUEST, 0.0,
                                  "synthetic-session", "synthetic-user"),
             payload={"request_id": "synthetic-request", "method": method,
-                     "url": path, "headers": {}},
+                      "url": path, "headers": {} if expected_digest is None else {"X-AutoYou-Game-SHA256": expected_digest}},
         )
         await webrtc._handle_http_request(message)
         return channel.send_message.call_args.args[0].payload
 
     assert json.loads((await request())["body"]) == {
-        "games": [{"id": "neon-horizon", "title": "Neon Horizon"}],
+        "games": [{"id": "neon-horizon", "title": "Neon Horizon",
+                   "bytes": len(webrtc_engine._load_mobile_game_html(asset)),
+                   "sha256": hashlib.sha256(webrtc_engine._load_mobile_game_html(asset)).hexdigest()}],
     }
     second = asset.parent / "synthetic-runner.html"
     second.write_text("<html><head></head><body>another game</body></html>", encoding="utf-8")
@@ -68,6 +136,12 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
         body = gzip.decompress(base64.b64decode(body)).decode("utf-8")
     assert response["status_code"] == 200
     assert response["headers"]["Content-Type"].startswith("text/html")
+    expected_digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    assert response["headers"]["X-AutoYou-Game-SHA256"] == expected_digest
+    assert (await request("/api/v1/games/neon-horizon", expected_digest=expected_digest))["status_code"] == 200
+    changed = await request("/api/v1/games/neon-horizon", expected_digest="0" * 64)
+    assert changed["status_code"] == 409 and changed["compressed"] is False
+    assert "Game changed" in changed["body"] and "<html>" not in changed["body"]
     assert "connect-src 'none'" in body
     meta_start = body.index("<meta")
     meta_end = body.index(">", meta_start) + 1

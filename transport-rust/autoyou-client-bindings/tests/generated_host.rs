@@ -112,11 +112,119 @@ else:
 def grant(endpoint, device):
     return api.SessionGrant(endpoint_id=endpoint, device_id=device, owner_id='synthetic-owner',
         conversation_id='synthetic-conversation', generation=1, authorization_epoch=2,
-        expires_at_ms=int(time.time()*1000)+60000, scopes=['chat', 'files'])
+        expires_at_ms=int(time.time()*1000)+60000, scopes=['chat', 'files', 'media'])
 server.admit(incoming.connection_id, grant(client_info.endpoint_id, 'synthetic-client'))
 client.admit(connection_id, grant(server_info.endpoint_id, 'synthetic-server'))
 server.activate(incoming.connection_id)
 client.activate(connection_id)
+media = api.MediaPacket(kind=1, codec=4, keyframe=False, media_generation=2, authorization_epoch=2,
+    source_id=9, sequence=5, timestamp_us=100000, duration_us=20000, width=0, height=0,
+    channels=1, data=bytes([7])*1920)
+media_frame = api.encode_media_packet(1, media)
+assert media_frame.generation == 1 and media_frame.stream_id == 9
+try:
+    client.send(connection_id, media_frame, int(time.time()*1000)+1000)
+except api.BindingError.PermissionDenied:
+    pass
+else:
+    raise AssertionError('session admission alone approved a media source')
+source = dict(lease_id='synthetic-media-lease',call_id='synthetic-call',participant_id='synthetic-participant',
+    target_id='synthetic-target',source_id=9,media_generation=2,authorization_epoch=2,
+    expires_at_ms=int(time.time()*1000)+30000,kind=1,codec=4,sample_rate=48000,channels=1,
+    width=0,height=0,fps=0,layout='single',maximum_delay_ms=2000)
+try:
+    client.approve_media_source(connection_id,json.dumps(dict(source,owner_id='synthetic-forged-owner')),False)
+except api.BindingError.InvalidInput:
+    pass
+else:
+    raise AssertionError('unknown source lease authority field was accepted')
+client.approve_media_source(connection_id,json.dumps(source),False)
+server.approve_media_source(incoming.connection_id,json.dumps(source),True)
+try:
+    client.send(connection_id,media_frame,None)
+except api.BindingError.InvalidInput:
+    pass
+else:
+    raise AssertionError('media frame without a transport deadline was accepted')
+client.send(connection_id,media_frame,int(time.time()*1000)+1000)
+received = wait(server,api.TransportEventKind.FRAME)
+decoded = api.decode_media_packet(received.frame)
+assert decoded.media_generation == 2 and decoded.sequence == 5 and bytes(decoded.data) == bytes([7])*1920
+playout=api.MediaPlayout(grant(client_info.endpoint_id,'synthetic-client'),int(time.time()*1000))
+try: playout.push(received.frame,1000000,1000000,int(time.time()*1000))
+except api.BindingError.PermissionDenied: pass
+else: raise AssertionError('playout inferred capture consent from admitted media scope')
+playout.approve_source(json.dumps(source),int(time.time()*1000))
+assert 0 < received.media_ttl_us <= 2000000 and 0 <= received.media_age_us < 2000000
+assert playout.push(received.frame,1000000,1000000,int(time.time()*1000))
+assert playout.feedback(9,int(time.time()*1000)).buffered_bytes==1920
+played=playout.take(16,1060000,int(time.time()*1000))
+assert len(played)==1 and played[0].reset_decoder and played[0].missing_audio_frames==0
+assert bytes(played[0].packet.data)==bytes([7])*1920
+playout.revoke_source(9)
+try: playout.push(received.frame,1060001,1060001,int(time.time()*1000))
+except api.BindingError.PermissionDenied: pass
+else: raise AssertionError('revoked playout source reached renderer')
+playout.shutdown()
+client.revoke_media_source(connection_id,9,False)
+server.revoke_media_source(incoming.connection_id,9,True)
+try:
+    client.send(connection_id,media_frame,int(time.time()*1000)+1000)
+except api.BindingError.PermissionDenied:
+    pass
+else:
+    raise AssertionError('revoked native media source continued sending')
+# Exercise the common codec guard with actual installed codec output. These
+# frames are generated from synthetic samples, never device capture or files.
+import av
+import fractions
+for name, codec_id in [('libopenh264',2),('libvpx',3)]:
+    encoder=av.CodecContext.create(name,'w')
+    encoder.width=160;encoder.height=96;encoder.pix_fmt='yuv420p'
+    encoder.time_base=fractions.Fraction(1,30);encoder.framerate=fractions.Fraction(30,1)
+    encoder.bit_rate=300000;encoder.max_b_frames=0;encoder.thread_count=1
+    if codec_id==3: encoder.options={'deadline':'realtime','lag-in-frames':'0','cpu-used':'8'}
+    packets=[]
+    for index in range(4):
+        sample=av.VideoFrame(160,96,'yuv420p')
+        for plane in sample.planes: plane.update(bytes([40+index])*plane.buffer_size)
+        sample.pts=index;sample.time_base=encoder.time_base
+        packets.extend(encoder.encode(sample))
+    packets.extend(encoder.encode(None))
+    assert packets and packets[0].is_keyframe
+    codec_playout=api.MediaPlayout(grant(client_info.endpoint_id,'synthetic-client'),int(time.time()*1000))
+    codec_playout.approve_source(json.dumps(dict(source,source_id=11,kind=3,codec=codec_id,sample_rate=0,channels=0,
+        width=160,height=96,fps=30)),int(time.time()*1000))
+    decoder=av.CodecContext.create('h264' if codec_id==2 else 'vp8','r');decoder.thread_count=1
+    decoded_frames=0
+    for index, packet in enumerate(packets):
+        coded=api.MediaPacket(kind=3,codec=codec_id,keyframe=packet.is_keyframe,media_generation=2,authorization_epoch=2,
+            source_id=11,sequence=index,timestamp_us=index*33333,duration_us=33333,width=160,height=96,channels=0,data=bytes(packet))
+        checked=api.decode_media_packet(api.encode_media_packet(1,coded))
+        assert bytes(checked.data)==bytes(packet)
+        assert codec_playout.push(api.encode_media_packet(1,coded),1000000+index*33333,1000000+index*33333,int(time.time()*1000))
+        if packet.is_keyframe:
+            coded.width=176
+            try: api.decode_media_packet(api.encode_media_packet(1,coded))
+            except api.BindingError.InvalidInput: pass
+            else: raise AssertionError('forged encoded video dimensions reached decoder')
+    ready=codec_playout.take(16,1000000+(len(packets)-1)*33333+60000,int(time.time()*1000))
+    assert len(ready)==4 and ready[0].reset_decoder
+    for frame in ready: decoded_frames+=len(decoder.decode(av.Packet(bytes(frame.packet.data))))
+    decoded_frames+=len(decoder.decode(None))
+    assert decoded_frames==4
+    codec_playout.shutdown()
+encoder=av.CodecContext.create('libopus','w');encoder.sample_rate=48000;encoder.layout='mono';encoder.format='s16'
+encoder.time_base=fractions.Fraction(1,48000);encoder.bit_rate=64000
+sample=av.AudioFrame(format='s16',layout='mono',samples=960);sample.sample_rate=48000
+sample.pts=0;sample.time_base=encoder.time_base
+sample.planes[0].update(bytes([0,1])*960)
+packets=encoder.encode(sample)
+assert packets
+for packet in packets:
+    coded=api.MediaPacket(kind=1,codec=1,keyframe=False,media_generation=2,authorization_epoch=2,source_id=12,sequence=0,
+        timestamp_us=0,duration_us=20000,width=0,height=0,channels=1,data=bytes(packet))
+    assert bytes(api.decode_media_packet(api.encode_media_packet(1,coded)).data)==bytes(packet)
 file_bytes = bytes([0, 255, 13, 10]) + b'isolated generated Python to Iroh'
 file_id = 'ab'*16
 descriptor = dict(transfer_id=file_id, purpose='attachment', filename='synthetic.bin', mime_type='application/octet-stream',

@@ -86,6 +86,13 @@ def normalize_reply_target(value: Any) -> Optional[Dict[str, Any]]:
         client = str(value.get("client") or "").strip()
         if client:
             normalized["client"] = client
+        if "native_audio_scope" in value:
+            from shared.iroh_audio_policy import native_audio_scope
+            from shared.session_transport import SessionDenied
+            try:
+                normalized["native_audio_scope"] = native_audio_scope(value["native_audio_scope"])
+            except SessionDenied:
+                return None
         return normalized
 
     recipient = str(value.get("to") or value.get("recipient") or "").strip()

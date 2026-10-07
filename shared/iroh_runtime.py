@@ -51,6 +51,7 @@ class _Connection:
     deferred: list[Any] = field(default_factory=list)
     stream_queues: dict[int, asyncio.Queue] = field(default_factory=dict)
     stream_workers: dict[int, asyncio.Task] = field(default_factory=dict)
+    cleanup: asyncio.Task | None = None
 
 
 class IrohSessionRuntime:
@@ -133,7 +134,7 @@ class IrohSessionRuntime:
 
     def _connection(self, context: ConnectionContext) -> _Connection:
         connection = self._connections.get(context.connection_id)
-        if self._closing or connection is None or connection.context != context:
+        if self._closing or connection is None or connection.context != context or connection.cleanup is not None:
             raise SessionDenied("connection is closed or superseded")
         return connection
 
@@ -196,7 +197,7 @@ class IrohSessionRuntime:
         connection = self._connections.get(context.connection_id)
         if connection is None:
             return
-        if connection.context != context or connection.worker is asyncio.current_task():
+        if connection.context != context or asyncio.current_task() in {connection.worker, connection.cleanup}:
             raise SessionDenied("cannot join a different or executing connection")
         worker = connection.worker
         if worker is not None:
@@ -213,7 +214,10 @@ class IrohSessionRuntime:
     async def _poll_loop(self) -> None:
         try:
             while not self._closing:
+                polled_us = time.monotonic_ns() // 1000
                 for event in self.endpoint.poll(64):
+                    if self._closing:
+                        break
                     if event.kind == self.api.TransportEventKind.CONNECTED:
                         if len(self._connections) >= _MAX_CONNECTIONS or len(event.exporter) != 32 or event.protocol not in {"autoyou/pair/1", "autoyou/session/1"}:
                             self.endpoint.disconnect(event.connection_id)
@@ -231,13 +235,24 @@ class IrohSessionRuntime:
                             await self.on_dial_failed(event.connection_id, event.error_code or "connection_failed")
                     else:
                         connection = self._connections.get(event.connection_id)
-                        if connection is None:
+                        if connection is None or connection.cleanup is not None:
                             continue
+                        if event.frame and event.frame.lane in {8, 9}:
+                            age, ttl = event.media_age_us, event.media_ttl_us
+                            maximum_age = 200_000 if event.frame.lane == 9 else 2_000_000
+                            if type(age) is not int or type(ttl) is not int or not 0 <= age < maximum_age or not 0 < ttl <= maximum_age:
+                                continue
+                            # Local-only metadata survives deferred and stream
+                            # queues. Wire payloads cannot supply these fields.
+                            event.frame._iroh_arrival_us = max(0, polled_us - age)
+                            event.frame._iroh_deadline_us = polled_us + ttl
                         size = len(event.frame.payload) if event.frame else 0
                         urgent = event.frame and event.frame.lane in {1, 2, 9}
                         budget = _MAX_DISPATCH_BYTES if urgent else _MAX_DISPATCH_BYTES - 1024*1024
                         limit = 128 if urgent else 112
                         if event.frame and (connection.queue.qsize() + len(connection.deferred) >= limit or self._dispatch_bytes + size > budget):
+                            if event.frame.lane == 8:
+                                continue
                             self.disconnect(connection.context, user_requested=False)
                             continue
                         self._dispatch_bytes += size
@@ -294,43 +309,80 @@ class IrohSessionRuntime:
             except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
                 pass
         finally:
-            for worker in connection.stream_workers.values():
+            await self._join_connection_cleanup(connection)
+
+    async def _join_connection_cleanup(self, connection: _Connection) -> None:
+        if connection.cleanup is None:
+            connection.cleanup = asyncio.create_task(self._cleanup_connection(connection),
+                                                       name="iroh-session-cleanup")
+        cancellation = None
+        while not connection.cleanup.done():
+            try:
+                await asyncio.shield(connection.cleanup)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+        connection.cleanup.result()
+        if cancellation is not None:
+            raise cancellation
+
+    async def _cleanup_connection(self, connection: _Connection) -> None:
+        # Dispatch cancellation must not propagate into physical stream/storage
+        # teardown. The endpoint shutdown owner also joins this task when a
+        # dispatch worker was canceled before it ran its first instruction.
+        for worker in connection.stream_workers.values():
+            if not worker.done() and not worker.cancelling():
                 worker.cancel()
-            if connection.stream_workers:
-                await asyncio.gather(*connection.stream_workers.values(), return_exceptions=True)
-            for queue in connection.stream_queues.values():
-                while not queue.empty():
-                    frame = queue.get_nowait()
-                    self._dispatch_bytes -= len(frame.payload)
-                    queue.task_done()
-            connection.stream_workers.clear()
-            connection.stream_queues.clear()
-            self._dispatch_bytes -= sum(len(frame.payload) for frame in connection.deferred)
-            connection.deferred.clear()
-            while not connection.queue.empty():
-                event = connection.queue.get_nowait()
-                self._dispatch_bytes -= len(event.frame.payload) if event.frame else 0
-                connection.queue.task_done()
-            self._connections.pop(connection.context.connection_id, None)
-            binding = connection.channel.binding if connection.channel else None
+        if connection.stream_workers:
+            await asyncio.gather(*connection.stream_workers.values(), return_exceptions=True)
+        for queue in connection.stream_queues.values():
+            while not queue.empty():
+                frame = queue.get_nowait()
+                self._dispatch_bytes -= len(frame.payload)
+                queue.task_done()
+        connection.stream_workers.clear()
+        connection.stream_queues.clear()
+        self._dispatch_bytes -= sum(len(frame.payload) for frame in connection.deferred)
+        connection.deferred.clear()
+        while not connection.queue.empty():
+            event = connection.queue.get_nowait()
+            self._dispatch_bytes -= len(event.frame.payload) if event.frame else 0
+            connection.queue.task_done()
+        binding = connection.channel.binding if connection.channel else None
+        error = None
+        try:
+            if connection.channel:
+                await connection.channel.cleanup()
+        except BaseException as exc:
+            error = exc
+        finally:
+            try:
+                await self.on_closed(connection.context, binding, connection.user_disconnected)
+            except BaseException as exc:
+                _LOG.error("Iroh session cleanup callback failed")
+                if error is None:
+                    error = exc
+            # Retain failed teardown as an owned, fenced connection. A later
+            # join/shutdown must surface it rather than approve a replacement
+            # while a physical adapter may still be running.
+            if error is None:
+                self._connections.pop(connection.context.connection_id, None)
             self.events.emit(ConnectionEvent(ConnectionEventKind.CLOSED,
                 connection.context.connection_id, connection.context.transport_id,
                 binding.generation if binding else None, binding.authorization_epoch if binding else None,
-                user_requested=connection.user_disconnected))
-            if connection.channel:
-                await connection.channel.cleanup()
-            try:
-                await self.on_closed(connection.context, binding, connection.user_disconnected)
-            except Exception:
-                _LOG.error("Iroh session cleanup callback failed")
+                user_requested=connection.user_disconnected,
+                code="cleanup_failed" if error is not None else None))
+        if error is not None:
+            raise error
 
     async def _dispatch_frame(self, connection: _Connection, frame: Any) -> bool:
-        if frame.lane in {3, 4, 5, 6, 7}:
+        if frame.lane in {8, 9} and self._media_expired(frame):
+            return False
+        if frame.lane in {3, 4, 5, 6, 7, 8}:
             # A blocked browser writer or file fsync cannot pin cancellation,
             # pongs, chat or input. Each lane remains ordered and has a bounded
             # owned queue; all retained bytes still count against the global cap.
-            if frame.lane == 7 and self.on_binary_frame is None:
-                raise SessionDenied("file capability is not attached")
+            if frame.lane in {7, 8} and self.on_binary_frame is None:
+                raise SessionDenied("binary capability is not attached")
             queue = connection.stream_queues.get(frame.lane)
             if queue is None:
                 queue = connection.stream_queues[frame.lane] = asyncio.Queue(maxsize=64)
@@ -339,9 +391,11 @@ class IrohSessionRuntime:
             try:
                 queue.put_nowait(frame)
             except asyncio.QueueFull:
+                if frame.lane == 8:
+                    return False
                 raise SessionDenied("stream dispatch capacity is exhausted") from None
             return True
-        if frame.lane in {8, 9}:
+        if frame.lane == 9:
             self.registry.check(connection.channel.binding)
             if self.on_binary_frame is None:
                 raise SessionDenied("binary capability is not attached")
@@ -350,14 +404,21 @@ class IrohSessionRuntime:
             await connection.channel.receive_frame(frame)
         return False
 
+    @staticmethod
+    def _media_expired(frame: Any) -> bool:
+        deadline = getattr(frame, "_iroh_deadline_us", None)
+        return type(deadline) is not int or time.monotonic_ns() // 1000 >= deadline
+
     async def _dispatch_stream_lane(self, connection: _Connection, queue: asyncio.Queue) -> None:
         try:
             while not self._closing:
                 frame = await queue.get()
                 try:
+                    if frame.lane == 8 and self._media_expired(frame):
+                        continue
                     self.registry.check(connection.channel.binding,
-                        scope="chat" if frame.lane == 3 else "files" if frame.lane == 7 else "browser")
-                    if frame.lane == 7:
+                        scope="chat" if frame.lane == 3 else "files" if frame.lane == 7 else "media" if frame.lane == 8 else "browser")
+                    if frame.lane in {7, 8}:
                         await self.on_binary_frame(connection.channel, frame)
                     else:
                         await connection.channel.receive_frame(frame)
@@ -377,21 +438,35 @@ class IrohSessionRuntime:
             self._closing = True
             self._send_capacity.close()
             self._shutdown_task = asyncio.create_task(self._close_owned(), name="iroh-runtime-shutdown")
-        try:
-            await asyncio.shield(self._shutdown_task)
-        except asyncio.CancelledError:
-            await self._shutdown_task
-            raise
+        cancellation = None
+        while not self._shutdown_task.done():
+            try:
+                await asyncio.shield(self._shutdown_task)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+        self._shutdown_task.result()
+        if cancellation is not None:
+            raise cancellation
 
     async def _close_owned(self) -> None:
-        tasks = [connection.worker for connection in self._connections.values() if connection.worker]
-        if self._poll_task and self._poll_task is not asyncio.current_task():
-            tasks.append(self._poll_task)
-        for task in tasks:
-            task.cancel()
         try:
+            # Stop event production before taking the ownership snapshot.
+            if self._poll_task and self._poll_task is not asyncio.current_task():
+                if not self._poll_task.done() and not self._poll_task.cancelling():
+                    self._poll_task.cancel()
+                await asyncio.gather(self._poll_task, return_exceptions=True)
+            connections = tuple(self._connections.values())
+            tasks = [connection.worker for connection in connections if connection.worker]
+            for task in tasks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*(self._join_connection_cleanup(connection)
+                                           for connection in connections), return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
         finally:
             try:
                 await asyncio.to_thread(self.endpoint.shutdown)

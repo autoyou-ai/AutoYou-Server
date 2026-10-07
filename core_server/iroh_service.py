@@ -46,12 +46,15 @@ class IrohServerService:
         self.pairing = VerifiedPairingRedemption(grants=grants, capabilities=capabilities)
         self.endpoint: IrohSessionRuntime | None = None
         self.files: Any = None
+        self.media: Any = None
         self._lifecycle_lock = asyncio.Lock()
 
     async def start(self, *, policy: dict[str, Any], unlocked_password: str | None,
                     api: Any = None, keys: Any = None, file_keys: Any = None, delivery_keys: Any = None) -> None:
         async with self._lifecycle_lock:
             if self.endpoint is not None:
+                if self.endpoint._closing:
+                    raise SessionDenied("transport shutdown must finish before restart")
                 return
             if self.capabilities.get("chat") is True and self.business.delivery is None:
                 from shared.iroh_delivery import load_delivery_service
@@ -62,6 +65,15 @@ class IrohServerService:
                 self.files = await load_file_service(file_keys or EndpointKeys(role="server", purpose="resume"),
                     unlocked_password=unlocked_password)
                 self.business.attach_stream_handler(7, self.files)
+            if self.capabilities.get("media") is True and self.media is None:
+                from shared.iroh_media import IrohMediaService
+                from core_server.iroh_audio_calls import IrohServerAudioCalls
+                self.media = IrohMediaService(call_owner_factory=lambda media, context:
+                    IrohServerAudioCalls(media=media, context=context, engine=self.business.engine,
+                        runtime=self.business.runtime))
+                self.business.attach_stream_handler(8, self.media)
+                from shared.iroh_input import IrohInputService
+                self.business.attach_stream_handler(9, IrohInputService())
             self.endpoint = await IrohSessionRuntime.start(role="server", policy=policy,
                 keys=keys or EndpointKeys(role="server"), enroll=True,
                 unlocked_password=unlocked_password, api=api, on_connected=self.connected,
@@ -82,7 +94,7 @@ class IrohServerService:
 
     async def issue_after_verified_pairing(self, offer: dict[str, Any], *,
                                          origin: VerifiedPairingOrigin, raw_session_id: str) -> dict[str, Any]:
-        if self.endpoint is None or not isinstance(origin, VerifiedPairingOrigin):
+        if self.endpoint is None or self.endpoint._closing or not isinstance(origin, VerifiedPairingOrigin):
             raise SessionDenied("transport pairing is not ready")
         if not isinstance(offer, dict) or offer.get("transport") != "iroh" or \
                 type(offer.get("version")) is not int or offer["version"] != 1:
@@ -98,6 +110,8 @@ class IrohServerService:
         scopes = frozenset({"chat", "browser", "pairing"})
         if self.capabilities.get("files") is True and self.files is not None:
             scopes |= {"files"}
+        if self.capabilities.get("media") is True and self.media is not None:
+            scopes |= {"media"}
         grant = PairedEndpoint(endpoint_id=endpoint_id, device_id=device_id,
             owner_key=identity.owner_key, canonical_user_id=identity.canonical_user_id,
             conversation_key=identity.canonical_session_id, origin_transport=origin.transport,
@@ -117,10 +131,11 @@ class IrohServerService:
 
     async def stop(self) -> None:
         async with self._lifecycle_lock:
-            endpoint, self.endpoint = self.endpoint, None
+            endpoint = self.endpoint
             self.pairing.clear()
             if endpoint is not None:
                 await endpoint.close()
+                self.endpoint = None
 
 
 def _server_lifecycle_lock(runtime: Any) -> asyncio.Lock:
@@ -167,9 +182,9 @@ async def _start_server_transport_locked(runtime: Any) -> None:
 async def stop_server_transport(runtime: Any) -> None:
     async with _server_lifecycle_lock(runtime):
         service = getattr(runtime.STATE, "iroh_service", None)
-        runtime.STATE.iroh_service = None
         if service is not None:
             await service.stop()
+        runtime.STATE.iroh_service = None
 
 
 async def delete_transport_conversation_history(runtime: Any, identity: Any, delete: Any) -> Any:

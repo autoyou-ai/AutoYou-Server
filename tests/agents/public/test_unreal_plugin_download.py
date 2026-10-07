@@ -1,6 +1,7 @@
 """Game Studio serves a complete Unreal source plugin only to signed-in users."""
 
 import asyncio
+import hashlib
 from io import BytesIO
 import importlib.util
 import json
@@ -37,6 +38,17 @@ def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
     assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-autoyou-game-sha256"] == hashlib.sha256(response.content).hexdigest()
+    assert client.get("/api/game/unreal-plugin").content == response.content
+    downloads = client.get("/api/game/downloads").json()["downloads"]
+    plugin = next(row for row in downloads if row["id"] == "unreal-plugin")
+    assert plugin == {"id": "unreal-plugin", "filename": "AutoYouGameInput.zip", "bytes": len(response.content),
+                      "sha256": hashlib.sha256(response.content).hexdigest()}
+    assert client.get("/api/game/unreal-plugin", headers={"X-AutoYou-Game-SHA256": "0" * 64}).status_code == 409
+    adapter = client.get("/api/game/python-adapter")
+    assert adapter.status_code == 200
+    assert adapter.headers["x-autoyou-game-sha256"] == hashlib.sha256(adapter.content).hexdigest()
+    assert adapter.content == (agents_root / "game_agent/website/frontend/assets/game_input_client.py").read_bytes()
     with ZipFile(BytesIO(response.content)) as archive:
         names = set(archive.namelist())
         prefix = "AutoYouGameInput/"
@@ -52,6 +64,51 @@ def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
         assert "FString CoordinateMode" in header and "bool bHasMousePosition" in header
         assert 'TryGetStringField(TEXT("coordinate_mode"), Frame.CoordinateMode)' in source
         assert 'Frame.bHasMousePosition = Event == TEXT("remote_desktop_input") && bHasX && bHasY' in source
+
+
+def test_download_rejects_missing_and_oversized_sources(tmp_path, monkeypatch):
+    from autoyou_agents.game_agent.website.backend import app as game_app
+    monkeypatch.setattr(game_app._smc, "_describe_chat_auth_state", lambda *_: {"authenticated": True})
+    monkeypatch.setattr(game_app, "_UNREAL_PLUGIN_DIR", tmp_path)
+    monkeypatch.setattr(game_app, "_UNREAL_PLUGIN_FILES", ("synthetic.txt",))
+    with TestClient(game_app.app) as client:
+        assert client.get("/api/game/unreal-plugin").status_code == 503
+        source = tmp_path / "synthetic.txt"
+        source.write_bytes(b"x" * (256 * 1024 + 1))
+        assert client.get("/api/game/unreal-plugin").status_code == 503
+        source.write_bytes(b"synthetic")
+        response = client.get("/api/game/unreal-plugin")
+        assert response.status_code == 200
+        with ZipFile(BytesIO(response.content)) as archive:
+            assert archive.namelist() == ["AutoYouGameInput/synthetic.txt"]
+            assert archive.read(archive.namelist()[0]) == b"synthetic"
+
+
+@pytest.mark.asyncio
+async def test_download_cancellation_joins_worker_and_holds_capacity(monkeypatch):
+    from threading import Event
+    from autoyou_agents.game_agent.website.backend import app as game_app
+    entered, release, exited = Event(), Event(), Event()
+    capacity = asyncio.Semaphore(1)
+    monkeypatch.setattr(game_app, "_DOWNLOAD_WORKERS", capacity)
+    def build(download_id):
+        assert download_id == "unreal-plugin"
+        entered.set()
+        try:
+            assert release.wait(5)
+            return b"synthetic"
+        finally: exited.set()
+    monkeypatch.setattr(game_app, "_game_download", build)
+    task = asyncio.create_task(game_app._owned_game_download("unreal-plugin"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        task.cancel()
+        await asyncio.sleep(0.01)
+        assert not task.done() and capacity.locked() and not exited.is_set()
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError): await task
+    assert exited.is_set() and not capacity.locked()
 
 
 def test_host_game_relay_uses_local_stream_without_exposing_credential(monkeypatch):

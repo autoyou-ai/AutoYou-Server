@@ -13,11 +13,12 @@ use std::{
 };
 use autoyou_protocol::{Admission, Envelope, Frame, FrameHeader, HEADER_BYTES, Lane, Principal, PAIR_ALPN, SESSION_ALPN};
 use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayMap, RelayMode, RelayUrl, SecretKey, TransportAddr,
-    endpoint::{Connection, PortmapperConfig, QuicTransportConfig, presets}};
+    endpoint::{Connection, PortmapperConfig, QuicTransportConfig, ReadError, ReadExactError, RecvStream, presets}};
 use iroh_tickets::endpoint::EndpointTicket;
 use serde::Deserialize;
 use tokio::{sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc}, task::JoinSet};
-use crate::{connection_binding, ordering::{OrderedReceiver, RetiredStreams}, scheduler::Scheduler, write_frame};
+use crate::{connection_binding, media::{SourceLease, Sources, MEDIA_EXPIRED_CODE},
+    ordering::{OrderedReceiver, RetiredStreams}, scheduler::Scheduler, write_frame};
 
 const MAX_CONNECTIONS: usize = 32;
 const MAX_EVENTS: usize = 256;
@@ -125,7 +126,8 @@ impl EndpointPolicy {
 #[derive(Debug)]
 pub enum HostEvent {
     Connected { connection_id: u64, endpoint_id: String, initiator: bool, exporter: [u8;32], protocol: String },
-    Frame { connection_id: u64, frame: Frame, allocation: OwnedSemaphorePermit },
+    Frame { connection_id: u64, frame: Frame, allocation: OwnedSemaphorePermit,
+        received_at: Option<tokio::time::Instant>, expires_at: Option<tokio::time::Instant> },
     Closed { connection_id: u64 },
     Failed { request_id: u64, code: &'static str },
 }
@@ -209,6 +211,7 @@ struct Slot {
     admission: Mutex<Admission>,
     outbound: Mutex<Outbound>,
     receiver: Mutex<Receiver>,
+    media_sources: Mutex<Sources>,
     retired: Mutex<RetiredStreams>,
     activated: AtomicBool,
     preauth_frames: AtomicU64,
@@ -370,22 +373,33 @@ impl EndpointHost {
         Ok(())
     }
     pub fn send(&self, id: u64, mut frame: Frame, deadline_ms: Option<u64>) -> Result<(), HostError> {
-        if deadline_ms.is_some() && frame.lane != Lane::Media { return Err(HostError::InvalidConfig); }
+        if deadline_ms.is_some() && !matches!(frame.lane, Lane::Media | Lane::Input) {
+            return Err(HostError::InvalidConfig);
+        }
         let slot = self.slot(id)?;
         if frame.lane != Lane::Enrollment && !slot.activated.load(Ordering::Acquire) {
             return Err(HostError::NotAuthorized);
         }
         authorize_header(&slot, &FrameHeader { lane: frame.lane, generation: frame.generation,
             stream_id: frame.stream_id, sequence: 0, length: frame.payload.len() }, false)?;
-        authorize_payload(&slot, &frame)?;
+        authorize_payload(&slot, &frame, false)?;
+        if frame.lane == Lane::Input { input_send_deadline(deadline_ms, now_ms())?; }
+        if frame.lane == Lane::Media {
+            let now = now_ms();
+            let source = slot.media_sources.lock().map_err(|_| HostError::Worker)?
+                .ticket(frame.stream_id, false, now).map_err(|_| HostError::NotAuthorized)?;
+            let deadline = deadline_ms.ok_or(HostError::InvalidConfig)?;
+            if deadline <= now || deadline > now.saturating_add(source.lease.transport_budget(now).as_millis() as u64) {
+                return Err(HostError::InvalidConfig);
+            }
+        }
         let mut outbound = slot.outbound.lock().map_err(|_| HostError::Worker)?;
         let key = (frame.lane as u8, frame.stream_id);
         if !outbound.sequences.contains_key(&key) && outbound.sequences.len() >= 128 { return Err(HostError::Backpressure); }
         let sequence = *outbound.sequences.get(&key).unwrap_or(&0);
-        let next = sequence.checked_add(1).ok_or(HostError::Closed)?;
+        let next = assign_transport_sequence(&mut frame, sequence)?;
         let allocation = self.shared.send_bytes.clone().try_acquire_many_owned(frame.payload.len() as u32)
             .map_err(|_| HostError::Backpressure)?;
-        frame.sequence = sequence;
         let mut upload_credit=None;
         let completion = if frame.payload.starts_with(&autoyou_protocol::byte_stream::MAGIC) {
             let record = autoyou_protocol::byte_stream::Record::decode(frame.lane, &frame.payload)
@@ -434,7 +448,7 @@ impl EndpointHost {
             if record.kind == autoyou_protocol::byte_stream::Kind::Finish { completion = Some((record.total, record.digest.to_vec())); }
             let frame = Frame { lane, generation, stream_id: 2, sequence: index as u64, payload };
             authorize_header(&slot, &FrameHeader { lane, generation, stream_id: 2, sequence: frame.sequence, length: frame.payload.len() }, false)?;
-            authorize_payload(&slot, &frame)?;
+            authorize_payload(&slot, &frame, false)?;
             permits.push(self.shared.send_bytes.clone().try_acquire_many_owned(frame.payload.len() as u32).map_err(|_| HostError::Backpressure)?);
             frames.push(frame);
         }
@@ -504,14 +518,17 @@ impl EndpointHost {
         for _ in 0..candidates {
             if result.len() >= maximum as usize { break; }
             let Some(event) = events.items.pop_front() else { break; };
-            if let HostEvent::Frame { connection_id, frame, .. } = &event {
+            if let HostEvent::Frame { connection_id, frame, expires_at, .. } = &event {
+                if expires_at.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
+                    events.bytes -= event.bytes(); continue;
+                }
                 let slot = self.shared.slots.lock().map_err(|_| HostError::Worker)?.get(connection_id).cloned();
                 let Some(slot) = slot else { events.bytes -= event.bytes(); continue; };
                 if authorize_header(&slot, &FrameHeader { lane: frame.lane, generation: frame.generation,
                     stream_id: frame.stream_id, sequence: frame.sequence, length: frame.payload.len() }, false).is_err() {
                     events.bytes -= event.bytes(); continue;
                 }
-                if authorize_payload(&slot, frame).is_err() { events.bytes -= event.bytes(); continue; }
+                if authorize_payload(&slot, frame, true).is_err() { events.bytes -= event.bytes(); continue; }
                 if frame.lane != Lane::Enrollment && !slot.activated.load(Ordering::Acquire) {
                     events.deferred.push_back(event); continue;
                 }
@@ -585,6 +602,29 @@ impl EndpointHost {
             held_receive_bytes: (16*1024*1024-self.shared.read_bytes.available_permits()) as u64,
             active_logical_streams: outbound.sequences.len() as u32, pending_stream_receipts: outbound.receipts.len() as u32 })
     }
+    pub fn approve_media_source(&self, id: u64, lease: SourceLease, inbound: bool) -> Result<(), HostError> {
+        let slot = self.slot(id)?;
+        if !slot.activated.load(Ordering::Acquire) { return Err(HostError::NotAuthorized); }
+        let principal = match &*slot.admission.lock().map_err(|_| HostError::Worker)? {
+            Admission::Admitted(principal) => principal.clone(), _ => return Err(HostError::NotAuthorized),
+        };
+        let now = now_ms();
+        let mut sources = slot.media_sources.lock().map_err(|_| HostError::Worker)?;
+        if sources.lease(lease.source_id, inbound, now).ok() == Some(&lease) {
+            lease.validate(&principal, now).map_err(|_| HostError::NotAuthorized)?; return Ok(());
+        }
+        let source_id = lease.source_id;
+        sources.approve(lease, inbound, &principal, now).map_err(|_| HostError::NotAuthorized)?;
+        drop(sources);
+        if !inbound { clear_queued_media(&slot, source_id)?; }
+        Ok(())
+    }
+    pub fn revoke_media_source(&self, id: u64, source_id: u64, inbound: bool) -> Result<(), HostError> {
+        let slot = self.slot(id)?;
+        slot.media_sources.lock().map_err(|_| HostError::Worker)?.revoke(source_id, inbound);
+        if !inbound { clear_queued_media(&slot, source_id)?; }
+        Ok(())
+    }
     pub fn disconnect(&self, id: u64) -> Result<(), HostError> {
         self.open()?;
         // Publication and cancellation lock slots before pending dials, so a
@@ -637,6 +677,16 @@ impl EndpointHost {
 }
 impl Drop for EndpointHost {
     fn drop(&mut self) { let _ = self.shutdown(); }
+}
+
+fn clear_queued_media(slot: &Slot, source_id: u64) -> Result<(), HostError> {
+    let mut outbound = slot.outbound.lock().map_err(|_| HostError::Worker)?;
+    let Outbound { scheduler, allocations, .. } = &mut *outbound;
+    scheduler.retire_stream(Lane::Media as u8, source_id, |frame| {
+        allocations.remove(&(Lane::Media as u8, source_id, frame.sequence));
+    });
+    outbound.sequences.remove(&(Lane::Media as u8, source_id));
+    Ok(())
 }
 
 async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<Endpoint, HostError> {
@@ -698,7 +748,19 @@ fn authorize_header(slot: &Slot, header: &FrameHeader, inbound: bool) -> Result<
     Ok(())
 }
 
-fn authorize_payload(slot: &Slot, frame: &Frame) -> Result<(), HostError> {
+fn authorize_payload(slot: &Slot, frame: &Frame, inbound: bool) -> Result<(), HostError> {
+    if frame.lane == Lane::Media {
+        let header = autoyou_protocol::media::MediaHeader::decode(
+            frame.payload.get(..autoyou_protocol::media::MEDIA_HEADER_BYTES).ok_or(HostError::NotAuthorized)?)
+            .map_err(|_| HostError::NotAuthorized)?;
+        if frame.stream_id != header.source_id || frame.payload.len() != autoyou_protocol::media::MEDIA_HEADER_BYTES + header.length {
+            return Err(HostError::NotAuthorized);
+        }
+        // Sending and receiving use separate local consent directions.
+        slot.media_sources.lock().map_err(|_| HostError::Worker)?
+            .check(&header, inbound, now_ms()).map_err(|_| HostError::NotAuthorized)?;
+        return Ok(());
+    }
     if matches!(frame.lane, Lane::Http | Lane::ServerEvents | Lane::WebSocket | Lane::Binary) &&
         frame.payload.starts_with(&autoyou_protocol::byte_stream::MAGIC) {
         autoyou_protocol::byte_stream::Record::decode(frame.lane, &frame.payload)
@@ -730,8 +792,11 @@ fn authorize_payload(slot: &Slot, frame: &Frame) -> Result<(), HostError> {
     if envelope.lane() != frame.lane { return Err(HostError::NotAuthorized); }
     let header = FrameHeader { lane: frame.lane, generation: frame.generation,
         stream_id: frame.stream_id, sequence: frame.sequence, length: frame.payload.len() };
-    slot.admission.lock().map_err(|_| HostError::Worker)?
-        .check(&header, envelope.required_scope(), now_ms()).map_err(|_| HostError::NotAuthorized)?;
+    let admission=slot.admission.lock().map_err(|_| HostError::Worker)?;
+    admission.check(&header, envelope.required_scope(), now_ms()).map_err(|_| HostError::NotAuthorized)?;
+    if let Some(scope)=envelope.additional_required_scope() {
+        admission.check(&header, Some(scope), now_ms()).map_err(|_| HostError::NotAuthorized)?;
+    }
     Ok(())
 }
 
@@ -787,7 +852,8 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                             let slot = Arc::new(Slot { connection, admission: Mutex::new(Admission::default()),
                                 outbound: Mutex::new(Outbound { scheduler: Scheduler::default(), sequences: HashMap::new(), allocations: HashMap::new(),
                                     next_stream: if initiator { 3 } else { 2 }, receipts: HashMap::new(), uploads:UploadCredits::default() }),
-                                receiver: Mutex::new(Receiver { ordering: OrderedReceiver::default(), allocations: HashMap::new() }), preauth_frames: AtomicU64::new(0),
+                                receiver: Mutex::new(Receiver { ordering: OrderedReceiver::default(), allocations: HashMap::new() }),
+                                media_sources: Mutex::new(Sources::default()), preauth_frames: AtomicU64::new(0),
                                 preauth_bytes: AtomicU64::new(0), read_slots: Arc::new(Semaphore::new(16)),
                                 retired: Mutex::new(RetiredStreams::default()), activated: AtomicBool::new(false), closed: AtomicBool::new(false) });
                             let mut slots = shared.slots.lock().unwrap();
@@ -851,14 +917,23 @@ fn pump(shared: &Arc<Shared>, writers: &mut JoinSet<()>) {
         if control.is_none() && other.is_none() { break; }
         let Ok(mut outbound) = slot.outbound.lock() else { continue; };
         let Outbound { scheduler, allocations, .. } = &mut *outbound;
-        let Some(frame) = scheduler.pop_for_capacity(now_ms(), control.is_some(), other.is_some(),
+        let Some(scheduled) = scheduler.pop_scheduled(now_ms(), control.is_some(), other.is_some(),
             |frame| { allocations.remove(&(frame.lane as u8, frame.stream_id, frame.sequence)); }) else { continue; };
+        let frame = scheduled.frame;
         let permit = if frame.lane.priority() == 0 { drop(other); control.unwrap() } else { drop(control); other.unwrap() };
         let allocation = outbound.allocations.remove(&(frame.lane as u8, frame.stream_id, frame.sequence));
         drop(outbound);
         writers.spawn(async move {
             let _permit = permit;
             let _allocation = allocation;
+            if frame.lane == Lane::Media {
+                write_media_frame(&slot, &frame, scheduled.deadline_ms).await;
+                return;
+            }
+            if frame.lane == Lane::Input {
+                write_input_frame(&slot, &frame, scheduled.deadline_ms).await;
+                return;
+            }
             let result = tokio::time::timeout(Duration::from_secs(60), async {
                 let mut send = slot.connection.open_uni().await.map_err(|_| HostError::Closed)?;
                 send.set_priority(16 - i32::from(frame.lane.priority())).map_err(|_| HostError::Worker)?;
@@ -870,6 +945,172 @@ fn pump(shared: &Arc<Shared>, writers: &mut JoinSet<()>) {
             if !matches!(result, Ok(Ok(()))) { slot.connection.close(1u32.into(), b"send interrupted"); }
         });
     }
+}
+
+const INPUT_MAX_AGE_MS: u64 = 200;
+
+fn input_send_deadline(deadline: Option<u64>, now: u64) -> Result<u64, HostError> {
+    let deadline = deadline.ok_or(HostError::InvalidConfig)?;
+    if deadline <= now { return Err(HostError::Timeout); }
+    if deadline > now.saturating_add(INPUT_MAX_AGE_MS) { return Err(HostError::InvalidConfig); }
+    Ok(deadline)
+}
+
+fn assign_transport_sequence(frame: &mut Frame, sequence: u64) -> Result<u64, HostError> {
+    let next = sequence.checked_add(1).ok_or(HostError::Closed)?;
+    frame.sequence = sequence;
+    Ok(next)
+}
+
+async fn write_input_frame(slot: &Slot, frame: &Frame, deadline_ms: Option<u64>) {
+    let Ok(deadline_ms) = input_send_deadline(deadline_ms, now_ms()) else { return; };
+    if authorize_header(slot, &FrameHeader { lane: frame.lane, generation: frame.generation,
+        stream_id: frame.stream_id, sequence: frame.sequence, length: frame.payload.len() }, false).is_err() { return; }
+    let remaining = deadline_ms.saturating_sub(now_ms());
+    if remaining == 0 { return; }
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(remaining);
+    let Ok(Ok(mut send)) = tokio::time::timeout_at(deadline, slot.connection.open_uni()).await else { return; };
+    if now_ms() >= deadline_ms || send.set_priority(16 - i32::from(Lane::Input.priority())).is_err() {
+        let _ = send.reset(MEDIA_EXPIRED_CODE.into()); return;
+    }
+    let result = tokio::time::timeout_at(deadline, async {
+        write_frame(&mut send, frame).await.map_err(|_| HostError::Worker)?;
+        send.finish().map_err(|_| HostError::Closed)?;
+        send.stopped().await.map_err(|_| HostError::Closed)?;
+        Ok::<(), HostError>(())
+    }).await;
+    if !matches!(result, Ok(Ok(()))) { let _ = send.reset(MEDIA_EXPIRED_CODE.into()); }
+}
+
+async fn write_media_frame(slot: &Slot, frame: &Frame, deadline_ms: Option<u64>) {
+    // The local consent token cancels queued/in-flight work on source changes.
+    // Media timeout/reset is a frame loss, never a reliable-session failure.
+    let Some(deadline_ms) = deadline_ms else { return; };
+    let now = now_ms();
+    if now >= deadline_ms || authorize_payload(slot, frame, false).is_err() { return; }
+    let Ok(mut source) = slot.media_sources.lock().map_err(|_| HostError::Worker)
+        .and_then(|sources| sources.ticket(frame.stream_id, false, now).map_err(|_| HostError::NotAuthorized)) else { return; };
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(deadline_ms - now);
+    let opened = tokio::select! {
+        _ = source.cancelled() => return,
+        result = tokio::time::timeout_at(deadline, slot.connection.open_uni()) => result,
+    };
+    let Ok(Ok(mut send)) = opened else { return; };
+    if source.is_cancelled() || now_ms() >= deadline_ms ||
+        send.set_priority(16 - i32::from(Lane::Media.priority())).is_err() {
+        let _ = send.reset(MEDIA_EXPIRED_CODE.into()); return;
+    }
+    let complete = tokio::select! {
+        _ = source.cancelled() => false,
+        result = tokio::time::timeout_at(deadline, async {
+            write_frame(&mut send, frame).await.map_err(|_| HostError::Worker)?;
+            send.finish().map_err(|_| HostError::Closed)?;
+            send.stopped().await.map_err(|_| HostError::Closed)?;
+            Ok::<(), HostError>(())
+        }) => matches!(result, Ok(Ok(()))),
+    };
+    if !complete { let _ = send.reset(MEDIA_EXPIRED_CODE.into()); }
+}
+
+async fn read_media_frame(id: u64, stream: &mut RecvStream, slot: &Slot, shared: &Shared,
+    frame_header: FrameHeader) -> Result<(), HostError> {
+    use autoyou_protocol::media::{MediaHeader, MEDIA_HEADER_BYTES};
+    if frame_header.length < MEDIA_HEADER_BYTES { return Err(HostError::NotAuthorized); }
+    // The source identifier is in the small outer header. Require its approved
+    // lease before reading the codec header or allocating the encoded frame.
+    let mut source = {
+        let sources = slot.media_sources.lock().map_err(|_| HostError::Worker)?;
+        if sources.retired(frame_header.stream_id, true, now_ms()) {
+            let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(());
+        }
+        sources.ticket(frame_header.stream_id, true, now_ms()).map_err(|_| HostError::NotAuthorized)?
+    };
+    let lease = source.lease.clone();
+    let received_at = tokio::time::Instant::now();
+    let deadline = received_at + lease.transport_budget(now_ms());
+    let result = tokio::select! {
+        _ = source.cancelled() => None,
+        result = tokio::time::timeout_at(deadline, async {
+            let mut bytes = [0u8; MEDIA_HEADER_BYTES];
+            if stream.read_exact(&mut bytes).await.is_err() { return Ok(None); }
+            let header = MediaHeader::decode(&bytes).map_err(|_| HostError::NotAuthorized)?;
+            if header.generation < lease.media_generation || header.authorization_epoch < lease.authorization_epoch {
+                return Ok(None);
+            }
+            lease.check(&header, now_ms()).map_err(|_| HostError::NotAuthorized)?;
+            if frame_header.stream_id != header.source_id || frame_header.length != MEDIA_HEADER_BYTES + header.length {
+                return Err(HostError::NotAuthorized);
+            }
+            let allocation = shared.read_bytes.clone().try_acquire_many_owned(frame_header.length as u32)
+                .map_err(|_| HostError::Backpressure)?;
+            let mut payload = Vec::with_capacity(frame_header.length);
+            payload.extend_from_slice(&bytes); payload.resize(frame_header.length, 0);
+            if stream.read_exact(&mut payload[MEDIA_HEADER_BYTES..]).await.is_err() { return Ok(None); }
+            autoyou_protocol::media_codec::validate(&header, &payload[MEDIA_HEADER_BYTES..])
+                .map_err(|_| HostError::NotAuthorized)?;
+            let mut trailing = [0u8;1];
+            match stream.read(&mut trailing).await {
+                Ok(None) => {}, Ok(Some(_)) => return Err(HostError::NotAuthorized), Err(_) => return Ok(None),
+            }
+            Ok(Some((header, payload, allocation)))
+        }) => match result { Ok(result) => Some(result), Err(_) => None },
+    };
+    let Some(result) = result else { let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(()); };
+    let Some((header, payload, allocation)) = result? else { let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(()); };
+    if source.is_cancelled() || tokio::time::Instant::now() >= deadline {
+        let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(());
+    }
+    authorize_header(slot, &frame_header, false)?;
+    let mut sources = slot.media_sources.lock().map_err(|_| HostError::Worker)?;
+    match sources.accept(&header, true, now_ms()) {
+        Ok(true) => {},
+        Ok(false) => return Ok(()),
+        Err(_) => { let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(()); },
+    }
+    // Poll owns the event queue before rechecking consent. Release the source
+    // lock before publication so a concurrent poll cannot invert those locks.
+    drop(sources);
+    shared.events.lock().map_err(|_| HostError::Worker)?.push(HostEvent::Frame {
+        connection_id: id, frame: Frame { lane: Lane::Media, generation: frame_header.generation,
+            stream_id: frame_header.stream_id, sequence: frame_header.sequence, payload }, allocation,
+            received_at: Some(received_at), expires_at: Some(deadline),
+    })?;
+    Ok(())
+}
+
+async fn read_input_frame(id: u64, stream: &mut RecvStream, slot: &Slot, shared: &Shared,
+    header: FrameHeader, received_at: tokio::time::Instant) -> Result<(), HostError> {
+    let deadline = received_at + Duration::from_millis(INPUT_MAX_AGE_MS);
+    if tokio::time::Instant::now() >= deadline {
+        let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(());
+    }
+    let allocation = shared.read_bytes.clone().try_acquire_many_owned(header.length as u32)
+        .map_err(|_| HostError::Backpressure)?;
+    let mut payload = vec![0u8; header.length];
+    let result = tokio::time::timeout_at(deadline, async {
+        if stream.read_exact(&mut payload).await.is_err() { return Ok(false); }
+        let mut trailing = [0u8; 1];
+        match stream.read(&mut trailing).await {
+            Ok(None) => Ok(true), Ok(Some(_)) => Err(HostError::NotAuthorized), Err(_) => Ok(false),
+        }
+    }).await;
+    if !matches!(result, Ok(Ok(true))) {
+        let _ = stream.stop(MEDIA_EXPIRED_CODE.into());
+        return match result { Ok(Err(error)) => Err(error), _ => Ok(()) };
+    }
+    if tokio::time::Instant::now() >= deadline {
+        let _ = stream.stop(MEDIA_EXPIRED_CODE.into()); return Ok(());
+    }
+    authorize_header(slot, &header, false)?;
+    // A timed-out input can leave a transport sequence gap. The application
+    // lease owns contiguous input order; reliable message reassembly cannot
+    // retain later input behind the missing frame or reset its age.
+    shared.events.lock().map_err(|_| HostError::Worker)?.push(HostEvent::Frame {
+        connection_id: id, frame: Frame { lane: Lane::Input, generation: header.generation,
+            stream_id: header.stream_id, sequence: header.sequence, payload }, allocation,
+        received_at: Some(received_at), expires_at: Some(deadline),
+    })?;
+    Ok(())
 }
 
 async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
@@ -884,13 +1125,25 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
                     let _ = stream.stop(1u32.into()); slot.connection.close(1u32.into(), b"stream limit"); break;
                 };
                 let slot = slot.clone(); let shared = shared.clone();
+                let received_at = tokio::time::Instant::now();
                 streams.spawn(async move {
                     let _permit = permit;
                     let mut bytes = [0u8; HEADER_BYTES];
-                    tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut bytes)).await
-                        .map_err(|_| HostError::Timeout)?.map_err(|_| HostError::Closed)?;
+                    match tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut bytes)).await {
+                        Ok(Ok(())) => {},
+                        // A media writer can expire before its complete header
+                        // arrives. This reserved reset never delivers payload.
+                        Ok(Err(ReadExactError::ReadError(ReadError::Reset(code)))) if code == MEDIA_EXPIRED_CODE.into() => return Ok(()),
+                        Ok(Err(_)) => return Err(HostError::Closed), Err(_) => return Err(HostError::Timeout),
+                    }
                     let header = FrameHeader::decode(&bytes).map_err(|_| HostError::NotAuthorized)?;
                     authorize_header(&slot, &header, true)?;
+                    if header.lane == Lane::Media {
+                        return read_media_frame(id, &mut stream, &slot, &shared, header).await;
+                    }
+                    if header.lane == Lane::Input {
+                        return read_input_frame(id, &mut stream, &slot, &shared, header, received_at).await;
+                    }
                     let _bytes = shared.read_bytes.clone().try_acquire_many_owned(header.length as u32)
                         .map_err(|_| HostError::Backpressure)?;
                     let mut payload = vec![0u8; header.length];
@@ -907,7 +1160,7 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
                         lane: header.lane, generation: header.generation, stream_id: header.stream_id,
                         sequence: header.sequence, payload,
                     };
-                    authorize_payload(&slot, &frame)?;
+                    authorize_payload(&slot, &frame, true)?;
                     let mut receiver = slot.receiver.lock().map_err(|_| HostError::Worker)?;
                     if receiver.ordering.is_duplicate(&frame) { return Ok(()); }
                     let frames = receiver.ordering.receive(frame).map_err(|_| HostError::Backpressure)?;
@@ -916,7 +1169,7 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
                     for frame in frames {
                         let allocation = receiver.allocations.remove(&(frame.lane as u8, frame.stream_id, frame.sequence))
                             .ok_or(HostError::Worker)?;
-                        events.push(HostEvent::Frame { connection_id: id, frame, allocation })?;
+                        events.push(HostEvent::Frame { connection_id: id, frame, allocation, received_at: None, expires_at: None })?;
                     }
                     Ok(())
                 });
@@ -941,6 +1194,25 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn input_send_deadline_is_mandatory_and_bounded() {
+        assert_eq!(super::input_send_deadline(Some(300), 100).unwrap(), 300);
+        assert!(matches!(super::input_send_deadline(None, 100), Err(super::HostError::InvalidConfig)));
+        assert!(matches!(super::input_send_deadline(Some(301), 100), Err(super::HostError::InvalidConfig)));
+        assert!(matches!(super::input_send_deadline(Some(100), 100), Err(super::HostError::Timeout)));
+    }
+
+    #[test]
+    fn input_transport_sequence_allocation_preserves_application_proof() {
+        let mut frame = autoyou_protocol::Frame { lane: autoyou_protocol::Lane::Input, generation: 1,
+            stream_id: 0, sequence: 1, payload: br#"{"native_input":{"sequence":1}}"#.to_vec() };
+        let proof = frame.payload.clone();
+        assert_eq!(super::assign_transport_sequence(&mut frame, 0).unwrap(), 1);
+        assert_eq!(frame.sequence, 0); assert_eq!(frame.payload, proof);
+        assert_eq!(super::assign_transport_sequence(&mut frame, 4).unwrap(), 5);
+        assert_eq!(frame.sequence, 4); assert_eq!(frame.payload, proof);
+        assert!(super::assign_transport_sequence(&mut frame, u64::MAX).is_err());
+    }
     use super::*;
     fn upload_fixture()->(autoyou_protocol::byte_stream::Writer,autoyou_protocol::byte_stream::Record) {
         use autoyou_protocol::byte_stream::{Writer,Content};

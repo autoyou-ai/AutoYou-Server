@@ -21,11 +21,11 @@ pub enum QueueError {
 }
 
 #[derive(Debug)]
-struct Pending { frame: Frame, deadline_ms: Option<u64> }
+pub struct ScheduledFrame { pub frame: Frame, pub deadline_ms: Option<u64> }
 
 #[derive(Debug, Default)]
 pub struct Scheduler {
-    lanes: [VecDeque<Pending>; 5],
+    lanes: [VecDeque<ScheduledFrame>; 5],
     bytes: usize,
     frames: usize,
     lower_cursor: usize,
@@ -36,7 +36,10 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn push(&mut self, frame: Frame, deadline_ms: Option<u64>) -> Result<(), QueueError> {
         if self.closed { return Err(QueueError::Closed); }
-        if deadline_ms.is_some() && frame.lane != Lane::Media { return Err(QueueError::InvalidDeadline); }
+        if deadline_ms.is_some() && !matches!(frame.lane, Lane::Media | Lane::Input) {
+            return Err(QueueError::InvalidDeadline);
+        }
+        if frame.lane == Lane::Input && deadline_ms.is_none() { return Err(QueueError::InvalidDeadline); }
         FrameHeader { stream_id: frame.stream_id, sequence: frame.sequence, lane: frame.lane,
             generation: frame.generation, length: frame.payload.len() }.encode()?;
         let priority = frame.lane.priority() as usize;
@@ -46,7 +49,7 @@ impl Scheduler {
             return Err(QueueError::Full);
         }
         self.bytes += frame.payload.len(); self.frames += 1;
-        self.lanes[priority].push_back(Pending { frame, deadline_ms });
+        self.lanes[priority].push_back(ScheduledFrame { frame, deadline_ms });
         Ok(())
     }
 
@@ -59,7 +62,7 @@ impl Scheduler {
         for frame in &frames {
             FrameHeader { stream_id: frame.stream_id, sequence: frame.sequence, lane: frame.lane,
                 generation: frame.generation, length: frame.payload.len() }.encode()?;
-            if frame.lane == Lane::Media { return Err(QueueError::InvalidDeadline); }
+            if matches!(frame.lane, Lane::Media | Lane::Input) { return Err(QueueError::InvalidDeadline); }
             let control = frame.lane.priority() == 0;
             let max_bytes = MAX_QUEUED_BYTES - if control { 0 } else { RESERVED_CONTROL_BYTES };
             let max_frames = MAX_QUEUED_FRAMES - if control { 0 } else { RESERVED_CONTROL_FRAMES };
@@ -69,7 +72,7 @@ impl Scheduler {
         }
         for frame in frames {
             self.bytes += frame.payload.len(); self.frames += 1;
-            self.lanes[frame.lane.priority() as usize].push_back(Pending { frame, deadline_ms: None });
+            self.lanes[frame.lane.priority() as usize].push_back(ScheduledFrame { frame, deadline_ms: None });
         }
         Ok(())
     }
@@ -79,7 +82,14 @@ impl Scheduler {
     }
 
     pub fn pop_for_capacity(&mut self, now_ms: u64, control_allowed: bool, other_allowed: bool,
-        mut on_expired: impl FnMut(&Frame)) -> Option<Frame> {
+        on_expired: impl FnMut(&Frame)) -> Option<Frame> {
+        self.pop_scheduled(now_ms, control_allowed, other_allowed, on_expired).map(|item| item.frame)
+    }
+
+    /// Keep the deadline attached while opening/writing/acknowledging the QUIC
+    /// stream. Expiry after dequeue must not leave a blocked media writer alive.
+    pub fn pop_scheduled(&mut self, now_ms: u64, control_allowed: bool, other_allowed: bool,
+        mut on_expired: impl FnMut(&Frame)) -> Option<ScheduledFrame> {
         loop {
             // At most eight urgent frames before one lower-priority item. This
             // makes cancellation immediate without starving app/bulk progress.
@@ -101,7 +111,7 @@ impl Scheduler {
             if pending.deadline_ms.is_some_and(|deadline| deadline <= now_ms) {
                 on_expired(&pending.frame); continue;
             }
-            return Some(pending.frame);
+            return Some(pending);
         }
     }
 
@@ -124,6 +134,22 @@ impl Scheduler {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn input_deadlines_release_bytes_without_starving_control() {
+        let mut queue = super::Scheduler::default();
+        let input = autoyou_protocol::Frame { lane: autoyou_protocol::Lane::Input, stream_id: 0,
+            sequence: 0, generation: 1, payload: b"{}".to_vec() };
+        assert_eq!(queue.push(input.clone(), None), Err(super::QueueError::InvalidDeadline));
+        assert_eq!(queue.push_batch(vec![input.clone()]), Err(super::QueueError::InvalidDeadline));
+        queue.push(input, Some(120)).unwrap();
+        queue.push(autoyou_protocol::Frame { lane: autoyou_protocol::Lane::Control, stream_id: 0,
+            sequence: 0, generation: 1, payload: b"end".to_vec() }, None).unwrap();
+        assert_eq!(queue.pop_scheduled(100, true, false, |_| {}).unwrap().frame.lane,
+            autoyou_protocol::Lane::Control);
+        let mut retired = 0;
+        assert!(queue.pop_scheduled(120, true, true, |_| retired += 1).is_none());
+        assert_eq!(retired, 1); assert_eq!(queue.queued_bytes(), 0);
+    }
     use super::*;
     use autoyou_protocol::Lane;
     fn frame(lane: Lane) -> Frame { Frame { stream_id: 0, sequence: 0, lane, generation: 1, payload: vec![0; 64*1024] } }
@@ -147,6 +173,17 @@ mod tests {
         queue.close(); assert_eq!(queue.push(frame(Lane::Binary), None), Err(QueueError::Closed));
     }
     #[test]
+    fn media_deadline_survives_dequeue_and_reliable_frames_have_no_deadline() {
+        let mut queue = Scheduler::default();
+        queue.push(frame(Lane::Media), Some(120)).unwrap();
+        let scheduled = queue.pop_scheduled(100, true, true, |_| {}).unwrap();
+        assert_eq!(scheduled.deadline_ms, Some(120));
+        assert_eq!(scheduled.frame.lane, Lane::Media);
+        queue.push(frame(Lane::Application), None).unwrap();
+        assert_eq!(queue.pop_scheduled(100, true, true, |_| {}).unwrap().deadline_ms, None);
+        assert_eq!(queue.queued_bytes(), 0);
+    }
+    #[test]
     fn dropped_deadlines_and_retired_streams_release_owned_allocations() {
         let mut queue = Scheduler::default();
         let mut expired = Vec::new();
@@ -167,7 +204,7 @@ mod tests {
     fn reliable_frames_never_create_sequence_gaps_by_deadline() {
         let mut queue = Scheduler::default();
         for lane in [Lane::Enrollment, Lane::Control, Lane::Application, Lane::Http,
-            Lane::ServerEvents, Lane::WebSocket, Lane::Binary, Lane::Input] {
+            Lane::ServerEvents, Lane::WebSocket, Lane::Binary] {
             assert_eq!(queue.push(Frame { payload: vec![1], ..frame(lane) }, Some(1)), Err(QueueError::InvalidDeadline));
         }
         assert_eq!(queue.queued_bytes(), 0);

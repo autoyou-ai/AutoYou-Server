@@ -19,13 +19,14 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import asyncio
 import array
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import fractions
 import html
 import importlib
 import json
 import logging
 import math
+from multiprocessing.queues import Queue as MultiprocessingQueue
 import os
 import queue
 import re
@@ -68,6 +69,8 @@ except Exception as exc:
 from shared.speech_config import deepcopy_speech_config, normalize_speech_config
 from shared.emotivoice_tts import status as emotivoice_status, synthesize as synthesize_emotivoice
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json, write_secure_file
+from shared.audio_workers import AudioWorkerOwner, AudioWorkersClosed
+from shared.native_speech import NativeSpeechLifecycle
 
 _REALTIMESTT_IMPORT_ERROR: Optional[Exception] = None
 _PYTTSX3_IMPORT_ERROR: Optional[Exception] = None
@@ -195,10 +198,26 @@ class _NoopProcessHandle:
     def terminate(self) -> None:
         return None
 
+
+class NativeRecorderCleanupError(RuntimeError):
+    pass
+
+
+class AudioManagerStartupError(RuntimeError):
+    def __init__(self, manager):
+        super().__init__("native audio startup failed with retained cleanup ownership")
+        self.owned_audio_manager = manager
+
 @dataclass(frozen=True)
 class _UtteranceFlushRequest:
     source: str
     timestamp_ms: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class _NativeSpeechInput:
+    generation: int
+    value: Any
 
 def _normalize_transcription_text(text: Any) -> str:
     return str(text or "").strip()
@@ -1034,9 +1053,18 @@ class TTSAudioStreamTrack(MediaStreamTrack):
 
     kind = "audio"
 
-    def __init__(self):
+    def __init__(self, *, native_media: bool = False):
         super().__init__()
-        self.q = queue.Queue(maxsize=_PLAYBACK_FRAME_BUFFER_SIZE)
+        if type(native_media) is not bool:
+            raise ValueError("invalid native audio track mode")
+        self._native_media = native_media
+        self._producer_owner = AudioWorkerOwner(max_workers=8) if native_media else None
+        self._cleanup_lock = threading.Lock()
+        self._cleanup_error: BaseException | None = None
+        self._cleanup_complete = False
+        self._native_closed = False
+        self._native_capture_token = None
+        self.q = queue.Queue(maxsize=8 if native_media else _PLAYBACK_FRAME_BUFFER_SIZE)
         self.pts = 0
         self.sample_rate = 48000
         self.time_base = fractions.Fraction(1, self.sample_rate)
@@ -1085,6 +1113,17 @@ class TTSAudioStreamTrack(MediaStreamTrack):
     def get_playback_status(self) -> Dict[str, Any]:
         return self._snapshot_playback_status()
 
+    def native_file_playback_clock(self, file_path: str):
+        """Read consumed file samples, never producer read-ahead or TTS state."""
+        normalized = os.path.abspath(os.path.expanduser(file_path))
+        with self._playback_lock:
+            status = self._playback_status
+            if not self._native_media or self._native_closed or status.get("source") != "video_file" or \
+                    status.get("file_path") != normalized:
+                return None
+            return (self._played_samples * 1_000_000 // self.sample_rate,
+                    str(status.get("state") or "idle"), str(status.get("playback_id") or ""))
+
     def is_rendering_media(self) -> bool:
         """True while this track is carrying file/media playback (not TTS speech).
 
@@ -1104,9 +1143,11 @@ class TTSAudioStreamTrack(MediaStreamTrack):
             source = str(self._playback_status.get("source") or "").strip().lower()
         return state in {"playing", "paused"} and source == "tts"
 
-    def _emit_playback_status(self, **updates: Any) -> Dict[str, Any]:
+    def _emit_playback_status(self, *, _expected_token: Optional[int] = None, **updates: Any) -> Dict[str, Any]:
         callback = None
         with self._playback_lock:
+            if _expected_token is not None and self._playback_token != _expected_token:
+                return dict(self._playback_status)
             status = dict(self._playback_status)
             status.update({k: v for k, v in updates.items() if v is not None})
             status.setdefault("event", "playback")
@@ -1164,11 +1205,14 @@ class TTSAudioStreamTrack(MediaStreamTrack):
         previous_stop_event = None
 
         with self._playback_lock:
+            if self._native_closed or (self._native_media and self.readyState == "ended"):
+                raise AudioWorkersClosed("native audio track is closed")
             had_active_playback = self._playback_token > 0
             previous_stop_event = self._stop_event
             self._playback_token += 1
             token = self._playback_token
             self._stop_event = threading.Event()
+            stop_event = self._stop_event
             self._pause_event = threading.Event()
             self._pause_event.set()
             self._producer_done = False
@@ -1194,7 +1238,7 @@ class TTSAudioStreamTrack(MediaStreamTrack):
         if cleared:
             LOGGER.info("Cleared %d buffered playback frames before starting a new audio file", cleared)
         self._emit_playback_status(state="playing", detail="Playback started.", error="")
-        return token, self._stop_event
+        return token, stop_event
 
     def _playback_should_abort(
         self,
@@ -1324,19 +1368,66 @@ class TTSAudioStreamTrack(MediaStreamTrack):
         loop: bool = False,
     ) -> Dict[str, Any]:
         token, stop_event = self._begin_playback(file_path, source=source)
-        threading.Thread(
-            target=self._stream_audio_file_to_queue,
-            args=(file_path,),
-            kwargs={
-                "token": token,
-                "stop_event": stop_event,
-                "should_abort": should_abort,
-                "loop": loop,
-            },
-            daemon=True,
-            name="Audio-Playback-Producer",
-        ).start()
+        kwargs = {
+            "token": token,
+            "stop_event": stop_event,
+            "should_abort": should_abort,
+            "loop": loop,
+        }
+        if self._producer_owner is not None:
+            try:
+                self._producer_owner.start(self._stream_audio_file_to_queue,
+                    args=(file_path,), kwargs=kwargs, name="Audio-Playback-Producer")
+            except BaseException:
+                self.stop_playback("Playback could not start.")
+                raise
+        else:
+            threading.Thread(target=self._stream_audio_file_to_queue, args=(file_path,),
+                kwargs=kwargs, daemon=True, name="Audio-Playback-Producer").start()
         return self.get_playback_status()
+
+    async def capture_native(self):
+        from shared.iroh_media_codec import CapturedMedia
+        with self._playback_lock:
+            if self._native_closed or self.readyState == "ended":
+                raise AudioWorkersClosed("native audio track is closed")
+            token = self._playback_token
+        captured_at = time.monotonic_ns() // 1000
+        frame = await self.recv()
+        with self._playback_lock:
+            discontinuity = token != self._native_capture_token
+            self._native_capture_token = token
+        def current():
+            with self._playback_lock:
+                return not self._native_closed and self.readyState == "live" and token == self._playback_token
+        return CapturedMedia(frame, captured_at, discontinuity=discontinuity, current_check=current)
+
+    def fence_native(self) -> None:
+        if self._producer_owner is None:
+            return
+        self._producer_owner.fence()
+        with self._playback_lock:
+            self._native_closed = True
+        self.stop_playback("Audio owner closed.")
+
+    def close(self) -> None:
+        with self._cleanup_lock:
+            if self._cleanup_error is not None:
+                raise self._cleanup_error
+            if self._cleanup_complete:
+                return
+            try:
+                if self._producer_owner is not None:
+                    self.fence_native()
+                    self._producer_owner.join(timeout=_THREAD_JOIN_TIMEOUT_SECONDS)
+                    self._clear_buffered_frames()
+                else:
+                    self.stop_playback("Audio owner closed.")
+                super().stop()
+                self._cleanup_complete = True
+            except BaseException as exc:
+                self._cleanup_error = exc
+                raise
 
     async def recv(self):
         if not hasattr(self, "_start_time"):
@@ -1463,22 +1554,25 @@ class TTSAudioStreamTrack(MediaStreamTrack):
         self._emit_playback_status(state="playing", detail="Playback resumed.", error="")
         return True
 
-    def stop_playback(self, reason: str = "Playback stopped."):
+    def stop_playback(self, reason: str = "Playback stopped.", *, playback_id: Optional[str] = None):
         """Immediately clear all queued TTS or media playback frames."""
         with self._playback_lock:
+            if playback_id is not None and self._playback_status.get("playback_id") != playback_id:
+                return False
             self._playback_token += 1
+            stopped_token = self._playback_token
             stop_event = self._stop_event
             self._stop_event = threading.Event()
             self._pause_event = threading.Event()
             self._pause_event.set()
             self._producer_done = True
             self._completion_pending = False
+            cleared = self._clear_buffered_frames()
         stop_event.set()
-        cleared = self._clear_buffered_frames()
-        self._emit_playback_status(state="stopped", detail=reason, error="")
+        self._emit_playback_status(_expected_token=stopped_token, state="stopped", detail=reason, error="")
         if cleared:
             LOGGER.info("TTS playback interrupted: cleared %d queued audio frames", cleared)
-        return bool(cleared)
+        return bool(cleared) or playback_id is not None
 
     def queue_audio_file(
         self,
@@ -1488,6 +1582,16 @@ class TTSAudioStreamTrack(MediaStreamTrack):
     ):
         """Read audio file and queue frames uniformly resampled to 48kHz for WebRTC."""
         token, stop_event = self._begin_playback(file_path, source="tts")
+        if self._producer_owner is not None:
+            try:
+                worker = self._producer_owner.start(self._stream_audio_file_to_queue,
+                    args=(file_path,), kwargs=dict(token=token, stop_event=stop_event,
+                        should_abort=should_abort), name="Audio-Speech-Producer")
+            except BaseException:
+                self.stop_playback("Speech playback could not start.")
+                raise
+            worker.join()
+            return
         self._stream_audio_file_to_queue(
             file_path,
             token=token,
@@ -1652,6 +1756,59 @@ class MixedAudioStreamTrack(MediaStreamTrack):
 
         return self._mixed_frame(sample_arrays)
 
+    async def capture_native(self):
+        """Mix current frames while preserving local device age and mute fences."""
+        from aiortc.mediastreams import MediaStreamError
+        from shared.iroh_media_codec import CapturedMedia
+        if self._start_time is None:
+            self._start_time = time.time()
+        discontinuity = False
+        while True:
+            with self._sources_lock:
+                sources = list(self._sources)
+            if not sources:
+                raise MediaStreamError
+            async def receive(track):
+                take = getattr(track,"take_native_audio",None)
+                if take is not None:
+                    return take()  # A missing host device cannot stall TTS/playback.
+                capture = getattr(track,"capture_native",None)
+                return await (capture() if capture is not None else track.recv())
+            results = await asyncio.gather(*(receive(track) for _name,track in sources),return_exceptions=True)
+            arrays,stamps,checks = [],[],[]
+            for (name,track),result in zip(sources,results):
+                if isinstance(result,BaseException):
+                    if isinstance(result,asyncio.CancelledError): raise result
+                    self._remove_source(name,track)
+                    discontinuity = True
+                    continue
+                if result is None: continue
+                captured_at_us = time.monotonic_ns()//1000
+                check = None
+                if isinstance(result,CapturedMedia):
+                    captured_at_us,check = result.captured_at_us,result.current_check
+                    if check is not None and check() is not True:
+                        discontinuity = True
+                        continue
+                    if time.monotonic_ns()//1000-captured_at_us >= 200000:
+                        discontinuity = True
+                        continue
+                    if result.discontinuity:
+                        self._resamplers.pop(name,None)
+                        discontinuity = True
+                    result = result.frame
+                samples = self._frame_to_samples(name,result)
+                if samples is not None:
+                    arrays.append(samples);stamps.append(captured_at_us)
+                    if check is not None: checks.append(check)
+            if not arrays:
+                await asyncio.sleep(0.005)
+                continue
+            frame = self._mixed_frame(arrays)
+            await self._pace_if_needed()
+            return CapturedMedia(frame,min(stamps),discontinuity,
+                None if not checks else lambda: all(check() is True for check in checks))
+
 class AudioTrackSink(MediaStreamTrack):
     """
     Consumes audio frames from WebRTC and feeds them to RealtimeSTT.
@@ -1735,7 +1892,19 @@ class AudioManager:
         settings_provider: Optional[Callable[[], Dict[str, Any]]] = None,
         status_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         enable_stt: bool = True,
+        *,
+        native_media: bool = False,
     ):
+        if type(native_media) is not bool:
+            raise ValueError("invalid native audio manager mode")
+        self._native_media = native_media
+        self._outbound_workers = AudioWorkerOwner(max_workers=16) if native_media else None
+        self._native_cleanup_lock = threading.Lock()
+        self._native_cleanup_error: BaseException | None = None
+        self._native_cleanup_complete = False
+        self._native_speech = None
+        self._native_speech_policy_lock = threading.RLock()
+        self._speech_feeder_owner = AudioWorkerOwner(max_workers=1) if native_media else None
         self.on_text_callback = on_text_callback
         self.settings_provider = settings_provider or deepcopy_speech_config
         self.status_callback = status_callback
@@ -1752,6 +1921,7 @@ class AudioManager:
         self._closed = False
         self._settings_lock = threading.Lock()
         self._stt_generation = 0
+        self._native_audio_instance_id = uuid.uuid4().hex if native_media else None
         self._stt_init_retry_count = 0
         # Serializes the retry decision so the watchdog and the init-failure
         # handler cannot both schedule a retry for the same init generation.
@@ -1767,6 +1937,7 @@ class AudioManager:
             _env_float("AUTOYOU_STT_INIT_TIMEOUT_SECONDS", 180.0),
         )
         self._tts_generation = 0
+        self._tts_stop_revision = 0
         self._tts_generation_lock = threading.Lock()
         self._stop_tts_event = threading.Event()  # set to cancel in-flight TTS synthesis
         self._settings_snapshot = normalize_speech_config(self.settings_provider())
@@ -1780,16 +1951,23 @@ class AudioManager:
         self._segmentation_hold = False
         self._pre_hold_silence_duration: Optional[float] = None
         self._held_recording_started_at: Optional[float] = None
-        if self._stt_enabled:
-            self._feed_audio_thread = threading.Thread(
-                target=self._feed_audio_loop,
-                daemon=True,
-                name="STT-Audio-Feeder",
-            )
-            self._feed_audio_thread.start()
         self._init_thread: Optional[threading.Thread] = None
         self._transcription_thread: Optional[threading.Thread] = None
-        self.reload_settings(initial=True)
+        try:
+            if native_media and self._stt_enabled:
+                self._ensure_native_speech()
+            elif self._stt_enabled:
+                self._feed_audio_thread = threading.Thread(target=self._feed_audio_loop,
+                    daemon=True, name="STT-Audio-Feeder")
+                self._feed_audio_thread.start()
+            self.reload_settings(initial=True)
+        except BaseException:
+            if native_media:
+                try:
+                    self.close()
+                except BaseException:
+                    raise AudioManagerStartupError(self)
+            raise
         if self._stt_disabled_reason:
             self._emit_status("unavailable", self._stt_disabled_reason)
 
@@ -1856,6 +2034,11 @@ class AudioManager:
                 "timestamp_ms": int(time.time() * 1000),
                 "platform": "server",
             }
+        speech = getattr(self, "_native_speech", None)
+        if speech is not None and speech.failure is not None:
+            return {"event": "readiness", "state": "unavailable",
+                    "detail": "Voice cleanup failed; its speech owner remains fenced.",
+                    "timestamp_ms": int(time.time() * 1000), "platform": "server"}
         if self.recorder is not None:
             return {
                 "event": "readiness",
@@ -1878,16 +2061,40 @@ class AudioManager:
         return None
 
     def close(self):
+        if getattr(self, "_native_media", False):
+            with self._native_cleanup_lock:
+                if self._native_cleanup_error is not None:
+                    raise self._native_cleanup_error
+                if self._native_cleanup_complete:
+                    return
+                try:
+                    self._close_audio_manager()
+                    self._native_cleanup_complete = True
+                except BaseException as exc:
+                    self._native_cleanup_error = exc
+                    raise
+        else:
+            self._close_audio_manager()
+
+    def _close_audio_manager(self):
         if self._closed:
             return
         self._closed = True
+        native = getattr(self, "_native_media", False)
+        if native:
+            self._outbound_workers.fence()
+            self._speech_feeder_owner.fence()
+            if self._native_speech is not None:
+                self._native_speech.fence()
         self._stt_generation += 1
         tts_generation_lock = getattr(self, "_tts_generation_lock", None)
         if tts_generation_lock is not None:
             with tts_generation_lock:
                 self._tts_generation += 1
+                self._tts_stop_revision = getattr(self,"_tts_stop_revision",0) + 1
         else:
             self._tts_generation = getattr(self, "_tts_generation", 0) + 1
+            self._tts_stop_revision = getattr(self,"_tts_stop_revision",0) + 1
         stop_tts_event = getattr(self, "_stop_tts_event", None)
         if stop_tts_event is not None:
             stop_tts_event.set()
@@ -1904,7 +2111,8 @@ class AudioManager:
             except Exception as exc:
                 LOGGER.debug("Failed to stop outbound playback during close: %s", exc)
         recorder = self.recorder
-        self.recorder = None
+        if not native:
+            self.recorder = None
         self._stt_initialization_event.set()
         try:
             self.input_queue.put_nowait(None)
@@ -1919,6 +2127,52 @@ class AudioManager:
                 pass
         except Exception:
             pass
+        if native:
+            # Provider and file-decoder workers must exit before dropping any
+            # owner or freeing a recorder used by a manager thread.
+            failures = []
+            for track in tracks:
+                if track is not None:
+                    try:
+                        track.fence_native()
+                    except BaseException as exc:
+                        failures.append(exc)
+            if self._native_speech is None:
+                try:
+                    self._signal_native_recorder(recorder)
+                except BaseException as exc:
+                    failures.append(exc)
+            for track in tracks:
+                if track is not None:
+                    try:
+                        track.close()
+                    except BaseException as exc:
+                        failures.append(exc)
+            try:
+                self._outbound_workers.join(timeout=_THREAD_JOIN_TIMEOUT_SECONDS)
+            except BaseException as exc:
+                failures.append(exc)
+            if self._native_speech is not None:
+                try:
+                    self._native_speech.close()
+                except BaseException as exc:
+                    failures.append(exc)
+            try:
+                self._speech_feeder_owner.join(timeout=_THREAD_JOIN_TIMEOUT_SECONDS)
+            except BaseException as exc:
+                failures.append(exc)
+            if self._native_speech is None:
+                for name in ("_transcription_thread", "_init_thread", "_feed_audio_thread"):
+                    thread = getattr(self, name, None)
+                    _join_thread(thread, name)
+                    if thread is not None and thread.is_alive():
+                        failures.append(RuntimeError("native speech worker cleanup did not finish"))
+            if failures:
+                raise failures[0]
+            if self._native_speech is None:
+                self._release_native_recorder(recorder, initialized=True)
+            self.recorder = None
+            return
         self._shutdown_recorder(recorder)
         _join_thread(self._transcription_thread, "STT transcription")
         _join_thread(self._init_thread, "STT init")
@@ -2035,6 +2289,11 @@ class AudioManager:
             return
         if not retrying:
             self._stt_init_retry_count = 0
+        if getattr(self, "_native_media", False):
+            with self._native_speech_policy_lock:
+                if self._stt_enabled:
+                    self._native_speech.request(settings)
+            return
         self._stt_generation += 1
         generation = self._stt_generation
         old_recorder = self.recorder
@@ -2064,13 +2323,100 @@ class AudioManager:
         self._init_thread.start()
         self._start_stt_init_watchdog(generation, settings)
 
+    def _ensure_native_speech(self):
+        if self._native_speech is None:
+            # Allocate on the first authorized warm-up. Later policy changes
+            # retain this same joined replacement lane, even while idle.
+            self._native_speech = NativeSpeechLifecycle(on_request=self._request_native_stt,
+                start_generation=self._start_native_stt, signal_recorder=self._signal_native_recorder,
+                release_recorder=self._release_native_recorder, on_failure=self._native_stt_failed,
+                timeout=lambda: _THREAD_JOIN_TIMEOUT_SECONDS)
+            self._feed_audio_thread = self._speech_feeder_owner.start(self._feed_audio_loop,
+                name="STT-Audio-Feeder")
+
+    def set_native_speech_enabled(self, enabled: bool) -> bool:
+        """Apply current native call consent and agent policy without blocking UI.
+
+        Revocation fences callbacks/input synchronously. The owned coordinator
+        joins old model work before enabling a subsequent call or policy revision.
+        """
+        if not self._native_media or type(enabled) is not bool:
+            raise ValueError("native speech policy requires a native manager and boolean")
+        with self._native_speech_policy_lock:
+            if self._closed or (self._native_speech is not None and self._native_speech.failure is not None):
+                return False
+            if self._stt_enabled == enabled:
+                return True
+            self._stt_enabled = enabled
+            if enabled:
+                self._ensure_native_speech()
+                self._stt_init_retry_count = 0
+                accepted = self._native_speech.request(self._current_settings())
+            else:
+                accepted = self._native_speech.suspend()
+            if not accepted:
+                self._stt_enabled = False
+            return accepted
+
+    def _request_native_stt(self, generation):
+        self._stt_generation = generation
+        self.recorder = None
+        self._stt_initialization_event.clear()
+        self._warmup_audio_logged = False
+        self._warmup_audio_dropped_chunks = 0
+        with self._voice_capture_lock:
+            self._voice_capture_buffer.clear()
+            self._is_capturing_voice = False
+        if not self._stt_enabled:
+            self._stt_initialization_event.set()
+            self._emit_status("ready", "Call audio ready; AI speech processing is paused.")
+
+    def _start_native_stt(self, owner, settings):
+        if self._closed:
+            return
+        self._emit_speech_status(owner.number, "warming",
+            f"Preparing voice pipeline on server ({settings['stt']['model']})...")
+        self._init_thread = self._start_speech_job(owner.number, self._init_stt,
+            args=(owner.number, settings), name=f"RealtimeSTT-Init-{owner.number}")
+        self._start_stt_init_watchdog(owner.number, settings)
+
+    def _start_speech_job(self, generation, target, *, args=(), name):
+        if getattr(self, "_native_media", False):
+            owner = self._native_speech.generation(generation)
+            if owner is None:
+                return None
+            try:
+                return owner.workers.start(target, args=args, name=name)
+            except AudioWorkersClosed:
+                return None
+        worker = threading.Thread(target=target, args=args, daemon=True, name=name)
+        worker.start()
+        return worker
+
+    def _native_stt_failed(self, _error):
+        self._stt_initialization_event.set()
+        self._emit_status("unavailable", "Voice cleanup failed; its speech owner remains fenced.")
+
+    def _emit_speech_status(self, generation, state, detail):
+        if getattr(self, "_native_media", False):
+            return self._native_speech.publish(generation, lambda: self._emit_status(state, detail))
+        self._emit_status(state, detail)
+
+    def _wait_speech_generation(self, generation, seconds):
+        if getattr(self, "_native_media", False):
+            owner = self._native_speech.generation(generation)
+            return owner is None or owner.workers.stopped.wait(seconds)
+        time.sleep(seconds)
+        return False
+
     def _start_stt_init_watchdog(self, generation: int, settings: Dict[str, Any]) -> None:
         timeout_seconds = float(getattr(self, "_stt_init_timeout_seconds", 0.0) or 0.0)
         if timeout_seconds <= 0:
             return
 
         def _watch() -> None:
-            time.sleep(timeout_seconds)
+            if self._wait_speech_generation(generation, timeout_seconds):
+                return
             if self._closed or generation != self._stt_generation or self.recorder is not None:
                 return
             init_thread = getattr(self, "_init_thread", None)
@@ -2087,16 +2433,12 @@ class AudioManager:
                 f"timed out after {timeout_seconds:.0f}s while starting",
             ):
                 return
-            self._emit_status(
+            self._emit_speech_status(generation,
                 "unavailable",
                 f"Voice pipeline timed out after {timeout_seconds:.0f} seconds while starting.",
             )
 
-        threading.Thread(
-            target=_watch,
-            daemon=True,
-            name=f"RealtimeSTT-Watchdog-{generation}",
-        ).start()
+        self._start_speech_job(generation, _watch, name=f"RealtimeSTT-Watchdog-{generation}")
 
     def _schedule_stt_init_retry(self, settings: Dict[str, Any], generation: int, reason: str) -> bool:
         # Returns True when a retry is (or already was) scheduled for this init
@@ -2122,26 +2464,26 @@ class AudioManager:
             retry_max,
             delay_seconds,
         )
-        self._emit_status(
+        self._emit_speech_status(generation,
             "warming",
             f"Voice pipeline {reason}; retrying ({retry_number}/{retry_max})...",
         )
 
         def _retry() -> None:
             if delay_seconds > 0:
-                time.sleep(delay_seconds)
+                if self._wait_speech_generation(generation, delay_seconds):
+                    return
             if self._closed or generation != self._stt_generation or self.recorder is not None:
                 return
-            self._restart_stt(settings, initial=False, retrying=True)
+            if getattr(self, "_native_media", False):
+                self._native_speech.request(settings, expected_generation=generation)
+            else:
+                self._restart_stt(settings, initial=False, retrying=True)
 
-        threading.Thread(
-            target=_retry,
-            daemon=True,
-            name=f"RealtimeSTT-Retry-{generation}-{retry_number}",
-        ).start()
-        return True
+        return self._start_speech_job(generation, _retry,
+            name=f"RealtimeSTT-Retry-{generation}-{retry_number}") is not None
 
-    def _shutdown_recorder(self, recorder):
+    def _signal_recorder_shutdown(self, recorder, *, strict: bool = False):
         if recorder is None:
             return
         for event_name in (
@@ -2155,23 +2497,111 @@ class AudioManager:
                 if event is not None and hasattr(event, "set"):
                     event.set()
             except Exception as exc:
+                if strict:
+                    raise
                 LOGGER.debug("Recorder event %s failed during shutdown prep: %s", event_name, exc)
         for attr_name, value in (("is_running", False), ("is_recording", False)):
             try:
                 if hasattr(recorder, attr_name):
                     setattr(recorder, attr_name, value)
             except Exception as exc:
+                if strict:
+                    raise
                 LOGGER.debug("Recorder attr %s failed during shutdown prep: %s", attr_name, exc)
+
+    def _shutdown_recorder(self, recorder, *, strict: bool = False):
+        if recorder is None:
+            return
+        self._signal_recorder_shutdown(recorder, strict=strict)
         for method_name in ("stop", "shutdown"):
             try:
                 method = getattr(recorder, method_name, None)
                 if callable(method):
                     method()
             except Exception as exc:
+                if strict:
+                    raise
                 LOGGER.debug("Recorder %s failed during shutdown: %s", method_name, exc)
 
-    def _set_recorder_ready(self, recorder) -> None:
-        self.recorder = recorder
+    def _signal_native_recorder(self, recorder):
+        if recorder is None:
+            return
+        self._signal_recorder_shutdown(recorder, strict=True)
+        for name in ("_stop_event", "main_transcription_ready_event"):
+            event = getattr(recorder, name, None)
+            if event is not None:
+                event.set()
+        if hasattr(recorder, "_running"):
+            recorder._running = False
+
+    def _release_native_recorder(self, recorder, *, initialized):
+        if recorder is None:
+            return
+        self._signal_native_recorder(recorder)
+        # These are the explicit RealtimeSTT and WhisperCpp worker contracts.
+        # Thread-backed Process handles cannot be force-terminated safely.
+        names = ("transcript_process", "reader_process", "recording_thread",
+                 "realtime_thread", "stdout_thread", "_vad_thread")
+        deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT_SECONDS
+        for name in names:
+            worker = getattr(recorder, name, None)
+            if worker is not None and worker.is_alive():
+                worker.join(timeout=max(0.0, deadline - time.monotonic()))
+                if worker.is_alive():
+                    raise NativeRecorderCleanupError("native model worker cleanup did not finish")
+        self._close_native_audio_queue(getattr(recorder, "audio_queue", None))
+        if initialized:
+            self._shutdown_recorder(recorder, strict=True)
+        # A failed constructor can leave pipes without enough fields for the
+        # SDK's normal shutdown method. Close those only after every worker has
+        # exited; then the generation may drop its partial object reference.
+        for name in ("parent_transcription_pipe", "parent_stdout_pipe"):
+            pipe = getattr(recorder, name, None)
+            if pipe is not None:
+                pipe.close()
+        for name in names:
+            worker = getattr(recorder, name, None)
+            if worker is not None and worker.is_alive():
+                raise NativeRecorderCleanupError("native model worker remains live after shutdown")
+
+    def _close_native_audio_queue(self, audio_queue):
+        if audio_queue is None or isinstance(audio_queue, queue.Queue):
+            return
+        if not isinstance(audio_queue, MultiprocessingQueue):
+            raise NativeRecorderCleanupError("native recorder queue ownership is unsupported")
+        # SDK feed_audio uses a multiprocessing Queue even in thread mode. Once
+        # model and application consumers have exited, discard its pending PCM
+        # while the queue's physical feeder finishes. Closing without draining
+        # can leave that feeder blocked forever on a full pipe.
+        worker = audio_queue._thread
+        audio_queue.close()
+        deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT_SECONDS
+        while worker is not None and worker.is_alive():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise NativeRecorderCleanupError("native recorder queue feeder cleanup did not finish")
+            try:
+                if audio_queue._reader.poll(min(0.01, remaining)):
+                    audio_queue._reader.recv_bytes()
+            except (EOFError, OSError):
+                pass
+            worker.join(timeout=min(0.01, max(0.0, deadline-time.monotonic())))
+        if worker is not None:
+            audio_queue.join_thread()
+        audio_queue._reader.close()
+        audio_queue._writer.close()
+
+    def _set_recorder_ready(self, recorder, *, generation=None) -> bool:
+        if getattr(self, "_native_media", False):
+            generation = self._stt_generation if generation is None else generation
+            owner = self._native_speech.generation(generation)
+            if owner is None:
+                raise AudioWorkersClosed("native recorder has no generation owner")
+            owner.own(recorder, initialized=True)
+            if not self._native_speech.publish(generation, lambda: setattr(self, "recorder", recorder)):
+                return False
+        else:
+            self.recorder = recorder
         if self._segmentation_hold:
             # A hold engaged before/during STT init (or across a recorder
             # restart) must land on the freshly configured recorder.
@@ -2195,7 +2625,10 @@ class AudioManager:
                 "Dropped %s oldest buffered inbound audio chunks while STT warmed up",
                 self._warmup_audio_dropped_chunks,
             )
+        if getattr(self, "_native_media", False):
+            return self._native_speech.publish(generation, self._stt_initialization_event.set)
         self._stt_initialization_event.set()
+        return True
 
     def _mark_stt_initialization_unavailable(self) -> None:
         # Wake the feeder so it can discard any remaining warm-up backlog
@@ -2245,12 +2678,8 @@ class AudioManager:
             except Exception as exc:
                 LOGGER.debug("Could not link voice training capture to its conversation: %s", exc)
 
-        threading.Thread(
-            target=self._save_captured_voice_thread,
-            args=(audio_data, transcript, conversation),
-            daemon=True,
-            name="VoiceCaptureSaver",
-        ).start()
+        self._start_outbound_worker(self._save_captured_voice_thread,
+            args=(audio_data, transcript, conversation), name="VoiceCaptureSaver")
 
     def _save_captured_voice_thread(
         self,
@@ -2352,8 +2781,16 @@ class AudioManager:
             class MockRecorder:
                 def __init__(self):
                     self.returned = False
+                    self.shutdown_event = threading.Event()
 
                 def text(self):
+                    if getattr(manager, "_native_media", False):
+                        if self.shutdown_event.wait(10 if self.returned else 2):
+                            return ""
+                        if not self.returned:
+                            self.returned = True
+                            return "AutoYou personal ai assistant"
+                        return ""
                     if not self.returned:
                         time.sleep(2)
                         self.returned = True
@@ -2368,18 +2805,15 @@ class AudioManager:
                     return None
 
                 def shutdown(self):
-                    return None
+                    self.shutdown_event.set()
 
-            self._set_recorder_ready(MockRecorder())
+            manager = self
+            if not self._set_recorder_ready(MockRecorder(), generation=generation):
+                return
             self._stt_init_retry_count = 0
-            self._transcription_thread = threading.Thread(
-                target=self._transcription_loop,
-                args=(self.recorder, generation),
-                daemon=True,
-                name=f"MockSTT-Loop-{generation}",
-            )
-            self._transcription_thread.start()
-            self._emit_status("ready", "Voice pipeline ready.")
+            self._transcription_thread = self._start_speech_job(generation, self._transcription_loop,
+                args=(self.recorder, generation), name=f"MockSTT-Loop-{generation}")
+            self._emit_speech_status(generation, "ready", "Voice pipeline ready.")
             return
 
         if AudioToTextRecorder is None:
@@ -2409,7 +2843,7 @@ class AudioManager:
                     if lang == "en":
                         ggml_model = f"{ggml_model}.en"
 
-                self._emit_status("warming", f"Downloading whisper.cpp ({ggml_model})…")
+                self._emit_speech_status(generation, "warming", f"Downloading whisper.cpp ({ggml_model})…")
                 binary = get_whisper_cpp_binary()
                 if binary is None:
                     raise RuntimeError("whisper.cpp binary unavailable")
@@ -2417,29 +2851,38 @@ class AudioManager:
                 if model_path is None:
                     raise RuntimeError(f"Could not download whisper model {ggml_model}")
 
-                recorder = WhisperCppRecorder(
-                    binary_path=binary,
-                    model_path=model_path,
-                    language=stt_settings.get("language", "en"),
-                    post_speech_silence_duration=float(
-                        stt_settings.get("post_speech_silence_duration", 1.5)
-                    ),
-                )
+                native_owner = (self._native_speech.generation(generation)
+                                if getattr(self, "_native_media", False) else None)
+                if native_owner is not None:
+                    recorder = WhisperCppRecorder.__new__(WhisperCppRecorder)
+                    native_owner.own(recorder)
+                    try:
+                        WhisperCppRecorder.__init__(recorder,
+                            binary_path=binary, model_path=model_path, language=stt_settings.get("language", "en"),
+                            post_speech_silence_duration=float(stt_settings.get("post_speech_silence_duration", 1.5)))
+                    except BaseException:
+                        native_owner.discard_failed_attempt(recorder)
+                        raise
+                    native_owner.own(recorder, initialized=True)
+                else:
+                    recorder = WhisperCppRecorder(
+                        binary_path=binary, model_path=model_path,
+                        language=stt_settings.get("language", "en"),
+                        post_speech_silence_duration=float(stt_settings.get("post_speech_silence_duration", 1.5)))
                 recorder.start()
                 if self._closed or generation != self._stt_generation:
-                    recorder.shutdown()
+                    if native_owner is not None:
+                        self._signal_native_recorder(recorder)
+                    else:
+                        recorder.shutdown()
                     return
-                self._set_recorder_ready(recorder)
+                if not self._set_recorder_ready(recorder, generation=generation):
+                    return
                 self._stt_init_retry_count = 0
                 LOGGER.info("WhisperCpp STT recorder initialised (model=%s)", ggml_model)
-                self._emit_status("ready", "Voice pipeline ready (whisper.cpp).")
-                self._transcription_thread = threading.Thread(
-                    target=self._transcription_loop,
-                    args=(self.recorder, generation),
-                    daemon=True,
-                    name=f"WhisperCpp-Loop-{generation}",
-                )
-                self._transcription_thread.start()
+                self._emit_speech_status(generation, "ready", "Voice pipeline ready (whisper.cpp).")
+                self._transcription_thread = self._start_speech_job(generation, self._transcription_loop,
+                    args=(self.recorder, generation), name=f"WhisperCpp-Loop-{generation}")
                 return
             except Exception as _wexc:
                 LOGGER.warning("whisper.cpp STT fallback failed: %s", _wexc)
@@ -2447,12 +2890,27 @@ class AudioManager:
             if self._closed or generation != self._stt_generation:
                 return
             self._mark_stt_initialization_unavailable()
-            self._emit_status("unavailable", "RealtimeSTT is unavailable on the server.")
+            self._emit_speech_status(generation, "unavailable", "RealtimeSTT is unavailable on the server.")
             return
 
         LOGGER.info("Initializing RealtimeSTT in background")
 
+        manager = self
         class HeadlessAudioToTextRecorder(AudioToTextRecorder):
+            def __init__(self, *args, **kwargs):
+                owner = (manager._native_speech.generation(generation)
+                         if getattr(manager, "_native_media", False) else None)
+                if owner is not None:
+                    owner.own(self)
+                try:
+                    super().__init__(*args, **kwargs)
+                except BaseException:
+                    if owner is not None:
+                        owner.discard_failed_attempt(self)
+                    raise
+                if owner is not None:
+                    owner.own(self, initialized=True)
+
             def _start_thread(self, target=None, args=()):
                 if _is_realtimestt_transcription_target(target):
                     LOGGER.info("Headless mode: using safe RealtimeSTT transcription worker")
@@ -2506,6 +2964,14 @@ class AudioManager:
                 "input_device_index": None,
                 "use_microphone": False,
             }
+            if getattr(self, "_native_media", False):
+                # SDK callback threads are optional; keep callbacks inside their
+                # registered recording worker and reject obsolete generations.
+                stt_kwargs["start_callback_in_new_thread"] = False
+                for key in ("on_recording_start", "on_recording_stop", "on_transcription_start"):
+                    callback = stt_kwargs[key]
+                    stt_kwargs[key] = lambda *args, _callback=callback, **kwargs: self._native_speech.publish(
+                        generation, lambda: _callback(*args, **kwargs))
             LOGGER.info(
                 "Initializing RealtimeSTT with model=%s language=%s device=%s compute_type=%s",
                 stt_settings["model"],
@@ -2542,16 +3008,20 @@ class AudioManager:
                     fallback_kwargs,
                 )
             if self._closed or generation != self._stt_generation:
-                self._shutdown_recorder(recorder)
+                if getattr(self, "_native_media", False):
+                    self._signal_native_recorder(recorder)
+                else:
+                    self._shutdown_recorder(recorder)
                 return
-            self._set_recorder_ready(recorder)
+            if not self._set_recorder_ready(recorder, generation=generation):
+                return
             self._stt_init_retry_count = 0
             if used_local_vad_fallback:
                 LOGGER.warning(
                     "RealtimeSTT started with a WebRTC-backed Silero fallback because the Silero model could not be loaded."
                 )
             LOGGER.info("RealtimeSTT initialized successfully")
-            self._emit_status("ready", "Voice pipeline ready.")
+            self._emit_speech_status(generation, "ready", "Voice pipeline ready.")
         except Exception as exc:
             if self._closed or generation != self._stt_generation:
                 LOGGER.info("Ignoring stale RealtimeSTT initialization failure: %s", exc)
@@ -2560,16 +3030,11 @@ class AudioManager:
             if self._schedule_stt_init_retry(settings, generation, f"failed to start: {exc}"):
                 return
             self._mark_stt_initialization_unavailable()
-            self._emit_status("unavailable", f"Voice pipeline failed to start: {exc}")
+            self._emit_speech_status(generation, "unavailable", f"Voice pipeline failed to start: {exc}")
             return
 
-        self._transcription_thread = threading.Thread(
-            target=self._transcription_loop,
-            args=(self.recorder, generation),
-            daemon=True,
-            name=f"RealtimeSTT-Loop-{generation}",
-        )
-        self._transcription_thread.start()
+        self._transcription_thread = self._start_speech_job(generation, self._transcription_loop,
+            args=(self.recorder, generation), name=f"RealtimeSTT-Loop-{generation}")
 
     def _transcription_loop(self, recorder, generation: int):
         if not recorder:
@@ -2584,18 +3049,31 @@ class AudioManager:
                 if _should_ignore_transcription_text(normalized):
                     LOGGER.info("Ignoring placeholder STT transcript: %s", normalized)
                     continue
-                LOGGER.info("Transcribed: %s", normalized)
-                self._save_captured_voice(normalized)
-                self.on_text_callback(normalized)
+                def deliver():
+                    LOGGER.info("Transcribed: %s", normalized)
+                    self._save_captured_voice(normalized)
+                    self.on_text_callback(normalized)
+                if getattr(self, "_native_media", False):
+                    self._native_speech.publish(generation, deliver)
+                else:
+                    deliver()
             except Exception as exc:
                 if self._closed or generation != self._stt_generation:
                     break
                 LOGGER.error("Transcription error: %s", exc)
-                time.sleep(1)
+                if self._wait_speech_generation(generation, 1):
+                    break
 
     def process_audio_chunk(self, chunk: bytes):
         if self._closed or not self._stt_enabled:
             return
+        generation = getattr(self, "_stt_generation", 0)
+        if getattr(self, "_native_media", False):
+            self._native_speech.admit(generation, lambda: self._queue_audio_chunk(chunk, generation))
+        else:
+            self._queue_audio_chunk(chunk, generation)
+
+    def _queue_audio_chunk(self, chunk: bytes, generation: int):
         try:
             if self.recorder is None and self._stt_initialization_event.is_set():
                 # Initialization completed without a usable recorder. Do not
@@ -2605,7 +3083,8 @@ class AudioManager:
                 LOGGER.info("Buffering inbound voice audio while STT initializes")
                 self._warmup_audio_logged = True
             try:
-                self.input_queue.put_nowait(chunk)
+                self.input_queue.put_nowait(_NativeSpeechInput(generation, chunk)
+                    if getattr(self, "_native_media", False) else chunk)
             except queue.Full:
                 # Preserve the newest speech when initialization takes longer
                 # than the bounded warm-up window.
@@ -2614,7 +3093,8 @@ class AudioManager:
                 except queue.Empty:
                     pass
                 try:
-                    self.input_queue.put_nowait(chunk)
+                    self.input_queue.put_nowait(_NativeSpeechInput(generation, chunk)
+                        if getattr(self, "_native_media", False) else chunk)
                     self._warmup_audio_dropped_chunks += 1
                 except queue.Full:
                     return
@@ -2624,7 +3104,8 @@ class AudioManager:
         except Exception as exc:
             LOGGER.error("Error queueing audio to STT: %s", exc)
 
-    def flush_utterance(self, *, source: str = "unknown", timestamp_ms: Optional[int] = None) -> bool:
+    def flush_utterance(self, *, source: str = "unknown", timestamp_ms: Optional[int] = None,
+                        expected_generation: Optional[int] = None) -> bool:
         """Finalize the currently accumulating utterance as one transcript.
 
         Used by client mute (deliberate end-of-speech) and by the WUIFT button
@@ -2638,14 +3119,25 @@ class AudioManager:
                 timestamp_ms,
             )
             return False
+        generation = getattr(self, "_stt_generation", 0)
+        if expected_generation is not None and expected_generation != generation:
+            return False
+        if getattr(self, "_native_media", False):
+            result = []
+            admitted = self._native_speech.admit(generation,
+                lambda: result.append(self._queue_utterance_flush(source, timestamp_ms, generation)))
+            return bool(admitted and result[0])
+        return self._queue_utterance_flush(source, timestamp_ms, generation)
+
+    def _queue_utterance_flush(self, source, timestamp_ms, generation):
         try:
             pending_chunks = self.input_queue.qsize()
         except Exception:
             pending_chunks = -1
         try:
-            self.input_queue.put_nowait(
-                _UtteranceFlushRequest(source=source, timestamp_ms=timestamp_ms)
-            )
+            request = _UtteranceFlushRequest(source=source, timestamp_ms=timestamp_ms)
+            self.input_queue.put_nowait(_NativeSpeechInput(generation, request)
+                if getattr(self, "_native_media", False) else request)
             LOGGER.info(
                 "Queued STT utterance flush from %s timestamp_ms=%s pending_audio_chunks=%s",
                 source,
@@ -2683,7 +3175,10 @@ class AudioManager:
             self._pre_hold_silence_duration = None
         if recorder is not None:
             try:
-                self._apply_segmentation_hold_to_recorder(recorder)
+                speech = getattr(self, "_native_speech", None)
+                with (speech.use(recorder) if speech is not None else nullcontext(True)) as admitted:
+                    if admitted:
+                        self._apply_segmentation_hold_to_recorder(recorder)
             except Exception as exc:
                 LOGGER.warning(
                     "Failed to %s WUIFT segmentation hold from %s: %s",
@@ -2754,36 +3249,46 @@ class AudioManager:
                 chunk = self.input_queue.get()
                 if chunk is None:
                     break
+                speech = getattr(self, "_native_speech", None)
+                generation = None
+                if speech is not None:
+                    if not isinstance(chunk, _NativeSpeechInput):
+                        continue
+                    generation, chunk = chunk.generation, chunk.value
+                    if generation != self._stt_generation:
+                        continue
                 recorder = self.recorder
                 if recorder is None and not self._stt_initialization_event.is_set():
                     while not self._closed and not self._stt_initialization_event.wait(0.1):
-                        pass
+                        if generation is not None and generation != self._stt_generation:
+                            break
                     if self._closed:
                         break
                     recorder = self.recorder
+                if generation is not None and generation != self._stt_generation:
+                    continue
                 if recorder:
-                    if isinstance(chunk, _UtteranceFlushRequest):
-                        is_recording = bool(getattr(recorder, "is_recording", False))
-                        manual_flush = getattr(recorder, "request_flush", None)
-                        supports_manual_flush = callable(manual_flush)
-                        LOGGER.info(
-                            "Processing STT utterance flush from %s timestamp_ms=%s is_recording=%s supports_manual_flush=%s",
-                            chunk.source,
-                            chunk.timestamp_ms,
-                            is_recording,
-                            supports_manual_flush,
-                        )
-                        self._held_recording_started_at = None
-                        if supports_manual_flush:
-                            manual_flush()
-                        elif is_recording:
-                            recorder.stop()
-                        continue
-                    recorder.feed_audio(chunk)
-                    self._enforce_held_segment_cap(recorder)
+                    with (speech.use(recorder) if speech is not None else nullcontext(True)) as admitted:
+                        if admitted:
+                            self._feed_recorder_chunk(recorder, chunk)
             except Exception as exc:
                 if not self._closed:
                     LOGGER.error("Error feeding audio to STT: %s", exc)
+
+    def _feed_recorder_chunk(self, recorder, chunk):
+        if isinstance(chunk, _UtteranceFlushRequest):
+            is_recording = bool(getattr(recorder, "is_recording", False))
+            manual_flush = getattr(recorder, "request_flush", None)
+            LOGGER.info("Processing STT utterance flush from %s timestamp_ms=%s is_recording=%s supports_manual_flush=%s",
+                chunk.source, chunk.timestamp_ms, is_recording, callable(manual_flush))
+            self._held_recording_started_at = None
+            if callable(manual_flush):
+                manual_flush()
+            elif is_recording:
+                recorder.stop()
+            return
+        recorder.feed_audio(chunk)
+        self._enforce_held_segment_cap(recorder)
 
     def stop_speaking(self, source: str = "unknown") -> None:
         """Cancel any in-progress TTS synthesis and clear queued audio immediately.
@@ -2795,9 +3300,11 @@ class AudioManager:
         if tts_generation_lock is not None:
             with tts_generation_lock:
                 self._tts_generation += 1
+                self._tts_stop_revision = getattr(self,"_tts_stop_revision",0) + 1
                 active_generation = self._tts_generation
         else:
             self._tts_generation = getattr(self, "_tts_generation", 0) + 1
+            self._tts_stop_revision = getattr(self,"_tts_stop_revision",0) + 1
             active_generation = self._tts_generation
         LOGGER.info("stop_speaking requested by %s (tts_generation=%s)", source, active_generation)
         stop_tts_event = getattr(self, "_stop_tts_event", None)
@@ -2899,6 +3406,15 @@ class AudioManager:
             playback_track.stop_playback()
         return True
 
+    def stop_owned_playback(self, playback_id: str, *, source: str) -> bool:
+        """A retiring game cannot stop a later user-selected playback generation."""
+        if not isinstance(playback_id, str) or not 0 < len(playback_id) <= 64:
+            raise ValueError("invalid owned playback identity")
+        track = self._media_control_track()
+        if track is None:
+            return False
+        return bool(track.stop_playback(f"Playback stopped by {source}.", playback_id=playback_id))
+
     def get_playback_status(self) -> Dict[str, Any]:
         playback_track = self._get_playback_track()
         if playback_track is None:
@@ -2918,7 +3434,18 @@ class AudioManager:
         status.pop("file_path", None)
         return status
 
-    def speak(self, text: str, *, context: str = "") -> bool:
+    def get_tts_stop_revision(self) -> int:
+        with self._tts_generation_lock:
+            return getattr(self,"_tts_stop_revision",0)
+
+    def speak(self, text: str, *, context: str = "", expected_stop_revision: int | None = None) -> bool:
+        if expected_stop_revision is not None:
+            if type(expected_stop_revision) is not int or expected_stop_revision < 0:
+                raise ValueError("invalid speech output revision")
+            if self.get_tts_stop_revision() != expected_stop_revision:
+                return False
+        if getattr(self, "_closed", False):
+            return False
         settings = self._current_settings()
         self._setup_tts(settings)
         if settings["tts"]["provider"] == "off":
@@ -2939,6 +3466,9 @@ class AudioManager:
             settings = stand_in
         LOGGER.info("Speaking with provider=%s", settings["tts"]["provider"])
         with self._tts_generation_lock:
+            if self._closed or (expected_stop_revision is not None and
+                    getattr(self,"_tts_stop_revision",0) != expected_stop_revision):
+                return False
             self._tts_generation += 1
             generation = self._tts_generation
             self._stop_tts_event.clear()
@@ -2951,13 +3481,19 @@ class AudioManager:
             and self._track_is_rendering_media(self.tts_track)
         ):
             self.tts_track.stop_playback()
-        threading.Thread(
-            target=self._speak_thread,
-            args=(text, settings, generation, context),
-            daemon=True,
-            name="TTS-Synthesizer",
-        ).start()
-        return True
+        return self._start_outbound_worker(self._speak_thread,
+            args=(text, settings, generation, context), name="TTS-Synthesizer") is not None
+
+    def _start_outbound_worker(self, target, *, args=(), name: str):
+        owner = getattr(self, "_outbound_workers", None)
+        if owner is not None:
+            try:
+                return owner.start(target, args=args, name=name)
+            except AudioWorkersClosed:
+                return None
+        worker = threading.Thread(target=target, args=args, daemon=True, name=name)
+        worker.start()
+        return worker
 
     def synthesize_to_file(
         self,

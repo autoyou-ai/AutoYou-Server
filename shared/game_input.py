@@ -1,4 +1,4 @@
-"""Bounded game input frames for a local engine consuming WebRTC controls."""
+"""Bounded game input frames for an owned local engine."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import math
 import re
 import secrets
 import time
+import uuid
 from typing import Any
 
 
@@ -96,6 +97,15 @@ class GameInputHub:
         self._queue: asyncio.Queue[dict[str, Any]] | None = None
         self.owner: str | None = None
         self._sequence = 0
+        self._engine_id: str | None = None
+
+    def binding(self) -> dict[str, Any] | None:
+        if self._queue is None:
+            return None
+        return {"version": 1, "kind": "engine", "engine_id": self._engine_id}
+
+    def queue_for_binding(self, binding: dict[str, Any]) -> asyncio.Queue | None:
+        return self._queue if binding == self.binding() else None
 
     @property
     def connected(self) -> bool:
@@ -107,12 +117,33 @@ class GameInputHub:
         # ponytail: eight frames bound stale input; use per-session snapshots if critical events overflow.
         self._queue = asyncio.Queue(maxsize=8)
         self.owner = owner
+        self._engine_id = str(uuid.uuid4())
         return self._queue
 
     def detach(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         if self._queue is queue:
             self._queue = None
             self.owner = None
+            self._engine_id = None
+
+    def retire_control(self, queue: asyncio.Queue, session_id: str, control_id: str) -> None:
+        """Clear that controller's queued input, including on a detached engine."""
+        pending = []
+        while not queue.empty():
+            item = queue.get_nowait()
+            queue.task_done()
+            if (item.get("session_id"), item.get("control_id")) != (session_id, control_id):
+                pending.append(item)
+        if len(pending) >= queue.maxsize:
+            pending = []
+            self._sequence += 1
+            pending.append({"event": "game_input", "input_type": "state_reset", "all_sessions": True,
+                "session_id": "*", "sequence": self._sequence, "timestamp_ms": int(time.time() * 1000)})
+        for item in pending:
+            queue.put_nowait(item)
+        self._sequence += 1
+        queue.put_nowait({"event": "game_input", "input_type": "session_end", "session_id": session_id,
+            "control_id": control_id, "sequence": self._sequence, "timestamp_ms": int(time.time() * 1000)})
 
     def publish(self, session_id: str, frame: dict[str, Any]) -> None:
         queue = self._queue
@@ -125,6 +156,7 @@ class GameInputHub:
             pending = []
             while not queue.empty():
                 pending.append(queue.get_nowait())
+                queue.task_done()
             pending.append(message)
             seen: set[tuple[Any, ...]] = set()
             latest_touch_key = None

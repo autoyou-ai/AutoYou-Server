@@ -45,6 +45,7 @@ class SessionBusinessAdapter:
 
     async def prepared(self, transport: Any, context: Any, channel: Any) -> None:
         binding = channel.binding
+        channel.application_loop = asyncio.get_running_loop()
         grant = self.grants.grant_for_endpoint(context.remote_endpoint_id)
         identity = self.runtime.bind_transport_chat_owner(grant.origin_transport, grant.origin_sender_id,
             raw_session_id=context.transport_id, pairing_mode=grant.pairing_mode)
@@ -73,6 +74,20 @@ class SessionBusinessAdapter:
             transport.registry.check(binding)
             if self.engine.datachannel_managers.get(context.transport_id) is not channel:
                 raise SessionDenied("application adapter has been replaced")
+            if message.header.message_type == MessageType.VOICE_CALL_CONTROL and message.payload.get("event") == "media_signal":
+                media = getattr(channel,"native_media",None)
+                if media is None or media.negotiation is None:
+                    raise SessionDenied("native media negotiation is unavailable")
+                await media.negotiation.receive_signal(message.payload.get("control"))
+                return
+            if message.header.message_type == MessageType.VOICE_CALL_CONTROL:
+                from shared.iroh_website_input import dispatch_website_input
+                if await dispatch_website_input(channel, message.payload):
+                    return
+                media = getattr(channel, "native_media", None)
+                if media is not None and media.call_owner is not None:
+                    await media.call_owner.receive(message)
+                    return
             if message.header.message_type == MessageType.CHAT and message.payload.get("context"):
                 files = getattr(channel, "native_files", None)
                 from shared.iroh_context import incoming_context, needs_file_capability
@@ -134,6 +149,8 @@ class SessionBusinessAdapter:
                 try:
                     cleanup = [self.engine._cancel_session_message_tasks(context.transport_id)]
                     if binding is not None:
+                        from shared.iroh_website_input import close_website_views
+                        cleanup.append(close_website_views(binding))
                         cleanup.extend(handler.closed(binding) for handler in self._streams.values())
                         if self.delivery is not None:
                             cleanup.append(self.delivery.closed(binding))

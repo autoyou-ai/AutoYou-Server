@@ -18,7 +18,9 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import asyncio
 import logging
+import os
 import platform
+import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -36,6 +38,9 @@ except Exception:  # pragma: no cover
 
 from shared.video_call_manager import VIDEO_FRAME_REGISTRY
 from shared.remote_desktop_keyboard import KEY_MAP as REMOTE_DESKTOP_KEY_MAP
+from shared.iroh_website_input import NativeWebsiteView, website_view, in_view
+from shared.iroh_media import _join_owned
+from shared.session_transport import SessionDenied, TransportKind
 from shared.runtime_module_loader import import_autoyou_shared_tools_module as _import_autoyou_shared_tools_module
 
 _SMC_MOD = "autoyou_agents.shared_tools.scheduler_mission_control"
@@ -295,7 +300,10 @@ def _capture_and_encode_sync(bounds: Dict[str, int], scale: Any, quality: Any) -
 
 def _simulate_input(payload: Dict[str, Any]) -> bool:
     """Executes a single cursor or keyboard event on the host system."""
+    barrier = None
     try:
+        from shared.iroh_input import LegacyInputCleanupBarrier
+        barrier = LegacyInputCleanupBarrier(payload, admit=True)
         event_type = payload.get("type")
         pyautogui = _control_backend()
         
@@ -384,6 +392,8 @@ def _simulate_input(payload: Dict[str, Any]) -> bool:
     except Exception as e:
         logger.error("Error executing remote input: %s", e)
         return False
+    finally:
+        if barrier is not None: barrier.release()
 
 
 async def _authenticate_screen_websocket(websocket: WebSocket, agent_name: str) -> Dict[str, Any]:
@@ -436,6 +446,9 @@ def _request_query_param(request: Request, name: str) -> str:
 
 
 def _coalesce_session_identity(request: Request) -> tuple[str, str]:
+    if _request_header(request, "X-AutoYou-Transport") == "iroh":
+        return (_request_header(request, "X-AutoYou-WebRTC-Session-Id"),
+                _request_header(request, "X-AutoYou-WebRTC-Owner-Key"))
     session_id = _request_query_param(request, "session_id")
     owner_key = _request_query_param(request, "owner_key")
     if not session_id:
@@ -443,6 +456,132 @@ def _coalesce_session_identity(request: Request) -> tuple[str, str]:
     if not owner_key:
         owner_key = _request_header(request, "X-AutoYou-WebRTC-Owner-Key")
     return session_id, owner_key
+
+
+def _native_channel(request):
+    session_id = _request_header(request, "X-AutoYou-WebRTC-Session-Id")
+    marker = _request_header(request, "X-AutoYou-Transport")
+    if not session_id and not marker: return None
+    engine = getattr(_runtime_server(), "WEBRTC", None)
+    channel = getattr(engine, "datachannel_managers", {}).get(session_id)
+    if getattr(channel, "transport_kind", None) != TransportKind.IROH:
+        if marker: raise SessionDenied("native website session is unavailable")
+        return None
+    binding = channel.binding
+    if marker != "iroh" or not channel.is_ready or binding.owner_key != _request_header(request, "X-AutoYou-WebRTC-Owner-Key"):
+        raise SessionDenied("native website owner changed")
+    channel.registry.check(binding, scope="browser")
+    return channel
+
+
+def _native_view(channel, payload):
+    if not isinstance(payload,dict): raise SessionDenied("invalid website view identity")
+    owner = website_view(channel.binding, payload.get("view_id"))
+    return owner
+
+
+async def _website_keyboard(owner, action, grant):
+    from shared.datachannel_manager import create_voice_call_control_message
+    async def send():
+        owner._check()
+        owner.channel.registry.check(owner.binding, scope="control")
+        message = create_voice_call_control_message({
+            "event": "remote_desktop_keyboard", "action": action, "source": "remote_desktop_agent",
+            "native_website": {"version": 1, "view_id": owner.source.call_id}, **grant,
+        }, session_id=owner.binding.transport_id)
+        if not await owner.channel.send_message(message): raise SessionDenied("native keyboard transport is full")
+    loop = getattr(owner.channel, "application_loop", None)
+    if loop is None or loop.is_closed() or not loop.is_running(): raise SessionDenied("native application loop is unavailable")
+    if loop is asyncio.get_running_loop(): return await send()
+    posted = asyncio.run_coroutine_threadsafe(send(), loop)
+    async def joined(): return await asyncio.wrap_future(posted)
+    await _join_owned(asyncio.create_task(joined(), name="iroh-website-keyboard-send"))
+
+
+def _native_bounds(target_type, target_id):
+    if os.environ.get("AUTOYOU_TEST_ROOT"): raise SessionDenied("native capture SDK is forbidden in hermetic tests")
+    if target_type == "window": return get_window_bounds(target_id)
+    # No fallback may silently replace an explicitly selected monitor.
+    mss = _lazy_import_mss()
+    with mss.mss() as capture:
+        if type(target_id) is not int or not 0 <= target_id < len(capture.monitors): return None
+        return {key: int(capture.monitors[target_id][key]) for key in ("left", "top", "width", "height")}
+
+
+def _bounded_native_capture(bounds, scale, quality, *, capture=None):
+    if os.environ.get("AUTOYOU_TEST_ROOT") and capture is None: raise SessionDenied("native capture SDK is forbidden in hermetic tests")
+    captured = time.time_ns() // 1_000_000
+    if capture is not None: image = capture(bounds)
+    else:
+        try: image = _capture_mss_image_sync(bounds)
+        except Exception:
+            if not _imagegrab_capture_supported(): raise SessionDenied("selected website capture is unavailable") from None
+            box = bounds["left"],bounds["top"],bounds["left"]+bounds["width"],bounds["top"]+bounds["height"]
+            image = ImageGrab.grab(bbox=box, **({"all_screens":True} if _current_platform_tag()=="windows" else {}))
+    if image is None: raise SessionDenied("selected website capture is unavailable")
+    try:
+        if (image.width,image.height) != (bounds["width"],bounds["height"]): raise SessionDenied("selected website capture geometry changed")
+        if image.mode != "RGB":
+            converted = image.convert("RGB"); image.close(); image = converted
+        size = max(1, int(image.width * scale)), max(1, int(image.height * scale))
+        if size != image.size:
+            resized = image.resize(size, Image.Resampling.BILINEAR)
+            image.close(); image = resized
+        class BoundedJPEG(BytesIO):
+            def write(self, data):
+                if self.tell() + len(data) > 8 * 1024**2: raise SessionDenied("website JPEG exceeds its buffer allowance")
+                return super().write(data)
+        with BoundedJPEG() as output:
+            image.save(output, format="JPEG", quality=quality)
+            return output.getvalue(), captured, image.width, image.height
+    finally: image.close()
+
+
+async def _stream_native_screen(websocket, channel):
+    owner = None
+    config = None
+    try:
+        while True:
+            try:
+                update = await asyncio.wait_for(websocket.receive_json(), timeout=.001 if config else 5)
+                if isinstance(update, dict) and update.get("type") == "auth": continue
+                if not isinstance(update, dict) or set(update) - {"target_type","target_id","scale","quality","fps","focus","paused","config_token"}:
+                    raise SessionDenied("invalid native website configuration")
+                if update != config:
+                    if owner is not None:
+                        await owner.close(); owner = None
+                    config = update
+            except asyncio.TimeoutError:
+                if config is None: raise SessionDenied("website did not select a source")
+            channel.registry.check(channel.binding, scope="browser")
+            if config.get("paused") is True:
+                await asyncio.sleep(.05); continue
+            target_type, target_id = config.get("target_type"), config.get("target_id")
+            scale, quality, fps = config.get("scale"), config.get("quality"), config.get("fps")
+            token = config.get("config_token")
+            if type(scale) not in {int,float} or not .1 <= scale <= 1 or type(quality) is not int or not 5 <= quality <= 100 or \
+                    type(fps) is not int or not 1 <= fps <= _MAX_STREAM_FPS or not isinstance(token,str) or not 0 < len(token) <= 64 or config.get("focus") is not False:
+                raise SessionDenied("invalid bounded native website configuration")
+            if owner is None: owner = NativeWebsiteView(channel=channel,target_type=target_type,target_id=target_id,fps=fps)
+            owner._check()
+            bounds = await owner.worker(_native_bounds,target_type,target_id)
+            if not isinstance(bounds,dict) or set(bounds) != {"left","top","width","height"} or any(type(v) is not int for v in bounds.values()) or \
+                    any(not 0 < bounds[key] <= 4096 for key in ("width","height")) or bounds["width"]*bounds["height"]*4 > 32*1024**2:
+                raise SessionDenied("selected website target is unavailable or exceeds capture limits")
+            jpeg, captured, width, height = await owner.worker(_bounded_native_capture,bounds,scale,quality)
+            if not isinstance(jpeg,bytes) or not 0 < len(jpeg) <= 8*1024**2: raise SessionDenied("invalid website JPEG receipt")
+            receipt = owner.publish(bounds=bounds,captured_at_ms=captured,width=width,height=height)
+            await websocket.send_json({**receipt,"config_token":token})
+            owner._check()
+            await websocket.send_bytes(jpeg)
+            await asyncio.sleep(1/fps)
+    except WebSocketDisconnect:
+        pass
+    except SessionDenied as error:
+        await websocket.send_json({"event":"native_website_denied","reason":str(error)})
+        await websocket.close(code=_SCREEN_WS_POLICY_VIOLATION)
+    finally:
+        if owner is not None: await owner.close()
 
 
 def _native_keyboard_connection_proof(session_id: str = "", owner_key: str = "") -> Dict[str, Any]:
@@ -525,14 +664,59 @@ def _extra_routes(app, agent_name: str) -> None:
         except Exception:
             return _json_response({"success": False, "error": "Invalid JSON payload"}, status_code=400)
             
+        try:
+            channel = _native_channel(request)
+            if channel is not None:
+                if not isinstance(payload, dict): raise SessionDenied("invalid native input")
+                owner = _native_view(channel, payload.get("native_website", {}))
+                await in_view(owner, owner.receive, payload)
+                return _json_response({"success": True})
+            if isinstance(payload, dict) and "native_website" in payload: raise SessionDenied("native website input lost its session")
+        except SessionDenied as error:
+            return _json_response({"success": False, "error": str(error)}, status_code=403)
         success = _simulate_input(payload)
         return _json_response({"success": success})
+
+    @app.post("/api/remote_desktop/control")
+    async def control_website(request: Request):
+        if not _describe_chat_auth_state(request, agent_name).get("authenticated"):
+            return _json_response({"success": False}, status_code=401)
+        try:
+            payload = await request.json()
+            channel = _native_channel(request)
+            if channel is None or not isinstance(payload,dict): raise SessionDenied("native website control is unavailable")
+            owner = _native_view(channel,payload)
+            if payload.get("action") == "approve":
+                grant = await in_view(owner,owner.approve,control_id=payload.get("control_id"),source=payload.get("source"),
+                    frame_sequence=payload.get("frame_sequence"),keyboard_only=False)
+                return _json_response({"success":True,**grant})
+            if payload.get("action") == "stop":
+                owner.cleanup_grant(payload.get("control_id"))
+                await in_view(owner,owner.stop_control)
+                return _json_response({"success":True})
+            raise SessionDenied("invalid website control action")
+        except (SessionDenied, ValueError) as error:
+            return _json_response({"success":False,"error":str(error)},status_code=403)
 
     @app.get("/api/remote_desktop/native-keyboard/status")
     async def get_native_keyboard_status(request: Request):
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        try:
+            channel = _native_channel(request)
+            if channel is not None:
+                visible = False
+                try:
+                    owner = website_view(channel.binding, _request_query_param(request,"view_id"))
+                    owner._check()
+                    if owner._lease is not None: owner._lease._check()
+                    visible = owner._lease is not None and owner._keyboard_only is True
+                except SessionDenied: pass
+                return _json_response({"success":True,"native_transport":True,"native_keyboard":{
+                    "connected":True,"keyboard_state":"visible" if visible else "inactive"}})
+        except SessionDenied as error:
+            return _json_response({"success":False,"error":str(error)},status_code=403)
         session_id, owner_key = _coalesce_session_identity(request)
         proof = _native_keyboard_connection_proof(session_id=session_id, owner_key=owner_key)
         return _json_response({"success": True, "native_keyboard": proof})
@@ -552,6 +736,28 @@ def _extra_routes(app, agent_name: str) -> None:
         action = str(payload.get("action") or "").strip().lower()
         if action not in {"show", "hide"}:
             return _json_response({"success": False, "error": "Only show and hide are supported here."}, status_code=400)
+
+        try:
+            channel = _native_channel(request)
+            if channel is not None:
+                owner = _native_view(channel,payload)
+                if action == "show":
+                    # Browser pointer and native IME have distinct input sequences.
+                    # Changing the writer joins the old owner before new approval.
+                    if owner._lease is not None and (owner._keyboard_only is not True or owner._lease.authority.control_id != payload.get("control_id")):
+                        await in_view(owner,owner.stop_control)
+                    grant = await in_view(owner,owner.approve,control_id=payload.get("control_id"),source=payload.get("source"),
+                        frame_sequence=payload.get("frame_sequence"),keyboard_only=True)
+                    try: await _website_keyboard(owner,"show",grant)
+                    except BaseException:
+                        await in_view(owner,owner.stop_control); raise
+                else:
+                    grant = owner.cleanup_grant(payload.get("control_id"))
+                    try: await _website_keyboard(owner,"hide",grant)
+                    finally: await in_view(owner,owner.stop_control)
+                return _json_response({"success":True,**grant})
+        except SessionDenied as error:
+            return _json_response({"success":False,"error":str(error)},status_code=403)
 
         session_id, owner_key = _coalesce_session_identity(request)
         reply_target: Dict[str, Any] = {"transport": "webrtc"}
@@ -582,6 +788,16 @@ def _extra_routes(app, agent_name: str) -> None:
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        try:
+            channel = _native_channel(request)
+            if channel is not None:
+                channel.registry.check(channel.binding,scope="media")
+                frame = VIDEO_FRAME_REGISTRY.latest(channel.binding.transport_id)
+                return _json_response(dict(success=True,active=frame is not None,active_sessions=int(frame is not None),
+                    latest_session_id=frame.session_id if frame else None,latest_sequence=frame.sequence if frame else 0,
+                    latest_timestamp_ms=frame.timestamp_ms if frame else None,latest_width=frame.width if frame else None,latest_height=frame.height if frame else None))
+        except SessionDenied as error:
+            return _json_response({"success":False,"error":str(error)},status_code=403)
         return _json_response({"success": True, **VIDEO_FRAME_REGISTRY.status()})
 
     # High-Performance Binary JPEG streaming WebSocket
@@ -593,6 +809,15 @@ def _extra_routes(app, agent_name: str) -> None:
         except WebSocketDisconnect:
             return
         if not auth.get("authenticated"):
+            return
+
+        try:
+            channel = _native_channel(websocket)
+            if channel is not None:
+                await _stream_native_screen(websocket,channel)
+                return
+        except SessionDenied:
+            await websocket.close(code=_SCREEN_WS_POLICY_VIOLATION)
             return
 
         logger.info("Remote Desktop screen WebSocket connected.")
@@ -715,10 +940,16 @@ def _extra_routes(app, agent_name: str) -> None:
         if not auth.get("authenticated"):
             return
 
+        try:
+            native = _native_channel(websocket)
+            if native is not None: native.registry.check(native.binding,scope="media")
+        except SessionDenied:
+            await websocket.close(code=_SCREEN_WS_POLICY_VIOLATION);return
+
         logger.info("Remote Desktop mobile video WebSocket connected.")
         config = {
             "fps": _DEFAULT_MOBILE_VIDEO_FPS,
-            "session_id": None,
+            "session_id": native.binding.transport_id if native is not None else None,
             "paused": False,
         }
         last_sequence = 0
@@ -730,10 +961,17 @@ def _extra_routes(app, agent_name: str) -> None:
                 if isinstance(data, dict) and data.get("type") == "auth":
                     return
                 if isinstance(data, dict):
+                    if native is not None and (set(data)-{"fps","paused","session_id"} or
+                            ("session_id" in data and data["session_id"] != native.binding.transport_id) or
+                            ("fps" in data and (type(data["fps"]) is not int or not 1 <= data["fps"] <= _MAX_MOBILE_VIDEO_FPS)) or
+                            ("paused" in data and type(data["paused"]) is not bool)):
+                        raise SessionDenied("native camera website cannot change its admitted source")
                     config.update(data)
             except asyncio.TimeoutError:
                 pass
             except WebSocketDisconnect:
+                raise
+            except SessionDenied:
                 raise
             except Exception:
                 pass
@@ -741,19 +979,28 @@ def _extra_routes(app, agent_name: str) -> None:
         try:
             while True:
                 await read_config()
+                if native is not None:
+                    native.registry.check(native.binding,scope="browser")
+                    native.registry.check(native.binding,scope="media")
                 fps = max(1, min(_MAX_MOBILE_VIDEO_FPS, int(config.get("fps", _DEFAULT_MOBILE_VIDEO_FPS))))
                 if _coerce_bool(config.get("paused")):
                     await asyncio.sleep(1.0 / fps)
                     continue
 
                 session_id = str(config.get("session_id") or "").strip() or None
-                frame = await asyncio.to_thread(
+                work = asyncio.create_task(asyncio.to_thread(
                     VIDEO_FRAME_REGISTRY.wait_for_frame,
                     last_sequence=last_sequence,
                     session_id=session_id,
                     timeout=max(0.05, 1.0 / fps),
-                )
+                ),name="website-camera-frame-wait")
+                frame = await _join_owned(work)
                 if frame is not None:
+                    if native is not None:
+                        native.registry.check(native.binding,scope="browser")
+                        native.registry.check(native.binding,scope="media")
+                        if frame.session_id != native.binding.transport_id or len(frame.jpeg_bytes)>8*1024**2:
+                            raise SessionDenied("camera website frame changed its owner or buffer limit")
                     last_sequence = frame.sequence
                     feed_active = True
                     await websocket.send_bytes(frame.jpeg_bytes)
@@ -767,6 +1014,8 @@ def _extra_routes(app, agent_name: str) -> None:
                     await asyncio.sleep(1.0 / fps)
         except WebSocketDisconnect:
             logger.info("Remote Desktop mobile video WebSocket disconnected cleanly.")
+        except SessionDenied:
+            await websocket.close(code=_SCREEN_WS_POLICY_VIOLATION)
         except Exception as e:
             logger.error("Mobile video WebSocket loop error: %s", e)
 

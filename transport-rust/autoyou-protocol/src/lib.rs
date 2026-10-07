@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 pub mod media;
+pub mod media_codec;
 pub mod enrollment;
 pub mod byte_stream;
 pub mod http_body;
@@ -90,8 +91,8 @@ impl Lane {
 
     pub fn priority(self) -> u8 {
         match self {
-            Self::Enrollment | Self::Control | Self::Input => 0,
-            Self::Media => 1,
+            Self::Enrollment | Self::Control => 0,
+            Self::Media | Self::Input => 1,
             Self::Application | Self::ServerEvents => 2,
             Self::Http | Self::WebSocket => 3,
             Self::Binary => 4,
@@ -112,6 +113,9 @@ impl FrameHeader {
     pub fn encode(&self) -> Result<[u8; HEADER_BYTES], ProtocolError> {
         if self.length > self.lane.max_payload() {
             return Err(ProtocolError::FrameTooLarge);
+        }
+        if self.lane == Lane::Input && (self.stream_id != 0 || self.length == 0) {
+            return Err(ProtocolError::InvalidFrame);
         }
         let mut bytes = [0u8; HEADER_BYTES];
         bytes[..4].copy_from_slice(&MAGIC);
@@ -142,6 +146,9 @@ impl FrameHeader {
         let length = u32::from_be_bytes(bytes[32..36].try_into().map_err(|_| ProtocolError::InvalidFrame)?) as usize;
         if length > lane.max_payload() {
             return Err(ProtocolError::FrameTooLarge);
+        }
+        if lane == Lane::Input && (stream_id != 0 || length == 0) {
+            return Err(ProtocolError::InvalidFrame);
         }
         Ok(Self { lane, generation, stream_id, sequence, length })
     }
@@ -237,6 +244,20 @@ impl Envelope {
             VoiceCallControl => Some("media"), PairingControl => Some("pairing"),
             PeerControl => Some("peer"), RoomBridgeControl | RoomControl => Some("room"),
             RoomFederationControl => Some("room_federation"), _ => None,
+        }
+    }
+    /// Physical input carried by an existing call-control message requires
+    /// independent control authority in addition to the ordinary media scope.
+    /// Match the legacy business handler's normalization, including Python's
+    /// extra ASCII separator whitespace, so casing/padding cannot bypass it.
+    pub fn additional_required_scope(&self) -> Option<&'static str> {
+        if self.header.message_type != MessageType::VoiceCallControl { return None; }
+        let event = self.payload.get("event").and_then(Value::as_str)?;
+        let event = event.trim_matches(|ch: char| ch.is_whitespace() || ('\u{001c}'..='\u{001f}').contains(&ch)).to_lowercase();
+        match event.as_str() {
+            "screen_input" | "remote_desktop_control" | "remote_desktop_input" |
+            "remote_desktop_keyboard" | "game_input" => Some("control"),
+            _ => None,
         }
     }
     pub fn from_slice(bytes: &[u8]) -> Result<Self, ProtocolError> {
@@ -360,6 +381,23 @@ pub fn transcript_binding(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn input_frames_keep_transport_sequence_separate_from_application_sequence() {
+        let payload = br#"{"native_input":{"sequence":1}}"#.to_vec();
+        let frame = super::Frame { lane: super::Lane::Input, generation: 1, stream_id: 0, sequence: 0, payload };
+        assert_eq!(super::Frame::decode(&frame.encode().unwrap()).unwrap(), frame);
+        assert!(super::Lane::Input.priority() > super::Lane::Control.priority());
+    }
+
+    #[test]
+    fn input_frames_require_nonempty_bounded_stream_zero() {
+        let mut header = super::FrameHeader { lane: super::Lane::Input, generation: 1, stream_id: 0,
+            sequence: 0, length: 16384 };
+        assert_eq!(super::FrameHeader::decode(&header.encode().unwrap()).unwrap(), header);
+        header.stream_id = 1; assert!(header.encode().is_err());
+        header.stream_id = 0; header.length = 0; assert!(header.encode().is_err());
+        header.length = 16385; assert!(header.encode().is_err());
+    }
     use super::*;
 
     fn principal() -> Principal {
@@ -452,6 +490,35 @@ mod tests {
         assert!(matches!(admission.check(&FrameHeader { generation: 6, ..header.clone() }, None, 500), Err(ProtocolError::StaleGeneration)));
         admission.revoke();
         assert_eq!(admission.admit(principal(), "synthetic-endpoint"), Err(ProtocolError::Revoked));
+    }
+
+    #[test]
+    fn physical_input_requires_control_in_addition_to_call_media_authority() {
+        for event in ["screen_input", "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard", "game_input"] {
+            for event in [event.to_string(),format!("\u{001c}\t {} \u{0085}",event.to_uppercase())] {
+                let envelope: Envelope = serde_json::from_value(serde_json::json!({
+                    "header":{"message_id":"synthetic-input-control","message_type":"voice_call_control","timestamp":1},
+                    "payload":{"event":event}
+                })).unwrap();
+                assert_eq!(envelope.required_scope(),Some("media"));
+                assert_eq!(envelope.additional_required_scope(),Some("control"));
+                let mut authority=principal(); authority.scopes=vec!["media".into()];
+                let mut admission=Admission::default(); admission.admit(authority,"synthetic-endpoint").unwrap();
+                let header=FrameHeader { lane:Lane::Control,generation:7,stream_id:0,sequence:0,length:0 };
+                assert!(admission.check(&header,envelope.required_scope(),500).is_ok());
+                assert!(matches!(admission.check(&header,envelope.additional_required_scope(),500),Err(ProtocolError::ScopeDenied)));
+                let mut authority=principal(); authority.scopes=vec!["media".into(),"control".into()];
+                let mut admission=Admission::default(); admission.admit(authority,"synthetic-endpoint").unwrap();
+                assert!(admission.check(&header,envelope.additional_required_scope(),500).is_ok());
+            }
+        }
+        for event in ["media_signal","call_state","wuift_state","stop_tts"] {
+            let envelope: Envelope=serde_json::from_value(serde_json::json!({
+                "header":{"message_id":"synthetic-call-control","message_type":"voice_call_control","timestamp":1},
+                "payload":{"event":event}
+            })).unwrap();
+            assert_eq!(envelope.additional_required_scope(),None);
+        }
     }
 
     #[test]

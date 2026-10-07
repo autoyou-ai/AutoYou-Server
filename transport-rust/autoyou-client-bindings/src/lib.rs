@@ -16,6 +16,12 @@ mod file_store;
 pub use file_store::*;
 mod delivery_store;
 pub use delivery_store::*;
+mod media;
+pub use media::*;
+mod audio_dsp;
+pub use audio_dsp::*;
+mod audio_opus;
+pub use audio_opus::*;
 
 uniffi::setup_scaffolding!();
 
@@ -377,6 +383,9 @@ pub struct TransportEvent {
     pub initiator: bool,
     pub exporter: Vec<u8>,
     pub frame: Option<TransportFrame>,
+    /// Trusted local timing for media/live input; never wire authority.
+    pub media_age_us: Option<u64>,
+    pub media_ttl_us: Option<u64>,
     pub error_code: Option<String>,
     pub protocol: Option<String>,
 }
@@ -445,21 +454,42 @@ impl SharedEndpoint {
     pub fn activate(&self, connection_id: u64) -> Result<(), BindingError> {
         Ok(self.host.activate(connection_id)?)
     }
+    /// Trusted local call/consent owners supply a bounded source lease after
+    /// application admission. Peer media bytes cannot call this method.
+    pub fn approve_media_source(&self, connection_id: u64, lease_json: String, inbound: bool) -> Result<(), BindingError> {
+        if lease_json.len() > 4096 { return Err(BindingError::InvalidInput); }
+        let lease = serde_json::from_str(&lease_json).map_err(|_| BindingError::InvalidInput)?;
+        Ok(self.host.approve_media_source(connection_id, lease, inbound)?)
+    }
+    pub fn revoke_media_source(&self, connection_id: u64, source_id: u64, inbound: bool) -> Result<(), BindingError> {
+        Ok(self.host.revoke_media_source(connection_id, source_id, inbound)?)
+    }
     pub fn poll(&self, maximum: u32) -> Result<Vec<TransportEvent>, BindingError> {
         Ok(self.host.poll(maximum)?.into_iter().map(|event| match event {
             HostEvent::Connected { connection_id, endpoint_id, initiator, exporter, protocol } => TransportEvent {
                 kind: TransportEventKind::Connected, connection_id, endpoint_id: Some(endpoint_id),
-                initiator, exporter: exporter.to_vec(), frame: None, error_code: None, protocol: Some(protocol) },
-            HostEvent::Frame { connection_id, frame, .. } => TransportEvent {
-                kind: TransportEventKind::Frame, connection_id, endpoint_id: None, initiator: false,
-                exporter: vec![], frame: Some(TransportFrame { lane: frame.lane as u8,
-                    generation: frame.generation, stream_id: frame.stream_id, sequence: frame.sequence,
-                    payload: frame.payload }), error_code: None, protocol: None },
+                initiator, exporter: exporter.to_vec(), frame: None, media_age_us: None, media_ttl_us: None,
+                error_code: None, protocol: Some(protocol) },
+            HostEvent::Frame { connection_id, frame, received_at, expires_at, .. } => {
+                let (media_age_us, media_ttl_us) = received_at.zip(expires_at).map(|(received,expires)| {
+                    let age = received.elapsed();
+                    let ttl = expires.saturating_duration_since(received).saturating_sub(age);
+                    (Some(age.as_micros().min(u128::from(u64::MAX)) as u64),
+                        Some(ttl.as_micros().min(u128::from(u64::MAX)) as u64))
+                }).unwrap_or((None,None));
+                TransportEvent { kind: TransportEventKind::Frame, connection_id, endpoint_id: None, initiator: false,
+                    exporter: vec![], frame: Some(TransportFrame { lane: frame.lane as u8,
+                        generation: frame.generation, stream_id: frame.stream_id, sequence: frame.sequence,
+                        payload: frame.payload }),
+                    media_age_us, media_ttl_us,
+                    error_code: None, protocol: None }
+            },
             HostEvent::Closed { connection_id } => TransportEvent { kind: TransportEventKind::Closed,
-                connection_id, endpoint_id: None, initiator: false, exporter: vec![], frame: None, error_code: None, protocol: None },
+                connection_id, endpoint_id: None, initiator: false, exporter: vec![], frame: None,
+                media_age_us: None, media_ttl_us: None, error_code: None, protocol: None },
             HostEvent::Failed { request_id, code } => TransportEvent { kind: TransportEventKind::Failed,
                 connection_id: request_id, endpoint_id: None, initiator: false, exporter: vec![],
-                frame: None, error_code: Some(code.into()), protocol: None },
+                frame: None, media_age_us: None, media_ttl_us: None, error_code: Some(code.into()), protocol: None },
         }).collect())
     }
     pub fn disconnect(&self, connection_id: u64) -> Result<(), BindingError> {

@@ -885,6 +885,8 @@ def _saved_webrtc_payload(
         payload["owner_key"] = owner_key
     if not payload:
         return {"status": "error", "message": "Saved WebRTC reply target is missing both session_id and owner_key."}
+    if "native_audio_scope" in reply_target:
+        payload["native_audio_scope"] = dict(reply_target["native_audio_scope"])
     return {"status": "success", "payload": payload, "reply_target": reply_target}
 
 def _call_saved_webrtc_playback(

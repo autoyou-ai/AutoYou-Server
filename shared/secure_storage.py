@@ -1134,7 +1134,7 @@ def append_secure_file(path: str | Path, payload: bytes) -> None:
 
 
 def write_secure_stream(path: str | Path, blocks: Iterable[bytes], *, expected_size: int,
-                        expected_sha256: bytes, before_commit=None) -> None:
+                        expected_sha256: bytes, before_commit=None, temporary_directory: str | Path | None = None) -> None:
     """Atomically promote verified bounded bytes in the current storage format."""
     from .secure_storage_stream import BLOCK_BYTES, MAX_BYTES, encrypt_to
     if type(expected_size) is not int or not 0 <= expected_size <= MAX_BYTES or len(expected_sha256) != 32:
@@ -1144,7 +1144,16 @@ def write_secure_stream(path: str | Path, blocks: Iterable[bytes], *, expected_s
         if not secure_storage_enabled() and resolved.exists() and _protected_path_header(resolved) is not None:
             raise SecureStorageError("Protected file requires its original storage boundary")
         resolved.parent.mkdir(parents=True, exist_ok=True)
-        temporary = resolved.with_name(f".{resolved.name}.{uuid.uuid4().hex}.tmp")
+        if temporary_directory is None:
+            temporary = resolved.with_name(f".{resolved.name}.{uuid.uuid4().hex}.tmp")
+        else:
+            scratch = Path(temporary_directory).resolve()
+            if not scratch.is_dir() or not scratch.is_relative_to(resolved.parent.resolve()):
+                raise ValueError("protected stream scratch must remain inside its output directory")
+            test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+            if test_root and not scratch.is_relative_to(Path(test_root).resolve()):
+                raise ValueError("protected stream scratch must remain inside its test root")
+            temporary = scratch / f".promotion-{uuid.uuid4().hex}.tmp"
         digest, total = hashlib.sha256(), 0
 
         def verified():
@@ -1213,13 +1222,15 @@ def iter_secure_file(path: str | Path, *, maximum_bytes: int | None = None):
 
 
 @contextmanager
-def materialize_secure_file(path: str | Path):
+def materialize_secure_file(path: str | Path, *, maximum_bytes: int | None = None):
     """Temporarily expose a protected file to libraries that require a path.
 
     The temporary plaintext is removed when the context exits.  Plaintext
     external/user-selected files are yielded unchanged because they are not
     owned by AutoYou's protected storage boundary.
     """
+    if maximum_bytes is not None and (type(maximum_bytes) is not int or maximum_bytes < 0):
+        raise ValueError("invalid materialized file bound")
     resolved = Path(path)
     temporary_directory: Optional[tempfile.TemporaryDirectory[str]] = None
     temporary: Optional[Path] = None
@@ -1233,8 +1244,10 @@ def materialize_secure_file(path: str | Path):
                     temporary = Path(temporary_directory.name) / resolved.name
                     with temporary.open("xb") as output:
                         os.chmod(temporary, 0o600)
-                        for block in iter_secure_file(resolved):
+                        for block in iter_secure_file(resolved, maximum_bytes=maximum_bytes):
                             output.write(block)
+        if maximum_bytes is not None and (temporary or resolved).stat().st_size > maximum_bytes:
+            raise ValueError("selected file exceeded its bound")
         yield temporary or resolved
     finally:
         if temporary_directory is not None:

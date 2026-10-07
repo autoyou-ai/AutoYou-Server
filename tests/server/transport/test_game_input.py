@@ -1,6 +1,7 @@
 """Game frames stay on the authenticated WebRTC lease and local engine stream."""
 
 import asyncio
+import threading
 import wave
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -13,6 +14,112 @@ import server
 from core_server.webrtc_engine import _HOSTED_GAME_LOOP
 from shared import video_call_manager
 from shared.game_input import GameInputHub, normalize_game_input
+
+
+def test_legacy_canceled_mouse_dispatch_joins_then_releases_possible_hold(monkeypatch):
+    entered, resume = threading.Event(), threading.Event()
+    releases = []
+    def apply(frame, *, track):
+        entered.set(); assert resume.wait(3); return True
+    monkeypatch.setattr(server, "execute_remote_desktop_input", apply)
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", lambda buttons=(), **kwargs:
+        releases.append((set(buttons), set(kwargs.get("held_keys", ())))))
+    async def run():
+        engine = server.WebRTCManager()
+        track = SimpleNamespace(remote_desktop_mapping=lambda: {"content_rect": [0, 0, 100, 100]})
+        lease = engine._store_remote_desktop_control_lease("synthetic-legacy-controller",
+            control_id="synthetic-control", touch_mode="direct", track=track)
+        monkeypatch.setattr(engine, "_remote_desktop_control_state", lambda *args: (lease, ""))
+        job = asyncio.create_task(engine._apply_owned_remote_input("synthetic-legacy-controller", lease,
+            dict(input_type="button", button="left", phase="down")))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert lease["held_buttons"] == {"left"}
+            job.cancel(); await asyncio.sleep(0)
+            assert not job.done() and releases == []
+            resume.set()
+            with pytest.raises(asyncio.CancelledError): await job
+            assert releases == [({"left"}, set())]
+            assert lease["physical_input_task"].done() and not engine.remote_desktop_control_leases_by_session
+        finally:
+            resume.set(); await asyncio.gather(job, return_exceptions=True)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("keyboard", [False, True])
+def test_legacy_failed_down_or_key_pulse_retains_possible_hold_until_end(monkeypatch, keyboard):
+    monkeypatch.setattr(server, "execute_remote_desktop_input", lambda *args, **kwargs: False)
+    monkeypatch.setattr(server, "execute_remote_desktop_keyboard", lambda *args, **kwargs: False)
+    releases = []
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", lambda buttons=(), **kwargs:
+        releases.append((set(buttons), set(kwargs.get("held_keys", ())))))
+    async def run():
+        engine = server.WebRTCManager()
+        track = SimpleNamespace(remote_desktop_mapping=lambda: {"content_rect": [0, 0, 100, 100]})
+        lease = engine._store_remote_desktop_control_lease("synthetic-legacy-controller",
+            control_id="synthetic-control", touch_mode="direct", track=track)
+        monkeypatch.setattr(engine, "_remote_desktop_control_state", lambda *args: (lease, ""))
+        value = dict(action="key", key="shift", phase="press") if keyboard else dict(input_type="button", button="left", phase="down")
+        assert not await engine._apply_owned_remote_input("synthetic-legacy-controller", lease, value, keyboard=keyboard)
+        expected = (set(), {"shift"}) if keyboard else ({"left"}, set())
+        assert (lease["held_buttons"], lease["held_keys"]) == expected
+        await engine._release_remote_desktop_control("synthetic-legacy-controller")
+        assert releases == [expected]
+    asyncio.run(run())
+
+
+def test_legacy_input_end_joins_sdk_release_before_native_admission(monkeypatch):
+    from shared.iroh_input import native_host_input_busy, NativeInputAuthority, NativeInputLease
+    from shared.session_transport import SessionDenied
+    entered, resume = threading.Event(), threading.Event()
+    def release(buttons, **kwargs):
+        assert buttons == {"left"}
+        entered.set(); assert resume.wait(3)
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", release)
+    async def run():
+        engine = server.WebRTCManager()
+        track = SimpleNamespace(remote_desktop_mapping=lambda: {"content_rect": [0, 0, 100, 100]})
+        lease = engine._store_remote_desktop_control_lease("synthetic-legacy-controller",
+            control_id="synthetic-control", touch_mode="direct", track=track)
+        lease["held_buttons"].add("left")
+        stopping = asyncio.create_task(engine._release_remote_desktop_control("synthetic-legacy-controller"))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert native_host_input_busy() and lease["held_buttons"] == {"left"}
+            with pytest.raises(SessionDenied, match="already has an owner"):
+                NativeInputLease(authority=NativeInputAuthority(None, "synthetic-native", "synthetic-lease", 10000),
+                    track=None, port=SimpleNamespace(), check_current=lambda: None, now_ms=lambda: 1,
+                    on_failure=lambda error: None)
+            stopping.cancel(); await asyncio.sleep(0)
+            assert not stopping.done() and native_host_input_busy()
+            resume.set()
+            with pytest.raises(asyncio.CancelledError): await stopping
+            assert not native_host_input_busy() and lease["held_buttons"] == set()
+        finally:
+            resume.set(); await asyncio.gather(stopping, return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_legacy_input_failed_cleanup_keeps_native_admission_fenced(tmp_path, monkeypatch):
+    from shared.iroh_input import native_host_input_busy
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    failure = RuntimeError("synthetic physical release failure")
+    calls = []
+    def release(buttons, **kwargs):
+        calls.append(buttons); raise failure
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", release)
+    async def run():
+        engine = server.WebRTCManager()
+        track = SimpleNamespace(remote_desktop_mapping=lambda: {"content_rect": [0, 0, 100, 100]})
+        lease = engine._store_remote_desktop_control_lease("synthetic-legacy-controller",
+            control_id="synthetic-control", touch_mode="direct", track=track)
+        lease["held_buttons"].add("left")
+        with pytest.raises(RuntimeError) as failed:
+            await engine._release_remote_desktop_control("synthetic-legacy-controller")
+        assert failed.value is failure and native_host_input_busy()
+        assert lease["native_cleanup_barrier"].lease is lease and lease["held_buttons"] == {"left"}
+        assert calls == [{"left"}] and lease["input_cleanup_task"].exception() is failure
+    asyncio.run(run())
 
 
 def test_game_input_normalization_bounds_multitouch_and_sensors():
@@ -142,7 +249,7 @@ def test_game_frames_require_game_lease_and_release_on_exit(monkeypatch):
         monkeypatch.setattr(server, "release_remote_desktop_inputs", lambda buttons=(), **kwargs:
                             released.append((set(buttons), set(kwargs.get("held_keys", ())))) )
         monkeypatch.setattr(server, "execute_remote_desktop_input", lambda payload, track: host_inputs.append(payload) or True)
-        monkeypatch.setattr(server, "execute_remote_desktop_keyboard", lambda payload: host_keys.append(payload) or True)
+        monkeypatch.setattr(server, "execute_remote_desktop_keyboard", lambda payload, **kwargs: host_keys.append(payload) or True)
         webrtc = server.WebRTCManager()
         session_id = "synthetic-game-session"
         webrtc.desktop_video_tracks[session_id] = Track()
@@ -171,6 +278,16 @@ def test_game_frames_require_game_lease_and_release_on_exit(monkeypatch):
             )
             assert "retryable" not in datachannel.send_message.call_args.args[0].payload
             webrtc._set_voice_call_client_active(session_id, True)
+            import shared.iroh_input as native_input
+            monkeypatch.setattr(native_input, "native_host_input_busy", lambda: True)
+            await webrtc._handle_remote_desktop_control(session_id, {
+                "action": "start", "control_id": "synthetic-native-busy-control", "fullscreen": True,
+                "mode": "game", "source": "autoyou_lite", "platform": "android",
+            })
+            assert session_id not in webrtc.remote_desktop_control_leases_by_session
+            assert "Another controller" in datachannel.send_message.call_args.args[0].payload["reason"]
+            assert queue.empty() and not host_inputs and not host_keys
+            monkeypatch.setattr(native_input, "native_host_input_busy", lambda: False)
             await webrtc._handle_remote_desktop_control(session_id, {
                 "action": "start", "control_id": "synthetic-control", "fullscreen": True,
                 "mode": "game", "source": "autoyou_lite", "platform": "android",
@@ -470,3 +587,44 @@ def test_hosted_game_page_accepts_only_local_same_origin_input(monkeypatch):
             assert stream.receive_json()["button"] == "action_a"
             stream.close()
         assert not server.WEBRTC.game_input_hub.connected
+def test_legacy_owned_text_releases_only_owned_keys_before_unicode_text(monkeypatch):
+    events = []
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", lambda buttons=(), **kwargs:
+        events.append(("release", set(buttons), set(kwargs.get("held_keys", ())), kwargs.get("strict"))))
+    monkeypatch.setattr(server, "execute_remote_desktop_keyboard", lambda frame, **kwargs:
+        events.append(("text", frame["text"], kwargs.get("release_modifiers"))) or True)
+    async def run():
+        engine = server.WebRTCManager()
+        lease = engine._store_remote_desktop_control_lease("synthetic-text-controller",
+            control_id="synthetic-text-control", touch_mode="direct", track=SimpleNamespace())
+        lease["held_keys"] = {"ctrl"}
+        monkeypatch.setattr(engine, "_remote_desktop_control_state", lambda *args: (lease, ""))
+        assert await engine._apply_owned_remote_input("synthetic-text-controller", lease,
+            dict(action="text", text="Synthetic Ελληνικά 日本語"), keyboard=True)
+        assert events == [("release", set(), {"ctrl"}, True), ("text", "Synthetic Ελληνικά 日本語", False)]
+        assert lease["held_keys"] == set()
+        await engine._release_remote_desktop_control("synthetic-text-controller", expected_lease=lease)
+    asyncio.run(run())
+
+
+def test_legacy_failed_subset_release_is_not_retried_by_end(monkeypatch):
+    from shared import iroh_input
+    monkeypatch.setattr(iroh_input, "_legacy_input_joins", {})
+    attempts = []
+    def release(buttons=(), **kwargs):
+        keys = set(kwargs.get("held_keys", ()))
+        attempts.append((set(buttons), keys))
+        if "ctrl" in keys:
+            raise RuntimeError("Synthetic SDK key release failed")
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", release)
+    async def run():
+        engine = server.WebRTCManager()
+        lease = engine._store_remote_desktop_control_lease("synthetic-failed-release",
+            control_id="synthetic-release-control", touch_mode="direct", track=SimpleNamespace())
+        lease["held_keys"] = {"ctrl"}; lease["held_buttons"] = {"left"}
+        with pytest.raises(RuntimeError, match="Synthetic SDK"):
+            await engine._release_owned_remote_inputs("synthetic-failed-release", lease, keys={"ctrl"})
+        assert attempts == [(set(), {"ctrl"}), ({"left"}, set())]
+        assert lease["input_cleanup_task"].done() and lease["held_keys"] == {"ctrl"}
+        assert iroh_input._legacy_input_joins and not engine.remote_desktop_control_leases_by_session
+    asyncio.run(run())

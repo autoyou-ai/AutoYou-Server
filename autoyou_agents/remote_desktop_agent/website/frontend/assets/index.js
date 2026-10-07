@@ -35,6 +35,14 @@ var state = {
   nativeKeyboardControlId: '',
   nativeKeyboardRequestPending: false,
   nativeKeyboardStatusTimer: null,
+  nativeWebsite: false,
+  nativeFrame: null,
+  nativeControl: null,
+  nativeControlPending: false,
+  nativeConfigToken: '',
+  nativeConfigKey: '',
+  nativeConfigCounter: 0,
+  nativeRendering: false,
   monitorLoadAttempts: 0,
   windowLoadAttempts: 0,
   viewportKeyboardOpen: false,
@@ -179,7 +187,9 @@ function updateNativeKeyboardUi(message, stateName) {
 
 function pollNativeKeyboardStatus() {
   if (!auth.authenticated) return;
-  apiGet('./api/remote_desktop/native-keyboard/status').then(function(data) {
+  var viewId = state.nativeFrame && state.nativeFrame.source.call_id;
+  apiGet('./api/remote_desktop/native-keyboard/status' + (viewId ? '?view_id=' + encodeURIComponent(viewId) : '')).then(function(data) {
+    if (data && data.native_transport) state.nativeWebsite = true;
     var proof = data && data.native_keyboard;
     state.nativeKeyboardConnected = !!(data && data.success && proof && proof.connected);
     if (!state.nativeKeyboardConnected) {
@@ -213,6 +223,17 @@ function requestNativeKeyboard(action) {
     return Promise.resolve(false);
   }
   state.nativeKeyboardRequestPending = true;
+  var controlId = state.nativeKeyboardControlId;
+  var payload = { action: action, control_id: controlId };
+  if (state.nativeWebsite) {
+    if (action === 'show') {
+      if (!currentWebsiteFrame()) { state.nativeKeyboardRequestPending = false; return Promise.resolve(false); }
+      controlId = crypto.randomUUID();
+      payload = Object.assign(payload, { control_id: controlId, view_id: state.nativeFrame.source.call_id,
+        source: state.nativeFrame.source, frame_sequence: state.nativeFrame.sequence });
+    } else if (state.nativeControl) payload.view_id = state.nativeControl.view_id;
+    state.nativeControl = null;
+  }
   state.nativeKeyboardState = action === 'show' ? 'visible' : 'inactive';
   if (action === 'hide') {
     // Remove the page's secondary chrome immediately. The native client may
@@ -221,14 +242,19 @@ function requestNativeKeyboard(action) {
     state.nativeKeyboardControlId = '';
   }
   updateNativeKeyboardUi(action === 'show' ? 'Opening native keyboard…' : 'Closing native keyboard…');
-  return apiPost('./api/remote_desktop/native-keyboard', {
-    action: action,
-    control_id: state.nativeKeyboardControlId
-  }).then(function(data) {
+  var token = state.nativeConfigToken;
+  return apiPost('./api/remote_desktop/native-keyboard', payload).then(function(data) {
     if (!data || !data.success) {
       throw new Error((data && (data.reason || data.error)) || 'Native keyboard control was not accepted.');
     }
     if (action === 'show') {
+      if (state.nativeWebsite) {
+        if (token !== state.nativeConfigToken || !currentWebsiteFrame() || data.view_id !== state.nativeFrame.source.call_id) {
+          apiPost('./api/remote_desktop/native-keyboard', { action: 'hide', view_id: data.view_id, control_id: data.control_id });
+          return false;
+        }
+        state.nativeControl = Object.assign(data, { writer: 'keyboard' });
+      }
       state.nativeKeyboardOpen = true;
       state.nativeKeyboardState = 'visible';
       state.nativeKeyboardControlId = String(data.control_id || state.nativeKeyboardControlId || '');
@@ -699,6 +725,7 @@ function initModeHandlers() {
       
       // Update local mode state
       state.activeMode = btn.getAttribute('data-mode');
+      if (state.activeMode !== 'control_desktop') clearWebsiteControl();
       
       // Handle overlays, visibility grids
       var container = $('canvas-wrapper');
@@ -836,6 +863,7 @@ function initSliderHandlers() {
 // ── High Performance WebSocket Binary JPEG Loop ─────────────────────────────
 function startScreenStream() {
   if (!state.isStreamDesired) return;
+  clearWebsiteControl(); state.nativeFrame = null; state.nativeRendering = false;
 
   if (state.ws) {
     var oldSocket = state.ws;
@@ -885,10 +913,30 @@ function startScreenStream() {
   };
   
   socket.onmessage = function(event) {
+    if (state.ws !== socket) return;
     // Text frames carry stream state; binary frames carry JPEG images.
     if (typeof event.data === 'string') {
       var control = null;
       try { control = JSON.parse(event.data); } catch(_) {}
+      if (control && control.event === 'native_website_frame') {
+        state.nativeWebsite = true;
+        if (!isMobileKeyboardViewer()) {
+          canvas.contentEditable = 'plaintext-only';
+          canvas.setAttribute('role', 'textbox');
+          canvas.setAttribute('aria-label', 'Keyboard input on the remote computer');
+        }
+        var source = control.source;
+        if (control.version === 1 && control.config_token === state.nativeConfigToken && source &&
+            source.source_id === 6 && source.media_generation === 1 && typeof source.call_id === 'string' && typeof source.lease_id === 'string' &&
+            Number.isSafeInteger(control.sequence) && control.sequence > 0 &&
+            Number.isInteger(control.width) && Number.isInteger(control.height) && control.width > 0 && control.width <= 4096 &&
+            control.height > 0 && control.height <= 4096 && control.width * control.height * 4 <= 32 * 1024 * 1024 &&
+            control.expires_in_ms > 0 && control.expires_in_ms <= 3000) {
+          socket.nativePicture = Object.assign(control, { deadline: performance.now() + control.expires_in_ms });
+        } else socket.nativePicture = null;
+      } else if (control && control.event === 'native_website_denied') {
+        clearWebsiteControl(); state.nativeFrame = null;
+      }
       if (control && control.type === 'feed_state' && !control.active) {
         // The phone camera stopped: blank the stale frame like the
         // streaming site does instead of freezing on the last image.
@@ -905,6 +953,9 @@ function startScreenStream() {
     }
 
     var now = performance.now();
+    var receipt = socket.nativePicture; socket.nativePicture = null;
+    if (state.nativeWebsite && state.streamKind === 'screen' && (!receipt || receipt.deadline <= now || state.nativeRendering || event.data.byteLength > 8 * 1024 * 1024)) return;
+    if (receipt) state.nativeRendering = true;
 
     // Latency & FPS diagnostics
     if (state.lastFrameTime) {
@@ -931,6 +982,13 @@ function startScreenStream() {
     var img = new Image();
     
     img.onload = function() {
+      if (receipt) {
+        state.nativeRendering = false;
+        if (state.ws !== socket || receipt.config_token !== state.nativeConfigToken || receipt.deadline <= performance.now() ||
+            img.width !== receipt.width || img.height !== receipt.height) { URL.revokeObjectURL(url); return; }
+        if (state.nativeFrame && state.nativeFrame.source.call_id !== receipt.source.call_id) clearWebsiteControl();
+        state.nativeFrame = receipt;
+      }
       // Adjust canvas resolution dynamically to match actual frame size
       if (canvas.width !== img.width || canvas.height !== img.height) {
         canvas.width = img.width;
@@ -943,12 +1001,15 @@ function startScreenStream() {
       URL.revokeObjectURL(url);
     };
     img.onerror = function() {
+      if (receipt) { state.nativeRendering = false; clearWebsiteControl(); state.nativeFrame = null; }
       URL.revokeObjectURL(url);
     };
     img.src = url;
   };
   
   socket.onclose = function() {
+    if (state.ws !== socket) return;
+    clearWebsiteControl(); state.nativeFrame = null;
     console.warn('Remote screen stream disconnected.');
     indicator.className = 'status-indicator';
     connText.textContent = 'Disconnected';
@@ -981,6 +1042,15 @@ function updateStreamConfig() {
     focus: false
   };
 
+  function scopeConfig() {
+    var key = JSON.stringify(payload);
+    if (key !== state.nativeConfigKey) {
+      clearWebsiteControl(); state.nativeFrame = null;
+      state.nativeConfigKey = key; state.nativeConfigToken = String(++state.nativeConfigCounter);
+    }
+    payload.config_token = state.nativeConfigToken;
+  }
+
   if (state.activeMode === 'view_mobile_video') {
     try {
       state.ws.send(JSON.stringify({
@@ -998,6 +1068,7 @@ function updateStreamConfig() {
     if (state.selectedWindow === null) {
       payload.target_id = null;
       payload.paused = true;
+      scopeConfig();
       try {
         state.ws.send(JSON.stringify(payload));
       } catch(e) {
@@ -1012,6 +1083,7 @@ function updateStreamConfig() {
     payload.target_id = state.selectedMonitor;
     payload.paused = false;
   }
+  scopeConfig();
   
   try {
     state.ws.send(JSON.stringify(payload));
@@ -1022,6 +1094,31 @@ function updateStreamConfig() {
 
 // ── Interactive Cursor Controls & Inputs Capture ──────────────────────────
 function transmitInputEvent(payload) {
+  if (state.nativeWebsite) {
+    var grant = state.nativeControl;
+    if (grant && grant.writer === 'keyboard') return;
+    if (!grant || grant.writer !== 'browser' || !currentWebsiteFrame() || grant.view_id !== state.nativeFrame.source.call_id ||
+        performance.now() >= grant.deadline || state.activeMode !== 'control_desktop') { clearWebsiteControl(); return; }
+    var value = { event: 'remote_desktop_input' };
+    if (payload.type === 'mousemove') Object.assign(value, { input_type: 'move', coordinate_mode: 'absolute', x: payload.x, y: payload.y });
+    else if (payload.type === 'scroll') Object.assign(value, { input_type: 'scroll', dy: payload.dy });
+    else if (/^(click|doubleclick|mousedown|mouseup)$/.test(payload.type)) Object.assign(value, { input_type: 'button', button: payload.button || 'left',
+      phase: {click:'click', doubleclick:'double_click', mousedown:'down', mouseup:'up'}[payload.type], x: payload.x, y: payload.y });
+    else if (/^(keydown|keyup|keypress)$/.test(payload.type)) value = { event:'remote_desktop_keyboard', action:'key', key:payload.key,
+      phase:{keydown:'down',keyup:'up',keypress:'press'}[payload.type] };
+    else if (payload.type === 'text') value = { event:'remote_desktop_keyboard', action:'input', text:payload.text };
+    else return;
+    value.control_id = grant.control_id;
+    value.native_website = { version: 1, view_id: grant.view_id };
+    var created = performance.now();
+    if (++grant.pending > 64) { clearWebsiteControl(); return; }
+    grant.queue = grant.queue.then(function() {
+      if (state.nativeControl !== grant || !currentWebsiteFrame() || performance.now() - created >= 200) throw new Error('Website input expired');
+      value.native_input = Object.assign({}, grant.native_input, { sequence: ++grant.sequence, elapsed_ms: Math.floor(created - grant.received) });
+      return apiPost('./api/remote_desktop/input', value).then(function(data) { if (!data.success) throw new Error('Website input denied'); });
+    }).catch(function() { if (state.nativeControl === grant) clearWebsiteControl(); }).finally(function() { --grant.pending; });
+    return;
+  }
   // Inject target mappings
   if (state.activeMode === 'view_app') {
     if (state.selectedWindow === null) return;
@@ -1036,6 +1133,39 @@ function transmitInputEvent(payload) {
   apiPost('./api/remote_desktop/input', payload).catch(function(err) {
     console.error('Input transmit failed:', err);
   });
+}
+
+function currentWebsiteFrame() {
+  return state.nativeFrame && !document.hidden && state.nativeFrame.config_token === state.nativeConfigToken && performance.now() < state.nativeFrame.deadline;
+}
+
+function clearWebsiteControl() {
+  var grant = state.nativeControl; state.nativeControl = null;
+  if (grant) apiPost('./api/remote_desktop/' + (grant.writer === 'keyboard' ? 'native-keyboard' : 'control'), {
+    action: grant.writer === 'keyboard' ? 'hide' : 'stop', view_id: grant.view_id, control_id: grant.control_id
+  }).catch(function() {});
+}
+
+function requestWebsiteControl() {
+  if (!state.nativeWebsite || state.nativeControl || state.nativeControlPending || !currentWebsiteFrame()) return;
+  var frame = state.nativeFrame, token = state.nativeConfigToken;
+  state.nativeControlPending = true;
+  apiPost('./api/remote_desktop/control', { action:'approve', control_id:crypto.randomUUID(), view_id:frame.source.call_id,
+    source:frame.source, frame_sequence:frame.sequence }).then(function(data) {
+    if (!data.success) return;
+    if (token !== state.nativeConfigToken || !currentWebsiteFrame() || state.nativeFrame.source.call_id !== data.view_id || state.activeMode !== 'control_desktop') {
+      apiPost('./api/remote_desktop/control', {action:'stop',view_id:data.view_id,control_id:data.control_id}).catch(function() {}); return;
+    }
+    state.nativeControl = Object.assign(data, { writer:'browser', sequence:0, pending:0, queue:Promise.resolve(), received:performance.now(),
+      deadline:performance.now() + Math.max(0, Math.min(60000,data.expires_at_ms - data.input_clock_ms)) });
+  }).finally(function() { state.nativeControlPending = false; }).catch(function() {});
+}
+
+function transmitWebsiteText(text) {
+  if (typeof text !== 'string' || text.length > 4096) { clearWebsiteControl(); return; }
+  var points = Array.from(text);
+  if (points.some(function(point) { var value = point.codePointAt(0); return value >= 0xd800 && value <= 0xdfff; })) { clearWebsiteControl(); return; }
+  for (var index = 0; index < points.length; index += 256) transmitInputEvent({type:'text',text:points.slice(index,index+256).join('')});
 }
 
 function focusCanvas() {
@@ -1150,6 +1280,32 @@ function spawnTapRipple(wrapper, clientX, clientY, isLongPress) {
 function initInputCapture() {
   var canvas = $('screen-canvas');
   var wrapper = $('canvas-wrapper');
+  var nativeComposition = false, finishedComposition = null;
+  var nativeKeyOwners = new Map();
+  canvas.addEventListener('compositionstart', function() { nativeComposition = true; finishedComposition = null; });
+  canvas.addEventListener('compositionend', function(e) {
+    nativeComposition = false;
+    if (state.nativeWebsite && !isMobileKeyboardViewer() && e.isTrusted) {
+      transmitWebsiteText(e.data || ''); finishedComposition = e.data || ''; canvas.textContent = '';
+    }
+  });
+  canvas.addEventListener('beforeinput', function(e) {
+    if (!state.nativeWebsite || isMobileKeyboardViewer() || !e.isTrusted) return;
+    if (nativeComposition || e.isComposing) return;
+    e.preventDefault();
+    if (e.inputType === 'insertText' && typeof e.data === 'string') {
+      if (e.data !== finishedComposition) transmitWebsiteText(e.data);
+      finishedComposition = null;
+    }
+    canvas.textContent = '';
+  });
+  canvas.addEventListener('blur', function() {
+    state.isControlFocused = false;
+    if (state.nativeControl && state.nativeControl.writer === 'browser') clearWebsiteControl();
+  });
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) { clearWebsiteControl(); state.nativeFrame = null; }
+  });
 
   var pointers = new Map();
   var tap = null;   // { x, y, pointerId } for the primary (first) touch/pointer
@@ -1208,6 +1364,7 @@ function initInputCapture() {
 
   canvas.addEventListener('pointerdown', function(e) {
     if (state.activeMode !== 'control_desktop') return;
+    if (e.isTrusted) requestWebsiteControl();
 
     if (e.pointerType === 'mouse' && e.button === 2) {
       focusCanvas();
@@ -1358,6 +1515,12 @@ function initInputCapture() {
   // why the "Keyboard" button drives typing from a connected phone instead.
   window.addEventListener('keydown', function(e) {
     if (state.activeMode !== 'control_desktop' || !state.isControlFocused) return;
+    if (state.nativeWebsite) {
+      if (e.isComposing || nativeComposition || !e.isTrusted) return;
+      finishedComposition = null;
+      if (Array.from(e.key).length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) return;
+      nativeKeyOwners.set(e.code || e.key, state.nativeControl && state.nativeControl.control_id);
+    }
 
     // Relinquish focus with Escape key
     if (e.key === 'Escape' || e.key === 'Esc') {
@@ -1381,6 +1544,10 @@ function initInputCapture() {
 
   window.addEventListener('keyup', function(e) {
     if (state.activeMode !== 'control_desktop' || !state.isControlFocused) return;
+    if (state.nativeWebsite) {
+      var keyOwner = nativeKeyOwners.get(e.code || e.key); nativeKeyOwners.delete(e.code || e.key);
+      if (e.isComposing || nativeComposition || !e.isTrusted || !keyOwner || !state.nativeControl || keyOwner !== state.nativeControl.control_id) return;
+    }
     e.preventDefault();
 
     var key = e.key;
@@ -1396,6 +1563,7 @@ function initInputCapture() {
   document.addEventListener('click', function(e) {
     if (e.target !== canvas && !canvas.contains(e.target)) {
       state.isControlFocused = false;
+      if (state.nativeControl && state.nativeControl.writer === 'browser') clearWebsiteControl();
     }
   });
 }

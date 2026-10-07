@@ -704,6 +704,8 @@ def register_routes(
                 if owner_key:
                     reply_target["owner_key"] = owner_key
 
+                if "native_audio_scope" in data:
+                    reply_target["native_audio_scope"] = data["native_audio_scope"]
                 success, status = await server.WEBRTC.play_audio_file_to_reply_target(reply_target, file_path)
                 if success:
                     return {"success": True, "status": status}
@@ -742,6 +744,8 @@ def register_routes(
                 if owner_key:
                     reply_target["owner_key"] = owner_key
 
+                if "native_audio_scope" in data:
+                    reply_target["native_audio_scope"] = data["native_audio_scope"]
                 success, status = await server.WEBRTC.pause_audio_playback_for_reply_target(reply_target)
                 if success:
                     return {"success": True, "status": status}
@@ -779,6 +783,8 @@ def register_routes(
                 if owner_key:
                     reply_target["owner_key"] = owner_key
 
+                if "native_audio_scope" in data:
+                    reply_target["native_audio_scope"] = data["native_audio_scope"]
                 success, status = await server.WEBRTC.resume_audio_playback_for_reply_target(reply_target)
                 if success:
                     return {"success": True, "status": status}
@@ -816,6 +822,8 @@ def register_routes(
                 if owner_key:
                     reply_target["owner_key"] = owner_key
 
+                if "native_audio_scope" in data:
+                    reply_target["native_audio_scope"] = data["native_audio_scope"]
                 success, status = await server.WEBRTC.stop_audio_playback_for_reply_target(reply_target)
                 if success:
                     return {"success": True, "status": status}
@@ -853,6 +861,8 @@ def register_routes(
                 if owner_key:
                     reply_target["owner_key"] = owner_key
 
+                if "native_audio_scope" in data:
+                    reply_target["native_audio_scope"] = data["native_audio_scope"]
                 status = await server.WEBRTC.get_audio_playback_status_for_reply_target(reply_target)
                 error_state = str((status or {}).get("state") or "").strip().lower()
                 return {"success": error_state not in {"unavailable", "disabled"}, "status": status}

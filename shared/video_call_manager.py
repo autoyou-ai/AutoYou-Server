@@ -37,6 +37,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from shared.secure_storage import (
     FILE_HEADER as SPM_FILE_HEADER,
+    materialize_secure_file,
     read_secure_file,
     secure_storage_enabled,
     write_secure_file,
@@ -1480,8 +1481,11 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         source_id: str = "default",
         registry: VideoFilePlaybackRegistry = VIDEO_FILE_PLAYBACKS,
         max_width: int = 1280,
+        native_media: bool = False,
     ) -> None:
         super().__init__()  # type: ignore[misc]
+        if type(native_media) is not bool:
+            raise ValueError("invalid native video file ownership mode")
         self.source_id = str(source_id or "default").strip() or "default"
         self.registry = registry
         self.max_width = max(160, int(max_width or 1280))
@@ -1495,8 +1499,90 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         self._current_fps = 24.0
         self._last_image: Any = None
         self._playback_buffer: Optional[BytesIO] = None
+        self.native_media = native_media
+        self._materialized_file: Any = None
+        self._native_closed = False
+        self._native_close_error: Optional[BaseException] = None
+        self._native_audio_clock = None
+        self._native_clock_origin_us = None
+        self._native_clock_position_us = 0
+        self._native_clock_audio = False
+        self._native_clock_audio_id = ""
+        self._native_clock_restart = False
+        self._native_pending_frame = None
+        self._native_frame_position_us = -1
+        self._native_stream = None
+        self._native_duration_us = 0
+
+    def set_native_audio_clock(self, clock) -> None:
+        if not self.native_media or self._native_closed or not callable(clock):
+            raise RuntimeError("native file clock requires a current owned source")
+        self._native_audio_clock = clock
+
+    def _native_position(self, file_path: str) -> int:
+        now = time.monotonic_ns() // 1000
+        audio = self._native_audio_clock(file_path) if self._native_audio_clock is not None else None
+        if audio is not None:
+            position, state, identity = audio
+            if type(position) is not int or position < 0 or state not in {"playing", "paused", "completed", "stopped", "error"} or not identity:
+                raise ValueError("invalid native file audio clock")
+            if self._native_clock_audio_id != identity:
+                # A newly approved playback has its own origin, including a
+                # restart of the same selected file. Seek below discards old
+                # decoder look-ahead; no previous playback can renew this one.
+                self._native_clock_restart = bool(self._native_clock_audio_id)
+                self._native_clock_audio_id = identity
+            self._native_clock_audio = True
+            self._native_clock_position_us = position
+            self._native_clock_origin_us = now - position
+            return position
+        if self._native_clock_origin_us is None or self._native_clock_audio:
+            self._native_clock_origin_us = now - self._native_clock_position_us
+        self._native_clock_audio = False
+        self._native_clock_position_us = max(0, now - self._native_clock_origin_us)
+        return self._native_clock_position_us
+
+    def _native_next_frame(self, target_us: int, *, loop: bool):
+        if loop and self._native_duration_us:
+            target_us %= self._native_duration_us
+        stream = self._native_stream
+        start = int(getattr(stream, "start_time", None) or 0)
+        time_base = getattr(stream, "time_base", None)
+        if time_base and (self._native_clock_restart or target_us < self._native_frame_position_us or target_us - self._native_frame_position_us > 500_000):
+            self._container.seek(start + int(Fraction(target_us, 1_000_000) / time_base), stream=stream, backward=True)
+            self._frame_iter = self._container.decode(video=0)
+            self._native_pending_frame = None
+            self._native_clock_restart = False
+        selected = None
+        # Decoder work per capture is bounded, including corrupt/high-rate
+        # files and a large clock jump. Retain only one future decoded frame.
+        for _ in range(32):
+            frame = self._native_pending_frame
+            self._native_pending_frame = None
+            if frame is None:
+                try:
+                    frame = next(self._frame_iter)
+                except StopIteration:
+                    if loop and not self._native_duration_us:
+                        self._native_duration_us = max(1, self._native_frame_position_us + int(1_000_000 / self._current_fps))
+                    elif not loop and not self._native_clock_audio:
+                        self.registry.state(self.source_id).mark_ended()
+                    break
+            if not 0 < frame.width <= 4096 or not 0 < frame.height <= 4096 or sum(plane.buffer_size for plane in frame.planes) > 32 * 1024 * 1024:
+                raise ValueError("native video file frame exceeded its source budget")
+            pts = getattr(frame, "pts", None)
+            base = getattr(frame, "time_base", None)
+            position = int((pts - start) * base * 1_000_000) if pts is not None and base else (0 if self._native_frame_position_us < 0 else self._native_frame_position_us + int(1_000_000 / self._current_fps))
+            if position > target_us:
+                self._native_pending_frame = frame
+                break
+            selected = frame
+            self._native_frame_position_us = position
+        return selected
 
     def enable(self) -> None:
+        if self.native_media and self._native_closed:
+            raise RuntimeError("native video file source is retired")
         self.registry.play(source_id=self.source_id, restart=True)
         self._enabled.set()
 
@@ -1516,14 +1602,21 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
             except asyncio.TimeoutError:
                 continue
 
-        await asyncio.sleep(1.0 / max(1.0, min(60.0, self._current_fps)))
-        if hasattr(self, "next_timestamp"):
+        if self.native_media:
+            # The native capture owner paces the negotiated rate. File PTS
+            # follows the consumed audio clock, not aiortc's 30 FPS timer.
+            pts, time_base = int(self._native_clock_position_us * 90_000 / 1_000_000), self._time_base
+        elif hasattr(self, "next_timestamp"):
+            await asyncio.sleep(1.0 / max(1.0, min(60.0, self._current_fps)))
             pts, time_base = await self.next_timestamp()  # type: ignore[attr-defined]
         else:  # pragma: no cover - aiortc unavailable fallback.
+            await asyncio.sleep(1.0 / max(1.0, min(60.0, self._current_fps)))
             self._fallback_timestamp += int(90000 / max(1.0, self._current_fps))
             pts, time_base = self._fallback_timestamp, self._time_base
 
         image = await asyncio.to_thread(self._next_image)
+        if self.native_media:
+            pts = self._native_clock_position_us * 90_000 // 1_000_000
         if VideoFrame is None:
             raise RuntimeError("PyAV is required for WebRTC video frames")
         video_frame = VideoFrame.from_image(image)
@@ -1557,6 +1650,18 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         if file_path != self._current_path or restart_counter != self._current_restart_counter or self._container is None:
             self._open_file(file_path, restart_counter)
 
+        if self.native_media:
+            frame = self._native_next_frame(self._native_position(file_path), loop=bool(status.get("loop")))
+            self._native_captured_at_us = time.monotonic_ns() // 1000
+            if frame is None:
+                return self._last_image or self._placeholder_image("Video file waiting for its playback clock")
+            image = frame.to_image().convert("RGB")
+            if image.width > self.max_width:
+                ratio = self.max_width / float(image.width)
+                image = image.resize((self.max_width, max(1, int(image.height * ratio))), Image.Resampling.BILINEAR)
+            self._last_image = _ensure_even_rgb_image(image)
+            return self._last_image
+
         try:
             frame = next(self._frame_iter)
         except StopIteration:
@@ -1572,6 +1677,10 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
                 self.registry.state(self.source_id).mark_ended()
                 return self._last_image or self._placeholder_image("Video file ended")
 
+        if self.native_media and (not 0 < frame.width <= 4096 or not 0 < frame.height <= 4096 or
+                sum(plane.buffer_size for plane in frame.planes) > 32 * 1024 * 1024):
+            raise ValueError("native video file frame exceeded its source budget")
+        self._native_captured_at_us = time.monotonic_ns() // 1000
         image = frame.to_image().convert("RGB")
         if image.width > self.max_width:
             ratio = self.max_width / float(image.width)
@@ -1583,13 +1692,33 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
     def _open_file(self, file_path: str, restart_counter: int) -> None:
         self._close_file()
         expanded_path = Path(file_path).expanduser()
-        raw = expanded_path.read_bytes()
-        if raw.startswith(SPM_FILE_HEADER):
-            self._playback_buffer = BytesIO(read_secure_file(expanded_path))
-            container = _av.open(self._playback_buffer)  # type: ignore[union-attr]
+        if self.native_media:
+            if self._native_closed:
+                raise RuntimeError("native video file source is retired")
+            # Assign each handle before inspecting it. A partial open remains
+            # owned, and its bounded plaintext lives until the decoder joins.
+            context = materialize_secure_file(expanded_path, maximum_bytes=256 * 1024 * 1024)
+            path = context.__enter__()
+            self._materialized_file = context
+            self._container = _av.open(str(path))  # type: ignore[union-attr]
+            container = self._container
         else:
-            container = _av.open(str(expanded_path))  # type: ignore[union-attr]
+            container = None
+        # Inspect only the envelope marker; selected movies can be much larger
+        # than the process buffer budget.
+        if not self.native_media:
+            with expanded_path.open("rb") as source:
+                protected = source.read(len(SPM_FILE_HEADER)).startswith(SPM_FILE_HEADER)
+            if protected:
+                self._playback_buffer = BytesIO(read_secure_file(expanded_path))
+                container = _av.open(self._playback_buffer)  # type: ignore[union-attr]
+            else:
+                container = _av.open(str(expanded_path))  # type: ignore[union-attr]
         stream = next((stream for stream in container.streams if stream.type == "video"), None)
+        if self.native_media and stream is not None:
+            width, height = stream.codec_context.width, stream.codec_context.height
+            if not 0 < width <= 4096 or not 0 < height <= 4096 or width * height * 4 > 32 * 1024 * 1024:
+                raise ValueError("native video file geometry exceeded its source budget")
         if stream is not None and stream.average_rate:
             try:
                 self._current_fps = max(1.0, min(60.0, float(stream.average_rate)))
@@ -1599,8 +1728,34 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         self._frame_iter = container.decode(video=0)
         self._current_path = file_path
         self._current_restart_counter = restart_counter
+        if self.native_media:
+            self._native_stream = stream
+            self._native_pending_frame = None
+            self._native_frame_position_us = -1
+            self._native_clock_origin_us = None
+            self._native_clock_position_us = 0
+            self._native_clock_audio = False
+            self._native_clock_audio_id = ""
+            self._native_clock_restart = False
+            duration, base = getattr(stream, "duration", None), getattr(stream, "time_base", None)
+            self._native_duration_us = max(0, int(duration * base * 1_000_000)) if duration and base else max(0, int(getattr(container, "duration", None) or 0))
 
     def _close_file(self) -> None:
+        if self.native_media:
+            if self._native_close_error is not None:
+                raise self._native_close_error
+            try:
+                if self._container is not None:
+                    self._container.close()
+                    self._container = self._frame_iter = None
+                    self._native_pending_frame = self._native_stream = None
+                if self._materialized_file is not None:
+                    self._materialized_file.__exit__(None, None, None)
+                    self._materialized_file = None
+            except BaseException as error:
+                self._native_close_error = error
+                raise
+            return
         container = self._container
         self._container = None
         self._frame_iter = None
@@ -1621,6 +1776,19 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
             if detail:
                 draw.text((32, 70), detail[:120], fill=(148, 163, 184))
         return image
+
+    def fence_native(self) -> None:
+        self._native_closed = True
+        self._enabled.clear()
+        stop = getattr(super(), "stop", None)
+        if stop is not None:
+            stop()
+
+    def close_native(self) -> None:
+        self.fence_native()
+        self._close_file()
+        self._last_image = None
+        self._native_audio_clock = None
 
 
 class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid-type]
@@ -1800,6 +1968,7 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         self._outbound_timestamp += max(1, int(round(90000 / self.fps)))
         pts, time_base = self._outbound_timestamp, self._time_base
         if self._enabled.is_set():
+            self._native_captured_at_us = int(capture_started_at * 1_000_000) if capture_started_at is not None else time.monotonic_ns() // 1000
             image = await asyncio.to_thread(self._capture_image)
             self._remember_preview_image(image)
             if capture_started_at is not None:
@@ -1908,8 +2077,11 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
 
     kind = "video"
 
-    def __init__(self, *, device_index: int = 0, fps: float = 24.0, max_width: int = 1280) -> None:
+    def __init__(self, *, device_index: int = 0, fps: float = 24.0, max_width: int = 1280,
+                 native_media: bool = False) -> None:
         super().__init__()  # type: ignore[misc]
+        if type(native_media) is not bool:
+            raise ValueError("invalid native camera ownership mode")
         self.device_index = int(device_index) if device_index is not None else 0
         self.fps = max(1.0, min(60.0, float(fps or 24.0)))
         self.max_width = max(320, int(max_width or 1280))
@@ -1925,11 +2097,19 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
         self._capture_stop = threading.Event()
         self._cap: Any = None
         self._failure_detail: str = ""
+        self.native_media = native_media
+        self._native_closed = False
+        self._native_release_error: Optional[BaseException] = None
+        self._native_captured_at_us = 0
+        self._native_ready = threading.Event()
         default_width = min(640, self.max_width)
         self._output_size = (default_width, max(2, int(default_width * 3 / 4)))
 
     def enable(self) -> None:
+        if self.native_media and (self._native_closed or self._native_release_error is not None):
+            raise RuntimeError("native camera source is retired or failed cleanup")
         self._enabled.set()
+        self._native_ready.clear()
         self._start_capture()
 
     def disable(self) -> None:
@@ -1980,15 +2160,66 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
             normalized = str(detail or "")
             changed = normalized != self._failure_detail
             self._failure_detail = normalized
+        if self.native_media:
+            self._native_ready.set()
         if detail and changed:
             logger.error("Camera video source unavailable: %s", detail)
             OUTBOUND_VIDEO_TELEMETRY.record_error(source="camera", stage="capture", detail=detail)
 
     def _mark_capture_stopped(self) -> None:
+        if self.native_media:
+            self._native_ready.set()
         with self._lock:
             self._running = False
-            if self._thread is threading.current_thread():
+            if not self.native_media and self._thread is threading.current_thread():
                 self._thread = None
+
+    def fence_native(self) -> None:
+        self._native_closed = True
+        self._enabled.clear()
+        self._native_ready.set()
+        with self._lock:
+            self._running = False
+            self._latest_image = None
+            self._capture_stop.set()
+        stop = getattr(super(), "stop", None)
+        if stop is not None:
+            stop()
+
+    def close_native(self) -> None:
+        self.fence_native()
+        with self._lock:
+            thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            # A timeout cannot transfer an unjoined camera into another source.
+            thread.join()
+        if self._native_release_error is not None:
+            raise self._native_release_error
+        if self._cap is not None:
+            self._release_camera(self._cap)
+        with self._lock:
+            self._thread = None
+
+    def ready_native(self) -> None:
+        if not self._native_ready.wait(10):
+            raise TimeoutError("native camera did not produce its initial frame")
+        with self._lock:
+            if self._native_closed or self._latest_image is None or self._native_release_error is not None:
+                raise RuntimeError(self._failure_detail or "native camera source is unavailable")
+
+    def _release_camera(self, cap: Any) -> None:
+        if self.native_media and self._native_release_error is not None:
+            raise self._native_release_error
+        try:
+            cap.release()
+        except BaseException as error:
+            if self.native_media:
+                self._native_release_error = error
+                self._capture_stop.set()
+                raise
+        else:
+            if self._cap is cap:
+                self._cap = None
 
     @staticmethod
     def _load_cv2() -> Any:
@@ -2007,11 +2238,12 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
             except Exception as err:
                 logger.debug("Failed to open camera %s: %s", index, err)
                 continue
+            if self.native_media:
+                self._cap = cap
             if cap is not None and cap.isOpened():
                 return cap
-            with contextlib.suppress(Exception):
-                if cap is not None:
-                    cap.release()
+            if cap is not None:
+                self._release_camera(cap)
         return None
 
     def _capture_loop(self) -> None:
@@ -2058,6 +2290,7 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
                 while not self._capture_stop.is_set():
                     started_at = time.monotonic()
                     try:
+                        captured_at = time.monotonic_ns() // 1000
                         ret, frame = cap.read()
                     except Exception as err:
                         with self._lock:
@@ -2078,6 +2311,9 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
 
                     consecutive_failures = 0
                     try:
+                        if self.native_media and (len(frame.shape) != 3 or frame.shape[2] != 3 or
+                                frame.shape[0] > 4096 or frame.shape[1] > 4096 or frame.nbytes > 32 * 1024 * 1024):
+                            raise ValueError("native camera frame exceeded its source budget")
                         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         img = Image.fromarray(rgb_frame)
                         if img.width > self.max_width:
@@ -2089,6 +2325,8 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
                         img = _ensure_even_rgb_image(img)
                         with self._lock:
                             self._latest_image = img
+                            self._native_captured_at_us = captured_at
+                            self._native_ready.set()
                             self._output_size = img.size
                             self._failure_detail = ""
                     except Exception as err:
@@ -2100,8 +2338,7 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
 
                     self._capture_stop.wait(max(0.0, frame_interval - (time.monotonic() - started_at)))
 
-                with contextlib.suppress(Exception):
-                    cap.release()
+                self._release_camera(cap)
                 cap = None
                 with self._lock:
                     self._cap = None
@@ -2110,11 +2347,13 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
         except Exception as exc:
             self._set_failure(f"Camera capture error: {exc}")
         finally:
-            if cap is not None:
+            remaining = cap if cap is not None else self._cap
+            if remaining is not None:
                 with contextlib.suppress(Exception):
-                    cap.release()
+                    self._release_camera(remaining)
             with self._lock:
-                self._cap = None
+                if self._native_release_error is None:
+                    self._cap = None
             self._mark_capture_stopped()
 
     def _placeholder_image(self, detail: str = "") -> Any:
@@ -2472,6 +2711,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         if not self._enabled.is_set():
             image = self._disabled_image()
         else:
+            self._native_captured_at_us = time.monotonic_ns() // 1000
             live_sources = self._live_sources()
             results = await asyncio.gather(
                 *(self._source_image(track) for _name, track in live_sources),
@@ -2855,7 +3095,10 @@ class LocalAudioInputTrack(MediaStreamTrack):
         device_index_or_name: Any = "default",
         capture_loopback: bool = False,
         sample_rate: int = 48000,
+        native_media: bool = False,
     ) -> None:
+        if type(native_media) is not bool:
+            raise ValueError("Native audio mode must be explicit")
         super().__init__()
         import queue
         self.device_index_or_name = device_index_or_name
@@ -2877,7 +3120,10 @@ class LocalAudioInputTrack(MediaStreamTrack):
         self._capture_rate = 0
         self._capture_channels = 0
         self._capture_error = ""
-        self._audio_queue: queue.Queue = queue.Queue(maxsize=100)
+        self._native_media = native_media
+        self._native_drops = 0
+        self._observed_native_drops = 0
+        self._audio_queue: queue.Queue = queue.Queue(maxsize=8 if native_media else 100)
 
     def enable(self) -> None:
         self._clear_audio_queue()
@@ -3127,7 +3373,9 @@ class LocalAudioInputTrack(MediaStreamTrack):
         stop_event: threading.Event,
         pyaudio_instance: Any,
         runtime_generation: int,
-    ) -> Optional[bytes]:
+        *,
+        capture_rate: Optional[int] = None,
+    ) -> Optional[Any]:
         """Poll then read immediately under the process-wide PortAudio lock."""
         get_read_available = getattr(stream, "get_read_available", None)
         if not callable(get_read_available):
@@ -3136,7 +3384,13 @@ class LocalAudioInputTrack(MediaStreamTrack):
             if _PYAUDIO_RUNTIME.needs_refresh(pyaudio_instance, runtime_generation):
                 return None
             with _PYAUDIO_RUNTIME.serialized():
-                if int(get_read_available() or 0) >= read_frames:
+                available = int(get_read_available() or 0)
+                if available >= read_frames:
+                    if capture_rate is not None:
+                        if type(capture_rate) is not int or not 8000 <= capture_rate <= 192000:
+                            raise ValueError("Unsupported native input clock")
+                        captured_at_us = time.monotonic_ns()//1000-available*1_000_000//capture_rate
+                        return stream.read(read_frames, exception_on_overflow=False),captured_at_us
                     return stream.read(read_frames, exception_on_overflow=False)
             stop_event.wait(0.01)
         return None
@@ -3174,16 +3428,27 @@ class LocalAudioInputTrack(MediaStreamTrack):
         target_bytes = self.frame_size * 2
         return data[:target_bytes].ljust(target_bytes, b"\0")
 
-    def _queue_audio_chunk(self, data: bytes) -> None:
+    def _queue_audio_chunk(self, data: bytes, *, captured_at_us: Optional[int] = None) -> None:
+        item: Any = data
+        if self._native_media:
+            if not isinstance(data,bytes) or not 0 < len(data) <= self.frame_size*2 or len(data)%2:
+                raise ValueError("Unsupported bounded native capture chunk")
+            now_us = time.monotonic_ns()//1000
+            if captured_at_us is None:
+                captured_at_us = now_us-len(data)*1_000_000//(2*self.sample_rate)
+            if type(captured_at_us) is not int or not 0 <= captured_at_us <= now_us:
+                raise ValueError("Invalid native capture clock")
+            item = (data,captured_at_us)
         try:
-            self._audio_queue.put_nowait(data)
+            self._audio_queue.put_nowait(item)
         except queue.Full:
             try:
                 self._audio_queue.get_nowait()
+                if self._native_media: self._native_drops += 1
             except queue.Empty:
                 pass
             try:
-                self._audio_queue.put_nowait(data)
+                self._audio_queue.put_nowait(item)
             except queue.Full:
                 pass
 
@@ -3200,6 +3465,7 @@ class LocalAudioInputTrack(MediaStreamTrack):
             self._capture_error = ""
         frame_bytes = self.frame_size * 2
         pending = bytearray()
+        pending_at_us: Optional[int] = None
         try:
             assert process.stdout is not None
             while not stop_event.is_set():
@@ -3212,10 +3478,14 @@ class LocalAudioInputTrack(MediaStreamTrack):
                 data = os.read(process.stdout.fileno(), frame_bytes * 10)
                 if not data:
                     raise RuntimeError("ScreenCaptureKit audio stream closed")
+                if not pending:
+                    pending_at_us = time.monotonic_ns()//1000-len(data)*1_000_000//(2*self.sample_rate)
                 pending.extend(data)
                 while len(pending) >= frame_bytes:
-                    self._queue_audio_chunk(bytes(pending[:frame_bytes]))
+                    self._queue_audio_chunk(bytes(pending[:frame_bytes]),captured_at_us=pending_at_us)
                     del pending[:frame_bytes]
+                    if pending_at_us is not None:
+                        pending_at_us += self.frame_size*1_000_000//self.sample_rate
         finally:
             if process.poll() is None:
                 try:
@@ -3345,6 +3615,7 @@ class LocalAudioInputTrack(MediaStreamTrack):
                                 stop_event,
                                 pyaudio_instance,
                                 runtime_generation,
+                                **({"capture_rate":capture_rate} if self._native_media else {}),
                             )
                         except Exception as exc:
                             if not stop_event.is_set():
@@ -3358,6 +3629,9 @@ class LocalAudioInputTrack(MediaStreamTrack):
                             break
                         if data is None:
                             break
+                        captured_at_us = None
+                        if self._native_media:
+                            data,captured_at_us = data
                         if not data:
                             stop_event.wait(0.02)
                             continue
@@ -3380,7 +3654,7 @@ class LocalAudioInputTrack(MediaStreamTrack):
                             else:
                                 silent_chunks = 0
                                 silence_warning_logged = True
-                        self._queue_audio_chunk(data)
+                        self._queue_audio_chunk(data,captured_at_us=captured_at_us)
                 except Exception as exc:
                     detail = (
                         f"ScreenCaptureKit: {native_capture_error}; routed loopback: {exc}"
@@ -3458,7 +3732,39 @@ class LocalAudioInputTrack(MediaStreamTrack):
             if restart:
                 self._start_capture()
 
+    def take_native_audio(self) -> Any:
+        """Poll genuine capture without stalling other sources in a native mix."""
+        if not self._native_media:
+            raise RuntimeError("Native capture requires its explicit device owner")
+        if getattr(self,"readyState","live") != "live" or not self._enabled.is_set():
+            raise MediaStreamError
+        from shared.iroh_media_codec import CapturedMedia
+        while True:
+            try: chunk,captured_at_us = self._audio_queue.get_nowait()
+            except queue.Empty: return None
+            if time.monotonic_ns()//1000-captured_at_us >= 200000:
+                self._native_drops += 1
+                continue
+            if AudioFrame is None:
+                raise RuntimeError("PyAV is required for native audio frames")
+            frame = AudioFrame(format="s16",layout="mono",samples=len(chunk)//2)
+            frame.planes[0].update(chunk)
+            frame.sample_rate,frame.pts,frame.time_base = self.sample_rate,self.pts,self.time_base
+            self.pts += frame.samples
+            drops = self._native_drops
+            discontinuity = drops != self._observed_native_drops
+            self._observed_native_drops = drops
+            return CapturedMedia(frame,captured_at_us,discontinuity)
+
+    async def capture_native(self) -> Any:
+        while True:
+            captured = self.take_native_audio()
+            if captured is not None: return captured
+            await asyncio.sleep(0.005)
+
     async def recv(self) -> Any:
+        if self._native_media:
+            return (await self.capture_native()).frame
         while not self._enabled.is_set():
             if getattr(self, "readyState", "live") != "live":
                 raise MediaStreamError
@@ -3589,15 +3895,18 @@ register_outbound_video_track_factory(
 )
 register_outbound_video_track_factory(
     "video_file",
-    lambda source_id="default", **_: VideoFileStreamTrack(source_id=source_id),
+    lambda source_id="default", registry=VIDEO_FILE_PLAYBACKS, max_width=1280, native_media=False, **_: VideoFileStreamTrack(
+        source_id=source_id, registry=registry, max_width=max_width, native_media=native_media),
 )
 register_outbound_video_track_factory(
     "file",
-    lambda source_id="default", **_: VideoFileStreamTrack(source_id=source_id),
+    lambda source_id="default", registry=VIDEO_FILE_PLAYBACKS, max_width=1280, native_media=False, **_: VideoFileStreamTrack(
+        source_id=source_id, registry=registry, max_width=max_width, native_media=native_media),
 )
 register_outbound_video_track_factory(
     "camera",
-    lambda device_index=0, **_: CameraVideoStreamTrack(device_index=device_index),
+    lambda device_index=0, fps=24.0, max_width=1280, native_media=False, **_: CameraVideoStreamTrack(
+        device_index=device_index, fps=fps, max_width=max_width, native_media=native_media),
 )
 register_outbound_video_track_factory(
     "composite",

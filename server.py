@@ -10023,6 +10023,7 @@ def _get_outbound_video_available(
 def _create_configured_outbound_video_track(
     *,
     cfg: Optional[Dict[str, Any]] = None,
+    capture_owner: Optional[List[Any]] = None,
 ) -> Any:
     if create_outbound_video_track is None:
         raise RuntimeError("Outbound video track factory is unavailable")
@@ -10030,38 +10031,55 @@ def _create_configured_outbound_video_track(
     if not selected_sources:
         raise RuntimeError("No configured outbound video source is available")
     desktop_profile = _get_remote_desktop_capture_profile(cfg=cfg)
+    if capture_owner is not None:
+        desktop_profile = dict(desktop_profile, max_width=min(3840, desktop_profile["max_width"]),
+            fps=min(30, desktop_profile["fps"]))
+
+    def _own(track: Any) -> Any:
+        if capture_owner is not None:
+            capture_owner.append(track)
+        return track
 
     def _one_track(source: str) -> Any:
         kwargs: Dict[str, Any] = {}
         if source == "remote_desktop":
             if RemoteDesktopVideoStreamTrack is None:
                 raise RuntimeError("Remote Desktop video track is unavailable")
-            return RemoteDesktopVideoStreamTrack(
+            return _own(RemoteDesktopVideoStreamTrack(
                 monitor_id=desktop_profile["monitor_id"],
                 fps=desktop_profile["fps"],
                 max_width=desktop_profile["max_width"],
-            )
+            ))
         if source == "api":
             kwargs["source_id"] = _get_video_api_source_id(cfg=cfg)
         if source == "video_file":
-            _configure_video_file_playback_from_config(cfg=cfg, restart=True)
             kwargs["source_id"] = _get_video_file_source_id(cfg=cfg)
+            if capture_owner is None:
+                _configure_video_file_playback_from_config(cfg=cfg, restart=True)
+            else:
+                from shared.video_call_manager import VideoFilePlaybackRegistry
+                registry = VideoFilePlaybackRegistry()
+                registry.configure(source_id=kwargs["source_id"], file_path=_get_video_file_path(cfg=cfg),
+                    loop=_get_video_file_loop_enabled(cfg=cfg), restart=True)
+                kwargs.update(registry=registry, native_media=True)
         if source == "camera":
             try:
                 device_index = int(_get_video_call_config(cfg=cfg).get("camera_device_id", 0))
             except Exception:
                 device_index = 0
             kwargs["device_index"] = device_index
-        return create_outbound_video_track(source, **kwargs)
+            if capture_owner is not None:
+                kwargs["native_media"] = True
+        return _own(create_outbound_video_track(source, **kwargs))
 
     if len(selected_sources) == 1:
         return _one_track(selected_sources[0])
-    return create_outbound_video_track(
+    return _own(create_outbound_video_track(
         "composite",
         sources=[(source, _one_track(source)) for source in selected_sources],
         fps=desktop_profile["fps"],
         max_width=desktop_profile["max_width"],
-    )
+    ))
 
 def _ensure_audio_manager_outbound_tracks(
     *,
@@ -10079,7 +10097,8 @@ def _ensure_audio_manager_outbound_tracks(
         setter = getattr(audio_manager, setter_name, None)
         if not callable(setter):
             return None
-        track = TTSAudioStreamTrack()
+        track = (TTSAudioStreamTrack(native_media=True)
+                 if getattr(audio_manager, "_native_media", False) else TTSAudioStreamTrack())
         setter(track)
         return track
 
@@ -10103,13 +10122,18 @@ def _create_configured_outbound_audio_track(
     tts_track: Any = None,
     playback_track: Any = None,
     include_loopback: bool = True,
+    capture_owner: Optional[List[Any]] = None,
+    capture_allowed: Optional[bool] = None,
+    start_video_file_audio: bool = True,
 ) -> Any:
+    if type(start_video_file_audio) is not bool:
+        raise ValueError("Video-file audio admission requires a boolean")
     tracks: List[Tuple[str, Any]] = []
     if tts_track is not None and _get_ai_audio_replies_enabled(cfg=cfg):
         tracks.append(("ai_replies", tts_track))
 
     if playback_track is not None and _get_audio_playback_enabled(cfg=cfg):
-        if "video_file" in _get_video_outbound_sources(cfg=cfg):
+        if start_video_file_audio and "video_file" in _get_video_outbound_sources(cfg=cfg):
             video_file_path = _get_video_file_path(cfg=cfg)
             loop = _get_video_file_loop_enabled(cfg=cfg)
             if video_file_path and Path(video_file_path).expanduser().is_file():
@@ -10129,10 +10153,25 @@ def _create_configured_outbound_audio_track(
     # The same computer must hear AI replies without hearing its own capture.
     # A local call, Lobby, or Peer Link also takes priority over host capture
     # sent to other connected clients.
-    if WEBRTC is not None and hasattr(WEBRTC, "server_capture_allowed_for_session"):
+    if capture_allowed is not None:
+        if type(capture_allowed) is not bool:
+            raise ValueError("Native capture policy requires a boolean")
+        if not capture_allowed:
+            audio_sources = []
+    elif WEBRTC is not None and hasattr(WEBRTC, "server_capture_allowed_for_session"):
         if not WEBRTC.server_capture_allowed_for_session(session_id):
             audio_sources = []
-    capture_tracks: List[Any] = []
+    capture_tracks: List[Any] = [] if capture_owner is None else capture_owner
+    if capture_owner is not None:
+        if capture_owner:
+            raise ValueError("Native audio capture owner must start empty")
+        if not hasattr(STATE, "local_audio_tracks"):
+            STATE.local_audio_tracks = {}
+        if STATE.local_audio_tracks.get(session_id):
+            raise RuntimeError("Local audio capture already has an owner")
+        # Transfer each partially constructed device to the caller before any
+        # enable/mixer operation can fail. The caller physically joins cleanup.
+        STATE.local_audio_tracks[session_id] = capture_tracks
     if audio_sources:
         try:
             from shared.video_call_manager import LocalAudioInputTrack
@@ -10152,9 +10191,10 @@ def _create_configured_outbound_audio_track(
                 else:
                     continue
                 LOGGER.info("Creating LocalAudioInputTrack with source=%s, loopback=%s", device, capture_loopback)
-                track = LocalAudioInputTrack(device_index_or_name=device, capture_loopback=capture_loopback)
-                track.enable()
+                native_kwargs = {"native_media":True} if capture_owner is not None else {}
+                track = LocalAudioInputTrack(device_index_or_name=device, capture_loopback=capture_loopback, **native_kwargs)
                 capture_tracks.append(track)
+                track.enable()
                 tracks.append((label, track))
 
     if capture_tracks:
@@ -10167,6 +10207,8 @@ def _create_configured_outbound_audio_track(
     if len(tracks) == 1:
         return tracks[0][1]
     if MixedAudioStreamTrack is None:
+        if capture_owner is not None:
+            raise RuntimeError("Native audio source mixing is unavailable")
         LOGGER.warning("Audio mixer unavailable; using first outbound audio source for %s", session_id)
         return tracks[0][1]
     mixed_track = MixedAudioStreamTrack(tracks)

@@ -19,8 +19,9 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 from typing import Any, Dict, Iterable, Optional, Tuple
+import os
 
-from .remote_desktop_keyboard import execute_remote_desktop_keyboard, load_pyautogui, release_stuck_modifiers
+from .remote_desktop_keyboard import execute_remote_desktop_keyboard, load_pyautogui, release_stuck_modifiers, _mapped_key
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-9bfa5a113c65013c87202d6c"
 
@@ -297,22 +298,38 @@ def release_remote_desktop_inputs(
     *,
     held_keys: Iterable[str] = (),
     pyautogui: Any = None,
+    strict: bool = False,
 ) -> None:
+    buttons, keys = set(held_buttons or ()), set(held_keys or ())
+    if strict and not buttons and not keys:
+        return
+    if strict and pyautogui is None and os.environ.get("AUTOYOU_TEST_ROOT"):
+        raise RuntimeError("physical owned input release is disabled in a test root")
     try:
         backend = _control_backend(pyautogui)
     except Exception:
+        if strict: raise
         return
     try:
         backend.FAILSAFE = False
     except Exception:
         pass
-    for button in set(held_buttons or ()):
+    failures = []
+    for button in buttons:
         if button not in ALLOWED_BUTTONS:
             continue
         try:
             backend.mouseUp(button=button)
-        except Exception:
-            pass
-    for key in set(held_keys or ()):
-        execute_remote_desktop_keyboard({"action": "key", "key": key, "phase": "up"}, pyautogui=backend)
-    release_stuck_modifiers(backend)
+        except Exception as error:
+            if strict: failures.append(error)
+    for key in keys:
+        if strict:
+            try:
+                backend.keyUp(_mapped_key(key))
+            except Exception as error: failures.append(error)
+        else:
+            execute_remote_desktop_keyboard({"action": "key", "key": key, "phase": "up"}, pyautogui=backend)
+    if strict:
+        if failures: raise RuntimeError("owned remote input cleanup failed") from failures[0]
+    else:
+        release_stuck_modifiers(backend)

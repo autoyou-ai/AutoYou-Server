@@ -240,6 +240,43 @@ class IrohMessageChannel:
         finally:
             reservation.release()
 
+    async def send_input_record(self, payload: bytes, sequence: int, *, current_check=None, deadline_ms=None) -> bool:
+        """Send finite live input on its reserved lane, without durable replay."""
+        if not isinstance(payload, bytes) or not 0 < len(payload) <= 16384 or \
+                type(sequence) is not int or not 0 < sequence < 2**64:
+            raise ValueError("invalid native input record")
+        if not self.is_ready:
+            return False
+        self.registry.check(self.binding, scope="control")
+        reservation = self._capacity.reserve(len(payload), control=True)
+        if reservation is None:
+            return False
+        now_ms = int(time.time() * 1000)
+        if deadline_ms is not None and (type(deadline_ms) is not int or deadline_ms <= now_ms):
+            reservation.release()
+            return False
+        deadline_ms = min(now_ms + 200,deadline_ms) if deadline_ms is not None else now_ms + 200
+        try:
+            frame = self.api.TransportFrame(lane=9, generation=self.binding.generation,
+                stream_id=0, sequence=0, payload=payload)
+            async with asyncio.timeout(min(self._send_timeout, 0.2)):
+                while self.is_ready and not self._capacity.closed:
+                    self.registry.check(self.binding, scope="control")
+                    if int(time.time()*1000) >= deadline_ms or current_check is not None and current_check() is not True:
+                        return False
+                    try:
+                        self.endpoint.send(self.connection_id, frame, deadline_ms)
+                        return True
+                    except self.api.BindingError.Backpressure:
+                        await self._capacity.wait_for_progress()
+                return False
+        except (TimeoutError, getattr(self.api.BindingError, "Timeout", TimeoutError), self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
+            return False
+        except self.api.BindingError.PermissionDenied:
+            raise SessionDenied("native input is outside its verified control scope") from None
+        finally:
+            reservation.release()
+
     async def _receive_browser_frame(self, frame: Any) -> DataChannelMessage | None:
         from shared.iroh_body import EncryptedBody, BodyUnavailable
         from shared.iroh_delivery import _joined_disk

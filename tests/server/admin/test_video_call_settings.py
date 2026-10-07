@@ -783,7 +783,7 @@ def test_apply_video_call_settings_disables_only_remote_child_when_camera_remain
             monkeypatch.setattr(
                 server,
                 "release_remote_desktop_inputs",
-                lambda buttons=(): released.append(set(buttons)),
+                lambda buttons=(), **kwargs: released.append(set(buttons)),
             )
 
             await webrtc.apply_video_call_settings()
@@ -947,12 +947,12 @@ def test_native_call_remote_desktop_lease_routes_mouse_and_keyboard_to_trusted_s
             monkeypatch.setattr(
                 server,
                 "execute_remote_desktop_keyboard",
-                lambda payload: applied_keyboard.append(payload) or True,
+                lambda payload, **kwargs: applied_keyboard.append(payload) or True,
             )
             monkeypatch.setattr(
                 server,
                 "release_remote_desktop_inputs",
-                lambda buttons=(), *, held_keys=(): (released.append(set(buttons)), released_keys.append(set(held_keys))),
+                lambda buttons=(), *, held_keys=(), **kwargs: (released.append(set(buttons)), released_keys.append(set(held_keys))),
             )
 
             def message(payload):
@@ -1069,7 +1069,7 @@ def test_native_call_remote_desktop_lease_expiry_releases_held_buttons(monkeypat
         released = []
         released_event = threading.Event()
 
-        def release(buttons=()):
+        def release(buttons=(), **kwargs):
             released.append(set(buttons))
             released_event.set()
 
@@ -1138,7 +1138,7 @@ def test_native_call_remote_desktop_stop_releases_inflight_mouse_down(monkeypatc
             monkeypatch.setattr(
                 server,
                 "release_remote_desktop_inputs",
-                lambda buttons=(): released.append(set(buttons)),
+                lambda buttons=(), **kwargs: released.append(set(buttons)),
             )
 
             input_task = asyncio.create_task(
