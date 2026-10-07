@@ -101,3 +101,20 @@ apps.example.com {
     reverse_proxy 127.0.0.1:8067
 }
 ```
+
+---
+
+## 5. Hosting Developer Documentation (Mintlify on IONOS DNS)
+
+AutoYou Server's developer documentation under `/docs` is configured for Mintlify (`mint.json`). To host the documentation on your custom subdomain at `docs.autoyou.me`:
+
+1. **Connect GitHub to Mintlify**: Connect `autoyou-ai/AutoYou-Server` via [app.mintlify.com](https://app.mintlify.com) and configure the documentation root directory to `/docs`.
+2. **Configure Custom Domain**: In the Mintlify project settings, set the Custom Domain to `docs.autoyou.me`.
+3. **Configure IONOS DNS Settings**:
+   - Log into your **IONOS Control Panel**.
+   - Navigate to **Domains & SSL** &rarr; `autoyou.me` &rarr; **DNS Settings**.
+   - Click **Add Record** &rarr; select **CNAME**.
+   - **Host Name**: `docs`
+   - **Points To**: `cname.mintlify.site` (or the CNAME target displayed in your Mintlify dashboard).
+   - **TTL**: `1 hour` (or default).
+4. **SSL Provisioning**: Mintlify automatically provisions and renews a free Let's Encrypt SSL certificate within minutes once the DNS record propagates.
