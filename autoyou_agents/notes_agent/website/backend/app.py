@@ -298,6 +298,20 @@ def _decode_cursor(cursor: Optional[str]) -> tuple[Optional[str], Optional[int]]
         return (None, None)
 
 
+def attachment_summary(metadata: Any) -> Dict[str, int]:
+    """Counts of a note's attachments by kind, so a list row can show a voice note without opening the note."""
+    counts = {"total": 0, "audio": 0, "image": 0, "video": 0, "file": 0}
+    attachments = metadata.get("media_attachments") if isinstance(metadata, dict) else None
+    for attachment in attachments if isinstance(attachments, list) else []:
+        if not isinstance(attachment, dict) or not re.fullmatch(r"\d+", str(attachment.get("id", "")).strip()):
+            continue
+        mime = _media_type_for_attachment(str(attachment.get("filename") or ""), attachment.get("mimetype"))
+        kind = mime.split("/", 1)[0] if mime.split("/", 1)[0] in {"audio", "image", "video"} else "file"
+        counts[kind] += 1
+        counts["total"] += 1
+    return counts
+
+
 def normalize_note_payload(
     note: Dict[str, Any],
     *,
@@ -327,6 +341,7 @@ def normalize_note_payload(
         "icon": icon,
         "created_at": note.get("created_at"),
         "updated_at": note.get("updated_at"),
+        "attachments": attachment_summary(metadata),
     }
     if include_content:
         payload["content"] = content
@@ -439,7 +454,7 @@ def load_notes_listing_payload(
     notes = notes_tool.list_notes(
         limit=bounded_limit + 1,
         include_content=include_content,
-        include_metadata=include_metadata,
+        include_metadata=True,
         query=str(query or "").strip() or None,
         category=selected_category,
         cursor_updated_at=cursor_updated_at,

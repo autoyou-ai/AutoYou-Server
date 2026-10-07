@@ -123,6 +123,14 @@ button:active { transform: translateY(1px); }
   font-variant-numeric: tabular-nums;
 }
 
+.persona-media { margin: 0 0 12px; display: grid; gap: 10px; }
+.persona-media-heading { margin: 0; font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.persona-media-item { margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 8px; }
+.persona-media-item audio, .persona-media-item video { width: 100%; }
+.persona-media-item img { width: 100%; max-height: 360px; object-fit: contain; border-radius: 8px; }
+.persona-media-item figcaption { font-size: 0.85rem; word-break: break-word; }
+.persona-media-item a { color: var(--primary); text-decoration: none; }
+
 .persona-md {
   white-space: pre-wrap;
   word-break: break-word;

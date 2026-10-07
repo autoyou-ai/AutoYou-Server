@@ -40,6 +40,7 @@ from autoyou_agents.persona_agent.agent import (
 )
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
+from shared.media_messaging import is_adts_aac
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-a105923cfc29cabc9fb354fb"
 
@@ -358,6 +359,44 @@ async def api_publish_diary_media(entry_id: str, request: Request, file: UploadF
     return _json_response({"success": True, "url": f"/agent/persona_agent/api/persona/entries/{entry_id}/media/{media_id}"})
 
 
+_DIARY_AUDIO_ALIASES = {"audio/x-m4a": "audio/mp4", "audio/m4a": "audio/mp4", "audio/mp4a-latm": "audio/mp4"}
+# Only formats a browser plays without running page script are shown inline; SVG and the rest download.
+_DIARY_INLINE_IMAGES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif"}
+
+
+def _diary_media_type(stored_mime: Any, data: bytes) -> str:
+    """The type a browser should play: raw ADTS AAC from a phone is audio/aac whatever the app labelled it."""
+    if is_adts_aac(data[:64]):
+        return "audio/aac"
+    mime = str(stored_mime or "").split(";", 1)[0].strip().lower() or "application/octet-stream"
+    return _DIARY_AUDIO_ALIASES.get(mime, mime)
+
+
+def _diary_media_inline(media_type: str) -> bool:
+    return media_type.startswith(("audio/", "video/")) or media_type in _DIARY_INLINE_IMAGES
+
+
+def _diary_byte_range(header: Any, size: int) -> tuple[int, int] | None:
+    """The satisfiable single range asked for, None without a Range header; ValueError when it cannot be met."""
+    text = str(header or "").strip()
+    if not text:
+        return None
+    match = re.fullmatch(r"bytes=(\d*)-(\d*)", text)
+    if not match or size <= 0 or not (match.group(1) or match.group(2)):
+        raise ValueError("Invalid range")
+    first, last = match.groups()
+    if first:
+        start, end = int(first), int(last) if last else size - 1
+    else:
+        count = int(last)
+        if count <= 0:
+            raise ValueError("Invalid range")
+        start, end = max(size - count, 0), size - 1
+    if start >= size or end < start:
+        raise ValueError("Unsatisfiable range")
+    return start, min(end, size - 1)
+
+
 @app.get("/api/persona/entries/{entry_id}/media/{media_id}")
 def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Response:
     if not _check_auth(request):
@@ -367,7 +406,26 @@ def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Resp
         if stored is None:
             return _json_response({"success": False, "error": "Attachment not found."}, status_code=404)
         content = json.loads(stored)
-        return Response(base64.b64decode(content["data"], validate=True), media_type=content["mime"], headers={**NO_CACHE_HEADERS, "X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"})
+        data = base64.b64decode(content["data"], validate=True)
+        media_type = _diary_media_type(content.get("mime"), data)
+        headers = {
+            **NO_CACHE_HEADERS,
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox",
+            "Content-Disposition": "inline" if _diary_media_inline(media_type) else "attachment",
+            "Accept-Ranges": "bytes",
+        }
+        try:
+            window = _diary_byte_range(request.headers.get("range"), len(data))
+        except ValueError:
+            return Response(status_code=416, headers={**headers, "Content-Range": f"bytes */{len(data)}"})
+        if window is None:
+            return Response(data, media_type=media_type, headers=headers)
+        start, end = window
+        return Response(
+            data[start:end + 1], status_code=206, media_type=media_type,
+            headers={**headers, "Content-Range": f"bytes {start}-{end}/{len(data)}"},
+        )
     except ValueError:
         return _json_response({"success": False, "error": "Invalid attachment."}, status_code=400)
     except Exception:
