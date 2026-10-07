@@ -118,9 +118,13 @@ impl ClientSession {
     pub fn begin_verified_pairing(&mut self, json: &[u8], now_ms: u64) -> Result<u64, ClientError> {
         if json.len() > 32*1024 { return Err(ClientError::Invalid); }
         let mut answer: Answer = serde_json::from_slice(json).map_err(|_| ClientError::Invalid)?;
+        let max_lifetime = if answer.grant.origin_transport == "peer" {
+            crate::acceptor::AcceptorSession::peer_grant(&answer.grant, now_ms)?;
+            crate::peer::INVITATION_LIFETIME_SECONDS
+        } else { 60 };
         if answer.version != 1 || answer.grant.endpoint_id != self.local_endpoint ||
             answer.ticket.is_empty() || answer.ticket.len() > 16*1024 ||
-            answer.redemption.len() != 44 || !(1..=60).contains(&answer.redemption_expires_in_seconds) ||
+            answer.redemption.len() != 44 || !(1..=max_lifetime).contains(&answer.redemption_expires_in_seconds) ||
             answer.capabilities.len() > 64 || answer.capabilities.contains_key("_grant") ||
             serde_json::to_vec(&answer.capabilities).map_err(|_| ClientError::Invalid)?.len() > 8192 {
             return Err(ClientError::Invalid);
@@ -131,9 +135,9 @@ impl ClientSession {
         if secret.len() != 32 { return Err(ClientError::Invalid); }
         let operation = self.start_operation()?;
         answer.grant.endpoint_id = answer.endpoint_id;
+        self.deadline_ms = now_ms.saturating_add(answer.redemption_expires_in_seconds * 1000).min(answer.grant.expires_at_ms);
         self.peer = Some(answer.grant); self.ticket = Some(answer.ticket); self.secret = Some(secret);
         self.approved_capabilities = answer.capabilities;
-        self.deadline_ms = now_ms.saturating_add(answer.redemption_expires_in_seconds * 1000);
         self.phase = Phase::Enrolling; self.retry_attempt = 0; self.generation = 0;
         Ok(operation)
     }

@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use crate::client::{ClientError, ClientGrant};
 
+/// Same ten-minute manual invitation lifetime as AutoYou's Peer Link protocol.
+pub const INVITATION_LIFETIME_SECONDS: u64 = 600;
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Descriptor {

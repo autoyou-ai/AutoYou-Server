@@ -79,9 +79,11 @@ impl AcceptorSession {
         let redemption = URL_SAFE.encode(secret);
         use zeroize::Zeroize;
         secret.zeroize();
-        self.invitations.insert(key, Invitation { grant: grant.clone(), deadline: now.saturating_add(30_000).min(grant.expires_at_ms) });
+        let deadline = now.saturating_add(crate::peer::INVITATION_LIFETIME_SECONDS * 1000).min(grant.expires_at_ms);
+        let lifetime_seconds = (deadline - now).div_ceil(1000);
+        self.invitations.insert(key, Invitation { grant: grant.clone(), deadline });
         Ok(serde_json::json!({"version":1,"endpoint_id":self.local_endpoint,"ticket":ticket,
-            "redemption":redemption,"redemption_expires_in_seconds":30,"grant":grant,
+            "redemption":redemption,"redemption_expires_in_seconds":lifetime_seconds,"grant":grant,
             "capabilities":self.capabilities}).to_string())
     }
     fn challenge(&self, context: &ClientContext, grant: &ClientGrant, generation: u64) -> Result<(Vec<u8>,[u8;32]), ClientError> {
@@ -292,5 +294,38 @@ mod tests {
         assert!(host.receive(&other,&redeem,&client_store::empty(),1000).is_err());
         host.connected(accepted.clone(),&client_store::empty(),1000).unwrap();
         assert!(host.receive(&accepted,&redeem,&client_store::empty(),1000).is_err());
+    }
+
+    #[test]
+    fn manual_peer_handoff_has_bounded_expiry_without_relaxing_server_bootstrap() {
+        let (caller, accepted) = contexts(PAIR_ALPN, 1);
+        let mut host = AcceptorSession::new(accepted.local_endpoint.clone(), Map::new()).unwrap();
+        let mut approved = grant(accepted.remote_endpoint.clone()); approved.expires_at_ms = 1_000_000;
+        let proof = host.issue(approved, ticket(), 1000).unwrap();
+        let mut client = ClientSession::new(caller.local_endpoint.clone()).unwrap();
+        let operation = client.begin_verified_pairing(proof.as_bytes(), 120_000).unwrap();
+        client.bind_dial(operation, 1).unwrap();
+        let redeem = client.connected(operation, &caller, 120_000).unwrap().outgoing.unwrap();
+        host.connected(accepted.clone(), &client_store::empty(), 120_000).unwrap();
+        assert!(host.receive(&accepted, &redeem, &client_store::empty(), 120_000).is_ok());
+
+        let mut expired_host = AcceptorSession::new(accepted.local_endpoint.clone(), Map::new()).unwrap();
+        let mut approved = grant(accepted.remote_endpoint.clone()); approved.expires_at_ms = 1_000_000;
+        let proof = expired_host.issue(approved, ticket(), 1000).unwrap();
+        let mut client = ClientSession::new(caller.local_endpoint.clone()).unwrap();
+        let operation = client.begin_verified_pairing(proof.as_bytes(), 601_000).unwrap();
+        client.bind_dial(operation, 1).unwrap();
+        let redeem = client.connected(operation, &caller, 601_000).unwrap().outgoing.unwrap();
+        expired_host.connected(accepted.clone(), &client_store::empty(), 601_000).unwrap();
+        assert!(expired_host.receive(&accepted, &redeem, &client_store::empty(), 601_000).is_err());
+
+        let mut server: Value = serde_json::from_str(&proof).unwrap();
+        server["grant"]["origin_transport"] = Value::String("local".into());
+        server["grant"]["pairing_mode"] = Value::String("normal".into());
+        server["grant"]["scopes"] = serde_json::json!(["chat"]);
+        let mut client = ClientSession::new(caller.local_endpoint).unwrap();
+        assert!(client.begin_verified_pairing(&serde_json::to_vec(&server).unwrap(), 1000).is_err());
+        server["redemption_expires_in_seconds"] = Value::from(60);
+        assert!(client.begin_verified_pairing(&serde_json::to_vec(&server).unwrap(), 1000).is_ok());
     }
 }
