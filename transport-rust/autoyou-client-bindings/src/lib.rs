@@ -358,6 +358,11 @@ pub fn peer_endpoint_fingerprint(endpoint_id: String) -> Result<String, BindingE
 }
 
 #[uniffi::export]
+pub fn validate_peer_pairing(descriptor_json: String, proof_json: String, now_ms: u64) -> Result<String, BindingError> {
+    Ok(autoyou_session::peer::pairing(&descriptor_json, &proof_json, now_ms)?)
+}
+
+#[uniffi::export]
 pub fn endpoint_id_from_key(mut secret_key: Vec<u8>) -> Result<String, BindingError> {
     if secret_key.len()!=32 { secret_key.fill(0); return Err(BindingError::InvalidInput); }
     let key: [u8;32]=secret_key.as_slice().try_into().map_err(|_|BindingError::InvalidInput)?;

@@ -48,10 +48,63 @@ pub fn fingerprint(endpoint: &str) -> Result<String, HostError> {
     Ok(format!("iroh-ed25519 {}", bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()))
 }
 
+/// Validate the opaque bootstrap before a platform serializes it into an
+/// encrypted Peer Link reply. The client's actor still proves and admits it.
+pub fn pairing(descriptor_json: &str, proof_json: &str, now_ms: u64) -> Result<String, HostError> {
+    let canonical = descriptor(descriptor_json, "answer")?;
+    if proof_json.len() > 32*1024 { return Err(HostError::InvalidConfig); }
+    let description: Descriptor = serde_json::from_str(&canonical).map_err(|_| HostError::InvalidConfig)?;
+    let proof: serde_json::Value = serde_json::from_str(proof_json).map_err(|_| HostError::InvalidConfig)?;
+    if proof["endpoint_id"].as_str() != Some(description.endpoint_id.as_str()) ||
+        proof["ticket"].as_str() != description.ticket.as_deref() ||
+        proof["capabilities"]["peer"].as_bool() != Some(true) ||
+        proof["capabilities"]["transport"].as_str() != Some("iroh") ||
+        proof["grant"]["origin_transport"].as_str() != Some("peer") ||
+        proof["grant"]["device_ownership"].as_str() != Some("shared") {
+        return Err(HostError::InvalidConfig);
+    }
+    let scopes = proof["grant"]["scopes"].as_array().ok_or(HostError::InvalidConfig)?;
+    if !scopes.iter().any(|scope| scope.as_str() == Some("peer")) ||
+        scopes.iter().any(|scope| !matches!(scope.as_str(),Some("peer"|"chat"|"browser"|"files"|"media"))) {
+        return Err(HostError::InvalidConfig);
+    }
+    let local = proof["grant"]["endpoint_id"].as_str().ok_or(HostError::InvalidConfig)?;
+    if local == description.endpoint_id { return Err(HostError::InvalidConfig); }
+    let mut validation = crate::client::ClientSession::new(local.to_owned()).map_err(|_| HostError::InvalidConfig)?;
+    validation.begin_verified_pairing(proof_json.as_bytes(),now_ms).map_err(|_| HostError::InvalidConfig)?;
+    serde_json::to_string(&proof).map_err(|_| HostError::InvalidConfig)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use iroh::{EndpointAddr, SecretKey};
+
+    #[test]
+    fn bootstrap_keeps_the_complete_proof_and_rejects_ticket_role_or_schema_changes() {
+        let host = SecretKey::from_bytes(&[51;32]).public();
+        let guest = SecretKey::from_bytes(&[53;32]).public().to_string();
+        let ticket = EndpointTicket::new(EndpointAddr::new(host).with_ip_addr("127.0.0.1:31415".parse().unwrap())).to_string();
+        let descriptor = serde_json::json!({"transport":"iroh","type":"answer","version":1,"endpoint_id":host.to_string(),"ticket":ticket});
+        use base64::Engine;
+        let proof = serde_json::json!({"version":1,"endpoint_id":host.to_string(),"ticket":ticket,
+            "redemption":base64::engine::general_purpose::URL_SAFE.encode([7;32]),"redemption_expires_in_seconds":30,
+            "capabilities":{"peer":true,"transport":"iroh","media":true},
+            "grant":{"endpoint_id":guest,"device_id":"synthetic-device","owner_key":"synthetic-owner",
+                "canonical_user_id":"synthetic-user","conversation_key":"synthetic-conversation","origin_transport":"peer",
+                "origin_sender_id":"synthetic-install","pairing_mode":"manual-peer","device_ownership":"shared",
+                "authorization_epoch":1,"expires_at_ms":100_000,"scopes":["peer","chat","media"]}});
+        let canonical = pairing(&descriptor.to_string(),&proof.to_string(),1000).unwrap();
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&canonical).unwrap(),proof);
+        for changed in [
+            { let mut value = proof.clone(); value["grant"]["scopes"] = serde_json::json!(["peer","control"]); value },
+            { let mut value = proof.clone(); value["ticket"] = "synthetic-unbound-ticket".into(); value },
+            { let mut value = proof.clone(); value["grant"]["device_ownership"] = "own".into(); value },
+            { let mut value = proof.clone(); value["grant"]["endpoint_id"] = host.to_string().into(); value },
+            { let mut value = proof.clone(); value["version"] = true.into(); value },
+            { let mut value = proof.clone(); value["authority"] = "synthetic-forged-role".into(); value },
+        ] { assert!(pairing(&descriptor.to_string(),&changed.to_string(),1000).is_err()); }
+    }
 
     #[test]
     fn peer_descriptors_bind_endpoint_kind_and_bounded_routing_hints() {
