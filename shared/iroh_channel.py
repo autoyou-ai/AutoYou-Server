@@ -545,8 +545,12 @@ class IrohMessageChannel:
 
     async def _deliver_message(self, message: DataChannelMessage) -> None:
         header = message.header
-        if self.relay_interceptor is not None and self.relay_interceptor(message):
-            return
+        if self.relay_interceptor is not None:
+            claimed = self.relay_interceptor(message)
+            if inspect.isawaitable(claimed):
+                claimed = await claimed
+            if claimed:
+                return
         if header.message_type == MessageType.PING:
             self.last_ping_time = time.time()
             self._emit_ping_event("ping_received", message.payload.get("game"))

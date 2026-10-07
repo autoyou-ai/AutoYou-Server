@@ -145,7 +145,8 @@ class IrohSessionRuntime:
             raise SessionDenied("grant does not match the authenticated connection")
         self.registry.validate_install(binding)
         channel = IrohMessageChannel(api=self.api, endpoint=self.endpoint, connection_id=context.connection_id,
-            binding=binding, registry=self.registry, role=self.role, activated=False, capacity=self._send_capacity)
+            binding=binding, registry=self.registry, role=self.role if context.initiator else "server",
+            activated=False, capacity=self._send_capacity)
         grant = self.api.SessionGrant(endpoint_id=binding.endpoint_id, device_id=binding.device_id,
             owner_id=binding.owner_key, conversation_id=binding.conversation_key,
             generation=binding.generation, authorization_epoch=binding.authorization_epoch,
@@ -304,6 +305,7 @@ class IrohSessionRuntime:
         except asyncio.CancelledError:
             raise
         except Exception:
+            _LOG.debug("Iroh stream owner rejected dispatch", exc_info=True)
             try:
                 self.disconnect(connection.context, user_requested=False)
             except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):

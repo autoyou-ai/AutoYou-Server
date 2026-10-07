@@ -58,6 +58,30 @@ class IrohClientService:
         self._closing = False
         self._history_deletion = False
         self._lifecycle_revision = 0
+        self.incoming: Any = None
+        self._incoming: dict[int, tuple[ConnectionContext, Any]] = {}
+        self._endpoint_owner: IrohClientService | None = None
+        self._children: set[IrohClientService] = set()
+        self._child_requests: dict[int, IrohClientService] = {}
+        self._close_task: asyncio.Task | None = None
+
+    def fork(self, *, grants: EndpointGrantRegistry, **callbacks: Any) -> IrohClientService:
+        """One endpoint/pump, independently granted peer or Lobby connections."""
+        if self._endpoint_owner is not None or self.runtime is None or self._closing or len(self._children) >= 31:
+            raise SessionDenied("shared client endpoint is unavailable or full")
+        child = IrohClientService(keys=self.keys, grants=grants, policy=self.policy, api=self.runtime.api,
+            now_ms=self.now_ms, **callbacks)
+        child._endpoint_owner = self
+        self._children.add(child)
+        return child
+
+    def _bind_request(self, request: int, operation: int) -> None:
+        owner = self._endpoint_owner
+        if owner is not None:
+            if owner._closing or owner.runtime is not self.runtime or owner._child_requests.get(request) is not None:
+                raise SessionDenied("shared endpoint dial is obsolete")
+            owner._child_requests[request] = self
+        self._requests[request] = operation
 
     async def start(self, *, enroll: bool = True, unlocked_password: str | None = None) -> None:
         async with self._gate:
@@ -67,6 +91,14 @@ class IrohClientService:
                 return
             if self._closing:
                 raise ConnectionError("client endpoint is closed")
+            if self._endpoint_owner is not None:
+                owner = self._endpoint_owner
+                if owner.runtime is None or owner._closing:
+                    raise SessionDenied("shared client endpoint is closed")
+                core = owner.runtime.api.ClientSession(owner.runtime.endpoint_info.endpoint_id)
+                self.grants = ClientGrantRegistry(self.grants.store, api=owner.runtime.api, now_ms=self.now_ms)
+                self.runtime, self.core = owner.runtime, core
+                return
             runtime = await IrohSessionRuntime.start(keys=self.keys, role="client", policy=self.policy,
                 api=self.api, enroll=enroll, unlocked_password=unlocked_password,
                 on_connected=self._connected, on_enrollment=self._enrollment, on_closed=self._closed,
@@ -129,7 +161,7 @@ class IrohClientService:
                 operation = self.core.begin_verified_pairing(encoded, self.now_ms())
                 request = self.runtime.dial(answer["ticket"], answer["endpoint_id"], pairing=True)
                 self.core.bind_dial(operation, request)
-                self._requests[request] = operation
+                self._bind_request(request, operation)
             except BaseException:
                 future.cancel()
                 self._cancel_unbound_dial(request)
@@ -167,7 +199,7 @@ class IrohClientService:
                 operation = self.core.begin_session(_grant_json(grant), ticket, floor, self.now_ms())
                 request = self.runtime.dial(ticket, endpoint_id)
                 self.core.bind_dial(operation, request)
-                self._requests[request] = operation
+                self._bind_request(request, operation)
             except BaseException:
                 future.cancel()
                 self._cancel_unbound_dial(request)
@@ -191,6 +223,19 @@ class IrohClientService:
             exporter=context.exporter, protocol=context.protocol, initiator=context.initiator)
 
     async def _connected(self, runtime: IrohSessionRuntime, context: ConnectionContext) -> None:
+        child = self._child_requests.get(context.connection_id)
+        if child is not None:
+            await child._connected(runtime, context)
+            return
+        if not context.initiator:
+            owner = self.incoming
+            allowed = context.protocol == "autoyou/session/1" or (
+                context.protocol == "autoyou/pair/1" and getattr(owner, "allow_pairing", False) is True)
+            if self._closing or owner is None or not allowed:
+                raise SessionDenied("unsolicited client connection")
+            self._incoming[context.connection_id] = (context, owner)
+            await owner.connected(runtime, context)
+            return
         operation = self._requests.get(context.connection_id)
         if operation is None or self._closing:
             raise SessionDenied("unsolicited client connection")
@@ -206,6 +251,16 @@ class IrohClientService:
         await self._notify()
 
     async def _enrollment(self, runtime: IrohSessionRuntime, context: ConnectionContext, payload: bytes) -> None:
+        child = self._child_requests.get(context.connection_id)
+        if child is not None:
+            await child._enrollment(runtime, context, payload)
+            return
+        if not context.initiator:
+            incoming = self._incoming.get(context.connection_id)
+            if self._closing or incoming is None or incoming[0] != context or incoming[1] is not self.incoming:
+                raise SessionDenied("obsolete incoming connection")
+            await incoming[1].enrollment(runtime, context, payload)
+            return
         operation = self._requests.get(context.connection_id)
         if operation is None or self._contexts.get(context.connection_id) != context or self._closing:
             raise SessionDenied("obsolete client connection")
@@ -252,6 +307,18 @@ class IrohClientService:
         await self._notify()
 
     async def _binary(self, channel: Any, frame: Any) -> None:
+        child = self._child_requests.get(getattr(channel, "connection_id", None))
+        if child is not None:
+            await child._binary(channel, frame)
+            return
+        incoming = self._incoming.get(getattr(channel, "connection_id", None))
+        if incoming is not None:
+            context, owner = incoming
+            if self._closing or owner is not self.incoming or channel.binding.transport_id != context.transport_id:
+                raise SessionDenied("obsolete incoming stream")
+            self.runtime.registry.check(channel.binding)
+            await owner.binary(channel, frame)
+            return
         if channel is not self._channel or not self.is_ready or self.on_binary_frame is None:
             raise SessionDenied("client stream capability is not attached")
         await self.on_binary_frame(channel, frame)
@@ -261,6 +328,14 @@ class IrohClientService:
             self._future.set_exception(error)
 
     async def _closed(self, context: ConnectionContext, binding: SessionBinding | None, user_requested: bool) -> None:
+        child = self._child_requests.pop(context.connection_id, None)
+        if child is not None:
+            await child._closed(context, binding, user_requested)
+            return
+        incoming = self._incoming.pop(context.connection_id, None)
+        if incoming is not None:
+            await incoming[1].closed(context, binding, user_requested)
+            return
         operation = self._requests.pop(context.connection_id, None)
         self._contexts.pop(context.connection_id, None)
         if operation is None or operation != self.core.snapshot().operation:
@@ -268,6 +343,11 @@ class IrohClientService:
         if binding is not None and self._channel is not None and self._channel.binding == binding:
             self._channel = None
             await self.on_closed(context, binding, user_requested)
+        # Physical application cleanup can yield while an explicit reconnect
+        # starts a new operation. The retired callback must not fail that new
+        # future or report loss against its replacement Rust state.
+        if operation != self.core.snapshot().operation:
+            return
         self._fail(ConnectionError("client connection closed"))
         if not self._closing:
             if user_requested:
@@ -278,6 +358,10 @@ class IrohClientService:
             await self._notify()
 
     async def _dial_failed(self, request: int, _code: str) -> None:
+        child = self._child_requests.pop(request, None)
+        if child is not None:
+            await child._dial_failed(request, _code)
+            return
         operation = self._requests.pop(request, None)
         if operation is None or operation != self.core.snapshot().operation:
             return
@@ -322,11 +406,7 @@ class IrohClientService:
             if context is not None:
                 self.runtime.disconnect(context, user_requested=False)
             else:
-                try:
-                    self.runtime.endpoint.disconnect(identifier)
-                except (self.runtime.api.BindingError.UnknownConnection, self.runtime.api.BindingError.Closed):
-                    pass
-                self._requests.pop(identifier, None)
+                self._cancel_unbound_dial(identifier)
         self.core.lost(operation, self.now_ms(), secrets.randbelow(251))
 
     def network_changed(self) -> None:
@@ -335,12 +415,16 @@ class IrohClientService:
             # Preserve the current logical session and streams. The next native
             # diagnostic observation restores Online when a path is selected.
             self.core.network_changed(self.core.snapshot().operation, False)
+            for child in tuple(self._children):
+                if child.core is not None and not child._closing:
+                    child.core.network_changed(child.core.snapshot().operation, False)
 
     async def suspend(self) -> None:
         self._lifecycle_revision += 1
         if self.core is not None:
             self.core.suspend()
         await self._disconnect_owned()
+        await asyncio.gather(*(child.suspend() for child in tuple(self._children)))
         await self._notify()
 
     async def disconnect(self) -> None:
@@ -406,16 +490,40 @@ class IrohClientService:
         except (self.runtime.api.BindingError.UnknownConnection, self.runtime.api.BindingError.Closed):
             pass
         self._requests.pop(identifier, None)
+        if self._endpoint_owner is not None:
+            self._endpoint_owner._child_requests.pop(identifier, None)
 
     async def close(self) -> None:
         self._closing = True
+        if self._close_task is None or (self._close_task.done() and self._close_task.exception() is not None):
+            self._close_task = asyncio.create_task(self._close_owned(), name="iroh-client-close")
+        try:
+            await asyncio.shield(self._close_task)
+        except asyncio.CancelledError:
+            await self._close_task
+            raise
+
+    async def _close_owned(self) -> None:
         await self.disconnect()
+        results = await asyncio.gather(*(child.close() for child in tuple(self._children)), return_exceptions=True)
+        if any(isinstance(result, BaseException) for result in results):
+            raise RuntimeError("shared client connection cleanup failed")
         async with self._gate:
             runtime = self.runtime
             if runtime is not None:
-                await runtime.close()
+                if self._endpoint_owner is None:
+                    await runtime.close()
+                else:
+                    for context in tuple(self._contexts.values()):
+                        await runtime.join_disconnected(context)
             self.runtime = None
             self._contexts.clear()
             self._requests.clear()
             self._peer, self._channel = None, None
+            if self._endpoint_owner is not None:
+                owner = self._endpoint_owner
+                owner._children.discard(self)
+                for request, child in tuple(owner._child_requests.items()):
+                    if child is self:
+                        owner._child_requests.pop(request)
 

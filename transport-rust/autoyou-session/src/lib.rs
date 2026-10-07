@@ -21,6 +21,8 @@ pub mod file_receiver;
 pub mod media;
 pub mod media_negotiation;
 pub mod playout;
+pub mod peer;
+pub mod acceptor;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {

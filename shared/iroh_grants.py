@@ -108,6 +108,11 @@ class EndpointGrantRegistry:
 
         self.store.transaction(update, default_factory=self._empty)
 
+    def authorization_epoch(self, device_id: str) -> int:
+        state = self._state(self.store.read(default_factory=self._empty))
+        row = state["devices"].get(device_id)
+        return self._grant(row).authorization_epoch if row is not None else 0
+
     def binding_for_connection(self, endpoint_id: str, transport_id: str) -> SessionBinding:
         def update(value: dict) -> tuple[dict, SessionBinding]:
             state = self._state(value)

@@ -35,10 +35,14 @@ class _Pending:
 class PairedEndpointAdmission:
     def __init__(self, *, grants: EndpointGrantRegistry, role: str, capabilities: dict[str, Any],
                  on_prepared: Callable[[IrohSessionRuntime, ConnectionContext, IrohMessageChannel], Awaitable[None]],
-                 on_ready: Callable[[IrohSessionRuntime, ConnectionContext, IrohMessageChannel], Awaitable[None]] | None = None) -> None:
+                 on_ready: Callable[[IrohSessionRuntime, ConnectionContext, IrohMessageChannel], Awaitable[None]] | None = None,
+                 acceptor: bool | None = None) -> None:
         if role not in {"server", "client", "lite"}:
             raise ValueError("unsupported admission role")
         self.grants, self.role, self.capabilities = grants, role, capabilities
+        if acceptor is not None and type(acceptor) is not bool:
+            raise ValueError("invalid admission direction")
+        self.acceptor = role == "server" if acceptor is None else acceptor
         self.on_prepared, self.on_ready = on_prepared, on_ready
         self._pending: dict[str, _Pending] = {}
         self._gate = asyncio.Lock()
@@ -49,12 +53,14 @@ class PairedEndpointAdmission:
             await asyncio.to_thread(self.grants.register, grant)
 
     async def connected(self, runtime: IrohSessionRuntime, context: ConnectionContext) -> None:
-        if context.protocol != "autoyou/session/1" or context.initiator != (self.role != "server"):
+        if context.protocol != "autoyou/session/1" or context.initiator != (not self.acceptor):
             raise SessionDenied("connection purpose does not match this admission owner")
-        if self.role != "server":
+        if not self.acceptor:
             await asyncio.to_thread(self.grants.grant_for_endpoint, context.remote_endpoint_id)
             return
         async with self._gate:
+            if context.transport_id in self._pending:
+                raise SessionDenied("duplicate session connection")
             binding = await asyncio.to_thread(self.grants.binding_for_connection, context.remote_endpoint_id, context.transport_id)
             challenge = runtime.api.EnrollmentChallenge(initiator_endpoint=context.remote_endpoint_id,
                 acceptor_endpoint=context.local_endpoint_id, nonce=secrets.token_bytes(32),
@@ -68,8 +74,10 @@ class PairedEndpointAdmission:
                 kind=runtime.api.EnrollmentKind.CHALLENGE, challenge=challenge, binding=None))))
 
     async def enrollment(self, runtime: IrohSessionRuntime, context: ConnectionContext, payload: bytes) -> None:
+        if context.protocol != "autoyou/session/1" or context.initiator != (not self.acceptor):
+            raise SessionDenied("connection purpose does not match this admission owner")
         message = runtime.api.decode_enrollment(payload)
-        if self.role == "server":
+        if self.acceptor:
             async with self._gate:
                 pending = self._pending.pop(context.transport_id, None)
                 if pending is None or pending.context != context or pending.deadline <= time.monotonic() or \

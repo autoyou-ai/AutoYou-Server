@@ -68,10 +68,11 @@ class IrohFileService:
             return
         if binding.transport_id in self._managers or len(self._managers) >= 32:
             raise SessionDenied("file channel capacity is exhausted")
+        role = getattr(channel, "role", transport.role)
         manager = await IrohFiles.create(channel=channel, local_endpoint=context.local_endpoint_id,
-            server_instance=context.local_endpoint_id if transport.role == "server" else binding.endpoint_id,
+            server_instance=context.local_endpoint_id if role == "server" else binding.endpoint_id,
             root=self.root, key=self._key, local_limits=self.limits,
-            remote_limits=getattr(channel, "application_capabilities", {}).get("file_limits") if transport.role == "client" else None)
+            remote_limits=getattr(channel, "application_capabilities", {}).get("file_limits") if role == "client" else None)
         self._managers[binding.transport_id] = manager
         channel.native_files = manager
         channel.register_handler(MessageType.BINARY_TRANSFER_CONTROL, manager.control)
@@ -94,8 +95,8 @@ class IrohFileService:
         manager = self._managers.get(binding.transport_id)
         if manager is None or manager.binding != binding:
             return
-        del self._managers[binding.transport_id]
         await manager.closed(binding)
+        self._managers.pop(binding.transport_id, None)
         if getattr(manager.channel, "native_files", None) is manager:
             manager.channel.native_files = None
 

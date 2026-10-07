@@ -121,6 +121,51 @@ pub fn revoke_client_grant(state: Vec<u8>, device_id: String, authorization_epoc
 #[derive(uniffi::Object)]
 pub struct ClientSession { session: Mutex<RustClientSession> }
 
+#[derive(Clone, uniffi::Record)]
+pub struct AcceptorAction {
+    pub application: ClientAction,
+    pub protected_store: Option<Vec<u8>>,
+}
+fn acceptor_action(step: autoyou_session::acceptor::AcceptorStep) -> Result<AcceptorAction, BindingError> {
+    Ok(AcceptorAction { application: client_action(step.application)?, protected_store: step.store })
+}
+
+#[derive(uniffi::Object)]
+pub struct AcceptorSession { session: Mutex<autoyou_session::acceptor::AcceptorSession> }
+
+#[uniffi::export]
+impl AcceptorSession {
+    #[uniffi::constructor]
+    pub fn new(local_endpoint: String, capabilities_json: String) -> Result<Arc<Self>, BindingError> {
+        if capabilities_json.len() > 8192 { return Err(BindingError::InvalidInput); }
+        let capabilities = serde_json::from_str(&capabilities_json).map_err(|_| BindingError::InvalidInput)?;
+        Ok(Arc::new(Self { session: Mutex::new(autoyou_session::acceptor::AcceptorSession::new(local_endpoint, capabilities)?) }))
+    }
+    pub fn issue_after_verified_proof(&self, grant_json: String, ticket: String, now_ms: u64) -> Result<String, BindingError> {
+        if grant_json.len() > 32*1024 { return Err(BindingError::InvalidInput); }
+        let grant = serde_json::from_str(&grant_json).map_err(|_| BindingError::InvalidInput)?;
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.issue(grant, ticket, now_ms)?)
+    }
+    pub fn connected(&self, context: ClientConnectionContext, protected_store: Vec<u8>, now_ms: u64) -> Result<AcceptorAction, BindingError> {
+        acceptor_action(self.session.lock().map_err(|_| BindingError::Closed)?.connected(context.core()?, &protected_store, now_ms)?)
+    }
+    pub fn receive(&self, context: ClientConnectionContext, payload: Vec<u8>, protected_store: Vec<u8>, now_ms: u64) -> Result<AcceptorAction, BindingError> {
+        acceptor_action(self.session.lock().map_err(|_| BindingError::Closed)?.receive(&context.core()?, &payload, &protected_store, now_ms)?)
+    }
+    pub fn persisted(&self, context: ClientConnectionContext, protected_store: Vec<u8>, now_ms: u64) -> Result<ClientAction, BindingError> {
+        client_action(self.session.lock().map_err(|_| BindingError::Closed)?.persisted(&context.core()?, &protected_store, now_ms)?)
+    }
+    pub fn expire(&self, now_ms: u64) -> Result<Vec<u64>, BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.expire(now_ms))
+    }
+    pub fn closed(&self, connection_id: u64) -> Result<(), BindingError> {
+        self.session.lock().map_err(|_| BindingError::Closed)?.closed(connection_id); Ok(())
+    }
+    pub fn cancel_endpoint(&self, endpoint_id: String) -> Result<Vec<u64>, BindingError> {
+        Ok(self.session.lock().map_err(|_| BindingError::Closed)?.cancel_endpoint(&endpoint_id))
+    }
+}
+
 #[uniffi::export]
 impl ClientSession {
     #[uniffi::constructor]
@@ -300,6 +345,16 @@ pub fn pairing_binding(challenge: EnrollmentChallenge, exporter: Vec<u8>, initia
 pub fn validate_endpoint_id(endpoint_id: String) -> Result<(), BindingError> {
     autoyou_session::host::endpoint_bytes(&endpoint_id)?;
     Ok(())
+}
+
+#[uniffi::export]
+pub fn validate_peer_descriptor(descriptor_json: String, kind: String) -> Result<String, BindingError> {
+    Ok(autoyou_session::peer::descriptor(&descriptor_json, &kind)?)
+}
+
+#[uniffi::export]
+pub fn peer_endpoint_fingerprint(endpoint_id: String) -> Result<String, BindingError> {
+    Ok(autoyou_session::peer::fingerprint(&endpoint_id)?)
 }
 
 #[uniffi::export]
