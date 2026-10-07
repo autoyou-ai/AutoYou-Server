@@ -45,6 +45,11 @@ fn encode(state: &State) -> Result<Vec<u8>, ClientError> {
 
 pub fn empty() -> Vec<u8> { br#"{"schema":1,"devices":{}}"#.to_vec() }
 
+pub fn next_authorization_epoch(bytes: &[u8], device: &str) -> Result<u64, ClientError> {
+    let state = decode(bytes)?;
+    state.devices.get(device).map_or(Ok(1), |row| row.grant.authorization_epoch.checked_add(1).ok_or(ClientError::Denied))
+}
+
 fn same_association(a: &ClientGrant, b: &ClientGrant) -> bool {
     a.endpoint_id == b.endpoint_id && a.device_id == b.device_id && a.owner_key == b.owner_key &&
         a.canonical_user_id == b.canonical_user_id && a.conversation_key == b.conversation_key
@@ -92,10 +97,22 @@ pub fn admit(bytes: &[u8], proposed: &ClientGrant, generation: u64, now_ms: u64)
 pub fn revoke(bytes: &[u8], device: &str, authorization_epoch: u64) -> Result<Vec<u8>, ClientError> {
     let mut state = decode(bytes)?;
     let row = state.devices.get_mut(device).ok_or(ClientError::Denied)?;
+    mark_revoked(row, authorization_epoch)?;
+    encode(&state)
+}
+
+pub fn revoke_endpoint(bytes: &[u8], endpoint: &str, authorization_epoch: u64) -> Result<Vec<u8>, ClientError> {
+    let mut state = decode(bytes)?;
+    let row = state.devices.values_mut().find(|row| row.grant.endpoint_id == endpoint).ok_or(ClientError::Denied)?;
+    mark_revoked(row, authorization_epoch)?;
+    encode(&state)
+}
+
+fn mark_revoked(row: &mut Row, authorization_epoch: u64) -> Result<(), ClientError> {
     if authorization_epoch <= row.grant.authorization_epoch { return Err(ClientError::Denied); }
     row.grant.authorization_epoch = authorization_epoch;
     row.revoked = true;
-    encode(&state)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -134,8 +151,15 @@ mod tests {
         g.authorization_epoch = 5;
         let repaired = register(&revoked, g.clone(), 10).unwrap();
         assert!(load(&repaired, &g.endpoint_id, 100_000).is_err());
+        let expired_revoked = revoke_endpoint(&repaired, &g.endpoint_id, 6).unwrap();
+        assert_eq!(next_authorization_epoch(&expired_revoked, &g.device_id).unwrap(), 7);
+        assert!(revoke_endpoint(&expired_revoked, &g.endpoint_id, 6).is_err());
         g.expires_at_ms = 200_000;
-        assert!(register(&repaired, g, 100_000).is_ok());
+        g.authorization_epoch = 7;
+        assert!(register(&expired_revoked, g.clone(), 100_000).is_ok());
+        g.authorization_epoch = u64::MAX;
+        let exhausted = register(&expired_revoked, g.clone(), 100_000).unwrap();
+        assert_eq!(next_authorization_epoch(&exhausted, &g.device_id).err(), Some(ClientError::Denied));
     }
 
     #[test]

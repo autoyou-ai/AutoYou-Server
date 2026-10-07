@@ -40,7 +40,7 @@ impl AcceptorSession {
         }
         Ok(Self { local_endpoint, capabilities, invitations: BTreeMap::new(), pending: BTreeMap::new() })
     }
-    fn peer_grant(grant: &ClientGrant, now: u64) -> Result<(), ClientError> {
+    pub(crate) fn peer_grant(grant: &ClientGrant, now: u64) -> Result<(), ClientError> {
         grant.validate(now)?;
         if !grant.scopes.iter().any(|scope| scope == "peer") ||
             grant.scopes.iter().any(|scope| !matches!(scope.as_str(), "peer"|"chat"|"browser"|"files"|"media")) ||

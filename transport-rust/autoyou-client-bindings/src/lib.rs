@@ -348,6 +348,18 @@ pub fn validate_endpoint_id(endpoint_id: String) -> Result<(), BindingError> {
 }
 
 #[uniffi::export]
+pub fn peer_approval_grant(protected_store: Vec<u8>, remote_endpoint: String, origin_sender: String,
+                          scopes: Vec<String>, expires_at_ms: u64, now_ms: u64) -> Result<String, BindingError> {
+    let grant = autoyou_session::peer::approval_grant(&protected_store, &remote_endpoint, origin_sender, scopes, expires_at_ms, now_ms)?;
+    serde_json::to_string(&grant).map_err(|_| BindingError::InvalidInput)
+}
+
+#[uniffi::export]
+pub fn revoke_client_peer(protected_store: Vec<u8>, remote_endpoint: String, authorization_epoch: u64) -> Result<Vec<u8>, BindingError> {
+    Ok(autoyou_session::client_store::revoke_endpoint(&protected_store, &remote_endpoint, authorization_epoch)?)
+}
+
+#[uniffi::export]
 pub fn validate_peer_descriptor(descriptor_json: String, kind: String) -> Result<String, BindingError> {
     Ok(autoyou_session::peer::descriptor(&descriptor_json, &kind)?)
 }

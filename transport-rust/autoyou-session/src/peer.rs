@@ -8,6 +8,8 @@ use crate::host::{endpoint_bytes, HostError};
 use iroh::TransportAddr;
 use iroh_tickets::endpoint::EndpointTicket;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use crate::client::{ClientError, ClientGrant};
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +50,27 @@ pub fn fingerprint(endpoint: &str) -> Result<String, HostError> {
     Ok(format!("iroh-ed25519 {}", bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()))
 }
 
+/// Identity and epoch construction for a peer already approved by its local
+/// application owner. This neither issues a proof nor mutates protected state.
+pub fn approval_grant(store: &[u8], remote_endpoint: &str, origin_sender: String,
+                      mut scopes: Vec<String>, expires_at_ms: u64, now_ms: u64) -> Result<ClientGrant, ClientError> {
+    let endpoint = endpoint_bytes(remote_endpoint).map_err(|_| ClientError::Invalid)?;
+    let canonical = endpoint.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let digest = Sha256::digest(canonical.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let device = format!("peer-device-{digest}");
+    let owner = format!("peer:{digest}");
+    if scopes.len() > 5 { return Err(ClientError::Invalid); }
+    scopes.sort(); scopes.dedup();
+    let grant = ClientGrant {
+        endpoint_id: canonical, authorization_epoch: crate::client_store::next_authorization_epoch(store, &device)?,
+        device_id: device, owner_key: owner.clone(), canonical_user_id: format!("user::{owner}"),
+        conversation_key: format!("session::{owner}"), origin_transport: "peer".into(), origin_sender_id: origin_sender,
+        pairing_mode: "manual-peer".into(), device_ownership: "shared".into(), expires_at_ms, scopes,
+    };
+    crate::acceptor::AcceptorSession::peer_grant(&grant, now_ms)?;
+    Ok(grant)
+}
+
 /// Validate the opaque bootstrap before a platform serializes it into an
 /// encrypted Peer Link reply. The client's actor still proves and admits it.
 pub fn pairing(descriptor_json: &str, proof_json: &str, now_ms: u64) -> Result<String, HostError> {
@@ -78,6 +101,25 @@ pub fn pairing(descriptor_json: &str, proof_json: &str, now_ms: u64) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn approved_peer_grants_share_identity_and_preserve_revoked_epoch_and_generation() {
+        let endpoint = SecretKey::from_bytes(&[63;32]).public().to_string();
+        let empty = crate::client_store::empty();
+        let grant = approval_grant(&empty, &endpoint, "synthetic-peer-install".into(), vec!["peer".into(), "chat".into()], 100_000, 1000).unwrap();
+        assert_eq!(grant.authorization_epoch, 1); assert_eq!(grant.origin_transport, "peer");
+        assert_eq!(grant.device_ownership, "shared"); assert_eq!(grant.canonical_user_id, format!("user::{}", grant.owner_key));
+        let saved = crate::client_store::register(&empty, grant.clone(), 1000).unwrap();
+        let saved = crate::client_store::admit(&saved, &grant, 9, 1000).unwrap();
+        let revoked = crate::client_store::revoke(&saved, &grant.device_id, 2).unwrap();
+        let renewed = approval_grant(&revoked, &endpoint, "synthetic-peer-install".into(), grant.scopes.clone(), 110_000, 1001).unwrap();
+        assert_eq!(renewed.authorization_epoch, 3); assert_eq!(renewed.device_id, grant.device_id);
+        let updated = crate::client_store::register(&revoked, renewed, 1001).unwrap();
+        assert_eq!(crate::client_store::load(&updated, &endpoint, 1001).unwrap().generation_floor, 9);
+        assert!(approval_grant(b"{}", &endpoint, "synthetic-peer-install".into(), grant.scopes.clone(), 100_000, 1000).is_err());
+        assert!(approval_grant(&empty, &endpoint, "synthetic-peer-install".into(), vec!["peer".into(), "control".into()], 100_000, 1000).is_err());
+        assert!(approval_grant(&empty, &endpoint, "synthetic-peer-install".into(), vec!["chat".into()], 100_000, 1000).is_err());
+        assert!(approval_grant(&empty, &endpoint, "synthetic-peer-install".into(), grant.scopes.clone(), 999, 1000).is_err());
+    }
     use iroh::{EndpointAddr, SecretKey};
 
     #[test]
