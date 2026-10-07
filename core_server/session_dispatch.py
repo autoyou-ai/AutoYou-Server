@@ -56,6 +56,7 @@ def bootstrap_application_session(engine: Any, session_id: str, *, runtime: Any)
         engine._track_session_task(session_id, engine._publish_voice_call_status(session_id,
             dict(engine.voice_call_playback_by_session[session_id])), "voice_call_playback_bootstrap")
     engine._track_session_task(session_id, engine._publish_webrtc_capabilities(session_id), "session_capabilities_bootstrap")
+    engine._track_session_task(session_id, engine.send_server_profile_to_session(session_id), "server_profile_bootstrap")
     engine._track_session_task(session_id, engine._prime_conversation_context_status(session_id,
         runtime._resolve_conversation_identity(engine._resolve_chat_identity(session_id))), "conversation_context_bootstrap")
     engine._track_session_task(session_id, engine._flush_pending_voice_chat_messages(session_id), "voice_chat_flush")

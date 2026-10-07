@@ -86,6 +86,8 @@ def test_agent_frontends_ui_uses_current_open_target_precedence(monkeypatch):
                     "agent_name": "notes_agent",
                     "frontend_port_registered": True,
                     "description": "Unique weak-network first-paint description",
+                    "route_mode": "direct_forward",
+                    "direct_forward_port": 8094,
                     "local_url": " http://127.0.0.1:8094 ",
                     "open_url": " /agent/notes_agent/ ",
                     "launch_url": "/legacy",
@@ -100,10 +102,12 @@ def test_agent_frontends_ui_uses_current_open_target_precedence(monkeypatch):
     response = client.get("/agent-frontends")
 
     assert response.status_code == 200
-    assert "const localUrl = (frontend.local_url || '').trim();" in response.text
-    assert "const openTarget = resolveLaunchTarget(frontend.open_url || frontend.launch_url || frontend.launch_path || '');" in response.text
-    assert "Copy Link" in response.text
-    assert response.text.count("Unique weak-network first-paint description") == 1
+    # The store is first-painted on the server: the app is a real link to its
+    # normalized open target and its description is already in the markup.
+    assert 'href="/agent/notes_agent/"' in response.text
+    assert "Unique weak-network first-paint description" in response.text
+    assert "Copy link" in response.text
+    assert 'data-autoyou-scroll-managed="1"' in response.text
 
 
 def test_agent_websites_query_searches_descriptions_and_fuzzy_names(monkeypatch):
@@ -176,11 +180,9 @@ def test_agent_websites_query_advertises_and_enforces_json_contract(monkeypatch)
     assert legacy_options.status_code == 204
     assert missing_type.status_code == 400
     assert missing_type.headers["accept-query"] == '"application/json"'
-    assert 'id="frontend-search"' in page.text
+    assert 'id="q" type="search"' in page.text
     assert "method: 'QUERY'" in page.text
-    assert "prefers-color-scheme: dark" in page.text
-    assert "systemTheme.addEventListener('change', syncTheme)" in page.text
-    assert "radial-gradient" not in page.text
+    assert "prefers-color-scheme: light" in page.text
     assert legacy_page.status_code == 200
 
 
@@ -739,9 +741,9 @@ def test_page_service_frontend_directory_prefers_local_url_for_direct_routes(mon
     response = client.get("/agent-frontends")
 
     assert response.status_code == 200
-    assert "const localUrl = (frontend.local_url || '').trim();" in response.text
-    assert "const openTarget = resolveLaunchTarget(frontend.open_url || frontend.launch_url || frontend.launch_path || '');" in response.text
-    assert "Copy Link" in response.text
+    assert 'href="/agent/admin_agent/"' in response.text
+    assert "Direct admin dashboard" in response.text
+    assert "Copy link" in response.text
 
 
 def test_page_service_agent_websites_normalizes_proxy_frontend_targets(monkeypatch):

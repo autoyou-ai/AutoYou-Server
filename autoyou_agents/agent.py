@@ -760,6 +760,7 @@ except Exception as e:
 from ollama_service import OllamaService
 
 from service_manager import get_service_manager
+from shared.adk_log_filters import install_internal_event_filter
 from shared.ollama_context_policy import build_context_compaction_policy
 
 # Enable LiteLLM debugging if needed
@@ -768,6 +769,7 @@ from shared.ollama_context_policy import build_context_compaction_policy
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+install_internal_event_filter()
 
 # Initialize services
 ollama_service = OllamaService()

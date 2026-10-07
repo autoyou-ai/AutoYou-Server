@@ -18,12 +18,25 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#highlights">Highlights</a> ·
+  <a href="#your-one-stop-devserver-build-apps--cut-token-costs">Devserver & Tokens</a> ·
   <a href="#what-the-full-profile-enables">Capabilities</a> ·
   <a href="#see-it">Admin UI</a> ·
   <a href="docs/admin-ui/agent-workbench-ui.mdx">Agent Builder</a> ·
-  <a href="guides/README.md">Docs</a> ·
+  <a href="docs/">Docs</a> ·
   <a href="CONTRIBUTING.md">Contribute</a> ·
   <a href="LICENSE">License</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/hero.gif" alt="AutoYou pairing a phone, chatting with local AI, calling, browsing a private Page and controlling a computer's screen" width="860">
+</p>
+
+<p align="center">
+  <a href="https://apps.apple.com/us/app/autoyou/id6760363728"><img src="https://img.shields.io/badge/App%20Store-iPhone%20%26%20iPad-0D96F6?logo=apple&logoColor=white" alt="Get AutoYou on the App Store"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.autoyou.app"><img src="https://img.shields.io/badge/Google%20Play-Android-34A853?logo=googleplay&logoColor=white" alt="Get AutoYou on Google Play"></a>
+  <a href="https://apps.microsoft.com/detail/9mw8l2wfw7wv?hl=en-US&gl=US"><img src="https://img.shields.io/badge/Microsoft%20Store-Windows-0078D4?logo=windows&logoColor=white" alt="Get AutoYou from the Microsoft Store"></a>
+  <a href="https://www.autoyou.me/downloads/"><img src="https://img.shields.io/badge/Download-macOS%20%7C%20Linux-111827?logo=apple&logoColor=white" alt="Download AutoYou for macOS or Linux"></a>
+  <a href="https://www.autoyou.me/ecosystem/"><img src="https://img.shields.io/badge/Ecosystem-autoyou.me-536DFE" alt="The AutoYou ecosystem"></a>
 </p>
 
 ---
@@ -46,6 +59,17 @@ No network port-forwarding gymnastics. No forced cloud telemetry. Your data stay
 - 📱 **Seamless device pairing:** Pair phones, tablets, or secondary laptops using simple QR or OTP pairing over encrypted WebRTC DataChannels (libsodium).
 - 🔒 **Private & sovereign:** Binds to secure loopback defaults out of the box. Single-user password gate, encrypted key store, and total ownership.
 
+## Your one-stop devserver: Build apps & cut token costs
+
+When building AI applications, specialized agents, or web frontends with tools like Cursor, Claude, or ChatGPT, developers often waste tens of thousands of tokens prompting LLMs to generate standard plumbing—WebRTC signaling, session auth, encrypted keystores, SQLite memory pools, audio streaming pipelines, and secure mobile tunneling.
+
+**AutoYou Server already has all of this built, integrated, and verified out of the box.**
+
+- 🛠️ **Batteries included:** AutoYou provides ready-made FastAPI routers, WebRTC audio/video/datachannel engines, and an Agent Development Kit (ADK) with 42+ pre-built agents. Use it as your local devserver rather than spending hours prompting AI to scaffold backend services.
+- 💡 **Drastic token savings:** Stop burning API tokens asking coding assistants to write custom authentication handshakes, media streaming loops, or mobile proxies. Plug your custom code directly into AutoYou's intent router, MCP server (`:8000`), or Agent Web Proxy (`:8067`).
+- 📱 **Instant web apps to phone:** Drop HTML/JS apps into AutoYou and they are automatically tunneled across WebRTC SCTP DataChannels directly to connected iOS and Android phones—no domain names, public IPs, port forwarding, or cloud relays required.
+- 📚 **Mintlify documentation:** Full architectural diagrams, API references (150+ endpoints), and step-by-step developer tutorials are ready in [`docs/`](docs/).
+
 ## What the full profile enables
 
 | Capability | What's included |
@@ -63,7 +87,30 @@ Features depend on the selected profile, hardware, permissions, and configured
 integrations. AutoYou client apps are distributed separately; server-backed
 features need a server you run or compile.
 
+## The apps
+
+AutoYou Server runs on your computer. The apps reach it from anywhere, and the
+phone apps also carry a local AI of their own for when no computer is around.
+
+| Pair any way you like | Chat with your own AI | Nearby Lobbies | Local AI on the phone |
+| --- | --- | --- | --- |
+| <img src="docs/images/apps/android-pairing.png" alt="Pairing modes: Local, Auto, Bluetooth, Cloud, OTP and Peer Link" width="200"> | <img src="docs/images/apps/ios-chat.png" alt="Chatting with an AI agent running on your own computer" width="200"> | <img src="docs/images/apps/ios-lobbies.png" alt="Discovering and hosting nearby Lobbies over Wi-Fi and Bluetooth" width="200"> | <img src="docs/images/apps/android-local-ai.png" alt="Local AI chat that runs on the phone" width="200"> |
+
+- **Local AI, no computer needed.** Tap *Local* in Chat for an assistant that runs on the phone
+  (LFM 2.5 350M, Gemini Nano or Apple Intelligence), and ask it to keep Notes, Page items, a Diary and a Profile.
+- **Lobbies.** Host or join nearby rooms over Wi-Fi and Bluetooth, without GPS, with chat plus audio and video
+  for up to 6 guests and the host.
+- **Peer Link.** Connect one AutoYou app to another; the receiving app approves each link, and optional AI replies
+  answer for you using only what you told it.
+- **Remote desktop.** View and control your computer's screen with touch and hardware modifier keys.
+
+Explore the whole AutoYou ecosystem at [autoyou.me/ecosystem](https://www.autoyou.me/ecosystem/).
+
 ## See it
+
+<p align="center">
+  <img src="docs/images/admin-tour.gif" alt="A tour of the AutoYou admin console: server overview, devices and live activity, access and security" width="760">
+</p>
 
 The local admin interface brings setup, models, agents, connections, and
 security controls together. These repository screenshots use example account
@@ -134,28 +181,26 @@ the current dependency review.
 
 ## How it fits together
 
-```mermaid
-flowchart LR
-    devices["Your Phone, Laptop, or Browser"] -->|E2E Encrypted WebRTC| server
-    messaging["Telegram / Signal / WhatsApp"] --> server
-    mcp["Cursor / Claude / MCP Clients"] -->|MCP Bridge| server
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
+  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your apps connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link, with Auto-Pair messages carried by Telegram, Signal or WhatsApp. The server's intent router feeds a Google ADK agent harness (AutoYou agents, OpenClaw, Hermes Agent) alongside Agent Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers." width="100%">
+</picture>
 
-    subgraph server["AutoYou Server (Your Machine)"]
-        direction TB
-        admin["Local Admin Console (:8001)"]
-        intent["Local Intent Router"]
-        agents["Agent Workbench & Builder"]
-        tools["Playwright · Files · Audio Engine"]
-        intent --> agents --> tools
-    end
+- **Pair.** Auto-Pair exchanges an encrypted pairing message through a Telegram, Signal or WhatsApp workflow
+  you set up, or over your local network.
+- **Connect.** Your apps reach the server over an end-to-end encrypted WebRTC link for chat, voice and video.
+  Agent Apps ride the same link as HTTP over the SCTP data channel to a small web server inside the phone app.
+- **Think.** A Google ADK harness runs the built-in AutoYou agents and bridges OpenClaw and Hermes Agent.
+  LiteLLM sends model calls to Ollama on your machine, or to a cloud provider only if you add one.
+- **Listen, speak, remember.** faster-whisper transcribes, system voices speak (EmotiVoice is optional), and
+  memory lives in SQLite (Cognee is optional).
+- **On the phone.** Chat on-device with LFM2.5 350M, Apple Intelligence on iPhone, or Gemini Nano on supported
+  Android phones.
 
-    agents --> local_ai["Local Models (Ollama / GGUF)"]
-    agents -.-> cloud_ai["Optional Cloud Fallback (OpenAI / Anthropic)"]
-```
-
-You choose which models, agents, and connections to enable. WebRTC connections
-encrypt traffic between their endpoints. Remote discovery, relays, provider
-APIs, and messaging bridges have their own data flows and terms.
+Dashed orange boxes are optional add-ons or bridged projects. You choose which models, agents, and connections
+to enable. WebRTC connections encrypt traffic between their endpoints. Remote discovery, relays, provider APIs,
+and messaging bridges have their own data flows and terms. The diagram is generated by
+[scripts/build_architecture_diagram.py](scripts/build_architecture_diagram.py).
 
 ## Build something yours
 

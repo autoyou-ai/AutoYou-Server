@@ -47,11 +47,10 @@ Weak local-model checklist (use exact tools):
 Typical workflow:
 1. `get_codex_desktop_status` - confirm Codex is running and a non-bootstrap pack matches.
 2. (optional) `select_codex_desktop_model(model=..., effort=..., speed=...)`.
-   - ChatGPT Codex (26.707) models: "5.6 Sol", "5.5", "5.6 Terra", "5.6 Luna", "5.4",
-     "5.4 Mini", "5.3 Codex Spark"; legacy "GPT-5.5"/"GPT-5.4" still resolve.
-   - Effort: light, medium, high, extra high, ultra. Speed: "standard". Each argument optional.
-   - The selector menu is Model / Effort / Speed / Reset-to-default (no Advanced on current
-     builds); each of Model/Effort/Speed opens a fly-out submenu to the right.
+   - Models: "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6 Sol", "GPT-6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
+     "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
+   - Effort: low, medium, high, extra high, max (or ultra). Modern 26.803 builds adjust effort
+     via the 5-point slider popup (Low, Medium, High, Extra High, Max). Speed: "standard".
 3. (optional) `select_codex_desktop_permissions(...)` - "full access", "approve for me", etc.
 4. Build the prompt:
    - First chunk: `add_to_codex_desktop_prompt(text, prepend_newline=False)`.

@@ -261,15 +261,15 @@ Remove-MutableRuntimeState -Root $stagingDir
 
 $sourceAssets = Join-Path $repoRoot "servers\windows\AutoYouWindowsHost\Assets"
 Assert-PathExists -Path $sourceAssets -Description "Windows app assets"
-Copy-IfPresent (Join-Path $sourceAssets "StoreLogo.png") (Join-Path $assetsDir "StoreLogo.png")
-Copy-IfPresent (Join-Path $sourceAssets "Square44x44Logo.scale-200.png") (Join-Path $assetsDir "Square44x44Logo.scale-200.png")
-Copy-IfPresent (Join-Path $sourceAssets "Square44x44Logo.scale-200.png") (Join-Path $assetsDir "Square44x44Logo.png")
-Copy-IfPresent (Join-Path $sourceAssets "Square150x150Logo.scale-200.png") (Join-Path $assetsDir "Square150x150Logo.scale-200.png")
-Copy-IfPresent (Join-Path $sourceAssets "Square150x150Logo.scale-200.png") (Join-Path $assetsDir "Square150x150Logo.png")
-Copy-IfPresent (Join-Path $sourceAssets "Wide310x150Logo.scale-200.png") (Join-Path $assetsDir "Wide310x150Logo.scale-200.png")
-Copy-IfPresent (Join-Path $sourceAssets "Wide310x150Logo.scale-200.png") (Join-Path $assetsDir "Wide310x150Logo.png")
-Copy-IfPresent (Join-Path $sourceAssets "SplashScreen.scale-200.png") (Join-Path $assetsDir "SplashScreen.scale-200.png")
-Copy-IfPresent (Join-Path $sourceAssets "SplashScreen.scale-200.png") (Join-Path $assetsDir "SplashScreen.png")
+# Each tile asset ships at 100% (X.png) and 200% (X.scale-200.png). Copy both as
+# authored; only when a 100% file is missing fall back to the 200% artwork so the
+# manifest's unqualified name still resolves.
+foreach ($assetName in @("StoreLogo", "Square44x44Logo", "Square150x150Logo", "Wide310x150Logo", "SplashScreen")) {
+    $scale100 = Join-Path $sourceAssets "$assetName.png"
+    $scale200 = Join-Path $sourceAssets "$assetName.scale-200.png"
+    Copy-IfPresent $scale200 (Join-Path $assetsDir "$assetName.scale-200.png")
+    Copy-IfPresent $(if (Test-Path -LiteralPath $scale100) { $scale100 } else { $scale200 }) (Join-Path $assetsDir "$assetName.png")
+}
 
 $manifestPath = Join-Path $stagingDir "AppxManifest.xml"
 @"

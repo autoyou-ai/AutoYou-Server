@@ -11,6 +11,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -263,7 +264,7 @@ def test_permissions_api_only_reads_and_writes_from_direct_loopback_admin(tmp_pa
     assert local.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is True
     snapshot = local.get("/api/admin/permissions")
     assert snapshot.status_code == 200
-    assert snapshot.json()["paths"]["location_recording"].endswith("location_agent/locations.sqlite3")
+    assert Path(snapshot.json()["paths"]["location_recording"]).parts[-2:] == ("location_agent", "locations.sqlite3")
     assert not (tmp_path / "location_agent" / "locations.sqlite3").exists()
     assert snapshot.json()["screen_capture_enabled"] is True
     assert snapshot.json()["screen_send_enabled"] is True

@@ -96,7 +96,9 @@ def _extra_routes(app, agent_name):
     @app.post("/api/game/publish/{game_id}")
     async def publish_game(request: Request, game_id: str):
         auth = _smc._describe_chat_auth_state(request, agent_name)
-        if not auth.get("authenticated"):
+        # Open mode has no password, so "authenticated" proves nothing there, and an agent website never
+        # takes the admin UI session as its own auth: publishing needs a password-protected server.
+        if not auth.get("authenticated") or auth.get("auth_mode") == "open":
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         server = _smc._runtime_server()
         if auth.get("auth_mode") == "open" and not server._is_logged_in(request):
@@ -114,6 +116,7 @@ def _extra_routes(app, agent_name):
             return JSONResponse({"success": False, "error": "Game must be UTF-8 HTML"}, status_code=400)
         if re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE) is None:
             return JSONResponse({"success": False, "error": "Game HTML needs a head element"}, status_code=400)
+        server = _smc._runtime_server()
         directory = server.get_mutable_data_dir("AutoYou", anchor=server.__file__) / "mobile_games"
         try:
             directory.mkdir(parents=True, exist_ok=True)

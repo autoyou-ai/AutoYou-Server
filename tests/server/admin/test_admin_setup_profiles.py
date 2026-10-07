@@ -260,28 +260,28 @@ def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
     assert "function yesNo(value)" in asset
     assert "var yesNo = function" not in asset
     assert '"200+"' not in asset
-    assert "Record audio calls" in asset
+    assert "Record voice calls" in asset
     assert "Let AutoYou search the web" in asset
     assert "Desktop video is not ready" in asset
     assert "Requires the Remote Desktop app to be installed in Agents" not in asset
     assert 'videoCall.remote_desktop.quality' in asset
     assert 'videoCall.remote_desktop.bitrate_kbps' in asset
     assert 'videoCall.remote_desktop.control_enabled' in asset
-    assert "Control Remote Desktop from supported clients" in asset
+    assert "Allow Remote Desktop input" in asset
     assert "fixed-pointer mode" in asset
     assert 'outbound_api' in asset
     assert 'outbound_video_file' in asset
     assert 'videoCall.video_file.loop' in asset
     assert 'Accepts JPEG frames pushed through the server API' in asset
-    assert "Voice Training app does not have to be open" in asset
+    assert "Voice Training folder" in asset
     assert "Safety recording" in asset
     assert "metadata.recording_paths" in asset
     assert "defaultSafetyRecordingDir" in asset
     assert "Voice training location" in asset
     assert "Safety folder" in asset
     assert "Video folder" in asset
-    assert "Remote client role" in asset
-    assert "overview-remote-role:" in asset
+    assert "Paired browser role" in asset
+    assert "nav:permissions" in asset
     assert "remote_access_role" in asset
     assert "Voice training folder" in asset
     assert "C:\\\\AutoYou\\\\safety-recordings" not in asset

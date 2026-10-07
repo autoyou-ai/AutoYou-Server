@@ -153,3 +153,18 @@ docs/legal/drafts/
 PROVENANCE_MANIFEST.json
 LICENSE_ACKNOWLEDGEMENT
 requirements/.locked.constraints.generated.txt
+
+# Private operator integrations and local-only tooling never belong in a server image
+autoyou_agents/cloudflare_agent/
+autoyou_agents/ionos_agent/
+autoyou_agents/ionos_cloudflare_agent/
+autoyou_agents/mail_agent/
+autoyou_agents/robinhood_agent/
+autoyou_agents/trading_agent/
+autoyou_agents/proxy_agent/
+autoyou_agents/self_improvement/
+scripts/autoyou_agent_goal_hook.py
+scripts/autoyou_agent_goal_loop.py
+autoyou-website/files/
+screenshots/
+tools/signtoross/apps/mike/frontend/.next/

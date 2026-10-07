@@ -1016,11 +1016,7 @@ def register_routes(
         payload = await server._build_admin_ui_bootstrap_payload()
         metadata = payload.setdefault("metadata", {})
         if isinstance(metadata, dict):
-            peer = request.client.host if request.client else None
-            metadata["permissions_editable"] = bool(
-                server._is_loopback_client_host(peer)
-                and not server._request_via_remote_browser_proxy(request)
-            )
+            metadata["permissions_editable"] = bool(server._request_is_from_this_computer(request))
         return server._json_response_no_store(payload)
 
     @admin_app.post("/api/setup/recipe/preview")
@@ -1096,8 +1092,7 @@ def register_routes(
         auth_error = server._require_api_login(request)
         if auth_error:
             return auth_error
-        peer = request.client.host if request.client else None
-        if not server._is_loopback_client_host(peer) or server._request_via_remote_browser_proxy(request):
+        if not server._request_is_from_this_computer(request):
             return JSONResponse(status_code=403, content={
                 "success": False,
                 "error": "Computer permissions can only be read from an admin session on localhost.",
@@ -1109,8 +1104,7 @@ def register_routes(
         auth_error = server._require_api_login(request)
         if auth_error:
             return auth_error
-        peer = request.client.host if request.client else None
-        if not server._is_loopback_client_host(peer) or server._request_via_remote_browser_proxy(request):
+        if not server._request_is_from_this_computer(request):
             return JSONResponse(status_code=403, content={
                 "success": False,
                 "error": "Permissions and media capture settings can only be changed by an admin connected to this computer on localhost.",

@@ -321,6 +321,59 @@ def build_prompt(
                 pass
 
 
+def replace_prompt(
+    text: str = "",
+    *,
+    prompt: Optional[str] = None,
+    attachments: Optional[Sequence[Any]] = None,
+    application_agent: Optional[str] = None,
+    launch_if_needed: bool = True,
+) -> Dict[str, Any]:
+    """Replace the selected desktop prompt composer with new text and attachments."""
+    target, state = _state_for(application_agent)
+    raw_text = str(prompt if prompt is not None else text)
+    temporary_paths: List[Path] = []
+    try:
+        paths, image_count, attachment_count, temporary_paths = _materialize_attachments(attachments)
+        result = _call_target(
+            target,
+            f"replace_{target.removesuffix('_agent')}_prompt",
+            prompt=raw_text,
+            attachment_paths=paths or None,
+            launch_if_needed=launch_if_needed,
+            preserve_text=True,
+        )
+        if not _is_success(result):
+            with _LOCK:
+                state.last_error = str(result.get("message") or "Desktop prompt replacement failed")
+                state.status = "error"
+                _touch(state)
+            return {"success": False, "application_agent": target, **result}
+
+        with _LOCK:
+            state.prompt_text = raw_text
+            state.image_count = image_count
+            state.attachment_count = attachment_count
+            state.status = "draft" if raw_text or attachment_count else "empty"
+            state.last_error = ""
+            _touch(state)
+            response = _payload(target, state)
+        response["desktop_action"] = result
+        return response
+    except Exception as exc:
+        with _LOCK:
+            state.last_error = str(exc)
+            state.status = "error"
+            _touch(state)
+        return {"success": False, "application_agent": target, "status": "error", "message": str(exc)}
+    finally:
+        for path in temporary_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def get_prompt(
     application_agent: Optional[str] = None,
     *,
@@ -631,6 +684,7 @@ def reset_prompt_builder_state() -> None:
 
 TOOL_FUNCTIONS = {
     "build_prompt": build_prompt,
+    "replace_prompt": replace_prompt,
     "get_prompt": get_prompt,
     "status_prompt": status_prompt,
     "result_prompt": result_prompt,

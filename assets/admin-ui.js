@@ -216,7 +216,9 @@
     var noticeTimer = null;
     var renderState = {
         passiveQueued: false,
-        composing: false
+        composing: false,
+        pointerDown: false,
+        pointerTimer: null
     };
 
     var interactTimer = null;
@@ -462,7 +464,9 @@
     }
 
     function hasActiveAdminControl() {
-        return renderState.composing || Boolean(activeAdminControl());
+        // A pressed pointer counts too: a background render between mousedown and
+        // mouseup replaces the button under the cursor and the click is lost.
+        return renderState.composing || renderState.pointerDown || Boolean(activeAdminControl());
     }
 
     function attrSelector(name, value) {
@@ -1256,7 +1260,7 @@
         }
 
         var mcpStatus = getByPath(state.bootstrap, "status.mcp", {});
-        var serverEndpoint = new URL(String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp")));
+        var serverEndpoint = new URL(String(getByPath(mcpStatus, "server_endpoint", defaultMcpEndpoint())));
         var adapterUrl = new URL(String(getByPath(mcpStatus, "adapter_url", "http://127.0.0.1:8071")));
         var isLoopback = function (hostname) {
             var host = String(hostname || "").toLowerCase();
@@ -1667,6 +1671,14 @@
         return providerNote + runtimeMarkup + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Local model library</h3>" + localMarkup + "<div class=\"ayu-inline-actions\">" + button("Refresh local library", "ai-refresh-local", "secondary", "refresh") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Model catalog</h3><div class=\"ayu-grid-2\">" + field("Search query", input("agentWorkbench.catalog_query", { placeholder: "llama, qwen, mistral...", extraAttrs: "data-virtual-bind=\"aiLibrary.query\" value=\"" + valueAttr(state.aiLibrary.query) + "\"" })) + field("Source", "<select class=\"ayu-select\" data-action=\"ai-source\">" + sourceOptions.map(function (option) {
             return "<option value=\"" + escapeHtml(option.value) + "\"" + (state.aiLibrary.source === option.value ? " selected" : "") + ">" + escapeHtml(option.label) + "</option>";
         }).join("") + "</select>") + "</div><div class=\"ayu-inline-actions\">" + button("Search catalog", "ai-search-catalog", "primary", "search") + "</div>" + renderAiCatalogMarkup() + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
+    }
+
+    // The admin page is served by the same app that hosts /api/v1/mcp, so its own
+    // origin is the right default; 8001 is only the standalone-server fallback.
+    function defaultMcpEndpoint() {
+        return typeof window !== "undefined" && window.location && window.location.origin
+            ? window.location.origin + "/api/v1/mcp"
+            : "http://127.0.0.1:8001/api/v1/mcp";
     }
 
     function getByPath(source, path, fallbackValue) {
@@ -6691,6 +6703,39 @@
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + renderDesktopAssetSetupPanel() + "</div>";
     }
 
+    function agentAppsUrl() {
+        return browserPageRouteUrl("/websites");
+    }
+
+    function agentAppTile(route) {
+        var app = route.app || {};
+        var colors = Array.isArray(app.colors) ? app.colors : [];
+        var safe = function (value, fallback) {
+            return /^#[0-9a-f]{3,8}$/i.test(String(value || "")) ? String(value) : fallback;
+        };
+        var title = String(route.title || route.agent_name || "App");
+        var tip = route.description ? title + " - " + route.description : title;
+        return "<span class=\"ayu-app-chip\" title=\"" + valueAttr(tip) + "\"><span class=\"ayu-app-icon\" style=\"background:linear-gradient(150deg," + safe(colors[0], "#8e9bff") + "," + safe(colors[1], "#6a3df0") + ")\">" + escapeHtml(title.charAt(0).toUpperCase()) + "</span><span class=\"ayu-app-name\">" + escapeHtml(title) + "</span></span>";
+    }
+
+    function renderAgentAppsPanel(routes) {
+        var apps = (Array.isArray(routes) ? routes : []).filter(function (route) {
+            return String(route.agent_name || "");
+        });
+        var browser = getByPath(state.bootstrap, "status.browser", {});
+        var isHome = String(getByPath(browser, "default_website.agent_name", "") || "") === "agent_websites";
+        var strip = apps.length
+            ? "<div class=\"ayu-apps-strip\">" + apps.map(agentAppTile).join("") + "</div>"
+            : "<div class=\"ayu-empty\">No website apps are ready yet. Turn one on in Agents and it appears here and on every connected device.</div>";
+        var url = agentAppsUrl();
+        var actions = "<div class=\"ayu-inline-actions\"><a class=\"ayu-link-btn ayu-btn ayu-btn-primary ayu-btn-sm\" href=\"" + escapeHtml(url) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open Agent Apps</span></a>"
+            + button("Copy link", "apps-copy-link", "ghost", "copy", "sm")
+            + (isHome ? badge("Home page for connected browsers", "green") : button("Use as home page", "set-default-website:agent_websites", "secondary", "bolt", "sm"))
+            + "</div>";
+        var note = "<div class=\"ayu-note ayu-note-blue\">Phones, desktops and browsers on your home network open this as an app store. Touch or hover to read about an app, hold and drag to rearrange, pinch to resize. Each person's layout is saved in their own browser, so nothing here changes it.</div>";
+        return panel("Agent Apps", "Every website app on this computer, as one launcher.", strip + note + actions);
+    }
+
     function renderPageScreen() {
         var routes = browserWebsiteRoutes();
         var websites = getByPath(state.forms, "page.advertisedWebsites", []);
@@ -6774,7 +6819,7 @@
             + field("Shared session length (days)", input("page.agentWebsitesSecurity.shared_session_ttl_days", { type: "number" }))
             + "<div class=\"ayu-inline-actions\">" + button("Save", "agent-websites-security-save", "primary", "save", "sm") + button("Sign out of all agent sessions", "agent-sessions-sign-out-all", "danger", "bolt", "sm") + "</div>";
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div></div><div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Browser forwarding", "Choose the port used when paired browsers reach local websites.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Websites & Browser</h1><p>Manage website controls, forwarding, advertised websites, and server-managed browser bookmarks.</p></div><div class=\"ayu-inline-actions\">" + button("Restart Websites & Browser", "service:page:restart", "ghost", "refresh") + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div></div>" + renderAgentAppsPanel(routes) + "<div class=\"ayu-grid-2\">" + panel("Websites & Browser settings", "Agent Websites follows each device's system appearance; the theme setting applies to other shared pages.", pageSettingsMarkup) + panel("Browser forwarding", "Choose the port used when paired browsers reach local websites.", forwardingMarkup) + "</div>" + panel("Bookmarks", "Add external or local URLs to the same Website Shortcuts list already used by desktop, iOS, and Android clients.", bookmarkRows + addBookmarkMarkup) + panel("Advertised websites", "Add local HTTP services for the AutoYou browser and keep live connection access explicit.", siteRows + addWebsiteMarkup) + panel("Website management", "Choose which agent website opens from your public link.", hostingMarkup) + panel("Agent website sessions", "Control cross-agent session sharing and force everyone signed out of every agent website.", agentSessionsMarkup) + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to browser clients. The badge next to each agent shows whether it currently requires an authenticator code.", routesMarkup) + "</div>";
     }
 
     function formatTimestamp(value) {
@@ -7071,7 +7116,7 @@
                 return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + actions + "</div></div>";
             }).join("") + "</div>"
             : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
-        var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Websites directory is the default", "green") : button("Use Agent Websites directory as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
+        var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Apps is the home page", "green") : button("Use Agent Apps as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
         return note + list + directoryAction;
     }
 
@@ -7232,7 +7277,7 @@
         var configured = Boolean(getByPath(mcpStatus, "configured", false));
         var generated = Boolean(getByPath(state.mcpSetup, "generatedToken", ""));
         var adapterUrl = String(getByPath(mcpStatus, "adapter_url", getByPath(state.forms, "messaging.mcp.adapter_url", "http://127.0.0.1:8071")) || "http://127.0.0.1:8071");
-        var serverEndpoint = String(getByPath(mcpStatus, "server_endpoint", "http://127.0.0.1:8001/api/v1/mcp"));
+        var serverEndpoint = String(getByPath(mcpStatus, "server_endpoint", defaultMcpEndpoint()));
         var developerModeHelpUrl = "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt";
         var statusMessage = !enabled
             ? "AutoYou MCP is disabled. Enable it and generate a private adapter token to continue."
@@ -7373,7 +7418,7 @@
             + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
             + checkbox("videoCall.outbound_camera", "Allow webcam sharing", "Makes the selected webcam an available video source.")
             + checkbox("videoCall.outbound_api", "Allow API video input", "Accepts JPEG frames pushed through the server API.")
-            + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call.")
+            + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call. Its soundtrack stops when the caller starts speaking so AutoYou can listen; the looping video keeps playing. Press Play again to restart its sound.")
             + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
             + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
@@ -9934,6 +9979,14 @@
             await persistBookmarks("Bookmark removed.", pageDraftForBookmarkRemove);
             return;
         }
+        if (action === "apps-copy-link") {
+            var appsLink = agentAppsUrl();
+            if (appsLink) {
+                await copyText(/^[a-z][a-z0-9+.-]*:/i.test(appsLink) ? appsLink : window.location.origin + appsLink);
+                setNotice("success", "Agent Apps link copied to clipboard.");
+            }
+            return;
+        }
         if (action.indexOf("page-copy-bookmark:") === 0) {
             var bookmarkCopyIndex = Number(action.split(":")[1]);
             var bookmarkCopyUrl = getByPath(state.forms, "page.bookmarks." + bookmarkCopyIndex + ".url", "");
@@ -10788,6 +10841,33 @@
         }
         flushPassiveRenderSoon();
     });
+
+    function releaseAdminPointer() {
+        if (renderState.pointerTimer) {
+            window.clearTimeout(renderState.pointerTimer);
+            renderState.pointerTimer = null;
+        }
+        if (!renderState.pointerDown) {
+            return;
+        }
+        renderState.pointerDown = false;
+        // The click event fires right after pointerup, so flush on the next tick.
+        flushPassiveRenderSoon();
+    }
+
+    document.addEventListener("pointerdown", function (event) {
+        if (!root || !root.contains(event.target)) {
+            return;
+        }
+        renderState.pointerDown = true;
+        window.clearTimeout(renderState.pointerTimer);
+        // Watchdog: never let a missed pointerup freeze live updates.
+        renderState.pointerTimer = window.setTimeout(releaseAdminPointer, 5000);
+    }, true);
+    document.addEventListener("pointerup", releaseAdminPointer, true);
+    document.addEventListener("pointercancel", releaseAdminPointer, true);
+    document.addEventListener("dragend", releaseAdminPointer, true);
+    window.addEventListener("blur", releaseAdminPointer);
 
     document.addEventListener("focusout", function (event) {
         if (!root || !root.contains(event.target)) {

@@ -185,6 +185,7 @@ function normalizeNote(note) {
     created_at: note && note.created_at,
     updated_at: note && note.updated_at,
     metadata: (note && note.metadata) || {},
+    attachments: (note && note.attachments) || null,
   };
 }
 
@@ -320,12 +321,42 @@ function renderCategoryFilters() {
   container.innerHTML = chips.join("");
 }
 
+// What a note carries, from the list's own summary or, once the note is open, from its metadata.
+function attachmentCounts(note) {
+  const given = note && note.attachments;
+  if (given && typeof given === "object" && Number(given.total) > 0) {
+    return given;
+  }
+  const counts = { total: 0, audio: 0, image: 0, video: 0, file: 0 };
+  for (const att of noteAttachments(note && note.metadata)) {
+    const kind = attachmentKind(att);
+    counts[kind === "audio" || kind === "image" || kind === "video" ? kind : "file"] += 1;
+    counts.total += 1;
+  }
+  return counts;
+}
+
+function attachmentBadgeMarkup(note) {
+  const counts = attachmentCounts(note);
+  if (!counts.total) {
+    return "";
+  }
+  const plural = (count, one, many) => `${count > 1 ? `${count} ${many}` : one}`;
+  const parts = [];
+  if (counts.audio) parts.push(`${icon("mic")}<span>${plural(counts.audio, "Voice note", "voice notes")}</span>`);
+  if (counts.image) parts.push(`${icon("clip")}<span>${plural(counts.image, "Photo", "photos")}</span>`);
+  if (counts.video) parts.push(`${icon("clip")}<span>${plural(counts.video, "Video", "videos")}</span>`);
+  if (counts.file) parts.push(`${icon("clip")}<span>${plural(counts.file, "File", "files")}</span>`);
+  return `<span class="note-attachments" aria-label="Has ${counts.total} attachment${counts.total > 1 ? "s" : ""}">${parts.join("")}</span>`;
+}
+
 function noteMetaMarkup(note) {
   const day = `<span class="note-time">${escapeHtml(formatRelativeDay(note.updated_at || note.created_at))}</span>`;
+  const badge = attachmentBadgeMarkup(note);
   if (!note.category) {
-    return day;
+    return day + (badge ? `<span class="note-dot" aria-hidden="true">•</span>${badge}` : "");
   }
-  return `${day}<span class="note-dot" aria-hidden="true">•</span><span class="note-category">${escapeHtml(note.category)}</span>`;
+  return `${day}<span class="note-dot" aria-hidden="true">•</span><span class="note-category">${escapeHtml(note.category)}</span>${badge ? `<span class="note-dot" aria-hidden="true">•</span>${badge}` : ""}`;
 }
 
 function emptyStateMarkup() {

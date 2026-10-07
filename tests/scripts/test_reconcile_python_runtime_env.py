@@ -32,7 +32,8 @@ def test_removing_overlapping_opencv_wheel_restores_camera_files(monkeypatch):
 def test_signed_binary_profile_keeps_webcam_runtime_dependency():
     profile = REPO_ROOT / "requirements" / "binary-default.txt"
 
-    assert "opencv-python>=4.9.0,<5" in profile.read_text(encoding="utf-8")
+    lines = profile.read_text(encoding="utf-8").splitlines()
+    assert any(line.startswith("opencv-python>=4.9.0") and line.endswith(",<5") for line in lines)
     assert "opencv-python" not in reconcile.RETIRED_PACKAGES
 
 
@@ -125,11 +126,11 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "langchain-openai",
         "mcp",
         "stream2sentence",
-        "nltk",
         "twine",
     ]
     assert installed["cognee"] == "1.2.2"
-    assert "nltk" not in installed
+    # NLTK is a voice dependency now (requirements/voice.txt), so it is kept, not retired.
+    assert installed["nltk"] == "3.10.3"
     assert installed["opencv-python"] == "4.12.0.88"
     assert ["install", "--upgrade", "h2==4.4.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "instructor==1.15.1", "-c", str(constraints)] in calls

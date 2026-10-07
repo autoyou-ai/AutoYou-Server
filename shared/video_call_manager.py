@@ -732,6 +732,8 @@ class IncomingVideoTrackSink:
         self._recording_video_frame_count = 0
         self._recording_last_video_pts = -1
         self._recording_video_disabled = False
+        self._recording_manifest_buffer: Optional[bytearray] = None
+        self._recording_manifest_last_flushed: Optional[float] = None
         self._last_image_recorded_at_monotonic: Optional[float] = None
         self._stopped = False
 
@@ -1102,22 +1104,43 @@ class IncomingVideoTrackSink:
             return True
         return False
 
-    def _write_recording_manifest_locked(self, manifest_entry: Dict[str, Any]) -> None:
+    def _write_recording_manifest_locked(self, manifest_entry: Dict[str, Any], *, force_flush: bool = False) -> None:
         session_dir = self._recording_session_dir
         if session_dir is None:
             return
         manifest_path = self._recording_manifest_path or (session_dir / "manifest.jsonl")
         line = (json.dumps(manifest_entry, separators=(",", ":")) + "\n").encode("utf-8")
         if secure_storage_enabled():
-            existing = read_secure_file(manifest_path) if manifest_path.exists() else b""
-            write_secure_file(manifest_path, existing + line)
+            if self._recording_manifest_buffer is None:
+                self._recording_manifest_buffer = bytearray(
+                    read_secure_file(manifest_path) if manifest_path.exists() else b""
+                )
+                self._recording_manifest_last_flushed = time.monotonic()
+            self._recording_manifest_buffer.extend(line)
+            now = time.monotonic()
+            if force_flush or (now - (self._recording_manifest_last_flushed or 0.0)) >= 2.0:
+                write_secure_file(manifest_path, bytes(self._recording_manifest_buffer))
+                self._recording_manifest_last_flushed = now
             return
         with manifest_path.open("ab") as handle:
             handle.write(line)
 
+    def _flush_recording_manifest_locked(self) -> None:
+        if self._recording_manifest_buffer is not None:
+            session_dir = self._recording_session_dir
+            if session_dir is not None:
+                manifest_path = self._recording_manifest_path or (session_dir / "manifest.jsonl")
+                try:
+                    write_secure_file(manifest_path, bytes(self._recording_manifest_buffer))
+                except Exception as exc:
+                    logger.warning("Failed to flush inbound video recording manifest: %s", exc)
+            self._recording_manifest_buffer = None
+            self._recording_manifest_last_flushed = None
+
     def _close_recording(self) -> None:
         with self._recording_lock:
             self._close_video_recording_locked()
+            self._flush_recording_manifest_locked()
 
     def _close_video_recording_locked(self, *, discard: bool = False) -> None:
         container = self._recording_container

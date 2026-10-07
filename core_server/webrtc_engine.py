@@ -8779,8 +8779,9 @@ class WebRTCManager:
           the WebRTC DataChannel browser from any connected iOS/Android/Python client.
 
         Reserved AutoYou UX routes:
-        - ``/agent-frontends``, ``/api/agent-frontends``, and ``/api/agent-directory`` always
-          resolve to the built-in page service, even when a custom forward target is configured.
+        - ``/websites`` (Agent Apps), ``/api/websites``, ``/agent-frontends``,
+          ``/api/agent-frontends``, and ``/api/agent-directory`` always resolve to the
+          built-in page service, even when a custom forward target is configured.
 
         Fallback: route to the AutoYou Page port (``_get_autoyou_forward_target_port()``).
         """
@@ -8821,7 +8822,10 @@ class WebRTCManager:
         scheme = "ws" if websocket else "http"
 
         if (
-            path_only == "/agent-frontends"
+            path_only == "/websites"
+            or path_only.startswith("/websites/")
+            or path_only == "/api/websites"
+            or path_only == "/agent-frontends"
             or path_only.startswith("/agent-frontends/")
             or path_only == "/agent-websites"
             or path_only.startswith("/agent-websites/")
@@ -9086,8 +9090,10 @@ class WebRTCManager:
         import re as _re
         prefix_b = prefix.encode("utf-8")
         page_service_paths = (
+            b"/websites",
             b"/agent-websites",
             b"/agent-frontends",
+            b"/api/websites",
             b"/api/agent-websites",
             b"/api/agent-frontends",
             b"/api/agent-directory",
@@ -9135,7 +9141,7 @@ class WebRTCManager:
             + f'<base href="{prefix}/">'
             f'<script>(function(){{'
             f'var _B="{prefix}";'
-            f'function _g(u){{return /^(?:\\/agent-websites|\\/agent-frontends|\\/api\\/agent-websites|\\/api\\/agent-frontends|\\/api\\/agent-directory)(?:[\\/?#]|$)/.test(u);}}'
+            f'function _g(u){{return /^(?:\\/websites|\\/agent-websites|\\/agent-frontends|\\/api\\/websites|\\/api\\/agent-websites|\\/api\\/agent-frontends|\\/api\\/agent-directory)(?:[\\/?#]|$)/.test(u);}}'
             f'function _r(u){{'
             f'if(typeof u==="string"&&u.startsWith("/")&&!u.startsWith(_B)&&!u.startsWith("//")&&!u.startsWith("/agent/")&&!_g(u))'
             f'{{return _B+u;}}return u;}}'
@@ -10633,12 +10639,14 @@ class WebRTCManager:
             return False
 
     async def broadcast_server_profile(self) -> None:
+        """Push a changed name or picture to every live client, in a call or not."""
         sent_managers: Set[int] = set()
-        for session_id, active in list(self.voice_call_client_active_by_session.items()):
-            if not active:
-                continue
-            manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
-            if manager is None or id(manager) in sent_managers:
+        for session_id, manager in list(self.datachannel_managers.items()):
+            if (
+                not hasattr(manager, "send_message")
+                or id(manager) in sent_managers
+                or not self._datachannel_manager_is_live(manager)
+            ):
                 continue
             sent_managers.add(id(manager))
             await self.send_server_profile_to_session(session_id)
@@ -10696,9 +10704,14 @@ class WebRTCManager:
                 "kind": kind, "value": value, "timestamp": now,
             })
             return
-        if self._screen_session_for_session(str(session_id or "")) is not None and event_name in {
-            "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard", "game_input",
-        }:
+        screen_session = self._screen_session_for_session(str(session_id or ""))
+        if screen_session is not None and (event_name == "game_input" or (
+            # Remote Desktop ("interactive") may control the screen when this
+            # computer's own control settings allow it; "watch" stays view-only.
+            screen_session["mode"] != "interactive" and event_name in {
+                "remote_desktop_control", "remote_desktop_input", "remote_desktop_keyboard",
+            }
+        )):
             return
         if event_name == "remote_desktop_control":
             await self._handle_remote_desktop_control(str(session_id or ""), payload)

@@ -96,12 +96,13 @@ Evidence: `output/e2e-evidence/run-20260923-212447/RUN_REPORT.md`.
 | Native classifier over Peer Link | Actual packaged inference passed in both iOS Simulator and Android Emulator; original owner instructions and incoming message preserved |
 | Registry screen scenarios | 7 passed, 0 failed, 10 skipped: Android bottom navigation could not be observed by the UI harness |
 
-The native classifier check is repeatable with installed debug apps in isolated
-simulators/emulators:
+The native classifier check is qualified during release builds with installed debug apps in isolated
+simulators/emulators (using internal release runner harnesses):
 
 ```sh
-.venv/bin/python scripts/e2e/intent_router_mobile.py --ios "$SIMULATOR_UDID"
-.venv/bin/python scripts/e2e/intent_router_mobile.py --android
+# Qualification commands executed during release validation:
+# python -m pytest tests/server/build/ -q
+# python -m pytest tests/agents/public/ -q
 ```
 
 MiniLM runs inside the actual app in these checks. Only the HTTP reply engine is

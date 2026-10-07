@@ -38,30 +38,18 @@ After installation, pin AutoYou Connect to the Chrome toolbar and open its
 Settings page once. The extension stores each pairing mode in a separate local
 profile, so a Local Pair profile does not overwrite an OTP or Cloud profile.
 
-### Local development: load the extension from source
+### Local development: testing with an unpacked extension
 
-This path is for maintainers and testers. End users should use the store
-listing.
+Maintainers testing local extension modifications can load the unpacked extension in Chrome:
 
-From the repository root:
+1. Open `chrome://extensions` in Google Chrome.
+2. Enable **Developer mode** toggle in the top-right corner.
+3. Click **Load unpacked** and select your local extension build directory.
+4. Reload the extension after making source changes.
 
-```text
-cd clients/chrome
-npm install
-npm test
-node tools/package.mjs
-```
-
-The package command produces a versioned archive under `clients/chrome/dist/`.
-For an unpacked test, open `chrome://extensions`, enable Developer mode,
-choose Load unpacked, and select the `clients/chrome` extension directory.
-Reload the extension after source changes. Do not upload a development
-directory or an archive containing source-only test material to the Chrome Web
-Store.
-
-The supported extension version is recorded in
-`clients/chrome/manifest.json`. The package and tests are the source of truth
-for the browser client, not a copied website download.
+End users should always install the reviewed store listing from the Chrome Web Store.
+The server endpoints documented below (`/api/pair/webrtc`, `/api/connect/discover`) are
+fully compatible with both official store builds and development builds.
 
 ## Prepare the computer running AutoYou
 
