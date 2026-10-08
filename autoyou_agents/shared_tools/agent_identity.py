@@ -12,6 +12,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
+import re
 from typing import Optional
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-4953c8435bfe7b89446d4670"
@@ -41,7 +42,6 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "prompt_builder_agent": "autoyou_build_prompt_agent",
     "client_browser_control_agent": "autoyou_client_browser_control_agent",
     "cli_agent": "autoyou_cli_agent",
-    "cloudflare_agent": "autoyou_cloudflare_agent",
     "coding_agent": "autoyou_coding_agent",
     "data_collector_agent": "autoyou_data_collector_agent",
     "donation_agent": "autoyou_donation_agent",
@@ -55,10 +55,7 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "internet_agent": "autoyou_internet_agent",
     "hermes_agent": "autoyou_hermes_agent",
     "hosting_agent": "autoyou_hosting_agent",
-    "ionos_agent": "autoyou_ionos_agent",
-    "ionos_cloudflare_agent": "autoyou_ionos_cloudflare_agent",
     "location_agent": "autoyou_location_agent",
-    "mail_agent": "autoyou_mail_agent",
     "mac_security_agent": "autoyou_mac_security_agent",
     "media_generation_agent": "autoyou_media_generation_agent",
     "memory_agent": "autoyou_memory_agent",
@@ -76,10 +73,13 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "win_security_agent": "autoyou_win_security_agent",
 }
 
-_LEGACY_RUNTIME_AGENT_NAME_ALIASES = {
-    "streaming_agent": "education_agent",
-    "autoyou_streaming_agent": "autoyou_education_agent",
-}
+# Agent packages that are not part of this repository (added by a checkout that
+# holds it, scaffolded at runtime, or bundled beside the built-ins) declare their
+# runtime id in their own prompt module. The agent engine registers it here when
+# it loads them; a built-in id above is never replaced.
+_DECLARED_RUNTIME_AGENT_NAMES: dict[str, str] = {}
+
+_PACKAGE_AGENT_NAME_PATTERN = re.compile(r"[a-z][a-z0-9_]*_agent")
 
 _SPECIAL_DISPLAY_NAMES = {
     "ai": "AI",
@@ -104,10 +104,35 @@ def resolve_runtime_agent_name(raw_name: Optional[str]) -> str:
     if not value:
         return ""
 
-    lowered = _LEGACY_RUNTIME_AGENT_NAME_ALIASES.get(value.lower(), value.lower())
+    lowered = value.lower()
     if lowered in _ROOT_AGENT_ALIASES:
         return ROOT_AGENT_NAME
-    return _RUNTIME_AGENT_NAME_OVERRIDES.get(lowered, value)
+    return _RUNTIME_AGENT_NAME_OVERRIDES.get(lowered) or _DECLARED_RUNTIME_AGENT_NAMES.get(lowered, value)
+
+
+def register_runtime_agent_name(package_name: Optional[str], runtime_name: Optional[str]) -> bool:
+    """Record the runtime id an agent package declares for itself.
+
+    Returns True when the declaration is in effect. Built-in ids, the root
+    agent's names, and malformed names are never taken from a package.
+    """
+    package = str(package_name or "").strip().lower()
+    runtime = str(runtime_name or "").strip().lower()
+    if not _PACKAGE_AGENT_NAME_PATTERN.fullmatch(package):
+        return False
+    if not _PACKAGE_AGENT_NAME_PATTERN.fullmatch(runtime):
+        return False
+    if package in _RUNTIME_AGENT_NAME_OVERRIDES or package in _ROOT_AGENT_ALIASES:
+        return False
+    if runtime in _ROOT_AGENT_ALIASES or runtime in _RUNTIME_AGENT_NAME_OVERRIDES.values():
+        return False
+    if runtime != package and runtime in _RUNTIME_AGENT_NAME_OVERRIDES:
+        return False
+    if runtime != package:
+        _DECLARED_RUNTIME_AGENT_NAMES[package] = runtime
+    else:
+        _DECLARED_RUNTIME_AGENT_NAMES.pop(package, None)
+    return True
 
 
 def is_root_agent_name(raw_name: Optional[str]) -> bool:

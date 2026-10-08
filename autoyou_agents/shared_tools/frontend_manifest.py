@@ -164,6 +164,23 @@ def write_frontend_manifest(agent_dir: Path, manifest: Dict[str, Any]) -> Path:
     return manifest_path
 
 
+def _normalize_admin_control(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the admin website toggle an agent declares for itself.
+
+    The server's own tables cover the agents this repository ships. Any other
+    agent says here whether installing it exposes its website
+    (``expose_by_default``, default true) and how the toggle reads.
+    """
+    control: Dict[str, Any] = {}
+    if payload.get("expose_by_default") is False:
+        control["expose_by_default"] = False
+    for key in ("control_label", "control_help"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            control[key] = value.strip()
+    return control
+
+
 def _normalize_frontend_manifest_payload(
     payload: Dict[str, Any],
     *,
@@ -224,6 +241,7 @@ def _normalize_frontend_manifest_payload(
         "shared_session_eligible": bool(payload.get("shared_session_eligible", True)),
         "bypass_global_otp": bool(payload.get("bypass_global_otp", False)),
         **({"managed_runtime": managed_runtime} if managed_runtime is not None else {}),
+        **_normalize_admin_control(payload),
         "manifest_path": str(manifest_path),
         "website_root": str(website_root),
     }

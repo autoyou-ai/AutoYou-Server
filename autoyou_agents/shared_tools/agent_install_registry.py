@@ -83,7 +83,6 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "claude_cli_agent": False,       # Opt-in: Claude Code CLI bridge
     "claude_desktop_agent": False,   # Opt-in: Claude Desktop bridge
     "cli_agent": False,              # Opt-in: command-line interface
-    "cloudflare_agent": False,       # Opt-in: public Cloudflare Tunnel publishing
     "codex_desktop_agent": False,    # Opt-in: Codex Desktop bridge
     "coding_agent": False,           # Opt-in: repo-aware coding assistant
     "data_collector_agent": False,   # Opt-in: consented local conversation collection
@@ -94,11 +93,8 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "game_agent": False,             # Opt-in: local game design and engine integration
     "hermes_agent": False,           # Opt-in: install manually when Hermes Agent gateway is running locally
     "hosting_agent": False,          # Opt-in: public URL publishing
-    "ionos_agent": False,            # Opt-in: persistent IONOS hosting and deployment
-    "ionos_cloudflare_agent": False, # Opt-in: registrar and Cloudflare DNS handoff
     "internet_agent": True,
     "location_agent": False,          # Opt-in: consented native device location timeline
-    "mail_agent": False,             # Opt-in: domain email and self-hosted mail controls
     "media_generation_agent": False, # Opt-in: heavy model dependency
     "memory_agent": True,
     "model_picker_agent": False,     # Opt-in: hardware-fit model advice
@@ -109,9 +105,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "persona_agent": True,
     "proxy_agent": False,           # Opt-in: authenticated internet relay
     "remote_desktop_agent": False,   # Opt-in: desktop control capability
-    "robinhood_agent": False,        # Opt-in when the private package is bundled
     "skills_agent": False,           # Opt-in: reusable skill scripts
-    "trading_agent": False,          # Opt-in when the sibling package is bundled
     "education_agent": False,        # Opt-in: learning workspace
     "tasks_agent": True,
     "voice_training_agent": False,   # Opt-in: local voice datasets and TTS training
@@ -120,19 +114,11 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "mac_security_agent": False,     # Opt-in: macOS-only local security telemetry
 }
 
-# Sibling agents remain opt-in and are accepted by compiled servers only when
-# the build manifest confirms that their modules were actually bundled.
-PRIVATE_AGENT_PACKAGE_NAMES: frozenset[str] = frozenset(
-    {
-        "cloudflare_agent",
-        "ionos_agent",
-        "ionos_cloudflare_agent",
-        "mail_agent",
-        "robinhood_agent",
-        "trading_agent",
-    }
-)
-BUILTIN_AGENT_PACKAGE_NAMES = frozenset(DEFAULT_AGENT_INSTALL_STATES.keys()) - PRIVATE_AGENT_PACKAGE_NAMES
+# The agents this repository ships. Any other agent package (one a checkout
+# holding this repository adds, or one scaffolded at runtime) is an overlay: it
+# is discovered on disk, starts uninstalled, and a compiled server accepts it
+# only when the build manifest confirms its modules were actually bundled.
+BUILTIN_AGENT_PACKAGE_NAMES = frozenset(DEFAULT_AGENT_INSTALL_STATES.keys())
 
 
 def _load_packaged_sibling_agent_names() -> frozenset[str]:
@@ -157,9 +143,6 @@ def _compiled_agent_names() -> frozenset[str]:
 
 
 def runtime_install_block_reason(raw_name: Optional[str]) -> str:
-    normalized = normalize_agent_package_name(raw_name)
-    if normalized in PRIVATE_AGENT_PACKAGE_NAMES:
-        return f"{normalized} is a private agent package and is not included in this packaged build."
     return (
         "Workspace draft only. Installed AutoYou only loads packaged built-in agents, "
         "so this draft stays editable here but cannot be installed or tested in this app."

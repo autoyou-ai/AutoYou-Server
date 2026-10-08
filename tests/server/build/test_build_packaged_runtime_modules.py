@@ -469,12 +469,12 @@ def test_runtime_module_plan_excludes_workspace_only_custom_agents(tmp_path):
 
 
 def test_runtime_module_plan_includes_mac_security_agent(tmp_path):
-    """mac_security_agent is no longer a private package, so it must ship.
+    """mac_security_agent is a built-in, so it must ship.
 
     The shipped-agent allowlist is derived from BUILTIN_AGENT_PACKAGE_NAMES,
-    which is DEFAULT_AGENT_INSTALL_STATES minus PRIVATE_AGENT_PACKAGE_NAMES.
-    With no private agents, a declared agent that is installable at runtime
-    must also have its sources and assets in the packaged build -- otherwise
+    which is exactly DEFAULT_AGENT_INSTALL_STATES. A declared agent that is
+    installable at runtime must also have its sources and assets in the
+    packaged build -- otherwise
     the runtime would advertise an agent whose files were never compiled in.
     """
     _populate_required_runtime_sources(tmp_path)

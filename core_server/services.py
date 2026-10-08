@@ -3052,10 +3052,12 @@ def _managed_frontend_runtime_specs() -> Dict[str, Dict[str, Any]]:
             if agent_name in specs:
                 continue
             for search_root in (workspace_root, runtime._AUTOYOU_AGENTS_ROOT):
-                agent_dir = search_root / agent_name
-                manifest = runtime.load_frontend_manifest(agent_dir)
+                manifest = runtime.load_frontend_manifest(search_root / agent_name)
                 if not manifest or not manifest.get("requires_proxy_registration", False):
                     continue
+                # A package on autoyou_agents' import path outside both roots (an
+                # overlay agent) is found through its package; its manifest says where.
+                agent_dir = Path(str(manifest.get("website_root") or search_root / agent_name / "website")).parent
                 if not runtime._agent_frontend_backend_app_exists(agent_dir):
                     continue
                 recommended_port = manifest.get("recommended_port")
