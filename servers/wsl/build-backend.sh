@@ -241,7 +241,11 @@ if include_tuning_enabled && [[ ! -f "$TUNING_REQUIREMENTS_FILE" ]]; then
     echo "AUTOYOU_INCLUDE_TUNING requested, but requirements/tuning.txt is missing." >&2
     exit 1
 fi
-"$PYTHON_CMD" "$REALTIMESTT_RUNTIME_INSTALLER"
+if "$PYTHON_CMD" -c "import importlib.metadata; importlib.metadata.distribution('RealtimeSTT')" >/dev/null 2>&1; then
+    "$PYTHON_CMD" "$REALTIMESTT_RUNTIME_INSTALLER" --patch-only
+else
+    "$PYTHON_CMD" "$REALTIMESTT_RUNTIME_INSTALLER"
+fi
 
 if [[ "$INSTALL_BUILD_DEPS" == true ]]; then
     "$PYTHON_CMD" -m pip install --upgrade 'pip>=26.1.2,<27'
@@ -320,8 +324,12 @@ install_node_service_deps() {
             echo "Missing package-lock.json for node/${svc}." >&2
             exit 1
         }
-        echo "Installing locked npm dependencies for ${svc}..."
-        (cd "$svc_dir" && "$npm_cmd" ci --omit=dev)
+        if [[ -d "${svc_dir}/node_modules" && -n "$(ls -A "${svc_dir}/node_modules" 2>/dev/null)" ]]; then
+            echo "Using existing node_modules for ${svc}..."
+        else
+            echo "Installing locked npm dependencies for ${svc}..."
+            (cd "$svc_dir" && "$npm_cmd" ci --omit=dev)
+        fi
     done
 }
 
@@ -335,7 +343,10 @@ bundle_node_runtime() {
     esac
     node_tarball="node-v${node_version}-linux-${node_arch}.tar.xz"
     node_url="https://nodejs.org/dist/v${node_version}/${node_tarball}"
-    node_cache="${BUILD_ROOT}/node-cache"
+    node_cache="${AUTOYOU_NODE_CACHE_DIR:-${HOME}/.cache/node-cache}"
+    if [[ ! -f "${node_cache}/${node_tarball}" ]]; then
+        node_cache="${BUILD_ROOT}/node-cache"
+    fi
     node_archive="${node_cache}/${node_tarball}"
     node_checksums="${node_cache}/SHASUMS256.txt"
     node_bundle="${BUILD_ROOT}/node-runtime"
@@ -343,7 +354,9 @@ bundle_node_runtime() {
     if [[ ! -f "$node_archive" ]]; then
         curl -fsSL "$node_url" -o "$node_archive"
     fi
-    curl -fsSL "https://nodejs.org/dist/v${node_version}/SHASUMS256.txt" -o "$node_checksums"
+    if [[ ! -f "$node_checksums" ]]; then
+        curl -fsSL "https://nodejs.org/dist/v${node_version}/SHASUMS256.txt" -o "$node_checksums"
+    fi
     node_sha="$(awk -v name="$node_tarball" '$2 == name { print $1; exit }' "$node_checksums")"
     [[ -n "$node_sha" ]] || { echo "Node.js checksum missing for $node_tarball." >&2; exit 1; }
     printf '%s  %s\n' "$node_sha" "$node_archive" | sha256sum -c -
