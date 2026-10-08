@@ -340,6 +340,11 @@ from shared.audio_playback_settings import (
     set_audio_playback_enabled_env,
 )
 from shared.cloud_entitlements_client import CloudEntitlementsClient
+from shared.lan_direct_access import (
+    REDEEM_PATH as LAN_PASS_REDEEM_PATH,
+    DevicePassStore,
+    spki_sha256_b64,
+)
 from shared.pairing_response import parse_otp_response_payload
 from shared.shared_device_pairing import (
     pairing_auth_profile as _device_pairing_auth_profile,
@@ -3933,18 +3938,40 @@ HOME_NETWORK_WEBSITES_MODES = ("path_proxy", "direct_forward")
 
 
 def _home_network_websites_mode(cfg: Optional[Dict[str, Any]] = None) -> str:
-    """Which home-network website route applies, defaulting to the safest one.
+    """Which home-network website route applies.
 
-    An operator who turns the home network on gets ``path_proxy``. A launcher
-    that forces the bind host (Docker, ``--host``) keeps the websites port on
-    that bind, as before, unless the saved setting says otherwise.
+    ``direct_forward`` is the default: the websites port listens on the home
+    network, but every request from another device needs a device pass (a
+    Local Pair device gets one over its data channel, a browser by signing in
+    to the admin page), so it is as closed as the admin sign-in and much faster
+    for paired phones. ``path_proxy`` keeps the websites port on this computer.
     """
     base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
     server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
     explicit = str(server_cfg.get("home_network_websites") or "").strip().lower()
     if explicit in HOME_NETWORK_WEBSITES_MODES:
         return explicit
-    return "path_proxy" if _home_network_access_enabled(base_cfg) else "direct_forward"
+    return "direct_forward"
+
+
+def _vpn_addresses_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """Whether this computer also serves its VPN (Tailscale, 100.64.0.0/10) addresses.
+
+    Opt-in: those addresses are added to the HTTPS certificate, offered to
+    Local Pair devices for direct websites, and accepted as Local Pair peers.
+    """
+    base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
+    return _normalize_config_bool(server_cfg.get("vpn_addresses"), False)
+
+
+def _peer_on_home_network(peer_host: str, cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """A private-network peer, or a VPN peer when the operator allowed VPN addresses."""
+    if _csrf_peer_is_private_or_loopback(peer_host or ""):
+        return True
+    from shared.local_tls import is_vpn_address
+
+    return _vpn_addresses_enabled(cfg) and is_vpn_address(peer_host)
 
 
 def _page_service_bind_host(cfg: Optional[Dict[str, Any]] = None) -> str:
@@ -4065,19 +4092,20 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
     address = _primary_lan_address() if live else ""
     admin_urls: List[str] = []
     websites_urls: List[str] = []
-    if address:
+    vpn_addresses: List[str] = []
+    if live and _vpn_addresses_enabled(base_cfg):
+        from shared.local_tls import _local_ip_addresses, is_vpn_address
+
+        vpn_addresses = [ip for ip in _local_ip_addresses(include_vpn=True) if is_vpn_address(ip)]
+    for host_address in [address, *vpn_addresses] if address else vpn_addresses:
         # Plain-HTTP admin sign-in is refused from the network, so only an
-        # HTTPS admin address is worth handing to another device - and in
-        # path_proxy mode the website apps live behind that same sign-in.
+        # HTTPS admin address is worth handing to another device. A browser
+        # there reaches the website apps by signing in once: the admin page
+        # then hands it a device pass for the websites port (or, with website
+        # apps behind the sign-in, shows them on the admin port itself).
         if admin_https_live:
-            admin_urls.append(f"https://{address}:{_https_port(base_cfg)}/")
-        if websites_port_open:
-            if page_https_port:
-                websites_urls.append(f"https://{address}:{page_https_port}/websites")
-            else:
-                websites_urls.append(f"http://{address}:{_get_autoyou_page_service_port(base_cfg)}/websites")
-        elif admin_https_live:
-            websites_urls.append(f"https://{address}:{_https_port(base_cfg)}/websites")
+            admin_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/")
+            websites_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/home-network/websites")
     secure_everywhere = admin_https_live and (page_https_port or not websites_port_open)
     return {
         "enabled": live,
@@ -4097,6 +4125,10 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "remote_access_role": _get_remote_browser_access_role(base_cfg),
         "allow_remote_admin_permissions": _allow_remote_admin_permissions(base_cfg),
         "allow_remote_admin_permissions_next_boot": _normalize_config_bool(server_cfg.get("allow_remote_admin_permissions"), False),
+        # Local Pair devices load website apps straight from the HTTPS mirror.
+        "direct_websites": bool(websites_port_open and page_https_port),
+        "vpn_addresses": _vpn_addresses_enabled(base_cfg),
+        "vpn_address_list": vpn_addresses,
     }
 
 
@@ -8401,7 +8433,8 @@ _REMOTE_BROWSER_PROTECTED_CONFIG: Dict[str, Optional[Set[str]]] = {
     "admin_frontend": None,
     "tunnelmole": None,
     "mcp": None,
-    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled", "allow_remote_admin_permissions"},
+    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled",
+               "allow_remote_admin_permissions", "vpn_addresses"},
     "autoyou_page": {"remote_access_role"},
     "ai_agent": {"lan_access_enabled"},
 }
@@ -13223,6 +13256,9 @@ def _apply_admin_ui_config_patch(
         if "discovery_enabled" in server_payload:
             server_cfg["discovery_enabled"] = _normalize_config_bool(server_payload.get("discovery_enabled"), True)
             touched_sections.add("server")
+        if "vpn_addresses" in server_payload:
+            server_cfg["vpn_addresses"] = _normalize_config_bool(server_payload.get("vpn_addresses"), False)
+            touched_sections.add("server")
         if "https_port" in server_payload:
             try:
                 _https_port_value = int(str(server_payload.get("https_port")).strip())
@@ -13852,7 +13888,7 @@ def _local_pair_network_error(request: Request, *, count_attempt: bool = True) -
     peer = request.client.host if request.client else ""
     if _request_forwarded_from_elsewhere(request) or _request_via_remote_browser_proxy(request):
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    if not _csrf_peer_is_private_or_loopback(peer or ""):
+    if not _peer_on_home_network(peer or ""):
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     mode = get_security_mode()
     if mode != "secure" and not _is_secure_professional_mode(mode):
@@ -13874,6 +13910,97 @@ def _local_pair_network_error(request: Request, *, count_attempt: bool = True) -
             status_code=429,
         )
     return None
+
+# ── Direct websites for Local Pair devices ───────────────────────────────────
+# A Local Pair device on the home network can load this computer's websites
+# straight from the page service's HTTPS mirror instead of through its data
+# channel. It asks over the data channel (already CPace-authenticated) and gets
+# the mirror's certificate key to pin plus a one-time code it redeems on the
+# mirror for an HttpOnly device-pass cookie. See shared/lan_direct_access.py.
+DIRECT_LAN_PASSES = DevicePassStore()
+
+
+def _direct_lan_epoch() -> str:
+    """Bound into every pass: changing the password or security mode ends them all."""
+    password = str(get_current_password() or "")
+    if not password:
+        return ""
+    material = f"autoyou-device-pass-v1\0{password}\0{get_security_mode()}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
+
+
+_SAFE_REDIRECT_HOSTNAME = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+
+def _safe_redirect_host(host: str) -> bool:
+    """An IP literal or a plain hostname, safe to put in a redirect URL."""
+    value = str(host or "").strip().strip("[]")
+    if not value:
+        return False
+    try:
+        import ipaddress
+
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return bool(_SAFE_REDIRECT_HOSTNAME.fullmatch(value))
+
+
+def _direct_lan_websites_target() -> Tuple[Optional[Any], Optional[int], str]:
+    """The page service and HTTPS mirror port direct websites use, or why there are none."""
+    if _bind_host_is_loopback(SERVER_BIND_HOST):
+        return None, None, "This computer is not shared on the home network."
+    if _home_network_websites_mode() != "direct_forward":
+        return None, None, "Website apps are kept behind the admin sign-in on this computer."
+    service = get_autoyou_page_service() if AUTOYOU_PAGE_SERVICE_AVAILABLE else None
+    page_https_port = _page_service_https_port_live()
+    if service is None or not page_https_port or _bind_host_is_loopback(getattr(service, "host", "")):
+        return None, None, "This computer does not serve its websites over HTTPS on the home network."
+    return service, page_https_port, ""
+
+
+def _direct_lan_offer(session_id: Any) -> Dict[str, Any]:
+    """What a connected device needs to open websites directly, sent over its data channel."""
+
+    def unavailable(reason: str) -> Dict[str, Any]:
+        return {"available": False, "reason": reason}
+
+    engine = WEBRTC
+    session = str(session_id or "").strip()
+    try:
+        identity = engine._resolve_chat_identity(session)
+    except Exception:
+        identity = None
+    transport = str(getattr(identity, "transport", "") or "").strip().lower()
+    owner_key = engine._owner_key_from_identity(identity) if identity is not None else ""
+    if transport != "local" or not owner_key:
+        return unavailable("Direct websites are for devices connected with Local Pair.")
+    if engine._same_machine_audio_session(session) or engine.device_ownership_for_session(session) == DEVICE_OWN:
+        return unavailable("This device is the computer itself and already opens websites locally.")
+    service, page_https_port, reason = _direct_lan_websites_target()
+    if reason:
+        return unavailable(reason)
+    epoch = _direct_lan_epoch()
+    if not epoch:
+        return unavailable("This computer is locked.")
+    try:
+        pin = spki_sha256_b64(getattr(service, "ssl_certfile", "") or "")
+    except Exception as exc:
+        LOGGER.warning("Direct websites: could not read the HTTPS certificate: %s", exc)
+        return unavailable("This computer's HTTPS certificate is not readable.")
+    code = DIRECT_LAN_PASSES.issue_code(owner_key, epoch=epoch)
+    return {
+        "available": True,
+        "https_port": int(page_https_port),
+        "spki_sha256": pin,
+        "code": code,
+        "redeem_path": LAN_PASS_REDEEM_PATH,
+        "health_path": "/health",
+        "code_ttl_seconds": DIRECT_LAN_PASSES.code_ttl_seconds,
+        "pass_ttl_seconds": DIRECT_LAN_PASSES.pass_ttl_seconds,
+        "vpn_addresses": _vpn_addresses_enabled(),
+    }
+
 
 def _require_loopback_or_token(request: Request) -> Optional[JSONResponse]:
     """Allow requests that originate from loopback OR carry the internal AI agent token."""

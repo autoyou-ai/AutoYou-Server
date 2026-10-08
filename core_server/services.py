@@ -579,7 +579,7 @@ def run_agent_server(host: str, port: int, agent_dir: str, env_vars: dict):
                 try:
                     from shared import local_tls
 
-                    tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+                    tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
                     lan_https_port = int(os.getenv("AUTOYOU_AI_AGENT_LAN_HTTPS_PORT", "8481"))
                     https_config = uvicorn.Config(
                         agent_app,
@@ -3377,7 +3377,7 @@ async def start_autoyou_page_service_background():
         if runtime._https_enabled(runtime.STATE.config):
             try:
                 from shared import local_tls
-                _tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+                _tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
                 page_https_port = int(autoyou_config.get("page_https_port") or autoyou_config.get("https_port_override") or (int(port) + 300))
                 if runtime.is_port_in_use(page_https_port, host="127.0.0.1"):
                     runtime.LOGGER.warning(
@@ -3889,7 +3889,7 @@ async def main():
     if runtime._https_enabled(runtime.STATE.config):
         try:
             from shared import local_tls
-            tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+            tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
             https_port = runtime._https_port(runtime.STATE.config)
             if runtime.is_port_in_use(https_port, host=probe_host):
                 runtime.LOGGER.warning(

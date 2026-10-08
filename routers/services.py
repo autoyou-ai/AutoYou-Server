@@ -18,7 +18,7 @@ import re
 from typing import Any, Callable, Dict
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-9199bb88fee39eb4b5dfd402"
 
@@ -96,6 +96,44 @@ def register_routes(
         if auth_error:
             return auth_error
         return server._json_response_no_store(server._build_browser_status_payload())
+
+    @admin_app.get("/home-network/websites")
+    async def home_network_websites(request: Request):
+        """Open the website apps from a browser on another device, after signing in.
+
+        That browser has no data channel, so the signed-in admin page hands it a
+        one-time code for the websites port's HTTPS mirror, which turns it into
+        a device-pass cookie. On this computer itself the websites port needs no
+        pass; with website apps kept behind the sign-in they open here directly.
+        """
+        redir = server._require_login(request)
+        if redir:
+            return redir
+        if server._request_via_remote_browser_proxy(request) or server._request_forwarded_from_elsewhere(request):
+            return JSONResponse({"success": False, "error": "Open this on the computer or from a browser on its home network."}, status_code=403)
+        peer = request.client.host if request.client else ""
+        if server._is_loopback_client_host(peer):
+            port = server._get_autoyou_page_service_port(server.STATE.config or {})
+            return RedirectResponse(url=f"http://127.0.0.1:{int(port)}/websites", status_code=303)
+        service, page_https_port, reason = server._direct_lan_websites_target()
+        if reason:
+            if server._home_network_websites_mode() != "direct_forward":
+                return RedirectResponse(url="/websites", status_code=303)
+            return JSONResponse({"success": False, "error": reason}, status_code=409)
+        if str(request.url.scheme or "").lower() != "https":
+            return JSONResponse({"success": False, "error": "Sign in over HTTPS first."}, status_code=403)
+        epoch = server._direct_lan_epoch()
+        host = str(request.url.hostname or "").strip()
+        if not epoch or not server._safe_redirect_host(host):
+            return JSONResponse({"success": False, "error": "This address cannot be used for website apps."}, status_code=400)
+        sid = request.cookies.get("admin_session", "")
+        device_key = "browser:" + hashlib.sha256(f"{peer}\0{sid}".encode("utf-8")).hexdigest()[:24]
+        code = server.DIRECT_LAN_PASSES.issue_code(device_key, epoch=epoch)
+        authority = f"[{host}]" if ":" in host else host
+        return RedirectResponse(
+            url=f"https://{authority}:{int(page_https_port)}{server.LAN_PASS_REDEEM_PATH}?code={code}&next=/websites",
+            status_code=303,
+        )
 
     @admin_app.get("/api/v1/server-config")
     async def browser_server_config_endpoint(request: Request):

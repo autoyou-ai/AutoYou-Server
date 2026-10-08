@@ -55,6 +55,7 @@ from shared.remote_access_policy import (
     remote_access_denial_message,
     remote_http_request_allowed,
 )
+from shared.lan_direct_access import PASS_COOKIE_NAME, REDEEM_PATH, safe_next_path
 from shared.request_logging import install_route_aware_request_logging
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
 from shared.url_safety import (
@@ -104,6 +105,19 @@ TRUST_NETWORK_PEERS_ENV = "AUTOYOU_PAGE_TRUST_NETWORK_PEERS"
 _THIS_COMPUTER_PEERS = {"127.0.0.1", "::1", "localhost", "testclient"}
 _AGENT_PATH = re.compile(r"^/agent/([A-Za-z0-9_-]{1,100})(?:/|$)")
 _REDIRECT_HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+_DEVICE_PASS_REQUIRED_PAGE = (
+    "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+    "<title>AutoYou</title><body style=\"font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem\">"
+    "<h1>Open this from AutoYou</h1><p>These website apps open for devices paired with this computer. "
+    "Open them from the AutoYou app, or sign in to this computer's admin page and choose Website apps.</p></body>"
+)
+_DEVICE_PASS_EXPIRED_PAGE = (
+    "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+    "<title>AutoYou</title><body style=\"font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem\">"
+    "<h1>This link has expired</h1><p>It works once, for a minute. Open the website apps again from the "
+    "AutoYou app or the admin page.</p></body>"
+)
 
 def _no_store_html_response(content: str, status_code: int = 200) -> HTMLResponse:
   response = HTMLResponse(content=content, status_code=status_code)
@@ -200,6 +214,48 @@ class AutoYouPageService:
             value = None
         return normalize_remote_access_role(value)
 
+    @staticmethod
+    def _device_pass_backend():
+        """The running server's pass store and epoch, or (None, "") to refuse everyone."""
+        server_module = sys.modules.get("server")
+        store = getattr(server_module, "DIRECT_LAN_PASSES", None)
+        epoch_of = getattr(server_module, "_direct_lan_epoch", None)
+        try:
+            epoch = str(epoch_of() or "") if callable(epoch_of) else ""
+        except Exception:
+            epoch = ""
+        return (store, epoch) if store is not None and epoch else (None, "")
+
+    def _device_pass_valid(self, cookies: Any) -> bool:
+        """Whether a request from another device carries a live device-pass cookie."""
+        store, epoch = self._device_pass_backend()
+        if store is None:
+            return False
+        return store.validate(str((cookies or {}).get(PASS_COOKIE_NAME) or ""), epoch=epoch) is not None
+
+    def _redeem_device_pass(self, request: Request) -> Response:
+        """Turn a one-time code from the data channel or admin page into a pass cookie."""
+        if request.url.scheme != "https":
+            return JSONResponse({"success": False, "error": "Device passes are only issued over HTTPS."}, status_code=403)
+        store, epoch = self._device_pass_backend()
+        redeemed = store.redeem(str(request.query_params.get("code") or ""), epoch=epoch) if store is not None else None
+        if redeemed is None:
+            return HTMLResponse(_DEVICE_PASS_EXPIRED_PAGE, status_code=401, headers={"Cache-Control": "no-store"})
+        token, issued = redeemed
+        response = RedirectResponse(url=safe_next_path(str(request.query_params.get("next") or "")), status_code=303)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.set_cookie(
+            PASS_COOKIE_NAME,
+            token,
+            max_age=max(60, int(store.pass_ttl_seconds)),
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="strict",
+        )
+        return response
+
     def _https_mirror_configured(self) -> bool:
         return bool(self.https_port and self.ssl_certfile and self.ssl_keyfile)
 
@@ -220,11 +276,21 @@ class AutoYouPageService:
     @staticmethod
     def _home_network_identity_headers(raw_headers: Any, role: str, path: str) -> list:
         """ASGI headers with any browser-supplied identity dropped and AutoYou's own stamped."""
-        kept = [
-            (key, value)
-            for key, value in raw_headers
-            if key.decode("latin-1").lower() not in REMOTE_BROWSER_IDENTITY_HEADERS
-        ]
+        kept = []
+        for key, value in raw_headers:
+            name = key.decode("latin-1").lower()
+            if name in REMOTE_BROWSER_IDENTITY_HEADERS:
+                continue
+            if name == "cookie":
+                # The device pass is this service's own; agent backends never see it.
+                parts = [
+                    part for part in value.decode("latin-1").split(";")
+                    if part.strip() and part.split("=", 1)[0].strip() != PASS_COOKIE_NAME
+                ]
+                if not parts:
+                    continue
+                value = ";".join(parts).strip().encode("latin-1")
+            kept.append((key, value))
         kept.append((REMOTE_BROWSER_HEADER.lower().encode("latin-1"), REMOTE_BROWSER_VIA_HOME_NETWORK.encode("latin-1")))
         kept.append((b"x-autoyou-remote-access-role", role.encode("latin-1")))
         # A browser on another device has no account pairing: always shared.
@@ -780,6 +846,9 @@ class AutoYouPageService:
             if websocket.url.scheme != "wss" and self._https_mirror_configured():
                 await websocket.close(code=1008, reason="Use HTTPS on the home network")
                 return
+            if not self._device_pass_valid(websocket.cookies):
+                await websocket.close(code=1008, reason="Open this from the AutoYou app or the admin sign-in")
+                return
             home_network_role = self._remote_access_role()
             if not remote_http_request_allowed(home_network_role, "GET", websocket.url.path, websocket=True):
                 await websocket.close(
@@ -1033,6 +1102,15 @@ class AutoYouPageService:
                     },
                     status_code=403,
                 )
+            if path == "/health" and method in {"GET", "HEAD"}:
+                # Liveness only: lets a paired app check its pinned HTTPS route.
+                return await call_next(request)
+            if path == REDEEM_PATH:
+                return self._redeem_device_pass(request)
+            # Being on the Wi-Fi is not being paired: another device needs the
+            # device pass a paired app or the admin sign-in handed it.
+            if not self._device_pass_valid(request.cookies):
+                return HTMLResponse(_DEVICE_PASS_REQUIRED_PAGE, status_code=401, headers={"Cache-Control": "no-store"})
             role = self._remote_access_role()
             if not remote_http_request_allowed(role, method, path):
                 return JSONResponse(
