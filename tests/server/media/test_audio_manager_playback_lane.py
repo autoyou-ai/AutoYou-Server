@@ -14,7 +14,7 @@ which makes the two roles share one `TTSAudioStreamTrack`.
 On a shared lane every `stop_speaking()` caller (VAD barge-in via
 `on_recording_start`, the client `stop_tts` event, background-audio suppression)
 would clear the queue and silently kill a song the caller explicitly started -
-the documented rule in `.llm/flows/voice.md` is that `stop_speaking()` clears
+the rule is that `stop_speaking()` clears
 only reply speech and the media controls target only file playback.
 """
 

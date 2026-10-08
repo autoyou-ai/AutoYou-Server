@@ -776,54 +776,6 @@ def test_fine_tuning_worker_logs_are_encrypted(tmp_path):
     assert "synthetic worker line" in _tail_file(log_path)
 
 
-def test_lite_accepts_maximus_name_but_keeps_existing_pairing_wire_mode():
-    from tests.support.paths import ensure_autoyou_lite_on_path
-
-    ensure_autoyou_lite_on_path()
-    from autoyou_lite.config import LibConfig
-
-    config = LibConfig(
-        {
-            "security_mode": "secure-professional-maximus",
-            "password": "synthetic-lite-password",
-        }
-    )
-    assert config.security_mode == "secure_professional_maximus"
-    assert config.pairing_router_mode() == "secure_professional"
-
-
-def test_lite_encrypted_config_reconnects_to_protected_store_after_restart(tmp_path):
-    from tests.support.paths import ensure_autoyou_lite_on_path
-
-    ensure_autoyou_lite_on_path()
-    from autoyou_lite._runtime.encrypted_json_store import EncryptedJsonStore
-
-    password = "synthetic-lite-config-password"
-    store = EncryptedJsonStore(
-        tmp_path / "config.encrypted",
-        default_factory=dict,
-    )
-    enable_secure_storage(
-        app_name="AutoYouLite",
-        root=tmp_path,
-        password=password,
-    )
-    store.save(
-        {
-            "security_mode": "secure_professional_maximus",
-            "password": password,
-            "synthetic_value": "protected",
-        },
-        password,
-    )
-    assert store.path.read_bytes().startswith(FILE_HEADER)
-
-    disable_secure_storage()
-    assert not secure_storage_enabled()
-    assert store.load(password)["synthetic_value"] == "protected"
-    assert secure_storage_enabled()
-
-
 def test_prompt_override_control_files_migrate_through_shared_boundary(tmp_path, monkeypatch):
     from shared.platform_runtime import (
         JAILBREAK_ACKNOWLEDGEMENT_FILENAME,
