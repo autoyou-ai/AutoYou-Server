@@ -75,6 +75,7 @@ When building AI applications, specialized agents, or web frontends with tools l
 | Capability | What's included |
 | :--- | :--- |
 | **Local AI & Inference** | Integrated Ollama helpers, local GGUF/Hugging Face model support, and cloud provider fallbacks. |
+| **Multi-Harness Agents** | Connect different agent harnesses: Google ADK native agents, OpenClaw, Hermes Agent, and Odysseus. |
 | **Local Intent Router** | High-speed, on-device classifier routing commands locally without external network calls. |
 | **Real-time Voice & Video** | Full WebRTC media engine, fast STT (Whisper), neural TTS, and room call presence. |
 | **Browser & Web Agents** | Headless browser execution via Playwright for autonomous research and web automation. |
@@ -183,15 +184,16 @@ the current dependency review.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
-  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your apps connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link, with Auto-Pair messages carried by Telegram, Signal or WhatsApp. The server's intent router feeds a Google ADK agent harness (AutoYou agents, OpenClaw, Hermes Agent) alongside Agent Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers." width="100%">
+  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your apps connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link, with Auto-Pair messages carried by Telegram, Signal or WhatsApp. The server's intent router connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged harnesses for OpenClaw, Hermes Agent, and Odysseus—alongside Agent Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers." width="100%">
 </picture>
 
 - **Pair.** Auto-Pair exchanges an encrypted pairing message through a Telegram, Signal or WhatsApp workflow
   you set up, or over your local network.
 - **Connect.** Your apps reach the server over an end-to-end encrypted WebRTC link for chat, voice and video.
   Agent Apps ride the same link as HTTP over the SCTP data channel to a small web server inside the phone app.
-- **Think.** A Google ADK harness runs the built-in AutoYou agents and bridges OpenClaw and Hermes Agent.
-  LiteLLM sends model calls to Ollama on your machine, or to a cloud provider only if you add one.
+- **Think.** The unified intent router connects different agent harnesses: Google ADK powers the native
+  AutoYou agents, while bridged harnesses integrate OpenClaw, Hermes Agent, and Odysseus. LiteLLM routes
+  model calls locally to Ollama on your machine or to optional cloud providers.
 - **Listen, speak, remember.** faster-whisper transcribes, system voices speak (EmotiVoice is optional), and
   memory lives in SQLite (Cognee is optional).
 - **On the phone.** Chat on-device with LFM2.5 350M, Apple Intelligence on iPhone, or Gemini Nano on supported
