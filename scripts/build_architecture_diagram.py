@@ -75,9 +75,10 @@ def build(theme: str) -> str:
     add('<title id="t">AutoYou architecture</title>')
     add('<desc id="d">Your phone, laptop and browser connect to the AutoYou Server on your own computer over an '
         'end-to-end encrypted WebRTC link. Telegram, Signal or WhatsApp carry the encrypted Auto-Pair message. '
+        'MCP clients (Cursor, Claude, Codex, Antigravity) connect through the MCP bridge. '
         'The server connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged '
-        'harnesses for OpenClaw, Hermes Agent, and Odysseus, with Agent Apps, local voice, memory and models through '
-        'LiteLLM to Ollama or optional cloud providers.</desc>')
+        'harnesses for OpenClaw, Hermes Agent, and Odysseus—with Agent Apps (and other optional web servers), '
+        'local voice, memory and models through LiteLLM to Ollama or optional cloud providers.</desc>')
     add('<defs>'
         f'<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="{c["shadow"]}"/></filter>'
         f'<marker id="arr" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="{c["teal"]}"/></marker>'
@@ -101,7 +102,7 @@ def build(theme: str) -> str:
     chip(64, 274, 280, 84, "Local web server", ["Shows your Agent Apps", "inside the phone app"], c["blue"], c["blue_bg"])
 
     # left: MCP clients
-    card(48, 414, 312, 84, "MCP clients", ["Cursor · Claude"], c["gray_stroke"])
+    card(48, 414, 312, 84, "MCP clients", ["Cursor · Claude", "Codex · Antigravity"], c["gray_stroke"])
 
     # middle connectors
     # WebRTC (thick)
@@ -132,6 +133,7 @@ def build(theme: str) -> str:
 
     # services 2x2
     card(808, 304, 206, 90, "Agent Apps", ["Web apps your agents build"], c["green"])
+    badge(818, 362, 186, "+ Other web servers (optional)")
     card(1030, 304, 206, 90, "Local voice", ["faster-whisper · system TTS"], c["green"])
     badge(1046, 362, 168, "+ EmotiVoice (optional)")
     card(808, 410, 206, 98, "Memory", ["SQLite by default"], c["green"])

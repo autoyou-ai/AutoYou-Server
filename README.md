@@ -61,7 +61,7 @@ No network port-forwarding gymnastics. No forced cloud telemetry. Your data stay
 
 ## Your one-stop devserver: Build apps & cut token costs
 
-When building AI applications, specialized agents, or web frontends with tools like Cursor, Claude, or ChatGPT, developers often waste tens of thousands of tokens prompting LLMs to generate standard plumbing—WebRTC signaling, session auth, encrypted keystores, SQLite memory pools, audio streaming pipelines, and secure mobile tunneling.
+When building AI applications, specialized agents, or web frontends with tools like Cursor, Claude, Codex, Antigravity, or ChatGPT, developers often waste tens of thousands of tokens prompting LLMs to generate standard plumbing—WebRTC signaling, session auth, encrypted keystores, SQLite memory pools, audio streaming pipelines, and secure mobile tunneling.
 
 **AutoYou Server already has all of this built, integrated, and verified out of the box.**
 
@@ -79,7 +79,7 @@ When building AI applications, specialized agents, or web frontends with tools l
 | **Local Intent Router** | High-speed, on-device classifier routing commands locally without external network calls. |
 | **Real-time Voice & Video** | Full WebRTC media engine, fast STT (Whisper), neural TTS, and room call presence. |
 | **Browser & Web Agents** | Headless browser execution via Playwright for autonomous research and web automation. |
-| **Model Context Protocol** | Built-in MCP bridge allowing Claude, Cursor, and IDE tools to tap directly into server agents. |
+| **Model Context Protocol** | Built-in MCP bridge allowing Cursor, Claude, Codex, Antigravity, and IDE tools to tap directly into server agents. |
 | **Messaging Connectors** | Owner-controlled Telegram, Signal, and WhatsApp companion services. |
 | **P2P Encrypted Peer Link** | Libsodium-encrypted data channels for remote pairing without exposing open router ports. |
 | **Admin Console & Workbench** | Single-page local UI for real-time monitoring, agent configuration, and live camera/audio feeds. |
@@ -184,13 +184,15 @@ the current dependency review.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.png">
-  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your apps connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link, with Auto-Pair messages carried by Telegram, Signal or WhatsApp. The server's intent router connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged harnesses for OpenClaw, Hermes Agent, and Odysseus—alongside Agent Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers." width="100%">
+  <img src="docs/images/architecture-light.png" alt="AutoYou architecture: your apps connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link, with Auto-Pair messages carried by Telegram, Signal or WhatsApp. MCP clients (Cursor, Claude, Codex, Antigravity) connect through the MCP bridge. The server's intent router connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged harnesses for OpenClaw, Hermes Agent, and Odysseus—alongside Agent Apps (and other optional web servers), local voice, memory and models through LiteLLM to Ollama or optional cloud providers." width="100%">
 </picture>
 
 - **Pair.** Auto-Pair exchanges an encrypted pairing message through a Telegram, Signal or WhatsApp workflow
   you set up, or over your local network.
 - **Connect.** Your apps reach the server over an end-to-end encrypted WebRTC link for chat, voice and video.
-  Agent Apps ride the same link as HTTP over the SCTP data channel to a small web server inside the phone app.
+  Native MCP clients (Cursor, Claude, Codex, Antigravity) connect directly through the local MCP bridge.
+  Agent Apps ride the same link as HTTP over the SCTP data channel to a small web server inside the phone app,
+  alongside optional other web servers.
 - **Think.** The unified intent router connects different agent harnesses: Google ADK powers the native
   AutoYou agents, while bridged harnesses integrate OpenClaw, Hermes Agent, and Odysseus. LiteLLM routes
   model calls locally to Ollama on your machine or to optional cloud providers.
