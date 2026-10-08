@@ -73,7 +73,7 @@ from dataclasses import replace
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, Awaitable, Set, List, Callable, Iterable, cast
+from typing import Optional, Dict, Any, Tuple, Awaitable, Set, List, Callable, Iterable, Union, cast
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-7c55c878be1e5bbb372fbab5"
 
@@ -3992,7 +3992,25 @@ def _https_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
         return _normalize_config_bool(explicit, False)
     if _get_security_mode_from_cfg(base_cfg) == SECURE_PROFESSIONAL_MAXIMUS_MODE:
         return True
-    return _home_network_access_enabled(base_cfg)
+    return _home_network_access_enabled(base_cfg) or _process_bound_beyond_loopback_on_host()
+
+
+def _running_in_container() -> bool:
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+
+
+def _process_bound_beyond_loopback_on_host() -> bool:
+    """Whether a launcher (``--host 0.0.0.0``) exposed this process to the network.
+
+    The admin sign-in, Local Pair and home-network browsers then cross the
+    network, so HTTPS should be available without a separate opt-in. A container
+    is left alone: its port publishing, not the in-container bind, decides who
+    can reach it (the shipped compose file publishes on host loopback only).
+    """
+    if _running_in_container():
+        return False
+    host = str(SERVER_BIND_HOST or "").strip().lower().strip("[]")
+    return bool(host) and host not in {"127.0.0.1", "localhost", "::1"} and not host.startswith("127.")
 
 
 _PRIMARY_LAN_ADDRESS_CACHE: Dict[str, Any] = {"value": "", "expires": 0.0}
@@ -6656,6 +6674,121 @@ def _shared_device_pairing_auth_profile(
     )
 
 
+# ── Cloud Pair device keys ───────────────────────────────────────────────────
+# AutoYou Cloud delivers each phone's public key with its pairing request, and
+# the per-device pairing secret is derived from it. The cloud is therefore a key
+# directory: whoever controls its responses could substitute a key. This
+# computer pins each device's key on its first successful pair and refuses a
+# different key for that device afterwards; an owner who wants the cloud unable
+# to introduce new devices at all turns on approval.
+CLOUD_DEVICE_KEY_CHANGED_MESSAGE = (
+    "This device's security key does not match the one this computer saved for it. "
+    "If AutoYou was reinstalled on the device, remove it under Cloud Pair devices on "
+    "the computer, then pair again."
+)
+CLOUD_DEVICE_APPROVAL_REQUIRED_MESSAGE = (
+    "This computer only accepts devices its owner approved. Approve this device under "
+    "Cloud Pair devices in AutoYou on the computer, then try again."
+)
+
+
+def _cloud_device_section(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    base = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    cloud_cfg = base.get("cloud") if isinstance(base, dict) else None
+    return cloud_cfg if isinstance(cloud_cfg, dict) else {}
+
+
+def _cloud_device_pins(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+    pins = _cloud_device_section(cfg).get("shared_device_client_pins")
+    return {str(k): v for k, v in pins.items() if isinstance(v, dict)} if isinstance(pins, dict) else {}
+
+
+def _cloud_device_pending(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+    pending = _cloud_device_section(cfg).get("shared_device_pending_devices")
+    return {str(k): v for k, v in pending.items() if isinstance(v, dict)} if isinstance(pending, dict) else {}
+
+
+def _cloud_device_approval_required(cfg: Optional[Dict[str, Any]] = None) -> bool:
+    return _normalize_config_bool(_cloud_device_section(cfg).get("require_device_approval"), False)
+
+
+def _update_cloud_device_state(mutate: Callable[[Dict[str, Any]], None]) -> bool:
+    block_reason = _config_write_block_reason()
+    if block_reason:
+        LOGGER.warning("Cloud Pair device keys not saved: %s", block_reason)
+        return False
+    try:
+        updated = _loaded_config_for_update()
+        mutate(updated.setdefault("cloud", {}))
+        STATE.config = _save_and_reload_state_config(updated)
+        return True
+    except Exception as exc:
+        LOGGER.warning("Cloud Pair device keys not saved: %s", exc)
+        return False
+
+
+def _shared_device_pin_refusal(metadata: Any, client_device_id: str) -> Optional[str]:
+    """Why this computer refuses a cloud-delivered device key, or ``None``."""
+    if not isinstance(metadata, dict):
+        return None
+    device_id = str(client_device_id or "").strip()
+    public_key = str(metadata.get("client_public_key") or "").strip()
+    pin = _cloud_device_pins().get(device_id)
+    if pin is not None:
+        if secrets.compare_digest(str(pin.get("public_key") or ""), public_key):
+            return None
+        LOGGER.warning(
+            "AutoYou Cloud: refused a changed security key for Cloud Pair device %s.", device_id[:6]
+        )
+        return CLOUD_DEVICE_KEY_CHANGED_MESSAGE
+    if not _cloud_device_approval_required():
+        return None
+    pending = _cloud_device_pending()
+    if pending.get(device_id, {}).get("public_key") != public_key:
+        name = str(metadata.get("client_device_name") or "").strip()[:80]
+
+        def _record(cloud_cfg: Dict[str, Any]) -> None:
+            entries = cloud_cfg.get("shared_device_pending_devices")
+            entries = dict(entries) if isinstance(entries, dict) else {}
+            entries[device_id] = {"public_key": public_key, "name": name, "requested_at": int(time.time())}
+            # Keep the queue bounded; the cloud is the party being limited here.
+            for stale in sorted(entries, key=lambda k: entries[k].get("requested_at", 0))[:-20]:
+                entries.pop(stale, None)
+            cloud_cfg["shared_device_pending_devices"] = entries
+
+        _update_cloud_device_state(_record)
+    LOGGER.warning("AutoYou Cloud: device %s is waiting for approval on this computer.", device_id[:6])
+    return CLOUD_DEVICE_APPROVAL_REQUIRED_MESSAGE
+
+
+def _pin_shared_device_client(metadata: Any, client_device_id: str) -> None:
+    """Remember a device's key after it completed a Cloud Pair with this computer."""
+    if not isinstance(metadata, dict):
+        return
+    device_id = str(client_device_id or "").strip()
+    public_key = str(metadata.get("client_public_key") or "").strip()
+    if not device_id or not public_key or device_id in _cloud_device_pins():
+        return
+
+    def _record(cloud_cfg: Dict[str, Any]) -> None:
+        pins = cloud_cfg.get("shared_device_client_pins")
+        pins = dict(pins) if isinstance(pins, dict) else {}
+        pins[device_id] = {
+            "public_key": public_key,
+            "name": str(metadata.get("client_device_name") or "").strip()[:80],
+            "pinned_at": int(time.time()),
+        }
+        cloud_cfg["shared_device_client_pins"] = pins
+        pending = cloud_cfg.get("shared_device_pending_devices")
+        if isinstance(pending, dict) and device_id in pending:
+            pending = dict(pending)
+            pending.pop(device_id, None)
+            cloud_cfg["shared_device_pending_devices"] = pending
+
+    if _update_cloud_device_state(_record):
+        LOGGER.info("AutoYou Cloud: saved the security key of new Cloud Pair device %s.", device_id[:6])
+
+
 def _compose_cloud_relay_message(command: Any, payload: Any, message: Any = "") -> str:
     """Normalize a cloud relay event to the pairing router's wire format.
 
@@ -6765,6 +6898,11 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
     invalid_shared_device_profile = (
         shared_device_metadata is not None and shared_device_profile is None
     )
+    shared_device_pin_refusal = (
+        _shared_device_pin_refusal(shared_device_metadata, str(client_device_id or "").strip())
+        if shared_device_profile is not None
+        else None
+    )
     pairing_sender_id = str(
         event_data.get("sender_id")
         or event.get("sender_id", "")
@@ -6778,12 +6916,14 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
 
     response_payload = ""
     blocked_default_password_pairing = False
-    if invalid_shared_device_profile and command == "/autopair_candidates":
-        LOGGER.warning("AutoYou Cloud: dropped shared-device candidates with invalid key metadata")
+    if (invalid_shared_device_profile or shared_device_pin_refusal) and command == "/autopair_candidates":
+        LOGGER.warning("AutoYou Cloud: dropped shared-device candidates with invalid or refused key metadata")
         return
     try:
         if invalid_shared_device_profile:
             response_payload = _json.dumps({"error": "Computer settings have changed. Scan its setup QR and try again."})
+        elif shared_device_pin_refusal:
+            response_payload = _json.dumps({"error": shared_device_pin_refusal})
         elif command == "/autopair_candidates":
             if pairing_router:
                 await pairing_router.process_message(
@@ -6846,6 +6986,12 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
                     )
                     _cloud_resp = _json.dumps({"error": "Incomplete autopair payload"})
                 response_payload = _cloud_resp or _json.dumps({"error": "No response from pairing router"})
+                if (
+                    shared_device_profile is not None
+                    and command == "/autopair"
+                    and str(response_payload).lstrip().startswith("/autopair_answer")
+                ):
+                    _pin_shared_device_client(shared_device_metadata, str(client_device_id or "").strip())
         elif command in ("/pair", "/pair_hello", "/otp_pair"):
             # OTP-based pair - same router path
             if _cloud_pair_blocked_by_default_password() and shared_device_profile is None:
@@ -6912,6 +7058,7 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
         and pairing_router
         and not blocked_default_password_pairing
         and not invalid_shared_device_profile
+        and not shared_device_pin_refusal
     ):
         asyncio.create_task(
             _drain_cloud_server_ice(
@@ -7236,6 +7383,12 @@ UNAUTHENTICATED_SIGNAL_RATE_LIMITER = RateLimiter(
 AUTOPAIR_RATE_LIMITER = RateLimiter(
     max_requests=_read_rate_limit_env_int("AUTOYOU_AUTOPAIR_RATE_LIMIT_MAX_REQUESTS", 12),
     window_seconds=_read_rate_limit_env_int("AUTOYOU_AUTOPAIR_RATE_LIMIT_WINDOW_SECONDS", 60),
+)
+# Ceiling on unauthenticated Local Pair handshakes across every network peer,
+# so a LAN attacker cannot multiply the per-address limit by rotating addresses.
+LOCAL_PAIR_NETWORK_GLOBAL_RATE_LIMITER = RateLimiter(
+    max_requests=_read_rate_limit_env_int("AUTOYOU_LOCAL_PAIR_GLOBAL_RATE_LIMIT_MAX_REQUESTS", 20),
+    window_seconds=_read_rate_limit_env_int("AUTOYOU_LOCAL_PAIR_GLOBAL_RATE_LIMIT_WINDOW_SECONDS", 60),
 )
 # Distinct, tighter bucket for Secure Professional's online authenticator-code
 # check during /autopair_hello - kept separate from AUTOPAIR_RATE_LIMITER so
@@ -8298,6 +8451,8 @@ _REMOTE_BROWSER_CREDENTIAL_PATHS = frozenset({
 _REMOTE_BROWSER_CREDENTIAL_PATH_PATTERNS = (
     re.compile(r"^/api/agent-security/profiles/[^/]+/(?:assign|wipe)$"),
     re.compile(r"^/api/agent-security/agents/[^/]+/wipe$"),
+    # Which devices may pair through AutoYou Cloud is decided at this computer.
+    re.compile(r"^/api/cloud/devices(?:/[^/]+/(?:approve|forget)|/approval)$"),
 )
 #: Config a remote browser cannot write through /api/admin/config, because it
 #: widens who can reach or change this server. ``None`` protects the section.
@@ -8730,8 +8885,11 @@ auth_app.add_middleware(
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Requested-With"],
 )
 
-ADMIN_SESSIONS: Dict[str, bool] = {}
+# Session id -> last-used time. A sniffed or forgotten cookie must not stay a
+# full admin credential until the next restart, so idle sessions expire.
+ADMIN_SESSIONS: Dict[str, Union[float, bool]] = {}
 ADMIN_API_TOKENS: Dict[str, float] = {}
+ADMIN_SESSION_IDLE_SECONDS = _read_rate_limit_env_int("AUTOYOU_ADMIN_SESSION_IDLE_SECONDS", 12 * 60 * 60, minimum=60)
 
 # --- Internet search state admin endpoints ---
 
@@ -13698,18 +13856,96 @@ def _require_loopback_or_https_request(
         )
     if _is_loopback_client_host(client_host) or str(request.url.scheme or "").lower() == "https":
         return None
-    # ponytail: HTTP Local Pair still exposes the form password; replace this
-    # marker-gated compatibility path with HTTPS/nonce auth when TLS is ready.
-    if (
-        allow_local_pair
-        and request.headers.get("X-AutoYou-Local-Pair", "").strip() == "1"
-        and _csrf_peer_is_private_or_loopback(client_host or "")
-    ):
+    if _trusted_https_proxy_request(request):
         return None
+    # Older Local Pair clients posted the server password here over plain HTTP
+    # before the CPace handshake, which exposed it to anyone on the network.
+    # Current clients skip /login and authenticate with CPace on
+    # /api/autopair_hello, so the marker now only selects a clearer refusal.
+    if allow_local_pair and request.headers.get("X-AutoYou-Local-Pair", "").strip() == "1":
+        return JSONResponse(
+            status_code=403,
+            content={
+                "success": False,
+                "code": "local_pair_update_required",
+                "error": LOCAL_PAIR_UPDATE_REQUIRED_MESSAGE,
+            },
+        )
     return JSONResponse(
         status_code=403,
         content={"success": False, "error": "This endpoint requires localhost or HTTPS."},
     )
+
+
+def _trusted_https_proxy_request(request: Request) -> bool:
+    """Whether an operator-declared HTTPS proxy on a private network sent this.
+
+    A server deployed behind its own TLS-terminating proxy (the hosted preview
+    container behind its broker) sees that proxy's private address over plain
+    HTTP. ``AUTOYOU_TRUSTED_HTTPS_PROXY=1`` declares that every private-network
+    peer is such a proxy, so its ``X-Forwarded-Proto: https`` is believed. Off by
+    default: on a home network any device could claim the header.
+    """
+    if os.environ.get("AUTOYOU_TRUSTED_HTTPS_PROXY", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    peer = request.client.host if request.client else ""
+    if _is_loopback_client_host(peer) or not _csrf_peer_is_private_or_loopback(peer or ""):
+        return False
+    if str(request.headers.get(_BRIDGE_TRUSTED_CLIENT_IP_HEADER) or "").strip():
+        return False
+    return str(request.headers.get("X-Forwarded-Proto") or "").strip().lower() == "https"
+
+
+LOCAL_PAIR_UPDATE_REQUIRED_MESSAGE = (
+    "Update AutoYou on this device to use Local Pair. Newer versions pair without "
+    "sending the computer's password over the network."
+)
+LOCAL_PAIR_SECURE_MODE_REQUIRED_MESSAGE = (
+    "Local Pair from another device needs Secure or Secure Professional mode on the "
+    "computer, because Normal mode would send the password over the network. Change "
+    "the security mode in AutoYou on the computer, or pair over HTTPS."
+)
+LOCAL_PAIR_DEFAULT_PASSWORD_MESSAGE = (
+    "This computer still uses the factory password. Set your own server password in "
+    "AutoYou on the computer before pairing from another device."
+)
+
+
+def _local_pair_network_error(request: Request, *, count_attempt: bool = True) -> Optional[JSONResponse]:
+    """Decide whether an unauthenticated Local Pair request may proceed.
+
+    Local Pair authenticates with CPace, which proves knowledge of the server
+    password without sending it, so it needs no admin session. That only holds
+    for a direct caller on this computer or the private network running a
+    Secure-mode exchange: anything carried by the public tunnel or AutoYou's own
+    browser proxy keeps needing a session, Normal mode has no CPace, and the
+    public factory password would let anyone nearby pair.
+    """
+    peer = request.client.host if request.client else ""
+    if _request_forwarded_from_elsewhere(request) or _request_via_remote_browser_proxy(request):
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    if not _csrf_peer_is_private_or_loopback(peer or ""):
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    mode = get_security_mode()
+    if mode != "secure" and not _is_secure_professional_mode(mode):
+        return JSONResponse(
+            {"error": LOCAL_PAIR_SECURE_MODE_REQUIRED_MESSAGE, "code": "local_pair_requires_secure_mode"},
+            status_code=403,
+        )
+    if not _is_loopback_client_host(peer) and bool(getattr(STATE, "used_default_password", False)):
+        return JSONResponse(
+            {"error": LOCAL_PAIR_DEFAULT_PASSWORD_MESSAGE, "code": "local_pair_default_password"},
+            status_code=403,
+        )
+    # One CPace hello is one password guess; the follow-up /api/autopair only
+    # completes an exchange whose hello was already counted.
+    if count_attempt and not LOCAL_PAIR_NETWORK_GLOBAL_RATE_LIMITER.is_allowed("local-pair-network"):
+        LOGGER.warning("Local Pair global rate limit exceeded (peer=%s)", peer)
+        return JSONResponse(
+            {"error": "Too many pairing attempts. Please wait a minute before trying again."},
+            status_code=429,
+        )
+    return None
 
 def _require_loopback_or_token(request: Request) -> Optional[JSONResponse]:
     """Allow requests that originate from loopback OR carry the internal AI agent token."""
@@ -13773,9 +14009,25 @@ def _build_agent_workbench_success_response(
 
 # Add WhatsApp endpoints to admin app
 
+def _admin_session_active(sid: str) -> bool:
+    """Whether ``sid`` is a live admin session; refreshes its idle timer."""
+    value = ADMIN_SESSIONS.get(sid) if sid else None
+    if value is True:
+        # Sessions installed directly (tests, older in-process callers) carry
+        # no timestamp; treat them as live rather than silently expiring them.
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        now = time.time()
+        if now - float(value) <= ADMIN_SESSION_IDLE_SECONDS:
+            ADMIN_SESSIONS[sid] = now
+            return True
+        ADMIN_SESSIONS.pop(sid, None)
+    return False
+
+
 def _is_logged_in(request: Request) -> bool:
     sid = request.cookies.get("admin_session", "")
-    if sid and ADMIN_SESSIONS.get(sid, False):
+    if sid and _admin_session_active(sid):
         return True
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -13783,6 +14035,20 @@ def _is_logged_in(request: Request) -> bool:
         if token and ADMIN_API_TOKENS.get(token, 0) > time.time():
             return True
     return False
+
+def _require_session_for_network_peer(request: Request) -> Optional[JSONResponse]:
+    """Status payloads describe this computer (its name, agents, LAN address and
+    folder paths); a direct caller from the network must be signed in to read
+    them. Apps on this computer and paired devices, whose requests AutoYou
+    itself delivers over loopback, keep reading them as before.
+    """
+    peer = request.client.host if request.client else ""
+    if _is_loopback_client_host(peer) and not _request_forwarded_from_elsewhere(request):
+        return None
+    if _is_logged_in(request):
+        return None
+    return JSONResponse(status_code=401, content={"success": False, "error": "Authentication required"})
+
 
 def _require_login(request: Request) -> Optional[Response]:
     if not _is_logged_in(request):

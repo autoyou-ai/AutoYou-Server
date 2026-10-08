@@ -251,18 +251,41 @@ def test_try_install_docker_is_opt_in(monkeypatch, capsys):
 
 def test_upgrade_packaging_tools_caps_setuptools(monkeypatch):
     captured = {}
+    constraints = Path("synthetic-constraints.txt")
 
-    def fake_run_command(command, **kwargs):
-        captured["command"] = command
+    def fake_verified_install(venv_python, requirement_args, **kwargs):
+        captured["command"] = list(requirement_args)
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(bootstrap, "run_command", fake_run_command)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: constraints)
+    monkeypatch.setattr(bootstrap, "verified_pip_install", fake_verified_install)
 
     bootstrap.upgrade_packaging_tools(Path(sys.executable))
 
     assert "pip>=26.1.2,<27" in captured["command"]
     assert "setuptools>=83,<84" in captured["command"]
     assert "setuptools" not in captured["command"]
+    assert captured["kwargs"]["upgrade"] is True
+    assert captured["kwargs"]["constraints"] == constraints
+
+
+def test_upgrade_packaging_tools_falls_back_once_for_a_pip_without_reports(monkeypatch):
+    captured = {}
+
+    def no_report(*_args, **_kwargs):
+        raise bootstrap.PipReportUnavailable("pip 21.0 has no --report")
+
+    def fake_run_command(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
+    monkeypatch.setattr(bootstrap, "verified_pip_install", no_report)
+    monkeypatch.setattr(bootstrap, "run_command", fake_run_command)
+
+    bootstrap.upgrade_packaging_tools(Path(sys.executable))
+
+    assert "setuptools>=83,<84" in captured["command"]
     assert captured["kwargs"]["check"] is False
 
 
@@ -313,6 +336,11 @@ def test_voice_component_installs_realtimestt_runtime_shim(monkeypatch):
 
     monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
     monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: commands.append(command))
+    monkeypatch.setattr(
+        bootstrap,
+        "verified_pip_install",
+        lambda venv_python, requirement_args, **kwargs: commands.append(["verified", *requirement_args]),
+    )
 
     bootstrap.install_requirements(Path("synthetic-python"), ["voice"])
 
@@ -320,18 +348,14 @@ def test_voice_component_installs_realtimestt_runtime_shim(monkeypatch):
         "synthetic-python",
         str(bootstrap.REPO_ROOT / "scripts" / "install_realtimestt_runtime.py"),
     ]
-    assert commands[1][:4] == [
-        "synthetic-python",
-        "-m",
-        "pip",
-        "install",
-    ]
+    assert commands[1] == ["verified", "-r", str(bootstrap.REQUIREMENTS_DIR / "voice.txt")]
 
 
 def test_check_node_and_install_packages_warns_when_npm_cannot_launch(monkeypatch, tmp_path, capsys):
     package_dir = tmp_path / "node" / "whatsapp"
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text("{}", encoding="utf-8")
+    (package_dir / "package-lock.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(bootstrap.shutil, "which", lambda command: "F:/nodejs/node.EXE" if command == "node" else None)
@@ -376,6 +400,7 @@ def test_check_node_and_install_packages_pins_node_dir_on_path(monkeypatch, tmp_
     package_dir = tmp_path / "node" / "whatsapp"
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text("{}", encoding="utf-8")
+    (package_dir / "package-lock.json").write_text("{}", encoding="utf-8")
 
     node_bin = tmp_path / "native" / "node" / "node-v22.22.3-darwin-arm64" / "bin"
     node_bin.mkdir(parents=True)
@@ -408,6 +433,7 @@ def test_check_node_and_install_packages_skips_puppeteer_download_when_playwrigh
     package_dir = tmp_path / "node" / "whatsapp"
     package_dir.mkdir(parents=True)
     (package_dir / "package.json").write_text("{}", encoding="utf-8")
+    (package_dir / "package-lock.json").write_text("{}", encoding="utf-8")
 
     node_path = tmp_path / "node.exe"
     npm_path = tmp_path / "npm.cmd"
@@ -1337,17 +1363,16 @@ def test_bootstrap_upgrade_flag_and_env_propagate():
 def test_install_requirements_honors_upgrade_flag(monkeypatch):
     commands = []
     monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
-    monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: commands.append(command))
+    monkeypatch.setattr(
+        bootstrap,
+        "verified_pip_install",
+        lambda venv_python, requirement_args, **kwargs: commands.append((list(requirement_args), kwargs)),
+    )
 
     bootstrap.install_requirements(Path("synthetic-python"), ["base"], upgrade=True)
     assert len(commands) == 1
-    assert commands[0][:5] == [
-        "synthetic-python",
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-    ]
+    assert commands[0][0] == ["-r", str(bootstrap.REQUIREMENTS_DIR / "base.txt")]
+    assert commands[0][1]["upgrade"] is True
 
 
 def test_print_profile_summary_includes_version(capsys):

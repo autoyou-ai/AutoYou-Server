@@ -91,11 +91,17 @@ def register_routes(
             return {"status": "Error"}
 
     @admin_app.get("/api/v1/status")
-    async def browser_status_endpoint():
+    async def browser_status_endpoint(request: Request):
+        auth_error = server._require_session_for_network_peer(request)
+        if auth_error:
+            return auth_error
         return server._json_response_no_store(server._build_browser_status_payload())
 
     @admin_app.get("/api/v1/server-config")
-    async def browser_server_config_endpoint():
+    async def browser_server_config_endpoint(request: Request):
+        auth_error = server._require_session_for_network_peer(request)
+        if auth_error:
+            return auth_error
         return server._json_response_no_store(server._build_browser_server_config_payload())
 
     @admin_app.post("/autoyou-page-service/start")

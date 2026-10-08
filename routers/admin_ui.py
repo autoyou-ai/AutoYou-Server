@@ -1699,7 +1699,7 @@ def register_routes(
         await server._initialize_services_on_startup()
 
         sid = str(server.uuid.uuid4())
-        server.ADMIN_SESSIONS[sid] = True
+        server.ADMIN_SESSIONS[sid] = server.time.time()
         status_payload = server._startup_status_payload()
         if async_mode:
             resp = JSONResponse(
@@ -1714,7 +1714,13 @@ def register_routes(
             )
         else:
             resp = RedirectResponse(url="/", status_code=302)
-        resp.set_cookie("admin_session", sid, httponly=True, samesite="Strict")
+        resp.set_cookie(
+            "admin_session",
+            sid,
+            httponly=True,
+            samesite="Strict",
+            secure=str(request.url.scheme or "").lower() == "https",
+        )
         return resp
 
     @admin_app.post("/api/login/native-unlock")

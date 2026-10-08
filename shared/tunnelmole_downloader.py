@@ -16,6 +16,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import gzip
+import hashlib
 import logging
 import os
 import shutil
@@ -37,6 +38,51 @@ _WINDOWS_URL = "https://tunnelmole.com/downloads/tmole.exe"
 _MAC_URL     = "https://tunnelmole.com/downloads/tmole-mac.gz"
 _LINUX_URL   = "https://tunnelmole.com/downloads/tmole-linux.gz"
 
+# tunnelmole.com serves these unsigned, from URLs that do not carry a version,
+# so a download is only run when its sha256 is one somebody has looked at.
+# AutoYou prefers the lockfile-pinned npm client (see tunnelmole_service), and
+# this binary is a fallback for machines without Node.js.
+#
+# win32: tmole.exe as downloaded over verified TLS on 2026-10-01 and run on the
+# maintainer machine since (first-use trust; upstream publishes no checksums).
+# darwin/linux: no reviewed build yet. Add a hash here after checking a release,
+# or set AUTOYOU_TUNNELMOLE_SHA256 (comma-separated) for a local decision.
+_TRUSTED_SHA256: dict[str, frozenset[str]] = {
+    "win32": frozenset({"d58253ea0c661b140e5a0489f74850a9a9ffd2b3e8c4852753ab97b7250d8cb7"}),
+    "darwin": frozenset(),
+    "linux": frozenset(),
+}
+_EXTRA_SHA256_ENV = "AUTOYOU_TUNNELMOLE_SHA256"
+_ALLOW_UNVERIFIED_ENV = "AUTOYOU_ALLOW_UNVERIFIED_TUNNELMOLE"
+
+
+def _platform_key() -> str:
+    if sys.platform == "win32":
+        return "win32"
+    if sys.platform == "darwin":
+        return "darwin"
+    return "linux"
+
+
+def trusted_binary_hashes() -> frozenset[str]:
+    extra = {
+        value.strip().lower()
+        for value in str(os.environ.get(_EXTRA_SHA256_ENV, "")).split(",")
+        if len(value.strip()) == 64
+    }
+    return _TRUSTED_SHA256.get(_platform_key(), frozenset()) | frozenset(extra)
+
+
+def binary_is_trusted(path: Path) -> bool:
+    """Whether *path* is a tmole build whose sha256 has been reviewed."""
+    if str(os.environ.get(_ALLOW_UNVERIFIED_ENV, "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return digest in trusted_binary_hashes()
+
 
 def _certifi_context() -> Optional[ssl.SSLContext]:
     try:
@@ -51,19 +97,14 @@ def _download_file(url: str, destination: Path) -> None:
     """Download *url* with normal TLS, retrying with certifi's CA bundle.
 
     Some source installs use framework Python builds whose platform trust store
-    has not been bootstrapped yet. Retrying with certifi keeps verification on
-    instead of falling back to an insecure SSL context.
+    has not been bootstrapped yet. Retrying with certifi keeps verification on;
+    there is no unverified fallback.
     """
     request = urllib.request.Request(url, headers={"User-Agent": "AutoYou-Bootstrap"})
     contexts: list[ssl.SSLContext | None] = [None]
     certifi_context = _certifi_context()
     if certifi_context is not None:
         contexts.append(certifi_context)
-    try:
-        unverified = ssl._create_unverified_context()
-        contexts.append(unverified)
-    except Exception:
-        pass
 
     last_exc: Exception | None = None
     for context in contexts:
@@ -99,16 +140,24 @@ def download_tunnelmole(force: bool = False) -> Optional[Path]:
     """
     Download and cache the Tunnelmole binary for the current platform.
 
-    Returns the Path to the executable on success, or None on failure.
-    Already-cached binaries are reused unless *force* is True.
+    Returns the Path to the executable on success, or None on failure. A
+    download, or a binary already cached, is used only when its sha256 is
+    trusted (see ``binary_is_trusted``); anything else is deleted, so a swapped
+    upstream build or a file altered on disk is never run.
     """
     if is_app_store_build():
         LOGGER.warning("Tunnelmole is updated with AutoYou through the App Store.")
         return None
     bin_path = _binary_path()
     if bin_path.exists() and not force:
-        LOGGER.debug("Tunnelmole binary already cached at %s", bin_path)
-        return bin_path
+        if binary_is_trusted(bin_path):
+            LOGGER.debug("Tunnelmole binary already cached at %s", bin_path)
+            return bin_path
+        LOGGER.warning("Cached Tunnelmole binary at %s is not a reviewed build; removing it.", bin_path)
+        try:
+            bin_path.unlink()
+        except OSError:
+            return None
 
     LOGGER.info("Downloading Tunnelmole binary for %s...", sys.platform)
     temp_bin_path = bin_path.with_suffix(f"{bin_path.suffix}.download")
@@ -117,22 +166,33 @@ def download_tunnelmole(force: bool = False) -> Optional[Path]:
     try:
         if sys.platform == "win32":
             _download_file(_WINDOWS_URL, temp_bin_path)
-            os.replace(temp_bin_path, bin_path)
-            LOGGER.info("Downloaded Tunnelmole to %s", bin_path)
         else:
             url = _MAC_URL if sys.platform == "darwin" else _LINUX_URL
             try:
                 _download_file(url, temp_gz)
                 with gzip.open(temp_gz, "rb") as f_in, open(temp_bin_path, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
-                os.chmod(temp_bin_path, 0o755)
-                os.replace(temp_bin_path, bin_path)
-                LOGGER.info("Installed Tunnelmole to %s", bin_path)
             finally:
                 try:
                     temp_gz.unlink(missing_ok=True)
                 except Exception:
                     pass
+        if not binary_is_trusted(temp_bin_path):
+            digest = hashlib.sha256(temp_bin_path.read_bytes()).hexdigest()
+            temp_bin_path.unlink(missing_ok=True)
+            LOGGER.warning(
+                "Refusing the downloaded Tunnelmole binary (sha256 %s): it is not a reviewed build. "
+                "AutoYou uses the npm Tunnelmole client with Node.js instead; after checking this "
+                "build you may allow it with %s=%s.",
+                digest,
+                _EXTRA_SHA256_ENV,
+                digest,
+            )
+            return None
+        if sys.platform != "win32":
+            os.chmod(temp_bin_path, 0o755)
+        os.replace(temp_bin_path, bin_path)
+        LOGGER.info("Installed Tunnelmole to %s", bin_path)
     except Exception as exc:
         LOGGER.error("Failed to download Tunnelmole: %s", exc)
         try:
@@ -143,7 +203,7 @@ def download_tunnelmole(force: bool = False) -> Optional[Path]:
             temp_gz.unlink(missing_ok=True)
         except Exception:
             pass
-        if bin_path.exists():
+        if bin_path.exists() and binary_is_trusted(bin_path):
             LOGGER.warning("Reusing cached Tunnelmole binary at %s after refresh failure", bin_path)
             return bin_path
         return None

@@ -41,7 +41,7 @@ from .platform_runtime import (
     get_user_data_dir,
     is_compiled,
 )
-from .tunnelmole_downloader import download_tunnelmole
+from .tunnelmole_downloader import binary_is_trusted, download_tunnelmole
 from .macos_runtime_support import find_app_bundle_resource, is_app_store_build
 
 __debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-6a5b9b63010a37bb1df52c34"
@@ -526,10 +526,14 @@ def resolve_tunnelmole_binary() -> Optional[str]:
     for candidate in (
         get_runtime_root(__file__) / "tunnelmole" / binary_name,
         get_runtime_root(__file__) / binary_name,
-        get_user_data_dir("AutoYou") / "tools" / binary_name,
     ):
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
+    # A download cached in the user's data folder is not part of the install,
+    # so it must still match a reviewed build before it is run.
+    cached = get_user_data_dir("AutoYou") / "tools" / binary_name
+    if cached.is_file() and os.access(cached, os.X_OK) and binary_is_trusted(cached):
+        return str(cached)
 
     discovered = shutil.which("tmole") or shutil.which("tunnelmole")
     if discovered:
@@ -758,8 +762,49 @@ def _build_self_hosted_node_launch(
 _TMOLE_HELP_CACHE: Dict[str, str] = {}
 
 
+def _build_public_node_launch(exposed_port: int) -> Optional[Dict[str, Any]]:
+    """Run the lockfile-pinned npm tunnelmole client against the public cloud.
+
+    Preferred over the tmole binary, which tunnelmole.com serves unsigned from
+    an unversioned URL. Uses its own home directory: the self-hosted launcher
+    stores an AutoYou API key in its home, and that key must never be offered
+    to the third-party public service.
+    """
+    if is_app_store_build():
+        return None
+    runtime = _resolve_node_tunnelmole_runtime(__file__)
+    if runtime is None:
+        return None
+    isolated_home = get_user_data_dir("AutoYou") / "tunnelmole-public-node-home"
+    try:
+        isolated_home.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        LOGGER.warning("Failed to prepare the public tunnelmole Node home: %s", exc)
+        return None
+    return {
+        "command": [runtime["node_command"], runtime["launcher_path"]],
+        "env": {
+            "AUTOYOU_TUNNELMOLE_NODE_PUBLIC": "1",
+            "AUTOYOU_TUNNELMOLE_NODE_PACKAGE_DIR": runtime["package_dir"],
+            "AUTOYOU_TUNNELMOLE_NODE_PORT": str(int(exposed_port)),
+            "HOME": str(isolated_home),
+            "USERPROFILE": str(isolated_home),
+        },
+    }
+
+
 def _tunnelmole_environment() -> Dict[str, str]:
     environment = os.environ.copy()
+    # Both clients report install and crash telemetry to tunnelmole.com unless told not to.
+    environment["TUNNELMOLE_TELEMETRY"] = "0"
+    for name in (
+        "AUTOYOU_TUNNELMOLE_NODE_PUBLIC",
+        "AUTOYOU_TUNNELMOLE_NODE_WS_ENDPOINT",
+        "AUTOYOU_TUNNELMOLE_NODE_HTTP_ENDPOINT",
+        "AUTOYOU_TUNNELMOLE_NODE_API_KEY",
+        "AUTOYOU_TUNNELMOLE_NODE_DOMAIN",
+    ):
+        environment.pop(name, None)
     if is_app_store_build():
         # Applies to both help probes and the long-running helper.
         environment.pop("NODE_OPTIONS", None)
@@ -1005,6 +1050,12 @@ class TunnelmoleService:
         spawn_env.pop("TUNNELMOLE_API_KEY", None)
         spawn_env.pop("TUNNELMOLE_HOST_URL", None)
         spawn_env.update(extra_env)
+
+        if tmole_cmd is None and not remote_provision:
+            public_launch = _build_public_node_launch(exposed_port)
+            if public_launch is not None:
+                tmole_cmd = list(public_launch["command"])
+                spawn_env.update(dict(public_launch["env"]))
 
         if tmole_cmd is None:
             tmole = resolve_tunnelmole_binary()
@@ -1332,23 +1383,13 @@ class TunnelmoleService:
             except Exception as exc:
                 last_error = exc
                 if _looks_like_certificate_verify_failure(exc):
-                    try:
-                        import ssl
-
-                        with urllib.request.urlopen(
-                            health_url,
-                            timeout=5.0,
-                            context=ssl._create_unverified_context(),
-                        ) as response:
-                            status_code = int(getattr(response, "status", 0))
-                            if status_code == 200:
-                                LOGGER.warning(
-                                    "Tunnelmole public health probe used certificate fallback for %s",
-                                    display_health_url,
-                                )
-                                return True
-                    except Exception as fallback_exc:
-                        last_error = fallback_exc
+                    # No unverified retry: a tunnel whose certificate fails is
+                    # not healthy (an expired edge certificate or an interceptor
+                    # would otherwise be reported as working).
+                    LOGGER.warning(
+                        "Tunnelmole public health probe failed certificate verification for %s",
+                        display_health_url,
+                    )
                 time.sleep(1.0)
         if last_error is not None:
             LOGGER.warning(

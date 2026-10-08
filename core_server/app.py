@@ -37,8 +37,10 @@ def _is_malformed_host_header(raw_host: str) -> bool:
 
 
 def create_apps(logger: logging.Logger) -> Tuple[FastAPI, FastAPI]:
-    admin_app = FastAPI(title="AutoYou Admin", docs_url=None, redoc_url=None)
-    auth_app = FastAPI(title="AutoYou Auth", docs_url=None, redoc_url=None)
+    # openapi_url=None: the served schema mapped every admin route for anyone
+    # who could reach the port. app.openapi() still works in-process.
+    admin_app = FastAPI(title="AutoYou Admin", docs_url=None, redoc_url=None, openapi_url=None)
+    auth_app = FastAPI(title="AutoYou Auth", docs_url=None, redoc_url=None, openapi_url=None)
     # from __debug_provenance_r__ import via
 
     async def reject_malformed_host_header(request: Request, call_next):
