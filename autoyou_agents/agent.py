@@ -30,6 +30,7 @@ import sys
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional, List, Dict, Any
 
 import litellm
@@ -2645,13 +2646,17 @@ def _extract_role_texts_from_llm_request(llm_request: Any, role: str) -> list[st
     return texts
 
 
-def _build_notes_agent_request(user_text: str, llm_request: Any) -> str:
+def _build_notes_agent_request(user_text: str, llm_request: Any, *, reference_text: str = "") -> str:
     """Carry referenced prior answer content into an AgentTool child session.
 
     The child session sees only this string, so a request that points back at
     the previous answer ("save it to notes") has to bring that answer along.
+    ``reference_text`` is what the user actually said when ``user_text`` is the
+    model's paraphrase of it.
     """
-    if not references_previous_answer(user_text):
+    if "[AutoYou previous assistant answer" in user_text:
+        return user_text
+    if not references_previous_answer(reference_text or user_text):
         return user_text
 
     user_turns = _extract_role_texts_from_llm_request(llm_request, "user")
@@ -2689,14 +2694,14 @@ _PAGE_ADD_REFERENCE_RE = re.compile(
 )
 
 
-def _build_page_agent_request(user_text: str, llm_request: Any) -> str:
+def _build_page_agent_request(user_text: str, llm_request: Any, *, reference_text: str = "") -> str:
     """Carry the URL a request points back at ("add that to my page") into the child session.
 
     The Page agent runs in a fresh child session that only sees this string, so
     without the URL it could only ask the user to repeat what they just saw.
     """
     text = str(user_text or "").strip()
-    if extract_url(text) or not _PAGE_ADD_REFERENCE_RE.search(text):
+    if extract_url(text) or not _PAGE_ADD_REFERENCE_RE.search(f"{reference_text}\n{text}"):
         return text
 
     visible_turns: list[tuple[str, str]] = []
@@ -2721,13 +2726,53 @@ def _build_page_agent_request(user_text: str, llm_request: Any) -> str:
     return text
 
 
-def _build_specialist_request(runtime_agent_name: str, user_text: str, llm_request: Any) -> str:
+def _build_specialist_request(
+    runtime_agent_name: str,
+    user_text: str,
+    llm_request: Any,
+    *,
+    reference_text: str = "",
+) -> str:
     """Attach the conversation context a specialist's child session cannot see."""
     if runtime_agent_name == resolve_runtime_agent_name("notes_agent"):
-        return _build_notes_agent_request(user_text, llm_request)
+        return _build_notes_agent_request(user_text, llm_request, reference_text=reference_text)
     if runtime_agent_name == _PAGE_RUNTIME_AGENT_NAME:
-        return _build_page_agent_request(user_text, llm_request)
+        return _build_page_agent_request(user_text, llm_request, reference_text=reference_text)
     return user_text
+
+
+def _conversation_from_tool_context(tool_context: Any) -> Any:
+    """The visible conversation so far, shaped like an LlmRequest for the builders."""
+    events = getattr(getattr(tool_context, "session", None), "events", None)
+    contents = [event.content for event in events or [] if getattr(event, "content", None) is not None]
+    return SimpleNamespace(contents=contents) if contents else None
+
+
+def _root_before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any) -> Any:
+    """Give Notes/Page the conversation their child session cannot see.
+
+    The root *model* picks these dispatches too, and it does not always copy what
+    "that" or "it" points at into the request, so context is attached here, at
+    the one place every dispatch passes through. Builders are idempotent, so a
+    deterministic route that already attached context is left alone.
+    """
+    raw_name = str(getattr(tool, "name", "") or "").strip()
+    request = args.get("request") if isinstance(args, dict) else None
+    if not raw_name or not isinstance(request, str) or not request.strip():
+        return None
+    runtime_name = _resolve_routed_agent_name(raw_name, args)
+    if runtime_name not in {resolve_runtime_agent_name("notes_agent"), _PAGE_RUNTIME_AGENT_NAME}:
+        return None
+    conversation = _conversation_from_tool_context(tool_context)
+    if conversation is None:
+        return None
+    args["request"] = _build_specialist_request(
+        runtime_name,
+        request,
+        conversation,
+        reference_text=_extract_text_from_llm_request(conversation),
+    )
+    return None
 
 
 def _persona_tool_request(llm_request: Any) -> Optional[tuple[str, Dict[str, Any]]]:
@@ -3249,6 +3294,12 @@ def _is_raw_audio_file_reference(user_text: str) -> bool:
         return False
     return _is_audio_like_path(candidate)
 
+_PAGE_FEED_MY_PAGE_RE = re.compile(
+    r"\b(?:to|on|onto|in|into)\s+(?:my|the)\s+(?:autoyou\s+|auto\s*foryou\s+)?page\b",
+    re.IGNORECASE,
+)
+
+
 def _is_page_feed_request(user_text: str) -> bool:
     normalized = " ".join(str(user_text or "").split()).strip()
     if not normalized:
@@ -3256,7 +3307,7 @@ def _is_page_feed_request(user_text: str) -> bool:
     if normalized.lower().startswith("[voice transcript]"):
         normalized = normalized[len("[voice transcript]"):].strip()
     lowered = normalized.lower()
-    has_url = bool(re.search(r"\b(?:https?://|www\.)[^\s<>()]+", normalized, re.IGNORECASE))
+    has_url = bool(extract_url(normalized))
     explicit_page_feed = (
         "page feed" in lowered
         or "for you page" in lowered
@@ -3264,9 +3315,12 @@ def _is_page_feed_request(user_text: str) -> bool:
         or "auto foryou" in lowered
         or "auto for you" in lowered
     )
+    adds_something = bool(re.search(r"\b(add|save|post|send|put|submit|ingest|include)\b", lowered))
     if not explicit_page_feed:
-        return False
-    if has_url and re.search(r"\b(add|save|post|send|put|submit|ingest|include)\b", lowered):
+        # "add example.com to my page": a link plus an add verb plus "my page" is
+        # the page feed, not a web lookup. Without a link, "my page" is too vague.
+        return bool(has_url and adds_something and _PAGE_FEED_MY_PAGE_RE.search(lowered))
+    if has_url and adds_something:
         return True
     return bool(
         re.search(
@@ -4964,6 +5018,7 @@ def initialize_root_agent():
             "description": root_prompt.AGENT_DESCRIPTION,
             "instruction": effective_instruction,
             "before_model_callback": _root_before_model_callback,
+            "before_tool_callback": [_root_before_tool_callback],
             "after_tool_callback": [_root_after_tool_callback],
             "sub_agents": sub_agents,
             "tools": tools

@@ -184,6 +184,12 @@ class GoalLoopConfig:
     repair_mode: str = "codex-prompt"
     skip_bootstrap_install: bool = True
     extra_prompts: tuple[str, ...] = ()
+    # Multi-turn scenario mode: scenario names (empty = all) and run controls.
+    scenarios: tuple[str, ...] = ()
+    suite: str = ""
+    repeat: int = 1
+    log_file: str = ""
+    offline: bool = False
 
 
 @dataclasses.dataclass
@@ -847,6 +853,17 @@ def _write_report(report: GoalLoopReport) -> GoalLoopReport:
     return report
 
 
+def _server_sessions_db_path() -> str:
+    """The sessions.db the running server writes (per-user data dir, not the repo root)."""
+
+    try:
+        from session_utils import _default_sessions_db_path
+
+        return _default_sessions_db_path()
+    except Exception:
+        return os.path.join(REPO_ROOT, "sessions.db")
+
+
 def run_goal_loop(config: GoalLoopConfig) -> GoalLoopReport:
     """Run the full goal suite and optionally ask the coding agent to repair."""
 
@@ -866,11 +883,10 @@ def run_goal_loop(config: GoalLoopConfig) -> GoalLoopReport:
         """Best-effort: print recent sessions.db turns for this user before testing.
 
         Path matches the real server's resolution (``AUTOYOU_SESSION_DB_PATH``
-        env override, else ``REPO_ROOT/sessions.db`` -- see
-        ``session_utils._default_sessions_db_path`` /
-        ``server._get_default_ai_agent_storage_paths``). The previous
-        ``.llm/private-local/sessions.db`` path was never where the live
-        server writes; it silently read/created an unrelated empty file.
+        env override, else ``session_utils._default_sessions_db_path``, which
+        is the per-user data dir -- ``~/Library/Application Support/AutoYou``
+        on macOS -- not the repo root). An earlier ``REPO_ROOT/sessions.db``
+        guess never matched the live server and silently read nothing.
 
         Opens the database with SQLite's own read-only URI mode rather than
         routing through ``MemoryIntegratedSessionManager``, whose constructor
@@ -894,7 +910,7 @@ def run_goal_loop(config: GoalLoopConfig) -> GoalLoopReport:
         locked file, wrong/encrypted format) must never interrupt the goal
         loop itself.
         """
-        db_path = os.environ.get("AUTOYOU_SESSION_DB_PATH") or os.path.join(REPO_ROOT, "sessions.db")
+        db_path = os.environ.get("AUTOYOU_SESSION_DB_PATH") or _server_sessions_db_path()
         try:
             with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
                 cursor = conn.cursor()
@@ -971,6 +987,549 @@ def run_goal_loop(config: GoalLoopConfig) -> GoalLoopReport:
         passed=passed,
     )
     return _write_report(report)
+
+
+# ── Multi-turn scenarios ──────────────────────────────────────────────────────
+#
+# The single-prompt suite above cannot catch the failure users actually hit: an
+# agent that ignores the conversation ("Save it to notes" -> "what should the
+# title be?"). A scenario is an ordered conversation on ONE session with
+# per-turn assertions and ground-truth probes. Probes read counts through
+# deterministic (no-LLM) paths, so a side effect is verified independently of
+# the model's own claim that it happened.
+#
+# Every created record carries a per-run token ("GL-<token>") so a maintainer
+# can find and delete what a live run left behind.
+
+# Replies that mean a shortcut answered for the model instead of using the
+# conversation. A scenario turn matching one fails unless it sets ``may_ask``.
+RIGID_REPLY_PATTERNS: tuple[str, ...] = (
+    r"what should (?:the )?(?:title|content|i add)\b",
+    r"\bi can create that note\b",
+    r"send the url or attach a file",
+    r"\bafter you provide\b",
+)
+_TOKEN_PLACEHOLDER = "{tok}"
+_FAILURE_KINDS = ("rigid", "misroute", "backend", "assertion")
+
+
+@dataclasses.dataclass(frozen=True)
+class ScenarioTurn:
+    """One user message in a scenario and what the reply must (not) look like."""
+
+    message: str
+    expected_agent: Optional[str] = None
+    must_match: tuple[str, ...] = ()
+    must_not_match: tuple[str, ...] = ()
+    # A clarifying question is a legitimate reply to this turn.
+    may_ask: bool = False
+    # Fail if the previous reply was a question and this answer went to this agent.
+    forbidden_agent_after_question: Optional[str] = None
+
+
+@dataclasses.dataclass(frozen=True)
+class Probe:
+    """A deterministic count the scenario must change (``delta``) or end at.
+
+    ``kind`` is ``notes_total``, ``notes_search`` (needs ``phrase``) or
+    ``feed_total``. ``delta`` compares against a count taken before the
+    scenario; ``exactly``/``at_least`` compare the count taken after it.
+    """
+
+    kind: str
+    phrase: str = ""
+    delta: Optional[int] = None
+    exactly: Optional[int] = None
+    at_least: Optional[int] = None
+
+
+@dataclasses.dataclass(frozen=True)
+class Scenario:
+    name: str
+    description: str
+    turns: tuple[ScenarioTurn, ...]
+    probes: tuple[Probe, ...] = ()
+    # Needs live internet (the Internet agent, a cloud model, a page fetch).
+    needs_network: bool = False
+    # No model is involved, so one attempt is conclusive.
+    deterministic: bool = False
+
+
+@dataclasses.dataclass
+class ScenarioRun:
+    scenario: str
+    attempt: int
+    session_id: str
+    turns: list[ChatTurn]
+    failures: list[str]
+    seconds: float
+    skipped: str = ""
+
+    @property
+    def passed(self) -> bool:
+        return not self.failures and not self.skipped
+
+
+@dataclasses.dataclass
+class ScenarioSuiteReport:
+    config: GoalLoopConfig
+    runtime: RuntimeStatus
+    token: str
+    runs: list[ScenarioRun]
+    log_findings: list[dict[str, Any]]
+    report_path: str = ""
+
+    @property
+    def passed(self) -> bool:
+        executed = [run for run in self.runs if not run.skipped]
+        return bool(self.runtime.ready and executed and all(run.passed for run in executed) and not self.log_findings)
+
+    def failure_kinds(self) -> dict[str, int]:
+        counts = {kind: 0 for kind in _FAILURE_KINDS}
+        for run in self.runs:
+            for failure in run.failures:
+                match = re.match(r"\[(\w+)\]", failure)
+                kind = match.group(1) if match and match.group(1) in counts else "assertion"
+                counts[kind] += 1
+        return {kind: count for kind, count in counts.items() if count}
+
+    def to_jsonable(self) -> dict[str, Any]:
+        return {
+            "token": self.token,
+            "passed": self.passed,
+            "runtime": dataclasses.asdict(self.runtime),
+            "failure_kinds": self.failure_kinds(),
+            "runs": [
+                {
+                    "scenario": run.scenario,
+                    "attempt": run.attempt,
+                    "session_id": run.session_id,
+                    "passed": run.passed,
+                    "skipped": run.skipped,
+                    "seconds": round(run.seconds, 2),
+                    "failures": list(run.failures),
+                    "turns": [
+                        {
+                            "message": turn.case.message,
+                            "agent": turn.agent_name,
+                            "response": turn.response_text,
+                            "passed": turn.passed,
+                            "failures": list(turn.failures),
+                        }
+                        for turn in run.turns
+                    ],
+                }
+                for run in self.runs
+            ],
+            "log_findings": list(self.log_findings),
+            "report_path": self.report_path,
+        }
+
+
+NOTES_AGENT = "autoyou_notes_agent"
+PAGE_AGENT = "autoyou_page_agent"
+INTERNET_AGENT = "autoyou_internet_agent"
+ROOT_AGENT = "autoyou_agent"
+_CREATED = r"(?i)\b(?:created|saved|added)\b"
+
+
+def continuity_scenarios() -> list[Scenario]:
+    """Scenarios drawn from real chat failures: each one needs the conversation."""
+
+    return [
+        Scenario(
+            name="notes_save_previous_answer",
+            description="'Save it to notes' must save the previous answer, not ask for a title.",
+            deterministic=True,
+            turns=(
+                ScenarioTurn("How many page feed items do I have", PAGE_AGENT, must_match=(r"feed has \d+ items?",)),
+                ScenarioTurn("Save it to notes", NOTES_AGENT, must_match=(_CREATED,)),
+            ),
+            probes=(Probe("notes_total", delta=1),),
+        ),
+        Scenario(
+            name="notes_quoted_title_following_content",
+            description="iOS smart quotes plus 'with the following content:' must parse.",
+            deterministic=True,
+            turns=(
+                ScenarioTurn(
+                    "Create a note titled “GL-{tok} quoted” with the following content:\n\nship the goal loop {tok}",
+                    NOTES_AGENT,
+                    must_match=(_CREATED,),
+                ),
+            ),
+            probes=(Probe("notes_total", delta=1), Probe("notes_search", "GL-{tok} quoted", exactly=1)),
+        ),
+        Scenario(
+            name="notes_derived_title",
+            description="A note with content but no title is saved with a derived title.",
+            deterministic=True,
+            turns=(
+                ScenarioTurn("Create a note with content: GL-{tok} remember the milk", NOTES_AGENT, must_match=(_CREATED,)),
+            ),
+            probes=(Probe("notes_total", delta=1), Probe("notes_search", "GL-{tok} remember", exactly=1)),
+        ),
+        Scenario(
+            name="notes_body_is_not_a_command",
+            description="Words like 'remove' and '#4' inside a note body must not delete or update anything.",
+            deterministic=True,
+            turns=(
+                ScenarioTurn(
+                    "Create a note titled “GL-{tok} cleanup” with content: remove the old logo and update #4 later",
+                    NOTES_AGENT,
+                    must_match=(_CREATED,),
+                    must_not_match=(r"(?i)\bdeleted\b",),
+                ),
+            ),
+            probes=(Probe("notes_total", delta=1), Probe("notes_search", "GL-{tok} cleanup", exactly=1)),
+        ),
+        Scenario(
+            name="notes_answer_with_url_follow_up",
+            description="The reply to a question about a note, even one containing a URL, stays with Notes.",
+            turns=(
+                ScenarioTurn("Make a note called GL-{tok} links", NOTES_AGENT, may_ask=True),
+                ScenarioTurn(
+                    "Content: see https://example.com/gl-{tok}-links and www.example.com/docs for details",
+                    NOTES_AGENT,
+                    must_match=(r"(?i)\b(?:created|saved|added|updated)\b",),
+                    forbidden_agent_after_question=INTERNET_AGENT,
+                ),
+            ),
+            probes=(Probe("notes_search", "gl-{tok}-links", at_least=1),),
+        ),
+        Scenario(
+            name="page_add_bare_domain",
+            description="A bare domain is added to the page feed without asking for a scheme.",
+            deterministic=True,
+            needs_network=True,
+            turns=(ScenarioTurn("Can you add example.com/gl-{tok} to my page", PAGE_AGENT, must_match=(r"(?i)\badded\b",)),),
+            probes=(Probe("feed_total", delta=1),),
+        ),
+        Scenario(
+            name="page_add_that_after_model_gives_url",
+            description="'add that to my page feed' uses the URL from the previous assistant message.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(
+                    "Reply with exactly this sentence and nothing else: Try example.com/gl-{tok}-guide for the walkthrough.",
+                    must_match=(r"gl-{tok}-guide",),
+                ),
+                ScenarioTurn("add that to my page feed", PAGE_AGENT, must_match=(r"(?i)\badded\b",)),
+            ),
+            probes=(Probe("feed_total", delta=1),),
+        ),
+        Scenario(
+            name="routing_sanity_no_overreach",
+            description="Ordinary requests still reach the right specialist (no over-suppression).",
+            turns=(
+                ScenarioTurn("How many notes do I have?", NOTES_AGENT, must_match=(r"You have \*\*\d+ notes?\*\*",)),
+                ScenarioTurn("What time is it?", must_match=(r"\d",)),
+            ),
+            deterministic=True,
+        ),
+        Scenario(
+            name="web_routing_still_works",
+            description="A real search request still routes to the Internet agent, even after a question.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn("Reply with exactly this sentence and nothing else: Want me to look something up?", may_ask=True),
+                ScenarioTurn("search for the latest python release", INTERNET_AGENT),
+            ),
+        ),
+        Scenario(
+            name="real_session_replay",
+            description=(
+                "The 2026-10-07 iPhone session that exposed canned replies, replayed with synthetic content. "
+                "Assertions are deliberately loose: a clarifying question is fine, a canned one or a web misroute is not."
+            ),
+            turns=(
+                ScenarioTurn("How many page feed items do I have", PAGE_AGENT, must_match=(r"feed has \d+ items?",)),
+                ScenarioTurn("Save it to notes", NOTES_AGENT, must_match=(_CREATED,)),
+                ScenarioTurn("Page content", may_ask=True),
+                ScenarioTurn(
+                    "The AutoYou Page feed has 2 items.\n\nTop items:\n- #4: Example landing page (article, www.example.com)\n"
+                    "- #3: Example logo (image, example-source) GL-{tok}",
+                    may_ask=True,
+                    forbidden_agent_after_question=INTERNET_AGENT,
+                ),
+                ScenarioTurn("Add that content .", may_ask=True),
+                ScenarioTurn(
+                    "@notes create a note titled content \u201cThe feed has 2 items GL-{tok}\n\nTop items:\n- #4: Example (article, www.example.com)l",
+                    may_ask=True,
+                    forbidden_agent_after_question=INTERNET_AGENT,
+                ),
+            ),
+        ),
+        Scenario(
+            name="plain_chat_stays_conversational",
+            description="Small talk and a follow-up that needs history are answered by the model, not a specialist.",
+            turns=(
+                ScenarioTurn("Say hello in exactly five words.", ROOT_AGENT),
+                ScenarioTurn("Now say that same greeting in French.", ROOT_AGENT, must_match=(r"[A-Za-z]{3}",)),
+            ),
+        ),
+    ]
+
+
+# How people actually refer back to something they just saw. Most of these are
+# NOT covered by a fast path, so they exercise the model with the conversation
+# attached - the part that has to be smart rather than pattern-matched.
+_NOTES_SAVE_PHRASINGS: tuple[str, ...] = (
+    "Save that to my notes",
+    "put this in notes please",
+    "can you jot that down in my notes",
+    "add the above to my notes",
+    "keep that in notes, title it Daily Fact {tok}",
+    "note that down",
+    "store your last answer in a note",
+)
+_PAGE_ADD_PHRASINGS: tuple[str, ...] = (
+    "bookmark that on my page feed",
+    "put that link on my page",
+    "add it to the feed",
+)
+
+
+def paraphrase_scenarios() -> list[Scenario]:
+    """Reference-back requests in varied wording; each must act, not ask."""
+
+    scenarios: list[Scenario] = []
+    for index, phrasing in enumerate(_NOTES_SAVE_PHRASINGS, start=1):
+        scenarios.append(
+            Scenario(
+                name=f"paraphrase_notes_{index}",
+                description=f"Save the previous answer to Notes: {phrasing!r}",
+                turns=(
+                    ScenarioTurn(
+                        "Reply with exactly this sentence and nothing else: "
+                        f"GL-{{tok}}-n{index} the launch checklist is ready.",
+                        must_match=(rf"GL-{{tok}}-n{index}",),
+                    ),
+                    ScenarioTurn(phrasing, NOTES_AGENT, must_match=(r"(?i)\b(?:created|saved|added|noted)\b",)),
+                ),
+                probes=(Probe("notes_total", delta=1), Probe("notes_search", f"GL-{{tok}}-n{index}", exactly=1)),
+            )
+        )
+    for index, phrasing in enumerate(_PAGE_ADD_PHRASINGS, start=1):
+        scenarios.append(
+            Scenario(
+                name=f"paraphrase_page_{index}",
+                description=f"Add the link from the previous answer to the page feed: {phrasing!r}",
+                needs_network=True,
+                turns=(
+                    ScenarioTurn(
+                        "Reply with exactly this sentence and nothing else: "
+                        f"Try example.com/gl-{{tok}}-p{index} for the walkthrough.",
+                        must_match=(rf"gl-{{tok}}-p{index}",),
+                    ),
+                    ScenarioTurn(phrasing, PAGE_AGENT, must_match=(r"(?i)\badded\b",)),
+                ),
+                probes=(Probe("feed_total", delta=1),),
+            )
+        )
+    return scenarios
+
+
+SUITES = {"continuity": continuity_scenarios, "paraphrase": paraphrase_scenarios}
+
+
+def _fill_token(text: str, token: str) -> str:
+    return str(text).replace(_TOKEN_PLACEHOLDER, token)
+
+
+def _asked_a_question(text: str) -> bool:
+    return re.sub(r"[\s*_`\"'’”)\]]+$", "", str(text or "")).endswith("?")
+
+
+def _evaluate_scenario_turn(
+    turn_def: ScenarioTurn,
+    token: str,
+    status: int,
+    body: Mapping[str, Any],
+    previous: Optional[ChatTurn],
+) -> ChatTurn:
+    message = _fill_token(turn_def.message, token)
+    case = PromptCase(name="scenario_turn", message=message, expected_agent=turn_def.expected_agent)
+    turn = evaluate_turn(case, status, body)
+    failures = [
+        f"[misroute] {failure}" if failure.startswith("expected agent") else f"[backend] {failure}"
+        for failure in turn.failures
+    ]
+    text = turn.response_text
+    if not text.strip():
+        failures.append("[backend] empty response")
+    if not turn_def.may_ask:
+        for pattern in RIGID_REPLY_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                failures.append(f"[rigid] canned reply instead of using the conversation: {text[:120]!r}")
+                break
+    for pattern in turn_def.must_match:
+        if not re.search(_fill_token(pattern, token), text, re.IGNORECASE | re.DOTALL):
+            failures.append(f"[assertion] reply does not match /{pattern}/: {text[:160]!r}")
+    for pattern in turn_def.must_not_match:
+        if re.search(_fill_token(pattern, token), text, re.IGNORECASE | re.DOTALL):
+            failures.append(f"[assertion] reply matches forbidden /{pattern}/: {text[:160]!r}")
+    forbidden = _canonical_agent_name(turn_def.forbidden_agent_after_question)
+    if forbidden and previous is not None and _asked_a_question(previous.response_text):
+        if _canonical_agent_name(turn.agent_name) == forbidden:
+            failures.append(f"[misroute] an answer to the assistant's question was routed to {forbidden}")
+    turn.failures = failures
+    turn.passed = not failures
+    return turn
+
+
+_PROBE_QUESTIONS = {
+    "notes_total": ("How many notes do I have?", re.compile(r"You have \*\*(\d+) notes?\*\*")),
+    "feed_total": ("How many items are in my AutoYou Page feed?", re.compile(r"feed has (\d+) items?")),
+}
+_NOTES_SEARCH_HIT = re.compile(r"Found \*\*(\d+) notes?\*\*")
+
+
+def _probe_value(config: GoalLoopConfig, runtime: RuntimeStatus, probe: Probe, token: str) -> Optional[int]:
+    """Read a probe's count through a no-LLM path; None when it cannot be read."""
+
+    if probe.kind == "notes_search":
+        message = f"search notes for {_fill_token(probe.phrase, token)}"
+    elif probe.kind in _PROBE_QUESTIONS:
+        message = _PROBE_QUESTIONS[probe.kind][0]
+    else:
+        return None
+    turn = _send_chat_turn(
+        runtime.ai_url,
+        timeout=config.request_timeout_seconds,
+        case=PromptCase(name=f"probe_{probe.kind}", message=message),
+        session_id=f"gl-probe-{uuid.uuid4().hex[:12]}",
+        user_id=config.user_id,
+    )
+    if probe.kind == "notes_search":
+        if re.search(r"No notes found", turn.response_text, re.IGNORECASE):
+            return 0
+        hit = _NOTES_SEARCH_HIT.search(turn.response_text)
+        return int(hit.group(1)) if hit else None
+    hit = _PROBE_QUESTIONS[probe.kind][1].search(turn.response_text)
+    return int(hit.group(1)) if hit else None
+
+
+def run_scenario(
+    config: GoalLoopConfig,
+    runtime: RuntimeStatus,
+    scenario: Scenario,
+    *,
+    token: str,
+    attempt: int,
+) -> ScenarioRun:
+    started = time.time()
+    session_id = f"gl-{token}-{scenario.name}-{attempt}"
+    failures: list[str] = []
+    before: dict[int, Optional[int]] = {}
+    for index, probe in enumerate(scenario.probes):
+        if probe.delta is not None:
+            before[index] = _probe_value(config, runtime, probe, token)
+
+    turns: list[ChatTurn] = []
+    previous: Optional[ChatTurn] = None
+    for turn_def in scenario.turns:
+        message = _fill_token(turn_def.message, token)
+        try:
+            raw_turn = _send_chat_turn(
+                runtime.ai_url,
+                timeout=config.request_timeout_seconds,
+                case=PromptCase(name="scenario_turn", message=message, expected_agent=turn_def.expected_agent),
+                session_id=session_id,
+                user_id=config.user_id,
+            )
+        except Exception as exc:  # a hung or refused request is a backend failure, not a crash
+            failures.append(f"[backend] request failed: {exc}")
+            break
+        turn = _evaluate_scenario_turn(turn_def, token, raw_turn.status_code, raw_turn.raw, previous)
+        turns.append(turn)
+        failures.extend(turn.failures)
+        previous = turn
+
+    for index, probe in enumerate(scenario.probes):
+        after = _probe_value(config, runtime, probe, token)
+        label = f"{probe.kind}{(' ' + _fill_token(probe.phrase, token)) if probe.phrase else ''}"
+        if after is None:
+            failures.append(f"[backend] could not read probe {label}")
+            continue
+        if probe.delta is not None:
+            base = before.get(index)
+            if base is None:
+                failures.append(f"[backend] could not read probe {label} before the scenario")
+            elif after - base != probe.delta:
+                failures.append(f"[assertion] probe {label} changed by {after - base}, expected {probe.delta}")
+        if probe.exactly is not None and after != probe.exactly:
+            failures.append(f"[assertion] probe {label} is {after}, expected {probe.exactly}")
+        if probe.at_least is not None and after < probe.at_least:
+            failures.append(f"[assertion] probe {label} is {after}, expected at least {probe.at_least}")
+    return ScenarioRun(scenario.name, attempt, session_id, turns, failures, time.time() - started)
+
+
+def select_scenarios(names: Sequence[str], suite: str = "continuity") -> list[Scenario]:
+    catalog = {scenario.name: scenario for builder in SUITES.values() for scenario in builder()}
+    if not names:
+        return SUITES.get(suite or "continuity", continuity_scenarios)()
+    unknown = [name for name in names if name not in catalog]
+    if unknown:
+        raise SystemExit(f"unknown scenario(s): {', '.join(unknown)}; available: {', '.join(catalog)}")
+    return [catalog[name] for name in names]
+
+
+def run_scenarios(config: GoalLoopConfig) -> ScenarioSuiteReport:
+    """Run the selected scenarios against the live runtime and scan its log."""
+
+    started_at = time.time()
+    token = uuid.uuid4().hex[:8]
+    runtime = ensure_runtime(config)
+    if config.log_file and runtime.ready:
+        runtime = dataclasses.replace(runtime, log_file=config.log_file)
+    runs: list[ScenarioRun] = []
+    if runtime.ready:
+        for scenario in select_scenarios(config.scenarios, config.suite):
+            attempts = 1 if scenario.deterministic else max(1, int(config.repeat or 1))
+            for attempt in range(1, attempts + 1):
+                if scenario.needs_network and config.offline:
+                    runs.append(ScenarioRun(scenario.name, attempt, "", [], [], 0.0, skipped="offline"))
+                    break
+                runs.append(run_scenario(config, runtime, scenario, token=token, attempt=attempt))
+    report = ScenarioSuiteReport(
+        config=config,
+        runtime=runtime,
+        token=token,
+        runs=runs,
+        log_findings=scan_recent_logs(runtime, since=started_at) if runtime.ready else [],
+    )
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / f"scenarios-{_dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{token}.json"
+    data = report.to_jsonable()
+    data["report_path"] = str(path)
+    write_secure_file(path, (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    report.report_path = str(path)
+    return report
+
+
+def format_scenario_report(report: ScenarioSuiteReport) -> str:
+    lines = [
+        f"AutoYou scenario suite {'passed' if report.passed else 'FAILED'} (token GL-{report.token}).",
+        f"Runtime: {report.runtime.message}",
+        f"Report: {report.report_path}",
+        "",
+    ]
+    for run in report.runs:
+        marker = "SKIP" if run.skipped else ("PASS" if run.passed else "FAIL")
+        lines.append(f"{marker} {run.scenario} #{run.attempt} ({run.seconds:.1f}s)")
+        for failure in run.failures:
+            lines.append(f"    - {failure}")
+    kinds = report.failure_kinds()
+    if kinds:
+        lines.append("")
+        lines.append("Failures by kind: " + ", ".join(f"{kind}={count}" for kind, count in kinds.items()))
+    if report.log_findings:
+        lines.append("")
+        lines.append("Log findings:")
+        for finding in report.log_findings[:8]:
+            lines.append(f"- {finding.get('file')}:{finding.get('line')}: {finding.get('text')}")
+    return "\n".join(lines)
 
 
 def _extract_prompt_from_hook_payload(payload: Mapping[str, Any]) -> str:
@@ -1081,9 +1640,26 @@ def _parse_cli(argv: Sequence[str]) -> GoalLoopConfig:
     parser.add_argument("--repair-mode", choices=["codex-prompt", "agent"], default="codex-prompt")
     parser.add_argument("--prompt", action="append", default=[])
     parser.add_argument("--no-skip-bootstrap-install", action="store_true")
+    parser.add_argument(
+        "--suite",
+        choices=sorted(SUITES),
+        default="",
+        help="Run the multi-turn conversation scenarios instead of a single-goal prompt suite.",
+    )
+    parser.add_argument("--scenario", action="append", default=[], help="Run only this scenario (repeatable).")
+    parser.add_argument("--list-scenarios", action="store_true", help="Print scenario names and exit.")
+    parser.add_argument("--repeat", type=int, default=1, help="Attempts per model-dependent scenario.")
+    parser.add_argument("--log-file", default="", help="Server log to scan for errors during the run.")
+    parser.add_argument("--offline", action="store_true", help="Skip scenarios that need live internet.")
     args = parser.parse_args(list(argv))
+    if args.list_scenarios:
+        for builder in SUITES.values():
+            for scenario in builder():
+                print(f"{scenario.name}: {scenario.description}")
+        raise SystemExit(0)
     goal = str(args.goal_opt or args.goal or "").strip()
-    if not goal:
+    scenario_mode = bool(args.suite or args.scenario)
+    if not goal and not scenario_mode:
         raise SystemExit("goal is required")
     return GoalLoopConfig(
         goal=goal,
@@ -1102,12 +1678,21 @@ def _parse_cli(argv: Sequence[str]) -> GoalLoopConfig:
         repair_mode=args.repair_mode,
         skip_bootstrap_install=not args.no_skip_bootstrap_install,
         extra_prompts=tuple(args.prompt or ()),
+        scenarios=tuple(args.scenario or ()),
+        suite=(args.suite or "continuity") if scenario_mode else "",
+        repeat=max(1, int(args.repeat)),
+        log_file=str(args.log_file or ""),
+        offline=bool(args.offline),
     )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         config = _parse_cli(sys.argv[1:] if argv is None else argv)
+        if config.suite:
+            suite_report = run_scenarios(config)
+            print(format_scenario_report(suite_report))
+            return 0 if suite_report.passed else 2
         report = run_goal_loop(config)
         print(format_report_for_hook(report))
         return 0 if report.passed else 2

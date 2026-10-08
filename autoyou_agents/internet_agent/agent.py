@@ -93,6 +93,31 @@ _INTERNET_URL_PATTERN = re.compile(
     r"(?:https?://|www\.|[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:/[^\s<>\"']*)?)",
     re.IGNORECASE,
 )
+# A link only asks for web access when the user says what to do with it. Without
+# one of these verbs a link is just text ("Content: see https://x for details",
+# "add example.com to my page") and must not pre-empt the model or another
+# specialist. A message that is little more than the link still counts: a pasted
+# URL on its own is something to open.
+_INTERNET_URL_ACTION_PATTERN = re.compile(
+    r"\b(?:open|visit|go\s+to|browse|fetch|scrape|crawl|read|check|look\s+at|summari[sz]e|analy[sz]e|"
+    r"download|screenshot|load|navigate|pull\s+up|what(?:'s|\s+is|\s+does)|tell\s+me\s+about|explain|"
+    r"describe|extract|translate|find\s+out|look\s+up|verify|monitor|compare)\b",
+    re.IGNORECASE,
+)
+_INTERNET_LINK_ONLY_MAX_WORDS = 2
+
+
+def _url_asks_for_web_access(text: str) -> bool:
+    if not _INTERNET_URL_PATTERN.search(text):
+        return False
+    # Judge the words around the link: a verb inside the link itself
+    # ("example.com/read-later", "/open-source") says nothing about intent.
+    around_the_link = _INTERNET_URL_PATTERN.sub(" ", text)
+    if _INTERNET_URL_ACTION_PATTERN.search(around_the_link):
+        return True
+    return len(re.findall(r"[A-Za-z0-9']+", around_the_link)) <= _INTERNET_LINK_ONLY_MAX_WORDS
+
+
 _INTERNET_NETWORK_ACTION_PATTERN = re.compile(
     r"\b(search|look up|google|browse|scrape|visit|open|download|fetch|retrieve)\b",
     re.IGNORECASE,
@@ -294,15 +319,16 @@ def _looks_like_live_internet_request(user_text: str) -> bool:
 def is_internet_request(user_text: str, *, url_is_signal: bool = True) -> bool:
     """Compatibility classifier for the root/provider routing layer.
 
-    ``url_is_signal=False`` stops a bare URL from counting as a web request. The
-    router uses it when the user is answering a question the assistant just
-    asked, where a link is far more likely to be pasted content than a request
-    to open it.
+    A link counts as a web request only when the message says what to do with it
+    (or is little more than the link). ``url_is_signal=False`` stops a link from
+    counting at all; the router uses it when the user is answering a question the
+    assistant just asked, where a link is far more likely to be pasted content
+    than a request to open it.
     """
     text = str(user_text or "").strip()
     if not text:
         return False
-    if _INTERNET_EXPLICIT_AGENT_PATTERN.search(text) or (url_is_signal and _INTERNET_URL_PATTERN.search(text)):
+    if _INTERNET_EXPLICIT_AGENT_PATTERN.search(text) or (url_is_signal and _url_asks_for_web_access(text)):
         return True
     if _INTERNET_FRESHNESS_PATTERN.search(text) and _INTERNET_LIVE_SUBJECT_PATTERN.search(text):
         return True
