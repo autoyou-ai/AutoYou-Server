@@ -1,110 +1,77 @@
 ---
 title: "Admin UI Architecture"
-description: "Architecture, component hierarchy, state management, and lifecycle patterns of the single-page Admin Console in assets/admin-ui.js."
+description: "How the single-page admin console is served and structured: the shell, the screens, state, rendering, and data refresh."
 ---
 
 # Admin UI Architecture
 
-The AutoYou Server administrative console is a high-performance, single-page application (SPA) delivered as a static asset bundle:
-- **`assets/admin-ui.js`**: Core client application logic (10,000+ lines of vanilla JavaScript).
-- **`assets/admin-ui.css`**: Responsive, dark-themed presentation stylesheet.
-- **`assets/admin-ui.html`**: Root HTML shell served at `GET /admin`.
+The admin console is a single-page application written in plain JavaScript, with no framework and no build step. The server delivers it as a small HTML shell plus two static assets:
+
+- **`assets/admin-ui.js`**: the application (over 11,000 lines).
+- **`assets/admin-ui.css`**: the stylesheet, with a light and a dark theme.
+- **The shell**: a short HTML document that the server generates in Python (`shared/admin_modern_ui.py`). It loads the stylesheet and script and contains an empty `#autoyou-admin-root` element. The console is served at `GET /` and `GET /admin`.
 
 ```mermaid
 graph TD
-    Browser[Web Browser / Electron] -->|GET /admin| Shell[admin-ui.html Shell]
-    Shell -->|Loads Assets| JS[assets/admin-ui.js]
-    Shell -->|Loads Styles| CSS[assets/admin-ui.css]
-    
-    JS --> State[Central State Store: state]
-    State --> Router[View Switcher: data-view]
-    Router --> Screens[View Renderers: renderOverview, renderSecurity, renderLiveView, etc.]
-    
-    Screens --> DOM[Direct DOM Mutation & Event Listeners]
-    Screens --> API[HTTP / WebSocket Calls: fetchJSON, WebSocket Streams]
-    API --> ServerAPI[FastAPI Backend Listeners: Port 8001]
+    Browser[Browser] -->|"GET / or /admin"| Shell["Generated HTML shell"]
+    Shell --> JS["/assets/admin-ui.js"]
+    Shell --> CSS["/assets/admin-ui.css"]
+    JS -->|"GET /api/admin/bootstrap"| Admin["Admin app :8001"]
+    JS --> State["state object"]
+    State --> Render["renderApp() fills #autoyou-admin-root"]
+    Render --> Screens["One render function per screen"]
 ```
 
----
-
-## Zero-Dependency Philosophy
-
-The Admin Console is deliberately written in pure, standard **Vanilla JavaScript (ES2022+)** without external framework dependencies (React, Vue, or Angular) or build-step compilers:
-- **Instant Loading**: Zero bundle compilation overhead; loads in under 30 milliseconds.
-- **Minimal Memory Overhead**: Eliminates virtual DOM layers, running comfortably in low-memory environments, headless servers, and embedded WebViews.
-- **Long-Term Maintainability**: Direct standard Web APIs (DOM, Fetch, WebSockets, Canvas) ensure the interface remains stable and immune to frontend framework churn.
+While the server is locked or you are not signed in, the shell redirects to `/login`. The access model is described in [Security & Authentication](/architecture/security-and-auth).
 
 ---
 
-## State Management & Reactive Render Cycle
+## Screens
 
-`admin-ui.js` maintains a centralized reactive state object:
+The sidebar (the `NAV` list in `admin-ui.js`) has these screens. `state.screen` holds the current screen's id.
 
-```javascript
-const state = {
-  currentView: 'overview',
-  theme: 'dark',
-  bootstrap: null,           // System capabilities & platform info
-  status: null,              // Hardware metrics, memory, CPU
-  connection: null,          // Active WebRTC connections & pairing
-  activeSessionId: null,     // Active chat/interact conversation
-  agentSecurityProfiles: [], // Security access policies
-  totpState: { active: false, setupUri: null },
-  isRefreshing: false
-};
-```
+| Id | Label |
+| :--- | :--- |
+| `overview` | Overview |
+| `chat` | Chat & History |
+| `live` | Live View |
+| `interact` | Interact |
+| `setup` | Setup & Boot |
+| `ai` | AI & Models |
+| `agents` | Agents |
+| `page` | Websites & Browser |
+| `messaging` | Messaging |
+| `video` | Video & Calls |
+| `permissions` | Permissions |
+| `speech` | Speech |
+| `connectivity` | Connectivity |
+| `security` | Security |
+| `guides` | Help & Guides |
 
-### The Rendering Pipeline
-
-When navigating between views or when remote telemetry updates arrive, `renderApp()` executes:
-
-1. **View Dispatch**: Inspects `state.currentView` and selects the corresponding view function:
-   - `overview` $\rightarrow$ `renderOverview()`
-   - `security` $\rightarrow$ `renderSecurityScreen()`
-   - `live-view` $\rightarrow$ `renderLiveViewScreen()`
-   - `interact` $\rightarrow$ `renderInteractScreen()`
-   - `ai` $\rightarrow$ `renderAiScreen()`
-   - `speech` $\rightarrow$ `renderSpeechScreen()`
-   - `messaging` $\rightarrow$ `renderMessagingScreen()`
-   - `agents` $\rightarrow$ `renderAgentScreen()`
-   - `setup` $\rightarrow$ `renderSetupScreen()`
-2. **DOM Patching**: Constructs clean HTML markup and injects it into container elements (`#main-content`).
-3. **Event Binding**: Recursively attaches event handlers (`onclick`, `onchange`, `onsubmit`) to buttons, inputs, and tabs.
+Each screen has a render function, for example `renderAiScreen()`, `renderSpeechScreen()`, `renderSecurityScreen()`, and `renderAgentScreen()`.
 
 ---
 
-## Polling, Synchronization & Real-Time Streams
+## State and rendering
 
-To maintain current operational awareness without overwhelming the server, `admin-ui.js` coordinates background synchronization:
+A single `state` object holds the console's state: the current `screen`, the server's `bootstrap` payload, unsaved `forms`, a `notice` and a `modal`, and per-screen sections such as `aiLibrary`, `speechLibrary`, `setup`, `interact`, and `localPair`.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as assets/admin-ui.js
-    participant Server as FastAPI Server (:8001)
+`renderApp()` rebuilds the shell from `state`: the sidebar and the current screen's markup go into `#autoyou-admin-root` as one HTML string. To avoid disturbing someone who is typing, a passive refresh is deferred while a form control has focus, and the active control and its selection are captured and restored around each render.
 
-    loop Every 3000ms (Active Tab)
-        UI->>Server: GET /api/status
-        Server-->>UI: Hardware metrics, CPU, RAM, Uptime
-        UI->>Server: GET /api/scheduler/live-summary
-        Server-->>UI: Scheduled tasks, queues, alarms
-        UI->>UI: Update status chips & progress bars
-    end
-
-    opt Live View Tab Active
-        UI->>Server: Open WebRTC Video & Audio PeerConnection
-        Server-->>UI: Stream VP8 screen & Opus audio frames
-    end
-```
-
-- **Visibility-Aware Throttling**: When the browser tab is hidden or minimized, polling intervals dynamically back off from 3 seconds to 15 seconds to conserve CPU cycles.
-- **Exponential Backoff on Errors**: If network errors or server restarts occur, reconnect attempts automatically back off to prevent request storms.
+User actions are dispatched by an action name carried on the clicked control, and mutations go through small helpers that send JSON to the admin app's routes (`requestJson()` for reads, `postJson()` for writes).
 
 ---
 
-## Security & Sensitive Token Sanitization
+## Data refresh
 
-`admin-ui.js` includes defensive security controls:
-- **Automatic Scrubbing**: Any sensitive secrets (TOTP master keys, private tokens) rendered in confirmation modals are automatically scrubbed from memory after user dismissal.
-- **CSRF & Origin Verification**: All mutating requests (`POST`, `PUT`, `DELETE`) pass operator session cookies or explicit Bearer tokens.
-- **Safe HTML Injection**: Text input strings from external messaging bridges (Telegram, WhatsApp, Signal) are sanitized using HTML entity escaping before injection into the DOM, preventing Cross-Site Scripting (XSS).
+`refreshBootstrap()` calls `GET /api/admin/bootstrap`, applies the payload to `state`, and re-renders. Depending on the screen, it also loads extra data for the Live View, Messaging, Video, and Connectivity screens, the local pair details for Overview and Live View, and media devices for Video.
+
+The console does not poll on one global timer. Features that need live data start their own timers while they are active: download jobs for models and speech models, the pairing dialogs, Telegram sender approvals, the Interact screen, and the authenticator code display.
+
+---
+
+## Safety in the browser
+
+- **Escaping.** Dynamic text, including text that arrives from messaging bridges, is HTML-escaped before it is inserted into the page.
+- **Cross-site requests.** State-changing requests must carry a matching `Origin` or `Referer`, which the server enforces.
+- **Token generation.** The MCP token is generated in the browser with `crypto.getRandomValues`, and only on `localhost` or over HTTPS.

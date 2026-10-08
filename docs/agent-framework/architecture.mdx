@@ -1,134 +1,69 @@
 ---
 title: "Agent Framework Architecture"
-description: "Architectural overview of AutoYou's Agent Development Kit (ADK), agent directory layout, lifecycle hooks, and tool dispatch."
+description: "How AutoYou builds on the Google Agent Development Kit (ADK): agent packages, the factory, the execution loop, and the domain pages."
 ---
 
 # Agent Framework Architecture
 
-At the heart of AutoYou Server is the **Agent Development Kit (ADK)**, an asynchronous, modular agent framework designed for building, testing, and running multi-modal AI agents directly on local hardware.
+AutoYou's agent runtime is built on the [Google Agent Development Kit (ADK)](https://google.github.io/adk-docs/). A root agent, defined in `autoyou_agents/agent.py`, routes requests to specialized sub-agents. Each sub-agent is a Python package under `autoyou_agents/` that builds an ADK `Agent`. The runtime runs in the AI Agent worker process; see the [AI Agent worker reference](/api-reference/ai-agent-worker).
 
 ---
 
-## Agent Directory Layout
+## Agent packages
 
-Every agent in AutoYou Server lives in its own self-contained directory under `autoyou_agents/` (for built-in agents) or within the mutable dynamic root (`get_dynamic_agents_root()`):
+Every agent lives in its own folder, either under `autoyou_agents/` or, for agents you add, under `autoyou_agents/private/`:
 
 ```
-autoyou_agents/my_custom_agent/
-├── agent.py                 # Core agent definition, prompt, and Python tools
-├── manifest.json            # Agent identity, permissions, and route metadata
-├── website/                 # Optional web frontend
-│   └── frontend/
-│       ├── index.html       # Single-page web app entrypoint
-│       ├── app.js           # Client-side JavaScript
-│       └── style.css        # Presentation styling
-└── README.md                # Documentation and usage notes
+autoyou_agents/<name>_agent/
+├── __init__.py
+├── prompt.py        # AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION, optional routing constants
+├── agent.py         # create_<name>_agent(model_config) -> google.adk.agents.Agent
+├── <tools>.py       # tool functions
+└── website/         # optional web interface
+    ├── manifest.json
+    ├── frontend/
+    └── backend/app.py
 ```
+
+The server loads `autoyou_agents.<name>_agent.agent` and calls `create_<name>_agent(model_config)`. The factory returns an ADK `Agent` with a name, a model, a description, an instruction, and a list of tools. Tools are plain Python functions whose type annotations and docstrings the ADK turns into a schema for the model.
+
+The contract is described in [Building Custom Agents](building-agents.mdx), and a walkthrough is in the [tutorial](../guides/custom-agent-tutorial.mdx).
 
 ---
 
-## The `agent.py` Protocol
-
-An agent defines its capabilities in `agent.py` by implementing standard ADK lifecycle hooks and tool decorators:
-
-```python
-"""Example agent implementation: my_custom_agent/agent.py"""
-
-from typing import Dict, Any
-from autoyou_agents.shared_tools import tool
-
-# 1. Base Identity & Prompt
-AGENT_NAME = "weather_agent"
-AGENT_TITLE = "Weather Assistant"
-AGENT_DESCRIPTION = "Provides weather forecasts and environmental telemetry."
-
-SYSTEM_PROMPT = """
-You are a precise meteorological assistant.
-When the user asks for weather conditions, invoke the 'get_current_weather' tool.
-"""
-
-# 2. Tool Definition with Decorators & Type Hints
-@tool
-async def get_current_weather(location: str, unit: str = "celsius") -> Dict[str, Any]:
-    """
-    Fetches real-time weather conditions for a given city or geographic region.
-
-    Args:
-        location: City and country or coordinates (e.g. 'San Francisco, CA').
-        unit: Temperature scale ('celsius' or 'fahrenheit').
-    """
-    # Tool business logic here
-    return {
-        "location": location,
-        "temperature": 18,
-        "unit": unit,
-        "condition": "Clear Sky"
-    }
-
-# 3. Factory Function for ADK Orchestration
-def create_agent():
-    return {
-        "name": AGENT_NAME,
-        "title": AGENT_TITLE,
-        "prompt": SYSTEM_PROMPT,
-        "tools": [get_current_weather]
-    }
-```
-
----
-
-## Agent Execution Loop
-
-When a user prompt or external messaging turn arrives:
+## Execution loop
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User / Client
-    participant Orch as ADK Orchestrator
-    participant Model as Local LLM (Ollama / GGUF)
-    participant Agent as Target Agent (agent.py)
+    actor User as User or client
+    participant Worker as AI Agent worker (root agent)
+    participant Model as Model (Ollama or a configured provider)
+    participant Agent as Sub-agent tool
 
-    User->>Orch: Submit User Prompt ("What's the weather in Paris?")
-    Orch->>Orch: Resolve Intent & Select Agent (weather_agent)
-    Orch->>Model: Build Messages (System Prompt + Tool JSON Schemas + User Message)
-    Model-->>Orch: Tool Call Request: get_current_weather(location="Paris")
-    Orch->>Agent: Invoke @tool get_current_weather
-    Agent-->>Orch: Return Tool Result JSON
-    Orch->>Model: Append Tool Output to Context & Request Final Answer
-    Model-->>Orch: "The current weather in Paris is 18°C with clear skies."
-    Orch-->>User: Deliver Response & Record Turn in sessions.db
+    User->>Worker: A chat turn
+    Worker->>Model: Instruction, tool schemas, and the message
+    Model-->>Worker: Call a sub-agent or tool
+    Worker->>Agent: Run the tool
+    Agent-->>Worker: Tool result
+    Worker->>Model: Append the result and ask for the answer
+    Model-->>Worker: Final reply
+    Worker-->>User: Reply, recorded in sessions.db
 ```
+
+The root agent is told about the installed agents only. Agents that are uninstalled or disabled are omitted from its prompt and its routing, and with small models a two-stage routing step first picks a domain and then runs inside it. See [Core Agent Engine](core-agent-engine.mdx).
 
 ---
 
-## Manifest Configuration (`manifest.json`)
+## Websites
 
-Controls discovery, permissions, and browser proxy routing:
-
-```json
-{
-  "name": "weather_agent",
-  "version": "1.0.0",
-  "title": "Weather Assistant",
-  "description": "Live weather reporting and forecast assistant.",
-  "author": "AutoYou Community",
-  "has_frontend": true,
-  "route_mode": "path_proxy",
-  "proxy_port": 8067,
-  "permissions": {
-    "network_outbound": true,
-    "filesystem_access": "sandbox_only",
-    "shell_execution": false
-  }
-}
-```
+An agent can include a website under `website/`. Its `manifest.json` carries `agent_name`, `title`, `description`, `entry_path`, `recommended_port`, `requires_proxy_registration`, and optionally `expose_by_default`, `control_label`, and `control_help`. The [page service](/api-reference/website-gateway) serves it at `/agent/<name>_agent/`. See [Agent Web Frontends](agent-web-frontends.mdx).
 
 ---
 
-## Agent Categories & Domain Organization
+## Agent categories
 
-AutoYou Server categorizes its 40+ built-in agents into **9 domain categories**:
+The built-in agents are grouped into **9 domains**. The pages below are generated from the source, so they list each agent's real description and tools.
 
 | Category | Agents Included | Reference Documentation |
 | :--- | :--- | :--- |
@@ -141,4 +76,3 @@ AutoYou Server categorizes its 40+ built-in agents into **9 domain categories**:
 | **AI & Training** | `data_collector_agent`, `fine_tuning_agent`, `voice_training_agent` | [AI & Training Agents](/agents/ai-and-training) |
 | **Monetization** | `ads_watching_agent`, `earnings_agent`, `donation_agent` | [Monetization Agents](/agents/monetization) |
 | **Utility** | `remote_desktop_agent`, `education_agent`, `game_agent`, `location_agent`, `proxy_agent` | [Utility Agents](/agents/utility) |
-

@@ -18,7 +18,7 @@ graph TD
     subgraph "Live Runtime Probe"
         GoalLoop --> HTTPClient[_HttpJsonClient]
         HTTPClient --> Login[/login -> AdminSession]
-        HTTPClient --> ChatAPI[/api/ai_agent/chat]
+        HTTPClient --> ChatAPI[POST /api/chat on the AI Agent worker]
     end
 
     subgraph "Verification Engine"
@@ -55,17 +55,26 @@ python autoyou_agents/self_improvement/goal_loop.py \
 
 | Argument | Default | Description |
 | :--- | :--- | :--- |
-| `--goal` | *(Required)* | Natural language objective or test description to execute. |
-| `--agent` | `None` | Optional target specialist to pin or assert routing for. |
-| `--host` | `127.0.0.1` | Hostname or IP address of the target server. |
-| `--admin-port` | `8001` | Admin console port for authentication and dashboard status. |
-| `--ai-agent-port` | `8081` | AI worker daemon port for direct chat turn dispatch. |
-| `--password` | `1234` | Admin login password used to acquire the `AdminSession`. |
-| `--session-id` | `uuid4` | Conversation session identifier (auto-generated if omitted). |
-| `--max-iterations` | `1` | Number of test and retry iterations to attempt. |
-| `--allow-code-edits` | `False` | When `True`, allows the harness to apply automated code patches. |
-| `--allow-main-restart`| `False` | When `True`, allows restarting the main server process on failure. |
-| `--repair-mode` | `codex-prompt` | Output format: `codex-prompt`, `json`, or `markdown`. |
+| `goal` or `--goal` | none | The natural-language objective to exercise. |
+| `--agent` | none | Pin or assert routing to one specialist. |
+| `--host` | `127.0.0.1` | Host of the target server. |
+| `--admin-port` | `8001` | Admin app port, used to sign in. |
+| `--ai-agent-port` | `8081` | AI Agent worker port, where chat turns are sent. |
+| `--auth-port` | `8002` | Auth app port. |
+| `--password` | `AUTOYOU_SELF_IMPROVE_PASSWORD`, else `1234` | The admin password used to sign in. `1234` is a default for throwaway test servers; never point the harness at a server that holds real data or a real password. |
+| `--user-id` | `codex-self-improvement` | The user id for the turns it sends. |
+| `--session-id` | generated | The conversation session id. |
+| `--max-iterations` | `1` | How many test and repair iterations to attempt. |
+| `--request-timeout` | `120.0` | Per-request timeout in seconds. |
+| `--prompt` | none | Add a prompt case (repeatable). |
+| `--suite` | none | Run a multi-turn scenario suite (`continuity` or `paraphrase`) instead of a single goal. |
+| `--scenario`, `--list-scenarios`, `--repeat` | none, off, `1` | Run only named scenarios, list them, or repeat model-dependent ones. |
+| `--log-file` | none | The server log to scan for errors during the run. |
+| `--offline` | off | Skip scenarios that need live internet access. |
+| `--allow-code-edits` | off | Allow the repair step to edit code. |
+| `--allow-main-restart` | off | Allow restarting the main server process. |
+| `--repair-mode` | `codex-prompt` | `codex-prompt` or `agent`. `codex-prompt` writes a repair prompt for a coding assistant. |
+| `--no-skip-bootstrap-install` | off | Do not skip the dependency install step when the harness starts a server. |
 
 ---
 
@@ -85,7 +94,7 @@ The harness establishes an authenticated cookie jar (`AdminSession`):
 # Submits credentials to acquire an authenticated session cookie
 login_payload = {"password": config.password}
 response = client.post("/login", json=login_payload)
-# Validates session cookies: autoyou_admin_session
+# The session cookie is admin_session
 ```
 
 #### Phase 3: Multi-Turn Conversation Execution
@@ -100,7 +109,7 @@ class PromptCase:
     must_not_error: bool = True
     description: str = ""
 ```
-Each turn is posted to `/api/ai_agent/chat`, recording the HTTP status, response text, executing agent name, tool call metadata, and latency into a `ChatTurn` record.
+Each turn is posted to `/api/chat` on the AI Agent worker, recording the HTTP status, response text, executing agent name, tool call metadata, and latency into a `ChatTurn` record.
 
 #### Phase 4: Error Log Pattern Scanning
 During and immediately following turn execution, the harness scans the active server log file against strict error patterns:
@@ -121,7 +130,7 @@ If any turn fails or error patterns are detected, `goal_loop.py` determines the 
 - **`main_runtime_required`**: Changes affecting `core_server/`, `routers/`, or `server.py` require a full server restart.
 
 The run produces a structured `GoalLoopReport` written to:
-`output/autoyou_self_improvement/report_<timestamp>.json`
+`output/autoyou_self_improvement/goal-loop-<timestamp>-<session>.json`
 
 If the run failed, the report synthesizes an actionable **Repair Prompt** containing:
 1. Exact failing prompt turn.
@@ -141,29 +150,21 @@ When building custom agents or extending the ADK, you must ensure:
 
 ---
 
-### Step 1: Unit Testing Tool Functions
+### Step 1: Unit testing tool functions
 
-Every `@tool` function should be tested with standard `pytest` without invoking an LLM.
+A tool is an ordinary Python function, so test it directly with `pytest`, without a model. This uses the `convert_temperature` tool from the [agent tutorial](../guides/custom-agent-tutorial.mdx):
 
 ```python
-"""tests/agents/test_my_custom_tool.py"""
-import pytest
-from autoyou_agents.shared_tools import tool
-from autoyou_agents.my_custom_agent.agent import fetch_system_metrics
+# tests/agents/public/test_units_agent.py
+from autoyou_agents.units_agent.units_tool import convert_temperature
 
-@pytest.mark.asyncio
-async def test_fetch_system_metrics_success():
-    result = await fetch_system_metrics(metric_type="cpu")
-    
-    assert isinstance(result, dict)
-    assert result["status"] == "ok"
-    assert "cpu_percent" in result["data"]
-    assert 0 <= result["data"]["cpu_percent"] <= 100
 
-@pytest.mark.asyncio
-async def test_fetch_system_metrics_invalid_type():
-    with pytest.raises(ValueError, match="Unsupported metric_type"):
-        await fetch_system_metrics(metric_type="unsupported_type")
+def test_celsius_to_fahrenheit():
+    assert convert_temperature(100, "C", "F") == {"success": True, "value": 212.0, "unit": "F"}
+
+
+def test_rejects_unknown_unit():
+    assert convert_temperature(1, "X", "C")["success"] is False
 ```
 
 ---
@@ -198,51 +199,9 @@ def test_nonfinal_tool_response_payload():
 
 ---
 
-### Step 3: Mocking LLMs in Multi-Turn Tests
+### Step 3: Tests that need a model or the model client
 
-To test end-to-end agent orchestration without consuming GPU tokens or requiring an active Ollama instance, mock LiteLLM's `acompletion`:
-
-```python
-"""tests/agents/test_agent_orchestration_mock.py"""
-import pytest
-from unittest.mock import AsyncMock, patch
-from autoyou_agents.agent import root_agent
-
-@pytest.mark.asyncio
-async def test_root_agent_dispatches_to_specialist(monkeypatch, tmp_path):
-    # Ensure test isolation
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
-    
-    # Synthetic tool call response from the LLM
-    mock_llm_response = {
-        "choices": [
-            {
-                "message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": "call_12345",
-                            "type": "function",
-                            "function": {
-                                "name": "autoyou_notes_agent",
-                                "arguments": '{"query": "Meeting notes"}'
-                            }
-                        }
-                    ]
-                }
-            }
-        ]
-    }
-    
-    with patch("litellm.acompletion", new=AsyncMock(return_value=mock_llm_response)):
-        # Execute turn through the agent runtime
-        response = await root_agent.run_turn(
-            prompt="Find my meeting notes",
-            session_id="test-mock-session"
-        )
-        assert response is not None
-```
+Tests that call a real model are opt-in, so the default suite stays fast and offline. For example, the intent router's model inference test runs only with `AUTOYOU_TEST_INTENT_MODEL=1`. To test the code that wraps the model client without a model, stub `litellm.acompletion`; `tests/agents/public/test_root_agent_ollama_tools.py` shows how the suite exercises the Ollama recovery logic that way.
 
 ---
 
@@ -261,16 +220,12 @@ When authoring new tests for agents, harnesses, or tools, you **must adhere to t
 
 ---
 
-## 4. Running the Regression Gate
+## 4. Running the tests
 
-Before committing changes to the agent framework, run the project's regression gate:
+Before committing changes to the agent framework, run the tests that cover what you changed, with an isolated test root so nothing touches your live configuration:
 
-```powershell
-python scripts/e2e_validate.py changed
+```bash
+AUTOYOU_TEST_ROOT="$(mktemp -d)" python -m pytest tests/agents -q
 ```
 
-This command automatically:
-- Analyzes your `git diff` against tracked subsystems.
-- Runs the minimal set of targeted unit and contract tests.
-- Verifies that no live configuration files were altered.
-- Produces a validation summary report.
+See the [testing guide](../contributors/TESTING.md) for the full set of suites and the rules for tests that touch configuration, keystores, or registries.

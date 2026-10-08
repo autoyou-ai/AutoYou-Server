@@ -1,80 +1,82 @@
 ---
-title: "Admin UI: Messaging Bridges"
-description: "Integrating and supervising WhatsApp, Signal, and Telegram communication gateways from admin-ui.js."
+title: "Admin UI: Messaging"
+description: "The Messaging screen of the admin console: Telegram Bot, Telegram User, Signal, WhatsApp, the MCP adapter, and direct sends to connected clients."
 ---
 
-# Messaging Bridges
+# Messaging
 
-AutoYou Server bridges multi-modal AI agents to real-world messaging platforms. The **Messaging Screen** (`renderMessagingScreen()` in `assets/admin-ui.js`) provides live controls, QR code login flows, message approval queues, and companion process management for WhatsApp, Signal, and Telegram.
-
----
-
-## Messaging Architecture Overview
-
-```mermaid
-graph LR
-    subgraph Admin UI: admin-ui.js
-        MsgScreen[Messaging Screen: renderMessagingScreen]
-    end
-
-    subgraph Messaging Routers: routers/messaging.py
-        WARoutes[/api/whatsapp/*]
-        SignalRoutes[/api/signal/*]
-        TGUserRoutes[/api/telegram-user/*]
-        TGBotRoutes[/api/telegram/*]
-    end
-
-    subgraph Companion Services
-        WANode[Node.js Puppeteer Worker: node/whatsapp/]
-        SignalCli[Signal CLI Daemon: signal_service.py]
-        TGClient[Telegram TDLib Worker: telegram_user_service.py]
-    end
-
-    MsgScreen --> WARoutes --> WANode
-    MsgScreen --> SignalRoutes --> SignalCli
-    MsgScreen --> TGUserRoutes --> TGClient
-    MsgScreen --> TGBotRoutes
-```
+The **Messaging** screen (`renderMessagingScreen()` in `assets/admin-ui.js`) keeps the messaging bridges together with only the settings and status each one needs. The bridges are optional. Each routes messages through a third-party service under that service's terms, and you choose which to enable; see [Data Privacy](../security/data-privacy.md). The routes are in the [route catalog](/api-reference/route-catalog).
 
 ---
 
-## WhatsApp Integration
+## Panels
 
-The WhatsApp gateway runs as an isolated Node.js child process using Puppeteer to manage a headless WhatsApp Web instance:
-
-### Operator Flow in `admin-ui.js`
-1. **Status Inspection**: Fetches `GET /api/whatsapp/status`. Displays connection state (`INITIALIZING`, `SCAN_QR_CODE`, `CONNECTED`, or `DISCONNECTED`).
-2. **QR Code Pairing**: If unlinked, queries `GET /api/whatsapp/qr` and renders the dynamic WhatsApp Web QR code canvas in the browser.
-3. **Session Reset**: If session state becomes corrupt, clicking **"Reset WhatsApp"** dispatches `POST /api/whatsapp/reset`, clearing browser profile caches and restarting Puppeteer cleanly.
-4. **Manual Message Test**: Allows the operator to send a test message to any phone number (`+1234567890`) via `POST /api/whatsapp/send`.
-
----
-
-## Signal Integration
-
-The Signal bridge operates through the local `signal-cli` daemon supervised by `signal_service.py`:
-
-### Capabilities
-- **Status & Device Identification**: `GET /api/signal/status` and `GET /api/signal/device-name` return the registered Signal username and account UUID.
-- **Link Device via QR Code**: `GET /api/signal/qr` returns a standard `tsdevice:/` pairing URI rendered as a QR code for linking as a secondary device from the official Signal mobile app.
-- **Message Inspection**: `GET /api/signal/messages` fetches recently received encrypted messages.
-- **Daemon Restart & Cache Cleanup**: `POST /api/signal/restart` and `POST /api/signal/cleanup`.
+| Panel | What it covers |
+| :--- | :--- |
+| **Server name** | The name AutoYou uses when it responds |
+| **Telegram Bot** | A separate bot connection with approved-sender controls |
+| **Telegram User** | Your own Telegram account, limited to Saved Messages |
+| **Signal** | An optional owner-only connection for Notes to Self |
+| **WhatsApp** | An optional owner-only connection for your self chat |
+| **AutoYou MCP** | Connects a private MCP adapter to the native chat, models, agents, and supported media handling. See [MCP Integration](../guides/mcp-integration.mdx). |
+| **Connected client control** | Select a connected client, send direct messages, and control remote audio playback |
+| **Send through Telegram Bot / Saved Messages / Signal / WhatsApp** | Send a message through the paired owner destination |
+| **Telegram User activity** | Connection status and recent Saved Messages activity |
+| **Signal health & recent messages** | Linked device name, pairing state, service health, and recent messages |
 
 ---
 
-## Telegram Integration (Dual Modality)
+## Telegram Bot
 
-AutoYou Server supports two distinct Telegram operational modes:
+Connects a bot you create with Telegram's BotFather. A message from an unknown Telegram user is held until you approve the sender.
 
-### 1. Telegram Bot (Official Bot API)
-Connects an official bot created via `@BotFather`:
-- **Discovered Senders Queue** (`renderTelegramDiscoveredSenders()`): When an unknown Telegram user messages the bot, their message is held in an approval queue (`GET /api/telegram/senders`).
-- **Sender Approval**: Operators can click **"Approve"** (`POST /api/telegram/senders/approve`) to allow the user to converse with AutoYou agents.
-- **Allow Code**: `POST /api/admin/telegram/allow-code` generates an authorization code that users can paste into Telegram chat to self-verify.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram/senders` | Senders that have messaged the bot |
+| `POST /api/telegram/senders/approve` | Approve a sender |
+| `POST /api/telegram/send` | Send through an approved bot chat |
+| `POST /admin/telegram/allow-code`, `POST /api/admin/telegram/allow-code` | Create the code that lets a Telegram user be allowed |
 
-### 2. Telegram User Client (`renderTelegramUserManagementBody()`)
-Operates directly as a real user account using TDLib / Telethon:
-- **QR Code & Phone Login**: Connects via `GET /api/telegram-user/qr`.
-- **2FA Cloud Password**: If the account has Telegram two-step verification enabled, the UI prompts for the password, dispatching `POST /api/telegram-user/2fa`.
-- **Message Streams**: `GET /api/telegram-user/messages` retrieves recent conversation logs.
-- **Session Control**: `POST /api/telegram-user/disconnect` terminates the session securely.
+---
+
+## Telegram User
+
+An owner-only transport for **Saved Messages**. It uses Telegram's user API only for the account that completed the local QR sign-in. It never enumerates your chats or reads history: live updates are accepted only when both sides of the conversation are that account's Saved Messages.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram-user/status`, `GET /api/telegram-user/qr` | Connection state and the QR code for signing in |
+| `POST /api/telegram-user/2fa` | Supply the account's two-step verification password |
+| `GET /api/telegram-user/messages`, `POST /api/telegram-user/send` | Recent Saved Messages activity (metadata only; message bodies stay in the consent-gated local path), and sending to Saved Messages |
+| `POST /api/telegram-user/restart`, `POST /api/telegram-user/disconnect` | Restart or end the connection |
+
+The console also has an opt-in Telegram Prompt Builder mode that appends Saved Messages to a selected desktop composer.
+
+---
+
+## Signal
+
+The Signal bridge runs the `bbernhard/signal-cli-rest-api` container, which the server starts through Docker. The repository's Compose file runs the same container beside the server.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/signal/status`, `GET /api/signal/detailed-status` | Service and pairing state |
+| `GET /api/signal/device-name` | The linked device name |
+| `GET /api/signal/qr` | The QR code for linking AutoYou as a device |
+| `GET /api/signal/messages`, `POST /api/signal/send` | Recent messages, and sending |
+| `POST /api/signal/restart`, `POST /api/signal/cleanup` | Restart the service, or clean up |
+
+---
+
+## WhatsApp
+
+The bridge has two backends, depending on how the server runs:
+
+- **From source:** a Node.js worker (`node/whatsapp/`, `whatsapp_service.py`) built on `whatsapp-web.js` drives a Chromium browser session.
+- **In compiled builds:** the `avoylenko/wwebjs-api` Docker container (`whatsapp_docker_service.py`), which avoids the native Node.js modules that do not bundle into a compiled build. The container posts inbound events to `POST /webhook/whatsapp`.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/whatsapp/status`, `GET /api/whatsapp/qr` | Connection state and the QR code for signing in |
+| `POST /api/whatsapp/send` | Send to your self chat |
+| `POST /api/whatsapp/restart`, `POST /api/whatsapp/reset` | Restart the bridge, or reset its session |

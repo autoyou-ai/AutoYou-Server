@@ -1,247 +1,96 @@
 ---
-title: "AI Agent Worker & Process"
-description: "Architecture, conversational chat, runtime settings, graph inspection, and LAN OTP security for the dedicated AI worker (routers/ai_agent.py)."
+title: "AI Agent Worker"
+description: "The separate AI Agent worker process: ports, chat and session routes, internal runtime settings, graph inspection, and the LAN one-time-code gate."
 ---
 
-# AI Agent Worker & Process (`routers/ai_agent.py`)
+# AI Agent Worker (`routers/ai_agent.py`)
 
-The AI Agent engine runs as a dedicated worker process (or within an in-process thread pool) managed by `server.STATE.agent_process`. This architecture isolates heavy LLM generation, tool execution, and vector search from the core administrative and WebRTC media loops.
-
-```mermaid
-graph TD
-    Client[Client / Paired App / Admin UI] --> Router[routers/ai_agent.py]
-    
-    subgraph "Process Isolation Boundary"
-        Router --> WorkerProcess["Dedicated Worker Process (:8081)<br/>server.STATE.agent_process"]
-        WorkerProcess --> Supervisor["Process Supervisor<br/>core_server/services.py"]
-    end
-
-    subgraph "Worker Endpoints"
-        WorkerProcess --> ChatAPI["Conversational Chat API<br/>POST /api/chat"]
-        WorkerProcess --> SessionAPI["Session State Telemetry<br/>GET /api/sessions/{user_id}/{session_id}"]
-        WorkerProcess --> StatusAPI["Health & Engine Status<br/>GET /api/status & GET /health"]
-        WorkerProcess --> RuntimeAPI["Internal Runtime Settings<br/>POST /api/internal/runtime-settings"]
-        WorkerProcess --> GraphAPI["ADK Graph Introspection<br/>GET /dev/build_graph/*"]
-    end
-
-    subgraph "Security Layer"
-        Router --> LANGate["LAN OTP Gate Middleware<br/>x-autoyou-otp & signed cookies"]
-    end
-```
+The AI Agent worker runs the Google ADK agent runtime in its own process (`--run-ai-agent-server`), started and monitored by `core_server/services.py`. Keeping it separate isolates model calls and tool execution from the admin app and the WebRTC engine. The routes below are the worker's own; the full list is in the [route catalog](/api-reference/route-catalog).
 
 ---
 
-## 1. Port Allocation & Process Isolation
+## Ports and exposure
 
-| Setting | Default Value | Environment Override | Purpose |
+| Setting | Default | Environment override | Notes |
 | :--- | :--- | :--- | :--- |
-| **Worker Loopback Port** | `8081` | `AUTOYOU_AI_AGENT_PORT` | Direct internal communication between server and worker. |
-| **LAN HTTPS Port** | `8444` | `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT` | Optional direct LAN-accessible TLS endpoint. |
-| **Internal Auth Token** | *(Generated at boot)* | `AUTOYOU_AI_AGENT_INTERNAL_TOKEN` | Secures administrative IPC calls to worker endpoints. |
-| **Process Supervisor** | Managed in-process | `core_server/services.py` | Automatically restarts worker if an out-of-memory error occurs. |
+| Worker port (HTTP) | `8081` | `AUTOYOU_AI_PORT` or `AUTOYOU_AI_AGENT_SERVER_PORT` | Loopback unless LAN access is enabled. |
+| LAN HTTPS port | `8481` | `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT`, or `ai_agent.lan_https_port` in the configuration | Opt-in. A twin listener of the same app, protected by the one-time-code gate below. |
+| LAN access | Off | `ai_agent.lan_access_enabled` in the configuration | When off, the worker binds to `127.0.0.1` regardless of `AUTOYOU_BIND_HOST`. |
+
+The `ai_agent.lan_access_enabled` setting is protected: a remote browser cannot change it. See [Security & Authentication](/architecture/security-and-auth).
 
 ---
 
-## 2. Conversational Chat API: `POST /api/chat`
+## Routes
 
-The primary conversational REST endpoint used by desktop clients, mobile apps, and headless integrations.
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Liveness: `{"status": "healthy", "service": "AutoYou AI Agent", "runtime": {...}}` |
+| `POST` | `/api/chat` | Send a message to the agent and receive a reply |
+| `GET` | `/api/sessions/{user_id}/{session_id}` | Information about one session |
+| `GET` | `/api/status` | Worker status and agent information |
+| `GET` | `/api/docs` | A short usage description of the chat route |
+| `POST` | `/api/internal/runtime-settings` | Apply settings from the parent server without restarting the worker |
+| `GET` | `/dev/build_graph/{app_name}` | Google ADK graph metadata |
+| `GET` | `/dev/build_graph_image/{app_name}` | Rendered agent graph (DOT) payloads; optional `dark_mode` and `node` query parameters |
 
-<CodeGroup>
-```http Request
-POST /api/chat HTTP/1.1
-Host: 127.0.0.1:8081
-Content-Type: application/json
-Authorization: Bearer <session_token>
+---
 
-{
-  "message": "Analyze the codebase for potential memory leaks.",
-  "session_id": "sess_8f29ab01",
-  "user_id": "operator",
-  "context": [],
-  "metadata": {
-    "agent_name": "coding_agent",
-    "model": "qwen2.5-coder:7b"
-  }
-}
-```
+## `POST /api/chat`
 
-```json 200 OK Response
-{
-  "response": "I have inspected the source files and identified two locations...",
-  "session_id": "sess_8f29ab01",
-  "message_id": "msg_01J8Z9X4K",
-  "agent_name": "coding_agent",
-  "tool_calls": [
-    {
-      "name": "inspect_path",
-      "arguments": {
-        "path": "src/engine.py"
-      },
-      "result": {
-        "status": "ok"
-      }
-    }
-  ]
-}
-```
-</CodeGroup>
-
-### Request Payload (`ChatRequest`)
+Request (`ChatRequest` in `rest_api.py`):
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `message` | `string` | **Yes** | Natural language user message or instruction. |
-| `session_id` | `string` | **Yes** | Conversation identifier for multi-turn history. |
-| `user_id` | `string` | No | Partition key for user-isolated memory. |
-| `context` | `array` | No | Optional turn history override or image attachments. |
-| `metadata` | `object` | No | Specialist agent selection (`agent_name`) and model override. |
+| `message` | string | Yes | The user's message. |
+| `session_id` | string | No | Session identifier for conversation continuity. |
+| `user_id` | string | No | Partition key for session management. Defaults to `AutoYou-client`. |
+| `context` | array of objects | No | Previous conversation context. |
+| `metadata` | object | No | Additional request metadata. |
 
-### Response Model (`ChatResponse`)
-
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `response` | `string` | Final synthesized text response from the model. |
-| `session_id` | `string` | Matched session identifier. |
-| `message_id` | `string` | Unique identifier for message delivery tracking. |
-| `agent_name` | `string` | Name of the specialist agent that completed the turn. |
-| `tool_calls` | `array` | List of tool invocations performed during the turn. |
-
----
-
-## 3. Session & Turn Inspection: `GET /api/sessions/{user_id}/{session_id}`
-
-Retrieves active session state, turn counts, cumulative tokens consumed, and current context window utilization.
-
-<CodeGroup>
-```http Request
-GET /api/sessions/operator/sess_8f29ab01 HTTP/1.1
-Host: 127.0.0.1:8081
-Authorization: Bearer <session_token>
-```
-
-```json 200 OK Response
-{
-  "user_id": "operator",
-  "session_id": "sess_8f29ab01",
-  "turns_count": 8,
-  "tokens_consumed": 4120,
-  "context_window_size": 32768,
-  "active_agent": "coding_agent",
-  "created_at": 1727998100,
-  "last_active": 1727998902
-}
-```
-</CodeGroup>
-
----
-
-## 4. Agent Engine Status & Telemetry: `GET /api/status`
-
-Returns live agent engine health, currently active Google ADK agents, and memory telemetry.
-
-<CodeGroup>
-```http Request
-GET /api/status HTTP/1.1
-Host: 127.0.0.1:8081
-```
-
-```json 200 OK Response
-{
-  "status": "online",
-  "active_provider": "ollama",
-  "active_model": "qwen2.5-coder:7b",
-  "active_harness": "expanded",
-  "loaded_agents_count": 41,
-  "memory_backend": "sqlite+cognee",
-  "vram_allocated_mb": 4200
-}
-```
-</CodeGroup>
-
----
-
-## 5. Internal Runtime Settings: `POST /api/internal/runtime-settings`
-
-Allows the parent server process to update worker configurations dynamically (e.g. model switching, temperature adjustments, security filters) without restarting the Python worker process.
-
-<Note>
-  This endpoint requires the internal loopback token (`AUTOYOU_AI_AGENT_INTERNAL_TOKEN`) passed via the `X-Internal-Token` header.
-</Note>
-
-<CodeGroup>
-```http Request
-POST /api/internal/runtime-settings HTTP/1.1
-Host: 127.0.0.1:8081
-Content-Type: application/json
-X-Internal-Token: <internal-token>
-
-{
-  "provider": "ollama",
-  "model": "llama3.2:3b",
-  "harness_profile": "compact",
-  "temperature": 0.2,
-  "reasoning_budget": 0,
-  "two_stage_routing": true
-}
-```
-
-```json 200 OK Response
-{
-  "status": "applied",
-  "previous_model": "qwen2.5-coder:7b",
-  "active_model": "llama3.2:3b",
-  "harness_profile": "compact",
-  "context_window": 8192
-}
-```
-</CodeGroup>
-
-### Configurable Settings
+Response (`ChatResponse`):
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `provider` | `string` | Target provider (`ollama`, `openclaw`, `litellm`, `google`, `apple_intelligence`). |
-| `model` | `string` | Model identifier or tag (e.g. `llama3.2:3b`, `qwen2.5:7b`). |
-| `harness_profile`| `string` | Profile mode: `compact` (for small models) or `expanded` (for 14B+ models). |
-| `temperature` | `float` | Sampling temperature between `0.0` and `1.0`. |
-| `reasoning_budget`| `int` | Token budget for reasoning/thinking traces (`0` to disable). |
-| `two_stage_routing`| `bool` | Enables intent-first specialist delegation. |
+| `response` | string | The agent's reply. |
+| `session_id` | string | Session identifier for this conversation. |
+| `message_id` | string | Unique identifier for this exchange. |
+| `timestamp` | datetime | When the response was produced. |
+| `agent_name` | string | The agent that answered. |
+| `metadata` | object | Additional response metadata. |
+| `voice_reply_transcript` | string or null | Transcript of the inbound voice note, when applicable. |
+
+## `GET /api/sessions/{user_id}/{session_id}`
+
+Returns a `SessionInfo`: `session_id`, `user_id`, `created_at`, `last_activity`, `message_count`, and optionally `messages`.
+
+## `GET /api/status`
+
+Returns an `APIStatus`: `status`, `version`, `agent_name`, `active_sessions`, `total_messages`, `uptime_seconds`, and `timestamp`.
 
 ---
 
-## 6. Graph & Routing Tree Introspection
+## `POST /api/internal/runtime-settings`
 
-```http
-GET /dev/build_graph/{app_name}
-GET /dev/build_graph_image/{app_name}
+This route is for the parent server, not for clients. It accepts a request only when it comes from loopback with `Authorization: Bearer <token>`, where the token is the worker's internal API token generated and stored by the server. Any other request is refused with `403`.
+
+Today it applies one setting, `internet_search_enabled`:
+
+```json
+{ "internet_search_enabled": true }
 ```
 
-Introspects Google ADK agent routing trees, returning structured DOT graph representations and rendered SVG/PNG images of how subagents and tools connect to each other.
-
-- **`GET /dev/build_graph/root_agent`**: Returns Graphviz DOT notation of the agent hierarchy.
-- **`GET /dev/build_graph_image/root_agent`**: Generates and streams a rendered visual graph.
+and answers `{"success": true, "applied": {"internet_search_enabled": true}}`. Invalid input returns `400`.
 
 ---
 
-## 7. LAN OTP Gate Middleware
+## LAN one-time-code gate
 
-When exposed over local network HTTPS (on `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT`), `routers/ai_agent.py` injects the **LAN OTP Gate**:
+When a request arrives on the LAN HTTPS port, the worker requires a current code from the shared authenticator before it handles the request. Requests on the plain loopback port are never challenged.
 
-```mermaid
-flowchart TD
-    Req[Incoming LAN Request] --> LoopbackCheck{From Loopback / 127.0.0.1?}
-    
-    LoopbackCheck -- Yes --> Allow[Bypass Gate & Allow Execution]
-    LoopbackCheck -- No --> CookieCheck{Valid Signed autoyou_ai_agent_lan_otp Cookie?}
-    
-    CookieCheck -- Yes --> Allow
-    CookieCheck -- No --> ParamCheck{x-autoyou-otp Header or ?otp= Code?}
-    
-    ParamCheck -- Valid OTP --> SetCookie[Set HMAC-Signed Cookie & Allow]
-    ParamCheck -- Missing / Invalid --> Reject[HTTP 401 Unauthorized]
-```
+1. If the request carries a valid `autoyou_ai_agent_lan_otp` cookie, it is allowed.
+2. Otherwise the request must present the current authenticator code, either in the `x-autoyou-otp` header or the `otp` query parameter. The code is checked with one adjacent time step of tolerance.
+3. A valid code sets the cookie, which is `HttpOnly`, `Secure`, and `SameSite=Lax`. The cookie value is a timestamp signed with HMAC-SHA256 keyed from the authenticator secret, and it is accepted for one hour.
+4. With no valid cookie or code, the worker answers `401` with a hint on how to supply the code.
 
-### Security Properties
-1. **Header or Query Parameter**: Requests must present an OTP code via query parameter (`?otp=<code>`) or header (`x-autoyou-otp: <code>`).
-2. **HMAC-Signed Session Cookie**: Once verified, the server sets a short-lived `autoyou_ai_agent_lan_otp` cookie HMAC-signed by the host TOTP secret (`_LAN_OTP_TOKEN_MAX_AGE_SECONDS = 3600`).
-3. **Loopback Exemption**: Direct loopback connections (`127.0.0.1:8081`) bypass this gate automatically.
+If the worker has no authenticator secret, the LAN listener answers `503` instead of serving requests.

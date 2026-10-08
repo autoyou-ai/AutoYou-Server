@@ -1,135 +1,56 @@
 ---
 title: "Models & Speech APIs"
-description: "API specifications for the local LLM model library, Ollama integration, Whisper STT, and neural speech synthesis."
+description: "Admin-app routes for the model library, model behavior, AI provider status, and speech models."
 ---
 
 # Models & Speech APIs
 
-These endpoints manage local LLM weight downloads, catalog discovery, inference providers, and speech recognition/synthesis assets.
+These admin-app routes manage local model downloads, the active model, model behavior, and speech models. They need an admin sign-in. The console screens that use them are described in [AI Models & Speech Settings](/admin-ui/ai-and-speech). Errors follow the shape in the [API overview](/api-reference/overview).
 
 ---
 
-## Local LLM Model Library
+## Model library
 
-### `GET /api/model-library/local`
-Returns all local LLM weights stored on disk ready for inference.
-
-#### Response (`200 OK`)
-```json
-{
-  "models": [
-    {
-      "name": "llama3:8b",
-      "size_gb": 4.7,
-      "format": "gguf",
-      "quantization": "Q4_K_M",
-      "context_length": 8192,
-      "is_active": true
-    },
-    {
-      "name": "qwen2.5-coder:7b",
-      "size_gb": 4.5,
-      "format": "gguf",
-      "quantization": "Q4_K_M",
-      "context_length": 32768,
-      "is_active": false
-    }
-  ]
-}
-```
-
-### `GET /api/model-library/catalog`
-Retrieves the curated catalog of recommended open-source models available for one-click installation.
-
-### `POST /api/model-library/download`
-Spawns an asynchronous background download job for a model from Hugging Face or Ollama.
-
-#### Request Payload
-```json
-{
-  "model_name": "llama3:8b",
-  "quantization": "Q4_K_M"
-}
-```
-
-#### Response (`202 Accepted`)
-```json
-{
-  "job_id": "job_dl_01J8YXZ90A",
-  "status": "queued",
-  "model_name": "llama3:8b"
-}
-```
-
-### `GET /api/model-library/downloads/{job_id}`
-Polls progress for an active download job.
-
-#### Response (`200 OK`)
-```json
-{
-  "job_id": "job_dl_01J8YXZ90A",
-  "status": "downloading",
-  "progress_percent": 68.4,
-  "downloaded_bytes": 3280000000,
-  "total_bytes": 4800000000,
-  "speed_mbps": 24.5
-}
-```
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/model-library/local` | none | Models installed on this computer |
+| `GET /api/model-library/catalog` | query: `source`, `q`, `page` | Browse a model catalog |
+| `GET /api/model-library/details` | query: `source`, `id` | Details for one model, including its variants and GGUF files |
+| `POST /api/model-library/download` | `title`, `source`, `repo_id`, `reference`, `model`, `quantization` | Start a background download job |
+| `GET /api/model-library/downloads` | none | All download jobs |
+| `GET /api/model-library/downloads/{job_id}` | none | One job's status and progress |
+| `POST /api/model-library/select` | `model` or `reference`, optional `restart_ai` | Make a model the active one, and optionally restart the AI runtime |
+| `POST /api/model-library/delete` | `model` or `reference` | Delete a local model |
 
 ---
 
-## Speech Recognition Models (STT)
+## Model behavior
 
-### `GET /api/speech-models/status`
-Returns installed Whisper models and hardware acceleration device information.
+`GET /api/model-behavior` returns the current behavior mode, the available modes and their presets, and the resolved generation parameters.
 
-#### Response (`200 OK`)
-```json
-{
-  "backend": "faster-whisper",
-  "compute_device": "cuda",
-  "installed_models": ["base.en", "small", "medium"],
-  "active_model": "small"
-}
-```
-
-### `POST /api/speech-models/download`
-Downloads additional Whisper model variants (`tiny.en`, `base`, `small`, `medium`, `large-v3`).
+`POST /api/model-behavior` updates the mode and/or the advanced overrides and then reloads the AI agent. The body carries `mode` and any of the overrides `temperature`, `top_p`, `top_k`, `repeat_penalty`, and `num_ctx`. Overrides left unset use the mode's preset.
 
 ---
 
-## AI Providers & Telemetry
+## AI provider status and settings
 
-### `GET /api/ai/ollama/status`
-Checks the local Ollama daemon at `http://127.0.0.1:11434`.
-
-#### Response (`200 OK`)
-```json
-{
-  "running": true,
-  "version": "0.3.12",
-  "loaded_models": ["llama3:8b"],
-  "vram_allocated_mb": 4512
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/ai/ollama/status` | Status of the local Ollama server |
+| `GET /api/ai/openclaw/status`, `GET /api/ai/hermes/status`, `GET /api/ai/odysseus/status` | Status of the bridged providers |
+| `GET /api/ai/internet/search_enabled`, `POST /api/ai/internet/search_enabled` | Read or set whether the AI may search the web. Body: `{"enabled": true}`. |
+| `POST /api/ai/restart` | Reload the AI runtime |
+| `POST /api/rtc/parse` | Parse pasted connection-helper details. Body: `text`, `mode`, and `existing`. |
 
 ---
 
-## Inference Parameters & Behavior
+## Speech models
 
-### `GET /api/model-behavior`
-Fetches active hyperparameter defaults.
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/speech-models/status` | none | Installed and available speech recognition models, system voices, custom voices, EmotiVoice state, and OpenAI speech options |
+| `POST /api/speech-models/download` | `model` or `reference` | Download a speech model |
+| `GET /api/speech-models/downloads` | none | Speech download jobs |
+| `POST /api/speech-models/delete` | `model` or `reference` | Delete a speech model |
 
-### `POST /api/model-behavior`
-Updates generation parameters:
-
-#### Request Payload
-```json
-{
-  "temperature": 0.7,
-  "top_p": 0.9,
-  "frequency_penalty": 0.1,
-  "presence_penalty": 0.0,
-  "max_tokens": 4096
-}
-```
+Speech recognition runs locally with faster-whisper. The speech output provider (system voice, a custom cloned voice, EmotiVoice, OpenAI, Azure, or off) is part of the server configuration, set in the console.

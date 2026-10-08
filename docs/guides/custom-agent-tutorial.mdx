@@ -1,172 +1,166 @@
 ---
 title: "Tutorial: Building a Custom Agent"
-description: "A comprehensive end-to-end tutorial demonstrating how to create, test, and deploy a custom agent with typed Python tools and a web frontend."
+description: "A walkthrough that creates a small agent with one tool, installs it, and optionally gives it a website."
 ---
 
 # Tutorial: Building a Custom Agent
 
-In this tutorial, we will build a complete, production-ready custom agent called **`github_agent`**. This agent can inspect GitHub repositories, check issues, and present an interactive web dashboard to the user.
+This tutorial builds a small agent, `units_agent`, that converts temperatures. It shows the structure every agent package uses. For the full contract, see [Building Custom Agents](../agent-framework/building-agents.mdx) and [`autoyou_agents/README.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/README.md).
+
+You can also let the **Agent Builder** scaffold a package for you (`POST /api/builder/create`, or **Create New Agent** on the Agents screen). Doing it by hand shows what the scaffold contains.
 
 ---
 
-## Step 1: Scaffold the Agent Structure
+## Step 1: Create the package
 
-Create the project directory inside `autoyou_agents/github_agent/`:
+Create a folder for the agent. Use a name that no built-in agent uses, and end it in `_agent`.
 
 ```bash
-mkdir -p autoyou_agents/github_agent/website/frontend
-cd autoyou_agents/github_agent
+mkdir autoyou_agents/units_agent
+```
+
+To keep an agent to yourself, put it in `autoyou_agents/private/units_agent/` instead. That folder is git-ignored. The server finds an agent by its folder name, so there is no list to edit.
+
+A package needs three files: `__init__.py` (it can be empty), `prompt.py`, and `agent.py`.
+
+---
+
+## Step 2: Describe the agent in `prompt.py`
+
+```python
+# autoyou_agents/units_agent/prompt.py
+
+AGENT_NAME = "autoyou_units_agent"
+
+AGENT_DESCRIPTION = (
+    "Converts temperatures between Celsius, Fahrenheit, and Kelvin."
+)
+
+AGENT_INSTRUCTION = """You are the AutoYou Units Agent.
+When the user asks to convert a temperature, call `convert_temperature`.
+Never do the arithmetic yourself. Report the result with its unit.
+"""
+
+# Optional. They control how the main agent routes to this one.
+ROUTING_LABEL = "Units"
+ROUTING_RULE = "convert temperatures between Celsius, Fahrenheit, and Kelvin"
+ROUTE_ALIASES = ("units", "temperature")
+```
+
+`AGENT_NAME`, `AGENT_DESCRIPTION`, and `AGENT_INSTRUCTION` are required. `ROUTING_LABEL` is the agent's name in the main agent's list of agents, `ROUTING_RULE` says when to call it (without it, `AGENT_DESCRIPTION` is used), and `ROUTE_ALIASES` are names that send a request straight to it, as in "use units to ...".
+
+---
+
+## Step 3: Write a tool
+
+Tools are plain Python functions. The ADK builds the tool schema from the type annotations and uses the docstring to tell the model when and how to call it.
+
+```python
+# autoyou_agents/units_agent/units_tool.py
+from typing import Any, Dict
+
+
+def convert_temperature(value: float, from_unit: str, to_unit: str) -> Dict[str, Any]:
+    """Convert a temperature between Celsius, Fahrenheit, and Kelvin.
+
+    Args:
+        value: The temperature to convert.
+        from_unit: One of "C", "F", or "K".
+        to_unit: One of "C", "F", or "K".
+    """
+    units = {"C", "F", "K"}
+    source, target = from_unit.strip().upper(), to_unit.strip().upper()
+    if source not in units or target not in units:
+        return {"success": False, "error": "Units must be C, F, or K."}
+
+    celsius = {"C": value, "F": (value - 32) * 5 / 9, "K": value - 273.15}[source]
+    result = {"C": celsius, "F": celsius * 9 / 5 + 32, "K": celsius + 273.15}[target]
+    return {"success": True, "value": round(result, 2), "unit": target}
+```
+
+Return a dictionary and report problems in it, as above, instead of raising. The model reads the result and can explain an error to the user.
+
+---
+
+## Step 4: Create the factory in `agent.py`
+
+The server looks for a function named `create_<folder name>` in `autoyou_agents/<folder name>/agent.py`. It receives the configured model and returns a Google ADK `Agent`.
+
+```python
+# autoyou_agents/units_agent/agent.py
+from google.adk.agents import Agent
+
+from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
+from .units_tool import convert_temperature
+
+
+def create_units_agent(model_config):
+    """Factory for the units agent (create_<folder name>)."""
+    return Agent(
+        name=AGENT_NAME,
+        model=model_config,
+        description=AGENT_DESCRIPTION,
+        instruction=AGENT_INSTRUCTION,
+        tools=[convert_temperature],
+    )
 ```
 
 ---
 
-## Step 2: Define `manifest.json`
+## Step 5: Install it
 
-Create `manifest.json` to register the agent's identity, permissions, and browser proxy route:
+An agent you add starts **uninstalled**. Install it from the admin console: **Agents**, then **Available to install**. Or call the API:
 
-```json manifest.json
+```http
+POST /api/agents/install
+{ "agent_name": "units_agent" }
+```
+
+Then reload the AI runtime (`POST /api/ai/restart`, or **Restart** on AutoYou AI in the Overview) so the main agent picks it up. In a packaged runtime only the built-in compiled agents are loaded, so build agents from a source checkout.
+
+---
+
+## Step 6 (optional): Give it a website
+
+An agent can have a web interface under `website/`. It is served by the [page service](/api-reference/website-gateway) at `/agent/units_agent/`.
+
+```json
+// autoyou_agents/units_agent/website/manifest.json
 {
-  "name": "github_agent",
-  "version": "1.0.0",
-  "title": "GitHub Explorer",
-  "description": "Examines GitHub repositories, commits, and open pull requests.",
-  "author": "Your Name",
-  "has_frontend": true,
-  "route_mode": "path_proxy",
-  "proxy_port": 8067,
-  "permissions": {
-    "network_outbound": true,
-    "filesystem_access": "sandbox_only",
-    "shell_execution": false
-  }
+  "agent_name": "units_agent",
+  "title": "Units",
+  "description": "Convert temperatures.",
+  "entry_path": "/",
+  "recommended_port": 8091,
+  "requires_proxy_registration": true
 }
 ```
 
+Put the page in `website/frontend/index.html` and, if it needs a server, a FastAPI app in `website/backend/app.py`. The Agent Builder can scaffold these (`POST /api/agents/workbench/{agent_name}/frontend/scaffold`). Optional manifest keys include `expose_by_default` (set it to `false` to keep the website off until the owner turns it on), `control_label`, and `control_help`.
+
+**Website security.** Agent websites are protected by a two-part boundary. The backend must answer every protected read and write with `401` until the session is authenticated. The frontend must hide and disable protected content before its own JavaScript runs; a login dialog over visible content is not a lock. Build backends with the shared factories (`create_agent_website_app` or `create_agent_chat_app`), which verify the agent's 2FA profile first and the shared authenticator otherwise, and never put private data in unauthenticated HTML or bootstrap payloads. See [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).
+
 ---
 
-## Step 3: Implement `agent.py`
+## Step 7: Test it
 
-Create `agent.py` with typed `@tool` functions:
+Put tests under `tests/agents/public/` and run them with an isolated test root, so nothing touches your live configuration:
 
-```python agent.py
-"""GitHub Explorer Agent for AutoYou Server."""
+```python
+# tests/agents/public/test_units_agent.py
+from autoyou_agents.units_agent.units_tool import convert_temperature
 
-import httpx
-from typing import Dict, Any, List
-from autoyou_agents.shared_tools import tool
 
-AGENT_NAME = "github_agent"
-AGENT_TITLE = "GitHub Explorer"
-AGENT_DESCRIPTION = "Examines GitHub repositories, commits, and open pull requests."
+def test_celsius_to_fahrenheit():
+    assert convert_temperature(100, "C", "F") == {"success": True, "value": 212.0, "unit": "F"}
 
-SYSTEM_PROMPT = """
-You are an expert software intelligence agent specializing in GitHub repositories.
-When a user asks about a repository, open issues, or stars, use the 'get_repo_summary' tool.
-Summarize repository health, primary language, and open pull requests clearly.
-"""
 
-@tool
-async def get_repo_summary(owner: str, repo: str) -> Dict[str, Any]:
-    """
-    Fetches public metadata, stars, and open issues for a GitHub repository.
-
-    Args:
-        owner: GitHub user or organization name (e.g. 'autoyou-ai').
-        repo: Repository name (e.g. 'AutoYou').
-    """
-    url = f"https://api.github.com/repos/{owner}/{repo}"
-    headers = {"User-Agent": "AutoYou-Server-GitHub-Agent/1.0"}
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        res = await client.get(url, headers=headers)
-        if res.status_code == 404:
-            return {"error": f"Repository '{owner}/{repo}' not found."}
-        if res.status_code != 200:
-            return {"error": f"GitHub API error: {res.status_code}"}
-
-        data = res.json()
-        return {
-            "full_name": data.get("full_name"),
-            "description": data.get("description"),
-            "stars": data.get("stargazers_count"),
-            "forks": data.get("forks_count"),
-            "open_issues": data.get("open_issues_count"),
-            "primary_language": data.get("language"),
-            "license": (data.get("license") or {}).get("spdx_id", "None")
-        }
-
-def create_agent():
-    return {
-        "name": AGENT_NAME,
-        "title": AGENT_TITLE,
-        "description": AGENT_DESCRIPTION,
-        "prompt": SYSTEM_PROMPT,
-        "tools": [get_repo_summary]
-    }
+def test_rejects_unknown_unit():
+    assert convert_temperature(1, "X", "C")["success"] is False
 ```
 
----
-
-## Step 4: Create the Web Frontend
-
-Create `website/frontend/index.html`:
-
-```html website/frontend/index.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>GitHub Explorer</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0A0E1A; color: #F1F5F9; padding: 2rem; }
-    .card { max-width: 500px; margin: 0 auto; background: #1E293B; border-radius: 12px; padding: 1.5rem; border: 1px solid #334155; }
-    input { width: 70%; padding: 0.5rem; border-radius: 6px; border: 1px solid #475569; background: #0F172A; color: #fff; }
-    button { padding: 0.5rem 1rem; border-radius: 6px; background: #0066FF; color: #fff; border: none; cursor: pointer; }
-    .stat { margin-top: 1rem; padding: 1rem; background: #0F172A; border-radius: 8px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>GitHub Explorer</h2>
-    <input id="repo-input" placeholder="owner/repo" value="autoyou-ai/AutoYou" />
-    <button onclick="inspectRepo()">Inspect</button>
-    <div id="output" class="stat">Enter a repository above...</div>
-  </div>
-  <script>
-    async function inspectRepo() {
-      const target = document.getElementById('repo-input').value.trim();
-      const out = document.getElementById('output');
-      out.textContent = 'Fetching metadata...';
-      const [owner, repo] = target.split('/');
-      
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `Give me a full summary of repository ${owner}/${repo}`,
-          agent_override: 'github_agent'
-        })
-      });
-      const data = await res.json();
-      out.textContent = data.reply;
-    }
-  </script>
-</body>
-</html>
+```bash
+AUTOYOU_TEST_ROOT="$(mktemp -d)" python -m pytest tests/agents/public/test_units_agent.py -q
 ```
 
----
-
-## Step 5: Test and Verify
-
-1. Run unit tests on your agent:
-   ```bash
-   pytest tests/agents/public/ -k "github_agent"
-   ```
-2. Start the server:
-   ```bash
-   python server.py
-   ```
-3. Open your browser and navigate to:
-   👉 `http://127.0.0.1:8067/agent/github_agent/`
-4. Ask in chat: `"How many stars does autoyou-ai/AutoYou have?"` The AI will invoke `get_repo_summary` and report the live metrics!
+See the [testing guide](../contributors/TESTING.md) for the rules on tests that touch configuration, keystores, or registries.

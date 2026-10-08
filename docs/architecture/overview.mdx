@@ -1,166 +1,144 @@
 ---
 title: "Server Architecture Overview"
-description: "High-level system architecture, process model, port bindings, and internal persistence layers of AutoYou Server."
+description: "High-level system architecture, process model, port bindings, and local persistence of AutoYou Server."
 ---
 
 # Architecture Overview
 
-AutoYou Server is an integrated platform combining an asynchronous API server, real-time WebRTC communications engine, multi-agent orchestrator, and web frontend proxy. It is built using Python, FastAPI, and asyncio, designed to run natively on user hardware without external cloud dependencies.
+AutoYou Server combines an asynchronous API server, a real-time WebRTC engine, a multi-agent runtime, and a web proxy for agent websites. It is built with Python, FastAPI, and asyncio, and it runs on hardware you control. Cloud model providers, Cloud Pair, and messaging bridges are optional integrations.
 
 ---
 
-## High-Level System Architecture
+## System architecture
 
 ```mermaid
 graph TB
-    subgraph Client Layer
-        WebClient[Admin UI in Web Browser]
-        NativeClient[AutoYou Connect: Win / Mac / Linux]
-        MobileClient[AutoYou Mobile: Android / iOS]
+    subgraph Clients
+        WebClient[Admin console in a browser]
+        NativeClient[Desktop and mobile apps]
     end
 
-    subgraph Network Listeners
-        P8001["Port 8001: Admin HTTP / WS / WebRTC Signaling"]
-        P8067["Port 8067: Agent Website Proxy & Search"]
+    subgraph Listeners
+        P8001["8001: admin app (HTTP, WebSocket)"]
+        P8002["8002: auth app (pairing, signaling)"]
+        P8067["8067: page service (agent websites)"]
+        P8081["8081: AI Agent worker"]
     end
 
-    subgraph Server Core: server.py
-        FastAPIApp[FastAPI Composition Root]
-        RouterReg[Router Registry: routers/]
-        SecurityEngine[Security & Keystore: crypt/]
-        WebRTCEngine[WebRTC Engine: core_server/webrtc_engine.py]
-        ServiceMgr[Service Manager: service_manager.py]
+    subgraph Server["server.py"]
+        Routers["routers/ (admin_app and auth_app routes)"]
+        Storage["shared/keystore.py, shared/secure_storage.py"]
+        WebRTC["core_server/webrtc_engine.py"]
+        Procs["core_server/services.py (process runtime)"]
     end
 
-    subgraph Agent Runtime
-        ADK[ADK Orchestrator & Tool Dispatch]
-        AgentCatalog[42+ Built-in Agents: autoyou_agents/]
-        DynamicRoot[Dynamic Agents Root: Mutable Storage]
+    subgraph Agents["Agent runtime"]
+        ADK[Google ADK orchestrator]
+        Catalog["40 built-in agents: autoyou_agents/"]
     end
 
-    subgraph Subprocesses & Background Workers
-        NodeWorker[Node.js WhatsApp Worker]
-        SignalDaemon[Signal CLI Daemon]
-        OllamaDaemon[Ollama LLM Runner: Port 11434]
+    subgraph Companions["Companion services"]
+        WhatsApp[WhatsApp worker]
+        Signal[Signal]
+        Ollama["Ollama (11434)"]
     end
 
-    subgraph Persistence Layer
-        Keystore[config.keystore.enc / config.encrypted]
-        SessionsDB[(sessions.db)]
-        SecurityDB[(agent_security.db)]
-        PageFeedDB[(page_feed.db)]
-        Registries[agent_install_registry.json]
+    subgraph Persistence
+        Keystore["config.keystore.enc / config.encrypted"]
+        DBs["sessions.db, agent_security.db, page_feed.db, login_ui_state.db"]
     end
 
     WebClient --> P8001
-    NativeClient -->|WebRTC / DataChannel| P8001
-    MobileClient -->|AutoPair / WebRTC| P8001
-    NativeClient -->|Proxy Traffic| P8067
+    NativeClient -->|pairing and signaling| P8002
+    NativeClient -->|WebRTC link| WebRTC
+    NativeClient -->|browser proxy| P8067
 
-    P8001 --> FastAPIApp
-    P8067 --> FastAPIApp
-
-    FastAPIApp --> RouterReg
-    RouterReg --> SecurityEngine
-    RouterReg --> WebRTCEngine
-    RouterReg --> ServiceMgr
-    RouterReg --> ADK
-
-    ADK --> AgentCatalog
-    ADK --> DynamicRoot
-    ServiceMgr --> NodeWorker
-    ServiceMgr --> SignalDaemon
-    ServiceMgr --> OllamaDaemon
-
-    SecurityEngine --> Keystore
-    FastAPIApp --> SessionsDB
-    FastAPIApp --> SecurityDB
-    FastAPIApp --> PageFeedDB
-    ADK --> Registries
+    P8001 --> Routers
+    P8002 --> Routers
+    Routers --> Storage
+    Routers --> WebRTC
+    Routers --> Procs
+    Procs --> P8081
+    P8081 --> ADK
+    ADK --> Catalog
+    Procs --> WhatsApp
+    Procs --> Signal
+    Procs --> Ollama
+    Storage --> Keystore
+    Routers --> DBs
 ```
 
 ---
 
-## Entry Points & Composition Root
+## Entry points
 
-AutoYou Server provides two primary execution modalities:
+### `server.py`
 
-### 1. `server.py` (Development & Source Composition Root)
-In source checkouts, `server.py` instantiates the main FastAPI application, configures CORS and security middleware, registers all domain routers from `routers/`, mounts static assets, and launches the Uvicorn ASGI server.
+`server.py` is the composition root. It creates two FastAPI applications with `create_apps()` from `core_server/app.py`, then registers each router module on them:
 
 ```python
-# Simplified server.py composition flow
-from fastapi import FastAPI
-from routers import (
-    admin, agents, ai_opt_out, cloud, mcp,
-    messaging, models, moderation, pairing,
-    peer_rendezvous, services, webrtc, website_gateway
-)
+admin_app, auth_app = create_apps(LOGGER)
 
-app = FastAPI(title="AutoYou Server", docs_url=None, redoc_url=None)
-admin.register_routes(app, ...)
-agents.register_routes(app, ...)
-webrtc.register_routes(app, ...)
-# ... remaining routers mounted
+globals().update(register_admin_routes(admin_app, auth_app, sys.modules[__name__]))
+globals().update(register_pairing_routes(admin_app, auth_app, sys.modules[__name__]))
+globals().update(register_webrtc_routes(admin_app, auth_app, sys.modules[__name__]))
+# ...agents, messaging, models, services, cloud, mcp, peer_rendezvous, moderation
 ```
 
-<Note>
-**Formatting Constraint**: In accordance with project governance, `server.py` enforces a 4-line blank space separator between top-level functional blocks.
-</Note>
+The **admin app** serves the console, configuration, agents, WebRTC, messaging, and the other management routes. The **auth app** serves the public pairing surface: unlock, `POST /auth`, `/signal/{session_id}`, Peer Link rendezvous, and legal documents. Both are listed in the [route catalog](/api-reference/route-catalog), and the [API overview](/api-reference/overview) explains how they differ.
 
-### 2. `autoyou_app.py` (Compiled Standalone Launcher)
-In native desktop production builds (Windows `.exe`, macOS `.app`), `autoyou_app.py` serves as the compiled entrypoint produced by Nuitka. It handles CLI dispatch:
-- `--run-server`: Initializes the compiled backend server.
-- `--run-ai-agent-server`: Launches the isolated Agent Development Kit worker subprocess.
-- `--run-fine-tuning-runner`: Executes background model fine-tuning jobs.
-- `--desktop-stdio`: Establishes private JSON-lines IPC with the native host wrapper (WinUI 3 on Windows, Swift/AppKit on macOS).
+### `autoyou_app.py`
+
+`autoyou_app.py` is the launcher for compiled builds (Windows and macOS builds are packaged with Nuitka). Its command-line modes include:
+
+- `--run-server`: start the server.
+- `--run-ai-agent-server`: start the AI Agent worker process.
+- `--run-fine-tuning-runner`: run background fine-tuning jobs.
+- `--run-autoyou-lite`: start the lightweight server.
+- `--desktop-stdio`: private JSON-lines IPC with the native host (a WinUI app on Windows, a Swift app on macOS).
 
 ---
 
-## Network Ports & Responsibilities
+## Ports
 
-AutoYou Server binds distinct local network ports for isolation and security:
+By default every listener binds to `127.0.0.1`. Set `AUTOYOU_BIND_HOST` (or pass `--host`) to listen on your LAN. See the [security architecture](/architecture/security-and-auth) before exposing any port.
 
-| Port | Protocol | Default Bind | Purpose |
+| Port | Default | Environment override | Purpose |
 | :--- | :--- | :--- | :--- |
-| **`8001`** | HTTP / WebSocket | `127.0.0.1` | **Primary Admin & Core API**. Serves the Admin Console UI (`/admin`), REST APIs (`/api/*`), WebRTC signaling (`/signal/*`), and pairing handshakes. |
-| **`8067`** | HTTP | `127.0.0.1` | **Agent Website Proxy & Directory**. Routes traffic to embedded agent frontends (`/agent/{name}/`), serves public agent assets, and processes RFC 10008 `QUERY` discovery requests. |
-| **`11434`** | HTTP | `127.0.0.1` | **Ollama Local LLM Runner**. Default port for local LLM inference engines monitored by `ollama_service.py`. |
+| `8001` | Always started | `AUTOYOU_ADMIN_PORT` | Admin app: console, REST API, WebSocket. |
+| `8443` | Opt-in | `server.https_port` in the configuration | TLS listener for the admin app. It is offered automatically when the server is bound to a non-loopback address outside a container. |
+| `8002` | Always started | `AUTOYOU_AUTH_PORT` | Auth app: unlock, pairing, WebRTC signaling, Peer Link rendezvous. |
+| `8067` | When the page service is enabled | `AUTOYOU_PAGE_PORT` | Page service: agent websites at `/agent/{name}/`, the website directory, and HTTP `QUERY` search. |
+| `8081` | Started with the worker | `AUTOYOU_AI_PORT` | AI Agent worker, plain HTTP on loopback. |
+| `8481` | Opt-in | `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT` | AI Agent worker over HTTPS with a one-time code, for LAN access. |
+| `11434` | Ollama default | Ollama's own settings | Local model runner monitored by `ollama_service.py`. |
 
 ---
 
-## Concurrency & Process Isolation Model
+## Concurrency and process model
 
-To maintain responsive UI and low-latency audio/video streaming while running intensive LLM inferences, AutoYou Server employs a hybrid concurrency model:
+1. **Asyncio event loop.** Handles HTTP and WebSocket requests, WebRTC signaling, and DataChannel framing with non-blocking I/O.
+2. **Separate processes and threads.** The AI Agent worker runs as its own process, and the auth app runs in its own server thread. `core_server/services.py` starts and monitors them. Companion services (WhatsApp, Signal, Ollama) are managed by `whatsapp_service.py`, `signal_service.py`, and `ollama_service.py`.
+3. **Worker threads.** Blocking work such as disk I/O, key derivation (PBKDF2), audio processing, and database transactions runs off the event loop.
 
-1. **Asyncio Event Loop (Main Server)**:
-   - Handles all HTTP requests, WebSocket connections, WebRTC signaling, and DataChannel frame chunking asynchronously using non-blocking I/O.
-2. **Subprocess Process Supervisors (`service_manager.py`)**:
-   - Long-running companion services (WhatsApp Puppeteer node service, Signal CLI daemon, Ollama runners) run as supervised external child processes with automated restart and health checks.
-3. **Thread Pool Executor**:
-   - Blocking operations such as disk I/O, cryptographic key derivation (Argon2id), audio resampling, and database transactions run in dedicated worker threads via `asyncio.to_thread` or thread executors.
+`service_manager.py` is separate from process supervision. It initializes the ADK session and memory services that agents share.
 
 ---
 
-## Storage & Persistence Layer
+## Storage
 
-AutoYou Server stores all operational data locally on the host machine. It distinguishes between immutable application assets and mutable user data:
+Operational data is stored locally in the server's configuration directory:
 
 ```
-Runtime Storage
-├── config.keystore.enc       # Encrypted master credentials & settings
-├── sessions.db               # SQLite: Chat conversations & turn histories
-├── agent_security.db         # SQLite: Agent permission profiles & security tokens
-├── page_feed.db              # SQLite: Social feed posts & media items
-├── login_ui_state.db         # SQLite: Rate-limiting & UI session state
-├── agent_install_registry.json # Dynamic registry of installed agent packages
-├── agent_frontends_registry.json # Dynamic registry of website route modes
-└── uploads/                  # User media uploads & audio voice recordings
+config.keystore.enc           # Encrypted configuration; key held in the OS credential store
+config.encrypted              # Password-based fallback for the same configuration
+sessions.db                   # SQLite: ADK sessions, events, conversation threads and titles, conversation media
+agent_security.db             # SQLite: per-agent 2FA security profiles and their agent assignments
+page_feed.db                  # SQLite: Page feed items, tags, and blobs
+login_ui_state.db             # SQLite: login mini-game scores and runs
+agent_install_registry.json   # Registry of installed agent packages
+agent_frontends_registry.json # Registry of agent website route modes
+uploads/                      # Uploaded media and voice recordings
 ```
 
-### Database Responsibilities
-
-- **`sessions.db`**: Stores all conversation threads (`conversations`, `messages`, `media_metadata`). Supports fast retrieval by `session_id` and tracks delivery status (`delivered: true/false`).
-- **`agent_security.db`**: Manages granular permission grants for agents (e.g. filesystem read/write, shell execution, network outbound) across security profiles.
-- **`page_feed.db`**: Backs the internal AutoYou Page community feed, storing published articles, image links, and post reactions.
-- **`config.keystore.enc`**: Master encrypted vault protecting operator passwords, TOTP secret keys, cloud tokens, and third-party API credentials using hardware-assisted or passphrase-derived encryption keys.
+The configuration files are described in [Security & Authentication](/architecture/security-and-auth). In Secure Professional Maximus mode the SQLite databases and JSON files are also encrypted at rest.

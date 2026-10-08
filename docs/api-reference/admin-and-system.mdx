@@ -1,144 +1,71 @@
 ---
 title: "Admin & System APIs"
-description: "API specifications for system status, configuration management, scheduler telemetry, setup recipes, and process control."
+description: "Admin-app routes for status, configuration, scheduler summaries, service control, and shutdown."
 ---
 
 # Admin & System APIs
 
-These endpoints provide complete administrative management over the AutoYou Server core, process life cycles, task schedulers, and configuration states.
+These admin-app routes report the server's status, change its configuration, and control its services. Unless noted, they need an admin sign-in. Errors follow the shape in the [API overview](/api-reference/overview), and every route is listed in the [route catalog](/api-reference/route-catalog).
 
 ---
 
-## System Status & Telemetry
+## Status
 
-### `GET /api/status`
-Returns real-time health metrics, memory usage, CPU load, and background service statuses.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/status` | A simple status check: `{"status": "running", "service": "AutoYou Admin Server", "instance": {...}, "runtime": {...}}`. `instance` holds the server name, bind host, and ports (`admin`, `ai_agent`, `auth`, and `page`). |
+| `GET /api/v1/status` | The status payload that browser clients read |
+| `GET /api/v1/server-config` | The server configuration that browser clients read |
+| `GET /api/connection/status` | A connection-helper snapshot, read on the server so no secrets reach the browser |
+| `GET /api/datachannel-status` | State of the DataChannel sessions |
+| `GET /runtime/owner` | Lets the host that started this process prove that this listener is its own, using a start-time token and request headers. Anyone without the token is told nothing. |
 
-<CodeGroup>
-```bash cURL
-curl -X GET http://127.0.0.1:8001/api/status \
-  -H "Authorization: Bearer <TOKEN>"
-```
-
-```python Python
-import requests
-
-resp = requests.get(
-    "http://127.0.0.1:8001/api/status",
-    headers={"Authorization": "Bearer <TOKEN>"}
-)
-print(resp.json())
-```
-</CodeGroup>
-
-#### Response Payload (`200 OK`)
-```json
-{
-  "status": "healthy",
-  "version": "81.0.0",
-  "uptime_seconds": 389241,
-  "system": {
-    "cpu_percent": 14.2,
-    "memory_used_mb": 8420,
-    "memory_total_mb": 16384,
-    "disk_free_gb": 128.4
-  },
-  "services": {
-    "webrtc": { "active_connections": 2, "state": "healthy" },
-    "whatsapp": { "running": true, "authenticated": true },
-    "signal": { "running": true },
-    "ollama": { "running": true, "endpoint": "http://127.0.0.1:11434" }
-  },
-  "security_mode": "normal"
-}
-```
+Status payloads describe this computer: its name, its agents, its LAN address, and folder paths. A caller on the network must be signed in to read them. Apps on this computer, and paired devices whose requests the server itself delivers over loopback, read them without signing in again.
 
 ---
 
-## Bootstrap & Configuration
+## Bootstrap and configuration
 
-### `GET /api/admin/bootstrap`
-Pulls initial capabilities, theme preferences, and platform flags required to render the Admin UI.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/admin/bootstrap` | Everything the console needs to render: configuration, status, and metadata |
+| `POST /api/admin/config` | Update configuration sections. Sections that widen who can reach the server, such as `security`, `tunnelmole`, and `mcp`, and some `server` keys such as `bind_host`, cannot be changed by a remote browser. |
+| `GET /api/admin/permissions`, `POST /api/admin/permissions` | Read or change what this computer allows AutoYou and paired devices to capture, record, and access |
+| `GET /admin/api/ui/theme`, `POST /admin/api/ui/theme` | Read or set the console theme |
 
-#### Response Payload (`200 OK`)
-```json
-{
-  "server_name": "Studio-Workstation",
-  "platform": "windows",
-  "has_embedded_server": true,
-  "security_mode": "normal",
-  "totp_active": false,
-  "theme": "dark",
-  "ports": {
-    "admin": 8001,
-    "browser_proxy": 8067
-  }
-}
-```
-
-### `POST /api/admin/config`
-Updates one or more configuration properties stored within the encrypted keystore.
-
-#### Request Payload
-```json
-{
-  "server_name": "Production-Host",
-  "theme": "dark",
-  "browser_proxy_port": 8067,
-  "enable_screen_listen": true
-}
-```
+Password, security mode, and authenticator routes are in [Security & TOTP APIs](/api-reference/security-and-totp). Setup recipes and the wizard are in [Setup & Boot](/admin-ui/setup-and-recipes).
 
 ---
 
-## Task Scheduler & Notifications
+## Scheduler summaries
 
-### `GET /api/scheduler/live-summary`
-Returns pending jobs, recurring alarms, and active agent background threads.
-
-#### Response Payload (`200 OK`)
-```json
-{
-  "active_tasks_count": 3,
-  "tasks": [
-    {
-      "id": "task_reminder_01",
-      "agent": "tasks_agent",
-      "scheduled_time": "2026-10-04T09:00:00Z",
-      "description": "Daily standup notification"
-    }
-  ],
-  "notification_queue_length": 0
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/scheduler/live-summary` | Task counts from Tasks Mission Control |
+| `GET /api/scheduler/notification-queue` | Queued reminder and task deliveries waiting for a connection or retry window |
 
 ---
 
-## Configuration Recipes
+## Service control
 
-### `POST /api/setup/recipe/preview`
-Generates a diff preview showing what keys and services will be modified before applying a configuration recipe.
+All of these are `POST` routes, and each needs an admin sign-in.
 
-#### Request Payload
-```json
-{
-  "recipe": "desktop_assistant"
-}
-```
-
-### `POST /api/setup/recipe/apply`
-Atomically applies the selected configuration recipe and restarts affected background services.
-
----
-
-## Process Lifecycle Controls
-
-### `POST /ai-agent-server/restart`
-Restarts the Agent Development Kit (ADK) worker process. Active WebRTC streams and HTTP sessions remain connected while the agent environment reloads cleanly.
+| Service | Routes |
+| :--- | :--- |
+| AI Agent worker | `/ai-agent-server/start`, `/ai-agent-server/stop`, `/ai-agent-server/restart`. Status: `GET /api/ai-agent-server/status`. |
+| Page service | `/autoyou-page-service/start`, `/autoyou-page-service/stop`, `/autoyou-page-service/restart`. Status: `GET /api/autoyou-page-service/status`. |
+| Public link (Tunnelmole) | `/tunnelmole/start`, `/tunnelmole/stop`, `/tunnelmole/refresh`. Status: `GET /api/tunnelmole/status`. |
 
 ### `POST /shutdown`
-Initiates a graceful server shutdown:
-1. Flushes database WAL checkpoints (`sessions.db`, `page_feed.db`).
-2. Closes all active WebRTC PeerConnections and companion workers.
-3. Scrubs all cryptographic master keys from RAM.
-4. Terminates the process.
+
+Starts a graceful shutdown. It accepts either a local shutdown token or an admin session. The server answers `{"success": true, "message": "Server shutdown initiated"}` immediately and begins shutting down about a second later.
+
+### `GET /home-network/websites`
+
+Opens website apps from a browser on another device after signing in. The signed-in admin page hands that browser a one-time code for the websites port, which turns it into a device-pass cookie. See [Website Gateway & Page Service](/api-reference/website-gateway).
+
+---
+
+## Software updates
+
+`GET /api/software-update/status` and `POST /api/software-update/apply` check for and apply an update. See [Setup & Boot](/admin-ui/setup-and-recipes#software-updates).

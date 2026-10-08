@@ -1,76 +1,90 @@
 ---
 title: "Admin UI: AI Models & Speech Settings"
-description: "Managing local LLM providers, model catalogs, prompt behaviors, speech recognition, and voice synthesis in admin-ui.js."
+description: "Choosing the AI provider, managing the model library, tuning model behavior, and configuring speech recognition and synthesis in the admin console."
 ---
 
 # AI Models & Speech Settings
 
-AutoYou Server features unified administrative interfaces for configuring local and cloud intelligence engines, speech recognition models, and voice cloning pipelines:
-- **AI Screen** (`renderAiScreen()`): LLM provider status, model downloads, inference parameters, and prompt policies.
-- **Speech Screen** (`renderSpeechScreen()`): Speech-to-text (STT) models, text-to-speech (TTS) engines, and voice cloning.
+The console configures the AI engine and the speech engine on two screens in `assets/admin-ui.js`:
+
+- **AI** (`renderAiScreen()`): the provider, the model library and downloads, model behavior, and the internet-search switch.
+- **Speech** (`renderSpeechScreen()`): speech recognition, speech synthesis, and custom voices.
 
 ---
 
-## AI Screen: LLM Orchestration (`renderAiScreen()`)
+## AI screen
 
-```mermaid
-graph TD
-    AiScreen[AI Screen: renderAiScreen]
-    
-    AiScreen --> Providers[AI Providers: Ollama / OpenClaw / Hermes / Odysseus]
-    AiScreen --> Catalog[Model Catalog & Downloads: /api/model-library/*]
-    AiScreen --> Behavior[Inference Parameters: Temperature, Top-P, Context]
-    AiScreen --> Jailbreak[System Prompts & Safety Overrides: /api/jailbreak/*]
-```
+### Providers (`renderAiProviderSettingsBody()`)
 
-### 1. Model Providers Status (`renderAiProviderSettingsBody()`)
-Inspects active local inference backends:
-- **Ollama**: Connects to `http://127.0.0.1:11434`. Queries `GET /api/ai/ollama/status` to list loaded models (e.g. `llama3:8b`, `qwen2.5-coder`, `mistral`).
-- **OpenClaw Bridge**: Native bridge connecting to the OpenClaw orchestration engine (`GET /api/ai/openclaw/status`).
-- **Hermes**: Autonomous reasoning engine bridge (`GET /api/ai/hermes/status`).
-- **Odysseus**: Specialized agent planner bridge (`GET /api/ai/odysseus/status`).
+The provider decides where model responses come from. AutoYou's own agents stay active for most of them.
 
-### 2. Model Library Catalog & Download Manager (`renderAiCatalogMarkup()`)
-Operators can browse, download, and delete GGUF and Ollama model weights directly from the Admin UI:
-- **Catalog Browsing**: `GET /api/model-library/catalog` retrieves recommended open models categorized by memory footprint (3B, 8B, 14B, 70B).
-- **Download Jobs**: Initiating a download calls `POST /api/model-library/download`.
-- **Progress Tracking**: Real-time progress bar polling `GET /api/model-library/downloads/{job_id}` displays download speed and estimated time remaining.
-- **Model Selection**: `POST /api/model-library/select` designates the default model for root agent dispatch.
+| Provider | What it does |
+| :--- | :--- |
+| **Apple Intelligence + Agents** | Runs Apple Intelligence on this Mac with AutoYou agents and tools. Shown only on supported Macs. |
+| **Ollama + Agents** | The default local mode. AutoYou's agent runtime talks to a local Ollama server. Needs no API key. Fields: enable the local Ollama runtime, the Ollama API base (default `http://localhost:11434`), and the primary model. |
+| **Ollama (Native Gateway)** | Sends chat directly to the saved Ollama server and keeps its model and behavior settings. AutoYou agents are not used. |
+| **Gemini + Agents** | The runtime calls Google's Gemini API. Fields: the Gemini model and the Google API key. |
+| **Other AI Providers + Agents** | Uses Anthropic, OpenAI, Mistral, DeepSeek, xAI, and other compatible providers through LiteLLM. Fields: a `provider/model` string, an optional API base override, and the API key. |
+| **OpenClaw** | Uses the local OpenClaw gateway as the primary session runtime. |
+| **Hermes Agent** | Uses the local Hermes Agent gateway as the primary session runtime. |
+| **Odysseus** | Uses the external Odysseus companion API, with its own sessions and model endpoints. |
 
-### 3. Model Behavior & Hyperparameters (`renderModelBehaviorBody()`)
-Fine-tune inference generation settings:
-- **Temperature** ($0.0 - 2.0$): Balances determinism vs creativity.
-- **Top-P (Nucleus Sampling)** ($0.0 - 1.0$).
-- **Context Length**: Configures the token context limit ($4,096 - 128,000$ tokens).
-- **Penalties**: Frequency and presence repetition penalty adjustments.
+Cloud providers receive your prompts under their own terms; see [Data Privacy](../security/data-privacy.md). API keys are stored in the encrypted configuration, and leaving a key field blank keeps the saved key. The status of the bridged providers is read from `GET /api/ai/openclaw/status`, `GET /api/ai/hermes/status`, `GET /api/ai/odysseus/status`, and `GET /api/ai/ollama/status`.
 
-### 4. System Prompts & Red-Team Mode
-- **System Instructions**: Customizes the base persona prompt applied across agents.
-- **Jailbreak Safety Override**: For authorized developers and security researchers, `POST /api/jailbreak/activate` permits testing unconstrained model behaviors with explicit safety disclaimers.
+### Model library (`renderAiCatalogMarkup()`)
+
+The library lists locally installed models and a catalog you can download from.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/model-library/catalog` | Browse a catalog. Query parameters: `source`, `q`, and `page`. |
+| `GET /api/model-library/details` | Details for one model (`source` and `id`) |
+| `GET /api/model-library/local` | Models installed on this computer |
+| `POST /api/model-library/download` | Start a download job |
+| `GET /api/model-library/downloads`, `GET /api/model-library/downloads/{job_id}` | Download jobs and their progress |
+| `POST /api/model-library/select` | Make a model the active one |
+| `POST /api/model-library/delete` | Delete a local model |
+
+### Model behavior (`renderModelBehaviorBody()`)
+
+Choose a behavior mode (the server supplies the modes and their presets) and optionally override individual generation parameters: temperature, `top_p`, `top_k`, repeat penalty, and context size (`num_ctx`). Each field shows the preset value and the resolved value. When a provider owns model behavior itself, as Odysseus does, the console says so instead of offering these controls.
+
+### Internet search
+
+`GET /api/ai/internet/search_enabled` and `POST /api/ai/internet/search_enabled` (body `{"enabled": true}`) turn web search on or off for the AI.
+
+### Prompt Override
+
+Instructions for the root agent are locked in packaged runtimes. Prompt Override is an advanced control on the Security screen that unlocks editing; see [Security Console](security-console.mdx). The routes are `GET /api/jailbreak/status`, `POST /api/jailbreak/activate`, `POST /api/jailbreak/deactivate`, and `GET`/`POST /api/jailbreak/prompt`. Activating it records an acknowledgement that you accept responsibility for custom prompts and for changes to the safety behavior built into AutoYou.
 
 ---
 
-## Speech Screen: Voice & STT Engine (`renderSpeechScreen()`)
+## Speech screen
 
-### 1. Speech Recognition / STT (`renderSpeechRecognitionBody()`)
-AutoYou Server utilizes local Whisper models for converting user speech into text:
-- **Engine Backends**:
-  - `faster-whisper`: CTranslate2-accelerated inference running on CPU or CUDA.
-  - `RealtimeSTT`: Ultra-low-latency streaming voice activity detection (VAD).
-- **Model Sizes**: `tiny.en`, `base.en`, `small`, `medium`, `large-v3`.
-- **Management API**:
-  - `GET /api/speech-models/status`: Lists currently installed speech models.
-  - `POST /api/speech-models/download`: Triggers background download of model weights.
+### Speech recognition (`renderSpeechRecognitionBody()`)
 
-### 2. Text-to-Speech / TTS (`renderSpeechProviderSettingsBody()`)
-Configure how AutoYou agents speak back to the user:
-- **EmotiVoice**: Fast, expressive multi-voice local neural synthesis.
-- **Kokoro**: Ultra-compact 82M parameter high-quality TTS.
-- **ElevenLabs**: Cloud integration for studio-grade voice synthesis via API key.
-- **Azure Cognitive Services**: Enterprise multilingual cloud TTS fallback.
+Speech recognition runs locally with faster-whisper. The console lists the models the server reports, shows which are installed, lets you choose one with **Use the model**, and tracks download jobs.
 
-### 3. Voice Training & Cloning (`loadChatTrainingLibrary()`)
-Operators can clone their own voice or custom agent voices:
-- Records audio clips directly from the browser or uploads WAV files to `POST /api/chat/voice-training`.
-- Extracts voice speaker embeddings and stores them in `uploads/voice_profiles/`.
-- Previews synthesized speech using the generated voice profile in real time.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/speech-models/status` | Installed and available speech models, and the active selection |
+| `POST /api/speech-models/download` | Start a model download |
+| `GET /api/speech-models/downloads` | Download jobs and progress |
+| `POST /api/speech-models/delete` | Delete a model |
+
+### Speech synthesis (`renderSpeechProviderSettingsBody()`)
+
+| Provider | What it does |
+| :--- | :--- |
+| **System speech** | Uses a voice already installed in the operating system. Choose the system voice, or leave it empty for the default. |
+| **Custom cloned voice** | Uses a voice prepared in the Voice Training app. The console shows whether the voice artifacts are ready, and whether fine-tuning was applied. |
+| **EmotiVoice** | Local synthesis in Chinese and English, with emotion steered by the conversation. It needs its models to be ready. |
+| **OpenAI speech** | Hosted synthesis with model and voice selection. |
+| **Azure speech** | Azure Speech with region, voice, and an optional custom endpoint. |
+| **Speech off** | Disables text-to-speech and keeps speech-to-text. |
+
+All providers share a **TTS rate** field (`1.0` is normal speed). OpenAI and Azure send the text to be spoken to those services.
+
+### Voice training library
+
+`GET /api/chat/voice-training` lists the audio clips captured for voice training from conversations, and `GET /api/chat/voice-training/audio` retrieves one. Training itself is done by the voice training agent; see [AI & Training Agents](/agents/ai-and-training).

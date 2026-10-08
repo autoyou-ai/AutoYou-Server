@@ -1,96 +1,76 @@
 ---
-title: "Admin UI: Agent Workbench & Studio"
-description: "Interactive agent creation, instruction editing, Python tool testing, frontend scaffolding, and lifecycle publishing in admin-ui.js."
+title: "Admin UI: Agents & Agent Studio"
+description: "The Agents screen of the admin console: installing agents, editing instructions, building agent drafts and their websites, and publishing them."
 ---
 
-# Agent Workbench & Studio
+# Agents & Agent Studio
 
-The **Agent Screen** (`renderAgentScreen()` in `assets/admin-ui.js`) is an integrated visual IDE embedded directly within AutoYou Server. It enables developers to inspect, modify, test, scaffold, and publish AI agents in real time without restarting the server.
-
----
-
-## Workbench Architecture
-
-```mermaid
-graph TD
-    Studio[Agent Studio: renderAgentScreen]
-    
-    Studio --> Picker[Agent Catalog & Picker: renderAgentStudioPicker]
-    Studio --> PromptPane[Instruction Editor: renderAgentBuilderWorkbenchPane]
-    Studio --> CodePane[Python Tool Testing: renderAgentCodingWorkbenchPane]
-    Studio --> FrontendPane[Web Frontend Workbench: renderAgentFrontendWorkbenchPane]
-    Studio --> Lifecycle[Publish & Discard Controls: /api/agents/workbench/*]
-```
+The **Agents** screen (`renderAgentScreen()` in `assets/admin-ui.js`) is where you edit the main agent's system prompt, install or build sub-agents, and open **Agent Studio** to manage an agent's instructions and website. The routes are in the [route catalog](/api-reference/route-catalog); the agents themselves are listed in the [Agent Catalog](/agents/system-and-admin).
 
 ---
 
-## 1. Agent Catalog & Studio Picker (`renderAgentStudioPicker()`)
+## Panels
 
-Lists all installed agents discovered across the immutable built-in catalog (`autoyou_agents/`) and the mutable dynamic directory (`get_dynamic_agents_root()`):
-- **Agent Cards**: Displays agent title, operational domain, description, and status tags (`BUILTIN`, `DRAFT`, `PUBLISHED`, `FRONTEND_ENABLED`).
-- **Owner Card**: Displays author attribution, version, and license terms.
-- **Filtering**: Filters by domain (System, Tooling, Media, Intelligence, Automation, Utility).
-
----
-
-## 2. Prompt & Instruction Editor (`renderAgentBuilderWorkbenchPane()`)
-
-Allows editing the prompt instructions that govern agent decision-making:
-- **Section-Based Editing**: Prompts are partitioned into modular sections:
-  - `identity`: Core role and behavioral persona.
-  - `tools`: Detailed usage rules for bound Python tools.
-  - `constraints`: Negative constraints and safety guidelines.
-  - `formatting`: Output templates and JSON schemas.
-- **Placeholder Inspection**: Inspects runtime injected values like `{current_date}`, `{user_device}`, `{platform_os}`, and `{owner_name}`.
-- **Reversion History**: `POST /api/agent-instructions/revert` restores original package defaults if a prompt change produces undesirable behavior.
+| Panel | What it covers |
+| :--- | :--- |
+| **Agent Studio** | Pick the agent to manage, then work through its lifecycle, instructions, and website. It defaults to the main AutoYou agent. |
+| **System Prompt - Main Agent** | The main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. |
+| **Installed agents** | Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio, or toggle its website. |
+| **Available to install** | Sub-agents and drafts that are ready to install. |
+| **Create New Agent** | Set up a new agent draft that you can then open in Agent Studio. |
 
 ---
 
-## 3. Tool Execution & Dry-Run Testing (`renderAgentCodingWorkbenchPane()`)
+## Installing and managing agents
 
-Developers can test Python tool execution before publishing changes to production:
-
-```http
-POST /api/agents/workbench/weather_agent/test HTTP/1.1
-Host: 127.0.0.1:8001
-Content-Type: application/json
-Authorization: Bearer <ADMIN_SESSION_TOKEN>
-
-{
-  "tool_name": "fetch_forecast",
-  "arguments": {
-    "location": "San Francisco, CA",
-    "days": 3
-  }
-}
-```
-
-The response includes:
-- Return value or JSON payload.
-- Execution duration in milliseconds.
-- Standard output (`stdout`) and error tracebacks (`stderr`).
-- Memory and privilege boundary check results.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/agents/manage` | The overview payload for Agent Studio |
+| `POST /api/agents/install` | Mark an agent installed and register its runtime metadata |
+| `POST /api/agents/uninstall` | Mark an agent uninstalled. Its source files are not removed. |
+| `POST /api/agents/install-builder-suite` | Install the conservative Agent Builder workflow suite in one call |
+| `POST /api/agents/frontend` | Enable or disable an agent's browser-facing control |
+| `POST /api/ai/restart` | Reload the AI Agent runtime after agent or prompt changes |
 
 ---
 
-## 4. Frontend Scaffolding & Live Preview (`renderAgentFrontendWorkbenchPane()`)
+## Instructions
 
-If an agent requires an interactive web UI, the workbench automates frontend generation:
+An agent's instructions live in its `prompt.py`.
 
-1. **Scaffold Frontend**: Clicking **"Scaffold UI"** dispatches:
-   ```http
-   POST /api/agents/workbench/{agent_name}/frontend/scaffold HTTP/1.1
-   Host: 127.0.0.1:8001
-   ```
-   Generates a starter `index.html`, `app.js`, and `styles.css` under the agent's `website/frontend/` directory.
-2. **Live IFrame Preview**: Embeds a live sandboxed `<iframe>` pointing to `http://127.0.0.1:8067/agent/{agent_name}/`.
-3. **Manifest Editor**: Modifies `manifest.json` attributes (route mode, proxy port, permissions, icon).
+- `GET /api/agent-instructions` reads the main agent's instructions, and `POST /api/agent-instructions` updates them.
+- `POST /api/agent-instructions/sections` updates the editable prompt section variables and regenerates `AGENT_INSTRUCTION`.
+- `POST /api/agent-instructions/revert` restores `AGENT_INSTRUCTION` to `DEFAULT_INSTRUCTION`.
+- `POST /api/agents/workbench/{agent_name}/instructions` saves instruction content for an agent draft.
+
+In packaged runtimes the root instructions are locked and read-only. **Prompt Override** on the Security screen unlocks editing; the edits are saved to a local override file and apply on the next restart. See [Security Console](security-console.mdx).
 
 ---
 
-## 5. Draft Lifecycle & Hot-Publishing
+## Drafts: the workbench
 
-Modifications are staged as drafts for review:
-- **Clone Agent**: `POST /api/agents/workbench/{name}/clone` creates an independent copy under a new name.
-- **Publish Draft**: `POST /api/agents/workbench/{name}/publish` commits the draft into the dynamic agent registry. The orchestrator reloads the agent worker dynamically without dropping client connections.
-- **Discard Draft**: `POST /api/agents/workbench/{name}/discard` reverts all staged changes cleanly.
+Changes to an agent are made in a **workspace draft** and then published to the live agents directory.
+
+| Route | Purpose |
+| :--- | :--- |
+| `POST /api/builder/create` | Scaffold a new workspace draft |
+| `GET /api/builder/agents` | List live agents and workspace drafts |
+| `GET /api/builder/status/{agent_name}` | Detailed studio state for one agent |
+| `GET /api/agents/workbench/{agent_name}` | Workbench detail for one agent |
+| `POST /api/agents/workbench/{agent_name}/clone` | Clone a live agent into a workspace draft |
+| `POST /api/agents/workbench/{agent_name}/test` | Run a **structural check** on a draft. It checks the draft's structure; it does not run the agent's tools. |
+| `POST /api/agents/workbench/{agent_name}/publish` | Publish a draft to the live agents directory. Body: `{"install_after_publish": true}` to install it as well. |
+| `POST /api/agents/workbench/{agent_name}/discard` | Discard a draft |
+| `POST /api/agents/draft/{agent_name}/publish`, `POST /api/agents/draft/{agent_name}/discard` | The same actions, used by the Agent Builder agent |
+
+### Agent websites
+
+An agent can have a web interface under its `website/frontend/` folder, served by the [page service](/api-reference/website-gateway) at `/agent/{agent_name}/`.
+
+| Route | Purpose |
+| :--- | :--- |
+| `POST /api/agents/workbench/{agent_name}/frontend/scaffold` | Scaffold frontend assets for a draft |
+| `POST /api/agents/workbench/{agent_name}/frontend/manifest` | Save the draft's frontend manifest |
+| `POST /api/builder/agent_port` | Register a dynamic HTTP port forward for an agent's web server |
+
+How a website is reached, and who may open it, is covered in [Agent Websites & Bookmarks](/api-reference/websites-and-bookmarks) and [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).

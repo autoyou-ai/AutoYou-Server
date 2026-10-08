@@ -77,7 +77,8 @@
         "api-reference/auth-app",
         "api-reference/admin-app",
         "api-reference/ai-agent-worker",
-        "api-reference/website-gateway"
+        "api-reference/website-gateway",
+        "api-reference/route-catalog"
       ]
     },
     {

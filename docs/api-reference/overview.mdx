@@ -1,115 +1,100 @@
 ---
 title: "API Reference Overview"
-description: "High-level architectural overview of AutoYou Server's dual ASGI applications, dedicated worker daemons, authentication headers, and standard error formats."
+description: "How AutoYou Server's HTTP APIs are organized: the admin app, the auth app, the AI Agent worker, and the page service."
 ---
 
 # API Reference Overview
 
-AutoYou Server implements a modular multi-application architecture designed for local-first privacy, zero-touch pairing, and multi-modal AI agent execution. Rather than running a single monolithic HTTP service, the server orchestrates distinct ASGI applications and worker processes:
+AutoYou Server is not a single HTTP service. It runs several applications, each on its own port:
 
 ```mermaid
 graph TD
-    Client[Client / Paired Device] -->|Pairing / Unseal / Signaling| AuthApp["@auth_app (:8123 / :8443)"]
-    Client -->|Authenticated Operations| AdminApp["@admin_app (:8123 / :8443)"]
-    
-    subgraph Core Server Runtime
-        AuthApp --> UnsealRouter[Unlock & Pairing Router]
-        AuthApp --> RendezvousRouter[Peer Rendezvous Router]
-        
-        AdminApp --> AdminRouter[Admin & Diagnostics Router]
-        AdminApp --> WebRTCRouter[WebRTC & Media Router]
-        AdminApp --> AgentRouter[Agent Workbench Router]
-        AdminApp --> PageGateway[In-Process Website Gateway: /agent/*]
-    end
+    Client[Client or paired device]
+    Admin["Admin app (:8001, optional TLS :8443)"]
+    Auth["Auth app (:8002)"]
+    Page["Page service (:8067)"]
+    Worker["AI Agent worker (:8081, optional HTTPS :8481)"]
 
-    subgraph Dedicated Worker Processes
-        AdminApp -->|Internal Token Loopback| AIAgentApp["AI Agent Worker (:8081)<br/>routers/ai_agent.py"]
-        PageGateway --> PageFeedDB[("page_feed.db<br/>Page Agent")]
-        AIAgentApp --> ADKRuntime[Google ADK Multi-Agent Runtime]
-    end
+    Client -->|pairing, unlock, signaling| Auth
+    Client -->|console and management API| Admin
+    Client -->|agent websites| Page
+    Admin -->|loopback, internal token| Worker
 ```
+
+By default every listener binds to `127.0.0.1`. Set `AUTOYOU_BIND_HOST` to listen on your LAN.
 
 ---
 
-## Architecture Components
+## Applications
 
 <CardGroup cols={2}>
-  <Card title="@auth_app Route Catalog" icon="key" href="/api-reference/auth-app">
-    Pre-authentication unseal, keystore unlock, PAKE/CPACE zero-touch pairing, WebRTC signaling, and peer rendezvous.
+  <Card title="Route catalog" icon="list" href="/api-reference/route-catalog">
+    Every route declared in `routers/`, generated from the source.
   </Card>
-  <Card title="@admin_app Route Catalog" icon="sliders" href="/api-reference/admin-app">
-    Administrative session auth, TOTP second-factor elevation, system diagnostics, and agent management.
+  <Card title="Auth app" icon="key" href="/api-reference/auth-app">
+    First-run setup, unlock, pairing authentication, WebRTC signaling, Peer Link rendezvous, and legal documents.
   </Card>
-  <Card title="AI Agent Worker & Process" icon="microchip" href="/api-reference/ai-agent-worker">
-    Dedicated worker process on port 8081, conversational chat (`/api/chat`), runtime settings, and LAN OTP security.
+  <Card title="Admin app" icon="sliders" href="/api-reference/admin-app">
+    The console, sign-in, configuration, agents, WebRTC, messaging, models, and cloud routes.
   </Card>
-  <Card title="Website Gateway & Page Service" icon="browser" href="/api-reference/website-gateway">
-    In-process web proxy, `/agent/{name}/` web app mounting, RFC 10008 HTTP QUERY, and `page_feed.db`.
+  <Card title="AI Agent worker" icon="microchip" href="/api-reference/ai-agent-worker">
+    The separate worker process: chat, sessions, status, and the LAN one-time-code gate.
+  </Card>
+  <Card title="Website gateway" icon="browser" href="/api-reference/website-gateway">
+    The page service that serves agent websites and the website directory.
   </Card>
 </CardGroup>
 
 ---
 
-## Dual ASGI Comparison: `@admin_app` vs `@auth_app`
+## Admin app and auth app
 
-Both applications are initialized together in `server.py`:
+Both are created together in `server.py` by `create_apps()`.
 
-```python
-# server.py line 7244
-admin_app, auth_app = create_apps(LOGGER)
-```
-
-| Characteristic | `@auth_app` | `@admin_app` |
+| | Auth app | Admin app |
 | :--- | :--- | :--- |
-| **Operational Boundary** | **Pre-Authentication & Pairing Gateway** | **Authenticated Management & Control Plane** |
-| **Keystore State** | Operates even when keystore is **locked** / sealed | Requires keystore to be **unlocked** and unsealed |
-| **Authentication Requirement** | Public or PAKE / CPACE handshake tokens | Admin session cookie, Bearer token, and optional TOTP |
-| **Primary Domain** | First-run setup, bootstrap PIN, WebRTC SDP signaling, peer rendezvous | Admin UI console, agent management, model library, messaging bridges |
-| **Loopback Policy** | Bound to configured network interfaces for pairing | Locked to loopback unless explicitly unsealed or proxied |
+| Default port | `8002` (`AUTOYOU_AUTH_PORT`) | `8001` (`AUTOYOU_ADMIN_PORT`), plus an optional TLS listener on `8443` |
+| Purpose | Pairing surface: unlock, `POST /auth`, `/signal/{session_id}`, Peer Link rendezvous, legal documents | Console, configuration, agents, WebRTC, messaging, models, cloud, MCP |
+| Credentials | Pairing credentials, or none for public routes | An `admin_session` cookie, or a short-lived bearer token |
+| While the server is locked | Only the unlock routes, legal documents, and static assets answer | Only the unlock routes, `/login`, a few local helper routes, legal documents, and static assets answer |
+
+Some routes, such as the unlock routes, are registered on both apps.
 
 ---
 
-## Authentication & Header Conventions
+## Authentication
 
-| Header | Description | Usage Context |
+| Credential | Where | Used for |
 | :--- | :--- | :--- |
-| `Authorization: Bearer <token>` | Primary API session token | Admin REST endpoints, client chat, and model selection |
-| `X-Session-ID: <session_id>` | Active conversation or WebRTC session identifier | Chat turns, WebRTC signaling, and session history |
-| `X-AutoYou-TOTP: <code>` | 6-digit TOTP second-factor verification code | Sensitive admin mutations, keystore unlock, and file deletion |
-| `X-Internal-Token: <token>` | Internal supervisor authentication token | Internal worker IPC (`/api/internal/runtime-settings`) |
-| `x-autoyou-otp: <code>` | LAN OTP authentication code | Accessing AI Agent worker over LAN HTTPS |
-| `Cookie: admin_session=<token>` | HTTP-only encrypted session cookie | Admin UI console and Website Gateway browser access |
-| `Cookie: autoyou_ai_agent_lan_otp=<token>` | Short-lived signed LAN OTP session token | AI Agent worker browser chat sessions |
+| `admin_session` cookie | Admin app | The admin console and its API. Set by signing in; `HttpOnly`, `SameSite=Strict`, and `Secure` over HTTPS. Idle expiry is 12 hours by default. |
+| `Authorization: Bearer <token>` | Admin app | A token issued for one hour by `POST /api/admin/session/verify` after a valid authenticator code. |
+| `Authorization: Bearer <internal token>` | Loopback only | Calls between the server and the AI Agent worker, such as `POST /api/internal/runtime-settings`. |
+| `x-autoyou-otp` header or `otp` query parameter | AI Agent worker on the LAN HTTPS port | The current authenticator code. A successful check sets the `autoyou_ai_agent_lan_otp` cookie. |
+
+Requests that change state on the admin app must carry an `Origin` or `Referer` header that matches the server, or they are rejected with `403`. Some routes that change credentials or security settings are refused for remote browsers entirely; see [Security & Authentication](/architecture/security-and-auth).
 
 ---
 
-## Standard Error Response Format (RFC 7807)
+## Errors
 
-All endpoints return RFC 7807 compliant JSON error structures:
+Most routes report errors as JSON with a `success` flag:
 
 ```json
 {
-  "error": "unauthorized",
-  "message": "Invalid or expired session token provided.",
-  "code": 401,
-  "timestamp": 1727998900123,
-  "details": {
-    "required_mode": "secure_professional",
-    "totp_missing": true
-  }
+  "success": false,
+  "error": "Authentication required"
 }
 ```
 
-### Common HTTP Status Codes
+A few routes use their own shape, such as `{"error": "..."}` or `{"valid": false, "error": "..."}`. The API does not use the RFC 7807 problem format.
 
-| Code | Status | Meaning |
-| :--- | :--- | :--- |
-| **`200`** | `OK` | Synchronous operation completed successfully. |
-| **`202`** | `Accepted` | Background task, model download, or backup scheduled. |
-| **`302`** | `Found` | Unauthenticated browser redirected to `/login`. |
-| **`400`** | `Bad Request` | Malformed JSON, schema violation, or missing parameters. |
-| **`401`** | `Unauthorized` | Missing authentication token or invalid credentials. |
-| **`403`** | `Forbidden` | Disallowed by active security tier or sandbox boundary. |
-| **`404`** | `Not Found` | Requested agent, session, model, or file does not exist. |
-| **`429`** | `Too Many Requests` | Rate limit exceeded (e.g. repeated unlock attempts). |
-| **`500`** | `Internal Error` | Unexpected exception in server worker. |
+| Code | Where you see it |
+| :--- | :--- |
+| `400` | Malformed JSON, a missing field, or an unsupported value. |
+| `401` | Not signed in, the server is `Locked`, a wrong password, or a missing one-time code. |
+| `403` | Cross-site request guard, an internal route called without the internal token, or a remote browser attempting a protected change. |
+| `409` | The action does not apply in the current state, such as rotating Maximus storage when it is not active. |
+| `428` | The license agreement must be accepted before unlocking. |
+| `429` | A rate limit was exceeded, for example repeated pairing attempts. |
+| `451` | Setup is pending, so the server is not yet available. |
+| `500`, `503` | A server error, or a dependency such as secure storage or a saved configuration is unavailable. |

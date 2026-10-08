@@ -1,117 +1,112 @@
 ---
 title: "Security & TOTP APIs"
-description: "API reference for security tier selection, password updates, TOTP 2FA lifecycle, and storage key rotation."
+description: "API reference for the security mode and tier, password changes, storage key rotation, the shared authenticator, and per-agent 2FA profiles."
 ---
 
 # Security & TOTP APIs
 
-These endpoints govern authentication, two-factor authentication (2FA), zero-knowledge unlocking, and keystore cryptographic key rotation.
+These admin-app routes manage authentication settings. They need an admin sign-in, and a remote browser cannot use the ones that change credentials or the security posture; see [Security & Authentication](/architecture/security-and-auth). Errors follow the shape in the [API overview](/api-reference/overview).
+
+Routes that save configuration return an error when the configuration cannot be written at that moment.
 
 ---
 
-## Security Tiers & Mode
+## Security mode and tier
 
 ### `POST /api/admin/security/mode`
-Switches the operational security mode of the server.
 
-#### Request Payload
+Request:
+
 ```json
-{
-  "mode": "secure_professional" // "normal" | "secure" | "secure_professional"
-}
+{ "mode": "secure_professional" }
 ```
 
-#### Response (`200 OK`)
+`mode` is `normal`, `secure`, `secure_professional`, or `secure_professional_maximus`. Any other value returns `400`.
+
+Response:
+
 ```json
 {
-  "status": "success",
+  "success": true,
   "mode": "secure_professional",
-  "totp_required": true
+  "ai_agent_restarted": false,
+  "storage_unsealed": null,
+  "storage_recovery": {},
+  "bootstrap": {}
 }
 ```
+
+Moving out of Maximus first decrypts the protected stores back to plaintext, so no sealed file is left unreadable, and the response reports that in `storage_unsealed`. The AI Agent worker is restarted when the storage boundary changes. `bootstrap` is the refreshed admin console state.
+
+### `POST /api/admin/security/tier`
+
+Request: `{ "tier": "A" }` for Enhanced Pairing or `{ "tier": "B" }` for Quick Pairing. Other values return `400`. Response: `{"success": true, "tier": "A", "bootstrap": {}}`.
 
 ---
 
-## Password Management & Key Rotation
+## Password and storage key
 
 ### `POST /api/admin/password`
-Updates the primary administrative password protecting the server.
 
-#### Request Payload
+Changes the server password for the signed-in session. The request needs no current password.
+
 ```json
-{
-  "current_password": "oldPassword123!",
-  "new_password": "NewUltraSecurePassphrase2026!"
-}
+{ "new_password": "string", "confirm_password": "string" }
 ```
+
+The two values must match and the password must pass the strength check, otherwise the route returns `400` with the reason. On success the configuration is re-encrypted under the new password and the response is `{"success": true, "message": "Password updated", "bootstrap": {}}`.
+
+### `POST /api/admin/password/generate`
+
+Generates a strong random password for the console to offer.
 
 ### `POST /api/admin/security/storage/rotate`
-Re-derives a fresh master encryption key via Argon2id and re-encrypts the `config.keystore.enc` file in place.
 
-#### Response (`200 OK`)
-```json
-{
-  "status": "rotated",
-  "re_encrypted_at": "2026-10-03T16:55:00Z",
-  "checksum": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
-}
-```
+Rotates the Secure Professional Maximus storage key and re-encrypts the protected data. It returns `409` when Maximus storage is not active. On success it answers `{"success": true, "message": "...", "secure_storage": {}, "ai_agent_restarted": false, "bootstrap": {}}`.
 
 ---
 
-## Two-Factor Authentication (TOTP 2FA)
+## Shared authenticator (TOTP)
 
-### `POST /admin/security/totp/generate`
-Generates a new random Base32 secret for authenticator setup.
+The server keeps one shared authenticator. Codes are the standard six digits that change every 30 seconds, and a code is accepted with one adjacent time step of tolerance. There are two sets of routes with the same effect: the console's `/admin/security/totp/...` routes, and the `/api/native/security/totp/...` routes that the desktop apps use.
 
-#### Response (`200 OK`)
-```json
-{
-  "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
-  "step": 30,
-  "digits": 6,
-  "algorithm": "SHA1"
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `POST /admin/security/totp/generate` | Create and save a new secret immediately and return its setup payload |
+| `POST /api/native/security/totp/setup` | Create a secret and QR code **without saving it**. Returns `{"success": true, "secret": "...", "qr_data_url": "..."}`. |
+| `POST /api/native/security/totp/confirm` | Save the secret from `setup` only after a code is verified. Body: `{"secret": "...", "code": "123456"}`. A wrong or malformed code returns `400`. |
+| `POST /admin/security/totp/show`, `POST /api/native/security/totp/show` | Return the saved secret with its setup URI and QR code. `404` if none is saved. |
+| `GET /admin/security/totp/current-code`, `GET /api/native/security/totp/current-code` | Return `{"success": true, "code": "123456", "seconds_remaining": 12, "period": 30}` for the saved secret. |
+| `POST /admin/security/totp/import`, `POST /api/native/security/totp/import` | Import an authenticator setup link or a Base32 secret. Body: `{"value": "..."}`. |
+| `POST /admin/security/totp/delete`, `POST /api/native/security/totp/delete` | Remove the saved secret. Returns `{"success": true, "target": "pairing"}`. |
+| `POST /api/admin/session/verify` | Exchange a valid code for a one-hour bearer token for the admin agent. Body: `{"totp_code": "123456"}`. |
+| `GET /api/admin/session/capabilities` | Report whether a usable authenticator is configured. |
 
-### `POST /admin/security/totp/show`
-Returns the `otpauth://` URI and ready-to-render QR code SVG or Base64 PNG.
-
-#### Response (`200 OK`)
-```json
-{
-  "uri": "otpauth://totp/AutoYou:Studio-Host?secret=JBSWY3DPEHPK3PXP&issuer=AutoYou",
-  "qr_data_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0..."
-}
-```
-
-### `POST /api/native/security/totp/confirm`
-Finalizes TOTP enrollment by submitting the first verified code from the user's authenticator app.
-
-#### Request Payload
-```json
-{
-  "code": "481920"
-}
-```
-
-### `POST /admin/security/totp/delete`
-Revokes TOTP authentication (requires physical loopback access).
+The secret and its QR code are returned only to a signed-in admin. Treat them like passwords.
 
 ---
 
-## Headless Unlock Protocol
+## Per-agent 2FA profiles
 
-### `GET /v1/unlock/status`
-Checks whether the server keystore is currently locked or unlocked in memory.
+Agent websites can each require their own second factor. A profile's secret is derived from the server password and a stored salt, so it is not stored and cannot be shown again.
 
-#### Response (`200 OK`)
-```json
-{
-  "locked": false,
-  "unlocked_at": "2026-10-03T08:12:00Z"
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/agent-security/profiles` | List profiles |
+| `POST /api/agent-security/profiles` | Create a profile. Body: `{"label": "...", "issuer": "AutoYou"}`. The response's `enrolment` holds the provisioning URI, the manual-entry secret, and a QR code, **once only**. |
+| `POST /api/agent-security/profiles/{profile_id}/verify` | Check a code against a profile to confirm enrolment |
+| `GET /api/agent-security/profiles/{profile_id}/current-code` | The profile's current code |
+| `POST /api/agent-security/profiles/{profile_id}/assign` | Assign the profile to an agent. Body: `{"agent_name": "..."}`. |
+| `POST /api/agent-security/profiles/{profile_id}/wipe` | Delete the profile; every agent using it loses its 2FA requirement |
+| `GET /api/agent-security/agents/{agent_name}/status` | `{"requires_2fa": true, "profile_id": "..."}` for an agent |
+| `POST /api/agent-security/agents/{agent_name}/wipe` | Remove the agent's profile assignment |
+| `POST /api/agent-security/verify` | Verify a code for an agent's assigned profile. This is the backend of the agent website's gate. |
+| `GET /api/agent-websites/security`, `POST /api/agent-websites/security` | The global agent-website settings: `require_otp`, `disable_otp`, `shared_session_enabled`, and `shared_session_ttl_days` |
 
-### `POST /v1/unlock/verify`
-Submits the master passphrase to decrypt the keystore into RAM upon boot.
+If the server is locked, these routes return `409`.
+
+---
+
+## Unlock
+
+`GET /v1/unlock/status` and `POST /v1/unlock/verify` are documented in the [auth app reference](/api-reference/auth-app).

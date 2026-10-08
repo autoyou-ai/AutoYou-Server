@@ -9,109 +9,65 @@ Many AutoYou agents provide rich visual user interfaces in addition to conversat
 
 ---
 
-## Directory Structure
+## Directory structure
 
-To equip an agent with a web interface, create a `website/frontend/` folder inside the agent package:
+An agent's website lives in a `website/` folder inside the agent package:
 
 ```
-autoyou_agents/currency_agent/
-├── agent.py
-├── manifest.json
+autoyou_agents/<name>_agent/
 └── website/
-    └── frontend/
-        ├── index.html       # Single-page UI entrypoint
-        ├── app.js           # Client logic and API fetch calls
-        ├── style.css        # Responsive styling
-        └── icon.png         # 64x64 agent icon
+    ├── manifest.json     # how the website is registered and shown
+    ├── frontend/         # static files: index.html, scripts, styles, assets
+    └── backend/
+        └── app.py        # optional FastAPI app for the website's own API
 ```
+
+The Agent Builder can scaffold these files (`POST /api/agents/workbench/{agent_name}/frontend/scaffold`). Build a backend with the shared website factories (`create_agent_website_app` or `create_agent_chat_app` from `autoyou_agents/shared_tools/scheduler_mission_control.py`), which add the authentication and the cross-site request guard described below. The built-in `hosting_agent` website is a small complete example.
 
 ---
 
-## Starter Web Frontend Example
-
-### 1. `index.html`
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Currency Converter</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <div class="card">
-    <h2>Currency Converter</h2>
-    <div class="form-group">
-      <input type="number" id="amount" value="100" />
-      <select id="from-currency">
-        <option value="USD">USD</option>
-        <option value="EUR">EUR</option>
-        <option value="GBP">GBP</option>
-      </select>
-      <span>to</span>
-      <select id="to-currency">
-        <option value="EUR">EUR</option>
-        <option value="USD">USD</option>
-        <option value="JPY">JPY</option>
-      </select>
-      <button onclick="handleConvert()">Convert</button>
-    </div>
-    <div id="result" class="result-box"></div>
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>
-```
-
-### 2. `app.js`
-Communicates with the server using standard Fetch APIs:
-
-```javascript
-async function handleConvert() {
-  const amount = parseFloat(document.getElementById('amount').value);
-  const from = document.getElementById('from-currency').value;
-  const to = document.getElementById('to-currency').value;
-
-  const resultBox = document.getElementById('result');
-  resultBox.textContent = 'Calculating...';
-
-  try {
-    // Invoke agent tool via server chat or dedicated endpoint
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: `Convert ${amount} ${from} to ${to}`,
-        agent_override: 'currency_agent'
-      })
-    });
-
-    const data = await response.json();
-    resultBox.textContent = data.reply;
-  } catch (err) {
-    resultBox.textContent = `Error: ${err.message}`;
-  }
-}
-```
-
----
-
-## Route Modes (`manifest.json`)
-
-In `manifest.json`, configure how the browser proxy handles requests:
+## `manifest.json`
 
 ```json
 {
-  "name": "currency_agent",
-  "has_frontend": true,
-  "route_mode": "path_proxy",
-  "proxy_port": 8067
+  "agent_name": "hosting_agent",
+  "title": "Website Management",
+  "description": "Pick which agent website opens from your public AutoYou link.",
+  "entry_path": "/",
+  "recommended_port": 8089,
+  "requires_proxy_registration": true
 }
 ```
 
-- **`path_proxy` (Default)**: Static files are served directly by the FastAPI web gateway on port `8067` at `/agent/{agent_name}/`.
-- **`direct_forward`**: Used for agents running a separate internal HTTP server. Requests are reverse-proxied to that internal port.
+| Key | Purpose |
+| :--- | :--- |
+| `agent_name` | The agent this website belongs to |
+| `title`, `description` | How the website is listed in the website directory |
+| `entry_path` | The path the website opens at |
+| `recommended_port` | The loopback port a backend should use |
+| `requires_proxy_registration` | Whether the backend's port is registered with the page service for proxying |
+| `frontend_stack`, `backend_stack`, `managed_runtime` | The stack metadata the scaffold records, and an optional managed process (see below) |
+| `expose_by_default` | Set to `false` to keep the website off until the owner turns it on |
+| `control_label`, `control_help` | The label and help text for the website's toggle in the admin console |
+
+---
+
+## Serving and route modes
+
+The [page service](/api-reference/website-gateway) serves every agent website at `/agent/{agent_name}/`. Each website has a route mode, recorded in the frontend registry:
+
+- **`path_proxy`** (default): the page service serves the website and proxies requests to its backend under `/agent/{agent_name}/`.
+- **`direct_forward`**: the website is also reachable directly on its own port. A few agents, such as `admin_agent`, require it.
+
+How browsers on your home network reach websites, and who may open them, is set by the server's `home_network_websites` mode and by website sign-in. See [Website Gateway & Page Service](/api-reference/website-gateway).
+
+---
+
+## Website security
+
+Agent websites use a two-part boundary. The backend must answer every protected read and write with `401` until the scoped session is authenticated; the shared factories verify an assigned per-agent TOTP profile first and fall back to the shared pairing authenticator. The frontend must fail closed before its own JavaScript runs: protected content must be hidden and `inert`, and a login dialog over visible content is not a lock. Never put private data in unauthenticated HTML or bootstrap payloads. See [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).
+
+---
 
 ## Managed Backend Processes
 

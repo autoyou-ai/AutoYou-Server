@@ -165,6 +165,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/api-reference/models-and-speech.mdx',
     'docs/api-reference/overview.mdx',
     'docs/api-reference/pairing-and-signaling.mdx',
+    'docs/api-reference/route-catalog.mdx',
     'docs/api-reference/security-and-totp.mdx',
     'docs/api-reference/webrtc-and-streaming.mdx',
     'docs/api-reference/website-gateway.mdx',

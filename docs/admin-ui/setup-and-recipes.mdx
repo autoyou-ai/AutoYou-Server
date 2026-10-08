@@ -1,74 +1,48 @@
 ---
-title: "Admin UI: Setup Wizard & Recipes"
-description: "Guided onboarding workflows, automated server configuration recipes, zero-touch pairing setup, and software updates in admin-ui.js."
+title: "Admin UI: Setup & Boot"
+description: "The Setup & Boot screen of the admin console: the first-run wizard, the setup recipe questionnaire, and software updates."
 ---
 
-# Setup Wizard & Recipes
+# Setup & Boot
 
-The **Setup** screen (`renderSetupScreen()` in `assets/admin-ui.js`) streamlines initial provisioning, automated profile deployment, and software maintenance through structured recipes and wizards.
-
----
-
-## Onboarding Wizard (`/api/wizard/*`)
-
-When launching AutoYou Server for the first time, the onboarding wizard guides the operator through critical baseline configuration:
-
-```mermaid
-graph LR
-    Step1[1. Password & Keystore Initialization] --> Step2[2. Security Tier Selection]
-    Step2 --> Step3[3. Model & Inference Detection]
-    Step3 --> Step4[4. Network & Pairing Policy]
-    Step4 --> Step5[5. Completion: POST /api/wizard/complete]
-```
-
-- **`GET /api/wizard/status`**: Checks whether the server is in a fresh, unconfigured state.
-- **`POST /api/wizard/complete`**: Marks onboarding as finished, sets `wizard_completed: true` in the keystore, and transitions the server into standard operational mode.
+The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) walks the first-run path on one screen: harden the local admin baseline, pick the AI runtime, load models, choose remote fallback paths, and finish. A **Bootstrap progress** panel lets you select a step or move with Previous and Next.
 
 ---
 
-## Configuration Recipes (`/api/setup/recipe/*`)
+## First-run wizard
 
-Rather than manually toggling dozens of individual settings, AutoYou Server provides pre-engineered **Configuration Recipes**:
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/wizard/status` | The wizard state: the status of the AI runtime, messaging partners, and the public link, the active AI provider, and whether the wizard should be shown |
+| `POST /api/wizard/complete` | Record that the wizard is finished (`{"completed": true}`), or reopen it with `false`. The state is saved in the configuration as `wizard_completed` with a timestamp. |
 
-| Recipe Name | Focus Area | Applied Configurations |
-| :--- | :--- | :--- |
-| **Minimal Client** | Lightweight | Binds to loopback only, disables media streaming, pauses background daemons. |
-| **Desktop Assistant** | Productivity | Enables screen-listen, Whisper voice capture, system tools, and notes agent. |
-| **Creative & Media Hub** | Content | Enables GPU speech models (Kokoro, EmotiVoice), image generation, and audio library. |
-| **Enterprise Hardened** | Security | Activates `secure_professional` tier, enforces TOTP 2FA, disables remote reverse proxies. |
-| **Full Automation** | Multi-channel | Spins up WhatsApp, Signal, Telegram daemons, browser automation, and MCP servers. |
-
-### Two-Phase Recipe Application
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Admin as Operator
-    participant UI as admin-ui.js (renderSetupRecipePreview)
-    participant Server as FastAPI Server (/api/setup/recipe/*)
-
-    Admin->>UI: Select "Desktop Assistant" Recipe
-    UI->>Server: POST /api/setup/recipe/preview { recipe: "desktop_assistant" }
-    Server-->>UI: Diff Preview (Changed keys, services to restart, port adjustments)
-    UI->>Admin: Display Visual Diff Modal
-    Admin->>UI: Confirm "Apply Changes"
-    UI->>Server: POST /api/setup/recipe/apply { recipe: "desktop_assistant" }
-    Server-->>UI: 200 OK (Changes Applied Atomically)
-```
+Completing the wizard does not change any other setting.
 
 ---
 
-## Zero-Touch Pairing Setup (`renderZeroTouchPairingBody()`)
+## Setup recipes
 
-Automates pairing configuration for native desktop clients running on the same host machine (AutoYou Connect for Windows / macOS):
-- Configures local loopback auto-pairing without passwords.
-- Sets ephemeral admin listener ports.
-- Exports client configuration seeds into memory-mapped IPC channels.
+A recipe is a proposed set of configuration changes compiled from a few questions. Compiling a recipe has no side effects: `POST /api/setup/recipe/preview` returns the proposal, and `POST /api/setup/recipe/apply` applies it through the normal admin configuration validator.
+
+Both routes take an `answers` object. By default, apply makes only the recipe's safe configuration changes. Set `include_guarded` or `include_security` to `true` to also apply the guarded or security-related changes. A remote browser cannot ask for those, and the request is refused. The questions are:
+
+| Question | Choices |
+| :--- | :--- |
+| **Choose a starting plan** (`profile_id`) | Private starter, Phone companion, Trusted LAN, Temporary public link, Creator and calls, Background phone link, Safety recording, Incognito local, Agent workbench, Integration operator, Custom mix |
+| **Network scope** (`network_scope`) | This computer only, Cloud Pair, Trusted local network, Temporary public link |
+| **AI path** (`ai_path`) | Ollama local, Ollama native gateway, Cloud model provider, Gemini, Hermes Agent, OpenClaw, Odysseus, Help me pick |
+| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Money helpers |
+
+The catalog groups the settings a recipe can touch into ten areas: server identity and local admin; security, passwords, 2FA, and pairing; AutoYou AI and model behavior; speech and voice; messaging partners; connectivity; websites and browser; video and calls; agents; and automation APIs and integrations. "Money helpers" (donation, hosting, earnings, and finance agents) stay off unless you ask for them.
+
+Exposure choices have consequences. "Trusted local network" turns on the home network with HTTPS, and "Temporary public link" enables a public link only for a time-boxed session. See [Security & Authentication](/architecture/security-and-auth).
 
 ---
 
-## Software Updates (`renderSoftwareUpdatePanel()`)
+## Software updates
 
-Maintains server binaries and model assets safely:
-- **`GET /api/software-update/status`**: Checks the upstream repository for new release versions against the local `VERSION` file.
-- **`POST /api/software-update/apply`**: Downloads and verifies cryptographically signed update manifests before applying patches to the local install.
+`GET /api/software-update/status` checks for an update and `POST /api/software-update/apply` applies it. Both need an admin sign-in.
+
+- Update checks are on by default but do nothing until the server is linked to an AutoYou account (or the app is managed by an app store). Turn them off with `software_update.enabled`, or with the `AUTOYOU_SOFTWARE_UPDATES_ENABLED` environment variable.
+- The check goes to AutoYou's update feed, `<AUTOYOU_CLOUD_BASE_URL>/v1/updates/autoyou-server` by default, authenticated with the account link. Set `AUTOYOU_UPDATE_FEED_BASE` to use a different feed.
+- If the account link was revoked, the response asks you to reconnect (`/api/cloud/link-start`). A failed signature check or a dirty working tree is reported as the cause of a failed update.

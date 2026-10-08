@@ -1,90 +1,49 @@
 ---
-title: "MCP (Model Context Protocol) Server APIs"
-description: "Specifications for AutoYou Server's embedded Model Context Protocol (MCP) server, JSON-RPC 2.0 endpoints, and tool sharing."
+title: "MCP Bridge API"
+description: "The token-authenticated REST routes under /api/v1/mcp/ that an MCP adapter uses to reach AutoYou Server."
 ---
 
-# MCP Server APIs
+# MCP Bridge API
 
-AutoYou Server implements the open **Model Context Protocol (MCP)** specification, allowing external AI hosts (such as Claude Desktop, Zed, Cursor, and IDE extensions) to discover and execute tools exposed by AutoYou agents over standard JSON-RPC 2.0 transports.
+The bridge is a narrow REST interface on the admin app (port `8001`). An MCP adapter, which is a separate process, calls it on behalf of MCP clients. The server does not speak the Model Context Protocol itself: it exposes no JSON-RPC endpoint, and the adapter is not part of this repository. How to enable and authenticate the bridge, and how to set up the adapter, is in [MCP Integration](/guides/mcp-integration).
 
----
-
-## MCP Server Capabilities
-
-```mermaid
-graph LR
-    ExternalHost[External MCP Client: Claude Desktop / Cursor]
-    
-    subgraph AutoYou Server (:8001)
-        MCPRouter[/api/v1/mcp/*]
-        ToolAdapter[MCP Tool Adapter]
-        ADK[ADK Agent Tool Registry]
-    end
-
-    ExternalHost -->|JSON-RPC 2.0 Over HTTP/WS| MCPRouter
-    MCPRouter --> ToolAdapter
-    ToolAdapter --> ADK
-    ADK -->|Execute Tools| LocalOS[Local File / System / Media APIs]
-```
+Errors use the shape in the [API overview](/api-reference/overview).
 
 ---
 
-## Endpoints
+## Authentication
+
+Every route needs the MCP API token (`mcp.api_token` or `AUTOYOU_MCP_API_TOKEN`), sent as `Authorization: Bearer <token>` or in the `x-autoyou-mcp-token` header. Without a configured token, requests are accepted only when both the server's bind and the caller are on loopback. The bridge answers `403` when it is disabled.
+
+---
+
+## Routes
 
 ### `GET /api/v1/mcp/status`
-Returns server capability status, protocol versions supported, and registered tool counts.
 
-#### Response (`200 OK`)
-```json
-{
-  "status": "ready",
-  "protocol_version": "2024-11-05",
-  "server_info": {
-    "name": "AutoYou-MCP-Server",
-    "version": "81.0.0"
-  },
-  "tools_available": 64,
-  "active_sessions": 1
-}
-```
+Returns the bridge and server state:
+
+| Field | Meaning |
+| :--- | :--- |
+| `status` | `running` |
+| `version` | `full-server` |
+| `connected_sessions`, `sessions` | The number and ids of connected WebRTC sessions |
+| `ai_provider`, `ai_model` | The active provider and model |
+| `security_mode`, `security_tier` | The server's security mode and pairing tier |
+| `mcp_enabled` | Whether the bridge is enabled |
 
 ### `GET /api/v1/mcp/sessions`
-Lists all active external MCP client sessions connected to this server.
+
+Connected WebRTC sessions, keyed by session id. Each entry has `transport`, `connected`, `owner_key`, and `canonical_session_id`.
 
 ### `POST /api/v1/mcp/send/{session_id}`
-Sends a raw JSON-RPC 2.0 message envelope to a specific MCP session.
 
-#### Request Payload
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "notes_create",
-    "arguments": {
-      "title": "Meeting Notes",
-      "content": "Discussed Q4 roadmap and WebRTC optimisations."
-    }
-  },
-  "id": 1
-}
-```
+Sends a text message to a connected device. Body: `{"text": "...", "metadata": {}, "user_id": ""}`. `text` is required and at most 16,000 characters. The sender identity is the server's own; `user_id` is not honored. Response: `{"sent": true, "session_id": "...", "source": "autoyou-mcp"}`.
 
-#### Response (`200 OK`)
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "Note 'Meeting Notes' created successfully with ID note_94a2b1."
-      }
-    ]
-  },
-  "id": 1
-}
-```
+### `POST /api/v1/mcp/pair`
+
+Submits a pairing message to the pairing router. Body: `text` (up to 512,000 characters), `platform` (default `chatgpt`), and `sender_id`. The text must be a pairing command (`/pair`, `/otp_pair`, `/pair_hello`, `/autopair_hello`, `/autopair`, `/autopair_candidates`) or a pairing fragment; anything else returns `400` with `unsupported_pairing_message`.
 
 ### `POST /api/v1/mcp/chat`
-Allows an external MCP client to invoke a full agent conversation pass, utilizing both local and remote MCP tools.
+
+Sends a chat turn to AutoYou AI. Body: either `message` (up to 16,000 characters) or OpenAI-style `messages`, plus optional `model`, `session_id`, `user`, `context` (attachments), and `metadata`.

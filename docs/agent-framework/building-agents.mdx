@@ -1,137 +1,99 @@
 ---
 title: "Building Custom Agents"
-description: "Step-by-step developer tutorial for authoring custom agents, implementing typed Python tools, and configuring prompts."
+description: "The agent package contract: files, constants, the factory, tools, installation, websites, and tests."
 ---
 
 # Building Custom Agents
 
-Creating a custom agent in AutoYou Server requires only a Python file (`agent.py`) and an optional metadata manifest (`manifest.json`). This guide walks you through authoring a fully functional, production-ready agent.
+An agent is a Python package under `autoyou_agents/` that builds a [Google ADK](https://google.github.io/adk-docs/) `Agent`. The [tutorial](../guides/custom-agent-tutorial.mdx) walks through one example; this page is the reference. The package contract is also stated in [`autoyou_agents/README.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/README.md). The built-in agents are listed in the [Agent Catalog](/agents/system-and-admin).
 
 ---
 
-## 1. Create the Agent Directory
+## Package layout
 
-Create a new directory under `autoyou_agents/` (or in the dynamic agents root returned by `get_dynamic_agents_root()`):
-
-```bash
-mkdir -p autoyou_agents/currency_agent
-cd autoyou_agents/currency_agent
+```
+autoyou_agents/<name>_agent/
+├── __init__.py
+├── prompt.py        # AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION (+ optional routing constants)
+├── agent.py         # create_<name>_agent(model_config)
+├── <name>_tool.py   # tools (any module name)
+└── website/         # optional: manifest.json, frontend/, backend/
 ```
 
+Put an agent you want in this repository in `autoyou_agents/<name>_agent/`. Put one you keep to yourself in `autoyou_agents/private/<name>_agent/`, which is git-ignored and can also be a link to wherever you keep your agents. Use a name that no built-in agent uses.
+
 ---
 
-## 2. Implement `agent.py`
+## `prompt.py`
 
-Create `agent.py` and define your agent's identity, system instructions, and tool functions:
+| Constant | Required | Purpose |
+| :--- | :--- | :--- |
+| `AGENT_NAME` | Yes | The runtime name of the agent. Built-ins use an `autoyou_` prefix, as in `autoyou_hosting_agent`. |
+| `AGENT_DESCRIPTION` | Yes | What the agent does. The main agent uses it to decide when to call this one. |
+| `AGENT_INSTRUCTION` | Yes | The agent's system instruction. |
+| `ROUTING_LABEL` | No | The agent's name in the main agent's list of agents |
+| `ROUTING_RULE` | No | When the main agent should call it. Without it, `AGENT_DESCRIPTION` is used. |
+| `ROUTE_ALIASES` | No | Names that send a request straight to the agent, as in "use <alias> to ..." |
+
+---
+
+## `agent.py`: the factory
+
+The server loads `autoyou_agents.<name>_agent.agent` and calls `create_<name>_agent(model_config)`, where the function name is `create_` plus the folder name. It must return a Google ADK `Agent`:
 
 ```python
-"""Currency Conversion Agent for AutoYou Server."""
+from google.adk.agents import Agent
+from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
+from .my_tool import my_function
 
-import httpx
-from typing import Dict, Any, Optional
-from autoyou_agents.shared_tools import tool
 
-AGENT_NAME = "currency_agent"
-AGENT_TITLE = "Currency Converter"
-AGENT_DESCRIPTION = "Real-time foreign exchange rates and conversions."
-
-SYSTEM_PROMPT = """
-You are an expert financial assistant specializing in foreign exchange conversions.
-When the user asks to convert money between currencies, always use the 'convert_currency' tool.
-Provide clear summaries with the exchange rate and date.
-"""
-
-@tool
-async def convert_currency(
-    amount: float,
-    from_currency: str,
-    to_currency: str
-) -> Dict[str, Any]:
-    """
-    Converts an amount from one fiat or crypto currency to another.
-
-    Args:
-        amount: The numerical amount of money to convert.
-        from_currency: Three-letter ISO currency code (e.g. 'USD', 'EUR', 'GBP').
-        to_currency: Three-letter ISO target currency code (e.g. 'JPY', 'CAD').
-    """
-    from_currency = from_currency.upper().strip()
-    to_currency = to_currency.upper().strip()
-
-    # Using public Open Exchange Rates or free exchange API
-    url = f"https://open.er-api.com/v6/latest/{from_currency}"
-    
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(url)
-        if response.status_code != 200:
-            return {
-                "error": f"Failed to fetch rates for {from_currency}",
-                "status_code": response.status_code
-            }
-        
-        data = response.json()
-        rates = data.get("rates", {})
-        
-        if to_currency not in rates:
-            return {
-                "error": f"Unsupported target currency: {to_currency}",
-                "available_examples": list(rates.keys())[:10]
-            }
-            
-        rate = rates[to_currency]
-        converted = amount * rate
-        
-        return {
-            "amount": amount,
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-            "exchange_rate": rate,
-            "converted_amount": round(converted, 2),
-            "updated_at": data.get("time_last_update_utc")
-        }
-
-def create_agent():
-    """ADK Factory entrypoint."""
-    return {
-        "name": AGENT_NAME,
-        "title": AGENT_TITLE,
-        "description": AGENT_DESCRIPTION,
-        "prompt": SYSTEM_PROMPT,
-        "tools": [convert_currency]
-    }
+def create_my_agent(model_config):
+    return Agent(
+        name=AGENT_NAME,
+        model=model_config,
+        description=AGENT_DESCRIPTION,
+        instruction=AGENT_INSTRUCTION,
+        tools=[my_function],
+    )
 ```
+
+Many built-in agents add callbacks around the model call (for example to inject the current date and time), and an agent can export `ingest_attachments` to handle uploaded files. Look at a small built-in agent such as `hosting_agent` for a complete example.
+
+In a packaged (compiled) runtime only built-in agents load. Workspace-only agents are refused there, so develop custom agents from a source checkout.
 
 ---
 
-## 3. Tool Best Practices & Rules
+## Tools
 
-1. **Explicit Type Annotations**: The ADK automatically parses standard Python type annotations (`str`, `int`, `float`, `bool`, `List[T]`, `Dict[str, Any]`, `Optional[T]`) to generate JSON Schema definitions for the LLM.
-2. **Comprehensive Docstrings**: Include both a high-level tool description and an `Args:` block describing every parameter. The LLM uses these descriptions to decide when and how to invoke the tool.
-3. **Graceful Error Handling**: Do not let unhandled network exceptions crash the tool. Catch HTTP or parsing errors and return a structured dictionary containing `"error": "..."`. The LLM will read the error and explain the issue helpfully to the user.
-4. **Asynchronous Execution**: Mark network- or disk-bound tools with `async def` so the server event loop remains responsive during I/O.
+A tool is a plain Python function. The ADK reads its type annotations to build the schema the model sees, and its docstring to explain the tool, so:
+
+1. **Annotate every parameter** with ordinary types (`str`, `int`, `float`, `bool`, `List[T]`, `Dict[str, Any]`, `Optional[T]`).
+2. **Write a docstring** with a one-line summary and an `Args:` section that describes each parameter.
+3. **Return a dictionary** and report failures in it, for example `{"success": False, "error": "..."}`, rather than raising. The model reads the result and can explain an error to the user.
+4. **Use `async def`** for network or disk work so the event loop stays responsive.
+
+Shared helpers live in `autoyou_agents/shared_tools/`, such as `datetime_tool.get_current_datetime`. See [Shared Tools & Subsystems](shared-tools-and-subsystems.mdx).
 
 ---
 
-## 4. Testing Your Agent with Pytest
+## Installing
 
-Create a contract test under `tests/agents/public/test_currency_agent.py`:
+A new agent starts **uninstalled**. Install it from **Agents** in the admin console, or with `POST /api/agents/install` and `{"agent_name": "<name>_agent"}`, then reload the AI runtime. The Agent Builder can create, test, and publish drafts for you; see [Agent Workbench](agent-workbench.mdx).
 
-```python
-import pytest
-from autoyou_agents.currency_agent.agent import create_agent, convert_currency
+---
 
-@pytest.mark.asyncio
-async def test_currency_agent_tool():
-    agent = create_agent()
-    assert agent["name"] == "currency_agent"
-    assert len(agent["tools"]) == 1
-    
-    # Test tool directly
-    result = await convert_currency(100.0, "USD", "EUR")
-    assert "converted_amount" in result or "error" in result
-```
+## Websites
 
-Run the test:
+An agent can ship a web interface in `website/`: a `manifest.json`, a `frontend/` folder, and optionally a `backend/app.py`. The page service serves it at `/agent/<name>_agent/`. Agent websites must reject protected requests with `401` until the session is authenticated, and must keep protected content hidden and inert until then; use the shared website factories, which do both. See the tutorial and [Agent Web Frontends](agent-web-frontends.mdx).
+
+---
+
+## Testing
+
+Put tests under `tests/agents/public/` and run them with an isolated test root so they cannot touch your live configuration:
+
 ```bash
-pytest tests/agents/public/test_currency_agent.py -v
+AUTOYOU_TEST_ROOT="$(mktemp -d)" python -m pytest tests/agents/public -q
 ```
+
+See the [testing guide](../contributors/TESTING.md).

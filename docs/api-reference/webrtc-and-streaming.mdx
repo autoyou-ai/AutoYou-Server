@@ -1,123 +1,75 @@
 ---
 title: "WebRTC & Media Streaming APIs"
-description: "Specifications for device discovery, video streaming, virtual file injection, and low-latency input WebSocket channels."
+description: "Admin-app routes for capture devices, calls, playback, video injection, and remote input."
 ---
 
 # WebRTC & Media Streaming APIs
 
-These endpoints govern hardware capture devices, live audio/video transceivers, call controls, and low-latency input injection over WebRTC and WebSockets.
+These admin-app routes control the capture devices, calls, playback, and remote input that the WebRTC engine uses. They need an admin sign-in. The transport is described in [WebRTC & DataChannels](/architecture/webrtc-and-datachannels), and the console screens that use these routes are in [Live View, Interact & Media](/admin-ui/live-view-and-media). Errors follow the shape in the [API overview](/api-reference/overview).
 
 ---
 
-## Hardware Device Discovery
+## Devices and capabilities
 
-### `GET /api/webrtc/audio-devices`
-Returns all host audio capture inputs (microphones) discovered on the system.
-
-#### Response (`200 OK`)
-```json
-{
-  "devices": [
-    { "id": "default", "name": "Default Audio Device", "is_default": true },
-    { "id": "mic_usb_01", "name": "Rode PodMic USB", "channels": 2, "sample_rate": 48000 }
-  ]
-}
-```
-
-### `GET /api/webrtc/camera-devices`
-Returns physical and virtual video capture cameras.
-
-#### Response (`200 OK`)
-```json
-{
-  "cameras": [
-    { "id": "cam_0", "name": "Logitech Brio 4K", "resolutions": ["1920x1080", "3840x2160"], "max_fps": 60 }
-  ]
-}
-```
-
-### `GET /api/webrtc/monitors`
-Lists all attached physical displays and virtual monitors.
-
-#### Response (`200 OK`)
-```json
-{
-  "monitors": [
-    { "id": 1, "name": "Primary Display", "width": 2560, "height": 1440, "is_primary": true },
-    { "id": 2, "name": "Secondary Display", "width": 1920, "height": 1080, "is_primary": false }
-  ]
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/webrtc/capabilities` | Capabilities of the WebRTC engine on this computer |
+| `GET /api/webrtc/audio-devices` | Audio capture devices |
+| `GET /api/webrtc/camera-devices` | Camera devices |
+| `GET /api/webrtc/monitors` | Attached displays |
+| `GET /api/webrtc/microphone-sharing`, `PUT /api/webrtc/microphone-sharing` | Read or change whether the computer's microphone is shared. `PUT` body: `{"enabled": true}`. |
 
 ---
 
-## Live Call Management
+## Calls
 
-### `POST /api/chat/call/offer`
-Initiates an audio/video voice call session.
-
-#### Request Payload
-```json
-{
-  "session_id": "sess_01J8YXZ0QW4T9P",
-  "call_type": "audio_video", // "audio_only" | "audio_video"
-  "enable_transcription": true
-}
-```
-
-### `POST /api/chat/call/close`
-Terminates an active voice or video call.
+| Route | Purpose |
+| :--- | :--- |
+| `POST /api/chat/call/offer` | Send a call offer |
+| `POST /api/chat/call/candidate` | Send an ICE candidate for the call |
+| `POST /api/chat/call/close` | End the call |
 
 ---
 
-## Virtual Video File Injection
+## Sending to a connected client
 
-### `POST /api/webrtc/video-file/upload`
-Uploads a pre-recorded MP4 or WebM video file to stream into the WebRTC session.
-- **Content-Type**: `multipart/form-data`
-- **Body**: `file` (binary video asset)
-
-### `POST /api/webrtc/video-file/play`
-Begins streaming the uploaded video into the active video track.
-
-#### Request Payload
-```json
-{
-  "filename": "screencast_demo.mp4",
-  "loop": true
-}
-```
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `POST /api/webrtc/send` | `message`, optional `context`, `metadata`, `session_id`, `owner_key` | Send a text message to a connected DataChannel client |
+| `POST /api/webrtc/client-browser-control` | `payload`, `session_id` or `owner_key`, optional `allow_single_live_fallback` | Send a browser-control message to a connected client |
+| `POST /api/webrtc/rewarded-ad` | `payload`, `session_id` or `owner_key`, optional `allow_single_live_fallback` | Send a rewarded-ad control message to a connected client |
 
 ---
 
-## High-Frequency Game Input WebSocket
+## Audio playback to a client
 
-### `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`
-Establishes a low-latency bidirectional WebSocket connection for injecting mouse, keyboard, and gamepad commands.
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/webrtc/playback/enabled`, `POST /api/webrtc/playback/enabled` | `{"enabled": true}` | Read or set whether server-side audio-file playback is allowed |
+| `POST /api/webrtc/playback/play` | `file_path`, `session_id` or `owner_key` | Play a local audio file to a client |
+| `POST /api/webrtc/playback/pause`, `/resume`, `/stop`, `/status` | `session_id` or `owner_key` | Control or inspect playback |
 
-#### Client Frame Format (JSON or Binary)
-```json
-{
-  "type": "mouse_move",
-  "dx": 14,
-  "dy": -8,
-  "buttons": 1
-}
-```
+---
 
-```json
-{
-  "type": "key_event",
-  "code": "KeyW",
-  "action": "down"
-}
-```
+## Video injection
 
-#### Server Frame Format (Keepalive)
-```json
-{
-  "type": "ack",
-  "frame_id": 10482,
-  "rtt_ms": 1.4
-}
-```
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/webrtc/video-files` | none | Uploaded video files |
+| `POST /api/webrtc/video-file/upload` | multipart form with a `video` field | Upload a video file |
+| `POST /api/webrtc/video-file/play`, `/pause`, `/status` | none | Start, pause, or inspect playback of the uploaded file into the active video track |
+| `POST /api/webrtc/video-input/{source_id}/frame` | one of `jpeg_base64`, `image_base64`, `data`, or `data_url` | Feed one frame into a named video input source |
+
+---
+
+## Remote input
+
+| Route | Purpose |
+| :--- | :--- |
+| `WEBSOCKET /api/webrtc/game-input/stream` | A WebSocket for remote input |
+| `GET /api/webrtc/game-input/connection` | The state of the game-input connection |
+| `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input` | A WebSocket for native game input |
+| `GET /api/webrtc/hosted-game/api/game/native-input/status` | The state of the native input channel |
+| `GET /api/webrtc/hosted-game/play` | The hosted game page |
+
+The complete list of WebRTC routes is in the [route catalog](/api-reference/route-catalog).
