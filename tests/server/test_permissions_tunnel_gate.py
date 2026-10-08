@@ -106,3 +106,55 @@ def test_local_pair_ownership_follows_the_same_rule(headers):
     request = _scope_request(headers)
     owned = server._request_is_from_this_computer(request)
     assert server._local_pair_device_ownership(request) == (server.DEVICE_OWN if owned else server.DEVICE_SHARED)
+
+
+def test_remote_admin_permissions_env_allows_private_network_client(monkeypatch):
+    monkeypatch.setenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", "1")
+    # Private network peers (WSL, Docker, LAN) are allowed when opt-in is active
+    assert server._request_is_from_this_computer(_scope_request({}, ("172.24.0.1", 50000))) is True
+    assert server._request_is_from_this_computer(_scope_request({}, ("10.0.0.5", 50000))) is True
+    assert server._request_is_from_this_computer(_scope_request({}, ("192.168.1.50", 50000))) is True
+    # Public internet IPs stay blocked
+    assert server._request_is_from_this_computer(_scope_request({}, ("8.8.8.8", 50000))) is False
+    assert server._request_is_from_this_computer(_scope_request({}, ("93.184.216.34", 50000))) is False
+    # Public tunnels stay blocked even from private peers
+    for params in FORWARDED_REQUEST_HEADERS:
+        assert server._request_is_from_this_computer(_scope_request(params.values[0], ("172.24.0.1", 50000))) is False
+    # Remote browser proxy stays blocked
+    assert server._request_is_from_this_computer(_scope_request({REMOTE_BROWSER_HEADER: "webrtc"}, ("172.24.0.1", 50000))) is False
+
+
+def test_remote_admin_permissions_config_allows_private_network_client(monkeypatch):
+    monkeypatch.delenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", raising=False)
+    cfg = server._default_config()
+    cfg.setdefault("server", {})["allow_remote_admin_permissions"] = True
+    monkeypatch.setattr(server.STATE, "config", cfg, raising=False)
+    assert server._request_is_from_this_computer(_scope_request({}, ("172.24.0.1", 50000))) is True
+    # Public tunnels stay blocked
+    for params in FORWARDED_REQUEST_HEADERS:
+        assert server._request_is_from_this_computer(_scope_request(params.values[0], ("172.24.0.1", 50000))) is False
+
+
+def test_remote_private_network_client_can_read_and_update_permissions_when_opted_in(local_admin, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", "1")
+    remote_client = TestClient(server.admin_app, base_url="http://127.0.0.1:8001", client=("172.24.0.1", 50000))
+    assert remote_client.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is True
+    assert remote_client.get("/api/admin/permissions").status_code == 200
+    headers = {"Origin": "http://127.0.0.1:8001"}
+    assert remote_client.post("/api/admin/permissions", json={"audio_call_enabled": False}, headers=headers).status_code == 200
+    assert remote_client.post("/api/admin/config", json=PERMISSION_PATCH, headers=headers).status_code == 200
+
+
+def test_remote_private_network_client_blocked_by_default(local_admin, monkeypatch):
+    monkeypatch.delenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", raising=False)
+    cfg = server._default_config()
+    cfg.setdefault("server", {})["allow_remote_admin_permissions"] = False
+    monkeypatch.setattr(server.STATE, "config", cfg, raising=False)
+    remote_client = TestClient(server.admin_app, base_url="http://127.0.0.1:8001", client=("172.24.0.1", 50000))
+    assert remote_client.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is False
+    assert remote_client.get("/api/admin/permissions").status_code == 403
+    assert remote_client.post("/api/admin/permissions", json={"audio_call_enabled": False}).status_code == 403
+    blocked = remote_client.post("/api/admin/config", json=PERMISSION_PATCH)
+    assert blocked.status_code == 403
+
+

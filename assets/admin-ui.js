@@ -5804,6 +5804,9 @@
         var bluetoothRuntime = getByPath(status, "bluetooth_pairing", {});
         var bluetoothRunning = Boolean(getByPath(bluetoothRuntime, "running", false));
         var adminFrontendEnabled = asBoolean(getByPath(state.forms, "page.admin_frontend_enabled", getByPath(cfg, "agent_frontends.admin_agent", false)), false);
+        var remotePermsLive = asBoolean(getByPath(state.bootstrap, "metadata.allow_remote_admin_permissions", getByPath(home, "allow_remote_admin_permissions", false)), false);
+        var remotePermsExplicit = getByPath(state.forms, "overview.allowRemoteAdminPermissions", getByPath(cfg, "server.allow_remote_admin_permissions", null));
+        var remotePermsNextBoot = hasValue(remotePermsExplicit) ? asBoolean(remotePermsExplicit, false) : asBoolean(getByPath(home, "allow_remote_admin_permissions_next_boot", getByPath(cfg, "server.allow_remote_admin_permissions", false)), false);
         var nextHostHelp = nextHost === "0.0.0.0"
             ? "Advertise " + serverName + " to the home network on next boot. Requires shutdown."
             : "Boot local-only on 127.0.0.1 next time. Requires shutdown.";
@@ -5848,6 +5851,13 @@
                 value: adminFrontendEnabled ? "Advertised" : "Not advertised",
                 help: adminFrontendEnabled ? "The admin shell can be surfaced through Websites & Browser." : "The admin shell is not registered as an agent website."
             },
+            {
+                label: "Network admin permissions (WSL / Docker / LAN)",
+                value: (remotePermsLive ? "Enabled now" : "Disabled now") + " · " + (remotePermsNextBoot ? "enabled next boot" : "disabled next boot"),
+                help: remotePermsNextBoot
+                    ? "Admins connecting from WSL, Docker, or LAN over HTTPS can view and modify hardware permissions and capture settings."
+                    : "Hardware permissions can only be changed from localhost (127.0.0.1)."
+            },
         ]);
         var accessActionHost = liveHostKnown ? normalizeOverviewBindHost(liveHost) : nextHost;
         var accessAction = accessActionHost === "0.0.0.0"
@@ -5865,6 +5875,9 @@
         var httpsAction = httpsEnabled
             ? button("Disable HTTPS on next boot", "overview-https:disable", "ghost", "shield", "sm")
             : button("Enable HTTPS on next boot", "overview-https:enable", "secondary", "shield", "sm");
+        var remotePermsAction = remotePermsNextBoot
+            ? button("Disable network admin permissions next boot", "overview-remote-permissions:disable", "ghost", "shield", "sm")
+            : button("Allow network admin permissions next boot", "overview-remote-permissions:enable", "secondary", "shield", "sm");
         var httpsNote = httpsEnabled
             ? "<div class=\"ayu-note ayu-note-blue\"><strong>Local HTTPS:</strong> After restart, Admin and Websites & Browser are also reachable over https://. To make them trusted (no browser warnings), each device installs this server's certificate one time: <a href=\"/ca.crt\" download>Download CA certificate</a>. Safari, iOS and Android never trust a private certificate automatically  -  this one-time install is expected.</div>"
             : "";
@@ -5872,12 +5885,14 @@
         var nextHostSummary = nextHost === "0.0.0.0" ? "home network access" : "local-only access";
         var credentialNote = "<div class=\"ayu-note ayu-note-gray\"><strong>Credentials stay on this computer.</strong> Connected devices can sign in and see settings their role allows, but passwords, two-factor, security mode and network exposure only change here or in an HTTPS admin session opened directly on this computer.</div>";
         var homeNetworkNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>Home network:</strong> " + escapeHtml(homeNetworkWebsitesHelp(websitesMode)) + "<p>Website route and nearby discovery apply right away; turning the home network itself on or off needs a restart.</p></div><div class=\"ayu-inline-actions\">" + websitesActions + discoveryAction + "</div>";
+        var wslDockerNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>WSL, Docker, and Virtual IP Access:</strong> If hosting inside WSL or Docker and connecting via IP (e.g. <code>172.x.x.x</code>):<p>1. <strong>Login requires HTTPS:</strong> Connect over <code>https://&lt;ip&gt;:8443/</code> (or behind a trusted TLS proxy with <code>AUTOYOU_TRUSTED_HTTPS_PROXY=1</code>).</p><p>2. <strong>Permissions modification:</strong> Enable <em>Allow network admin permissions next boot</em> above (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) so your admin login over the virtual IP can change hardware permissions. Public tunnels remain blocked.</p></div>";
         return rows
             + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsEnabled)
             + homeNetworkNote
+            + wslDockerNote
             + "<div class=\"ayu-inline-actions\">" + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div>"
             + credentialNote
-            + "<div class=\"ayu-note ayu-note-" + escapeHtml(noteTone) + "\"><strong>Requires shutdown.</strong> Next boot: " + escapeHtml(nextHostSummary) + (nextHost === "0.0.0.0" ? (httpsEnabled ? " with HTTPS" : " without HTTPS") : "") + ". Network binding, HTTPS and keychain unlock are read when AutoYou starts.</div><div class=\"ayu-inline-actions\">" + accessAction + unlockAction + httpsAction + "</div>" + httpsNote;
+            + "<div class=\"ayu-note ayu-note-" + escapeHtml(noteTone) + "\"><strong>Requires shutdown.</strong> Next boot: " + escapeHtml(nextHostSummary) + (nextHost === "0.0.0.0" ? (httpsEnabled ? " with HTTPS" : " without HTTPS") : "") + ". Network binding, HTTPS, network admin permissions and keychain unlock are read when AutoYou starts.</div><div class=\"ayu-inline-actions\">" + accessAction + unlockAction + httpsAction + remotePermsAction + "</div>" + httpsNote;
     }
 
     function renderOverviewMediaPanel() {
@@ -7393,9 +7408,10 @@
         var video = getByPath(state.forms, "videoCall", {});
         var paths = getByPath(state.bootstrap, "metadata.recording_paths", {});
         var editable = asBoolean(getByPath(state.bootstrap, "metadata.permissions_editable", false), false);
+        var isLoopback = asBoolean(getByPath(state.bootstrap, "metadata.is_loopback_client", true), true);
         var accessNote = editable
-            ? "<div class=\"ayu-note ayu-note-green\"><strong>Local admin controls are available.</strong> Permission changes save to this computer immediately after you save this section.</div>"
-            : "<div class=\"ayu-note ayu-note-amber\"><strong>View only from this connection.</strong> Open the admin page on this computer at 127.0.0.1 and sign in as admin to change its permissions.</div>";
+            ? ("<div class=\"ayu-note ayu-note-green\"><strong>" + (isLoopback ? "Local admin controls are available." : "Network admin controls are active.") + "</strong> Permission changes save to this computer immediately after you save this section.</div>")
+            : "<div class=\"ayu-note ayu-note-amber\"><strong>View only from this connection.</strong> Open the admin page on this computer at 127.0.0.1 and sign in as admin to change its permissions. If running inside WSL, Docker, or hosting over network IP, enable <em>Allow network admin permissions next boot</em> in Overview (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) and connect over HTTPS.</div>";
         function localOnly(markup) {
             return editable ? markup : "<fieldset disabled style=\"border:0;padding:0;margin:0;min-width:0\">" + markup + "</fieldset>";
         }
@@ -9382,6 +9398,12 @@
             var nativeUnlockEnabled = action.split(":")[1] === "enable";
             setByPath(state.forms, "overview.nativeUnlockEnabled", nativeUnlockEnabled);
             await patchConfig({ security: { native_unlock_enabled: nativeUnlockEnabled } }, nativeUnlockEnabled ? "System credential unlock will be available after restart." : "System credential unlock will be disabled after restart.");
+            return;
+        }
+        if (action.indexOf("overview-remote-permissions:") === 0) {
+            var remotePermsOn = action.split(":")[1] === "enable";
+            setByPath(state.forms, "overview.allowRemoteAdminPermissions", remotePermsOn);
+            await patchConfig({ server: { allow_remote_admin_permissions: remotePermsOn } }, remotePermsOn ? "Network admin permissions will apply after shutdown and restart. Admins connecting from WSL, Docker, or LAN over HTTPS will be able to edit hardware permissions." : "Network admin permissions disabled for next boot. Permissions will require localhost.");
             return;
         }
         if (action.indexOf("service:") === 0) {

@@ -1020,6 +1020,9 @@ def register_routes(
         metadata = payload.setdefault("metadata", {})
         if isinstance(metadata, dict):
             metadata["permissions_editable"] = bool(server._request_is_from_this_computer(request))
+            metadata["allow_remote_admin_permissions"] = bool(server._allow_remote_admin_permissions())
+            client_host = request.client.host if request.client else None
+            metadata["is_loopback_client"] = bool(server._is_loopback_client_host(client_host))
         return server._json_response_no_store(payload)
 
     @admin_app.post("/api/setup/recipe/preview")
