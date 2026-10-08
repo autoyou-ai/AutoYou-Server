@@ -291,12 +291,18 @@ def _looks_like_live_internet_request(user_text: str) -> bool:
     )
 
 
-def is_internet_request(user_text: str) -> bool:
-    """Compatibility classifier for the root/provider routing layer."""
+def is_internet_request(user_text: str, *, url_is_signal: bool = True) -> bool:
+    """Compatibility classifier for the root/provider routing layer.
+
+    ``url_is_signal=False`` stops a bare URL from counting as a web request. The
+    router uses it when the user is answering a question the assistant just
+    asked, where a link is far more likely to be pasted content than a request
+    to open it.
+    """
     text = str(user_text or "").strip()
     if not text:
         return False
-    if _INTERNET_EXPLICIT_AGENT_PATTERN.search(text) or _INTERNET_URL_PATTERN.search(text):
+    if _INTERNET_EXPLICIT_AGENT_PATTERN.search(text) or (url_is_signal and _INTERNET_URL_PATTERN.search(text)):
         return True
     if _INTERNET_FRESHNESS_PATTERN.search(text) and _INTERNET_LIVE_SUBJECT_PATTERN.search(text):
         return True
