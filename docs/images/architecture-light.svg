@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 590" width="1280" height="590" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
 <title id="t">AutoYou architecture</title>
-<desc id="d">Your phone, laptop and browser connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link. Telegram, Signal or WhatsApp carry the encrypted Auto-Pair message. The server connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged harnesses for OpenClaw, Hermes Agent, and Odysseus, with Agent Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers.</desc>
+<desc id="d">Your phone, laptop and browser connect to the AutoYou Server on your own computer over an end-to-end encrypted WebRTC link. Telegram, Signal or WhatsApp carry the encrypted Auto-Pair message. MCP clients (Cursor, Claude, Codex, Antigravity) connect through the MCP bridge. The server connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged harnesses for OpenClaw, Hermes Agent, and Odysseus—with Agent Apps (and other optional web servers), local voice, memory and models through LiteLLM to Ollama or optional cloud providers.</desc>
 <defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="rgba(15,27,45,0.10)"/></filter><marker id="arr" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0aa5a0"/></marker><marker id="arrg" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9aa7b8"/></marker><marker id="arrd" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#52637a"/></marker></defs>
 <rect width="1280" height="590" fill="#ffffff"/>
 <rect x="24" y="24" width="360" height="504" rx="22" fill="#f6f8fb" stroke="#dbe3ee" stroke-width="1.2"/>
@@ -22,6 +22,7 @@
 <rect x="48" y="414" width="312" height="84" rx="14" fill="#ffffff" stroke="#9aa7b8" stroke-width="1.6" filter="url(#shadow)"/>
 <text x="66" y="442" font-size="16" font-weight="700" fill="#0f1b2d" text-anchor="start" >MCP clients</text>
 <text x="66" y="464" font-size="13" font-weight="400" fill="#52637a" text-anchor="start" >Cursor · Claude</text>
+<text x="66" y="482" font-size="13" font-weight="400" fill="#52637a" text-anchor="start" >Codex · Antigravity</text>
 <line x1="364" y1="170" x2="720" y2="170" stroke="#0aa5a0" stroke-width="5" stroke-linecap="round" marker-start="url(#arr)" marker-end="url(#arr)"/>
 <text x="542" y="140" font-size="15" font-weight="750" fill="#056f6b" text-anchor="middle" >End-to-end encrypted WebRTC</text>
 <text x="542" y="197" font-size="13" font-weight="500" fill="#52637a" text-anchor="middle" >chat · voice · video</text>
@@ -51,6 +52,8 @@
 <rect x="808" y="304" width="206" height="90" rx="14" fill="#ffffff" stroke="#12805c" stroke-width="1.6" filter="url(#shadow)"/>
 <text x="826" y="332" font-size="16" font-weight="700" fill="#0f1b2d" text-anchor="start" >Agent Apps</text>
 <text x="826" y="354" font-size="13" font-weight="400" fill="#52637a" text-anchor="start" >Web apps your agents build</text>
+<rect x="818" y="362" width="186" height="24" rx="12" fill="#fff3e0" stroke="#c26a00" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="911.0" y="378.5" font-size="12" font-weight="600" fill="#c26a00" text-anchor="middle" >+ Other web servers (optional)</text>
 <rect x="1030" y="304" width="206" height="90" rx="14" fill="#ffffff" stroke="#12805c" stroke-width="1.6" filter="url(#shadow)"/>
 <text x="1048" y="332" font-size="16" font-weight="700" fill="#0f1b2d" text-anchor="start" >Local voice</text>
 <text x="1048" y="354" font-size="13" font-weight="400" fill="#52637a" text-anchor="start" >faster-whisper · system TTS</text>
