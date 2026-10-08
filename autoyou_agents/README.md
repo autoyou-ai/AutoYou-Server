@@ -43,9 +43,33 @@ frontend services from `core_server/services.py`. Worker HTTP endpoints live in
 `routers/agents.py`. `server.py` supplies the shared runtime namespace but does
 not own those routes or process lifecycles. Packaged full-server builds compile
 `autoyou_agents/` alongside `core_server/` and `routers/`.
-An optional sibling `autoyou_agents/` checkout supplies source-only agents such
-as Trading; its ignored `private/` folder can hold local integrations. The
-packaged server includes only the built-in agents listed by the install policy.
+The packaged server includes only the built-in agents listed by the install
+policy, plus any a build names explicitly.
+
+## Your Own Agents
+
+Copy an agent package into this folder and the server finds it. No list to
+edit:
+
+- `autoyou_agents/<name>_agent/` for an agent you want in this repository.
+- `autoyou_agents/private/<name>_agent/` for one you keep to yourself. That
+  folder is git-ignored and can also be a link to wherever you keep your agents.
+
+A package needs `__init__.py`, `prompt.py` with `AGENT_NAME`,
+`AGENT_DESCRIPTION` and `AGENT_INSTRUCTION`, and `agent.py` with
+`create_<name>_agent(model_config)`. Use a name no built-in agent uses. The
+Agent Builder scaffolds this for you. An agent you copy in starts uninstalled;
+install it in the admin UI. Optional, in `prompt.py`:
+
+- `ROUTING_LABEL`: its name in the main agent's list of agents.
+- `ROUTING_RULE`: when the main agent should call it. Without it,
+  `AGENT_DESCRIPTION` is used.
+- `ROUTE_ALIASES`: names that send a request straight to it, as in
+  "use <alias> to ...".
+
+A website goes in `website/` with a `manifest.json`. Set
+`"expose_by_default": false` to keep it off until the owner turns it on, and
+`control_label` and `control_help` for its admin toggle.
 
 ## Website Security Contract
 

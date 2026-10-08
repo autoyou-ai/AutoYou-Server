@@ -16,8 +16,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCANNED = [REPO_ROOT / "tests", REPO_ROOT / "autoyou_agents", REPO_ROOT / "conftest.py"]
-CODE = [REPO_ROOT / name for name in ("scripts", "shared", "core_server", "routers", "servers")]
+SCANNED = [REPO_ROOT / "tests", REPO_ROOT / "conftest.py"]
+CODE = [REPO_ROOT / name for name in ("autoyou_agents", "scripts", "shared", "core_server", "routers", "servers")]
 
 _FILE_PARENTS = re.compile(r"Path\(\s*__file__\s*\)(?:\.resolve\(\))?\.parents\[(\d+)\]")
 _ROOT_PARENT = re.compile(
@@ -32,8 +32,6 @@ def _python_test_sources():
             continue
         for path in entry.rglob("*.py"):
             if "__pycache__" in path.parts:
-                continue
-            if entry.name == "autoyou_agents" and not path.name.startswith(("test_", "conftest")):
                 continue
             yield path
 
@@ -56,8 +54,11 @@ def _code_sources():
     yield from sorted(REPO_ROOT.glob("*.py"))
     for entry in CODE:
         for path in sorted(entry.rglob("*.py")):
-            if not any(part in {"__pycache__", "dist", "build", "obj", "bin", "artifacts"} for part in path.parts):
-                yield path
+            if any(part in {"__pycache__", "dist", "build", "obj", "bin", "artifacts"} for part in path.parts):
+                continue
+            if path.relative_to(REPO_ROOT).parts[:2] == ("autoyou_agents", "private"):
+                continue  # your own git-ignored agents, not this repository's code
+            yield path
 
 
 def test_no_script_or_server_module_builds_a_path_above_the_repository_root():
