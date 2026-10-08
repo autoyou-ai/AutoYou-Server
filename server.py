@@ -8450,9 +8450,19 @@ REMOTE_BROWSER_CLOUD_CONFIG_DENIAL = (
 
 
 def _request_via_remote_browser_proxy(request: Request) -> bool:
-    """Whether AutoYou forwarded this request for a paired or home-network browser."""
+    """Whether AutoYou forwarded this request for a paired or home-network browser.
+
+    The proxies run on this computer, so their requests arrive from loopback; a
+    browser addressing the admin port directly is not proxied, whatever headers
+    it sends. Only with network admin permissions opted in (WSL, Docker), where
+    a proxy can reach the server from a private container address, are private
+    peers carrying the proxy headers treated as proxied - which keeps them out
+    of the "this computer" permission controls.
+    """
     peer = request.client.host if request.client else None
-    if not _csrf_peer_is_private_or_loopback(peer or ""):
+    if not _is_loopback_client_host(peer) and not (
+        _allow_remote_admin_permissions() and _csrf_peer_is_private_or_loopback(peer or "")
+    ):
         return False
     return bool(
         request.headers.get(REMOTE_BROWSER_HEADER)
