@@ -1826,10 +1826,16 @@ foreach ($argument in $compilerConfiguration.Arguments) {
     $runtimeModuleBuildArguments += @("--nuitka-arg=$argument")
 }
 $runtimeModuleBuildArguments += @("--nuitka-arg=--disable-plugin=transformers")
-if ($DesktopV2) {
-    $runtimeModuleBuildArguments += "--desktop"
-} else {
-    $runtimeModuleBuildArguments += "--include-sibling-agents"
+# Modules from another source tree are named by whoever runs the build, in the
+# manifest AUTOYOU_EXTRA_SOURCES_MANIFEST points at; this script never looks for them.
+$extraSourcesManifest = [string]$env:AUTOYOU_EXTRA_SOURCES_MANIFEST
+if ($extraSourcesManifest) {
+    if (-not (Test-Path -LiteralPath $extraSourcesManifest -PathType Leaf)) {
+        throw "AUTOYOU_EXTRA_SOURCES_MANIFEST names a file that does not exist: $extraSourcesManifest"
+    }
+    $runtimeModuleBuildArguments += @("--extra-sources", $extraSourcesManifest)
+} elseif ($DesktopV2) {
+    throw "A desktop backend compiles the desktop app's own modules. Set AUTOYOU_EXTRA_SOURCES_MANIFEST to the manifest that lists them."
 }
 if ($requirementsIncludesVoice) {
     $runtimeModuleBuildArguments += "--include-emotivoice"
@@ -1851,9 +1857,6 @@ $requiredRuntimeModulePatterns = @(
     (Join-Path $runtimeModulesRoot "shared\\remote_desktop_settings*.pyd"),
     (Join-Path $runtimeModulesRoot "autoyou_agents\\__init__.pyc")
 )
-if ($DesktopV2) {
-    $requiredRuntimeModulePatterns += (Join-Path $runtimeModulesRoot "v2\\runtime\\worker*.pyd")
-}
 if ($requirementsIncludesVoice) {
     $requiredRuntimeModulePatterns += @(
         (Join-Path $runtimeModulesRoot "vendor\\emotivoice\\models\\prompt_tts_modified\\jets*.pyd"),

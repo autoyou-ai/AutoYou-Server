@@ -2082,22 +2082,21 @@ def build_server_env(
     lib_password: str,
     lib_admin_password: str,
     software_updates_enabled: bool = True,
+    lite_source: str = "",
 ) -> dict[str, str]:
     env = os.environ.copy()
     clear_test_runtime_state_overrides(env)
     if not software_updates_enabled:
         env["AUTOYOU_SOFTWARE_UPDATES_ENABLED"] = "0"
     if service == "autoyou-lite":
-        lib_source_root = REPO_ROOT / "autoyou_lite"
-        sibling_source_root = REPO_ROOT.parent / "autoyou_lite"
-        if (sibling_source_root / "autoyou_lite" / "server.py").is_file():
-            lib_source_root = sibling_source_root
-        existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
-        env["PYTHONPATH"] = (
-            str(lib_source_root)
-            if not existing_pythonpath
-            else str(lib_source_root) + os.pathsep + existing_pythonpath
-        )
+        # The installed autoyou-lite package unless a source directory is named.
+        if lite_source:
+            existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
+            env["PYTHONPATH"] = (
+                str(lite_source)
+                if not existing_pythonpath
+                else str(lite_source) + os.pathsep + existing_pythonpath
+            )
         env["AUTOYOU_LITE_PORT"] = str(lib_port)
         env["AUTOYOU_LITE_AUTH_PORT"] = str(lib_auth_port)
         if lib_password:
@@ -2185,9 +2184,20 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--server-password", default="", help="Optional main AutoYou server password used for first-run config creation or encrypted-config unlock.")
     parser.add_argument("--lib-password", default="", help="Optional autoyou_lite pairing/config password used to unlock the saved encrypted config on startup.")
     parser.add_argument("--lib-admin-password", default="", help="Optional autoyou_lite admin password override.")
+    parser.add_argument(
+        "--lite-source",
+        default=os.getenv("AUTOYOU_LITE_SOURCE", ""),
+        help="Directory containing an autoyou_lite package to run instead of the installed autoyou-lite package.",
+    )
     parser.add_argument("--host", default=os.getenv("AUTOYOU_BIND_HOST", "127.0.0.1"))
     parser.add_argument("--python", dest="python_executable", default=sys.executable, help="System Python used to create .venv when needed.")
-    return parser.parse_args(list(argv))
+    args = parser.parse_args(list(argv))
+    if args.lite_source:
+        lite_source = Path(args.lite_source).expanduser().resolve()
+        if not (lite_source / "autoyou_lite" / "server.py").is_file():
+            parser.error(f"--lite-source has no autoyou_lite package: {lite_source}")
+        args.lite_source = str(lite_source)
+    return args
 
 
 def main(argv: Sequence[str]) -> int:
@@ -2353,6 +2363,7 @@ def main(argv: Sequence[str]) -> int:
         lib_password=args.lib_password,
         lib_admin_password=args.lib_admin_password,
         software_updates_enabled=not args.no_software_updates,
+        lite_source=args.lite_source,
     )
     if args.service == "autoyou-lite":
         command = [

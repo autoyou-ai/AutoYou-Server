@@ -20,7 +20,8 @@ def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():
     assert "--allow-source-dir runtime_site_packages" in text
     assert "--verify-server-imports" in text
     assert "--nofollow-imports" in text
-    assert "--include-sibling-agents" in text
+    assert '${EXTRA_SOURCES_ARGS[@]+"${EXTRA_SOURCES_ARGS[@]}"}' in text
+    assert "--include-sibling-agents" not in text
     assert "--include-emotivoice" in text
     assert "runtime_modules/vendor/emotivoice/models/prompt_tts_modified/jets*.so" in text
     assert "runtime_modules/vendor/emotivoice/LICENSE" in text

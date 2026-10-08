@@ -776,7 +776,7 @@ class DataChannelManager:
         # belonged to a relayed client-to-client guest and must not also be
         # handled locally. Chunk frames never reach it: reassembly happens
         # first, because forwarding raw frames would mix two independent ACK
-        # conversations. See `.llm/flows/client-peer-link.md`.
+        # conversations.
         self.relay_interceptor: Optional[Callable[["DataChannelMessage"], bool]] = None
 
         logger.info(
