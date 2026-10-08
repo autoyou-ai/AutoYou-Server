@@ -992,10 +992,15 @@ class AutoYouPageService:
 
     def _setup_app(self) -> None:
         """Setup FastAPI application with routes."""
+        # No interactive docs or schema: on a home-network bind they handed any
+        # device a full map of this service's routes.
         self.app = FastAPI(
             title="For AutoYou Page",
             description="A simple website for AutoYou remote client access",
-            version="1.0.0"
+            version="1.0.0",
+            docs_url=None,
+            redoc_url=None,
+            openapi_url=None,
         )
         install_route_aware_request_logging(
             self.app,

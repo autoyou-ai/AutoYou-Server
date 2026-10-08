@@ -151,7 +151,7 @@ def _default_unlocked_runtime():
     srv.STATE._unlock_state_mem = "Ready"
     # Reset the shared login/verify rate limiter so attempts don't accumulate
     # across tests and trip a 429 in a later test that POSTs /login or /verify.
-    for limiter_name in ("LOGIN_RATE_LIMITER", "AUTH_GLOBAL_RATE_LIMITER"):
+    for limiter_name in ("LOGIN_RATE_LIMITER", "AUTH_GLOBAL_RATE_LIMITER", "LOCAL_PAIR_NETWORK_GLOBAL_RATE_LIMITER"):
         limiter = getattr(srv, limiter_name, None)
         if limiter is not None and isinstance(getattr(limiter, "_requests", None), dict):
             limiter._requests.clear()

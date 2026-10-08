@@ -33,6 +33,90 @@ def register_routes(
         return redir
       return JSONResponse(await server._build_cloud_status_snapshot())
 
+    def _cloud_device_list() -> Dict[str, Any]:
+        def entries(source: Dict[str, Dict[str, Any]], stamp: str) -> list:
+            return [
+                {
+                    "device_id": device_id,
+                    "name": str(entry.get("name") or ""),
+                    "key_fingerprint": str(entry.get("public_key") or "")[:12],
+                    stamp: entry.get(stamp),
+                }
+                for device_id, entry in sorted(source.items())
+            ]
+
+        return {
+            "require_device_approval": server._cloud_device_approval_required(),
+            "devices": entries(server._cloud_device_pins(), "pinned_at"),
+            "pending": entries(server._cloud_device_pending(), "requested_at"),
+        }
+
+    def _valid_device_id(device_id: str) -> bool:
+        return len(device_id) == 15 and device_id.isascii() and device_id.isalnum() and device_id.islower()
+
+    @admin_app.get("/api/cloud/devices")
+    async def cloud_devices(request: Request):
+        """Devices whose Cloud Pair keys this computer saved, and any awaiting approval."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        return server._json_response_no_store(_cloud_device_list())
+
+    @admin_app.post("/api/cloud/devices/approval")
+    async def cloud_devices_approval(request: Request):
+        """Turn on (or off) owner approval for new Cloud Pair devices."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        required = bool((payload or {}).get("required"))
+
+        def _apply(cloud_cfg: Dict[str, Any]) -> None:
+            cloud_cfg["require_device_approval"] = required
+
+        if not server._update_cloud_device_state(_apply):
+            return JSONResponse({"success": False, "error": "Could not save the setting."}, status_code=409)
+        return server._json_response_no_store({"success": True, **_cloud_device_list()})
+
+    @admin_app.post("/api/cloud/devices/{device_id}/approve")
+    async def cloud_device_approve(device_id: str, request: Request):
+        """Accept the key a pending device presented."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        if not _valid_device_id(device_id) or device_id not in server._cloud_device_pending():
+            return JSONResponse({"success": False, "error": "No pending device with that id."}, status_code=404)
+        pending = server._cloud_device_pending()[device_id]
+        server._pin_shared_device_client(
+            {"client_public_key": pending.get("public_key"), "client_device_name": pending.get("name")},
+            device_id,
+        )
+        return server._json_response_no_store({"success": True, **_cloud_device_list()})
+
+    @admin_app.post("/api/cloud/devices/{device_id}/forget")
+    async def cloud_device_forget(device_id: str, request: Request):
+        """Drop a saved or pending device key, e.g. after the app was reinstalled."""
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        if not _valid_device_id(device_id):
+            return JSONResponse({"success": False, "error": "Invalid device id."}, status_code=400)
+
+        def _apply(cloud_cfg: Dict[str, Any]) -> None:
+            for key in ("shared_device_client_pins", "shared_device_pending_devices"):
+                entries = cloud_cfg.get(key)
+                if isinstance(entries, dict) and device_id in entries:
+                    entries = dict(entries)
+                    entries.pop(device_id, None)
+                    cloud_cfg[key] = entries
+
+        if not server._update_cloud_device_state(_apply):
+            return JSONResponse({"success": False, "error": "Could not save the change."}, status_code=409)
+        return server._json_response_no_store({"success": True, **_cloud_device_list()})
+
     @admin_app.get("/api/cloud/ice-preview")
     async def cloud_ice_preview(request: Request):
       """Diagnostic: show the iceServers this server would advertise on /auth.

@@ -87,19 +87,46 @@ def test_password_endpoints_reject_plain_http_from_non_loopback(monkeypatch, rou
     assert response.status_code != 403
 
 
-def test_local_pair_login_allows_explicit_private_http_request(monkeypatch):
+def test_local_pair_marker_no_longer_unlocks_http_login_from_the_network(monkeypatch):
+    # Local Pair used to post the password here over plain HTTP; current
+    # clients authenticate with CPace instead and older ones are told to update.
     monkeypatch.setattr(server, "_is_loopback_client_host", lambda _host: False)
     monkeypatch.setattr(server, "_csrf_peer_is_private_or_loopback", lambda _host: True)
+    monkeypatch.delenv("AUTOYOU_TRUSTED_HTTPS_PROXY", raising=False)
 
     with TestClient(server.admin_app) as client:
         response = client.post(
             "/login",
-            data={"password": "", "terms_accepted": "1"},
+            data={"password": "synthetic-password", "terms_accepted": "1"},
             headers={"X-AutoYou-Local-Pair": "1"},
         )
 
-    assert response.status_code != 403
+    assert response.status_code == 403
+    assert response.json()["code"] == "local_pair_update_required"
 
+
+def test_declared_https_proxy_may_carry_login_from_a_private_peer(monkeypatch):
+    # Checked at the transport guard itself: a real sign-in here would create
+    # the first-run configuration and change what later tests see.
+    from types import SimpleNamespace
+
+    from starlette.datastructures import Headers
+
+    def request(headers):
+        return SimpleNamespace(
+            client=SimpleNamespace(host="192.168.50.21"),
+            headers=Headers(headers),
+            url=SimpleNamespace(scheme="http"),
+        )
+
+    monkeypatch.setenv("AUTOYOU_TRUSTED_HTTPS_PROXY", "1")
+    assert server._require_loopback_or_https_request(request({"X-Forwarded-Proto": "https"})) is None
+    assert server._require_loopback_or_https_request(request({})).status_code == 403
+    tunneled = request({"X-Forwarded-Proto": "https", "X-AutoYou-Tunnel-Client-IP": "8.8.8.8"})
+    assert server._require_loopback_or_https_request(tunneled).status_code == 403
+
+    monkeypatch.delenv("AUTOYOU_TRUSTED_HTTPS_PROXY")
+    assert server._require_loopback_or_https_request(request({"X-Forwarded-Proto": "https"})).status_code == 403
 
 def test_local_pair_helper_allows_private_http_without_exposing_login(monkeypatch):
     monkeypatch.setattr(server, "_is_loopback_client_host", lambda _host: False)

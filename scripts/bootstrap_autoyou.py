@@ -24,9 +24,11 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import argparse
+import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import secrets
@@ -132,11 +134,15 @@ WINDOWS_EXECUTABLE_SUFFIXES = (".exe", ".cmd", ".bat", ".com")
 WINDOWS_NPM_SUFFIXES = (".cmd", ".exe", ".bat", ".com")
 PORTAUDIO_VERSION = "19.7.0"
 PORTAUDIO_SOURCE_URL = f"https://github.com/PortAudio/portaudio/archive/refs/tags/v{PORTAUDIO_VERSION}.tar.gz"
-# Optional sha256 pin for the PortAudio source tarball. GitHub auto-generated
-# archive tarballs are not guaranteed byte-stable, so this is left empty by
-# default (we warn instead of failing). Operators who want enforced integrity
-# can pin the hash for their environment via AUTOYOU_PORTAUDIO_SHA256.
-PORTAUDIO_SHA256 = os.environ.get("AUTOYOU_PORTAUDIO_SHA256", "").strip()
+# sha256 of the PortAudio v19.7.0 tag archive, which is compiled and linked into
+# the voice runtime, so it is verified before use. It matches the checksum
+# Homebrew pins for the same archive. GitHub has kept tag archives byte-stable
+# since 2023; if that ever changes, set AUTOYOU_PORTAUDIO_SHA256 to the new
+# hash after checking it, or to "none" to accept an unverified download.
+PORTAUDIO_SHA256_DEFAULT = "5af29ba58bbdbb7bbcefaaecc77ec8fc413f0db6f4c4e286c40c3e1b83174fa0"
+PORTAUDIO_SHA256 = os.environ.get("AUTOYOU_PORTAUDIO_SHA256", PORTAUDIO_SHA256_DEFAULT).strip()
+if PORTAUDIO_SHA256.lower() == "none":
+    PORTAUDIO_SHA256 = ""
 AUTOYOU_PORTAUDIO_PREFIX_ENV = "AUTOYOU_PORTAUDIO_PREFIX"
 AUTOYOU_BOOTSTRAP_NODE_VERSION_ENV = "AUTOYOU_BOOTSTRAP_NODE_VERSION"
 AUTOYOU_SKIP_PORTABLE_NODE_ENV = "AUTOYOU_SKIP_PORTABLE_NODE"
@@ -943,13 +949,30 @@ def create_venv(python_executable: str) -> Path:
     return venv_python
 
 
+PACKAGING_TOOL_SPECS = ("pip>=26.1.2,<27", "setuptools>=83,<84", "wheel")
+
+
 def upgrade_packaging_tools(venv_python: Path) -> None:
     info("Upgrading pip, setuptools, and wheel...")
-    run_command(
-        [str(venv_python), "-m", "pip", "install", "--upgrade", "pip>=26.1.2,<27", "setuptools>=83,<84", "wheel"],
-        quiet=True,
-        check=False,
-    )
+    try:
+        # The lock's pins keep shared dependencies (packaging) on audited versions.
+        verified_pip_install(
+            venv_python,
+            list(PACKAGING_TOOL_SPECS),
+            constraints=build_locked_constraints(),
+            upgrade=True,
+        )
+    except PipReportUnavailable:
+        # A venv seeded with a pip older than 22.2 cannot produce the install
+        # report; upgrade it once so every later install is verified.
+        warn("This pip cannot report its downloads; upgrading it once without hash verification.")
+        run_command(
+            [str(venv_python), "-m", "pip", "install", "--upgrade", *PACKAGING_TOOL_SPECS],
+            quiet=True,
+            check=False,
+        )
+    except BootstrapError as exc:
+        warn(f"Packaging tools were not upgraded: {exc}")
 
 
 LOCKFILE_PATH = REQUIREMENTS_DIR / "locked.txt"
@@ -994,6 +1017,155 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
     return dest
 
 
+class PipReportUnavailable(BootstrapError):
+    """The venv's pip is too old to write an install report (pip < 22.2)."""
+
+
+def canonical_package_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", str(name or "")).lower()
+
+
+def parse_locked_hashes(lockfile: Path = LOCKFILE_PATH) -> dict[str, tuple[str, set[str]]]:
+    """Map each package in the pip-compile lockfile to ``(version, sha256 set)``."""
+    locked: dict[str, tuple[str, set[str]]] = {}
+    if not lockfile.exists():
+        return locked
+    current: str | None = None
+    for raw in lockfile.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            current = None if not raw.startswith(" ") else current
+            continue
+        match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?==([^\s;\\]+)", line)
+        if match and not raw.startswith(" "):
+            current = canonical_package_name(match.group(1))
+            locked[current] = (match.group(2), set())
+        for digest in re.findall(r"--hash=sha256:([0-9a-fA-F]{64})", line):
+            if current is not None:
+                locked[current][1].add(digest.lower())
+    return locked
+
+
+def _report_item_sha256(item: dict) -> str:
+    archive = ((item.get("download_info") or {}).get("archive_info") or {})
+    hashes = archive.get("hashes") or {}
+    digest = str(hashes.get("sha256") or "")
+    if not digest and str(archive.get("hash") or "").startswith("sha256="):
+        digest = str(archive["hash"]).split("=", 1)[1]
+    return digest.lower()
+
+
+def plan_verified_install(
+    report: dict, locked: dict[str, tuple[str, set[str]]]
+) -> tuple[list[str], list[str], list[str]]:
+    """Turn a ``pip install --report`` into hash-pinned requirement lines.
+
+    Returns ``(hashed_lines, unlocked_names, unhashable_requirements)``. A
+    package the lockfile covers must match one of its audited hashes; anything
+    else means the index served a file nobody reviewed, and raises.
+    """
+    lines: list[str] = []
+    unlocked: list[str] = []
+    unhashable: list[str] = []
+    problems: list[str] = []
+    for item in report.get("install") or []:
+        metadata = item.get("metadata") or {}
+        name = canonical_package_name(metadata.get("name") or "")
+        version = str(metadata.get("version") or "").strip()
+        url = str((item.get("download_info") or {}).get("url") or "")
+        digest = _report_item_sha256(item)
+        if not name or not version:
+            problems.append(f"an install item without a name or version ({url or 'unknown source'})")
+            continue
+        if not digest:
+            # VCS checkouts and local directories have no archive hash.
+            unhashable.append(url or f"{name}=={version}")
+            continue
+        if name in locked:
+            locked_version, locked_hashes = locked[name]
+            if version != locked_version or digest not in locked_hashes:
+                problems.append(
+                    f"{name} {version} (sha256 {digest[:16]}...) does not match the audited "
+                    f"lockfile entry {name}=={locked_version}"
+                )
+                continue
+        else:
+            unlocked.append(f"{name}=={version}")
+        requirement = f"{name} @ {url}" if item.get("is_direct") and url else f"{name}=={version}"
+        lines.append(f"{requirement} --hash=sha256:{digest}")
+    if problems:
+        raise BootstrapError(
+            "Refusing to install packages that do not match requirements/locked.txt: "
+            + "; ".join(problems)
+            + ". If the lockfile is stale, regenerate it with pip-compile --generate-hashes; "
+            "set AUTOYOU_ALLOW_UNVERIFIED_PACKAGES=1 only to bypass this check deliberately."
+        )
+    return lines, unlocked, unhashable
+
+
+def verified_pip_install(
+    venv_python: Path,
+    requirement_args: Sequence[str],
+    *,
+    constraints: Path | None = None,
+    env: dict[str, str] | None = None,
+    upgrade: bool = False,
+) -> None:
+    """Install requirements so that every downloaded file is hash-checked.
+
+    pip first resolves the set for this platform without installing it and
+    reports each file's sha256 from the index. Packages that
+    requirements/locked.txt covers must carry one of its audited hashes; the
+    rest are pinned to the hash the index reported. The install then runs with
+    ``--require-hashes --no-deps``, so pip refuses any file that differs from
+    what was checked, including one swapped between the two steps.
+    """
+    base = [str(venv_python), "-m", "pip", "install"]
+    resolve_args = list(requirement_args)
+    if constraints is not None:
+        resolve_args += ["-c", str(constraints)]
+    if str(os.environ.get("AUTOYOU_ALLOW_UNVERIFIED_PACKAGES", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        warn("AUTOYOU_ALLOW_UNVERIFIED_PACKAGES is set; installing without hash verification.")
+        run_command(base + (["--upgrade"] if upgrade else []) + resolve_args, env=env)
+        return
+
+    work_dir = venv_native_dir(venv_python) / "pip-verify"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    report_path = work_dir / "install-report.json"
+    report_path.unlink(missing_ok=True)
+    dry_run = base + ["--dry-run", "--quiet", "--report", str(report_path)]
+    if upgrade:
+        dry_run.append("--upgrade")
+    result = subprocess.run(dry_run + resolve_args, cwd=str(REPO_ROOT), env=env, check=False)
+    if result.returncode != 0 or not report_path.exists():
+        version = subprocess.run(
+            [str(venv_python), "-m", "pip", "--version"], capture_output=True, text=True, check=False
+        ).stdout
+        match = re.search(r"pip (\d+)\.(\d+)", version or "")
+        if match and (int(match.group(1)), int(match.group(2))) < (22, 2):
+            raise PipReportUnavailable(f"pip {match.group(1)}.{match.group(2)} has no --report")
+        raise BootstrapError(f"Could not resolve {' '.join(requirement_args)} (pip exit {result.returncode}).")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    lines, unlocked, unhashable = plan_verified_install(report, parse_locked_hashes())
+    if not lines and not unhashable:
+        success("Already installed and verified; nothing to download")
+        return
+    if unlocked:
+        warn(
+            f"{len(unlocked)} package(s) are outside the audited lockfile and are pinned to the "
+            f"index's hash instead: {', '.join(sorted(unlocked)[:12])}"
+            + (" ..." if len(unlocked) > 12 else "")
+        )
+    if lines:
+        hashed = work_dir / "verified-requirements.txt"
+        hashed.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        run_command(base + ["--require-hashes", "--no-deps", "-r", str(hashed)], env=env)
+        success(f"Installed {len(lines)} hash-verified package(s)")
+    for requirement in unhashable:
+        warn(f"Installing {requirement} without a hash: it is not a downloadable archive.")
+        run_command(base + ["--no-deps", requirement], env=env)
+
+
 def install_requirements(
     venv_python: Path,
     components: Sequence[str],
@@ -1021,13 +1193,13 @@ def install_requirements(
             # voice.txt's newer scipy/faster-whisper/websocket pins. The
             # server-safe 1.0.2 shim is intentionally installed separately.
             install_realtimestt_runtime(venv_python)
-        pip_args = [str(venv_python), "-m", "pip", "install"]
-        if upgrade:
-            pip_args.append("--upgrade")
-        pip_args += ["-r", str(req_path)]
-        if constraints is not None:
-            pip_args += ["-c", str(constraints)]
-        run_command(pip_args, env=install_env)
+        verified_pip_install(
+            venv_python,
+            ["-r", str(req_path)],
+            constraints=constraints,
+            env=install_env,
+            upgrade=upgrade,
+        )
         success(f"Installed '{component}' dependencies")
 
 
@@ -1187,8 +1359,8 @@ def ensure_local_portaudio(venv_python: Path) -> dict[str, str]:
             verify_sha256(archive, PORTAUDIO_SHA256, label=f"PortAudio {PORTAUDIO_VERSION}")
         else:
             warn(
-                "PortAudio tarball downloaded without a pinned sha256 "
-                "(set AUTOYOU_PORTAUDIO_SHA256 to enforce integrity)."
+                "PortAudio tarball used without integrity verification because "
+                "AUTOYOU_PORTAUDIO_SHA256=none."
             )
         safe_extract_tar(archive, src_root)
 
@@ -1392,11 +1564,18 @@ def ensure_portable_node_runtime(venv_python: Path) -> tuple[str, str] | None:
     expected_node_sha = node_expected_sha256(version, archive_name, cafile=node_cafile)
     if expected_node_sha:
         verify_sha256(archive, expected_node_sha, label=f"Node.js {archive_name}")
-    else:
+    elif str(os.environ.get("AUTOYOU_ALLOW_UNVERIFIED_NODE", "")).strip().lower() in {"1", "true", "yes", "on"}:
         warn(
-            "Proceeding without a verified Node.js checksum (SHASUMS256.txt "
-            "unavailable). Set AUTOYOU_SKIP_PORTABLE_NODE=1 to avoid the "
-            "unverified download if this is a concern."
+            "Proceeding without a verified Node.js checksum because "
+            "AUTOYOU_ALLOW_UNVERIFIED_NODE is set."
+        )
+    else:
+        archive.unlink(missing_ok=True)
+        raise BootstrapError(
+            "Could not verify the Node.js download: nodejs.org's SHASUMS256.txt was "
+            "unavailable, so the archive was discarded instead of run. Retry when the "
+            "network is back, install Node.js 22.12+ yourself, or set "
+            "AUTOYOU_ALLOW_UNVERIFIED_NODE=1 to accept an unverified download."
         )
     shutil.rmtree(extract_root, ignore_errors=True)
     extract_root.mkdir(parents=True, exist_ok=True)
@@ -1569,7 +1748,13 @@ def check_node_and_install_packages(venv_python: Path) -> None:
             warn("Node.js 22.12.0 or newer is required for WhatsApp and Tunnelmole.")
         elif node and not npm:
             warn("Node.js was found, but npm was not available. Installing portable Node.js for WhatsApp.")
-        portable = ensure_portable_node_runtime(venv_python)
+        try:
+            portable = ensure_portable_node_runtime(venv_python)
+        except BootstrapError as exc:
+            # The download was refused (unverifiable or tampered), never run.
+            # Node only serves optional features, so the server still starts.
+            warn(str(exc))
+            portable = None
         if portable:
             node, npm = portable
         else:
@@ -1591,54 +1776,113 @@ def check_node_and_install_packages(venv_python: Path) -> None:
     # harmless no-op there.
     npm_env_overrides = {
         "PATH": str(Path(node).parent) + os.pathsep + os.environ.get("PATH", ""),
+        # The tunnelmole package phones home from its install script and CLI.
+        "TUNNELMOLE_TELEMETRY": "0",
     }
-    if os.getenv("PUPPETEER_EXECUTABLE_PATH") or find_existing_playwright_chromium() is not None:
+    skip_browser_download = bool(
+        os.getenv("PUPPETEER_EXECUTABLE_PATH") or find_existing_playwright_chromium() is not None
+    )
+    if skip_browser_download:
         npm_env_overrides["PUPPETEER_SKIP_DOWNLOAD"] = "1"
     npm_env = merge_env(npm_env_overrides)
 
-    for folder in ("node/whatsapp",):
-        package_json = REPO_ROOT / folder / "package.json"
-        if not package_json.exists():
-            continue
-        # Prefer `npm ci` when a lockfile is present: it installs the EXACT
-        # versions pinned in package-lock.json (reproducible, no silent drift to
-        # newer caret-compatible releases), which is the supply-chain-safe path.
-        # Fall back to `npm install` only when no lockfile exists.
-        has_lock = (package_json.parent / "package-lock.json").exists()
-        npm_cmd = (
-            [npm, "ci", "--silent", "--no-fund", "--no-audit"]
-            if has_lock
-            else [npm, "install", "--silent", "--no-fund", "--no-audit"]
+    install_locked_node_dependencies(
+        npm,
+        node,
+        REPO_ROOT / "node" / "whatsapp",
+        env=npm_env,
+        # Puppeteer's browser download is the one install script this tree
+        # needs; it runs only when no browser is available already.
+        allowed_install_scripts=() if skip_browser_download else (("puppeteer", "install.mjs"),),
+    )
+    # The public tunnel runs this lockfile-pinned npm client through Node rather
+    # than the unsigned tmole download. Its only install script is telemetry.
+    install_locked_node_dependencies(npm, node, REPO_ROOT / "node" / "tunnelmole", env=npm_env)
+
+
+NODE_LOCK_STAMP_NAME = ".autoyou-lock.sha256"
+
+
+def node_lock_fingerprint(folder: Path, node: str) -> str:
+    """Identify the dependency set a ``node_modules`` tree was installed from."""
+    digest = hashlib.sha256((folder / "package-lock.json").read_bytes())
+    try:
+        node_version = subprocess.check_output([node, "--version"], text=True).strip()
+    except (OSError, subprocess.SubprocessError):
+        node_version = "unknown"
+    digest.update(node_version.encode("utf-8"))
+    return digest.hexdigest()
+
+
+def install_locked_node_dependencies(
+    npm: str,
+    node: str,
+    folder: Path,
+    *,
+    env: dict[str, str],
+    allowed_install_scripts: Sequence[tuple[str, str]] = (),
+) -> bool:
+    """Install exactly what ``package-lock.json`` pins, without install scripts.
+
+    ``npm ci`` checks every tarball against the lockfile's integrity hashes.
+    Install scripts are skipped (``--ignore-scripts``) so a compromised
+    dependency cannot run code at install time; the few that are needed are
+    named in ``allowed_install_scripts`` and run explicitly. There is no
+    fallback to ``npm install``: that would rewrite the lockfile from whatever
+    the registry serves now, which is the drift the lockfile exists to prevent.
+    A tree already installed from the same lockfile and Node is left alone.
+    """
+    package_json = folder / "package.json"
+    if not package_json.exists():
+        return False
+    label = folder.relative_to(REPO_ROOT).as_posix() if folder.is_relative_to(REPO_ROOT) else str(folder)
+    if not (folder / "package-lock.json").exists():
+        warn(
+            f"{label} has no package-lock.json; refusing an unpinned npm install. "
+            "Restore the lockfile from the repository."
         )
-        info(f"Installing Node dependencies in {folder} ({'npm ci' if has_lock else 'npm install'})...")
-        try:
-            result = subprocess.run(
-                npm_cmd,
-                cwd=str(normalize_local_path(package_json.parent)),
-                env=npm_env,
-                check=False,
-            )
-            if result.returncode != 0 and has_lock:
-                # `npm ci` fails hard if the lockfile is out of sync with
-                # package.json; fall back to `npm install` so setup still
-                # completes (it will reconcile the lockfile).
-                warn("npm ci failed (lockfile may be out of sync); retrying with npm install...")
-                result = subprocess.run(
-                    [npm, "install", "--silent", "--no-fund", "--no-audit"],
-                    cwd=str(normalize_local_path(package_json.parent)),
-                    env=npm_env,
-                    check=False,
-                )
-        except OSError as exc:
-            warn(
-                f"Unable to run npm for {folder}: {exc}. "
-                "Install dependencies manually with 'npm.cmd install' or rerun with '--skip-node'."
-            )
+        return False
+    stamp = folder / "node_modules" / NODE_LOCK_STAMP_NAME
+    fingerprint = node_lock_fingerprint(folder, node)
+    if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
+        success(f"Node dependencies for {label} already match package-lock.json")
+        return True
+
+    info(f"Installing Node dependencies in {label} (npm ci, lockfile-pinned, install scripts off)...")
+    cwd = str(normalize_local_path(folder))
+    try:
+        result = subprocess.run(
+            [npm, "ci", "--ignore-scripts", "--silent", "--no-fund", "--no-audit"],
+            cwd=cwd,
+            env=env,
+            check=False,
+        )
+    except OSError as exc:
+        warn(f"Unable to run npm for {label}: {exc}. Rerun with '--skip-node' to skip Node setup.")
+        return False
+    if result.returncode != 0:
+        warn(
+            f"npm ci failed for {label}. Its package-lock.json may not match package.json; "
+            "update the lockfile in the repository rather than installing unpinned packages."
+        )
+        return False
+
+    for package, script in allowed_install_scripts:
+        script_path = folder / "node_modules" / package / script
+        if not script_path.is_file():
             continue
-        if result.returncode == 0:
-            success(f"Installed Node dependencies for {folder}")
-        else:
-            warn(f"Failed to install Node dependencies for {folder}")
+        info(f"Running the {package} install step for {label}...")
+        try:
+            subprocess.run([node, str(script_path)], cwd=cwd, env=env, check=False)
+        except OSError as exc:
+            warn(f"{package} install step failed for {label}: {exc}")
+
+    try:
+        stamp.write_text(fingerprint + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    success(f"Installed Node dependencies for {label}")
+    return True
 
 
 def check_docker() -> None:
