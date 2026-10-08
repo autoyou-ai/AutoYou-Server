@@ -362,7 +362,6 @@ def check_legacy_legal_wording(report: GateReport) -> None:
         REPO_ROOT / "server.py",
         REPO_ROOT / "run_autoyou.bat",
         REPO_ROOT / "run_autoyou.sh",
-        REPO_ROOT / "clients",
         REPO_ROOT / "installer",
         REPO_ROOT / "servers",
         REPO_ROOT / "shared",

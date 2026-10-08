@@ -32,7 +32,6 @@ def helper_path() -> Path | None:
         return None
     explicit = os.environ.get("AUTOYOU_APPLE_MODEL_HELPER")
     candidates = [Path(explicit)] if explicit else [
-        Path(__file__).resolve().parents[1] / "v2/dist/development/AutoYou.app/Contents/Helpers/AutoYouModel",
         Path("/Applications/AutoYou.app/Contents/Helpers/AutoYouModel"),
         Path.home() / "Applications/AutoYou.app/Contents/Helpers/AutoYouModel",
     ]

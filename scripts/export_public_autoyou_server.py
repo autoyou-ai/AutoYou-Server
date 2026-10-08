@@ -54,47 +54,20 @@ PRIVATE_PREFIXES = (
     ".codex/",
     ".gemini/",
     ".github/",
-    ".llm/",
-    "autoyou-core/",
     "skills/",
     "autoyou_agents/claude_desktop_agent/desktop_assets/",
     "autoyou_agents/codex_desktop_agent/desktop_assets/",
-    "autoyou_agents/cloudflare_agent/",
-    "autoyou_agents/ionos_agent/",
-    "autoyou_agents/ionos_cloudflare_agent/",
-    "autoyou_agents/mail_agent/",
     "autoyou_agents/private/",
-    "autoyou_agents/robinhood_agent/",
-    "autoyou_agents/streaming_agent/",
-    "autoyou_agents/trading_agent/",
-    "autoyou-outreach/",
-    "autoyou-website/",
-    "autoyou_lite/",
-    "aws-checkout/",
-    "clients/",
-    "openclaw/",
     "patches/",
-    "pinokio/",
     "reference/",
     "references/",
     "research/",
     "scratch/",
-    "scripts/e2e/",
     "tools/",
-    "tuning/",
-    "v2/",
-    "servers/macos/apple_lite/",
 )
 
 PRIVATE_TEST_PREFIXES = (
-    "tests/legal/",
     "tests/agents/private/",
-    "tests/clients/",
-    "tests/e2e/",
-    "tests/private_cloud/",
-    "tests/support_training/",
-    "tests/tools/",
-    "tests/training/",
 )
 
 PUBLIC_GITHUB_PATHS = {
@@ -248,137 +221,7 @@ PUBLIC_RELEASE_POLICY_KEYS = (
     "binaryDefaultForbiddenPackages",
 )
 
-PRIVATE_EXACT_PATHS = {
-    "AGENTS.md",
-    "Dockerfile.distributable",
-    "Dockerfile.distributable.host",
-    "autoyou_agents/codex_desktop_agent/desktop_assets/windows/26.611/full_window.png",
-    "clients/android/app/google-services.json",
-    "coding_guide.md",
-    "config.encrypted",
-    "config.keystore.enc",
-    "docs/SAFE_DISTRIBUTION_MIGRATION.md",
-    "docs/legal/release-matrix.md",
-    "docs/technical/funding-os.md",
-    "docs/technical/peer-relay-social-checkpoint-2026-08-24.md",
-    "docs/technical/webrtc-media-mixer.md",
-    "guides/PRIVATE_MESSAGING_PAIRING_GUIDE.md",
-    "LICENSE_ACKNOWLEDGEMENT",
-    "requirements/.locked.constraints.generated.txt",
-    "requirements/autoyou-lite-release.txt",
-    "requirements/research.txt",
-    "scripts/audit_distribution_boundaries.py",
-    "scripts/autoyou_system.py",
-    "scripts/autoyou_agent_goal_hook.py",
-    "scripts/autoyou_agent_goal_loop.py",
-    "scripts/autoyou_lite_windows_entry.py",
-    "scripts/build_autoyou_lite_windows_binary.py",
-    "scripts/build_machine_failure_knowledge.json",
-    "scripts/build_machine_intel.py",
-    "scripts/build_protected_autoyou_lite_wheel.py",
-    "scripts/check_windows_store_msix_upload_readiness.py",
-    "scripts/commit_to_main.py",
-    "scripts/e2e_validate.py",
-    "scripts/generate_android_adaptive_icon.py",
-    "scripts/install_commit_to_main_hooks.py",
-    "scripts/mobile_ui_smoke.py",
-    "scripts/package_docker_ecosystem.ps1",
-    "scripts/package_windows_ecosystem.ps1",
-    "scripts/release_readiness_eval.py",
-    "scripts/release_autoyou_lite.py",
-    "scripts/run_ad_reward_monthly_settlement.py",
-    "scripts/run_notes_reader_mobile_test.py",
-    "scripts/run_page_service_mobile_test.py",
-    "scripts/sign_update_manifest.py",
-    "scripts/smoke_windows_binaries.ps1",
-    "scripts/sync_from_autoyou.py",
-    "scripts/trigger_native_rewarded_ad.py",
-    "scripts/validate_desktop_rewarded_ad_release_env.py",
-    "scripts/verify_live_voice_partners.py",
-    "scripts/verify_website_legal_upload_bundle.py",
-    "scripts/verify_windows_store_msix_artifacts.py",
-    "scripts/verify_windows_connect_release_artifacts.py",
-    "installer/AutoYouConnectInstaller.iss",
-    "installer/AutoYouEcosystemInstaller.iss",
-    "installer/assets/installing.svg",
-    "installer/assets/location.svg",
-    "installer/assets/options.svg",
-    "installer/assets/welcome.svg",
-    "installer/bootstrap_installer.ps1",
-    "installer/installer_web.py",
-    "installer/run_installer.bat",
-    "scripts/build_enterprise_agreement.py",
-    "scripts/export_ollama_models.ps1",
-    "tests/legal/test_official_build_authorization.py",
-    "tests/legal/test_public_source_export.py",
-    "tests/legal/test_release_legal_gates.py",
-    "tests/legal/test_website_legal_upload_bundle.py",
-    "tests/scripts/test_autoyou_system.py",
-    "tests/scripts/test_build_machine_intel.py",
-    "tests/test_autoyou_dev_coordinator.py",
-    "tests/test_audit_prune.py",
-    "tests/server/admin/test_ad_reward_settlement_job.py",
-    "tests/server/api/test_rest_chat_attachments.py",
-    "tests/server/admin/test_trigger_native_rewarded_ad_script.py",
-    "tests/server/bootstrap/test_desktop_rewarded_ad_release_packaging.py",
-    "tests/server/bootstrap/test_distribution_boundary_audit.py",
-    "tests/server/bootstrap/test_e2e_validate_entrypoint.py",
-    "tests/server/bootstrap/test_macos_signing_preflight.py",
-    "tests/server/bootstrap/test_packaged_runtime_module_plan.py",
-    "tests/server/bootstrap/test_windows_connect_release_artifacts.py",
-    "tests/server/bootstrap/test_windows_msix_packaging.py",
-    "tests/server/bootstrap/test_windows_signing_preflight.py",
-    "tests/server/build/test_distributable_packaging_scripts.py",
-    "tests/server/build/test_protected_autoyou_lite_wheel.py",
-    "tests/server/build/test_release_autoyou_lite.py",
-    "tests/server/test_autoyou_lite_windows_binary.py",
-    "tests/server/build/test_wsl_client_build_script.py",
-    "tests/server/messaging/test_openclaw_custom_voice_inventory.py",
-    "tests/server/messaging/test_openclaw_voice_reply_gate.py",
-    "tests/server/messaging/test_openclaw_webrtc_voice_note.py",
-    "tests/server/messaging/test_openclaw_webrtc_voice_restart.py",
-    "tests/server/pairing/test_otp_multiuse.py",
-    "tests/server/pairing/test_autopair_admin.py",
-    "tests/server/transport/test_tunnelmole_transport_direct.py",
-    "tests/server/update/test_release_version_consistency.py",
-    "tests/server/update/test_update_feed_staging.py",
-    "guides/IONOS_WAITLIST_DATABASE.md",
-    "installer/AutoYouEcosystemSetup.ps1",
-    "installer/AutoYouLiteInstaller.iss",
-    "installer/Start-AutoYouProducts.ps1",
-    "installer/agent-catalog.json",
-    "installer/model-catalog.json",
-    "scripts/build_autoyou_lite_macos_binary.py",
-    "scripts/build_windows_ecosystem_installer.ps1",
-    "scripts/deploy_website_ionos.sh",
-    "scripts/notarize_autoyou_lite_macos.sh",
-    "scripts/sync_peer_link.py",
-    "scripts/verify_autoyou_lite_windows_msix.py",
-    "scripts/verify_autoyou_v2_windows_msix.py",
-    "servers/windows/package-lite-msix.ps1",
-    "servers/windows/package-lite-release.ps1",
-    "servers/windows/publish-lite-desktop.ps1",
-    "tests/agents/public/test_cloudflare_agent.py",
-    "tests/agents/public/test_ionos_agents.py",
-    "tests/agents/public/test_mail_agent.py",
-    "tests/scripts/test_project_knowledge_governance.py",
-    "tests/server/bootstrap/test_ecosystem_installer.py",
-    "tests/server/bootstrap/test_pinokio_install.py",
-    "tests/server/bootstrap/test_macos_build_backend_packaging.py",
-    "tests/server/bootstrap/test_v2_voice_runtime_parity.py",
-    "tests/server/admin/test_agent_security_routes.py",
-    "tests/server/pairing/test_pairing_transport.py",
-    "tests/server/runtime/test_local_authenticator_vault.py",
-    "tests/server/messaging/test_signal_native.py",
-    "tests/server/runtime/test_native_ai_settings.py",
-    "tests/server/transport/test_server_profile_call_control.py",
-    "tests/shared/test_ios_project_membership.py",
-    "tests/shared/test_kotlin_peer_parity.py",
-    "tests/shared/test_swift_source_integrity.py",
-    "tests/shared/test_swift_symbol_resolution.py",
-    "tests/shared/test_peer_rendezvous_cloud_parity.py",
-    "shared/earnings_agent/pending_ad_credits.json",
-}
+PRIVATE_EXACT_PATHS: set[str] = set()
 
 PRIVATE_BASENAMES = {
     "llm.txt",
@@ -600,6 +443,48 @@ ROOT_EXACT_PATHS = {
 }
 
 
+# A checkout that holds this repository inside a larger one can name the private
+# paths it keeps beside it here before running the export (they extend the lists
+# above). This repository names none of them.
+EXTRA_PRIVATE_PREFIXES: tuple[str, ...] = ()
+EXTRA_PRIVATE_TEST_PREFIXES: tuple[str, ...] = ()
+EXTRA_PRIVATE_EXACT_PATHS: set[str] = set()
+
+
+def _private_prefixes() -> tuple[str, ...]:
+    return PRIVATE_PREFIXES + tuple(EXTRA_PRIVATE_PREFIXES)
+
+
+def _private_test_prefixes() -> tuple[str, ...]:
+    return PRIVATE_TEST_PREFIXES + tuple(EXTRA_PRIVATE_TEST_PREFIXES)
+
+
+def _private_exact_paths() -> set[str]:
+    return {item.lower() for item in (*PRIVATE_EXACT_PATHS, *EXTRA_PRIVATE_EXACT_PATHS)}
+
+
+def _unregistered_agent_package(path: str) -> bool:
+    """An agent package that is not one of this repository's registered built-in agents."""
+    parts = Path(path).parts
+    if len(parts) < 3 or parts[0] != "autoyou_agents" or not parts[1].endswith("_agent"):
+        return False
+    return parts[1] not in _builtin_agent_packages()
+
+
+_BUILTIN_AGENT_PACKAGES: frozenset[str] | None = None
+
+
+def _builtin_agent_packages() -> frozenset[str]:
+    global _BUILTIN_AGENT_PACKAGES
+    if _BUILTIN_AGENT_PACKAGES is None:
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PACKAGE_NAMES
+
+        _BUILTIN_AGENT_PACKAGES = frozenset(BUILTIN_AGENT_PACKAGE_NAMES)
+    return _BUILTIN_AGENT_PACKAGES
+
+
 @dataclass(frozen=True)
 class GitEntry:
     path: str
@@ -620,7 +505,7 @@ def is_sensitive_path(path: str) -> bool:
     lowered = normalized.lower()
     name = Path(lowered).name
     if (
-        lowered in {item.lower() for item in PRIVATE_EXACT_PATHS}
+        lowered in _private_exact_paths()
         or (name in PRIVATE_BASENAMES and normalized not in PUBLIC_CONTRIBUTOR_GUIDE_PATHS)
         or name in SENSITIVE_BASENAMES
         or name in RUNTIME_BASENAMES
@@ -677,9 +562,11 @@ def should_publish_path(path: str) -> bool:
             or normalized in PUBLIC_CONTRIBUTOR_GUIDE_PATHS
             or normalized.startswith(PUBLIC_DOC_PREFIXES)
         )
-    if normalized.startswith(PRIVATE_PREFIXES):
+    if normalized.startswith(_private_prefixes()):
         return False
-    if normalized.startswith(PRIVATE_TEST_PREFIXES):
+    if normalized.startswith(_private_test_prefixes()):
+        return False
+    if _unregistered_agent_package(normalized):
         return False
     if normalized in ROOT_EXACT_PATHS:
         return True
@@ -695,14 +582,16 @@ def audit_public_source_paths(paths: list[str]) -> list[str]:
         if is_private_desktop_capture_path(path):
             failures.append(f"desktop capture asset included: {path}")
         if (
-            path.startswith(PRIVATE_PREFIXES)
+            path.startswith(_private_prefixes())
             and path not in PUBLIC_GITHUB_PATHS
             and path not in PUBLIC_SKILL_PATHS
             and path not in PUBLIC_DESKTOP_ASSET_PATHS
         ):
             failures.append(f"private path included: {path}")
-        if path.startswith(PRIVATE_TEST_PREFIXES):
+        if path.startswith(_private_test_prefixes()):
             failures.append(f"private test path included: {path}")
+        if _unregistered_agent_package(path):
+            failures.append(f"unregistered agent package included: {path}")
     return failures
 
 
@@ -717,8 +606,10 @@ def audit_public_repository_paths(paths: list[str]) -> list[str]:
             reason = "desktop capture asset"
         elif is_sensitive_path(path):
             reason = "sensitive path"
-        elif path.startswith(PRIVATE_PREFIXES) or path.startswith(PRIVATE_TEST_PREFIXES):
+        elif path.startswith(_private_prefixes()) or path.startswith(_private_test_prefixes()):
             reason = "private path"
+        elif _unregistered_agent_package(path):
+            reason = "unregistered agent package"
         else:
             reason = "path outside the public allowlist"
         failures.append(f"{reason} committed to public repository: {path}")
@@ -848,7 +739,9 @@ def build_export_plan(entries: list[GitEntry]) -> tuple[list[GitEntry], list[str
     included = [entry for entry in entries if entry.object_type == "blob" and should_publish_path(entry.path)]
     template = next((entry for entry in entries if entry.path == SERVER_README and entry.mode == "100644"), None)
     if any(entry.path == "README.md" for entry in included):
-        if template is None and any(entry.path.startswith(("clients/", ".llm/", "autoyou-core/")) for entry in entries):
+        if template is None and EXTRA_PRIVATE_PREFIXES and any(
+            entry.path.startswith(tuple(EXTRA_PRIVATE_PREFIXES)) for entry in entries
+        ):
             return included, ["Committed server-specific README is missing"]
         if template is not None:
             included = [replace(entry, object_id=template.object_id) if entry.path == "README.md" else entry

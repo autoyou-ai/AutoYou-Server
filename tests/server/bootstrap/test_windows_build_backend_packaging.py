@@ -143,13 +143,16 @@ def test_windows_nuitka_retry_does_not_treat_compiler_mismatch_as_memory_pressur
     assert "(-not $isCompilerMismatchFailure)" in text
 
 
-def test_windows_v2_publish_stages_the_compiled_desktop_worker():
+def test_windows_desktop_backend_compiles_only_the_named_extra_sources():
     backend = _build_backend_text()
 
     assert "[switch]$DesktopV2" in backend
-    assert '$runtimeModuleBuildArguments += "--desktop"' in backend
-    assert '$runtimeModuleBuildArguments += "--include-sibling-agents"' in backend
-    assert '"v2\\\\runtime\\\\worker*.pyd"' in backend
+    assert "$extraSourcesManifest = [string]$env:AUTOYOU_EXTRA_SOURCES_MANIFEST" in backend
+    assert '$runtimeModuleBuildArguments += @("--extra-sources", $extraSourcesManifest)' in backend
+    # A desktop build without the manifest stops instead of searching for the app's modules.
+    assert "} elseif ($DesktopV2) {" in backend
+    assert "--include-sibling-agents" not in backend
+    assert '"--desktop"' not in backend
 
 
 def test_windows_full_voice_profile_compiles_emotivoice_runtime():

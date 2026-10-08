@@ -128,11 +128,15 @@ Telegram User:
 
 ## 9. Lightweight alternative
 
-If you want the mobile experience without the full server, bootstrap the lightweight service instead:
+If you want the mobile experience without the full server, run AutoYou Lite instead. It is a separate
+`autoyou-lite` package: install it into the environment the bootstrap uses, then start it:
 
 ```bash
+.venv/bin/python -m pip install autoyou-lite   # Windows: .venv\Scripts\python -m pip install autoyou-lite
 python scripts/bootstrap_autoyou.py --service autoyou-lite --profile recommended
 ```
+
+To run a Lite source folder instead of the installed package, add `--lite-source <folder that contains autoyou_lite>`.
 
 That starts the lighter server on:
 

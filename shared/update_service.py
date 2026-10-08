@@ -8,8 +8,7 @@
 
 Performs a software update when one becomes available, from an **authorized
 update server** that publishes a *signed* update manifest. The design has two
-install shapes (mirroring how AutoYou actually ships, see
-``.llm/build/native-builds.md``):
+install shapes, mirroring how AutoYou actually ships:
 
 * **source install** (``python server.py`` / bootstrap, ``.git`` present and not
   Nuitka-compiled): update == **sync to ``origin/main``** (fetch + fast-forward

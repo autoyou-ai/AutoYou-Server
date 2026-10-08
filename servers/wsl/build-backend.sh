@@ -492,13 +492,19 @@ echo "Bundling Playwright Chromium (if available)..."
 bundle_playwright_chromium
 
 echo "Building compiled runtime modules..."
+# Modules from another source tree are named by whoever runs the build, in the
+# manifest AUTOYOU_EXTRA_SOURCES_MANIFEST points at; this script never looks for them.
+EXTRA_SOURCES_ARGS=()
+if [[ -n "${AUTOYOU_EXTRA_SOURCES_MANIFEST:-}" ]]; then
+    EXTRA_SOURCES_ARGS=(--extra-sources "$AUTOYOU_EXTRA_SOURCES_MANIFEST")
+fi
 "$PYTHON_CMD" "$RUNTIME_MODULE_BUILDER" \
     --repo-root "$PROJECT_ROOT" \
     --bundle-root "$FINAL_BACKEND_ROOT" \
     --build-root "$RUNTIME_MODULE_BUILD_ROOT" \
     --jobs "$NUITKA_JOBS" \
     --nuitka-arg=--disable-plugin=transformers \
-    --include-sibling-agents \
+    ${EXTRA_SOURCES_ARGS[@]+"${EXTRA_SOURCES_ARGS[@]}"} \
     --include-emotivoice
 
 for native_module in remote_desktop_input remote_desktop_settings; do

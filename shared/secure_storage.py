@@ -86,7 +86,6 @@ _DISCOVERY_SKIP_DIRECTORIES = frozenset(
         ".ruff_cache",
         "node_modules",
         ".codex_runlogs",
-        ".llm",
         ".run",
         "DO_NOT_UPLOAD",
         "build",
