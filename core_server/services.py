@@ -788,6 +788,17 @@ async def _cloud_sse_listener_loop():
     _reconnect_initial = max(0.1, float(runtime.AUTOYOU_CLOUD_SSE_RECONNECT_INITIAL_SECONDS))
     _reconnect_max = max(_reconnect_initial, float(runtime.AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS))
     _reconnect_delay = _reconnect_initial
+    # The delay starts over only after a stream has stayed up this long. A
+    # stream that opens, delivers its first lines and drops again must keep
+    # backing off, or a flapping network re-dials the cloud every few seconds.
+    _stable_stream_seconds = max(
+        0.0, float(getattr(runtime, "AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS", 45.0))
+    )
+    # A stream the cloud retired because a newer connection for this server
+    # took its place waits at least this long, so two copies never trade places.
+    _superseded_wait_seconds = 60.0
+    _stream_opened_at = None
+    _stream_superseded = False
     _shared_key_registered = False
     # Expected long-poll churn (cloud restarts, idle proxies cutting the chunked
     # stream, read timeouts). Resolved via getattr so a reduced aiohttp test
@@ -802,6 +813,19 @@ async def _cloud_sse_listener_loop():
         )
         if isinstance(exc, type) and issubclass(exc, BaseException)
     )
+
+    def _settle_reconnect_delay() -> None:
+        """Decide the wait before the next dial from how the last stream went."""
+        nonlocal _reconnect_delay, _stream_opened_at, _stream_superseded
+        held_for = (
+            runtime.time.monotonic() - _stream_opened_at if _stream_opened_at is not None else 0.0
+        )
+        if _stream_superseded:
+            _reconnect_delay = max(_reconnect_delay, _superseded_wait_seconds)
+        elif held_for >= _stable_stream_seconds:
+            _reconnect_delay = _reconnect_initial
+        _stream_opened_at = None
+        _stream_superseded = False
 
     while True:
         cloud_cfg = (runtime.STATE.config or {}).get("cloud", {})
@@ -901,12 +925,15 @@ async def _cloud_sse_listener_loop():
                         continue
 
                     # Successful connection: reset auth counters and rejection flag.
-                    # The network reconnect delay resets once SSE activity arrives.
+                    # The network reconnect delay resets once a stream has stayed up
+                    # (see _settle_reconnect_delay), not on the first line it delivers.
                     _consecutive_401s = 0
                     _401_backoff = 60
                     runtime.STATE.cloud_connected = True
                     runtime.STATE.cloud_token_rejected = False
                     runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
+                    _stream_opened_at = runtime.time.monotonic()
+                    _stream_superseded = False
                     runtime.LOGGER.info(f"AutoYou Cloud: SSE connected to {url}")
 
                     # Fire one privacy-minimal diagnostics heartbeat once we
@@ -920,10 +947,11 @@ async def _cloud_sse_listener_loop():
 
                     async for line_bytes in resp.content:
                         runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
-                        _reconnect_delay = _reconnect_initial
                         line = line_bytes.decode("utf-8").rstrip("\n\r")
                         if line.startswith("event:"):
                             event_type = line[6:].strip()
+                            if event_type == "superseded":
+                                _stream_superseded = True
                         elif line.startswith("data:"):
                             data_lines.append(line[5:].strip())
                         elif line == "":
@@ -935,6 +963,7 @@ async def _cloud_sse_listener_loop():
                             data_lines = []
 
                     # Stream ended normally (server closed connection) - back off before reconnecting
+                    _settle_reconnect_delay()
                     runtime.LOGGER.info(
                         "AutoYou Cloud: SSE stream ended. Reconnecting in %gs...",
                         _reconnect_delay,
@@ -953,6 +982,7 @@ async def _cloud_sse_listener_loop():
             # restarts, idle proxies, or NAT timeouts (seen as
             # "Response payload is not completed" / TransferEncodingError).
             # This is expected churn, not an error: reconnect quietly.
+            _settle_reconnect_delay()
             runtime.LOGGER.info(
                 "AutoYou Cloud: SSE stream interrupted (%s). Reconnecting in %gs...",
                 e,
@@ -963,6 +993,7 @@ async def _cloud_sse_listener_loop():
             await runtime.asyncio.sleep(_reconnect_delay)
             _reconnect_delay = min(_reconnect_delay * 2, _reconnect_max)
         except Exception as e:
+            _settle_reconnect_delay()
             runtime.LOGGER.warning(
                 "AutoYou Cloud: SSE connection lost: %s. Reconnecting in %gs...",
                 e,
