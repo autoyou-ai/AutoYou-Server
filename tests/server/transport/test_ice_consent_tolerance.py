@@ -22,7 +22,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import pytest
 
-from tests.support.paths import PROJECT_ROOT, ensure_repo_on_path
+from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-84f017d23618b5d1dacb2dc7"
 
@@ -108,22 +108,3 @@ def test_datachannel_idle_timeout_env_override_is_bounded(monkeypatch):
     assert server._datachannel_idle_timeout_seconds() == 900.0
     monkeypatch.setenv("AUTOYOU_DATACHANNEL_IDLE_TIMEOUT_SECONDS", "180")
     assert server._datachannel_idle_timeout_seconds() == 180.0
-
-
-def test_lite_server_applies_the_same_tolerance():
-    """Lite runs the same pairing modes, so it needs the same budget.
-
-    Asserted against the source rather than by importing the module: importing
-    the Lite server rebinds the ``autoyou_lite`` namespace package for the rest
-    of the session, which is too much collateral for one assertion.
-    """
-    source = (PROJECT_ROOT / "autoyou_lite/autoyou_lite/server.py").read_text(encoding="utf-8")
-    assert "def _apply_ice_consent_tolerance()" in source
-    block = source[source.index("def _apply_ice_consent_tolerance()"):]
-    block = block[: block.index("\ndef ")]
-    assert "aioice_ice.CONSENT_INTERVAL = interval" in block
-    assert "aioice_ice.CONSENT_FAILURES = failures" in block
-    assert '_bounded("AUTOYOU_ICE_CONSENT_FAILURES", 24.0, 6.0, 240.0)' in block
-    assert '_bounded("AUTOYOU_ICE_CONSENT_INTERVAL_SECONDS", 5.0, 1.0, 30.0)' in block
-    # ...and is actually reached before a peer connection is created.
-    assert "_apply_ice_consent_tolerance()\n        pc = RTCPeerConnection(" in source

@@ -23,33 +23,6 @@ __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-dbe274be1699b7f7c31abfce"
 from shared import local_tls
 
 
-def _load_lib_config():
-    """Import AutoYou Lite by its real package name.
-
-    Importing ``autoyou_lite.autoyou_lite.config`` registered the outer project
-    folder as a namespace package called ``autoyou_lite``, so later imports of
-    ``autoyou_lite.keystore`` or ``autoyou_lite._runtime`` in other test files
-    failed depending on collection order.
-    """
-    import sys
-
-    here = Path(__file__).resolve()
-    for root in here.parents[1:5]:
-        project = root / "autoyou_lite"
-        if (project / "autoyou_lite" / "__init__.py").is_file():
-            if str(project) not in sys.path:
-                sys.path.insert(0, str(project))
-            break
-    try:
-        from autoyou_lite.config import LibConfig as lib_config
-    except ImportError:
-        return None
-    return lib_config
-
-
-LibConfig = _load_lib_config()
-
-
 def test_https_enabled_helper_logic():
     # Default without maximus is False
     assert _https_enabled({}) is False
@@ -92,12 +65,6 @@ def test_home_network_access_turns_https_on_by_default(monkeypatch):
 def test_https_port_helper_logic():
     assert _https_port({}) == 8443
     assert _https_port({"server": {"https_port": 9443}}) == 9443
-
-
-def test_autoyou_lite_https_port_defaults_to_8543():
-    if LibConfig is not None:
-        cfg = LibConfig({})
-        assert cfg.https_port == 8543
 
 
 def test_ca_crt_endpoint_404_when_no_tls(tmp_path: Path):

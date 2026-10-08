@@ -16,7 +16,6 @@ from pathlib import Path
 import sqlite3
 
 from .store import LocationStore
-from tests.support.paths import PROJECT_ROOT
 
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-b8d8aae342a0235cb80b803c"
 
@@ -96,4 +95,3 @@ def test_location_agent_import_is_lazy(tmp_path, monkeypatch):
     frontend_source = (Path(__file__).parent / "website/frontend/assets/app.js").read_text(encoding="utf-8")
     assert "navigator.geolocation" not in frontend_source
     assert "browser_permission" not in frontend_source
-
