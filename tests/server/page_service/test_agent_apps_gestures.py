@@ -198,6 +198,36 @@ def test_a_tap_opens_and_a_vertical_swipe_scrolls(phone):
     phone.page.wait_for_url("**/agent/notes_agent/**", timeout=5000)
 
 
+def test_swiping_the_description_collapses_the_dock_and_the_grabber_restores_it(phone):
+    x, y = phone.page.evaluate(
+        "() => { const r = document.querySelector('#dock-desc').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
+    )
+    phone.touch("touchStart", (x, y))
+    for step in range(1, 6):
+        phone.touch("touchMove", (x, y + step * 9))
+        phone.page.wait_for_timeout(20)
+    phone.touch("touchEnd")
+    phone.page.wait_for_timeout(350)
+
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
+    assert phone.page.evaluate("getComputedStyle(document.querySelector('#dock-content')).visibility") == "hidden"
+
+    x, y = phone.page.evaluate(
+        "() => { const r = document.querySelector('.dock-grab').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
+    )
+    phone.touch("touchStart", (x, y))
+    for step in range(1, 6):
+        phone.touch("touchMove", (x, y - step * 9))
+        phone.page.wait_for_timeout(20)
+    phone.touch("touchEnd")
+    phone.page.wait_for_timeout(350)
+
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "0"
+    assert phone.page.get_attribute(".dock-grab", "aria-expanded") == "true"
+    assert phone.page.evaluate("getComputedStyle(document.querySelector('#dock-content')).visibility") == "visible"
+    assert not phone.errors
+
+
 def test_two_fingers_resize_and_the_size_is_remembered(phone):
     before = phone.page.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s'))")
     phone.touch("touchStart", (155, 420), (235, 420))
