@@ -9336,6 +9336,34 @@ class WebRTCManager:
                     ))
                 return
 
+            if method.upper() == "GET" and request_path == "/api/v1/direct-lan":
+                # Answered only here, over this device's authenticated data
+                # channel: the HTTPS key to pin and a one-time device-pass code
+                # must never come from the network the device is about to use.
+                # Only the app itself asks. A web page the app shows through
+                # this channel can reach this path too, but its requests are
+                # built from the page's HTTP request and never carry this
+                # message field, so a page cannot obtain a code to leak.
+                if message.payload.get("direct_lan_offer") is not True:
+                    offer = {"available": False, "reason": "Only the AutoYou app can ask for direct websites."}
+                else:
+                    offer = _runtime._direct_lan_offer(message.header.session_id)
+                datachannel_manager = self._datachannel_manager_for_session(
+                    message.header.session_id,
+                    require_send_message=True,
+                )
+                if datachannel_manager:
+                    await datachannel_manager.send_message(_runtime.create_http_response_message(
+                        status_code=200,
+                        headers={"Content-Type": "application/json", "Cache-Control": "no-store"},
+                        body=_runtime.json.dumps(offer, separators=(",", ":")),
+                        request_id=request_id,
+                        session_id=message.header.session_id,
+                        user_id=message.header.user_id,
+                        compressed=False,
+                    ))
+                return
+
             if method.upper() == "GET" and request_path in {"/api/v1/status", "/api/v1/server-config"}:
                 local_payload = (
                     _runtime._build_browser_status_payload()

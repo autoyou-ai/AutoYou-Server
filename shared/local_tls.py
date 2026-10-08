@@ -98,8 +98,22 @@ def _local_hostnames() -> List[str]:
     return names
 
 
-def _local_ip_addresses() -> List[str]:
-    """Best-effort set of this host's own IP addresses (loopback + LAN)."""
+# Tailscale and other mesh VPNs hand out addresses from the shared CGNAT range,
+# which Python does not count as private. Included only when the operator opts
+# in, so the certificate never names an address they did not choose to serve.
+VPN_ADDRESS_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"),)
+
+
+def is_vpn_address(value) -> bool:
+    try:
+        ip = ipaddress.ip_address(str(value or "").strip().strip("[]").split("%", 1)[0])
+    except ValueError:
+        return False
+    return any(ip in network for network in VPN_ADDRESS_NETWORKS)
+
+
+def _local_ip_addresses(include_vpn: bool = False) -> List[str]:
+    """Best-effort set of this host's own IP addresses (loopback + LAN, VPN on request)."""
     addresses = {"127.0.0.1", "::1"}
     try:
         hostname = socket.gethostname()
@@ -132,12 +146,14 @@ def _local_ip_addresses() -> List[str]:
         # never embed a globally-routable (public) address in the certificate.
         if ip.is_loopback or ip.is_private or ip.is_link_local:
             cleaned.append(str(ip))
+        elif include_vpn and is_vpn_address(ip):
+            cleaned.append(str(ip))
     return sorted(set(cleaned))
 
 
-def san_entries() -> Tuple[List[str], List[str]]:
+def san_entries(include_vpn: bool = False) -> Tuple[List[str], List[str]]:
     """Return ``(dns_names, ip_addresses)`` for the leaf certificate."""
-    return _local_hostnames(), _local_ip_addresses()
+    return _local_hostnames(), _local_ip_addresses(include_vpn=include_vpn)
 
 
 def _san_general_names(dns_names: List[str], ip_addresses: List[str]) -> List[x509.GeneralName]:
@@ -296,7 +312,7 @@ class TLSMaterial:
     fingerprint_sha256: str = ""
 
 
-def ensure_enabled(config_dir) -> TLSMaterial:
+def ensure_enabled(config_dir, *, include_vpn_addresses: bool = False) -> TLSMaterial:
     """Idempotently ensure a CA and a *current* leaf certificate exist.
 
     Reissues the leaf when the machine's LAN address set changed or the leaf is
@@ -306,7 +322,7 @@ def ensure_enabled(config_dir) -> TLSMaterial:
     directory = tls_dir(config_dir)
     ca_cert, ca_key = _build_ca(directory)
 
-    dns_names, ip_addresses = san_entries()
+    dns_names, ip_addresses = san_entries(include_vpn=include_vpn_addresses)
     leaf_cert_path = directory / _LEAF_CERT_NAME
     leaf_key_path = directory / _LEAF_KEY_NAME
     leaf = _load_cert(leaf_cert_path)
