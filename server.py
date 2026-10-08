@@ -2750,6 +2750,12 @@ AUTOYOU_CLOUD_SSE_RECONNECT_INITIAL_SECONDS = float(
 AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS = float(
     os.environ.get("AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS", "600")
 )
+# A stream must stay up this long before the reconnect delay starts over, so a
+# connection that opens and drops again keeps backing off instead of re-dialling
+# the cloud every few seconds. Two of the cloud's 30-second heartbeats settle it.
+AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS = float(
+    os.environ.get("AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS", "45")
+)
 
 
 def _cloud_registered_at_timestamp(cloud_cfg: Mapping[str, Any]) -> float:
