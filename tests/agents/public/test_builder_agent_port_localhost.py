@@ -60,6 +60,16 @@ except Exception:
         internet_tool.register_fastapi_cleanup = _register_fastapi_cleanup
         sys.modules["autoyou_agents.internet_agent.internet_tool"] = internet_tool
 
+# Stub python-telegram-bot only when it is genuinely missing. Installing the
+# fakes whenever it was merely not imported yet replaced the real package for
+# every test collected afterwards (ConversationHandler.END vanished).
+try:
+    import telegram  # noqa: F401
+    import telegram.error  # noqa: F401
+    import telegram.ext  # noqa: F401
+except ImportError:
+    pass
+
 if "telegram" not in sys.modules:
     telegram_module = types.ModuleType("telegram")
 

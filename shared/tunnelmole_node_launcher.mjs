@@ -13,6 +13,10 @@ const httpEndpoint = String(process.env.AUTOYOU_TUNNELMOLE_NODE_HTTP_ENDPOINT ||
 const apiKey = String(process.env.AUTOYOU_TUNNELMOLE_NODE_API_KEY || "").trim();
 const domain = String(process.env.AUTOYOU_TUNNELMOLE_NODE_DOMAIN || "").trim();
 const port = Number.parseInt(String(process.env.AUTOYOU_TUNNELMOLE_NODE_PORT || "0"), 10);
+// Public mode drives the same lockfile-pinned npm client against the public
+// tunnelmole service, replacing the unsigned tmole binary download. It never
+// sets an API key, and runs in its own home so a self-hosted key cannot leak.
+const publicMode = String(process.env.AUTOYOU_TUNNELMOLE_NODE_PUBLIC || "").trim() === "1";
 
 const fail = (message, error) => {
     console.error(`[tunnelmole-node-launcher] ${message}`);
@@ -24,7 +28,13 @@ const fail = (message, error) => {
     process.exit(1);
 };
 
-if (!packageDir || !wsEndpoint || !httpEndpoint || !apiKey || !Number.isFinite(port) || port <= 0) {
+if (!packageDir || !Number.isFinite(port) || port <= 0) {
+    fail("Missing required tunnelmole launcher environment.");
+}
+if (publicMode && (wsEndpoint || httpEndpoint || apiKey)) {
+    fail("Public mode must not carry self-hosted endpoints or an API key.");
+}
+if (!publicMode && (!wsEndpoint || !httpEndpoint || !apiKey)) {
     fail("Missing required self-hosted tunnelmole launcher environment.");
 }
 
@@ -39,14 +49,20 @@ try {
     const storageModule = await import(storageModuleUrl);
     const tunnelmoleModule = await import(tunnelmoleModuleUrl);
 
-    config.hostip.endpoint = wsEndpoint;
-    config.hostip.httpEndpoint = httpEndpoint;
+    if (!publicMode) {
+        config.hostip.endpoint = wsEndpoint;
+        config.hostip.httpEndpoint = httpEndpoint;
+    }
 
     await storageModule.initStorage();
     if (!storageModule.storage) {
         fail("Tunnelmole storage did not initialize.");
     }
-    storageModule.storage.setItem("apiKey", apiKey);
+    if (publicMode) {
+        storageModule.storage.removeItem?.("apiKey");
+    } else {
+        storageModule.storage.setItem("apiKey", apiKey);
+    }
 
     const options = { port };
     if (domain) {

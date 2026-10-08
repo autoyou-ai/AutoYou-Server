@@ -20,14 +20,34 @@ __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-dbe274be1699b7f7c31abfce"
 # from __debug_provenance_p__ import submit
 
 
-try:
-    from autoyou_lite.autoyou_lite.config import LibConfig
-except ImportError:
-    try:
-        from autoyou_lite.config import LibConfig
-    except ImportError:
-        LibConfig = None
 from shared import local_tls
+
+
+def _load_lib_config():
+    """Import AutoYou Lite by its real package name.
+
+    Importing ``autoyou_lite.autoyou_lite.config`` registered the outer project
+    folder as a namespace package called ``autoyou_lite``, so later imports of
+    ``autoyou_lite.keystore`` or ``autoyou_lite._runtime`` in other test files
+    failed depending on collection order.
+    """
+    import sys
+
+    here = Path(__file__).resolve()
+    for root in here.parents[1:5]:
+        project = root / "autoyou_lite"
+        if (project / "autoyou_lite" / "__init__.py").is_file():
+            if str(project) not in sys.path:
+                sys.path.insert(0, str(project))
+            break
+    try:
+        from autoyou_lite.config import LibConfig as lib_config
+    except ImportError:
+        return None
+    return lib_config
+
+
+LibConfig = _load_lib_config()
 
 
 def test_https_enabled_helper_logic():
@@ -53,8 +73,13 @@ def test_home_network_access_turns_https_on_by_default(monkeypatch):
     # The operator can still turn it off explicitly.
     assert _https_enabled({"server": {"bind_host": "0.0.0.0", "https_enabled": False}}) is False
 
-    # A launcher that forces the bind (Docker, --host) owns its own boundary.
+    # A launcher that forces a network bind (--host 0.0.0.0) on this computer
+    # exposes the admin sign-in too, so HTTPS comes on; inside a container the
+    # port publishing owns the boundary instead.
     monkeypatch.setattr(server, "SERVER_BIND_HOST", "0.0.0.0")
+    monkeypatch.setattr(server, "_running_in_container", lambda: False)
+    assert _https_enabled({"server": {"bind_host": "127.0.0.1"}}) is True
+    monkeypatch.setattr(server, "_running_in_container", lambda: True)
     assert _https_enabled({"server": {"bind_host": "127.0.0.1"}}) is False
 
     # The desktop app's "allow local network" switch is its home network setting.

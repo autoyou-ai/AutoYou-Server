@@ -20,6 +20,8 @@ import binascii
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
+from shared.pairing_cpace import CPaceSessionKey
+
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2"
 
 
@@ -472,9 +474,14 @@ def register_routes(
 
     @admin_app.post("/api/autopair")
     async def autopair_api(request: Request):
-        redir = server._require_login(request)
-        if redir:
-            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        # Without an admin session, Local Pair must arrive as a CPace-encrypted
+        # offer from this computer or the private network (checked again after
+        # decryption below): the password is proven, never sent.
+        cpace_only = bool(server._require_login(request))
+        if cpace_only:
+            network_error = server._local_pair_network_error(request, count_attempt=False)
+            if network_error:
+                return network_error
         rate_limit_bucket, rate_limit_client_key = server._autopair_rate_limit_bucket(request)
         if not server.AUTOPAIR_RATE_LIMITER.is_allowed(rate_limit_bucket):
             server.LOGGER.warning("AutoPair rate limit exceeded from %s", rate_limit_client_key)
@@ -518,6 +525,13 @@ def register_routes(
                 if isinstance(parsed, str):
                     return JSONResponse({"error": parsed}, status_code=400)
                 payload, session = parsed
+                if cpace_only and not isinstance(session, CPaceSessionKey):
+                    # B-Tier pake1 is password encryption a passive listener
+                    # can attack offline; only CPace may skip the session.
+                    return JSONResponse(
+                        {"error": "Local Pair needs the secure handshake. Send /api/autopair_hello first."},
+                        status_code=401,
+                    )
                 if not isinstance(payload, dict):
                     return JSONResponse({"error": "Invalid payload"}, status_code=400)
                 payload_platform = str(payload.get("_autoyou_pairing_platform") or "").strip().lower()
@@ -543,7 +557,11 @@ def register_routes(
                 return PlainTextResponse(answer_text, status_code=200)
 
             # Normal mode (legacy/plaintext): plaintext JSON offer. Unchanged
-            # behavior for the admin web UI and existing automation/test callers.
+            # behavior for the admin web UI and existing automation/test callers,
+            # which hold an admin session; _local_pair_network_error already
+            # refused session-less callers in Normal mode.
+            if cpace_only:
+                return JSONResponse({"error": "Not authenticated"}, status_code=401)
             try:
                 payload = _json.loads(raw_body)
             except Exception:
@@ -591,10 +609,15 @@ def register_routes(
         this establishes is found again when the client's follow-up /api/autopair
         call arrives - see PairingRouter._handle_autopair_hello_command for the
         same flow used by chat-based transports (Telegram/WhatsApp/Signal).
+
+        CPace proves the password without revealing it, so a caller on this
+        computer or the private network needs no admin session (and therefore
+        never posts the password to /login over plain HTTP).
         """
-        redir = server._require_login(request)
-        if redir:
-            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        if server._require_login(request):
+            network_error = server._local_pair_network_error(request)
+            if network_error:
+                return network_error
         rate_limit_bucket, rate_limit_client_key = server._autopair_rate_limit_bucket(request)
         if not server.AUTOPAIR_RATE_LIMITER.is_allowed(rate_limit_bucket):
             server.LOGGER.warning("AutoPair rate limit exceeded from %s", rate_limit_client_key)
@@ -1036,6 +1059,15 @@ def register_routes(
             ))
             # Empty TOTP explicitly clears credentials from a previous computer.
             payload["totp"] = totp_secret or ""
+            # The computer's Cloud Pair key, shown on its own screen: a phone that
+            # scans this checks the key AutoYou Cloud hands it against this one,
+            # so the cloud cannot substitute a key for this computer.
+            if cloud_enabled:
+                key_material = server._shared_device_server_key_material()
+                cloud_server_id = str(cloud_cfg.get("server_id") or "").strip()
+                if key_material and cloud_server_id:
+                    payload["sk"] = key_material[1]
+                    payload["sid"] = cloud_server_id
             if mode == "secure_professional_maximus":
                 payload["mode"] = "secure_professional"
 

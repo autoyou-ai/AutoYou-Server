@@ -999,8 +999,11 @@ def register_routes(
         return payload
 
     @admin_app.get("/api/status")
-    async def admin_api_status():
+    async def admin_api_status(request: Request):
         """Simple status check for Admin Server."""
+        auth_error = server._require_session_for_network_peer(request)
+        if auth_error:
+            return auth_error
         return {
             "status": "running",
             "service": "AutoYou Admin Server",
