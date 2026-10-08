@@ -1298,6 +1298,7 @@ from autoyou_agents.shared_tools.frontend_registry import (
 )
 from shared.agent_apps import describe_agent_app
 from autoyou_agents.shared_tools.agent_install_registry import (
+    BUILTIN_AGENT_PACKAGE_NAMES,
     can_install_agent_in_runtime,
     discover_agent_directories,
     get_agent_install_registry_path,
@@ -3256,18 +3257,6 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.game_agent.website.backend.app:app",
         "default_port": 8112,
     },
-    "cloudflare_agent": {
-        "app_import": "autoyou_agents.cloudflare_agent.website.backend.app:app",
-        "default_port": 8102,
-    },
-    "ionos_agent": {
-        "app_import": "autoyou_agents.ionos_agent.website.backend.app:app",
-        "default_port": 8103,
-    },
-    "ionos_cloudflare_agent": {
-        "app_import": "autoyou_agents.ionos_cloudflare_agent.website.backend.app:app",
-        "default_port": 8104,
-    },
     "skills_agent": {
         "app_import": "autoyou_agents.skills_agent.website.backend.app:app",
         "default_port": 8086,
@@ -3342,6 +3331,8 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
 # installed manifest-backed website is exposed by default unless it is an
 # explicit security/private opt-in.  A persisted agent_frontends.<name>
 # enabled value always wins, so this does not rewrite existing preferences.
+# An agent this repository does not ship makes the same choice in its own
+# website manifest ("expose_by_default", "control_label", "control_help").
 FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # The admin website exposes the full server admin shell through the
     # browser proxy. It stays opt-in even though admin_agent is installed;
@@ -3352,11 +3343,6 @@ FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # not publish them to paired browser clients.
     "win_security_agent": False,
     "mac_security_agent": False,
-    # This surface controls public exposure and a connector credential.
-    "cloudflare_agent": False,
-    # These surfaces can deploy a public website or direct authoritative DNS.
-    "ionos_agent": False,
-    "ionos_cloudflare_agent": False,
     "game_agent": False,
 }
 
@@ -3377,9 +3363,6 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "location_agent": "Location Timeline",
     "website_agent": "Website Builder",
     "agent_builder_agent": "Agent Builder",
-    "cloudflare_agent": "Cloudflare Tunnel",
-    "ionos_agent": "IONOS Hosting",
-    "ionos_cloudflare_agent": "IONOS Cloudflare Handoff",
     "game_agent": "Game Studio",
     "skills_agent": "Skills Manager",
     "remote_desktop_agent": "Remote Desktop",
@@ -3444,18 +3427,6 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
     "agent_builder_agent": (
         "Publish the Agent Builder chat website for scaffolding, developing, and "
         "publishing new agents. Enabled by default after this agent is installed."
-    ),
-    "cloudflare_agent": (
-        "Configure one Cloudflare Tunnel for selected agent websites. Disabled by "
-        "default because it controls public exposure and a connector credential."
-    ),
-    "ionos_agent": (
-        "Manage committed website deployment, origin TLS, email, and website input "
-        "processing on IONOS. Disabled by default because it can deploy publicly."
-    ),
-    "ionos_cloudflare_agent": (
-        "Plan and verify IONOS nameserver delegation, Cloudflare DNS, redirects, TLS, "
-        "mail preservation, and DNSSEC. Disabled by default because it controls DNS."
     ),
     "game_agent": (
         "Publish the Game Studio host launcher and engine bridge for native iOS and Android "
@@ -4478,11 +4449,6 @@ def _apply_default_agent_frontends_config(cfg: Dict[str, Any]) -> bool:
         cfg["agent_frontends"] = {"hosting_agent": True}
         return True
     changed = False
-    if "streaming_agent" in frontends:
-        if "education_agent" not in frontends:
-            frontends["education_agent"] = frontends["streaming_agent"]
-        frontends.pop("streaming_agent", None)
-        changed = True
     if "hosting_agent" not in frontends:
         frontends["hosting_agent"] = True
         changed = True
@@ -9294,7 +9260,10 @@ def _default_agent_frontend_enabled(agent_name: str) -> bool:
         return True
     if normalized == "internet_agent":
         return True
-    return bool(FRONTEND_DEFAULT_ENABLEMENT.get(normalized, True))
+    if normalized in FRONTEND_DEFAULT_ENABLEMENT or normalized in BUILTIN_AGENT_PACKAGE_NAMES:
+        return bool(FRONTEND_DEFAULT_ENABLEMENT.get(normalized, True))
+    manifest = load_frontend_manifest(_AUTOYOU_AGENTS_ROOT / normalized) or {}
+    return bool(manifest.get("expose_by_default", True))
 
 def _agent_frontend_config_entry(
     agent_name: str,
@@ -11097,13 +11066,12 @@ def _build_agent_frontend_control(
 
     enabled = _get_agent_frontend_enabled(normalized, cfg=cfg)
     default_enabled = _default_agent_frontend_enabled(normalized)
-    label = FRONTEND_CONTROL_LABELS.get(
-        normalized,
-        "Agent Website" if isinstance(frontend_entry, dict) else "Agent Control",
+    manifest_entry = frontend_entry if isinstance(frontend_entry, dict) else {}
+    label = FRONTEND_CONTROL_LABELS.get(normalized) or str(manifest_entry.get("control_label") or "").strip() or (
+        "Agent Website" if isinstance(frontend_entry, dict) else "Agent Control"
     )
-    help_text = FRONTEND_CONTROL_HELP.get(
-        normalized,
-        "Enable or disable this agent website for AutoYou browser clients.",
+    help_text = FRONTEND_CONTROL_HELP.get(normalized) or str(manifest_entry.get("control_help") or "").strip() or (
+        "Enable or disable this agent website for AutoYou browser clients."
     )
 
     if normalized == "internet_agent":

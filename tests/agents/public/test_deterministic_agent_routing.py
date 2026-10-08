@@ -630,31 +630,92 @@ def test_root_router_explicit_internet_scrape_is_not_sent_to_client_browser(monk
     }
 
 
-def test_root_router_explicit_cloudflare_route_preempts_live_web(monkeypatch):
+_OVERLAY_PROMPTS = {
+    "lantern_agent": (
+        'AGENT_NAME = "autoyou_lantern_agent"\n'
+        'AGENT_DESCRIPTION = "Synthetic overlay agent for routing tests."\n'
+        'ROUTING_LABEL = "Lantern Tunnel"\n'
+        'ROUTING_RULE = "Lantern tunnels, lantern routes, or lantern connector management"\n'
+        'ROUTE_ALIASES = ("lantern agent", "lantern_agent", "lantern tunnel")\n'
+    ),
+    "lantern_relay_agent": (
+        'AGENT_NAME = "autoyou_lantern_relay_agent"\n'
+        'ROUTE_ALIASES = ("lantern relay agent", "lantern_relay_agent", "lantern relay")\n'
+    ),
+}
+
+
+@pytest.fixture
+def overlay_agents(tmp_path, monkeypatch):
+    """Synthetic agent packages on autoyou_agents' import path, as an overlay checkout adds them."""
+    import sys
+
+    import autoyou_agents
+    from autoyou_agents.shared_tools import agent_identity
+
+    overlay_root = tmp_path / "overlay"
+    for name, prompt_source in _OVERLAY_PROMPTS.items():
+        package = overlay_root / name
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "prompt.py").write_text(prompt_source, encoding="utf-8")
+    monkeypatch.setattr(autoyou_agents, "__path__", [*autoyou_agents.__path__, str(overlay_root)])
+    monkeypatch.setattr(agent_identity, "_DECLARED_RUNTIME_AGENT_NAMES", {})
+    monkeypatch.setattr(root_agent_module, "_OVERLAY_AGENT_ROUTING", {})
+    monkeypatch.setattr(root_agent_module, "_EXPLICIT_ROUTE_ALIASES", dict(root_agent_module._EXPLICIT_ROUTE_ALIASES))
+    monkeypatch.setattr(root_agent_module, "_RUNTIME_TO_INSTALL_NAME", dict(root_agent_module._RUNTIME_TO_INSTALL_NAME))
+    for name in _OVERLAY_PROMPTS:
+        root_agent_module._register_overlay_agent_package(name)
+    yield
+    packages = tuple(f"autoyou_agents.{name}" for name in _OVERLAY_PROMPTS)
+    for module_name in [name for name in sys.modules if name.startswith(packages)]:
+        sys.modules.pop(module_name, None)
+
+
+def test_overlay_agent_takes_its_runtime_name_and_aliases_from_its_package(overlay_agents):
+    assert root_agent_module.resolve_runtime_agent_name("lantern_agent") == "autoyou_lantern_agent"
+    assert root_agent_module._RUNTIME_TO_INSTALL_NAME["autoyou_lantern_agent"] == "lantern_agent"
+    assert "lantern tunnel" in root_agent_module._EXPLICIT_ROUTE_ALIASES["autoyou_lantern_agent"]
+
+
+def test_overlay_agent_adds_its_own_lines_to_the_root_prompt(overlay_agents):
+    sub_agent_lines, routing_lines = root_agent_module._build_registry_defined_agent_sections(
+        ["lantern_agent", "lantern_relay_agent"]
+    )
+
+    assert "- Lantern Tunnel: `autoyou_lantern_agent`" in sub_agent_lines
+    assert "- Lantern Relay: `autoyou_lantern_relay_agent`" in sub_agent_lines
+    assert (
+        "- Lantern tunnels, lantern routes, or lantern connector management: call `autoyou_lantern_agent`."
+        in routing_lines
+    )
+
+
+def test_root_router_explicit_overlay_route_preempts_live_web(monkeypatch, overlay_agents):
     monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name in {"cloudflare_agent", "internet_agent"},
+        lambda agent_name, agents_root=None: agent_name in {"lantern_agent", "internet_agent"},
     )
 
     request_text = (
-        "Use Cloudflare Agent to inspect its non-secret status and return the setup plan "
-        "for publishing Audio Agent behind Cloudflare Access."
+        "Use Lantern Agent to inspect its non-secret status and return the setup plan "
+        "for publishing Audio Agent behind an access policy."
     )
     response = asyncio.run(
         root_agent_module._root_router_before_model_callback(
-            SimpleNamespace(state={}, invocation_id="explicit-cloudflare-route"),
+            SimpleNamespace(state={}, invocation_id="explicit-overlay-route"),
             _llm_request(request_text),
         )
     )
 
     function_call = response.content.parts[0].function_call
-    assert _routed_agent(function_call) == "autoyou_cloudflare_agent"
+    assert _routed_agent(function_call) == "autoyou_lantern_agent"
     assert _routed_args(function_call) == {
         "request": (
             "to inspect its non-secret status and return the setup plan for publishing "
-            "Audio Agent behind Cloudflare Access."
+            "Audio Agent behind an access policy."
         )
     }
 
@@ -663,21 +724,22 @@ def test_root_router_explicit_cloudflare_route_preempts_live_web(monkeypatch):
     ("installed_name", "request_text", "runtime_name", "residual"),
     [
         (
-            "ionos_agent",
-            "Use IONOS Agent to verify SSH readiness and the website processors.",
-            "autoyou_ionos_agent",
+            "lantern_agent",
+            "Use Lantern Agent to verify SSH readiness and the website processors.",
+            "autoyou_lantern_agent",
             "to verify SSH readiness and the website processors.",
         ),
         (
-            "ionos_cloudflare_agent",
-            "Use IONOS Cloudflare Agent to verify the nameserver handoff and parent DS.",
-            "autoyou_ionos_cloudflare_agent",
+            "lantern_relay_agent",
+            "Use Lantern Relay Agent to verify the nameserver handoff and parent DS.",
+            "autoyou_lantern_relay_agent",
             "to verify the nameserver handoff and parent DS.",
         ),
     ],
 )
-def test_root_router_explicit_ionos_routes(
+def test_root_router_explicit_overlay_routes_prefer_the_longest_alias(
     monkeypatch,
+    overlay_agents,
     installed_name,
     request_text,
     runtime_name,

@@ -56,9 +56,11 @@ from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_too
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
+    register_runtime_agent_name,
     resolve_runtime_agent_name,
 )
 from autoyou_agents.shared_tools.agent_install_registry import (
+    BUILTIN_AGENT_PACKAGE_NAMES,
     is_builtin_agent_name,
     get_installed_agent_names,
     is_agent_installed,
@@ -967,7 +969,6 @@ for _install_name in (
     "claude_cli_agent",
     "claude_desktop_agent",
     "cli_agent",
-    "cloudflare_agent",
     "codex_desktop_agent",
     "coding_agent",
     "data_collector_agent",
@@ -979,11 +980,8 @@ for _install_name in (
     "game_agent",
     "hermes_agent",
     "hosting_agent",
-    "ionos_agent",
-    "ionos_cloudflare_agent",
     "internet_agent",
     "location_agent",
-    "mail_agent",
     "media_generation_agent",
     "memory_agent",
     "model_picker_agent",
@@ -1021,14 +1019,6 @@ _AGENT_BUILDER_RUNTIME_AGENT_NAME = (
 _CLAUDE_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_cli_agent") or "claude_cli_agent"
 _CLAUDE_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_desktop_agent") or "claude_desktop_agent"
 _CLI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("cli_agent") or "autoyou_cli_agent"
-_CLOUDFLARE_RUNTIME_AGENT_NAME = (
-    resolve_runtime_agent_name("cloudflare_agent") or "autoyou_cloudflare_agent"
-)
-_IONOS_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("ionos_agent") or "autoyou_ionos_agent"
-_IONOS_CLOUDFLARE_RUNTIME_AGENT_NAME = (
-    resolve_runtime_agent_name("ionos_cloudflare_agent") or "autoyou_ionos_cloudflare_agent"
-)
-_MAIL_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("mail_agent") or "autoyou_mail_agent"
 _CODEX_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("codex_desktop_agent") or "codex_desktop_agent"
 _CODING_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("coding_agent") or "autoyou_coding_agent"
 _DATA_COLLECTOR_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("data_collector_agent") or "autoyou_data_collector_agent"
@@ -1226,35 +1216,6 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "cli",
         "terminal",
         "shell",
-    ),
-    _CLOUDFLARE_RUNTIME_AGENT_NAME: (
-        "cloudflare agent",
-        "cloudflare_agent",
-        "cloudflare tunnel agent",
-        "cloudflare tunnel",
-        "cloudflared agent",
-    ),
-    _IONOS_CLOUDFLARE_RUNTIME_AGENT_NAME: (
-        "ionos cloudflare agent",
-        "ionos_cloudflare_agent",
-        "ionos cloudflare handoff",
-        "ionos dns handoff",
-        "ionos to cloudflare",
-    ),
-    _IONOS_RUNTIME_AGENT_NAME: (
-        "ionos agent",
-        "ionos_agent",
-        "ionos hosting agent",
-        "ionos hosting",
-        "ionos sftp",
-    ),
-    _MAIL_RUNTIME_AGENT_NAME: (
-        "mail agent",
-        "mail_agent",
-        "email agent",
-        "domain email",
-        "email hosting",
-        "mail hosting",
     ),
     resolve_runtime_agent_name("notify_agent") or "autoyou_notify_agent": (
         "notify agent",
@@ -1529,12 +1490,6 @@ except Exception as _import_err:
     _create_cli_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.cloudflare_agent.agent import create_cloudflare_agent as _create_cloudflare_agent
-except Exception as _import_err:
-    logger.warning("cloudflare_agent static import failed: %s", _import_err)
-    _create_cloudflare_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.codex_desktop_agent.agent import create_codex_desktop_agent as _create_codex_desktop_agent
 except Exception as _import_err:
     logger.warning("codex_desktop_agent static import failed: %s", _import_err)
@@ -1589,34 +1544,16 @@ except Exception as _import_err:
     _create_internet_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.ionos_agent.agent import create_ionos_agent as _create_ionos_agent
-except Exception as _import_err:
-    logger.warning("ionos_agent static import failed: %s", _import_err)
-    _create_ionos_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.game_agent.agent import create_game_agent as _create_game_agent
 except Exception as _import_err:
     logger.warning("game_agent static import failed: %s", _import_err)
     _create_game_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.ionos_cloudflare_agent.agent import create_ionos_cloudflare_agent as _create_ionos_cloudflare_agent
-except Exception as _import_err:
-    logger.warning("ionos_cloudflare_agent static import failed: %s", _import_err)
-    _create_ionos_cloudflare_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.location_agent.agent import create_location_agent as _create_location_agent
 except Exception as _import_err:
     logger.warning("location_agent static import failed: %s", _import_err)
     _create_location_agent = None  # type: ignore[assignment]
-
-try:
-    from autoyou_agents.mail_agent.agent import create_mail_agent as _create_mail_agent
-except Exception as _import_err:
-    logger.warning("mail_agent static import failed: %s", _import_err)
-    _create_mail_agent = None  # type: ignore[assignment]
 
 try:
     from autoyou_agents.memory_agent.agent import create_memory_agent as _create_memory_agent
@@ -1731,7 +1668,6 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "claude_cli_agent": _create_claude_cli_agent,
     "claude_desktop_agent": _create_claude_desktop_agent,
     "cli_agent": _create_cli_agent,
-    "cloudflare_agent": _create_cloudflare_agent,
     "codex_desktop_agent": _create_codex_desktop_agent,
     "coding_agent": _create_coding_agent,
     "data_collector_agent": _create_data_collector_agent,
@@ -1742,11 +1678,8 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "fine_tuning_agent": _create_fine_tuning_agent,
     "game_agent": _create_game_agent,
     "hosting_agent": _create_hosting_agent,
-    "ionos_agent": _create_ionos_agent,
-    "ionos_cloudflare_agent": _create_ionos_cloudflare_agent,
     "internet_agent": _create_internet_agent,
     "location_agent": _create_location_agent,
-    "mail_agent": _create_mail_agent,
     "memory_agent": _create_memory_agent,
     "model_picker_agent": _create_model_picker_agent,
     "notes_agent": _create_notes_agent,
@@ -1818,6 +1751,47 @@ def _load_agent_ingest_callable(agent_name: str):
         logger.warning("%s media ingest import failed: %s", agent_name, exc)
         return None
     return getattr(module, "ingest_attachments", None)
+
+# ── Overlay agent packages ────────────────────────────────────────────────────
+# An installed agent that is not built in (one a checkout holding this
+# repository adds, one a build bundled beside the built-ins, or one scaffolded
+# at runtime) describes its own routing in its prompt module, beside AGENT_NAME
+# and AGENT_DESCRIPTION:
+#   ROUTING_LABEL  its name in the root prompt's list of agents
+#   ROUTING_RULE   when to call it; the root prompt adds ": call `<AGENT_NAME>`."
+#   ROUTE_ALIASES  names that steer to it directly, as in "use <alias> to ..."
+_OVERLAY_AGENT_ROUTING: Dict[str, Dict[str, str]] = {}
+
+
+def _register_overlay_agent_package(agent_name: str) -> None:
+    """Take an overlay agent's runtime name, aliases and prompt lines from its package."""
+    install_name = normalize_agent_package_name(agent_name)
+    if not install_name or install_name in BUILTIN_AGENT_PACKAGE_NAMES or install_name in _OVERLAY_AGENT_ROUTING:
+        return
+    if is_compiled() and not is_builtin_agent_name(install_name):
+        return
+    try:
+        importlib.invalidate_caches()
+        prompt_module = importlib.import_module(f"autoyou_agents.{install_name}.prompt")
+    except Exception as exc:
+        logger.debug("%s has no readable prompt module: %s", install_name, exc)
+        return
+
+    register_runtime_agent_name(install_name, getattr(prompt_module, "AGENT_NAME", ""))
+    runtime_name = resolve_runtime_agent_name(install_name) or install_name
+    _RUNTIME_TO_INSTALL_NAME.setdefault(runtime_name, install_name)
+    raw_aliases = getattr(prompt_module, "ROUTE_ALIASES", ())
+    if isinstance(raw_aliases, str):
+        raw_aliases = (raw_aliases,)
+    aliases = tuple(
+        alias.strip() for alias in raw_aliases or () if isinstance(alias, str) and alias.strip()
+    )
+    if aliases and runtime_name not in _EXPLICIT_ROUTE_ALIASES:
+        _EXPLICIT_ROUTE_ALIASES[runtime_name] = aliases
+    _OVERLAY_AGENT_ROUTING[install_name] = {
+        "label": str(getattr(prompt_module, "ROUTING_LABEL", "") or "").strip(),
+        "rule": str(getattr(prompt_module, "ROUTING_RULE", "") or "").strip(),
+    }
 
 def _prompt_agent_tokens_for_filtering(text: str) -> set[str]:
     tokens = set()
@@ -1904,8 +1878,9 @@ def _build_registry_defined_agent_sections(
         if not runtime_name:
             continue
 
+        overlay = _OVERLAY_AGENT_ROUTING.get(normalize_agent_package_name(agent_name), {})
         entry = registry_agents.get(agent_name, {}) or {}
-        description = str(entry.get("description") or "").strip()
+        description = overlay.get("rule") or str(entry.get("description") or "").strip()
         if not description:
             try:
                 prompt_module = importlib.import_module(f"autoyou_agents.{agent_name}.prompt")
@@ -1914,9 +1889,8 @@ def _build_registry_defined_agent_sections(
                 description = ""
 
         if runtime_name not in known_sub_agent_tokens:
-            sub_agent_lines.append(
-                f"- {format_agent_display_name(runtime_name)}: `{runtime_name}`"
-            )
+            label = overlay.get("label") or format_agent_display_name(runtime_name)
+            sub_agent_lines.append(f"- {label}: `{runtime_name}`")
         if description and runtime_name not in known_routing_tokens:
             cleaned_description = description.rstrip(" .")
             routing_lines.append(f"- {cleaned_description}: call `{runtime_name}`.")
@@ -4881,6 +4855,7 @@ def initialize_root_agent():
         )
 
         def _safe_create(agent_name: str):
+            _register_overlay_agent_package(agent_name)
             try:
                 factory = _load_agent_factory(agent_name)
                 if factory is None:

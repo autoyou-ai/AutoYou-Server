@@ -133,7 +133,10 @@ def register_routes(
 
                 if agent_name == "admin_agent":
                     server._register_admin_frontend_proxy()
-                elif agent_name in server.MANAGED_FRONTEND_APPS:
+                elif (
+                    agent_name in server.MANAGED_FRONTEND_APPS
+                    or agent_name in server._managed_frontend_runtime_specs()
+                ):
                     await server.sync_managed_frontend_backends()
 
             result = server._build_agent_builder_listing_payload()
