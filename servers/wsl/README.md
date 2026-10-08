@@ -49,6 +49,15 @@ For local operation:
 ./servers/wsl/artifacts/backend/AutoYouServer/AutoYou --host 127.0.0.1 --admin 8001 --ai-agent 8081 --auth 8002
 ```
 
+### Network hosting (WSL / Docker virtual IP)
+
+When running inside WSL2 or a Docker container and reaching the server from Windows or other devices via IP (e.g. `172.x.x.x`):
+
+1. **Bind to network & HTTPS**:
+   Start with `--host 0.0.0.0` (or `AUTOYOU_BIND_HOST=0.0.0.0`) and HTTPS enabled (`AUTOYOU_HTTPS_ENABLED=1`, port 8443 by default). Connect over `https://<ip>:8443/`. (Plain HTTP from non-loopback IPs is refused for admin sign-in). Alternatively, reverse-proxy TLS with `AUTOYOU_TRUSTED_HTTPS_PROXY=1`.
+2. **Network admin permissions**:
+   Set `AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1` (or click **Allow network admin permissions next boot** in the Admin UI Overview). This allows authenticated admins connecting over the virtual container/WSL IP to manage hardware, video, and audio capture permissions. Public internet IPs and public tunnels remain blocked from modifying permissions.
+
 Set a unique administration password and review access settings before enabling
 remote connections. WSL does not directly control the Windows Bluetooth radio.
 The optional `scripts/bluetooth_pair_host_bridge.py` helper runs separately on
