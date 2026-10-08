@@ -2707,6 +2707,14 @@ install_node_service_deps() {
 
 install_tunnelmole_runtime() {
     local runtime_root="$1"
+    local bundle_root="${runtime_root%/runtime/tunnelmole}"
+
+    if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" \
+            && -x "$bundle_root/runtime/node/bin/node" \
+            && -d "$bundle_root/node/tunnelmole/node_modules/tunnelmole" ]]; then
+        log "Skipping the standalone Tunnelmole fallback; the v2 bundle has its pinned Node client."
+        return 0
+    fi
 
     log "Preparing tunnelmole runtime..."
     mkdir -p "$runtime_root"

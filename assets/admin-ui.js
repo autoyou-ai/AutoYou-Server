@@ -3307,6 +3307,7 @@
                 ai_audio_replies_enabled: asBoolean(getByPath(cfg, "video_call.ai_audio_replies_enabled", true), true),
                 background_mode_enabled: asBoolean(getByPath(cfg, "video_call.background_mode_enabled", false), false),
                 silent_recording_enabled: asBoolean(getByPath(cfg, "video_call.silent_recording_enabled", false), false),
+                record_audio_only_calls: asBoolean(getByPath(cfg, "video_call.record_audio_only_calls", false), false),
                 location_recording_enabled: asBoolean(getByPath(cfg, "video_call.location_recording_enabled", false), false),
                 wuift_enabled: asBoolean(getByPath(cfg, "video_call.wuift_enabled", true), true),
                 silent_recording_dir: getByPath(cfg, "video_call.silent_recording_dir", ""),
@@ -7438,12 +7439,13 @@
             + checkbox("videoCall.ai_audio_replies_enabled", "Play spoken AI replies in calls", "Allows AI voice replies to play into active calls.")
             + checkbox("videoCall.disable_autoyou_agents", "Disable AutoYou Agents for call audio", "When enabled, call audio is not transcribed or sent to AI agents.")
             + checkbox("speech.voice_training_capture_enabled", "Record voice calls", "Saves voice-call audio samples and transcripts in the Voice Training folder.")
+            + checkbox("videoCall.record_audio_only_calls", "Record audio-only calls", "Saves received call audio as WAV whenever it is not muxed into a recorded MP4. Call transcripts and WUIFT turn handling continue independently.")
             + checkbox("videoCall.background_mode_enabled", "Allow phone background mode", "Keeps paired phones connected in the background; the phone microphone remains off unless a call or safety recording is active.")
             + checkbox("videoCall.silent_recording_enabled", "Allow safety recording", "Allows a paired phone to send microphone audio for local recording without transcription or AI processing.")
             + checkbox("videoCall.location_recording_enabled", "Allow device location recording", "Accepts new location samples from a connected device that also enabled location sharing and granted its OS permission.")
             + checkbox("videoCall.wuift_enabled", "Allow Wait Until I Finish Talking", "Lets callers hold transcription across pauses before sending a turn.")
             + "<div class=\"ayu-inline-actions\">" + button("Save audio permissions", "save-permissions-audio", "primary", "save") + "</div>";
-        var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "Saves the connected phone's camera frames on this computer.")
+        var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "When the format is Video file, saves the connected phone's camera and available call audio together in an MP4 on this computer.")
             + checkbox("videoCall.remote_desktop.enabled", "Allow screen capture", "Authorizes native capture of this computer's display.")
             + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Includes the selected monitor in active video calls.")
             + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
@@ -7915,6 +7917,7 @@
             { label: "Video enabled", value: yesNo(getByPath(videoCaps, "enabled", false)) },
             { label: "Receives phone camera", value: yesNo(getByPath(videoCaps, "receive_enabled", false)) },
             { label: "Records received video", value: yesNo(getByPath(videoCaps, "record_my_video", false)) },
+            { label: "Audio-only call recording", value: yesNo(getByPath(audioCaps, "audio_only_call_recording.enabled", false)) },
             { label: "Recording mode", value: getByPath(videoCaps, "recording_mode", "video") },
             { label: "Recording format", value: getByPath(videoCaps, "recording_format", "jpeg_frames") },
             { label: "Image interval", value: String(getByPath(videoCaps, "image_interval_seconds", getByPath(state.forms, "videoCall.image_interval_seconds", 5))) + "s" },
@@ -8947,7 +8950,7 @@
         var payload = JSON.parse(JSON.stringify(source || {}));
         [
             "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
-            "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+            "background_mode_enabled", "silent_recording_enabled", "record_audio_only_calls", "location_recording_enabled",
             "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
             "outbound_sources", "outbound_source", "audio_microphone", "audio_speaker_loopback",
             "outbound_remote_desktop", "outbound_api", "outbound_video_file", "outbound_camera"
@@ -8972,6 +8975,7 @@
             voice_call_recording_enabled: "speech.voice_training_capture_enabled",
             background_mode_enabled: "videoCall.background_mode_enabled",
             safety_recording_enabled: "videoCall.silent_recording_enabled",
+            audio_only_call_recording_enabled: "videoCall.record_audio_only_calls",
             location_recording_enabled: "videoCall.location_recording_enabled",
             wuift_enabled: "videoCall.wuift_enabled",
             video_call_recording_enabled: "videoCall.record_my_video",
@@ -10846,6 +10850,7 @@
             "videoCall.outbound_api",
             "videoCall.outbound_video_file",
             "videoCall.record_my_video",
+            "videoCall.record_audio_only_calls",
             "videoCall.recording_mode",
             "videoCall.silent_recording_enabled",
             "videoCall.remote_desktop.enabled",

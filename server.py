@@ -4697,6 +4697,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
         "disable_autoyou_agents": _normalize_partner_enabled_flag(raw_cfg.get("disable_autoyou_agents"), False),
         "ai_audio_replies_enabled": _normalize_partner_enabled_flag(raw_cfg.get("ai_audio_replies_enabled"), True),
         "record_my_video": _normalize_partner_enabled_flag(raw_cfg.get("record_my_video"), False),
+        "record_audio_only_calls": _normalize_partner_enabled_flag(raw_cfg.get("record_audio_only_calls"), False),
         "recording_dir": str(raw_cfg.get("recording_dir") or "").strip(),
         "recording_mode": normalize_inbound_video_recording_mode(raw_cfg.get("recording_mode"), "video"),
         "image_interval_seconds": normalize_inbound_video_image_interval_seconds(
@@ -5745,6 +5746,7 @@ def _default_config() -> Dict[str, Any]:
             "disable_autoyou_agents": False,
             "ai_audio_replies_enabled": True,
             "record_my_video": False,
+            "record_audio_only_calls": False,
             "recording_dir": "",
             "recording_mode": "video",
             "image_interval_seconds": DEFAULT_INBOUND_VIDEO_IMAGE_INTERVAL_SECONDS,
@@ -9584,6 +9586,15 @@ def _get_silent_recording_enabled(
         and _get_video_call_config(cfg=cfg).get("silent_recording_enabled", False)
     )
 
+def _get_audio_only_call_recording_enabled(
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+) -> bool:
+    return bool(
+        _get_video_call_audio_enabled(cfg=cfg)
+        and _get_video_call_config(cfg=cfg).get("record_audio_only_calls", False)
+    )
+
 def _get_location_recording_enabled(*, cfg: Optional[Dict[str, Any]] = None) -> bool:
     return bool(_get_video_call_config(cfg=cfg).get("location_recording_enabled", False))
 
@@ -9697,6 +9708,7 @@ _ADMIN_PERMISSION_BOOLEAN_FIELDS = frozenset({
     "audio_playback_enabled",
     "ai_audio_replies_enabled", "autoyou_agents_disabled", "voice_call_recording_enabled",
     "background_mode_enabled", "safety_recording_enabled", "location_recording_enabled",
+    "audio_only_call_recording_enabled",
     "wuift_enabled", "video_call_recording_enabled", "webcam_sharing_enabled",
     "screen_capture_enabled", "screen_send_enabled", "screen_source_enabled",
     "api_video_input_enabled", "video_file_playback_enabled",
@@ -9733,6 +9745,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "voice_call_recording_enabled": bool(voice_training.get("capture_enabled", False)),
         "background_mode_enabled": bool(video_cfg.get("background_mode_enabled", False)),
         "safety_recording_enabled": bool(video_cfg.get("silent_recording_enabled", False)),
+        "audio_only_call_recording_enabled": bool(video_cfg.get("record_audio_only_calls", False)),
         "location_recording_enabled": bool(video_cfg.get("location_recording_enabled", False)),
         "wuift_enabled": bool(video_cfg.get("wuift_enabled", True)),
         "video_call_recording_enabled": bool(video_cfg.get("record_my_video", False)),
@@ -9783,6 +9796,7 @@ async def _save_admin_permissions(changes: Any) -> Dict[str, Any]:
         "autoyou_agents_disabled": "disable_autoyou_agents",
         "background_mode_enabled": "background_mode_enabled",
         "safety_recording_enabled": "silent_recording_enabled",
+        "audio_only_call_recording_enabled": "record_audio_only_calls",
         "location_recording_enabled": "location_recording_enabled",
         "wuift_enabled": "wuift_enabled",
         "video_call_recording_enabled": "record_my_video",
@@ -9882,7 +9896,7 @@ def _permission_config_change_error(request: Request, payload: Any) -> Optional[
     agent_frontends_patch = payload.get("agent_frontends")
     video_permission_fields = {
         "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
-        "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+        "background_mode_enabled", "silent_recording_enabled", "record_audio_only_calls", "location_recording_enabled",
         "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
         "outbound_sources", "outbound_source",
     }
@@ -10382,6 +10396,7 @@ def _build_webrtc_capabilities(
     agent_processing_enabled = _get_video_call_agent_processing_enabled(cfg=effective_cfg)
     background_mode_enabled = _get_background_mode_enabled(cfg=effective_cfg)
     silent_recording_enabled = _get_silent_recording_enabled(cfg=effective_cfg)
+    audio_only_call_recording_enabled = _get_audio_only_call_recording_enabled(cfg=effective_cfg)
     wuift_enabled = _get_wuift_enabled(cfg=effective_cfg)
     silent_recording_batch_seconds = _get_silent_recording_batch_seconds(cfg=effective_cfg)
     recording_enabled = _get_video_record_my_video_enabled(cfg=effective_cfg)
@@ -10637,6 +10652,11 @@ def _build_webrtc_capabilities(
             "server_audio_direction": "recvonly",
             "server_audio_output": "record_only",
         },
+        "audio_only_call_recording": {
+            "enabled": audio_only_call_recording_enabled,
+            "available": bool(audio_enabled and AudioTrackSink is not None and StreamingWavBatchRecorder is not None),
+            "format": "wav_pcm_s16_mono_16000hz",
+        },
         "wuift": {
             "enabled": wuift_enabled,
             "available": bool(audio_enabled and AudioManager is not None and agent_processing_enabled),
@@ -10658,6 +10678,9 @@ def _build_webrtc_capabilities(
         silent_recording_payload = cast(Dict[str, Any], audio_payload["silent_recording"])
         silent_recording_payload["configured"] = silent_recording_enabled
         silent_recording_payload["recording_dir"] = _resolve_silent_recording_dir(cfg=effective_cfg)
+        audio_only_payload = cast(Dict[str, Any], audio_payload["audio_only_call_recording"])
+        audio_only_payload["configured"] = audio_only_call_recording_enabled
+        audio_only_payload["recording_dir"] = str(Path(_resolve_video_recording_dir(cfg=effective_cfg)) / "audio-only")
 
     return {
         "host_platform": get_platform(),
@@ -13650,6 +13673,8 @@ def _apply_admin_ui_config_patch(
             video_cfg["background_mode_enabled"] = _coerce_enabled_flag(video_call_payload.get("background_mode_enabled"))
         if "silent_recording_enabled" in video_call_payload:
             video_cfg["silent_recording_enabled"] = _coerce_enabled_flag(video_call_payload.get("silent_recording_enabled"))
+        if "record_audio_only_calls" in video_call_payload:
+            video_cfg["record_audio_only_calls"] = _coerce_enabled_flag(video_call_payload.get("record_audio_only_calls"))
         if "location_recording_enabled" in video_call_payload:
             video_cfg["location_recording_enabled"] = _coerce_enabled_flag(video_call_payload.get("location_recording_enabled"))
         if "wuift_enabled" in video_call_payload:
