@@ -55,15 +55,15 @@ def build(theme: str) -> str:
         for i, line in enumerate(lines):
             text(x + 18, ty + 22 + i * 18, line, 13, 400, c["muted"])
 
-    def chip(x, y, w, h, title, sub, accent, bg, dashed=False):
+    def chip(x, y, w, h, title, sub, accent, bg, dashed=False, title_size=14.5, sub_size=12.5, pad_x=14):
         dash = ' stroke-dasharray="5 4"' if dashed else ""
         add(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="11" fill="{bg}" stroke="{accent}" stroke-width="1.3"{dash}/>')
-        text(x + 14, y + 24, title, 14.5, 650, c["ink"])
+        text(x + pad_x, y + 24, title, title_size, 650, c["ink"])
         if sub:
             if isinstance(sub, str):
                 sub = [sub]
             for i, s in enumerate(sub):
-                text(x + 14, y + 43 + i * 17, s, 12.5, 400, c["muted"])
+                text(x + pad_x, y + 43 + i * 17, s, sub_size, 400, c["muted"])
 
     def badge(x, y, w, label):
         add(f'<rect x="{x}" y="{y}" width="{w}" height="24" rx="12" fill="{c["orange_bg"]}" stroke="{c["orange"]}" '
@@ -75,8 +75,9 @@ def build(theme: str) -> str:
     add('<title id="t">AutoYou architecture</title>')
     add('<desc id="d">Your phone, laptop and browser connect to the AutoYou Server on your own computer over an '
         'end-to-end encrypted WebRTC link. Telegram, Signal or WhatsApp carry the encrypted Auto-Pair message. '
-        'The server runs a Google ADK agent harness with AutoYou agents, OpenClaw and Hermes Agent, with Agent '
-        'Apps, local voice, memory and models through LiteLLM to Ollama or optional cloud providers.</desc>')
+        'The server connects different agent harnesses—Google ADK runs the native AutoYou agents, alongside bridged '
+        'harnesses for OpenClaw, Hermes Agent, and Odysseus, with Agent Apps, local voice, memory and models through '
+        'LiteLLM to Ollama or optional cloud providers.</desc>')
     add('<defs>'
         f'<filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="{c["shadow"]}"/></filter>'
         f'<marker id="arr" viewBox="0 0 10 10" refX="7" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="{c["teal"]}"/></marker>'
@@ -123,10 +124,11 @@ def build(theme: str) -> str:
 
     # harness
     add(f'<rect x="808" y="84" width="428" height="200" rx="16" fill="{c["card"]}" stroke="{c["green"]}" stroke-width="1.6" filter="url(#shadow)"/>')
-    text(828, 114, "Agent harness · Google ADK", 17, 750)
+    text(828, 114, "Agent harnesses · Google ADK & bridged", 17, 750)
     chip(828, 132, 388, 56, "AutoYou agents", "Notes · Page · Browser · Files · Coding · and more", c["green"], c["green_bg"])
-    chip(828, 202, 186, 62, "OpenClaw", "bridged agent", c["orange"], c["orange_bg"], dashed=True)
-    chip(1030, 202, 186, 62, "Hermes Agent", "bridged agent", c["orange"], c["orange_bg"], dashed=True)
+    chip(828, 202, 122, 62, "OpenClaw", "bridged agent", c["orange"], c["orange_bg"], dashed=True, title_size=13.5, sub_size=11.5, pad_x=12)
+    chip(958, 202, 128, 62, "Hermes Agent", "bridged agent", c["orange"], c["orange_bg"], dashed=True, title_size=13, sub_size=11.5, pad_x=12)
+    chip(1094, 202, 122, 62, "Odysseus", "bridged agent", c["orange"], c["orange_bg"], dashed=True, title_size=13.5, sub_size=11.5, pad_x=12)
 
     # services 2x2
     card(808, 304, 206, 90, "Agent Apps", ["Web apps your agents build"], c["green"])
@@ -148,12 +150,31 @@ def build(theme: str) -> str:
     return "\n".join(out)
 
 
+def render_pngs(out_dir: Path):
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            for theme in ("light", "dark"):
+                svg_path = (out_dir / f"architecture-{theme}.svg").resolve()
+                png_path = (out_dir / f"architecture-{theme}.png").resolve()
+                page = browser.new_page(viewport={"width": W, "height": H}, device_scale_factor=2)
+                page.goto(svg_path.as_uri())
+                page.screenshot(path=str(png_path))
+                page.close()
+            browser.close()
+            print("rendered PNGs", [f"architecture-{t}.png" for t in ("light", "dark")])
+    except Exception as exc:
+        print(f"PNG rendering skipped: {exc}")
+
+
 def main():
     out_dir = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     out_dir.mkdir(parents=True, exist_ok=True)
     for theme in ("light", "dark"):
         (out_dir / f"architecture-{theme}.svg").write_text(build(theme), encoding="utf-8")
     print("wrote", [p.name for p in sorted(out_dir.glob("architecture-*.svg"))])
+    render_pngs(out_dir)
 
 
 if __name__ == "__main__":
