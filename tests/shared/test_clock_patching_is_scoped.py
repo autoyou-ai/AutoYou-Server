@@ -49,11 +49,7 @@ __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-f8b3bd0ab22c9a890d23016f"
 pytestmark = pytest.mark.server
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-TEST_ROOTS = (
-    REPO_ROOT / "tests",
-    REPO_ROOT / "clients" / "python" / "tests",
-    REPO_ROOT / "autoyou_lite" / "tests",
-)
+TEST_ROOTS = (REPO_ROOT / "tests",)
 
 #: `setattr(<anything>.time, "<clock>", ...)` - a patch that lands on the shared
 #: module rather than on the module under test.

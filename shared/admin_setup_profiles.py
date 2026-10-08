@@ -21,6 +21,8 @@ import copy
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
+from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PACKAGE_NAMES
+
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-57cd4e2229006978759f1fca"
 
 
@@ -31,19 +33,10 @@ PAIR_CODE_MODE_RANDOM_OTP = "random_otp"
 # from __debug_provenance_n__ import license
 CONNECTION_MODE_TIMED = "timed"
 
-# Source-only agents held out of packaged-release setup suggestions. Runtime
-# availability is enforced by agent_install_registry.PRIVATE_AGENT_PACKAGE_NAMES.
-RELEASE_EXCLUDED_AGENTS = frozenset(
-    {
-        "cloudflare_agent",
-        "ionos_agent",
-        "ionos_cloudflare_agent",
-        "mail_agent",
-        "robinhood_agent",
-        "trading_agent",
-    }
-)
-
+# Packaged-release setup suggests only the agents this repository ships. Any
+# other agent (one a checkout holding this repository adds, or one scaffolded at
+# runtime) is listed but not suggested; the compiled runtime separately refuses
+# to load one its build did not bundle.
 RELEASE_REVIEW_REQUIRED_AGENTS = frozenset()
 
 KNOWN_AGENT_LABELS: Dict[str, str] = {
@@ -496,7 +489,7 @@ def classify_agent(name: str) -> Dict[str, Any]:
     normalized = _normalize_agent_name(name)
     release_state = "release_ready"
     rationale = "Suggested by default."
-    if normalized in RELEASE_EXCLUDED_AGENTS:
+    if normalized not in BUILTIN_AGENT_PACKAGE_NAMES:
         release_state = "excluded_from_release"
         rationale = "Not suggested by default."
     elif normalized in RELEASE_REVIEW_REQUIRED_AGENTS:
@@ -527,9 +520,9 @@ def build_agent_release_catalog(
         "excluded_from_release": excluded,
         "policy": {
             "default_visibility": "release_ready",
-            "excluded_agent_names": sorted(RELEASE_EXCLUDED_AGENTS),
+            "excluded_agent_names": sorted(agent["name"] for agent in excluded),
             "review_required_agent_names": sorted(RELEASE_REVIEW_REQUIRED_AGENTS),
-            "note": "Source-only private agents are not suggested in packaged releases.",
+            "note": "Only built-in agents are suggested in packaged releases.",
         },
     }
 
@@ -759,6 +752,7 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
         safe_patch.setdefault("video_call", {}).update(
             {
                 "record_my_video": False,
+                "record_audio_only_calls": False,
                 "silent_recording_enabled": False,
                 "background_mode_enabled": False,
                 "capture_audio": False,

@@ -15,6 +15,8 @@
     cryptoSection: document.getElementById("crypto-section"),
     cryptoList: document.getElementById("crypto-list"),
     cryptoPending: document.getElementById("crypto-pending"),
+    cryptoPicker: document.getElementById("crypto-route-picker"),
+    cryptoXrpReminder: document.getElementById("crypto-xrp-reminder"),
     cryptoRouteSelect: document.getElementById("crypto-route-select"),
     cryptoRoutePreview: document.getElementById("crypto-route-preview"),
     cryptoRouteQr: document.getElementById("crypto-route-qr"),
@@ -199,13 +201,24 @@
     });
   }
 
-  function renderCrypto(entries) {
+  function renderCrypto(entries, hostedEntries) {
     var configured = entries.filter(function (item) { return item.configured && item.address; });
-    if (!configured.length) {
+    var hosted = hostedEntries.filter(function (item) {
+      if (!item || item.status !== "active" || !item.asset_symbol || !item.network) { return false; }
+      try {
+        var url = new URL(String(item.public_url || ""));
+        return url.protocol === "https:" && !!url.hostname && !url.username && !url.password && !url.search && !url.hash;
+      } catch (_error) {
+        return false;
+      }
+    });
+    if (!configured.length && !hosted.length) {
       els.cryptoPending.hidden = false;
       return;
     }
     cryptoRoutes = configured;
+    if (els.cryptoPicker) { els.cryptoPicker.hidden = !configured.length; }
+    if (els.cryptoXrpReminder) { els.cryptoXrpReminder.hidden = !configured.length; }
     if (els.cryptoRouteSelect) {
       els.cryptoRouteSelect.replaceChildren.apply(els.cryptoRouteSelect, configured.map(function (item, index) {
         var option = document.createElement("option");
@@ -215,7 +228,7 @@
       }));
       els.cryptoRouteSelect.onchange = function () { selectCryptoRoute(Number(els.cryptoRouteSelect.value)); };
     }
-    els.cryptoList.innerHTML = configured
+    var addressCards = configured
       .map(function (item, index) {
         var accent = normalizeAccent(item.accent);
         var tokens = (item.tokens || [])
@@ -248,6 +261,25 @@
         );
       })
       .join("");
+    var hostedCards = hosted
+      .map(function (item) {
+        var checkoutUrl = new URL(String(item.public_url));
+        return (
+          '<article class="crypto-card crypto-hosted-card">' +
+          '<div class="crypto-head">' +
+          '<span class="coin-badge">' + esc(String(item.asset_symbol).slice(0, 4)) + "</span>" +
+          "<div><h3>" + esc(item.label || "Hosted crypto checkout") + '</h3><span class="net">' +
+          esc(item.asset_symbol) + " · " + esc(item.network) + "</span></div>" +
+          "</div>" +
+          '<p class="crypto-note">Hosted checkout by ' + esc(item.provider || "the payment provider") +
+          ". Complete payment on the provider's secure page.</p>" +
+          '<a class="btn btn-primary crypto-hosted-checkout" href="' + esc(checkoutUrl.href) +
+          '" target="_blank" rel="noopener noreferrer">Open hosted checkout</a>' +
+          "</article>"
+        );
+      })
+      .join("");
+    els.cryptoList.innerHTML = addressCards + hostedCards;
     if (els.cryptoRouteQr) {
       els.cryptoRouteQr.onload = function () {
         els.cryptoRouteQr.hidden = false;
@@ -304,7 +336,7 @@
     shareState.message = links.share_message || "";
     shareState.url = links.share_url || "";
     renderProviders(links.providers || []);
-    renderCrypto(links.crypto || []);
+    renderCrypto(links.crypto || [], links.hosted_crypto_routes || []);
     renderSocials(links.socials || []);
     renderFooter(links);
   }

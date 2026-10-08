@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from autoyou_agents.shared_tools.conversation_refs import title_from_content
 from shared.secure_storage import (
     FILE_HEADER as SPM_FILE_HEADER,
     SecureStorageError,
@@ -780,8 +781,7 @@ class NotesTool:
         Returns:
             Dict with `success`, and `note_id` when successful.
         """
-        if not title:
-            return {"success": False, "error": "title is required"}
+        title = str(title or "").strip() or title_from_content(content) or "Untitled note"
         try:
             tags_json = json.dumps(tags or [])
             meta_json = json.dumps(metadata or {})
@@ -796,7 +796,7 @@ class NotesTool:
                     (title, content, tags_json, category, meta_json, now, now),
                 )
                 note_id = cur.lastrowid
-            return {"success": True, "note_id": int(note_id)}
+            return {"success": True, "note_id": int(note_id), "title": title}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 

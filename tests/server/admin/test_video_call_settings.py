@@ -107,6 +107,7 @@ def test_admin_config_patch_persists_video_call_settings():
                 "disable_autoyou_agents": True,
                 "ai_audio_replies_enabled": False,
                 "record_my_video": True,
+                "record_audio_only_calls": True,
                 "recording_dir": "C:/AutoYou/test-video",
                 "recording_mode": "images",
                 "image_interval_seconds": 9,
@@ -140,6 +141,7 @@ def test_admin_config_patch_persists_video_call_settings():
     assert cfg["video_call"]["disable_autoyou_agents"] is True
     assert cfg["video_call"]["ai_audio_replies_enabled"] is False
     assert cfg["video_call"]["record_my_video"] is True
+    assert cfg["video_call"]["record_audio_only_calls"] is True
     assert cfg["video_call"]["recording_dir"] == "C:/AutoYou/test-video"
     assert cfg["video_call"]["recording_mode"] == "images"
     assert cfg["video_call"]["image_interval_seconds"] == 9
@@ -156,6 +158,64 @@ def test_admin_config_patch_persists_video_call_settings():
     assert cfg["video_call"]["remote_desktop"]["quality"] == "high"
     assert cfg["video_call"]["remote_desktop"]["bitrate_kbps"] == 3000
     assert cfg["video_call"]["remote_desktop"]["control_enabled"] is True
+
+
+def test_permissions_save_audio_only_call_recording(monkeypatch):
+    config = server._default_config()
+    monkeypatch.setattr(server.STATE, "config", config, raising=False)
+
+    async def apply_patch(patch):
+        updated, _touched, _theme = server._apply_admin_ui_config_patch(config, patch)
+        server.STATE.config = updated
+
+    monkeypatch.setattr(server, "_apply_admin_ui_config_update", apply_patch)
+    saved = asyncio.run(server._save_admin_permissions({"audio_only_call_recording_enabled": True}))
+
+    assert saved["audio_only_call_recording_enabled"] is True
+    assert server.STATE.config["video_call"]["record_audio_only_calls"] is True
+
+
+def test_audio_only_call_recording_writes_received_pcm(tmp_path, monkeypatch):
+    import wave
+
+    config = server._default_config()
+    config["video_call"]["record_audio_only_calls"] = True
+    config["video_call"]["recording_dir"] = str(tmp_path)
+    monkeypatch.setattr(server.STATE, "config", config, raising=False)
+    manager = server.WebRTCManager()
+    pcm = b"\x01\x00" * 320
+
+    manager._handle_inbound_voice_audio_chunk("synthetic-audio-session", None, pcm)
+    recorder = manager.audio_only_call_recorders["synthetic-audio-session"]
+    recorder.close()
+
+    wav_files = list((tmp_path / "audio-only").glob("autoyou-audio-only-call-*.wav"))
+    assert len(wav_files) == 1
+    with wave.open(str(wav_files[0]), "rb") as recorded:
+        assert recorded.getframerate() == 16000
+        assert recorded.getnchannels() == 1
+        assert recorded.getsampwidth() == 2
+        assert recorded.readframes(1) == pcm[:2]
+
+
+def test_video_call_audio_reaches_video_sink_without_voice_pipeline():
+    class RecordingSink:
+        def __init__(self):
+            self.chunks = []
+
+        def record_audio_chunk(self, chunk):
+            self.chunks.append(chunk)
+            return True
+
+    manager = server.WebRTCManager()
+    sink = RecordingSink()
+    manager.video_sinks["synthetic-video-session"] = sink
+    pcm = b"\x02\x00" * 320
+
+    manager._handle_inbound_voice_audio_chunk("synthetic-video-session", None, pcm)
+
+    assert sink.chunks == [pcm]
+    assert manager.audio_only_call_recorders == {}
 
 
 def test_admin_config_patch_persists_wuift_setting():
@@ -306,6 +366,7 @@ def test_remote_desktop_storage_tier_does_not_block_chat_capabilities(monkeypatc
 def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch, tmp_path):
     cfg = server._default_config()
     cfg["video_call"]["record_my_video"] = True
+    cfg["video_call"]["record_audio_only_calls"] = True
     cfg["video_call"]["recording_dir"] = str(tmp_path)
     cfg["video_call"]["recording_mode"] = "images"
     cfg["video_call"]["image_interval_seconds"] = 11
@@ -336,6 +397,8 @@ def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch
     assert capabilities["video"]["enabled"] is True
     assert capabilities["video"]["receive_enabled"] is True
     assert capabilities["video"]["record_my_video"] is True
+    assert capabilities["audio"]["audio_only_call_recording"]["enabled"] is True
+    assert capabilities["audio"]["audio_only_call_recording"]["recording_dir"] == str(tmp_path / "audio-only")
     assert capabilities["video"]["recording_dir"] == str(tmp_path)
     assert capabilities["video"]["recording_mode"] == "images"
     assert capabilities["video"]["recording_format"] == "jpeg_images"
@@ -1803,6 +1866,7 @@ def test_admin_ui_groups_capture_toggles_under_local_permissions():
     for control in (
         'checkbox("videoCall.enabled"', 'checkbox("videoCall.audio_enabled"',
         'checkbox("videoCall.audio_microphone"', 'checkbox("videoCall.record_my_video"',
+        'checkbox("videoCall.record_audio_only_calls"',
         'checkbox("videoCall.remote_desktop.send_screen"', 'checkbox("videoCall.outbound_remote_desktop"',
         'checkbox("speech.voice_training_capture_enabled"',
         'checkbox("aiAgent.record_messages_in_database"',

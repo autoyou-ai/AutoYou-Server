@@ -2124,6 +2124,15 @@ def _describe_chat_auth_state(request: Request, agent_name: str) -> Dict[str, An
     return {**settings, "required": True, "authenticated": False, "via": "none"}
 
 
+def _admin_ui_session_is_authenticated_for_open_http_monitor(request: Request) -> bool:
+    """Require the Admin UI session to manage monitor data on an open agent site.
+
+    This callback is only for the security-agent HTTP monitor controls. It does
+    not participate in agent website or chat authentication.
+    """
+    return bool(_runtime_server()._is_logged_in(request))
+
+
 def create_agent_chat_app(
     agent_name: str,
     title: str,

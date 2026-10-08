@@ -22,6 +22,7 @@ from autoyou_agents.shared_tools.agent_identity import (
     ROOT_AGENT_NAME,
     format_agent_display_name,
     is_root_agent_name,
+    register_runtime_agent_name,
     resolve_runtime_agent_name,
 )
 
@@ -61,8 +62,33 @@ def test_resolve_runtime_agent_name_normalizes_builtin_directory_names():
     assert resolve_runtime_agent_name("demo_agent") == "demo_agent"
 
 
-def test_legacy_streaming_agent_name_resolves_to_education_agent():
-    assert resolve_runtime_agent_name("streaming_agent") == "autoyou_education_agent"
+def test_an_overlay_package_declares_its_own_runtime_name(monkeypatch):
+    from autoyou_agents.shared_tools import agent_identity
+
+    monkeypatch.setattr(agent_identity, "_DECLARED_RUNTIME_AGENT_NAMES", {})
+    assert resolve_runtime_agent_name("lantern_agent") == "lantern_agent"
+
+    assert register_runtime_agent_name("lantern_agent", "autoyou_lantern_agent")
+    assert resolve_runtime_agent_name("lantern_agent") == "autoyou_lantern_agent"
+    assert resolve_runtime_agent_name("Lantern_Agent") == "autoyou_lantern_agent"
+
+    # Declaring the package's own name is accepted and maps nothing.
+    assert register_runtime_agent_name("lantern_agent", "lantern_agent")
+    assert resolve_runtime_agent_name("lantern_agent") == "lantern_agent"
+
+
+def test_an_overlay_package_cannot_take_a_builtin_or_root_name(monkeypatch):
+    from autoyou_agents.shared_tools import agent_identity
+
+    monkeypatch.setattr(agent_identity, "_DECLARED_RUNTIME_AGENT_NAMES", {})
+    assert not register_runtime_agent_name("notes_agent", "autoyou_lantern_agent")
+    assert not register_runtime_agent_name("lantern_agent", "autoyou_notes_agent")
+    assert not register_runtime_agent_name("lantern_agent", "notes_agent")
+    assert not register_runtime_agent_name("lantern_agent", "autoyou_agent")
+    assert not register_runtime_agent_name("lantern_agent", "../lantern")
+    assert not register_runtime_agent_name("lantern", "autoyou_lantern_agent")
+    assert resolve_runtime_agent_name("notes_agent") == "autoyou_notes_agent"
+    assert resolve_runtime_agent_name("lantern_agent") == "lantern_agent"
 
 
 def test_agent_identity_root_aliases_share_one_canonical_name():

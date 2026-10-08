@@ -46,6 +46,9 @@ node_modules/
 *.db-shm
 *.db-wal
 *.db.bak
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 *.log
 trae_agent.log
 corehost-trace.txt
@@ -115,6 +118,10 @@ autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 autoyou_agents/data_collector_agent/data_collector_agent/
 autoyou_agents/persona_agent/persona_agent/*.md
 autoyou_agents/media_generation_agent/config/video.json
+
+# Your own agents that stay out of this repository: copy (or link) agent
+# packages into autoyou_agents/private/ and the server loads them like any other.
+/autoyou_agents/private
 
 
 # User-calibrated desktop app data is never committed or shipped.

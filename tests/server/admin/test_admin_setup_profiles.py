@@ -38,12 +38,10 @@ def _agents_payload():
             {"agent_name": "claude_desktop_agent"},
             {"agent_name": "codex_desktop_agent"},
             {"agent_name": "education_agent"},
-            {"agent_name": "cloudflare_agent"},
-            {"agent_name": "ionos_agent"},
-            {"agent_name": "ionos_cloudflare_agent"},
-            {"agent_name": "mail_agent"},
-            {"agent_name": "robinhood_agent"},
-            {"agent_name": "trading_agent"},
+            # Agents this repository does not ship (an overlay checkout's, or
+            # scaffolded ones) are listed but never suggested for a release.
+            {"agent_name": "lantern_agent"},
+            {"agent_name": "beacon_agent"},
         ],
         "agent_details": {
             "website_agent": {},
@@ -59,14 +57,8 @@ def test_setup_profile_payload_suggests_every_agent_and_covers_broad_surface():
     review_required = {agent["name"] for agent in payload["agent_release"]["review_required"]}
     release_ready = {agent["name"] for agent in payload["agent_release"]["release_ready"]}
 
-    assert excluded == {
-        "cloudflare_agent",
-        "ionos_agent",
-        "ionos_cloudflare_agent",
-        "mail_agent",
-        "robinhood_agent",
-        "trading_agent",
-    }
+    assert excluded == {"lantern_agent", "beacon_agent"}
+    assert payload["agent_release"]["policy"]["excluded_agent_names"] == ["beacon_agent", "lantern_agent"]
     assert {
         "browser_agent",
         "claude_desktop_agent",
@@ -212,6 +204,7 @@ def test_safety_recording_recipe_is_explicit_and_incognito_can_turn_it_off():
     assert incognito_video["silent_recording_enabled"] is False
     assert incognito_video["background_mode_enabled"] is False
     assert incognito_video["record_my_video"] is False
+    assert incognito_video["record_audio_only_calls"] is False
     assert incognito_video["capture_audio"] is False
 
 

@@ -330,8 +330,6 @@ def test_full_mcp_admin_patch_preserves_blank_token_and_validates_settings() -> 
 def test_admin_mcp_setup_ui_generates_and_exports_matching_private_adapter_config() -> None:
     admin_ui = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
     source = admin_ui.read_text(encoding="utf-8")
-    launcher = Path(__file__).resolve().parents[4] / "scripts" / "start_autoyou_private_tunnel.ps1"
-    launcher_source = launcher.read_text(encoding="utf-8")
 
     assert 'button(actionLabel, "mcp-generate-token"' in source
     assert 'button("Download private adapter config", "mcp-download-config"' in source
@@ -345,11 +343,6 @@ def test_admin_mcp_setup_ui_generates_and_exports_matching_private_adapter_confi
     assert "CONTROL_PLANE_ORGANIZATION_ID" in source
     assert "not the project ID" in source
     assert "CONTROL_PLANE_API_KEY" in source
-    assert "CONTROL_PLANE_ORGANIZATION_ID" in launcher_source
-    assert "--control-plane.organization-id $OrganizationId" in launcher_source
-    assert "Read-Host" in launcher_source
-    assert "SecureStringToBSTR" in launcher_source
-    assert "$env:OPENAI_API_KEY" not in launcher_source
     assert "Real-time voice calls are not part of MCP" in source
     assert "mcp.autoyou.me" not in source
     assert "data-mcp-public-url" not in source

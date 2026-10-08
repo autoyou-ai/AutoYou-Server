@@ -40,9 +40,9 @@
     <section class="section reveal" id="crypto-section" hidden>
       <div class="section-head">
         <h2>Donate crypto</h2>
-        <p>Choose the exact asset and network below, then send from your own wallet. Never assume two networks are interchangeable.</p>
+        <p>Choose the published route below. For wallet addresses, verify the exact asset and network. Hosted checkouts open on the provider's page.</p>
       </div>
-      <div class="crypto-route-picker" data-crypto-picker>
+      <div id="crypto-route-picker" class="crypto-route-picker" data-crypto-picker>
         <div class="crypto-route-picker-controls">
           <p class="eyebrow">Choose a route</p>
           <label for="crypto-route-select">Asset and network</label>
@@ -79,7 +79,7 @@
         </article>
       </div>
       <div id="crypto-list" class="crypto-grid"></div>
-      <p class="fineprint"><strong>Ripple (XRP) reminder:</strong> include the memo shown on the XRP card. Verify the first and last characters, asset, and network before sending.</p>
+      <p id="crypto-xrp-reminder" class="fineprint"><strong>Ripple (XRP) reminder:</strong> include the memo shown on the XRP card. Verify the first and last characters, asset, and network before sending.</p>
       <p class="fineprint">AutoYou never asks for your seed phrase, private keys, or card details — in chat, by voice, or on this page.</p>
     </section>
 

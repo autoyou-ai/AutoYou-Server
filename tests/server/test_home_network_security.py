@@ -89,11 +89,12 @@ def test_home_network_status_in_path_proxy_mode_offers_only_the_admin_port(monke
     assert status["plain_http_exposed"] is False
     assert status["admin_urls"] == [f"https://{SYNTHETIC_LAN_ADDRESS}:18443/"]
     # Website apps live behind the same signed-in HTTPS origin.
-    assert status["websites_urls"] == [f"https://{SYNTHETIC_LAN_ADDRESS}:18443/websites"]
+    assert status["websites_urls"] == [f"https://{SYNTHETIC_LAN_ADDRESS}:18443/home-network/websites"]
     assert status["ca_certificate_path"] == "/ca.crt"
+    assert status["direct_websites"] is False
 
 
-def test_home_network_status_with_the_websites_port_open_prefers_its_https_mirror(monkeypatch):
+def test_home_network_status_with_the_websites_port_open_sends_browsers_through_the_sign_in(monkeypatch):
     monkeypatch.setattr(server, "SERVER_BIND_HOST", "0.0.0.0")
     monkeypatch.setattr(server, "_primary_lan_address", lambda: SYNTHETIC_LAN_ADDRESS)
     monkeypatch.setattr(server, "_page_service_https_port_live", lambda: 18367)
@@ -103,7 +104,10 @@ def test_home_network_status_with_the_websites_port_open_prefers_its_https_mirro
     assert status["websites_mode"] == "direct_forward"
     assert status["websites_mode_next_boot"] == "direct_forward"
     assert status["plain_http_exposed"] is False
-    assert status["websites_urls"] == [f"https://{SYNTHETIC_LAN_ADDRESS}:18367/websites"]
+    # The websites port answers only with a device pass; a browser gets one by signing in.
+    assert status["websites_urls"] == [f"https://{SYNTHETIC_LAN_ADDRESS}:8443/home-network/websites"]
+    # Local Pair apps load them straight from the HTTPS mirror.
+    assert status["direct_websites"] is True
 
 
 def test_home_network_status_flags_plain_http(monkeypatch):
@@ -115,9 +119,11 @@ def test_home_network_status_flags_plain_http(monkeypatch):
     status = server._home_network_web_status({"server": {"bind_host": "0.0.0.0", "https_enabled": False}})
     assert status["enabled"] is True and status["https"] is False
     assert status["plain_http_exposed"] is True
-    # Plain-HTTP admin sign-in is refused from the network, so it is not offered.
+    # Plain-HTTP admin sign-in is refused from the network and device passes are
+    # never redeemed over plain HTTP, so neither is offered.
     assert status["admin_urls"] == []
-    assert status["websites_urls"][0].startswith(f"http://{SYNTHETIC_LAN_ADDRESS}:")
+    assert status["websites_urls"] == []
+    assert status["direct_websites"] is False
 
 
 def test_home_network_status_ignores_a_tls_listener_that_never_started(monkeypatch):
@@ -131,18 +137,19 @@ def test_home_network_status_ignores_a_tls_listener_that_never_started(monkeypat
     assert status["admin_urls"] == [] and status["websites_urls"] == []
 
 
-def test_websites_mode_defaults_to_the_admin_port_only_when_the_operator_chose_the_home_network(monkeypatch):
+def test_websites_port_joins_the_home_network_unless_the_owner_keeps_it_behind_the_sign_in(monkeypatch):
     monkeypatch.delenv("AUTOYOU_NATIVE_OWNED_SERVER", raising=False)
     monkeypatch.setattr(server, "SERVER_BIND_HOST", "0.0.0.0")
-    assert server._home_network_websites_mode({"server": {"bind_host": "0.0.0.0"}}) == "path_proxy"
-    assert server._page_service_bind_host({"server": {"bind_host": "0.0.0.0"}}) == "127.0.0.1"
+    # Every request from another device needs a device pass, so the direct port is the default.
+    assert server._home_network_websites_mode({"server": {"bind_host": "0.0.0.0"}}) == "direct_forward"
+    assert server._page_service_bind_host({"server": {"bind_host": "0.0.0.0"}}) == "0.0.0.0"
     # Docker and --host launches keep the websites port on their own bind.
     assert server._home_network_websites_mode({"server": {"bind_host": "127.0.0.1"}}) == "direct_forward"
     assert server._page_service_bind_host({"server": {"bind_host": "127.0.0.1"}}) == "0.0.0.0"
-    explicit = {"server": {"bind_host": "0.0.0.0", "home_network_websites": "direct_forward"}}
-    assert server._page_service_bind_host(explicit) == "0.0.0.0"
+    behind_sign_in = {"server": {"bind_host": "0.0.0.0", "home_network_websites": "path_proxy"}}
+    assert server._page_service_bind_host(behind_sign_in) == "127.0.0.1"
     monkeypatch.setattr(server, "SERVER_BIND_HOST", "127.0.0.1")
-    assert server._page_service_bind_host(explicit) == "127.0.0.1"
+    assert server._page_service_bind_host({"server": {"bind_host": "0.0.0.0"}}) == "127.0.0.1"
 
 
 def test_websites_mode_and_discovery_are_validated_settings():

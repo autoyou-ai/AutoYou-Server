@@ -30,6 +30,7 @@ import sys
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional, List, Dict, Any
 
 import litellm
@@ -55,15 +56,18 @@ from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_too
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
+    register_runtime_agent_name,
     resolve_runtime_agent_name,
 )
 from autoyou_agents.shared_tools.agent_install_registry import (
+    BUILTIN_AGENT_PACKAGE_NAMES,
     is_builtin_agent_name,
     get_installed_agent_names,
     is_agent_installed,
     load_agent_install_registry,
     normalize_agent_package_name,
 )
+from autoyou_agents.shared_tools.conversation_refs import extract_url, references_previous_answer
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from autoyou_agents.shared_tools.memory_tool import (
     fetch_long_term_memory,
@@ -965,7 +969,6 @@ for _install_name in (
     "claude_cli_agent",
     "claude_desktop_agent",
     "cli_agent",
-    "cloudflare_agent",
     "codex_desktop_agent",
     "coding_agent",
     "data_collector_agent",
@@ -977,11 +980,8 @@ for _install_name in (
     "game_agent",
     "hermes_agent",
     "hosting_agent",
-    "ionos_agent",
-    "ionos_cloudflare_agent",
     "internet_agent",
     "location_agent",
-    "mail_agent",
     "media_generation_agent",
     "memory_agent",
     "model_picker_agent",
@@ -1019,14 +1019,6 @@ _AGENT_BUILDER_RUNTIME_AGENT_NAME = (
 _CLAUDE_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_cli_agent") or "claude_cli_agent"
 _CLAUDE_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_desktop_agent") or "claude_desktop_agent"
 _CLI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("cli_agent") or "autoyou_cli_agent"
-_CLOUDFLARE_RUNTIME_AGENT_NAME = (
-    resolve_runtime_agent_name("cloudflare_agent") or "autoyou_cloudflare_agent"
-)
-_IONOS_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("ionos_agent") or "autoyou_ionos_agent"
-_IONOS_CLOUDFLARE_RUNTIME_AGENT_NAME = (
-    resolve_runtime_agent_name("ionos_cloudflare_agent") or "autoyou_ionos_cloudflare_agent"
-)
-_MAIL_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("mail_agent") or "autoyou_mail_agent"
 _CODEX_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("codex_desktop_agent") or "codex_desktop_agent"
 _CODING_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("coding_agent") or "autoyou_coding_agent"
 _DATA_COLLECTOR_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("data_collector_agent") or "autoyou_data_collector_agent"
@@ -1224,35 +1216,6 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "cli",
         "terminal",
         "shell",
-    ),
-    _CLOUDFLARE_RUNTIME_AGENT_NAME: (
-        "cloudflare agent",
-        "cloudflare_agent",
-        "cloudflare tunnel agent",
-        "cloudflare tunnel",
-        "cloudflared agent",
-    ),
-    _IONOS_CLOUDFLARE_RUNTIME_AGENT_NAME: (
-        "ionos cloudflare agent",
-        "ionos_cloudflare_agent",
-        "ionos cloudflare handoff",
-        "ionos dns handoff",
-        "ionos to cloudflare",
-    ),
-    _IONOS_RUNTIME_AGENT_NAME: (
-        "ionos agent",
-        "ionos_agent",
-        "ionos hosting agent",
-        "ionos hosting",
-        "ionos sftp",
-    ),
-    _MAIL_RUNTIME_AGENT_NAME: (
-        "mail agent",
-        "mail_agent",
-        "email agent",
-        "domain email",
-        "email hosting",
-        "mail hosting",
     ),
     resolve_runtime_agent_name("notify_agent") or "autoyou_notify_agent": (
         "notify agent",
@@ -1527,12 +1490,6 @@ except Exception as _import_err:
     _create_cli_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.cloudflare_agent.agent import create_cloudflare_agent as _create_cloudflare_agent
-except Exception as _import_err:
-    logger.warning("cloudflare_agent static import failed: %s", _import_err)
-    _create_cloudflare_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.codex_desktop_agent.agent import create_codex_desktop_agent as _create_codex_desktop_agent
 except Exception as _import_err:
     logger.warning("codex_desktop_agent static import failed: %s", _import_err)
@@ -1587,34 +1544,16 @@ except Exception as _import_err:
     _create_internet_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.ionos_agent.agent import create_ionos_agent as _create_ionos_agent
-except Exception as _import_err:
-    logger.warning("ionos_agent static import failed: %s", _import_err)
-    _create_ionos_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.game_agent.agent import create_game_agent as _create_game_agent
 except Exception as _import_err:
     logger.warning("game_agent static import failed: %s", _import_err)
     _create_game_agent = None  # type: ignore[assignment]
 
 try:
-    from autoyou_agents.ionos_cloudflare_agent.agent import create_ionos_cloudflare_agent as _create_ionos_cloudflare_agent
-except Exception as _import_err:
-    logger.warning("ionos_cloudflare_agent static import failed: %s", _import_err)
-    _create_ionos_cloudflare_agent = None  # type: ignore[assignment]
-
-try:
     from autoyou_agents.location_agent.agent import create_location_agent as _create_location_agent
 except Exception as _import_err:
     logger.warning("location_agent static import failed: %s", _import_err)
     _create_location_agent = None  # type: ignore[assignment]
-
-try:
-    from autoyou_agents.mail_agent.agent import create_mail_agent as _create_mail_agent
-except Exception as _import_err:
-    logger.warning("mail_agent static import failed: %s", _import_err)
-    _create_mail_agent = None  # type: ignore[assignment]
 
 try:
     from autoyou_agents.memory_agent.agent import create_memory_agent as _create_memory_agent
@@ -1729,7 +1668,6 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "claude_cli_agent": _create_claude_cli_agent,
     "claude_desktop_agent": _create_claude_desktop_agent,
     "cli_agent": _create_cli_agent,
-    "cloudflare_agent": _create_cloudflare_agent,
     "codex_desktop_agent": _create_codex_desktop_agent,
     "coding_agent": _create_coding_agent,
     "data_collector_agent": _create_data_collector_agent,
@@ -1740,11 +1678,8 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "fine_tuning_agent": _create_fine_tuning_agent,
     "game_agent": _create_game_agent,
     "hosting_agent": _create_hosting_agent,
-    "ionos_agent": _create_ionos_agent,
-    "ionos_cloudflare_agent": _create_ionos_cloudflare_agent,
     "internet_agent": _create_internet_agent,
     "location_agent": _create_location_agent,
-    "mail_agent": _create_mail_agent,
     "memory_agent": _create_memory_agent,
     "model_picker_agent": _create_model_picker_agent,
     "notes_agent": _create_notes_agent,
@@ -1816,6 +1751,47 @@ def _load_agent_ingest_callable(agent_name: str):
         logger.warning("%s media ingest import failed: %s", agent_name, exc)
         return None
     return getattr(module, "ingest_attachments", None)
+
+# ── Overlay agent packages ────────────────────────────────────────────────────
+# An installed agent that is not built in (one a checkout holding this
+# repository adds, one a build bundled beside the built-ins, or one scaffolded
+# at runtime) describes its own routing in its prompt module, beside AGENT_NAME
+# and AGENT_DESCRIPTION:
+#   ROUTING_LABEL  its name in the root prompt's list of agents
+#   ROUTING_RULE   when to call it; the root prompt adds ": call `<AGENT_NAME>`."
+#   ROUTE_ALIASES  names that steer to it directly, as in "use <alias> to ..."
+_OVERLAY_AGENT_ROUTING: Dict[str, Dict[str, str]] = {}
+
+
+def _register_overlay_agent_package(agent_name: str) -> None:
+    """Take an overlay agent's runtime name, aliases and prompt lines from its package."""
+    install_name = normalize_agent_package_name(agent_name)
+    if not install_name or install_name in BUILTIN_AGENT_PACKAGE_NAMES or install_name in _OVERLAY_AGENT_ROUTING:
+        return
+    if is_compiled() and not is_builtin_agent_name(install_name):
+        return
+    try:
+        importlib.invalidate_caches()
+        prompt_module = importlib.import_module(f"autoyou_agents.{install_name}.prompt")
+    except Exception as exc:
+        logger.debug("%s has no readable prompt module: %s", install_name, exc)
+        return
+
+    register_runtime_agent_name(install_name, getattr(prompt_module, "AGENT_NAME", ""))
+    runtime_name = resolve_runtime_agent_name(install_name) or install_name
+    _RUNTIME_TO_INSTALL_NAME.setdefault(runtime_name, install_name)
+    raw_aliases = getattr(prompt_module, "ROUTE_ALIASES", ())
+    if isinstance(raw_aliases, str):
+        raw_aliases = (raw_aliases,)
+    aliases = tuple(
+        alias.strip() for alias in raw_aliases or () if isinstance(alias, str) and alias.strip()
+    )
+    if aliases and runtime_name not in _EXPLICIT_ROUTE_ALIASES:
+        _EXPLICIT_ROUTE_ALIASES[runtime_name] = aliases
+    _OVERLAY_AGENT_ROUTING[install_name] = {
+        "label": str(getattr(prompt_module, "ROUTING_LABEL", "") or "").strip(),
+        "rule": str(getattr(prompt_module, "ROUTING_RULE", "") or "").strip(),
+    }
 
 def _prompt_agent_tokens_for_filtering(text: str) -> set[str]:
     tokens = set()
@@ -1902,8 +1878,9 @@ def _build_registry_defined_agent_sections(
         if not runtime_name:
             continue
 
+        overlay = _OVERLAY_AGENT_ROUTING.get(normalize_agent_package_name(agent_name), {})
         entry = registry_agents.get(agent_name, {}) or {}
-        description = str(entry.get("description") or "").strip()
+        description = overlay.get("rule") or str(entry.get("description") or "").strip()
         if not description:
             try:
                 prompt_module = importlib.import_module(f"autoyou_agents.{agent_name}.prompt")
@@ -1912,9 +1889,8 @@ def _build_registry_defined_agent_sections(
                 description = ""
 
         if runtime_name not in known_sub_agent_tokens:
-            sub_agent_lines.append(
-                f"- {format_agent_display_name(runtime_name)}: `{runtime_name}`"
-            )
+            label = overlay.get("label") or format_agent_display_name(runtime_name)
+            sub_agent_lines.append(f"- {label}: `{runtime_name}`")
         if description and runtime_name not in known_routing_tokens:
             cleaned_description = description.rstrip(" .")
             routing_lines.append(f"- {cleaned_description}: call `{runtime_name}`.")
@@ -2271,12 +2247,12 @@ def _scheduled_request_text(callback_context: Any, user_text: str) -> str:
     return user_text
 
 
-def _looks_like_internet_agent_request(user_text: str) -> bool:
+def _looks_like_internet_agent_request(user_text: str, *, url_is_signal: bool = True) -> bool:
     """Keep current provider adapters compatible with the concise Internet agent."""
     try:
         from autoyou_agents.internet_agent.agent import is_internet_request
 
-        return bool(is_internet_request(user_text))
+        return bool(is_internet_request(user_text, url_is_signal=url_is_signal))
     except Exception as exc:
         logger.debug("Could not classify live web intent: %s", exc)
         return False
@@ -2644,13 +2620,17 @@ def _extract_role_texts_from_llm_request(llm_request: Any, role: str) -> list[st
     return texts
 
 
-def _build_notes_agent_request(user_text: str, llm_request: Any) -> str:
-    """Carry referenced prior answer content into an AgentTool child session."""
-    if not re.search(
-        r"\b(?:this|that|it|answer|response|reply|above|previous|earlier|all\s+this)\b",
-        str(user_text or ""),
-        re.IGNORECASE,
-    ):
+def _build_notes_agent_request(user_text: str, llm_request: Any, *, reference_text: str = "") -> str:
+    """Carry referenced prior answer content into an AgentTool child session.
+
+    The child session sees only this string, so a request that points back at
+    the previous answer ("save it to notes") has to bring that answer along.
+    ``reference_text`` is what the user actually said when ``user_text`` is the
+    model's paraphrase of it.
+    """
+    if "[AutoYou previous assistant answer" in user_text:
+        return user_text
+    if not references_previous_answer(reference_text or user_text):
         return user_text
 
     user_turns = _extract_role_texts_from_llm_request(llm_request, "user")
@@ -2667,6 +2647,107 @@ def _build_notes_agent_request(user_text: str, llm_request: Any) -> str:
         "[AutoYou previous assistant answer; save this as note content only]\n"
         f"{previous_model[:16000]}"
     )
+
+
+def _awaiting_user_answer(llm_request: Any) -> bool:
+    """True when the assistant's last message was a question the current message may be answering.
+
+    Weak-signal shortcuts (a bare URL, a history-less intent model) must yield
+    to the conversation in that case; the model sees the whole thread.
+    """
+    model_turns = _extract_role_texts_from_llm_request(llm_request, "model")
+    if not model_turns:
+        return False
+    return re.sub(r"[\s*_`\"'\u2019\u201d)\]]+$", "", model_turns[-1]).endswith("?")
+
+
+_PAGE_ADD_REFERENCE_RE = re.compile(
+    r"\b(?:add|save|put|post|send|submit)\s+(?:all\s+of\s+)?"
+    r"(?:it|this|that|these|those|the\s+(?:link|url|site|website))\b",
+    re.IGNORECASE,
+)
+
+
+def _build_page_agent_request(user_text: str, llm_request: Any, *, reference_text: str = "") -> str:
+    """Carry the URL a request points back at ("add that to my page") into the child session.
+
+    The Page agent runs in a fresh child session that only sees this string, so
+    without the URL it could only ask the user to repeat what they just saw.
+    """
+    text = str(user_text or "").strip()
+    if extract_url(text) or not _PAGE_ADD_REFERENCE_RE.search(f"{reference_text}\n{text}"):
+        return text
+
+    visible_turns: list[tuple[str, str]] = []
+    for content in getattr(llm_request, "contents", []) or []:
+        role = str(getattr(content, "role", "") or "").strip().lower()
+        turn_text = "\n".join(
+            str(getattr(part, "text", "")).strip()
+            for part in getattr(content, "parts", []) or []
+            if isinstance(getattr(part, "text", None), str)
+            and getattr(part, "text", "").strip()
+            and not getattr(part, "thought", False)
+        )
+        if turn_text:
+            visible_turns.append((role, turn_text))
+    if visible_turns and visible_turns[-1][0] == "user":
+        visible_turns.pop()  # the current request itself
+
+    for _role, turn_text in reversed(visible_turns):
+        url = extract_url(turn_text)
+        if url:
+            return f"{text}\n\n[AutoYou previous referenced URL: {url}]"
+    return text
+
+
+def _build_specialist_request(
+    runtime_agent_name: str,
+    user_text: str,
+    llm_request: Any,
+    *,
+    reference_text: str = "",
+) -> str:
+    """Attach the conversation context a specialist's child session cannot see."""
+    if runtime_agent_name == resolve_runtime_agent_name("notes_agent"):
+        return _build_notes_agent_request(user_text, llm_request, reference_text=reference_text)
+    if runtime_agent_name == _PAGE_RUNTIME_AGENT_NAME:
+        return _build_page_agent_request(user_text, llm_request, reference_text=reference_text)
+    return user_text
+
+
+def _conversation_from_tool_context(tool_context: Any) -> Any:
+    """The visible conversation so far, shaped like an LlmRequest for the builders."""
+    events = getattr(getattr(tool_context, "session", None), "events", None)
+    contents = [event.content for event in events or [] if getattr(event, "content", None) is not None]
+    return SimpleNamespace(contents=contents) if contents else None
+
+
+def _root_before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any) -> Any:
+    """Give Notes/Page the conversation their child session cannot see.
+
+    The root *model* picks these dispatches too, and it does not always copy what
+    "that" or "it" points at into the request, so context is attached here, at
+    the one place every dispatch passes through. Builders are idempotent, so a
+    deterministic route that already attached context is left alone.
+    """
+    raw_name = str(getattr(tool, "name", "") or "").strip()
+    request = args.get("request") if isinstance(args, dict) else None
+    if not raw_name or not isinstance(request, str) or not request.strip():
+        return None
+    runtime_name = _resolve_routed_agent_name(raw_name, args)
+    if runtime_name not in {resolve_runtime_agent_name("notes_agent"), _PAGE_RUNTIME_AGENT_NAME}:
+        return None
+    conversation = _conversation_from_tool_context(tool_context)
+    if conversation is None:
+        return None
+    args["request"] = _build_specialist_request(
+        runtime_name,
+        request,
+        conversation,
+        reference_text=_extract_text_from_llm_request(conversation),
+    )
+    return None
+
 
 def _persona_tool_request(llm_request: Any) -> Optional[tuple[str, Dict[str, Any]]]:
     """Resolve only unambiguous personal reads and explicitly requested saves.
@@ -3187,6 +3268,12 @@ def _is_raw_audio_file_reference(user_text: str) -> bool:
         return False
     return _is_audio_like_path(candidate)
 
+_PAGE_FEED_MY_PAGE_RE = re.compile(
+    r"\b(?:to|on|onto|in|into)\s+(?:my|the)\s+(?:autoyou\s+|auto\s*foryou\s+)?page\b",
+    re.IGNORECASE,
+)
+
+
 def _is_page_feed_request(user_text: str) -> bool:
     normalized = " ".join(str(user_text or "").split()).strip()
     if not normalized:
@@ -3194,7 +3281,7 @@ def _is_page_feed_request(user_text: str) -> bool:
     if normalized.lower().startswith("[voice transcript]"):
         normalized = normalized[len("[voice transcript]"):].strip()
     lowered = normalized.lower()
-    has_url = bool(re.search(r"\b(?:https?://|www\.)[^\s<>()]+", normalized, re.IGNORECASE))
+    has_url = bool(extract_url(normalized))
     explicit_page_feed = (
         "page feed" in lowered
         or "for you page" in lowered
@@ -3202,9 +3289,12 @@ def _is_page_feed_request(user_text: str) -> bool:
         or "auto foryou" in lowered
         or "auto for you" in lowered
     )
+    adds_something = bool(re.search(r"\b(add|save|post|send|put|submit|ingest|include)\b", lowered))
     if not explicit_page_feed:
-        return False
-    if has_url and re.search(r"\b(add|save|post|send|put|submit|ingest|include)\b", lowered):
+        # "add example.com to my page": a link plus an add verb plus "my page" is
+        # the page feed, not a web lookup. Without a link, "my page" is too vague.
+        return bool(has_url and adds_something and _PAGE_FEED_MY_PAGE_RE.search(lowered))
+    if has_url and adds_something:
         return True
     return bool(
         re.search(
@@ -3956,11 +4046,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
 
             if residual_request and _provider_requires_explicit_agent_tools():
                 _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
-                routed_request = (
-                    _build_notes_agent_request(residual_request, llm_request)
-                    if runtime_agent_name == resolve_runtime_agent_name("notes_agent")
-                    else residual_request
-                )
+                routed_request = _build_specialist_request(runtime_agent_name, residual_request, llm_request)
                 return _dispatch_specialist_tool_call(
                     runtime_agent_name,
                     {"request": routed_request},
@@ -4057,11 +4143,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
             _set_root_preferred_agent(callback_context.state, pinned_agent)
             _set_root_last_routed_agent(callback_context.state, pinned_agent)
-            routed_request = (
-                _build_notes_agent_request(user_text, llm_request)
-                if pinned_agent == resolve_runtime_agent_name("notes_agent")
-                else user_text
-            )
+            routed_request = _build_specialist_request(pinned_agent, user_text, llm_request)
             return _dispatch_specialist_tool_call(
                 pinned_agent,
                 {"request": routed_request},
@@ -4176,7 +4258,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             _set_root_last_routed_agent(callback_context.state, _PAGE_RUNTIME_AGENT_NAME)
             return _dispatch_specialist_tool_call(
                 _PAGE_RUNTIME_AGENT_NAME,
-                {"request": user_text},
+                {"request": _build_page_agent_request(user_text, llm_request)},
                 custom_metadata={
                     "response_author": root_prompt.AGENT_NAME,
                     "route_target": _PAGE_RUNTIME_AGENT_NAME,
@@ -4218,13 +4300,14 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             )
 
     live_routing_text = routing_user_text
+    awaiting_answer = _awaiting_user_answer(llm_request)
     audio_play_command = _AUDIO_PLAY_QUEUE_PATTERN.match(
         _normalize_audio_request_text(live_routing_text)
     )
     if (
         _provider_requires_explicit_agent_tools()
         and not audio_play_command
-        and _looks_like_internet_agent_request(live_routing_text)
+        and _looks_like_internet_agent_request(live_routing_text, url_is_signal=not awaiting_answer)
     ):
         browser_runtime = resolve_runtime_agent_name("browser_agent")
         target_web_agent = None
@@ -4275,7 +4358,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
     # A small local model can skip the root LLM for a confident route. The
     # specialist still runs through ADK's existing tools and permission checks.
     # Explicit choices, follow-ups and deterministic shortcuts above win.
-    if _provider_requires_explicit_agent_tools():
+    if _provider_requires_explicit_agent_tools() and not awaiting_answer:
         try:
             from shared.intent_router import classify_intent
             allowed = {install for runtime, install in _RUNTIME_TO_INSTALL_NAME.items()
@@ -4772,6 +4855,7 @@ def initialize_root_agent():
         )
 
         def _safe_create(agent_name: str):
+            _register_overlay_agent_package(agent_name)
             try:
                 factory = _load_agent_factory(agent_name)
                 if factory is None:
@@ -4909,6 +4993,7 @@ def initialize_root_agent():
             "description": root_prompt.AGENT_DESCRIPTION,
             "instruction": effective_instruction,
             "before_model_callback": _root_before_model_callback,
+            "before_tool_callback": [_root_before_tool_callback],
             "after_tool_callback": [_root_after_tool_callback],
             "sub_agents": sub_agents,
             "tools": tools

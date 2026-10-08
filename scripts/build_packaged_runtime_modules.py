@@ -38,6 +38,9 @@ from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PAC
 RUNTIME_MODULES_DIRNAME = "runtime_modules"
 RUNTIME_INTEGRITY_MANIFEST = "runtime_integrity.json"
 SIBLING_AGENT_MANIFEST = "packaged_sibling_agents.json"
+#: A JSON file naming modules from another source tree to compile into this
+#: bundle (see ``load_extra_sources``). Builds of this repository alone need none.
+EXTRA_SOURCES_ENV = "AUTOYOU_EXTRA_SOURCES_MANIFEST"
 FORBIDDEN_RUNTIME_PATHS = ("runtime_source",)
 TOP_LEVEL_RUNTIME_MODULES = (
     "server.py",
@@ -189,11 +192,71 @@ TRUSTED_AUTOYOU_AGENT_SUBDIRS = frozenset(BUILTIN_AGENT_PACKAGE_NAMES) | frozens
 
 
 def _source_path(repo_root: Path, relative_path: Path) -> Path:
-    """Read private desktop sources beside a nested server checkout."""
-    local = repo_root / relative_path
-    if relative_path.parts[0] in {"clients", "v2"} and not local.exists():
-        return repo_root.parent / relative_path
-    return local
+    return repo_root / relative_path
+
+
+@dataclass(frozen=True)
+class AgentRoot:
+    path: Path
+    #: An exclusive root may not reuse a package name this repository already has.
+    exclusive: bool = False
+
+
+@dataclass(frozen=True)
+class ExtraSources:
+    """Modules from another source tree, named by whoever runs the build.
+
+    ``modules`` and every ``*.py`` in ``packages`` are compiled at the same
+    relative path inside the bundle; a package's ``__init__.py`` and each
+    ``package_markers`` entry become bytecode package markers. ``agent_roots``
+    hold extra ``*_agent`` packages to bundle beside this repository's agents.
+    """
+
+    root: Path
+    modules: tuple[Path, ...] = ()
+    packages: tuple[Path, ...] = ()
+    package_markers: tuple[Path, ...] = ()
+    agent_roots: tuple[AgentRoot, ...] = ()
+
+
+def _manifest_relative_path(value: object, field_name: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Extra sources {field_name} entries must be relative paths")
+    path = Path(value.replace("\\", "/"))
+    if path.is_absolute() or path.drive or ".." in path.parts or not path.parts:
+        raise ValueError(f"Extra sources {field_name} entry must stay inside the source root: {value}")
+    return path
+
+
+def load_extra_sources(manifest_path: Path) -> ExtraSources:
+    """Read an extra-sources manifest (version 1)."""
+    data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("version") != 1:
+        raise ValueError(f"Unsupported extra sources manifest at {manifest_path}")
+    root = Path(str(data.get("root") or ""))
+    if not root.is_absolute() or not root.is_dir():
+        raise ValueError(f"Extra sources root must be an existing absolute directory: {root}")
+
+    def relative_list(field_name: str) -> tuple[Path, ...]:
+        values = data.get(field_name, [])
+        if not isinstance(values, list):
+            raise ValueError(f"Extra sources {field_name} must be a list")
+        return tuple(_manifest_relative_path(value, field_name) for value in values)
+
+    agent_roots = []
+    for entry in data.get("agent_roots", []) or []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise ValueError("Extra sources agent_roots entries need a path")
+        agent_path = Path(entry["path"])
+        agent_roots.append(AgentRoot(agent_path if agent_path.is_absolute() else root / agent_path,
+                                     exclusive=entry.get("exclusive") is True))
+    return ExtraSources(
+        root=root.resolve(),
+        modules=relative_list("modules"),
+        packages=relative_list("packages"),
+        package_markers=relative_list("package_markers"),
+        agent_roots=tuple(agent_roots),
+    )
 
 
 @dataclass(frozen=True)
@@ -217,6 +280,8 @@ class RuntimeModulePlan:
     bridge_stubs: tuple[Path, ...]
     source_overrides: Mapping[Path, Path] = field(default_factory=dict)
     sibling_agent_names: tuple[str, ...] = ()
+    #: Whether agents from another tree were bundled (recorded for the runtime).
+    agent_overlay: bool = False
 
 
 def _is_skipped_path(relative_path: Path) -> bool:
@@ -368,27 +433,26 @@ def _iter_agent_asset_files(repo_root: Path) -> Iterator[Path]:
             yield relative_path
 
 
-def _sibling_agent_sources(repo_root: Path, existing_paths: set[Path]) -> tuple[dict[Path, Path], set[str]]:
-    """Overlay adjacent agent packages without copying live agent state."""
-    sibling_root = repo_root.parent / "autoyou_agents"
-    if not (sibling_root / "__init__.py").is_file() or sibling_root.is_symlink():
-        return {}, set()
-
+def _sibling_agent_sources(
+    repo_root: Path, existing_paths: set[Path], agent_roots: Iterable[AgentRoot],
+) -> tuple[dict[Path, Path], set[str]]:
+    """Overlay agent packages from the roots a manifest names, without copying live agent state."""
     overrides: dict[Path, Path] = {}
     extra_names: set[str] = set()
     server_agent_root = repo_root / "autoyou_agents"
-    for agent_root in (sibling_root, sibling_root / "private"):
-        if not agent_root.is_dir() or agent_root.is_symlink():
+    for agent_root in agent_roots:
+        root_path = agent_root.path
+        if not root_path.is_dir() or root_path.is_symlink():
             continue
-        for package in sorted(agent_root.iterdir()):
+        for package in sorted(root_path.iterdir()):
             if not package.is_dir() or package.is_symlink() or not package.name.endswith("_agent"):
                 continue
             if _is_skipped_path(Path(package.name)):
                 continue
             if not (package / "agent.py").is_file() and not (server_agent_root / package.name / "agent.py").is_file():
                 continue
-            if agent_root == sibling_root / "private" and (server_agent_root / package.name).exists():
-                raise ValueError(f"Private agent collides with Server source: {package.name}")
+            if agent_root.exclusive and (server_agent_root / package.name).exists():
+                raise ValueError(f"Agent package collides with Server source: {package.name}")
             included = False
             desktop_asset_sources = _desktop_asset_sources(package)
             for source_path in sorted(package.rglob("*")):
@@ -427,12 +491,39 @@ def _iter_static_runtime_files(repo_root: Path) -> Iterator[Path]:
                 yield source_path.relative_to(repo_root)
 
 
+def _extra_source_modules(
+    extra: ExtraSources,
+) -> tuple[list[Path], set[Path], dict[Path, Path]]:
+    """Modules to compile, package markers, and where each one is read from."""
+    modules: list[Path] = []
+    markers: set[Path] = set(extra.package_markers)
+    overrides: dict[Path, Path] = {}
+    for relative in extra.modules:
+        source = extra.root / relative
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing extra source module: {relative.as_posix()}")
+        modules.append(relative)
+        overrides[relative] = source
+    for package in extra.packages:
+        package_dir = extra.root / package
+        if not package_dir.is_dir():
+            raise FileNotFoundError(f"Missing extra source package: {package.as_posix()}")
+        for source in sorted(package_dir.glob("*.py")):
+            relative = package / source.name
+            overrides[relative] = source
+            if source.name == "__init__.py":
+                markers.add(relative)
+            else:
+                modules.append(relative)
+    for marker in extra.package_markers:
+        if (extra.root / marker).is_file():
+            overrides[marker] = extra.root / marker
+    return modules, markers, overrides
+
+
 def build_runtime_module_plan(
-    repo_root: Path, *, desktop: bool = False, include_sibling_agents: bool = False,
-    include_emotivoice: bool = False,
+    repo_root: Path, *, extra_sources: ExtraSources | None = None, include_emotivoice: bool = False,
 ) -> RuntimeModulePlan:
-    if desktop and include_sibling_agents:
-        raise ValueError("Native v2 runtime cannot include sibling agents")
     compile_specs = tuple(ModuleBuildSpec(relative_path) for relative_path in _iter_python_module_sources(repo_root))
     asset_files = tuple(_iter_agent_asset_files(repo_root))
     static_files = tuple(_iter_static_runtime_files(repo_root))
@@ -446,33 +537,43 @@ def build_runtime_module_plan(
     bridge_stubs = set(BRIDGE_STUBS)
     source_overrides: dict[Path, Path] = {}
     sibling_agent_names: set[str] = set()
-    if include_sibling_agents:
+    agent_overlay = bool(extra_sources and extra_sources.agent_roots)
+    if agent_overlay:
         source_overrides, sibling_agent_names = _sibling_agent_sources(
             repo_root, {spec.source_relative_path for spec in compile_specs} | set(asset_files),
+            extra_sources.agent_roots,
         )
         compile_specs += tuple(
             ModuleBuildSpec(path) for path in source_overrides if path.suffix == ".py"
         )
         asset_files += tuple(path for path in source_overrides if path.suffix != ".py")
     _validate_desktop_agent_manifests(repo_root, compile_specs, source_overrides)
-    if desktop:
-        desktop_paths = [Path("clients/python") / name for name in (
-            "autoyou_client.py", "desktop_client.py", "cloud_pair.py", "audio_streams.py",
-            "attachments_helper.py", "bluetooth_pairing_client.py", "http_proxy_client.py",
-            "legal_acceptance.py", "location_beacon.py", "conversation_history.py",
-        )]
-        for package in (Path("clients/python/peer_link"), Path("v2/runtime")):
-            for path in sorted(_source_path(repo_root, package).glob("*.py")):
-                relative = package / path.name
-                if path.name == "__init__.py":
-                    bridge_stubs.add(relative)
-                else:
-                    desktop_paths.append(relative)
-        for path in desktop_paths:
-            if not _source_path(repo_root, path).is_file():
-                raise FileNotFoundError(f"Missing native desktop runtime module: {path}")
-        compile_specs += tuple(ModuleBuildSpec(path) for path in desktop_paths)
-        bridge_stubs.add(Path("v2/__init__.py"))
+    if extra_sources is not None:
+        existing = {spec.source_relative_path for spec in compile_specs}
+        modules, markers, module_sources = _extra_source_modules(extra_sources)
+        clashes = sorted(path.as_posix() for path in modules if path in existing)
+        if clashes:
+            raise ValueError(f"Extra source modules collide with this repository: {', '.join(clashes)}")
+        compile_specs += tuple(ModuleBuildSpec(path) for path in modules)
+        bridge_stubs |= markers
+        source_overrides.update(module_sources)
+    extra_tops = {path.parts[0] for path in (
+        *(extra_sources.modules if extra_sources else ()),
+        *(extra_sources.packages if extra_sources else ()),
+        *(extra_sources.package_markers if extra_sources else ()),
+    )}
+    for spec in compile_specs:
+        for parent in spec.source_relative_path.parents:
+            if parent == Path("."):
+                break
+            initializer = parent / "__init__.py"
+            source = source_overrides.get(initializer) or _source_path(repo_root, initializer)
+            if not source.is_file() and extra_sources is not None and initializer.parts[0] in extra_tops:
+                source = extra_sources.root / initializer
+                if source.is_file():
+                    source_overrides[initializer] = source
+            if source.is_file():
+                bridge_stubs.add(initializer)
     return RuntimeModulePlan(
         compile_specs=tuple(sorted(compile_specs, key=lambda spec: spec.source_relative_path.as_posix())),
         asset_files=tuple(sorted(asset_files, key=lambda path: path.as_posix())),
@@ -480,6 +581,7 @@ def build_runtime_module_plan(
         bridge_stubs=tuple(sorted(bridge_stubs)),
         source_overrides=source_overrides,
         sibling_agent_names=tuple(sorted(sibling_agent_names)),
+        agent_overlay=agent_overlay,
     )
 
 
@@ -603,8 +705,11 @@ def _write_bridge_stubs(
         source_path.parent.mkdir(parents=True, exist_ok=True)
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         source_text = BRIDGE_STUBS.get(relative_path)
-        if source_text is None and repo_root is not None and _source_path(repo_root, relative_path).is_file():
-            source_text = _source_path(repo_root, relative_path).read_text(encoding="utf-8")
+        stub_source = plan.source_overrides.get(relative_path) or (
+            _source_path(repo_root, relative_path) if repo_root is not None else None
+        )
+        if source_text is None and stub_source is not None and stub_source.is_file():
+            source_text = stub_source.read_text(encoding="utf-8")
         source_path.write_text(source_text or EMPTY_PACKAGE_BRIDGE_STUB, encoding="utf-8")
         py_compile.compile(
             str(source_path),
@@ -676,13 +781,11 @@ def build_packaged_runtime_modules(
     build_root: Path,
     job_count: int,
     extra_nuitka_args: Iterable[str],
-    desktop: bool = False,
-    include_sibling_agents: bool = False,
+    extra_sources: ExtraSources | None = None,
     include_emotivoice: bool = False,
 ) -> dict[str, object]:
     plan = build_runtime_module_plan(
-        repo_root, desktop=desktop, include_sibling_agents=include_sibling_agents,
-        include_emotivoice=include_emotivoice,
+        repo_root, extra_sources=extra_sources, include_emotivoice=include_emotivoice,
     )
     output_root = bundle_root / RUNTIME_MODULES_DIRNAME
     if output_root.exists():
@@ -705,7 +808,7 @@ def build_packaged_runtime_modules(
     _copy_asset_files(repo_root=repo_root, output_root=output_root, plan=plan)
     _copy_static_runtime_files(repo_root=repo_root, output_root=output_root, plan=plan)
     _write_bridge_stubs(output_root=output_root, build_root=build_root, plan=plan, repo_root=repo_root)
-    if plan.source_overrides:
+    if plan.agent_overlay:
         (output_root / "autoyou_agents" / SIBLING_AGENT_MANIFEST).write_text(
             json.dumps(list(plan.sibling_agent_names), indent=2) + "\n", encoding="utf-8",
         )
@@ -742,8 +845,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--build-root", required=True)
     parser.add_argument("--jobs", type=int, default=max(os.cpu_count() or 1, 1))
     parser.add_argument("--nuitka-arg", action="append", default=[])
-    parser.add_argument("--desktop", action="store_true", help="Include the native v2 client bridge and headless desktop engine")
-    parser.add_argument("--include-sibling-agents", action="store_true", help="Include adjacent public and private agents in server builds")
+    parser.add_argument(
+        "--extra-sources",
+        default=os.environ.get(EXTRA_SOURCES_ENV, ""),
+        help=f"JSON manifest of modules from another source tree to compile in (default: ${EXTRA_SOURCES_ENV})",
+    )
     parser.add_argument("--include-emotivoice", action="store_true", help="Compile the optional EmotiVoice inference runtime and copy its non-model data")
     return parser.parse_args(argv)
 
@@ -760,8 +866,7 @@ def main(argv: list[str] | None = None) -> int:
         build_root=build_root,
         job_count=max(int(args.jobs), 1),
         extra_nuitka_args=tuple(args.nuitka_arg),
-        desktop=args.desktop,
-        include_sibling_agents=args.include_sibling_agents,
+        extra_sources=load_extra_sources(Path(args.extra_sources)) if args.extra_sources else None,
         include_emotivoice=args.include_emotivoice,
     )
     print(f"Packaged runtime modules ready under {bundle_root / RUNTIME_MODULES_DIRNAME}")

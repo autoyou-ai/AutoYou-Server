@@ -544,10 +544,6 @@ def get_dynamic_agents_root(
         agents_root = Path.cwd() / "autoyou_agents"
         if anchor is not None:
             anchor_path = Path(anchor).resolve()
-            for current in (anchor_path, *anchor_path.parents):
-                sibling = current.parent / "autoyou_agents"
-                if (current / "server.py").is_file() and (sibling / "__init__.py").is_file():
-                    return sibling.resolve()
             for candidate in [anchor_path, *anchor_path.parents]:
                 if candidate.name == "autoyou_agents" and (candidate / "__init__.py").exists():
                     agents_root = candidate

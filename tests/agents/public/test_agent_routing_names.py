@@ -40,10 +40,6 @@ def test_root_prompt_uses_only_active_root_subagent_names():
         "autoyou_backup_agent",
         "autoyou_memory_agent",
         "autoyou_agent_builder_agent",
-        "autoyou_cloudflare_agent",
-        "autoyou_ionos_agent",
-        "autoyou_ionos_cloudflare_agent",
-        "autoyou_mail_agent",
         "autoyou_notify_agent",
         "autoyou_tasks_agent",
         "autoyou_website_agent",
@@ -56,8 +52,8 @@ def test_root_prompt_uses_only_active_root_subagent_names():
         "codex_desktop_agent",
         # Ship enabled by DEFAULT_AGENT_INSTALL_STATES, so the root prompt has to
         # be able to route to them. education_agent sat in the inactive list
-        # below as a leftover from when it was streaming_agent (404ec770 renamed
-        # it); it was the only "inactive" entry that actually installs by
+        # below as a leftover from its earlier name (404ec770 renamed it); it
+        # was the only "inactive" entry that actually installs by
         # default, which left a shipped agent unreachable from chat.
         "autoyou_education_agent",
         "autoyou_hosting_agent",

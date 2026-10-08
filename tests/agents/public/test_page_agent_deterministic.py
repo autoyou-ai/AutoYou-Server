@@ -132,7 +132,8 @@ async def test_page_agent_counts_unqualified_explicit_feed_query_without_limit(m
     assert fake_tool.query_calls == [{"limit": None, "timeline_all": True}]
 
 
-async def test_page_agent_asks_for_missing_link_instead_of_guessing(monkeypatch):
+async def test_page_agent_defers_to_the_model_instead_of_guessing_when_no_link_is_given(monkeypatch):
+    """No canned reply: the model asks naturally (the prompt forbids inventing a link) and sees the thread."""
     fake_tool = _FakePageTool()
     monkeypatch.setattr(page_agent, "page_tool", fake_tool)
 
@@ -141,10 +142,7 @@ async def test_page_agent_asks_for_missing_link_instead_of_guessing(monkeypatch)
         _llm_request("add to nt"),
     )
 
-    assert response.content.parts[0].text == (
-        "What should I add to your AutoYou Page feed? Send the URL or attach a file."
-    )
-    assert response.custom_metadata["route_reason"] == "deterministic_page_feed_add_needs_input"
+    assert response is None
     assert fake_tool.urls == []
 
 

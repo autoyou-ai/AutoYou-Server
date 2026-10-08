@@ -14,14 +14,15 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import asyncio
+import json
 from pathlib import Path
+import sys
 import types
 from unittest.mock import patch, MagicMock
 
 import server
 from autoyou_agents.shared_tools.agent_install_registry import (
     BUILTIN_AGENT_PACKAGE_NAMES,
-    PRIVATE_AGENT_PACKAGE_NAMES,
     can_install_agent_in_runtime,
 )
 
@@ -50,13 +51,6 @@ def _anon_request():
     return req
 
 
-def _has_frontend_manifest(agent_name: str) -> bool:
-    for package_root in getattr(__import__("autoyou_agents"), "__path__", []):
-        if (Path(package_root) / agent_name / "website" / "manifest.json").is_file():
-            return True
-    return False
-
-
 # ---------------------------------------------------------------------------
 # MANAGED_FRONTEND_APPS registration
 # ---------------------------------------------------------------------------
@@ -76,35 +70,67 @@ def test_agent_builder_agent_uses_correct_port():
     assert cfg["default_port"] == 8085
 
 
-def test_cloudflare_agent_is_opt_in_path_proxy():
-    cfg = server.MANAGED_FRONTEND_APPS["cloudflare_agent"]
-    assert cfg["app_import"] == "autoyou_agents.cloudflare_agent.website.backend.app:app"
-    assert cfg["default_port"] == 8102
-    if _has_frontend_manifest("cloudflare_agent"):
-        assert server._managed_frontend_runtime_specs()["cloudflare_agent"]["recommended_port"] == 8102
-    assert server.FRONTEND_DEFAULT_ENABLEMENT["cloudflare_agent"] is False
-    assert server.FRONTEND_CONTROL_LABELS["cloudflare_agent"] == "Cloudflare Tunnel"
+def test_overlay_agent_website_declares_its_own_opt_in_toggle(tmp_path, monkeypatch):
+    """An agent this repository does not ship keeps its website off through its manifest."""
+    import autoyou_agents
 
-
-def test_ionos_agents_are_opt_in_path_proxies():
-    expected = {
-        "ionos_agent": ("autoyou_agents.ionos_agent.website.backend.app:app", 8103, "IONOS Hosting"),
-        "ionos_cloudflare_agent": (
-            "autoyou_agents.ionos_cloudflare_agent.website.backend.app:app",
-            8104,
-            "IONOS Cloudflare Handoff",
+    overlay_root = tmp_path / "overlay"
+    package = overlay_root / "lantern_agent"
+    (package / "website" / "backend").mkdir(parents=True)
+    for initializer in (package, package / "website", package / "website" / "backend"):
+        (initializer / "__init__.py").write_text("", encoding="utf-8")
+    (package / "agent.py").write_text("", encoding="utf-8")
+    (package / "website" / "backend" / "app.py").write_text("app = None\n", encoding="utf-8")
+    (package / "website" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "agent_name": "lantern_agent",
+                "title": "Lantern Tunnel",
+                "recommended_port": 8199,
+                "requires_proxy_registration": True,
+                "expose_by_default": False,
+                "control_label": "Lantern Tunnel",
+                "control_help": "Configure synthetic lantern routes. Disabled by default.",
+            }
         ),
-    }
-    specs = server._managed_frontend_runtime_specs()
-    for agent_name, (app_import, port, label) in expected.items():
-        assert server.MANAGED_FRONTEND_APPS[agent_name] == {
-            "app_import": app_import,
-            "default_port": port,
-        }
-        if _has_frontend_manifest(agent_name):
-            assert specs[agent_name]["recommended_port"] == port
-        assert server.FRONTEND_DEFAULT_ENABLEMENT[agent_name] is False
-        assert server.FRONTEND_CONTROL_LABELS[agent_name] == label
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(autoyou_agents, "__path__", [*autoyou_agents.__path__, str(overlay_root)])
+    monkeypatch.setattr(
+        server,
+        "load_agent_install_registry",
+        lambda agents_root=None, **_: {"installed_agents": ["lantern_agent"]},
+    )
+    monkeypatch.setattr(server, "_workspace_agents_root", lambda: tmp_path / "workspace")
+    try:
+        spec = server._managed_frontend_runtime_specs()["lantern_agent"]
+        manifest = server.load_frontend_manifest(server._AUTOYOU_AGENTS_ROOT / "lantern_agent")
+        control = server._build_agent_frontend_control(
+            "lantern_agent", installed=True, frontend_entry=manifest, cfg={}
+        )
+    finally:
+        for module_name in [name for name in sys.modules if name.startswith("autoyou_agents.lantern_agent")]:
+            sys.modules.pop(module_name, None)
+
+    assert "lantern_agent" not in server.MANAGED_FRONTEND_APPS
+    assert spec["recommended_port"] == 8199
+    assert Path(spec["agent_dir"]).resolve() == package.resolve()
+    assert spec["app_import"] == "autoyou_agents.lantern_agent.website.backend.app:app"
+    assert server._get_agent_frontend_enabled("lantern_agent", cfg={}) is False
+    assert control["default_enabled"] is False
+    assert control["enabled"] is False
+    assert control["label"] == "Lantern Tunnel"
+    assert control["help_text"] == "Configure synthetic lantern routes. Disabled by default."
+
+
+def test_overlay_agent_website_without_a_declaration_is_exposed_as_before(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "load_frontend_manifest", lambda agent_dir: {"agent_name": agent_dir.name})
+
+    assert server._default_agent_frontend_enabled("lantern_agent") is True
+    control = server._build_agent_frontend_control(
+        "lantern_agent", installed=True, frontend_entry={"agent_name": "lantern_agent"}, cfg={}
+    )
+    assert control["label"] == "Agent Website"
 
 
 def test_win_security_agent_is_opt_in_path_proxy():
@@ -113,9 +139,8 @@ def test_win_security_agent_is_opt_in_path_proxy():
     assert cfg["default_port"] == 8075
     assert server.FRONTEND_DEFAULT_ENABLEMENT["win_security_agent"] is False
     assert server.FRONTEND_CONTROL_LABELS["win_security_agent"] == "Windows Security"
-    # No longer a private package: opt-in by default, but installable when
-    # compiled. The frontend stays off until the operator enables it.
-    assert "win_security_agent" not in PRIVATE_AGENT_PACKAGE_NAMES
+    # A built-in: opt-in by default, but installable when compiled. The
+    # frontend stays off until the operator enables it.
     assert "win_security_agent" in BUILTIN_AGENT_PACKAGE_NAMES
     assert can_install_agent_in_runtime("win_security_agent", compiled=True) is True
 
@@ -128,9 +153,8 @@ def test_mac_security_agent_is_opt_in_path_proxy():
     assert server._managed_frontend_runtime_specs()["mac_security_agent"]["recommended_port"] == 8101
     assert server.FRONTEND_DEFAULT_ENABLEMENT["mac_security_agent"] is False
     assert server.FRONTEND_CONTROL_LABELS["mac_security_agent"] == "macOS Security"
-    # No longer a private package: opt-in by default, but installable when
-    # compiled. The frontend stays off until the operator enables it.
-    assert "mac_security_agent" not in PRIVATE_AGENT_PACKAGE_NAMES
+    # A built-in: opt-in by default, but installable when compiled. The
+    # frontend stays off until the operator enables it.
     assert "mac_security_agent" in BUILTIN_AGENT_PACKAGE_NAMES
     assert can_install_agent_in_runtime("mac_security_agent", compiled=True) is True
 
@@ -169,22 +193,12 @@ def test_files_agent_managed_frontend_registered():
     assert server.FRONTEND_CONTROL_LABELS.get("files_agent") == "Files Agent"
 
 
-def test_education_agent_uses_the_renamed_managed_frontend_and_preserves_legacy_setting():
-    cfg = {
-        "agent_frontends": {
-            "streaming_agent": {"enabled": False, "route_mode": "path_proxy"},
-        }
-    }
+def test_education_agent_managed_frontend_registered():
+    cfg = {"agent_frontends": {"education_agent": {"enabled": False, "route_mode": "path_proxy"}}}
 
     assert server.MANAGED_FRONTEND_APPS["education_agent"]["app_import"] == (
         "autoyou_agents.education_agent.website.backend.app:app"
     )
-    assert server._apply_default_agent_frontends_config(cfg) is True
-    assert cfg["agent_frontends"]["education_agent"] == {
-        "enabled": False,
-        "route_mode": "path_proxy",
-    }
-    assert "streaming_agent" not in cfg["agent_frontends"]
     assert server._get_agent_frontend_enabled("education_agent", cfg=cfg) is False
 
 
@@ -368,6 +382,77 @@ def test_post_agent_websites_security_can_disable_otp(monkeypatch):
         server.STATE.config = original_config
         server.STATE.config_store = original_config_store
         server.STATE.config_unlock_password = original_config_unlock_password
+
+
+def test_admin_can_set_one_agent_website_otp_mode(monkeypatch):
+    import copy
+    import json
+
+    from autoyou_agents.shared_tools import scheduler_mission_control as mission_control
+
+    original_config = server.STATE.config
+    persisted = []
+    try:
+        server.STATE.config = server._default_config()
+        monkeypatch.setattr(server, "_require_api_login", lambda _request: None)
+        monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+        monkeypatch.setattr(
+            server,
+            "_build_agent_website_routes",
+            lambda _cfg: [{"agent_name": "notes_agent"}, {"agent_name": "page_agent"}],
+        )
+        monkeypatch.setattr(server, "_describe_totp_capabilities", lambda _cfg: {"totp_configured": True})
+        monkeypatch.setattr(server, "_loaded_config_for_update", lambda: copy.deepcopy(server.STATE.config))
+        monkeypatch.setattr(server, "_persist_state_config", lambda cfg: persisted.append(copy.deepcopy(cfg)))
+
+        request = _anon_request()
+
+        async def fake_json():
+            return {"mode": "totp"}
+
+        request.json = fake_json
+        result = asyncio.run(server.admin_set_agent_website_auth("notes_agent", request))
+        body = json.loads(result.body)
+
+        assert body["success"] is True
+        assert body["agent_name"] == "notes_agent"
+        assert body["auth_mode"] == "totp"
+        assert persisted[-1][mission_control.UI_SECURITY_CONFIG_KEY]["notes_agent"]["auth_mode"] == "totp"
+        assert "page_agent" not in persisted[-1][mission_control.UI_SECURITY_CONFIG_KEY]
+    finally:
+        server.STATE.config = original_config
+
+
+def test_individual_otp_gate_respects_global_disable(monkeypatch):
+    import json
+
+    original_config = server.STATE.config
+    try:
+        server.STATE.config = server._default_config()
+        server.STATE.config["agent_websites"]["disable_otp"] = True
+        monkeypatch.setattr(server, "_require_api_login", lambda _request: None)
+        monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+        monkeypatch.setattr(server, "_build_agent_website_routes", lambda _cfg: [{"agent_name": "page_agent"}])
+        request = _anon_request()
+
+        async def fake_json():
+            return {"mode": "totp"}
+
+        request.json = fake_json
+        result = asyncio.run(server.admin_set_agent_website_auth("page_agent", request))
+
+        assert result.status_code == 409
+        assert "OTP is disabled for all agent websites" in json.loads(result.body)["error"]
+    finally:
+        server.STATE.config = original_config
+
+
+def test_admin_ui_exposes_per_agent_otp_controls():
+    script = (Path(server.__file__).resolve().parent / "assets" / "admin-ui.js").read_text(encoding="utf-8")
+
+    assert "Require OTP" in script
+    assert "Allow without OTP" in script
+    assert '"/api/agent-websites/" + encodeURIComponent(authAgentName) + "/auth"' in script
 
 
 def test_enabling_shared_sessions_promotes_an_existing_agent_login(monkeypatch, tmp_path):

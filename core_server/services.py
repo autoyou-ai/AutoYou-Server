@@ -579,7 +579,7 @@ def run_agent_server(host: str, port: int, agent_dir: str, env_vars: dict):
                 try:
                     from shared import local_tls
 
-                    tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+                    tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
                     lan_https_port = int(os.getenv("AUTOYOU_AI_AGENT_LAN_HTTPS_PORT", "8481"))
                     https_config = uvicorn.Config(
                         agent_app,
@@ -788,6 +788,17 @@ async def _cloud_sse_listener_loop():
     _reconnect_initial = max(0.1, float(runtime.AUTOYOU_CLOUD_SSE_RECONNECT_INITIAL_SECONDS))
     _reconnect_max = max(_reconnect_initial, float(runtime.AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS))
     _reconnect_delay = _reconnect_initial
+    # The delay starts over only after a stream has stayed up this long. A
+    # stream that opens, delivers its first lines and drops again must keep
+    # backing off, or a flapping network re-dials the cloud every few seconds.
+    _stable_stream_seconds = max(
+        0.0, float(getattr(runtime, "AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS", 45.0))
+    )
+    # A stream the cloud retired because a newer connection for this server
+    # took its place waits at least this long, so two copies never trade places.
+    _superseded_wait_seconds = 60.0
+    _stream_opened_at = None
+    _stream_superseded = False
     _shared_key_registered = False
     # Expected long-poll churn (cloud restarts, idle proxies cutting the chunked
     # stream, read timeouts). Resolved via getattr so a reduced aiohttp test
@@ -802,6 +813,19 @@ async def _cloud_sse_listener_loop():
         )
         if isinstance(exc, type) and issubclass(exc, BaseException)
     )
+
+    def _settle_reconnect_delay() -> None:
+        """Decide the wait before the next dial from how the last stream went."""
+        nonlocal _reconnect_delay, _stream_opened_at, _stream_superseded
+        held_for = (
+            runtime.time.monotonic() - _stream_opened_at if _stream_opened_at is not None else 0.0
+        )
+        if _stream_superseded:
+            _reconnect_delay = max(_reconnect_delay, _superseded_wait_seconds)
+        elif held_for >= _stable_stream_seconds:
+            _reconnect_delay = _reconnect_initial
+        _stream_opened_at = None
+        _stream_superseded = False
 
     while True:
         cloud_cfg = (runtime.STATE.config or {}).get("cloud", {})
@@ -901,12 +925,15 @@ async def _cloud_sse_listener_loop():
                         continue
 
                     # Successful connection: reset auth counters and rejection flag.
-                    # The network reconnect delay resets once SSE activity arrives.
+                    # The network reconnect delay resets once a stream has stayed up
+                    # (see _settle_reconnect_delay), not on the first line it delivers.
                     _consecutive_401s = 0
                     _401_backoff = 60
                     runtime.STATE.cloud_connected = True
                     runtime.STATE.cloud_token_rejected = False
                     runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
+                    _stream_opened_at = runtime.time.monotonic()
+                    _stream_superseded = False
                     runtime.LOGGER.info(f"AutoYou Cloud: SSE connected to {url}")
 
                     # Fire one privacy-minimal diagnostics heartbeat once we
@@ -920,10 +947,11 @@ async def _cloud_sse_listener_loop():
 
                     async for line_bytes in resp.content:
                         runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
-                        _reconnect_delay = _reconnect_initial
                         line = line_bytes.decode("utf-8").rstrip("\n\r")
                         if line.startswith("event:"):
                             event_type = line[6:].strip()
+                            if event_type == "superseded":
+                                _stream_superseded = True
                         elif line.startswith("data:"):
                             data_lines.append(line[5:].strip())
                         elif line == "":
@@ -935,6 +963,7 @@ async def _cloud_sse_listener_loop():
                             data_lines = []
 
                     # Stream ended normally (server closed connection) - back off before reconnecting
+                    _settle_reconnect_delay()
                     runtime.LOGGER.info(
                         "AutoYou Cloud: SSE stream ended. Reconnecting in %gs...",
                         _reconnect_delay,
@@ -953,6 +982,7 @@ async def _cloud_sse_listener_loop():
             # restarts, idle proxies, or NAT timeouts (seen as
             # "Response payload is not completed" / TransferEncodingError).
             # This is expected churn, not an error: reconnect quietly.
+            _settle_reconnect_delay()
             runtime.LOGGER.info(
                 "AutoYou Cloud: SSE stream interrupted (%s). Reconnecting in %gs...",
                 e,
@@ -963,6 +993,7 @@ async def _cloud_sse_listener_loop():
             await runtime.asyncio.sleep(_reconnect_delay)
             _reconnect_delay = min(_reconnect_delay * 2, _reconnect_max)
         except Exception as e:
+            _settle_reconnect_delay()
             runtime.LOGGER.warning(
                 "AutoYou Cloud: SSE connection lost: %s. Reconnecting in %gs...",
                 e,
@@ -3013,6 +3044,9 @@ def _find_available_local_port(
 
 def _agent_frontend_backend_app_exists(agent_dir: Path) -> bool:
     runtime = _runtime()
+    manifest = runtime.load_frontend_manifest(agent_dir) or {}
+    if manifest.get("managed_runtime"):
+        return True
     backend_dir = agent_dir / "website" / "backend"
     if (backend_dir / "app.py").is_file():
         return True
@@ -3030,11 +3064,15 @@ def _managed_frontend_runtime_specs() -> Dict[str, Dict[str, Any]]:
         if not manifest or not manifest.get("requires_proxy_registration", True):
             continue
         recommended_port = manifest.get("recommended_port") or config.get("default_port")
-        specs[agent_name] = {
+        spec = {
             **config,
             "agent_name": agent_name,
             "recommended_port": int(recommended_port) if recommended_port else None,
         }
+        if manifest.get("managed_runtime"):
+            spec["managed_runtime"] = manifest["managed_runtime"]
+            spec["agent_dir"] = str(runtime._AUTOYOU_AGENTS_ROOT / agent_name)
+        specs[agent_name] = spec
 
     # Also discover dynamically installed agents (not in MANAGED_FRONTEND_APPS) that
     # ship a website backend so their proxy gets started after `install` via sync.
@@ -3047,18 +3085,25 @@ def _managed_frontend_runtime_specs() -> Dict[str, Dict[str, Any]]:
             if agent_name in specs:
                 continue
             for search_root in (workspace_root, runtime._AUTOYOU_AGENTS_ROOT):
-                agent_dir = search_root / agent_name
-                manifest = runtime.load_frontend_manifest(agent_dir)
+                manifest = runtime.load_frontend_manifest(search_root / agent_name)
                 if not manifest or not manifest.get("requires_proxy_registration", False):
                     continue
+                # A package on autoyou_agents' import path outside both roots (an
+                # overlay agent) is found through its package; its manifest says where.
+                agent_dir = Path(str(manifest.get("website_root") or search_root / agent_name / "website")).parent
                 if not runtime._agent_frontend_backend_app_exists(agent_dir):
                     continue
                 recommended_port = manifest.get("recommended_port")
-                specs[agent_name] = {
+                spec = {
                     "agent_name": agent_name,
-                    "app_import": f"autoyou_agents.{agent_name}.website.backend.app:app",
                     "recommended_port": int(recommended_port) if recommended_port else None,
+                    "agent_dir": str(agent_dir),
                 }
+                if manifest.get("managed_runtime"):
+                    spec["managed_runtime"] = manifest["managed_runtime"]
+                else:
+                    spec["app_import"] = f"autoyou_agents.{agent_name}.website.backend.app:app"
+                specs[agent_name] = spec
                 break
     except Exception:
         pass
@@ -3190,23 +3235,49 @@ def _load_managed_frontend_app(spec: Dict[str, Any]) -> Any:
     return getattr(module, attribute_name)
 
 
-async def _stop_managed_frontend_backend(agent_name: str) -> None:
+async def _stop_managed_frontend_backend(agent_name: str) -> bool:
     runtime = _runtime()
     handle = dict((runtime.STATE.managed_frontend_servers or {}).pop(agent_name, {}) or {})
     runtime.STATE.dynamic_agent_proxy_ports.pop(agent_name, None)
     server_instance = handle.get("server")
     thread = handle.get("thread")
+    runtime_service = handle.get("runtime_service")
+    clean = True
 
     if server_instance is not None:
         try:
             server_instance.should_exit = True
         except Exception as exc:
             runtime.LOGGER.warning("Failed to signal managed frontend shutdown for %s: %s", agent_name, exc)
+            clean = False
 
     if thread and thread.is_alive():
-        await runtime.asyncio.to_thread(thread.join, 10)
+        try:
+            await runtime.asyncio.to_thread(thread.join, 10)
+        except Exception as exc:
+            runtime.LOGGER.warning("Could not join managed frontend thread for %s: %s", agent_name, exc)
+            clean = False
         if thread.is_alive():
             runtime.LOGGER.warning("Managed frontend thread for %s did not stop within timeout", agent_name)
+            clean = False
+
+    if runtime_service is not None:
+        try:
+            stopped = await runtime.asyncio.to_thread(
+                runtime.stop_managed_runtime_service,
+                runtime_service,
+                runtime.LOGGER,
+            )
+        except Exception as exc:
+            runtime.LOGGER.warning("Could not stop managed runtime for %s: %s", agent_name, exc)
+            stopped = False
+        if not stopped:
+            runtime.LOGGER.warning("Managed runtime for %s did not stop cleanly", agent_name)
+            clean = False
+
+    if not clean:
+        runtime.STATE.managed_frontend_servers[agent_name] = handle
+    return clean
 
 
 async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
@@ -3219,10 +3290,13 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
 
     existing = (runtime.STATE.managed_frontend_servers or {}).get(agent_name) or {}
     existing_thread = existing.get("thread")
+    existing_runtime = existing.get("runtime_service")
     existing_port = existing.get("port")
+    existing_alive = (existing_thread is not None and existing_thread.is_alive()) or (
+        existing_runtime is not None and runtime.managed_runtime_is_alive(existing_runtime)
+    )
     if (
-        existing_thread
-        and existing_thread.is_alive()
+        existing_alive
         and existing_port
         and runtime.is_port_in_use(int(existing_port), host="127.0.0.1")
     ):
@@ -3230,10 +3304,47 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
         return int(existing_port)
 
     if existing:
-        await runtime._stop_managed_frontend_backend(agent_name)
+        if not await runtime._stop_managed_frontend_backend(agent_name):
+            return None
 
     preferred_port = int(spec.get("recommended_port") or spec.get("default_port") or 0)
     target_port = runtime._find_available_local_port(preferred_port, host="127.0.0.1")
+    managed_runtime = spec.get("managed_runtime")
+    if managed_runtime:
+        try:
+            agent_dir = Path(spec.get("agent_dir") or (runtime._AUTOYOU_AGENTS_ROOT / agent_name))
+            log_path = (
+                runtime.get_logs_dir("AutoYou", anchor=runtime.__file__)
+                / "managed-runtimes"
+                / f"{agent_name}.log"
+            )
+            runtime_service = await runtime.start_managed_runtime_service(
+                managed_runtime,
+                agent_name=agent_name,
+                agent_dir=agent_dir,
+                port=target_port,
+                log_path=log_path,
+                logger=runtime.LOGGER,
+            )
+        except Exception as exc:
+            runtime.LOGGER.error("Managed runtime failed to start for %s: %s", agent_name, exc, exc_info=True)
+            await runtime._stop_managed_frontend_backend(agent_name)
+            return None
+        runtime.STATE.managed_frontend_servers[agent_name] = {
+            "agent_name": agent_name,
+            "port": target_port,
+            "runtime_service": runtime_service,
+            "managed_runtime": managed_runtime,
+        }
+        runtime.STATE.dynamic_agent_proxy_ports[agent_name] = int(target_port)
+        runtime.LOGGER.info(
+            "Managed frontend runtime started: agent=%s port=%d type=%s",
+            agent_name,
+            target_port,
+            managed_runtime["type"],
+        )
+        return int(target_port)
+
     try:
         app_target = runtime._load_managed_frontend_app(spec)
     except Exception as exc:
@@ -3245,6 +3356,13 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
         )
         await runtime._stop_managed_frontend_backend(agent_name)
         return None
+    from shared.http_request_monitor import install_http_request_capture
+
+    install_http_request_capture(
+        app_target,
+        service_name="agent_website",
+        agent_name=agent_name,
+    )
     config = runtime.uvicorn.Config(
         app_target,
         host="127.0.0.1",
@@ -3349,11 +3467,29 @@ async def sync_managed_frontend_backends() -> Dict[str, Optional[int]]:
     return started_ports
 
 
-async def stop_managed_frontend_backends() -> None:
+async def stop_managed_frontend_backends() -> bool:
     runtime = _runtime()
-    for agent_name in list((runtime.STATE.managed_frontend_servers or {}).keys()):
-        await runtime._stop_managed_frontend_backend(agent_name)
+    agent_names = list((runtime.STATE.managed_frontend_servers or {}).keys())
+    results = await runtime.asyncio.gather(
+        *(runtime._stop_managed_frontend_backend(agent_name) for agent_name in agent_names),
+        return_exceptions=True,
+    )
+    clean = True
+    for agent_name, result in zip(agent_names, results):
+        if isinstance(result, BaseException) or result is False:
+            runtime.LOGGER.warning("Managed frontend cleanup failed for %s: %s", agent_name, result)
+            clean = False
     runtime._sync_frontend_registry_from_builder_payload(runtime._build_agent_builder_listing_payload())
+    return clean
+
+
+def _managed_frontend_shutdown_timeout() -> float:
+    runtime = _runtime()
+    timeout = 10.0
+    for handle in (runtime.STATE.managed_frontend_servers or {}).values():
+        service = handle.get("runtime_service") or {}
+        timeout = max(timeout, float(getattr(service, "shutdown_timeout_seconds", 0)) + 15.0)
+    return timeout
 
 
 async def start_autoyou_page_service_background():
@@ -3379,7 +3515,7 @@ async def start_autoyou_page_service_background():
         if runtime._https_enabled(runtime.STATE.config):
             try:
                 from shared import local_tls
-                _tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+                _tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
                 page_https_port = int(autoyou_config.get("page_https_port") or autoyou_config.get("https_port_override") or (int(port) + 300))
                 if runtime.is_port_in_use(page_https_port, host="127.0.0.1"):
                     runtime.LOGGER.warning(
@@ -3605,7 +3741,11 @@ async def _stop_runtime_services_for_shutdown() -> None:
     all_clean &= await runtime._run_shutdown_step("Iroh session service", stop_server_transport(runtime), 15.0)
     all_clean &= await runtime._run_shutdown_step("Auth Server", runtime.stop_auth_server(), 10.0)
     all_clean &= await runtime._run_shutdown_step("AI Agent Server", runtime.stop_ai_agent_server(), 15.0)
-    all_clean &= await runtime._run_shutdown_step("Managed frontend backends", runtime.stop_managed_frontend_backends(), 10.0)
+    all_clean &= await runtime._run_shutdown_step(
+        "Managed frontend backends",
+        runtime.stop_managed_frontend_backends(),
+        runtime._managed_frontend_shutdown_timeout(),
+    )
     all_clean &= await runtime._run_shutdown_step("For AutoYou Page Service", runtime.stop_autoyou_page_service_background(), 15.0)
     all_clean &= await runtime._run_shutdown_step(
         "Public reverse proxy service",
@@ -3893,7 +4033,7 @@ async def main():
     if runtime._https_enabled(runtime.STATE.config):
         try:
             from shared import local_tls
-            tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR)
+            tls_material = local_tls.ensure_enabled(runtime._CONFIG_DIR, include_vpn_addresses=runtime._vpn_addresses_enabled())
             https_port = runtime._https_port(runtime.STATE.config)
             if runtime.is_port_in_use(https_port, host=probe_host):
                 runtime.LOGGER.warning(

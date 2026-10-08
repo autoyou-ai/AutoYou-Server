@@ -292,11 +292,11 @@ def test_langchain_and_mcp_surfaces():
 
 def test_browser_agent_registered_in_static_factory_and_registry():
     from autoyou_agents.shared_tools.agent_install_registry import (
+        BUILTIN_AGENT_PACKAGE_NAMES,
         DEFAULT_AGENT_INSTALL_STATES,
-        PRIVATE_AGENT_PACKAGE_NAMES,
     )
 
     assert DEFAULT_AGENT_INSTALL_STATES.get("browser_agent") is False
-    # browser_agent is opt-in but no longer a private package: it must be
-    # declared in DEFAULT_AGENT_INSTALL_STATES and reachable when compiled.
-    assert "browser_agent" not in PRIVATE_AGENT_PACKAGE_NAMES
+    # browser_agent is an opt-in built-in: it must be declared in
+    # DEFAULT_AGENT_INSTALL_STATES and reachable when compiled.
+    assert "browser_agent" in BUILTIN_AGENT_PACKAGE_NAMES

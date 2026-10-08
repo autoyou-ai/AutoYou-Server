@@ -20,6 +20,7 @@ from types import ModuleType
 from typing import Optional
 
 from fastapi import FastAPI, Request
+from shared.http_request_monitor import install_http_request_capture
 
 from rest_api import APIStatus, ChatRequest, ChatResponse, SessionInfo
 
@@ -226,6 +227,7 @@ def attach_ai_agent_endpoints(app_instance: FastAPI):
         logger_name="autoyou.http.ai_agent",
         debug_path_prefixes=("/health",),
     )
+    install_http_request_capture(app_instance, service_name="ai_agent")
 
     # Add custom health check endpoint
     @app_instance.get("/health")

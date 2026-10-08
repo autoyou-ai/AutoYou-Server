@@ -17,7 +17,6 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     BUILTIN_AGENT_PACKAGE_NAMES,
     get_agent_install_registry_path,
     load_agent_install_registry,
-    PRIVATE_AGENT_PACKAGE_NAMES,
     DEFAULT_AGENT_INSTALL_STATES,
     refresh_agent_install_registry,
     set_agent_installed,
@@ -28,21 +27,14 @@ from autoyou_agents.shared_tools.agent_install_registry import (
 __debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-37900952bc9dc7e80f0a3e53"
 
 
-def test_private_package_mechanism_blocks_compiled_runtime(monkeypatch):
+def test_overlay_package_is_blocked_in_a_compiled_runtime_that_did_not_bundle_it(monkeypatch):
     import autoyou_agents.shared_tools.agent_install_registry as registry
 
-    monkeypatch.setattr(registry, "PRIVATE_AGENT_PACKAGE_NAMES", frozenset({"notes_agent"}))
-    monkeypatch.setattr(
-        registry,
-        "BUILTIN_AGENT_PACKAGE_NAMES",
-        frozenset(registry.DEFAULT_AGENT_INSTALL_STATES) - frozenset({"notes_agent"}),
-    )
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", frozenset())
 
-    assert registry.can_install_agent_in_runtime("notes_agent", compiled=True) is False
-    assert registry.can_install_agent_in_runtime("notes_agent", compiled=False) is True
-    assert "is a private agent package" in registry.runtime_install_block_reason("notes_agent")
-    # An undeclared name still gets the generic workspace-draft explanation.
-    assert "Workspace draft only" in registry.runtime_install_block_reason("some_draft_agent")
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=True) is False
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=False) is True
+    assert "Workspace draft only" in registry.runtime_install_block_reason("lantern_agent")
 
 
 def _write_agent_dir(agents_root: Path, agent_name: str) -> None:
@@ -126,10 +118,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "fine_tuning_agent",
         "game_agent",
         "hosting_agent",
-        "ionos_agent",
-        "ionos_cloudflare_agent",
         "location_agent",
-        "mail_agent",
         "mac_security_agent",
         "model_picker_agent",
         "skills_agent",
@@ -139,55 +128,38 @@ def test_release_agent_defaults_match_public_private_policy():
         "claude_cli_agent",
         "claude_desktop_agent",
         "cli_agent",
-        "cloudflare_agent",
         "codex_desktop_agent",
         "hermes_agent",
         "media_generation_agent",
         "openclaw_agent",
         "proxy_agent",
         "remote_desktop_agent",
-        "robinhood_agent",
-        "trading_agent",
         "website_agent",
     }
 
     for agent_name in default_on:
         assert DEFAULT_AGENT_INSTALL_STATES[agent_name] is True
-    for agent_name in opt_in | PRIVATE_AGENT_PACKAGE_NAMES:
+    for agent_name in opt_in:
         assert DEFAULT_AGENT_INSTALL_STATES[agent_name] is False
-    for agent_name in PRIVATE_AGENT_PACKAGE_NAMES:
-        assert agent_name not in BUILTIN_AGENT_PACKAGE_NAMES
-        assert can_install_agent_in_runtime(agent_name, compiled=True) is False
 
-    assert PRIVATE_AGENT_PACKAGE_NAMES == {
-        "cloudflare_agent",
-        "ionos_agent",
-        "ionos_cloudflare_agent",
-        "mail_agent",
-        "robinhood_agent",
-        "trading_agent",
-    }
     assert set(DEFAULT_AGENT_INSTALL_STATES) == default_on | opt_in
-    for agent_name in set(DEFAULT_AGENT_INSTALL_STATES) - PRIVATE_AGENT_PACKAGE_NAMES:
-        assert agent_name in BUILTIN_AGENT_PACKAGE_NAMES
+    assert BUILTIN_AGENT_PACKAGE_NAMES == set(DEFAULT_AGENT_INSTALL_STATES)
+    for agent_name in BUILTIN_AGENT_PACKAGE_NAMES:
         assert can_install_agent_in_runtime(agent_name, compiled=True) is True
 
 
-def test_legacy_streaming_agent_registry_entry_is_migrated_to_education_agent(tmp_path):
+def test_an_overlay_agent_found_on_disk_starts_uninstalled(tmp_path, monkeypatch):
     agents_root = tmp_path / "autoyou_agents"
-    _write_agent_dir(agents_root, "education_agent")
+    _write_agent_dir(agents_root / "private", "lantern_agent")
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    monkeypatch.setattr(platform_runtime, "get_dynamic_agents_root", lambda *args, **kwargs: agents_root)
     registry_path = tmp_path / "agent_install_registry.json"
     # from __debug_provenance_c__ import subtask
-    registry_path.write_text(
-        '{"agents":{"streaming_agent":{"installed":false,"description":"Legacy"}}}',
-        encoding="utf-8",
-    )
 
     payload = load_agent_install_registry(agents_root=agents_root, registry_path=registry_path)
 
-    assert payload["installed_agents"] == []
-    assert payload["agents"]["education_agent"]["description"] == "Legacy"
-    assert "streaming_agent" not in payload["agents"]
+    assert payload["agents"]["lantern_agent"]["installed"] is False
+    assert "lantern_agent" in payload["available_agents"]
 
 
 def test_load_agent_install_registry_accepts_windows_utf8_bom(tmp_path):
@@ -263,10 +235,13 @@ def test_refresh_agent_install_registry_discovers_runtime_plugins_in_compiled_mo
     assert "notes_agent" in payload["installed_agents"]
 
 
-def test_compiled_registry_omits_private_agent_names_by_default(tmp_path, monkeypatch):
+def test_compiled_registry_lists_only_builtin_agents_without_a_bundle_manifest(tmp_path, monkeypatch):
+    import autoyou_agents.shared_tools.agent_install_registry as registry
+
     embedded_root = tmp_path / "embedded_agents"
     embedded_root.mkdir()
 
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", frozenset())
     monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
     monkeypatch.setattr(platform_runtime, "iter_agent_roots", lambda anchor, app_name="AutoYou": (embedded_root,))
 
@@ -275,9 +250,7 @@ def test_compiled_registry_omits_private_agent_names_by_default(tmp_path, monkey
         registry_path=tmp_path / "compiled_registry.json",
     )
 
-    for agent_name in PRIVATE_AGENT_PACKAGE_NAMES:
-        assert agent_name not in payload["agents"]
-        assert agent_name not in payload["available_agents"]
+    assert set(payload["agents"]) == BUILTIN_AGENT_PACKAGE_NAMES
 
 
 def test_compiled_registry_installs_builtin_without_source_files(tmp_path, monkeypatch):
@@ -309,19 +282,19 @@ def test_compiled_registry_accepts_only_agents_named_in_server_bundle(tmp_path, 
     embedded_root = tmp_path / "runtime_modules" / "autoyou_agents"
     (embedded_root / "shared_tools").mkdir(parents=True)
     (embedded_root / "packaged_sibling_agents.json").write_text(
-        '["trading_agent", "../unexpected_agent", 42]', encoding="utf-8",
+        '["lantern_agent", "../unexpected_agent", 42]', encoding="utf-8",
     )
     monkeypatch.setattr(registry, "__file__", str(embedded_root / "shared_tools/agent_install_registry.py"))
     monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", registry._load_packaged_sibling_agent_names())
     monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
     monkeypatch.setattr(platform_runtime, "iter_agent_roots", lambda anchor, app_name="AutoYou": (embedded_root,))
 
-    assert registry.can_install_agent_in_runtime("trading_agent", compiled=True)
-    assert registry.is_builtin_agent_name("trading_agent")
-    assert not registry.can_install_agent_in_runtime("mail_agent", compiled=True)
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=True)
+    assert registry.is_builtin_agent_name("lantern_agent")
+    assert not registry.can_install_agent_in_runtime("beacon_agent", compiled=True)
     assert not registry.can_install_agent_in_runtime("unexpected_agent", compiled=True)
-    assert "trading_agent" in registry.discover_agent_directories(embedded_root)
-    assert "mail_agent" not in registry.discover_agent_directories(embedded_root)
+    assert "lantern_agent" in registry.discover_agent_directories(embedded_root)
+    assert "beacon_agent" not in registry.discover_agent_directories(embedded_root)
 
 
 def test_compiled_registry_forces_workspace_agents_to_stay_uninstalled(tmp_path, monkeypatch):

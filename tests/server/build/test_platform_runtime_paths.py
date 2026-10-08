@@ -473,22 +473,28 @@ def test_get_embedded_agents_root_prefers_runtime_modules_layout(monkeypatch, tm
     assert resolved == embedded_root.resolve()
 
 
-def test_source_agents_root_keeps_embedded_and_dynamic_sibling(monkeypatch, tmp_path):
+def test_source_agents_root_stays_inside_the_checkout(monkeypatch, tmp_path):
     server_root = tmp_path / "AutoYou-Server"
     embedded_root = server_root / "autoyou_agents"
     embedded_root.mkdir(parents=True)
+    (embedded_root / "__init__.py").write_text("", encoding="utf-8")
     (server_root / "server.py").write_text("", encoding="utf-8")
-    sibling_root = tmp_path / "autoyou_agents"
-    sibling_root.mkdir()
-    (sibling_root / "__init__.py").write_text("", encoding="utf-8")
+    # An agents package beside the checkout is never where agents are scaffolded.
+    beside = tmp_path / "autoyou_agents"
+    beside.mkdir()
+    (beside / "__init__.py").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(platform_runtime, "get_resources_root", lambda anchor: server_root)
     monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    monkeypatch.setattr(platform_runtime, "get_runtime_data_override", lambda *args, **kwargs: None)
 
     anchor = server_root / "server.py"
     assert platform_runtime.get_embedded_agents_root(anchor) == embedded_root.resolve()
-    assert platform_runtime.get_dynamic_agents_root(anchor=anchor) == sibling_root.resolve()
-    assert platform_runtime.get_dynamic_agents_root(anchor=embedded_root / "notes_agent" / "agent.py") == sibling_root.resolve()
+    assert platform_runtime.get_dynamic_agents_root(anchor=anchor).resolve() == embedded_root.resolve()
+    assert (
+        platform_runtime.get_dynamic_agents_root(anchor=embedded_root / "notes_agent" / "agent.py").resolve()
+        == embedded_root.resolve()
+    )
 
 
 def test_get_adk_agents_base_dir_returns_parent_of_embedded_app(monkeypatch, tmp_path):

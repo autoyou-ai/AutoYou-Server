@@ -241,6 +241,7 @@ from core_server.services import (
     _register_admin_frontend_proxy,
     sync_managed_frontend_backends,
     stop_managed_frontend_backends,
+    _managed_frontend_shutdown_timeout,
     start_autoyou_page_service_background,
     stop_autoyou_page_service_background,
     sync_server_advertisement,
@@ -319,6 +320,11 @@ from shared.process_lifecycle import (
     process_spawn_kwargs,
     start_parent_process_watchdog,
 )
+from shared.managed_runtime_service import (
+    is_managed_runtime_alive,
+    start_managed_runtime_service,
+    stop_managed_runtime_service,
+)
 from shared.first_run import (
     CURRENT_AGREEMENT_VERSION,
     clear_license_acknowledgement,
@@ -340,6 +346,11 @@ from shared.audio_playback_settings import (
     set_audio_playback_enabled_env,
 )
 from shared.cloud_entitlements_client import CloudEntitlementsClient
+from shared.lan_direct_access import (
+    REDEEM_PATH as LAN_PASS_REDEEM_PATH,
+    DevicePassStore,
+    spki_sha256_b64,
+)
 from shared.pairing_response import parse_otp_response_payload
 from shared.shared_device_pairing import (
     pairing_auth_profile as _device_pairing_auth_profile,
@@ -1287,6 +1298,7 @@ from autoyou_agents.shared_tools.frontend_registry import (
 )
 from shared.agent_apps import describe_agent_app
 from autoyou_agents.shared_tools.agent_install_registry import (
+    BUILTIN_AGENT_PACKAGE_NAMES,
     can_install_agent_in_runtime,
     discover_agent_directories,
     get_agent_install_registry_path,
@@ -1477,6 +1489,7 @@ from shared.custom_voice_tts import (
     list_custom_voice_statuses,
 )
 from shared.request_logging import install_route_aware_request_logging
+from shared.http_request_monitor import install_http_request_capture
 from shared.chat_session_identity import (
     alias_webrtc_chat_session,
     bind_transport_chat_owner,
@@ -2751,6 +2764,12 @@ AUTOYOU_CLOUD_SSE_RECONNECT_INITIAL_SECONDS = float(
 AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS = float(
     os.environ.get("AUTOYOU_CLOUD_SSE_RECONNECT_MAX_SECONDS", "600")
 )
+# A stream must stay up this long before the reconnect delay starts over, so a
+# connection that opens and drops again keeps backing off instead of re-dialling
+# the cloud every few seconds. Two of the cloud's 30-second heartbeats settle it.
+AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS = float(
+    os.environ.get("AUTOYOU_CLOUD_SSE_STABLE_STREAM_SECONDS", "45")
+)
 
 
 def _cloud_registered_at_timestamp(cloud_cfg: Mapping[str, Any]) -> float:
@@ -3258,18 +3277,6 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.game_agent.website.backend.app:app",
         "default_port": 8112,
     },
-    "cloudflare_agent": {
-        "app_import": "autoyou_agents.cloudflare_agent.website.backend.app:app",
-        "default_port": 8102,
-    },
-    "ionos_agent": {
-        "app_import": "autoyou_agents.ionos_agent.website.backend.app:app",
-        "default_port": 8103,
-    },
-    "ionos_cloudflare_agent": {
-        "app_import": "autoyou_agents.ionos_cloudflare_agent.website.backend.app:app",
-        "default_port": 8104,
-    },
     "skills_agent": {
         "app_import": "autoyou_agents.skills_agent.website.backend.app:app",
         "default_port": 8086,
@@ -3344,6 +3351,8 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
 # installed manifest-backed website is exposed by default unless it is an
 # explicit security/private opt-in.  A persisted agent_frontends.<name>
 # enabled value always wins, so this does not rewrite existing preferences.
+# An agent this repository does not ship makes the same choice in its own
+# website manifest ("expose_by_default", "control_label", "control_help").
 FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # The admin website exposes the full server admin shell through the
     # browser proxy. It stays opt-in even though admin_agent is installed;
@@ -3354,11 +3363,6 @@ FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # not publish them to paired browser clients.
     "win_security_agent": False,
     "mac_security_agent": False,
-    # This surface controls public exposure and a connector credential.
-    "cloudflare_agent": False,
-    # These surfaces can deploy a public website or direct authoritative DNS.
-    "ionos_agent": False,
-    "ionos_cloudflare_agent": False,
     "game_agent": False,
 }
 
@@ -3379,9 +3383,6 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "location_agent": "Location Timeline",
     "website_agent": "Website Builder",
     "agent_builder_agent": "Agent Builder",
-    "cloudflare_agent": "Cloudflare Tunnel",
-    "ionos_agent": "IONOS Hosting",
-    "ionos_cloudflare_agent": "IONOS Cloudflare Handoff",
     "game_agent": "Game Studio",
     "skills_agent": "Skills Manager",
     "remote_desktop_agent": "Remote Desktop",
@@ -3446,18 +3447,6 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
     "agent_builder_agent": (
         "Publish the Agent Builder chat website for scaffolding, developing, and "
         "publishing new agents. Enabled by default after this agent is installed."
-    ),
-    "cloudflare_agent": (
-        "Configure one Cloudflare Tunnel for selected agent websites. Disabled by "
-        "default because it controls public exposure and a connector credential."
-    ),
-    "ionos_agent": (
-        "Manage committed website deployment, origin TLS, email, and website input "
-        "processing on IONOS. Disabled by default because it can deploy publicly."
-    ),
-    "ionos_cloudflare_agent": (
-        "Plan and verify IONOS nameserver delegation, Cloudflare DNS, redirects, TLS, "
-        "mail preservation, and DNSSEC. Disabled by default because it controls DNS."
     ),
     "game_agent": (
         "Publish the Game Studio host launcher and engine bridge for native iOS and Android "
@@ -3947,18 +3936,40 @@ HOME_NETWORK_WEBSITES_MODES = ("path_proxy", "direct_forward")
 
 
 def _home_network_websites_mode(cfg: Optional[Dict[str, Any]] = None) -> str:
-    """Which home-network website route applies, defaulting to the safest one.
+    """Which home-network website route applies.
 
-    An operator who turns the home network on gets ``path_proxy``. A launcher
-    that forces the bind host (Docker, ``--host``) keeps the websites port on
-    that bind, as before, unless the saved setting says otherwise.
+    ``direct_forward`` is the default: the websites port listens on the home
+    network, but every request from another device needs a device pass (a
+    Local Pair device gets one over its data channel, a browser by signing in
+    to the admin page), so it is as closed as the admin sign-in and much faster
+    for paired phones. ``path_proxy`` keeps the websites port on this computer.
     """
     base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
     server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
     explicit = str(server_cfg.get("home_network_websites") or "").strip().lower()
     if explicit in HOME_NETWORK_WEBSITES_MODES:
         return explicit
-    return "path_proxy" if _home_network_access_enabled(base_cfg) else "direct_forward"
+    return "direct_forward"
+
+
+def _vpn_addresses_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """Whether this computer also serves its VPN (Tailscale, 100.64.0.0/10) addresses.
+
+    Opt-in: those addresses are added to the HTTPS certificate, offered to
+    Local Pair devices for direct websites, and accepted as Local Pair peers.
+    """
+    base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
+    return _normalize_config_bool(server_cfg.get("vpn_addresses"), False)
+
+
+def _peer_on_home_network(peer_host: str, cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """A private-network peer, or a VPN peer when the operator allowed VPN addresses."""
+    if _csrf_peer_is_private_or_loopback(peer_host or ""):
+        return True
+    from shared.local_tls import is_vpn_address
+
+    return _vpn_addresses_enabled(cfg) and is_vpn_address(peer_host)
 
 
 def _page_service_bind_host(cfg: Optional[Dict[str, Any]] = None) -> str:
@@ -4079,19 +4090,20 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
     address = _primary_lan_address() if live else ""
     admin_urls: List[str] = []
     websites_urls: List[str] = []
-    if address:
+    vpn_addresses: List[str] = []
+    if live and _vpn_addresses_enabled(base_cfg):
+        from shared.local_tls import _local_ip_addresses, is_vpn_address
+
+        vpn_addresses = [ip for ip in _local_ip_addresses(include_vpn=True) if is_vpn_address(ip)]
+    for host_address in [address, *vpn_addresses] if address else vpn_addresses:
         # Plain-HTTP admin sign-in is refused from the network, so only an
-        # HTTPS admin address is worth handing to another device - and in
-        # path_proxy mode the website apps live behind that same sign-in.
+        # HTTPS admin address is worth handing to another device. A browser
+        # there reaches the website apps by signing in once: the admin page
+        # then hands it a device pass for the websites port (or, with website
+        # apps behind the sign-in, shows them on the admin port itself).
         if admin_https_live:
-            admin_urls.append(f"https://{address}:{_https_port(base_cfg)}/")
-        if websites_port_open:
-            if page_https_port:
-                websites_urls.append(f"https://{address}:{page_https_port}/websites")
-            else:
-                websites_urls.append(f"http://{address}:{_get_autoyou_page_service_port(base_cfg)}/websites")
-        elif admin_https_live:
-            websites_urls.append(f"https://{address}:{_https_port(base_cfg)}/websites")
+            admin_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/")
+            websites_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/home-network/websites")
     secure_everywhere = admin_https_live and (page_https_port or not websites_port_open)
     return {
         "enabled": live,
@@ -4111,6 +4123,10 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "remote_access_role": _get_remote_browser_access_role(base_cfg),
         "allow_remote_admin_permissions": _allow_remote_admin_permissions(base_cfg),
         "allow_remote_admin_permissions_next_boot": _normalize_config_bool(server_cfg.get("allow_remote_admin_permissions"), False),
+        # Local Pair devices load website apps straight from the HTTPS mirror.
+        "direct_websites": bool(websites_port_open and page_https_port),
+        "vpn_addresses": _vpn_addresses_enabled(base_cfg),
+        "vpn_address_list": vpn_addresses,
     }
 
 
@@ -4453,11 +4469,6 @@ def _apply_default_agent_frontends_config(cfg: Dict[str, Any]) -> bool:
         cfg["agent_frontends"] = {"hosting_agent": True}
         return True
     changed = False
-    if "streaming_agent" in frontends:
-        if "education_agent" not in frontends:
-            frontends["education_agent"] = frontends["streaming_agent"]
-        frontends.pop("streaming_agent", None)
-        changed = True
     if "hosting_agent" not in frontends:
         frontends["hosting_agent"] = True
         changed = True
@@ -4673,6 +4684,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
         "disable_autoyou_agents": _normalize_partner_enabled_flag(raw_cfg.get("disable_autoyou_agents"), False),
         "ai_audio_replies_enabled": _normalize_partner_enabled_flag(raw_cfg.get("ai_audio_replies_enabled"), True),
         "record_my_video": _normalize_partner_enabled_flag(raw_cfg.get("record_my_video"), False),
+        "record_audio_only_calls": _normalize_partner_enabled_flag(raw_cfg.get("record_audio_only_calls"), False),
         "recording_dir": str(raw_cfg.get("recording_dir") or "").strip(),
         "recording_mode": normalize_inbound_video_recording_mode(raw_cfg.get("recording_mode"), "video"),
         "image_interval_seconds": normalize_inbound_video_image_interval_seconds(
@@ -5721,6 +5733,7 @@ def _default_config() -> Dict[str, Any]:
             "disable_autoyou_agents": False,
             "ai_audio_replies_enabled": True,
             "record_my_video": False,
+            "record_audio_only_calls": False,
             "recording_dir": "",
             "recording_mode": "video",
             "image_interval_seconds": DEFAULT_INBOUND_VIDEO_IMAGE_INTERVAL_SECONDS,
@@ -8468,7 +8481,8 @@ _REMOTE_BROWSER_PROTECTED_CONFIG: Dict[str, Optional[Set[str]]] = {
     "admin_frontend": None,
     "tunnelmole": None,
     "mcp": None,
-    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled", "allow_remote_admin_permissions"},
+    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled",
+               "allow_remote_admin_permissions", "vpn_addresses"},
     "autoyou_page": {"remote_access_role"},
     "ai_agent": {"lan_access_enabled"},
 }
@@ -8484,9 +8498,19 @@ REMOTE_BROWSER_CLOUD_CONFIG_DENIAL = (
 
 
 def _request_via_remote_browser_proxy(request: Request) -> bool:
-    """Whether AutoYou forwarded this request for a paired or home-network browser."""
+    """Whether AutoYou forwarded this request for a paired or home-network browser.
+
+    The proxies run on this computer, so their requests arrive from loopback; a
+    browser addressing the admin port directly is not proxied, whatever headers
+    it sends. Only with network admin permissions opted in (WSL, Docker), where
+    a proxy can reach the server from a private container address, are private
+    peers carrying the proxy headers treated as proxied - which keeps them out
+    of the "this computer" permission controls.
+    """
     peer = request.client.host if request.client else None
-    if not _csrf_peer_is_private_or_loopback(peer or ""):
+    if not _is_loopback_client_host(peer) and not (
+        _allow_remote_admin_permissions() and _csrf_peer_is_private_or_loopback(peer or "")
+    ):
         return False
     return bool(
         request.headers.get(REMOTE_BROWSER_HEADER)
@@ -8917,6 +8941,11 @@ auth_app.add_middleware(
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Requested-With"],
 )
 
+# Install last so locked, CSRF-rejected, and other guarded inbound requests are
+# still visible to the opt-in monitor.
+install_http_request_capture(admin_app, service_name="admin")
+install_http_request_capture(auth_app, service_name="auth")
+
 # Session id -> last-used time. A sniffed or forgotten cookie must not stay a
 # full admin credential until the next restart, so idle sessions expire.
 ADMIN_SESSIONS: Dict[str, Union[float, bool]] = {}
@@ -9304,7 +9333,10 @@ def _default_agent_frontend_enabled(agent_name: str) -> bool:
         return True
     if normalized == "internet_agent":
         return True
-    return bool(FRONTEND_DEFAULT_ENABLEMENT.get(normalized, True))
+    if normalized in FRONTEND_DEFAULT_ENABLEMENT or normalized in BUILTIN_AGENT_PACKAGE_NAMES:
+        return bool(FRONTEND_DEFAULT_ENABLEMENT.get(normalized, True))
+    manifest = load_frontend_manifest(_AUTOYOU_AGENTS_ROOT / normalized) or {}
+    return bool(manifest.get("expose_by_default", True))
 
 def _agent_frontend_config_entry(
     agent_name: str,
@@ -9602,6 +9634,15 @@ def _get_silent_recording_enabled(
         and _get_video_call_config(cfg=cfg).get("silent_recording_enabled", False)
     )
 
+def _get_audio_only_call_recording_enabled(
+    *,
+    cfg: Optional[Dict[str, Any]] = None,
+) -> bool:
+    return bool(
+        _get_video_call_audio_enabled(cfg=cfg)
+        and _get_video_call_config(cfg=cfg).get("record_audio_only_calls", False)
+    )
+
 def _get_location_recording_enabled(*, cfg: Optional[Dict[str, Any]] = None) -> bool:
     return bool(_get_video_call_config(cfg=cfg).get("location_recording_enabled", False))
 
@@ -9715,6 +9756,7 @@ _ADMIN_PERMISSION_BOOLEAN_FIELDS = frozenset({
     "audio_playback_enabled",
     "ai_audio_replies_enabled", "autoyou_agents_disabled", "voice_call_recording_enabled",
     "background_mode_enabled", "safety_recording_enabled", "location_recording_enabled",
+    "audio_only_call_recording_enabled",
     "wuift_enabled", "video_call_recording_enabled", "webcam_sharing_enabled",
     "screen_capture_enabled", "screen_send_enabled", "screen_source_enabled",
     "api_video_input_enabled", "video_file_playback_enabled",
@@ -9751,6 +9793,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "voice_call_recording_enabled": bool(voice_training.get("capture_enabled", False)),
         "background_mode_enabled": bool(video_cfg.get("background_mode_enabled", False)),
         "safety_recording_enabled": bool(video_cfg.get("silent_recording_enabled", False)),
+        "audio_only_call_recording_enabled": bool(video_cfg.get("record_audio_only_calls", False)),
         "location_recording_enabled": bool(video_cfg.get("location_recording_enabled", False)),
         "wuift_enabled": bool(video_cfg.get("wuift_enabled", True)),
         "video_call_recording_enabled": bool(video_cfg.get("record_my_video", False)),
@@ -9801,6 +9844,7 @@ async def _save_admin_permissions(changes: Any) -> Dict[str, Any]:
         "autoyou_agents_disabled": "disable_autoyou_agents",
         "background_mode_enabled": "background_mode_enabled",
         "safety_recording_enabled": "silent_recording_enabled",
+        "audio_only_call_recording_enabled": "record_audio_only_calls",
         "location_recording_enabled": "location_recording_enabled",
         "wuift_enabled": "wuift_enabled",
         "video_call_recording_enabled": "record_my_video",
@@ -9900,7 +9944,7 @@ def _permission_config_change_error(request: Request, payload: Any) -> Optional[
     agent_frontends_patch = payload.get("agent_frontends")
     video_permission_fields = {
         "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
-        "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+        "background_mode_enabled", "silent_recording_enabled", "record_audio_only_calls", "location_recording_enabled",
         "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
         "outbound_sources", "outbound_source",
     }
@@ -10442,6 +10486,7 @@ def _build_webrtc_capabilities(
     agent_processing_enabled = _get_video_call_agent_processing_enabled(cfg=effective_cfg)
     background_mode_enabled = _get_background_mode_enabled(cfg=effective_cfg)
     silent_recording_enabled = _get_silent_recording_enabled(cfg=effective_cfg)
+    audio_only_call_recording_enabled = _get_audio_only_call_recording_enabled(cfg=effective_cfg)
     wuift_enabled = _get_wuift_enabled(cfg=effective_cfg)
     silent_recording_batch_seconds = _get_silent_recording_batch_seconds(cfg=effective_cfg)
     recording_enabled = _get_video_record_my_video_enabled(cfg=effective_cfg)
@@ -10697,6 +10742,11 @@ def _build_webrtc_capabilities(
             "server_audio_direction": "recvonly",
             "server_audio_output": "record_only",
         },
+        "audio_only_call_recording": {
+            "enabled": audio_only_call_recording_enabled,
+            "available": bool(audio_enabled and AudioTrackSink is not None and StreamingWavBatchRecorder is not None),
+            "format": "wav_pcm_s16_mono_16000hz",
+        },
         "wuift": {
             "enabled": wuift_enabled,
             "available": bool(audio_enabled and AudioManager is not None and agent_processing_enabled),
@@ -10718,6 +10768,9 @@ def _build_webrtc_capabilities(
         silent_recording_payload = cast(Dict[str, Any], audio_payload["silent_recording"])
         silent_recording_payload["configured"] = silent_recording_enabled
         silent_recording_payload["recording_dir"] = _resolve_silent_recording_dir(cfg=effective_cfg)
+        audio_only_payload = cast(Dict[str, Any], audio_payload["audio_only_call_recording"])
+        audio_only_payload["configured"] = audio_only_call_recording_enabled
+        audio_only_payload["recording_dir"] = str(Path(_resolve_video_recording_dir(cfg=effective_cfg)) / "audio-only")
 
     return {
         "host_platform": get_platform(),
@@ -11128,13 +11181,12 @@ def _build_agent_frontend_control(
 
     enabled = _get_agent_frontend_enabled(normalized, cfg=cfg)
     default_enabled = _default_agent_frontend_enabled(normalized)
-    label = FRONTEND_CONTROL_LABELS.get(
-        normalized,
-        "Agent Website" if isinstance(frontend_entry, dict) else "Agent Control",
+    manifest_entry = frontend_entry if isinstance(frontend_entry, dict) else {}
+    label = FRONTEND_CONTROL_LABELS.get(normalized) or str(manifest_entry.get("control_label") or "").strip() or (
+        "Agent Website" if isinstance(frontend_entry, dict) else "Agent Control"
     )
-    help_text = FRONTEND_CONTROL_HELP.get(
-        normalized,
-        "Enable or disable this agent website for AutoYou browser clients.",
+    help_text = FRONTEND_CONTROL_HELP.get(normalized) or str(manifest_entry.get("control_help") or "").strip() or (
+        "Enable or disable this agent website for AutoYou browser clients."
     )
 
     if normalized == "internet_agent":
@@ -13332,6 +13384,9 @@ def _apply_admin_ui_config_patch(
         if "discovery_enabled" in server_payload:
             server_cfg["discovery_enabled"] = _normalize_config_bool(server_payload.get("discovery_enabled"), True)
             touched_sections.add("server")
+        if "vpn_addresses" in server_payload:
+            server_cfg["vpn_addresses"] = _normalize_config_bool(server_payload.get("vpn_addresses"), False)
+            touched_sections.add("server")
         if "https_port" in server_payload:
             try:
                 _https_port_value = int(str(server_payload.get("https_port")).strip())
@@ -13707,6 +13762,8 @@ def _apply_admin_ui_config_patch(
             video_cfg["background_mode_enabled"] = _coerce_enabled_flag(video_call_payload.get("background_mode_enabled"))
         if "silent_recording_enabled" in video_call_payload:
             video_cfg["silent_recording_enabled"] = _coerce_enabled_flag(video_call_payload.get("silent_recording_enabled"))
+        if "record_audio_only_calls" in video_call_payload:
+            video_cfg["record_audio_only_calls"] = _coerce_enabled_flag(video_call_payload.get("record_audio_only_calls"))
         if "location_recording_enabled" in video_call_payload:
             video_cfg["location_recording_enabled"] = _coerce_enabled_flag(video_call_payload.get("location_recording_enabled"))
         if "wuift_enabled" in video_call_payload:
@@ -13961,7 +14018,7 @@ def _local_pair_network_error(request: Request, *, count_attempt: bool = True) -
     peer = request.client.host if request.client else ""
     if _request_forwarded_from_elsewhere(request) or _request_via_remote_browser_proxy(request):
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    if not _csrf_peer_is_private_or_loopback(peer or ""):
+    if not _peer_on_home_network(peer or ""):
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
     mode = get_security_mode()
     if mode != "secure" and not _is_secure_professional_mode(mode):
@@ -13983,6 +14040,97 @@ def _local_pair_network_error(request: Request, *, count_attempt: bool = True) -
             status_code=429,
         )
     return None
+
+# ── Direct websites for Local Pair devices ───────────────────────────────────
+# A Local Pair device on the home network can load this computer's websites
+# straight from the page service's HTTPS mirror instead of through its data
+# channel. It asks over the data channel (already CPace-authenticated) and gets
+# the mirror's certificate key to pin plus a one-time code it redeems on the
+# mirror for an HttpOnly device-pass cookie. See shared/lan_direct_access.py.
+DIRECT_LAN_PASSES = DevicePassStore()
+
+
+def _direct_lan_epoch() -> str:
+    """Bound into every pass: changing the password or security mode ends them all."""
+    password = str(get_current_password() or "")
+    if not password:
+        return ""
+    material = f"autoyou-device-pass-v1\0{password}\0{get_security_mode()}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
+
+
+_SAFE_REDIRECT_HOSTNAME = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
+
+
+def _safe_redirect_host(host: str) -> bool:
+    """An IP literal or a plain hostname, safe to put in a redirect URL."""
+    value = str(host or "").strip().strip("[]")
+    if not value:
+        return False
+    try:
+        import ipaddress
+
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return bool(_SAFE_REDIRECT_HOSTNAME.fullmatch(value))
+
+
+def _direct_lan_websites_target() -> Tuple[Optional[Any], Optional[int], str]:
+    """The page service and HTTPS mirror port direct websites use, or why there are none."""
+    if _bind_host_is_loopback(SERVER_BIND_HOST):
+        return None, None, "This computer is not shared on the home network."
+    if _home_network_websites_mode() != "direct_forward":
+        return None, None, "Website apps are kept behind the admin sign-in on this computer."
+    service = get_autoyou_page_service() if AUTOYOU_PAGE_SERVICE_AVAILABLE else None
+    page_https_port = _page_service_https_port_live()
+    if service is None or not page_https_port or _bind_host_is_loopback(getattr(service, "host", "")):
+        return None, None, "This computer does not serve its websites over HTTPS on the home network."
+    return service, page_https_port, ""
+
+
+def _direct_lan_offer(session_id: Any) -> Dict[str, Any]:
+    """What a connected device needs to open websites directly, sent over its data channel."""
+
+    def unavailable(reason: str) -> Dict[str, Any]:
+        return {"available": False, "reason": reason}
+
+    engine = WEBRTC
+    session = str(session_id or "").strip()
+    try:
+        identity = engine._resolve_chat_identity(session)
+    except Exception:
+        identity = None
+    transport = str(getattr(identity, "transport", "") or "").strip().lower()
+    owner_key = engine._owner_key_from_identity(identity) if identity is not None else ""
+    if transport != "local" or not owner_key:
+        return unavailable("Direct websites are for devices connected with Local Pair.")
+    if engine._same_machine_audio_session(session) or engine.device_ownership_for_session(session) == DEVICE_OWN:
+        return unavailable("This device is the computer itself and already opens websites locally.")
+    service, page_https_port, reason = _direct_lan_websites_target()
+    if reason:
+        return unavailable(reason)
+    epoch = _direct_lan_epoch()
+    if not epoch:
+        return unavailable("This computer is locked.")
+    try:
+        pin = spki_sha256_b64(getattr(service, "ssl_certfile", "") or "")
+    except Exception as exc:
+        LOGGER.warning("Direct websites: could not read the HTTPS certificate: %s", exc)
+        return unavailable("This computer's HTTPS certificate is not readable.")
+    code = DIRECT_LAN_PASSES.issue_code(owner_key, epoch=epoch)
+    return {
+        "available": True,
+        "https_port": int(page_https_port),
+        "spki_sha256": pin,
+        "code": code,
+        "redeem_path": LAN_PASS_REDEEM_PATH,
+        "health_path": "/health",
+        "code_ttl_seconds": DIRECT_LAN_PASSES.code_ttl_seconds,
+        "pass_ttl_seconds": DIRECT_LAN_PASSES.pass_ttl_seconds,
+        "vpn_addresses": _vpn_addresses_enabled(),
+    }
+
 
 def _require_loopback_or_token(request: Request) -> Optional[JSONResponse]:
     """Allow requests that originate from loopback OR carry the internal AI agent token."""

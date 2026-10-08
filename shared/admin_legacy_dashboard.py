@@ -1405,13 +1405,6 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
     pairing_totp_secret = _get_pairing_totp_secret(STATE.config or {}) or ""
     pairing_totp_secret_display = MASKED_SECRET_PLACEHOLDER if pairing_totp_secret else ""
 
-    # Prepare Robinhood credentials for UI
-    rh_cfg = (STATE.config.get("security", {}).get("robinhood", {}) if STATE.config else {})
-    robinhood_username = rh_cfg.get("username", "") or ""
-    robinhood_password = rh_cfg.get("password", "") or ""
-    robinhood_totp = rh_cfg.get("totp_secret", "") or ""
-    
-    
     # Get public reverse proxy status
     tunnelmole_status_info = get_tunnelmole_status()
     tunnelmole_status = tunnelmole_status_info.get("status", "Unknown")

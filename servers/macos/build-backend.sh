@@ -262,10 +262,17 @@ build_runtime_modules_bundle() {
 
     log "Compiling packaged runtime modules into $runtime_modules_root..."
     local desktop_args=()
-    if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
-        desktop_args+=(--desktop)
-    else
-        desktop_args+=(--include-sibling-agents)
+    # Modules from another source tree are named by whoever runs the build, in the
+    # manifest AUTOYOU_EXTRA_SOURCES_MANIFEST points at; this script never looks for them.
+    if [[ -n "${AUTOYOU_EXTRA_SOURCES_MANIFEST:-}" ]]; then
+        if [[ ! -f "$AUTOYOU_EXTRA_SOURCES_MANIFEST" ]]; then
+            log_error "AUTOYOU_EXTRA_SOURCES_MANIFEST names a file that does not exist: $AUTOYOU_EXTRA_SOURCES_MANIFEST"
+            return 1
+        fi
+        desktop_args+=(--extra-sources "$AUTOYOU_EXTRA_SOURCES_MANIFEST")
+    elif [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
+        log_error "A desktop backend compiles the desktop app's own modules. Set AUTOYOU_EXTRA_SOURCES_MANIFEST to the manifest that lists them."
+        return 1
     fi
     if requirements_has_voice; then
         desktop_args+=(--include-emotivoice)
@@ -2707,6 +2714,14 @@ install_node_service_deps() {
 
 install_tunnelmole_runtime() {
     local runtime_root="$1"
+    local bundle_root="${runtime_root%/runtime/tunnelmole}"
+
+    if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" \
+            && -x "$bundle_root/runtime/node/bin/node" \
+            && -d "$bundle_root/node/tunnelmole/node_modules/tunnelmole" ]]; then
+        log "Skipping the standalone Tunnelmole fallback; the v2 bundle has its pinned Node client."
+        return 0
+    fi
 
     log "Preparing tunnelmole runtime..."
     mkdir -p "$runtime_root"
@@ -3321,7 +3336,7 @@ compile_python_backend() {
         # Nuitka 4.x still auto-detects its support plugin when the wheel is
         # installed and can spend large memory probing transformers/models.
         "--disable-plugin=transformers"
-        # shared, autoyou_agents, and autoyou_lite are resolved from
+        # shared and autoyou_agents are resolved from
         # runtime_modules on packaged builds. Keep the launcher stub minimal so
         # those app modules are not duplicated into the main executable.
     )

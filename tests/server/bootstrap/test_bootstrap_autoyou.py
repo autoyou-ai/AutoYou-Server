@@ -1307,18 +1307,10 @@ def test_autoyou_lite_service_launches_canonical_package(monkeypatch):
     assert all("synthetic" not in str(value) for value in captured["command"])
     assert captured["kwargs"]["env"]["AUTOYOU_LITE_PASSWORD"] == "synthetic-pairing-password"
     assert captured["kwargs"]["env"]["AUTOYOU_LITE_ADMIN_PASSWORD"] == "synthetic-admin-password"
-    assert Path(captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0]).name == "autoyou_lite"
 
 
-def test_autoyou_lite_service_uses_private_parent_source(monkeypatch, tmp_path):
-    server_root = tmp_path / "AutoYou-Server"
-    server_root.mkdir()
-    lite_source = tmp_path / "autoyou_lite" / "autoyou_lite" / "server.py"
-    lite_source.parent.mkdir(parents=True)
-    lite_source.write_text("# synthetic Lite source\n", encoding="utf-8")
-    monkeypatch.setattr(bootstrap, "REPO_ROOT", server_root)
-
-    env = bootstrap.build_server_env(
+def _lite_env(**overrides):
+    return bootstrap.build_server_env(
         service="autoyou-lite",
         admin_port=8001,
         ai_agent_port=8081,
@@ -1328,9 +1320,35 @@ def test_autoyou_lite_service_uses_private_parent_source(monkeypatch, tmp_path):
         server_password="",
         lib_password="",
         lib_admin_password="",
+        **overrides,
     )
 
-    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(lite_source.parents[1])
+
+def test_autoyou_lite_service_runs_a_named_source(tmp_path):
+    lite_source = tmp_path / "lite" / "autoyou_lite" / "server.py"
+    lite_source.parent.mkdir(parents=True)
+    lite_source.write_text("# synthetic Lite source\n", encoding="utf-8")
+
+    args = bootstrap.parse_args(["--service", "autoyou-lite", "--lite-source", str(tmp_path / "lite")])
+    env = _lite_env(lite_source=args.lite_source)
+
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(lite_source.parents[1].resolve())
+
+
+def test_autoyou_lite_service_otherwise_uses_the_installed_package(monkeypatch, tmp_path):
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    # Nothing beside this checkout is ever searched for a Lite source.
+    sibling = tmp_path / "autoyou_lite" / "autoyou_lite" / "server.py"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_text("# synthetic Lite source\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path / "server")
+
+    assert "PYTHONPATH" not in _lite_env()
+
+
+def test_a_named_lite_source_must_hold_the_package(tmp_path):
+    with pytest.raises(SystemExit):
+        bootstrap.parse_args(["--service", "autoyou-lite", "--lite-source", str(tmp_path)])
 
 
 def test_bootstrap_cli_version_flag_prints_version(capsys):

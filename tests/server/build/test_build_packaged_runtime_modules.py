@@ -100,65 +100,80 @@ def test_runtime_module_plan_excludes_autoyou_lite_from_main_bundle(tmp_path):
     assert "autoyou_lite/server.py" not in compiled_paths
 
 
-def test_runtime_module_plan_keeps_embedded_agents_with_sibling_checkout(tmp_path):
-    server_root = tmp_path / "AutoYou-Server"
+def _manifest(tmp_path, **fields):
+    import json
+
+    path = tmp_path / "extra-sources.json"
+    path.write_text(json.dumps({"version": 1, **fields}), encoding="utf-8")
+    return runtime_builder.load_extra_sources(path)
+
+
+def test_runtime_module_plan_never_reads_a_checkout_beside_it(tmp_path):
+    server_root = tmp_path / "server"
     _populate_required_runtime_sources(server_root)
-    sibling_root = tmp_path / "autoyou_agents"
-    _write_text(sibling_root / "__init__.py", "")
-    _write_text(sibling_root / "agent.py")
-    _write_text(sibling_root / "notes_agent" / "sibling_only.py")
-    _write_text(server_root / "autoyou_agents" / "notes_agent" / "stale_only.py")
+    neighbour_agents = tmp_path / "autoyou_agents"
+    _write_text(neighbour_agents / "__init__.py", "")
+    _write_text(neighbour_agents / "agent.py")
+    _write_text(neighbour_agents / "notes_agent" / "neighbour_only.py")
+    _write_text(server_root / "autoyou_agents" / "notes_agent" / "server_only.py")
 
     plan = runtime_builder.build_runtime_module_plan(server_root)
     compiled_paths = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
 
-    assert "autoyou_agents/notes_agent/stale_only.py" in compiled_paths
-    assert "autoyou_agents/notes_agent/sibling_only.py" not in compiled_paths
+    assert "autoyou_agents/notes_agent/server_only.py" in compiled_paths
+    assert "autoyou_agents/notes_agent/neighbour_only.py" not in compiled_paths
+    assert plan.source_overrides == {}
+    assert not plan.agent_overlay
 
 
-def test_server_plan_includes_sibling_agents_private_agents_and_safe_assets(tmp_path, monkeypatch):
-    server_root = tmp_path / "AutoYou-Server"
+def test_named_agent_roots_add_agents_and_safe_assets(tmp_path, monkeypatch):
+    server_root = tmp_path / "server"
     _populate_required_runtime_sources(server_root)
     _write_text(server_root / "autoyou_agents" / "notes_agent" / "agent.py")
-    sibling_root = tmp_path / "autoyou_agents"
-    _write_text(sibling_root / "__init__.py", "")
-    _write_text(sibling_root / "notes_agent" / "agent.py", "SERVER_SOURCE_MUST_WIN = False\n")
-    _write_text(sibling_root / "notes_agent" / "desktop_assets" / "icon.svg", "<svg/>\n")
-    _write_text(sibling_root / "trading_agent" / "agent.py")
-    _write_text(sibling_root / "trading_agent" / "website" / "manifest.json", "{}\n")
-    _write_text(sibling_root / "trading_agent" / "trading_agent" / "trading_agent.db", "live state\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "agent.py")
-    _write_text(sibling_root / "private" / "mail_agent" / "prompt.py")
-    _write_text(sibling_root / "private" / "mail_agent" / "AGENT.md", "private context\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "mail_agent" / "configuration.json", "live config\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "index.mjs", "export default {};\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "index.test.mjs", "test code\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "worker" / ".env", "secret\n")
-    _write_text(sibling_root / "private" / "mail_agent" / "worker" / "node_modules" / "pkg" / "index.js", "package\n")
+    extra_root = tmp_path / "extra"
+    agents = extra_root / "agents"
+    _write_text(agents / "notes_agent" / "agent.py", "SERVER_SOURCE_MUST_WIN = False\n")
+    _write_text(agents / "notes_agent" / "desktop_assets" / "icon.svg", "<svg/>\n")
+    _write_text(agents / "extra_agent" / "agent.py")
+    _write_text(agents / "extra_agent" / "website" / "manifest.json", "{}\n")
+    _write_text(agents / "extra_agent" / "extra_agent" / "extra_agent.db", "live state\n")
+    partner = extra_root / "partner_agents"
+    _write_text(partner / "partner_agent" / "agent.py")
+    _write_text(partner / "partner_agent" / "prompt.py")
+    _write_text(partner / "partner_agent" / "AGENT.md", "agent context\n")
+    _write_text(partner / "partner_agent" / "partner_agent" / "configuration.json", "live config\n")
+    _write_text(partner / "partner_agent" / "worker" / "index.mjs", "export default {};\n")
+    _write_text(partner / "partner_agent" / "worker" / "index.test.mjs", "test code\n")
+    _write_text(partner / "partner_agent" / "worker" / ".env", "synthetic-secret\n")
+    _write_text(partner / "partner_agent" / "worker" / "node_modules" / "pkg" / "index.js", "package\n")
+    extra = _manifest(tmp_path, root=str(extra_root), agent_roots=[
+        {"path": "agents"}, {"path": str(partner), "exclusive": True},
+    ])
 
-    plan = runtime_builder.build_runtime_module_plan(server_root, include_sibling_agents=True)
+    plan = runtime_builder.build_runtime_module_plan(server_root, extra_sources=extra)
     compiled = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
     assets = {path.as_posix() for path in plan.asset_files}
 
     assert "autoyou_agents/notes_agent/agent.py" in compiled
     assert Path("autoyou_agents/notes_agent/agent.py") not in plan.source_overrides
-    assert "autoyou_agents/trading_agent/agent.py" in compiled
-    assert "autoyou_agents/mail_agent/agent.py" in compiled
-    assert "autoyou_agents/mail_agent/prompt.py" in compiled
+    assert "autoyou_agents/extra_agent/agent.py" in compiled
+    assert "autoyou_agents/partner_agent/agent.py" in compiled
+    assert "autoyou_agents/partner_agent/prompt.py" in compiled
     assert "autoyou_agents/notes_agent/desktop_assets/icon.svg" in assets
-    assert "autoyou_agents/trading_agent/website/manifest.json" in assets
-    assert "autoyou_agents/mail_agent/AGENT.md" in assets
-    assert "autoyou_agents/mail_agent/worker/index.mjs" in assets
-    assert "autoyou_agents/mail_agent/worker/index.test.mjs" not in assets
-    assert "autoyou_agents/mail_agent/worker/.env" not in assets
-    assert "autoyou_agents/mail_agent/worker/node_modules/pkg/index.js" not in assets
-    assert "autoyou_agents/trading_agent/trading_agent/trading_agent.db" not in assets
-    assert "autoyou_agents/mail_agent/mail_agent/configuration.json" not in assets
-    assert plan.sibling_agent_names == ("mail_agent", "trading_agent")
+    assert "autoyou_agents/extra_agent/website/manifest.json" in assets
+    assert "autoyou_agents/partner_agent/AGENT.md" in assets
+    assert "autoyou_agents/partner_agent/worker/index.mjs" in assets
+    assert "autoyou_agents/partner_agent/worker/index.test.mjs" not in assets
+    assert "autoyou_agents/partner_agent/worker/.env" not in assets
+    assert "autoyou_agents/partner_agent/worker/node_modules/pkg/index.js" not in assets
+    assert "autoyou_agents/extra_agent/extra_agent/extra_agent.db" not in assets
+    assert "autoyou_agents/partner_agent/partner_agent/configuration.json" not in assets
+    assert plan.sibling_agent_names == ("extra_agent", "partner_agent")
+    assert plan.agent_overlay
 
     def fake_run_nuitka_module_build(*, output_root, spec, source_override=None, **_kwargs):
-        if spec.source_relative_path == Path("autoyou_agents/mail_agent/agent.py"):
-            assert source_override == sibling_root / "private" / "mail_agent" / "agent.py"
+        if spec.source_relative_path == Path("autoyou_agents/partner_agent/agent.py"):
+            assert source_override == partner / "partner_agent" / "agent.py"
         destination = output_root / spec.destination_relative_dir / f"{spec.source_stem}.cp313-linux_x86_64.so"
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"compiled-module")
@@ -172,40 +187,73 @@ def test_server_plan_includes_sibling_agents_private_agents_and_safe_assets(tmp_
         build_root=tmp_path / "build",
         job_count=1,
         extra_nuitka_args=(),
-        include_sibling_agents=True,
+        extra_sources=extra,
     )
     marker = bundle_root / "runtime_modules/autoyou_agents/packaged_sibling_agents.json"
-    assert marker.read_text(encoding="utf-8").strip().startswith('[\n  "mail_agent"')
+    assert marker.read_text(encoding="utf-8").strip().startswith('[\n  "extra_agent"')
     assert "runtime_modules/autoyou_agents/packaged_sibling_agents.json" in manifest["files"]
-    assert not (bundle_root / "runtime_modules/autoyou_agents/mail_agent/mail_agent/configuration.json").exists()
+    assert not (bundle_root / "runtime_modules/autoyou_agents/partner_agent/partner_agent/configuration.json").exists()
 
 
-def test_native_v2_plan_rejects_sibling_overlay(tmp_path):
-    with pytest.raises(ValueError, match="cannot include sibling agents"):
-        runtime_builder.build_runtime_module_plan(tmp_path, desktop=True, include_sibling_agents=True)
-
-
-def test_desktop_runtime_plan_reads_private_native_sources_beside_server(tmp_path):
-    server_root = tmp_path / "AutoYou-Server"
+def test_an_exclusive_agent_root_cannot_reuse_a_server_package_name(tmp_path):
+    server_root = tmp_path / "server"
     _populate_required_runtime_sources(server_root)
-    for name in (
-        "autoyou_client.py", "desktop_client.py", "cloud_pair.py", "audio_streams.py",
-        "attachments_helper.py", "bluetooth_pairing_client.py", "http_proxy_client.py",
-        "legal_acceptance.py", "location_beacon.py", "conversation_history.py",
-    ):
-        _write_text(tmp_path / "clients" / "python" / name)
-    _write_text(tmp_path / "clients" / "python" / "peer_link" / "__init__.py")
-    _write_text(tmp_path / "clients" / "python" / "peer_link" / "manager.py")
-    _write_text(tmp_path / "v2" / "runtime" / "__init__.py")
-    _write_text(tmp_path / "v2" / "runtime" / "worker.py")
+    _write_text(server_root / "autoyou_agents" / "notes_agent" / "agent.py")
+    _write_text(tmp_path / "extra" / "notes_agent" / "agent.py")
+    extra = _manifest(tmp_path, root=str(tmp_path / "extra"), agent_roots=[{"path": ".", "exclusive": True}])
 
-    plan = runtime_builder.build_runtime_module_plan(server_root, desktop=True)
-    compiled_paths = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
+    with pytest.raises(ValueError, match="collides with Server source"):
+        runtime_builder.build_runtime_module_plan(server_root, extra_sources=extra)
 
-    assert "clients/python/autoyou_client.py" in compiled_paths
-    assert "clients/python/peer_link/manager.py" in compiled_paths
-    assert "v2/runtime/worker.py" in compiled_paths
-    assert runtime_builder._source_path(server_root, Path("v2/runtime/worker.py")) == tmp_path / "v2/runtime/worker.py"
+
+def test_extra_sources_compile_named_modules_and_package_markers(tmp_path, monkeypatch):
+    server_root = tmp_path / "server"
+    _populate_required_runtime_sources(server_root)
+    extra_root = tmp_path / "app"
+    _write_text(extra_root / "client" / "bridge.py")
+    _write_text(extra_root / "client" / "unlisted.py")
+    _write_text(extra_root / "engine" / "__init__.py", "ENGINE_PACKAGE = True\n")
+    _write_text(extra_root / "engine" / "worker.py")
+    extra = _manifest(tmp_path, root=str(extra_root), modules=["client/bridge.py"],
+                      packages=["engine"], package_markers=["client/__init__.py"])
+
+    plan = runtime_builder.build_runtime_module_plan(server_root, extra_sources=extra)
+    compiled = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
+
+    assert {"client/bridge.py", "engine/worker.py"} <= compiled
+    assert "client/unlisted.py" not in compiled
+    assert {Path("engine/__init__.py"), Path("client/__init__.py")} <= set(plan.bridge_stubs)
+    assert plan.source_overrides[Path("engine/worker.py")] == extra_root / "engine" / "worker.py"
+    assert not plan.agent_overlay
+
+    written = runtime_builder._write_bridge_stubs(
+        output_root=tmp_path / "out", build_root=tmp_path / "build", plan=plan, repo_root=server_root,
+    )
+    assert (tmp_path / "out" / "engine" / "__init__.pyc") in written
+
+
+def test_extra_sources_must_exist_and_stay_inside_their_root(tmp_path):
+    server_root = tmp_path / "server"
+    _populate_required_runtime_sources(server_root)
+    (tmp_path / "app").mkdir()
+    missing = _manifest(tmp_path, root=str(tmp_path / "app"), modules=["client/missing.py"])
+    with pytest.raises(FileNotFoundError, match="client/missing.py"):
+        runtime_builder.build_runtime_module_plan(server_root, extra_sources=missing)
+    for fields in ({"root": "relative/root"}, {"root": str(tmp_path / "app"), "modules": ["../server/server.py"]},
+                   {"root": str(tmp_path / "app"), "modules": [str(tmp_path / "abs.py")]}):
+        with pytest.raises(ValueError):
+            _manifest(tmp_path, **fields)
+    clash = _manifest(tmp_path, root=str(server_root), modules=["server.py"])
+    with pytest.raises(ValueError, match="collide"):
+        runtime_builder.build_runtime_module_plan(server_root, extra_sources=clash)
+
+
+def test_cli_reads_the_manifest_from_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv(runtime_builder.EXTRA_SOURCES_ENV, str(tmp_path / "from-env.json"))
+    args = runtime_builder.parse_args(["--repo-root", ".", "--bundle-root", "b", "--build-root", "c"])
+    assert args.extra_sources == str(tmp_path / "from-env.json")
+    monkeypatch.delenv(runtime_builder.EXTRA_SOURCES_ENV)
+    assert runtime_builder.parse_args(["--repo-root", ".", "--bundle-root", "b", "--build-root", "c"]).extra_sources == ""
 
 
 def test_runtime_module_plan_includes_agent_directory_shared_logic(tmp_path):
@@ -421,12 +469,12 @@ def test_runtime_module_plan_excludes_workspace_only_custom_agents(tmp_path):
 
 
 def test_runtime_module_plan_includes_mac_security_agent(tmp_path):
-    """mac_security_agent is no longer a private package, so it must ship.
+    """mac_security_agent is a built-in, so it must ship.
 
     The shipped-agent allowlist is derived from BUILTIN_AGENT_PACKAGE_NAMES,
-    which is DEFAULT_AGENT_INSTALL_STATES minus PRIVATE_AGENT_PACKAGE_NAMES.
-    With no private agents, a declared agent that is installable at runtime
-    must also have its sources and assets in the packaged build -- otherwise
+    which is exactly DEFAULT_AGENT_INSTALL_STATES. A declared agent that is
+    installable at runtime must also have its sources and assets in the
+    packaged build -- otherwise
     the runtime would advertise an agent whose files were never compiled in.
     """
     _populate_required_runtime_sources(tmp_path)

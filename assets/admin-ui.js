@@ -312,6 +312,7 @@
             telegramUserMessages: null,
             whatsappStatus: null,
             cloudStatus: null,
+            cloudDevices: null,
             datachannel: null,
             playback: null,
             playbackStatus: null,
@@ -3306,6 +3307,7 @@
                 ai_audio_replies_enabled: asBoolean(getByPath(cfg, "video_call.ai_audio_replies_enabled", true), true),
                 background_mode_enabled: asBoolean(getByPath(cfg, "video_call.background_mode_enabled", false), false),
                 silent_recording_enabled: asBoolean(getByPath(cfg, "video_call.silent_recording_enabled", false), false),
+                record_audio_only_calls: asBoolean(getByPath(cfg, "video_call.record_audio_only_calls", false), false),
                 location_recording_enabled: asBoolean(getByPath(cfg, "video_call.location_recording_enabled", false), false),
                 wuift_enabled: asBoolean(getByPath(cfg, "video_call.wuift_enabled", true), true),
                 silent_recording_dir: getByPath(cfg, "video_call.silent_recording_dir", ""),
@@ -4039,6 +4041,7 @@
                 { key: "telegramUserMessages", url: "/api/telegram-user/messages?limit=12" },
                 { key: "whatsappStatus", url: "/api/whatsapp/status" },
                 { key: "cloudStatus", url: "/api/cloud/status" },
+                { key: "cloudDevices", url: "/api/cloud/devices" },
                 { key: "datachannel", url: "/api/datachannel-status" },
                 { key: "playback", url: "/api/webrtc/playback/enabled" },
                 { key: "webrtcCapabilities", url: "/api/webrtc/capabilities" },
@@ -5709,13 +5712,13 @@
     }
 
     function homeNetworkWebsitesLabel(mode) {
-        return normalizeHomeNetworkWebsitesMode(mode) === "direct_forward" ? "Own port open (remote role)" : "Behind the admin sign-in";
+        return normalizeHomeNetworkWebsitesMode(mode) === "direct_forward" ? "Direct, with a device pass" : "Only through the admin sign-in";
     }
 
     function homeNetworkWebsitesHelp(mode) {
         return normalizeHomeNetworkWebsitesMode(mode) === "direct_forward"
-            ? "The websites port also listens on the home network. Browsers there get the remote client role without signing in, and plain HTTP moves to HTTPS."
-            : "Only the admin port listens on the home network. Website apps open at /agent/<name>/ on it after signing in over HTTPS; the AI Agent and websites ports stay on this computer.";
+            ? "Phones paired with Local Pair open website apps straight from this computer over HTTPS, checked against its key - much faster. Any other device needs a device pass: a browser gets one by signing in here."
+            : "Website apps stay on this computer and open on the admin page after signing in. Paired phones keep using their connection.";
     }
 
     function renderHomeNetworkSecurity(home, exposed, httpsNextBoot) {
@@ -5732,9 +5735,10 @@
             return "<li><code>" + escapeHtml(url) + "</code></li>";
         }).join("");
         if (links) {
-            parts.push("<div class=\"ayu-note ayu-network-note ayu-note-" + (liveHttps ? "blue" : "amber") + "\"><strong>From other devices on this network</strong><ul class=\"ayu-network-urls\">" + links + "</ul>"
-                + (liveHttps ? "<p>Install this server's certificate once on each device so its browser trusts these addresses: <a href=\"/ca.crt\" download>Download CA certificate</a>.</p>" : "")
-                + "<p>Those browsers get the " + escapeHtml(remoteAccessRoleLabel(remoteAccessRole).toLowerCase()) + " role, the same as paired devices." + (liveHttps ? " Plain-HTTP visits are moved to HTTPS." : "") + "</p></div>");
+            parts.push("<div class=\"ayu-note ayu-network-note ayu-note-" + (liveHttps ? "blue" : "amber") + "\"><strong>From a browser on another device</strong><ul class=\"ayu-network-urls\">" + links + "</ul>"
+                + "<p>Sign in there, then choose Website apps; that browser gets a device pass with the " + escapeHtml(remoteAccessRoleLabel(remoteAccessRole).toLowerCase()) + " role. Paired AutoYou apps need none of this.</p>"
+                + (liveHttps ? "<p>To skip the certificate warning, install this server's certificate once on that device: <a href=\"/ca.crt\" download>Download CA certificate</a>.</p>" : "")
+                + "</div>");
         }
         return parts.join("");
     }
@@ -5800,6 +5804,8 @@
         var websitesMode = normalizeHomeNetworkWebsitesMode(getByPath(home, "websites_mode_next_boot", getByPath(cfg, "server.home_network_websites", nextHost === "0.0.0.0" ? "path_proxy" : "direct_forward")));
         var discoveryEnabled = asBoolean(getByPath(home, "discovery_enabled", getByPath(cfg, "server.discovery_enabled", true)), true);
         var discoveryLive = asBoolean(getByPath(home, "discovery", false), false);
+        var vpnEnabled = asBoolean(getByPath(cfg, "server.vpn_addresses", getByPath(home, "vpn_addresses", false)), false);
+        var vpnAddresses = getByPath(home, "vpn_address_list", []) || [];
         var bluetoothEnabled = asBoolean(getByPath(state.forms, "connectivity.bluetoothPairing.enabled", getByPath(cfg, "bluetooth_pairing.enabled", false)), false);
         var bluetoothRuntime = getByPath(status, "bluetooth_pairing", {});
         var bluetoothRunning = Boolean(getByPath(bluetoothRuntime, "running", false));
@@ -5830,9 +5836,16 @@
                     : (nextHost === "0.0.0.0" ? "Home network devices would use plain HTTP. Turn HTTPS on." : "Services are served over plain HTTP on this computer only.")
             },
             {
-                label: "Home network websites",
+                label: "Website apps on the home network",
                 value: homeNetworkWebsitesLabel(websitesMode),
                 help: homeNetworkWebsitesHelp(websitesMode)
+            },
+            {
+                label: "VPN addresses (Tailscale)",
+                value: vpnEnabled ? (vpnAddresses.length ? "On · " + vpnAddresses.join(", ") : "On") : "Off",
+                help: vpnEnabled
+                    ? "Devices on your VPN can use Local Pair and open website apps directly; the HTTPS certificate covers these addresses after restart."
+                    : "Only home-network addresses are served. Turn on to also reach this computer over Tailscale."
             },
             {
                 label: "Nearby discovery",
@@ -5864,8 +5877,11 @@
             ? button("Change to local-only machine access on next boot", "overview-bind-local", "secondary", "shield", "sm")
             : button("Turn on the home network with HTTPS on next boot", "overview-bind-home", "secondary", "wifi", "sm");
         var websitesActions = websitesMode === "direct_forward"
-            ? button("Keep website apps behind the admin sign-in", "overview-home-websites:path_proxy", "secondary", "shield", "sm")
-            : button("Also open the websites port", "overview-home-websites:direct_forward", "ghost", "page", "sm");
+            ? button("Only through the admin sign-in", "overview-home-websites:path_proxy", "ghost", "shield", "sm")
+            : button("Let paired devices open them directly", "overview-home-websites:direct_forward", "secondary", "page", "sm");
+        var vpnAction = vpnEnabled
+            ? button("Stop serving VPN addresses", "overview-vpn:disable", "ghost", "shield", "sm")
+            : button("Also serve VPN addresses", "overview-vpn:enable", "ghost", "wifi", "sm");
         var discoveryAction = discoveryEnabled
             ? button("Stop nearby discovery", "overview-discovery:disable", "ghost", "eye", "sm")
             : button("Turn on nearby discovery", "overview-discovery:enable", "secondary", "wifi", "sm");
@@ -5884,7 +5900,7 @@
         var noteTone = nextHost === "0.0.0.0" || nativeUnlockEnabled ? "amber" : "green";
         var nextHostSummary = nextHost === "0.0.0.0" ? "home network access" : "local-only access";
         var credentialNote = "<div class=\"ayu-note ayu-note-gray\"><strong>Credentials stay on this computer.</strong> Connected devices can sign in and see settings their role allows, but passwords, two-factor, security mode and network exposure only change here or in an HTTPS admin session opened directly on this computer.</div>";
-        var homeNetworkNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>Home network:</strong> " + escapeHtml(homeNetworkWebsitesHelp(websitesMode)) + "<p>Website route and nearby discovery apply right away; turning the home network itself on or off needs a restart.</p></div><div class=\"ayu-inline-actions\">" + websitesActions + discoveryAction + "</div>";
+        var homeNetworkNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>Home network:</strong> " + escapeHtml(homeNetworkWebsitesHelp(websitesMode)) + "<p>Website apps and nearby discovery change right away; sharing on the network, HTTPS and VPN addresses apply after a restart.</p></div><div class=\"ayu-inline-actions\">" + websitesActions + vpnAction + discoveryAction + "</div>";
         var wslDockerNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>WSL, Docker, and Virtual IP Access:</strong> If hosting inside WSL or Docker and connecting via IP (e.g. <code>172.x.x.x</code>):<p>1. <strong>Login requires HTTPS:</strong> Connect over <code>https://&lt;ip&gt;:8443/</code> (or behind a trusted TLS proxy with <code>AUTOYOU_TRUSTED_HTTPS_PROXY=1</code>).</p><p>2. <strong>Permissions modification:</strong> Enable <em>Allow network admin permissions next boot</em> above (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) so your admin login over the virtual IP can change hardware permissions. Public tunnels remain blocked.</p></div>";
         return rows
             + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsEnabled)
@@ -6823,7 +6839,7 @@
 
         var routesMarkup = Array.isArray(routes) && routes.length ? "<div class=\"ayu-list\">" + routes.map(function (route) {
             var routeUrl = routeLaunchUrl(route);
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || route.path || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || route.path || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) + routeAuthActionMarkup(route) : "") + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
         }).join("") + "</div>" : "<div class=\"ayu-empty\">No browser routes were discovered yet.</div>";
 
         var agentSessionsMarkup = "<div class=\"ayu-note ayu-note-blue\">Shared sign-in applies to eligible agent websites in the same browser. Existing sign-ins in this browser are recognized when you save; another browser activates sharing when it revisits a website where it is already signed in. Agents can opt out individually.</div>"
@@ -7112,6 +7128,19 @@
         return route.auth_mode === "open" ? "green" : "amber";
     }
 
+    function routeAuthActionMarkup(route) {
+        var name = String(route.agent_name || "");
+        if (!name) {
+            return "";
+        }
+        var isOpen = String(route.auth_mode || "").toLowerCase() === "open";
+        var mode = isOpen ? "totp" : "open";
+        var label = isOpen ? "Require OTP" : "Allow without OTP";
+        var variant = isOpen ? "secondary" : "ghost";
+        return button(label, "agent-website-auth:" + name + ":" + mode, variant, "shield", "sm")
+            + button("Use default", "agent-website-auth:" + name + ":default", "ghost", "bolt", "sm");
+    }
+
     function renderBrowserRoutesPanelBody(routes, browser) {
         var defaultWebsite = getByPath(browser, "default_website", {});
         var currentDefaultName = String(getByPath(defaultWebsite, "agent_name", "") || "");
@@ -7123,6 +7152,9 @@
                 var name = String(route.agent_name || "");
                 var isDefault = Boolean(route.default) || (name && name === currentDefaultName);
                 var actions = badge(routeBadgeLabel(route), routeBadgeTone(route));
+                if (name) {
+                    actions += badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) + routeAuthActionMarkup(route);
+                }
                 if (isDefault) {
                     actions += badge("DEFAULT", "green");
                 } else if (name) {
@@ -7423,12 +7455,13 @@
             + checkbox("videoCall.ai_audio_replies_enabled", "Play spoken AI replies in calls", "Allows AI voice replies to play into active calls.")
             + checkbox("videoCall.disable_autoyou_agents", "Disable AutoYou Agents for call audio", "When enabled, call audio is not transcribed or sent to AI agents.")
             + checkbox("speech.voice_training_capture_enabled", "Record voice calls", "Saves voice-call audio samples and transcripts in the Voice Training folder.")
+            + checkbox("videoCall.record_audio_only_calls", "Record audio-only calls", "Saves received call audio as WAV whenever it is not muxed into a recorded MP4. Call transcripts and WUIFT turn handling continue independently.")
             + checkbox("videoCall.background_mode_enabled", "Allow phone background mode", "Keeps paired phones connected in the background; the phone microphone remains off unless a call or safety recording is active.")
             + checkbox("videoCall.silent_recording_enabled", "Allow safety recording", "Allows a paired phone to send microphone audio for local recording without transcription or AI processing.")
             + checkbox("videoCall.location_recording_enabled", "Allow device location recording", "Accepts new location samples from a connected device that also enabled location sharing and granted its OS permission.")
             + checkbox("videoCall.wuift_enabled", "Allow Wait Until I Finish Talking", "Lets callers hold transcription across pauses before sending a turn.")
             + "<div class=\"ayu-inline-actions\">" + button("Save audio permissions", "save-permissions-audio", "primary", "save") + "</div>";
-        var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "Saves the connected phone's camera frames on this computer.")
+        var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "When the format is Video file, saves the connected phone's camera and available call audio together in an MP4 on this computer.")
             + checkbox("videoCall.remote_desktop.enabled", "Allow screen capture", "Authorizes native capture of this computer's display.")
             + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Includes the selected monitor in active video calls.")
             + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
@@ -7900,6 +7933,7 @@
             { label: "Video enabled", value: yesNo(getByPath(videoCaps, "enabled", false)) },
             { label: "Receives phone camera", value: yesNo(getByPath(videoCaps, "receive_enabled", false)) },
             { label: "Records received video", value: yesNo(getByPath(videoCaps, "record_my_video", false)) },
+            { label: "Audio-only call recording", value: yesNo(getByPath(audioCaps, "audio_only_call_recording.enabled", false)) },
             { label: "Recording mode", value: getByPath(videoCaps, "recording_mode", "video") },
             { label: "Recording format", value: getByPath(videoCaps, "recording_format", "jpeg_frames") },
             { label: "Image interval", value: String(getByPath(videoCaps, "image_interval_seconds", getByPath(state.forms, "videoCall.image_interval_seconds", 5))) + "s" },
@@ -8078,8 +8112,33 @@
             { label: "Receives client requests", value: cloudActiveState === null ? "Unknown" : (cloudActiveState ? "Yes" : "No") },
             { label: "Needs reconnect", value: cloudNeedsRelink ? "Yes" : "No" }
         ]) + "<div class=\"ayu-note ayu-note-blue\">" + escapeHtml(cloudRoutingNote) + "</div>" + (cloudNeedsRelink ? "<div class=\"ayu-note ayu-note-amber\">This account link was rejected. Use Reconnect AutoYou account above to sign in and replace it.</div>" : "") + cloudActionsMarkup + "<div class=\"ayu-note ayu-note-gray\">Linking signs this server in. Making it active is what moves Cloud Pair client requests away from other linked servers.</div>" + cloudNotificationMarkup;
+        cloudMarkup += renderCloudDevicesMarkup();
         var sessionMarkup = "<div class=\"ayu-note\">" + escapeHtml("Connected clients " + String(getByPath(state.operations, "datachannel.connected_clients", getByPath(state.operations, "datachannel.active_sessions", 0))) + ".") + "</div>" + renderDatachannelSessionList(state.operations.datachannel || {}) + renderBluetoothPairPanelMarkup();
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Connectivity</h1><p>Cloud link state, public link pairing modes, connected clients, scheduler queue status, and connection helpers used by paired clients.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div></div><div class=\"ayu-grid-2\">" + panel("AutoYou Cloud", "Only the active linked server receives Cloud Pair client requests. Link signs this server in; Make active moves routing here.", cloudMarkup) + panel("Public link", "Give this server a public link so clients outside your LAN can pair. Configure pair-code and connection modes here.", field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(tunnelmole.status || "")) + "\">" + escapeHtml(tunnelmole.status || "Unknown") + "</div>") + field("Public URL", "<div class=\"ayu-note ayu-note-green ayu-mono\">" + escapeHtml(tunnelmole.public_url || "No public URL") + "</div>") + field("Pair URL", "<div class=\"ayu-note ayu-note-amber ayu-mono\">" + escapeHtml(tunnelmole.pair_url || "No pair URL") + "</div>") + checkbox("connectivity.tunnelmole.enabled", "Enable public link") + "<div class=\"ayu-grid-2\">" + field("Timed lifetime (minutes)", input("connectivity.tunnelmole.timeout_minutes", { type: "number" })) + field("Pairing code timeout", input("connectivity.tunnelmole.otp_timeout_minutes", { type: "number" })) + field("Pair-code mode", select("connectivity.tunnelmole.pair_code_mode", getByPath(metadata, "pair_code_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + field("Connection mode", select("connectivity.tunnelmole.connection_mode", getByPath(metadata, "connection_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + "</div>" + checkbox("connectivity.tunnelmole.otp_multiuse", "Allow pairing code reuse within the configured timeout window") + checkbox("connectivity.tunnelmole.url_only_pair", "Share URL only (most secure)", "Secure Professional + Authenticator pair-code mode: AutoYou sends only the public link. Clients sign in with the shared 2FA setup key and password you handed over separately - nothing secret travels over the message.") + checkbox("connectivity.tunnelmole.auto_start_on_boot", "Auto-connect public URL on startup", "Brings your persistent public link back online automatically each time AutoYou starts. Requires a Public Proxy plan; free servers skip this and keep using on-demand links.") + "<div class=\"ayu-inline-actions\">" + button("Save link settings", "save-tunnelmole", "primary", "save") + button("Start", "service:tunnelmole:start", "green", "play", "sm") + button("Stop", "service:tunnelmole:stop", "secondary", "stop", "sm") + button("Refresh", "service:tunnelmole:refresh", "ghost", "refresh", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Connected clients", "Client reachability and one-click selection for messaging and playback.", sessionMarkup) + panel("Notification queue", "Queued reminder and task deliveries waiting for a connection or retry window.", renderSchedulerQueue(state.operations.queue)) + "</div><div class=\"ayu-grid-2\">" + panel("Connection helpers", "Paste provider details or edit the resolved helper list directly. Use Add to merge with existing entries or Replace to overwrite them from the pasted input.", field("Quick import", textarea("connectivity.iceImportText", { rows: 6, extraClass: "ayu-mono", placeholder: "Paste provider details, connection helper JSON, or connection server URLs" }), "Accepts provider details, connection helper JSON, or connection server URLs.") + "<div class=\"ayu-inline-actions\">" + button("Add to existing", "ice-parse-append", "secondary", "plus", "sm") + button("Replace from input", "ice-parse-replace", "ghost", "refresh", "sm") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary ayu-btn-sm\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div><div class=\"ayu-soft-divider\"></div>" + field("Connection helper JSON", textarea("connectivity.iceServersText", { rows: 12, extraClass: "ayu-mono" }), "AutoYou saves the full list and preserves your exact structure.") + "<div class=\"ayu-inline-actions\">" + button("Save helpers", "save-ice", "primary", "save") + "</div>") + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to AutoYou browser clients. Set which one connected clients open by default.", renderBrowserRoutesPanelBody(routes, getByPath(status, "browser", {}))) + "</div></div>";
+    }
+
+    function renderCloudDevicesMarkup() {
+        var data = state.operations.cloudDevices || {};
+        var approval = asBoolean(getByPath(data, "require_device_approval", false), false);
+        var pending = getByPath(data, "pending", []) || [];
+        var devices = getByPath(data, "devices", []) || [];
+        function deviceRow(entry, actions) {
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(entry.name || "Unnamed device") + "</strong><p>Key " + escapeHtml(entry.key_fingerprint || "") + "...</p></div><div class=\"ayu-inline-actions\">" + actions + "</div></div>";
+        }
+        var pendingMarkup = pending.map(function (entry) {
+            return deviceRow(entry, button("Approve", "cloud-device-approve:" + entry.device_id, "primary", "check", "sm") + button("Remove", "cloud-device-forget:" + entry.device_id, "ghost", "trash", "sm"));
+        }).join("");
+        var deviceMarkup = devices.map(function (entry) {
+            return deviceRow(entry, button("Remove", "cloud-device-forget:" + entry.device_id, "ghost", "trash", "sm"));
+        }).join("");
+        return "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Cloud Pair devices</h3>"
+            + "<div class=\"ayu-note ayu-note-gray\">Each device's security key is saved the first time it pairs through AutoYou Cloud, so the cloud cannot swap it later. "
+            + (approval ? "New devices wait here until you approve them." : "Turn on approval so AutoYou Cloud cannot add a new device without you.") + "</div>"
+            + (pendingMarkup ? "<h4 style=\"margin:10px 0 6px;font-size:13px;\">Waiting for approval</h4><div class=\"ayu-list\">" + pendingMarkup + "</div>" : "")
+            + (deviceMarkup ? "<div class=\"ayu-list\">" + deviceMarkup + "</div>" : "<div class=\"ayu-note\">No device has paired through AutoYou Cloud yet.</div>")
+            + "<div class=\"ayu-inline-actions\">" + (approval
+                ? button("Stop asking for approval", "cloud-device-approval:off", "ghost", "shield", "sm")
+                : button("Approve new devices here", "cloud-device-approval:on", "secondary", "shield", "sm")) + "</div>";
     }
 
     function renderPasswordManagementBody() {
@@ -8907,7 +8966,7 @@
         var payload = JSON.parse(JSON.stringify(source || {}));
         [
             "enabled", "audio_enabled", "ai_audio_replies_enabled", "disable_autoyou_agents",
-            "background_mode_enabled", "silent_recording_enabled", "location_recording_enabled",
+            "background_mode_enabled", "silent_recording_enabled", "record_audio_only_calls", "location_recording_enabled",
             "wuift_enabled", "record_my_video", "audio_sources", "capture_audio",
             "outbound_sources", "outbound_source", "audio_microphone", "audio_speaker_loopback",
             "outbound_remote_desktop", "outbound_api", "outbound_video_file", "outbound_camera"
@@ -8932,6 +8991,7 @@
             voice_call_recording_enabled: "speech.voice_training_capture_enabled",
             background_mode_enabled: "videoCall.background_mode_enabled",
             safety_recording_enabled: "videoCall.silent_recording_enabled",
+            audio_only_call_recording_enabled: "videoCall.record_audio_only_calls",
             location_recording_enabled: "videoCall.location_recording_enabled",
             wuift_enabled: "videoCall.wuift_enabled",
             video_call_recording_enabled: "videoCall.record_my_video",
@@ -9383,10 +9443,29 @@
         }
         if (action.indexOf("overview-home-websites:") === 0) {
             var websitesMode = normalizeHomeNetworkWebsitesMode(action.split(":")[1]);
-            if (websitesMode === "direct_forward" && !window.confirm("Also open the websites port to the home network?\n\nBrowsers on your network will reach website apps, pages and notes without signing in, with the remote client role. Keeping them behind the admin sign-in is safer.")) {
+            await patchConfig({ server: { home_network_websites: websitesMode } }, websitesMode === "direct_forward" ? "Paired devices open website apps directly; other browsers need a device pass from the admin sign-in." : "Website apps open only through the admin sign-in.");
+            return;
+        }
+        if (action.indexOf("overview-vpn:") === 0) {
+            var vpnOn = action.split(":")[1] === "enable";
+            await patchConfig({ server: { vpn_addresses: vpnOn } }, vpnOn ? "VPN addresses will be served after restart." : "VPN addresses will stop being served after restart.");
+            return;
+        }
+        if (action === "cloud-device-approval:on" || action === "cloud-device-approval:off") {
+            state.operations.cloudDevices = await postJson("/api/cloud/devices/approval", { required: action === "cloud-device-approval:on" });
+            setNotice("success", action === "cloud-device-approval:on" ? "New Cloud Pair devices now wait for your approval here." : "New Cloud Pair devices no longer need approval.");
+            renderApp();
+            return;
+        }
+        if (action.indexOf("cloud-device-approve:") === 0 || action.indexOf("cloud-device-forget:") === 0) {
+            var deviceParts = action.split(":");
+            var deviceVerb = deviceParts[0] === "cloud-device-approve" ? "approve" : "forget";
+            if (deviceVerb === "forget" && !window.confirm("Remove this device's saved key?\n\nIt will have to pair through AutoYou Cloud again.")) {
                 return;
             }
-            await patchConfig({ server: { home_network_websites: websitesMode } }, websitesMode === "direct_forward" ? "The websites port is open to the home network with the remote client role." : "Website apps are back behind the admin sign-in.");
+            state.operations.cloudDevices = await postJson("/api/cloud/devices/" + encodeURIComponent(deviceParts[1]) + "/" + deviceVerb, {});
+            setNotice("success", deviceVerb === "approve" ? "Device approved." : "Device removed.");
+            renderApp();
             return;
         }
         if (action.indexOf("overview-discovery:") === 0) {
@@ -9647,6 +9726,24 @@
                 await refreshBootstrap("Default website set to " + (getByPath(defaultResp, "default_website.title", defaultWebsiteName) || defaultWebsiteName) + ".");
             } else {
                 setNotice("error", getByPath(defaultResp, "error", "Failed to set the default website."));
+            }
+            return;
+        }
+        if (action.indexOf("agent-website-auth:") === 0) {
+            var authParts = action.substring("agent-website-auth:".length).split(":");
+            var authAgentName = authParts[0] || "";
+            var authMode = authParts[1] || "";
+            if (!authAgentName || !["totp", "open", "default"].includes(authMode)) {
+                return;
+            }
+            var authDraft = snapshotPageForm();
+            var authResp = await postJson("/api/agent-websites/" + encodeURIComponent(authAgentName) + "/auth", { mode: authMode });
+            if (authResp && authResp.success) {
+                await refreshBootstrap(authMode === "totp" ? "OTP is required for " + authAgentName + "." : (authMode === "open" ? "OTP is not required for " + authAgentName + "." : "Default OTP policy restored for " + authAgentName + "."));
+                restorePageDraft(authDraft);
+                renderApp();
+            } else {
+                setNotice("error", getByPath(authResp, "error", "Agent website OTP setting failed."));
             }
             return;
         }
@@ -10787,6 +10884,7 @@
             "videoCall.outbound_api",
             "videoCall.outbound_video_file",
             "videoCall.record_my_video",
+            "videoCall.record_audio_only_calls",
             "videoCall.recording_mode",
             "videoCall.silent_recording_enabled",
             "videoCall.remote_desktop.enabled",

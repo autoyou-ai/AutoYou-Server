@@ -29,7 +29,7 @@ macOS or Linux:
 ./run_autoyou.sh --profile full
 ```
 
-For the lightweight path:
+For the lightweight path, install the separate `autoyou-lite` package into `.venv`, then:
 
 ```bash
 python scripts/bootstrap_autoyou.py --service autoyou-lite --profile recommended

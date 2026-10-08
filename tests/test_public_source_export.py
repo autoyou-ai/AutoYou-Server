@@ -115,53 +115,38 @@ def test_public_export_excludes_private_release_material() -> None:
         "CLAUDE.md",
         "llm.txt",
         "guides/llm.txt",
-        "guides/PRIVATE_MESSAGING_PAIRING_GUIDE.md",
         "docs/contributors/legacy/llm.txt",
-        "shared/earnings_agent/pending_ad_credits.json",
-        "tests/tools/check_server_routes.py",
-        "tests/legal/test_website_publication.py",
-        "tests/server/api/test_rest_chat_attachments.py",
-        "tests/server/admin/test_agent_security_routes.py",
-        "tests/server/pairing/test_pairing_transport.py",
-        "tests/server/runtime/test_local_authenticator_vault.py",
+        "shared/some_agent/pending_ad_credits.json",
         "docs/cloud/overview.md",
         "docs/user/chat.md",
-        "autoyou_lite/autoyou_lite/server.py",
-        "autoyou_agents/private/robinhood_agent/agent.py",
-        "Dockerfile.distributable",
-        "Dockerfile.distributable.host",
-        "installer/AutoYouConnectInstaller.iss",
-        "installer/assets/installing.svg",
-        "installer/assets/location.svg",
-        "installer/assets/options.svg",
-        "installer/assets/welcome.svg",
-        "installer/bootstrap_installer.ps1",
-        "installer/installer_web.py",
-        "installer/run_installer.bat",
-        "scripts/autoyou_lite_windows_entry.py",
-        "scripts/build_enterprise_agreement.py",
-        "scripts/build_autoyou_lite_windows_binary.py",
-        "scripts/build_machine_failure_knowledge.json",
-        "scripts/build_machine_intel.py",
-        "scripts/e2e/site_probes.py",
-        "scripts/export_ollama_models.ps1",
-        "scripts/package_windows_ecosystem.ps1",
-        "scripts/verify_windows_store_msix_artifacts.py",
-        "clients/python/legal_acceptance.py",
-        "requirements/.locked.constraints.generated.txt",
-        "requirements/autoyou-lite-release.txt",
-        "requirements/research.txt",
-        "tests/scripts/test_build_machine_intel.py",
-        "tests/server/test_autoyou_lite_windows_binary.py",
-        "tests/server/build/test_distributable_packaging_scripts.py",
-        "tests/server/pairing/test_autopair_admin.py",
-        "docs/technical/funding-os.md",
-        "docs/technical/peer-relay-social-checkpoint-2026-08-24.md",
-        "docs/technical/webrtc-media-mixer.md",
+        "private/release-notes.md",
+        "scratch/plan.md",
+        "tests/agents/private/test_custom_agent.py",
+        "autoyou_agents/private/custom_agent/agent.py",
+        # Only this repository's registered built-in agents are published.
+        "autoyou_agents/unregistered_agent/agent.py",
     )
 
     assert all(not exporter.should_publish_path(path) for path in private_paths)
     assert not exporter.should_publish_path("vendor/cognee/README.md")
+
+
+def test_this_repository_names_no_private_paths_of_its_own() -> None:
+    # A checkout that holds this repository can add its own names; this one adds none.
+    assert exporter.EXTRA_PRIVATE_PREFIXES == ()
+    assert exporter.EXTRA_PRIVATE_TEST_PREFIXES == ()
+    assert exporter.EXTRA_PRIVATE_EXACT_PATHS == set()
+    assert exporter.PRIVATE_EXACT_PATHS == set()
+
+
+def test_extra_private_paths_extend_the_boundary(monkeypatch) -> None:
+    monkeypatch.setattr(exporter, "EXTRA_PRIVATE_PREFIXES", ("scripts/held_back/",))
+    monkeypatch.setattr(exporter, "EXTRA_PRIVATE_TEST_PREFIXES", ("tests/held_back/",))
+    monkeypatch.setattr(exporter, "EXTRA_PRIVATE_EXACT_PATHS", {"scripts/held_back_tool.py"})
+
+    for path in ("scripts/held_back/tool.py", "tests/held_back/test_tool.py", "scripts/held_back_tool.py"):
+        assert not exporter.should_publish_path(path)
+    assert exporter.should_publish_path("scripts/verify_windows_server_msix.py")
 
 
 def test_public_export_excludes_obsolete_unmaintained_docs() -> None:
@@ -213,19 +198,21 @@ def test_public_repository_boundary_rejects_nonpublic_committed_paths() -> None:
     failures = exporter.audit_public_repository_paths(
         (
             "server.py",
-        ".llm/private-plan.md",
-        "private/agent.py",
-        ".env",
-            "tests/tools/check_server_routes.py",
+            "notes/private-plan.md",
+            "private/agent.py",
+            ".env",
+            "tests/agents/private/test_custom_agent.py",
+            "autoyou_agents/unregistered_agent/agent.py",
             "unreviewed-archive.zip",
         )
     )
 
     assert failures == [
-        "private path committed to public repository: .llm/private-plan.md",
+        "path outside the public allowlist committed to public repository: notes/private-plan.md",
         "private path committed to public repository: private/agent.py",
         "sensitive path committed to public repository: .env",
-        "private path committed to public repository: tests/tools/check_server_routes.py",
+        "private path committed to public repository: tests/agents/private/test_custom_agent.py",
+        "unregistered agent package committed to public repository: autoyou_agents/unregistered_agent/agent.py",
         "sensitive path committed to public repository: unreviewed-archive.zip",
     ]
 

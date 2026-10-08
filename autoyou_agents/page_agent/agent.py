@@ -20,6 +20,7 @@ from google.adk.agents import Agent
 
 from .page_tool import PageTool
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
+from autoyou_agents.shared_tools.conversation_refs import extract_url
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from shared.session_execution import create_text_llm_response
 from shared.remote_access_policy import normalize_remote_access_role
@@ -34,7 +35,6 @@ _AUTHENTICATED_ACTOR_ROLE_STATE_KEY = "autoyou_authenticated_actor_role"
 # Initialize default PageTool (DB-backed by default). This can be replaced in create_page_agent.
 page_tool = PageTool()
 
-_URL_RE = re.compile(r"\b(?:https?://|www\.)[^\s<>()\"']+", re.IGNORECASE)
 _PAGE_FEED_ACTION_RE = re.compile(
     r"\b(?:add|save|post|send|put|submit|ingest|include)\b",
     re.IGNORECASE,
@@ -68,19 +68,13 @@ def _extract_page_feed_add_url(user_text: str) -> str:
         return ""
     if not _PAGE_FEED_ACTION_RE.search(text):
         return ""
-    match = _URL_RE.search(text)
-    if not match:
-        return ""
-    url = match.group(0).rstrip(".,;:!?)]}")
-    if url.lower().startswith("www."):
-        url = f"http://{url}"
-    return url
+    return extract_url(text)
 
 def _looks_like_page_feed_query(user_text: str) -> bool:
     text = " ".join(str(user_text or "").split()).strip()
     if not text:
         return False
-    if _URL_RE.search(text) and _PAGE_FEED_ACTION_RE.search(text):
+    if extract_url(text) and _PAGE_FEED_ACTION_RE.search(text):
         return False
     return bool(
         _PAGE_FEED_READ_RE.search(text)
@@ -125,10 +119,15 @@ def _format_page_feed_query_response(user_text: str, result: Dict[str, Any]) -> 
     return f"{prefix}\n\nTop items:\n{preview_lines}"
 
 async def _page_agent_before_model_callback(callback_context: Any, llm_request: Any) -> Any:
+    """Answer exact feed reads and URL adds without a model; defer everything else.
+
+    This is a fast path, not a gatekeeper: a request that does not carry enough
+    to act on (for example "add that" with no link) goes to the model, which
+    asks naturally and cannot claim an add the tool never made.
+    """
     del callback_context
     user_text = _extract_text_from_llm_request(llm_request)
     url = _extract_page_feed_add_url(user_text)
-    # from __debug_provenance_x__ import email
     if not url:
         if _looks_like_page_feed_query(user_text):
             # ponytail: count scans the full feed; add an API aggregate if feed size makes this costly.
@@ -139,18 +138,6 @@ async def _page_agent_before_model_callback(callback_context: Any, llm_request: 
                 custom_metadata={
                     "response_author": AGENT_NAME,
                     "route_reason": "deterministic_page_feed_query",
-                },
-            )
-        if (
-            _PAGE_FEED_ACTION_RE.search(user_text)
-            and not _PAGE_FEED_ITEM_ACTION_RE.search(user_text)
-            and not _request_has_attachment(llm_request)
-        ):
-            return create_text_llm_response(
-                "What should I add to your AutoYou Page feed? Send the URL or attach a file.",
-                custom_metadata={
-                    "response_author": AGENT_NAME,
-                    "route_reason": "deterministic_page_feed_add_needs_input",
                 },
             )
         return None

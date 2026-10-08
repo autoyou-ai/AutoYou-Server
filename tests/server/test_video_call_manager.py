@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import sys
 import threading
 import time
@@ -1351,6 +1352,51 @@ def test_incoming_video_sink_records_received_frames(tmp_path):
         assert frame_path.is_file()
         assert manifest_entries[0]["format"] == "jpeg_image_fallback"
         assert manifest_entries[0]["file"] == "image-000001.jpg"
+
+
+def test_incoming_video_sink_muxes_call_audio_into_mp4(tmp_path):
+    if video_call_manager.Image is None:
+        pytest.skip("Pillow is not installed")
+    if video_call_manager.INBOUND_VIDEO_RECORDING_FORMAT != "mp4_video" or video_call_manager._av is None:
+        pytest.skip("PyAV MP4 recording is not available")
+
+    sink = IncomingVideoTrackSink(
+        object(),
+        session_id="synthetic-audio-video",
+        recording_enabled=True,
+        audio_recording_enabled=True,
+        recording_dir=str(tmp_path),
+    )
+    for batch in range(50):
+        pcm = b"".join(
+            int(1200 * math.sin(2 * math.pi * 440 * (batch * 320 + sample) / 16000)).to_bytes(
+                2, "little", signed=True
+            )
+            for sample in range(320)
+        )
+        assert sink.record_audio_chunk(pcm)
+
+    image = video_call_manager.Image.new("RGB", (32, 18), (10, 20, 30))
+    sink._record_frame(b"", 32, 18, image)
+    sink._close_recording()
+
+    recording_path = Path(sink.recording_path or "")
+    video_path = recording_path / "video.mp4"
+    with video_call_manager._av.open(str(video_path)) as container:
+        assert {stream.type for stream in container.streams} == {"audio", "video"}
+        audio_stream = container.streams.audio[0]
+        audio_packets = [packet for packet in container.demux(audio_stream) if packet.size]
+        decoded_audio = [
+            frame
+            for packet in audio_packets
+            for frame in audio_stream.codec_context.decode(packet)
+        ]
+        assert decoded_audio
+        assert any(frame.samples > 0 for frame in decoded_audio)
+
+    manifest_entry = json.loads((recording_path / "manifest.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert manifest_entry["audio_codec"] == "aac"
+    assert manifest_entry["audio_sample_rate"] == 16000
 
 
 def test_incoming_video_sink_default_mp4_recording_uses_30fps(tmp_path):

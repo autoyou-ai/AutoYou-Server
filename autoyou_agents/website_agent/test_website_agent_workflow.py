@@ -7,6 +7,7 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+import json
 import os
 import tempfile
 import unittest
@@ -20,7 +21,7 @@ from autoyou_agents.shared_tools.agent_workbench import (
     scaffold_frontend_draft,
 )
 from autoyou_agents.shared_tools.coding_handoff import CODING_HANDOFF_STATE_KEY
-from autoyou_agents.shared_tools.frontend_manifest import discover_frontend_manifests
+from autoyou_agents.shared_tools.frontend_manifest import discover_frontend_manifests, load_frontend_manifest
 from autoyou_agents.shared_tools.frontend_registry import load_frontend_registry
 from autoyou_agents.shared_tools.website_handoff import (
     ACTIVE_WEBSITE_CONTEXT_STATE_KEY,
@@ -257,6 +258,9 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
                 '"backend_stack": "rust_axum"',
                 (agent_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
             )
+            manifest = json.loads((agent_dir / "website" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["managed_runtime"]["type"], "process")
+            self.assertEqual(manifest["managed_runtime"]["health_path"], "/health")
 
     def test_agent_studio_draft_scaffold_preserves_frontend_stack(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -305,6 +309,34 @@ class WebsiteAgentWorkflowTest(unittest.TestCase):
                 '"backend_stack": "node_typescript"',
                 (draft_dir / "website" / "manifest.json").read_text(encoding="utf-8"),
             )
+
+    def test_rust_agent_studio_manifest_save_preserves_managed_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            agents_root = Path(tmp_dir)
+            scaffold_agent_draft(
+                "rust_demo",
+                "Rust demo agent",
+                "handle_rust_demo",
+                "Handle a Rust demo request.",
+                agents_root=agents_root,
+            )
+            scaffold_frontend_draft(
+                "rust_demo",
+                ui_purpose="Serve a Rust website.",
+                local_port=8097,
+                backend_stack="rust",
+                agents_root=agents_root,
+            )
+
+            draft_dir = agents_root / ".drafts" / "rust_demo_agent"
+            original = load_frontend_manifest(draft_dir)["managed_runtime"]
+            saved = save_draft_frontend_manifest(
+                "rust_demo",
+                title="Updated Rust demo",
+                agents_root=agents_root,
+            )
+
+            self.assertEqual(saved["manifest"]["managed_runtime"], original)
 
     def test_prepare_and_transfer_coding_handoff_from_website(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

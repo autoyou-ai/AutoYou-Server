@@ -133,7 +133,10 @@ def register_routes(
 
                 if agent_name == "admin_agent":
                     server._register_admin_frontend_proxy()
-                elif agent_name in server.MANAGED_FRONTEND_APPS:
+                elif (
+                    agent_name in server.MANAGED_FRONTEND_APPS
+                    or agent_name in server._managed_frontend_runtime_specs()
+                ):
                     await server.sync_managed_frontend_backends()
 
             result = server._build_agent_builder_listing_payload()
@@ -233,6 +236,95 @@ def register_routes(
         if shared_session_enabled and not disable_otp:
             _mission_control._maybe_upgrade_shared_session_cookie(response, request)
         return response
+
+    @admin_app.post("/api/agent-websites/{agent_name}/auth")
+    async def admin_set_agent_website_auth(agent_name: str, request: Request):
+        """Gate one agent website behind OTP, open it, or reset it to the default policy.
+
+        Websites such as ``notes_agent`` and ``page_agent`` ship open and are
+        exempt from the global "require OTP" switch, so this is the one-click way
+        to put a single website behind the authenticator without changing the
+        others. ``mode`` is ``totp`` (always ask), ``open`` (never ask) or
+        ``default`` (drop the override and follow the website's own default and
+        the global policy).
+        """
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        block_reason = server._config_write_block_reason()
+        if block_reason:
+            return server._json_config_write_blocked_response(block_reason)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid JSON body"})
+        mode = str((payload or {}).get("mode") or "").strip().lower() if isinstance(payload, dict) else ""
+        if mode not in {"totp", "open", "default"}:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "mode must be 'totp', 'open' or 'default'"},
+            )
+        try:
+            name = server._normalize_agent_directory_name(agent_name)
+        except ValueError:
+            name = ""
+        cfg_now = server.STATE.config or server._default_config()
+        known_websites = {
+            str(route.get("agent_name") or "").strip()
+            for route in server._build_agent_website_routes(cfg_now)
+            if route.get("agent_name")
+        }
+        if not name or name not in known_websites:
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "Unknown agent website"},
+            )
+        from autoyou_agents.shared_tools import scheduler_mission_control as _mission_control
+
+        if mode == "totp" and _mission_control._global_agent_website_otp_disabled():
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "success": False,
+                    "error": "OTP is disabled for all agent websites. Enable agent website OTP before requiring it for one website.",
+                },
+            )
+        if mode == "totp" and not server._describe_totp_capabilities(cfg_now).get("totp_configured", False):
+            if not server.agent_has_assigned_2fa_profile(name):
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "success": False,
+                        "error": (
+                            "Set up the shared authenticator first (Security), otherwise nobody "
+                            "could sign in to this website."
+                        ),
+                    },
+                )
+        cfg = server._loaded_config_for_update()
+        security_cfg = cfg.get(_mission_control.UI_SECURITY_CONFIG_KEY)
+        if not isinstance(security_cfg, dict):
+            security_cfg = {}
+            cfg[_mission_control.UI_SECURITY_CONFIG_KEY] = security_cfg
+        entry = dict(security_cfg.get(name) or {}) if isinstance(security_cfg.get(name), dict) else {}
+        if mode == "default":
+            entry.pop("auth_mode", None)
+        else:
+            entry["auth_mode"] = mode
+        if entry:
+            security_cfg[name] = entry
+        else:
+            security_cfg.pop(name, None)
+        server._persist_state_config(cfg)
+        server.STATE.config = cfg
+        settings = _mission_control._get_agent_security_settings(name)
+        return JSONResponse({
+            "success": True,
+            "agent_name": name,
+            "override": mode,
+            "auth_mode": settings.get("auth_mode"),
+            "global_otp_disabled": _mission_control._global_agent_website_otp_disabled(),
+        })
 
     @admin_app.post("/api/agent-websites/sessions/sign-out-all")
     async def admin_sign_out_all_agent_sessions(request: Request):
@@ -1339,6 +1431,7 @@ def register_routes(
                 requires_proxy_registration=bool(payload.get("requires_proxy_registration", True)),
                 frontend_stack=payload.get("frontend_stack"),
                 backend_stack=payload.get("backend_stack"),
+                managed_runtime=payload.get("managed_runtime"),
                 agents_root=server._workspace_agents_root(),
             )
             return server._build_agent_workbench_success_response(
@@ -1826,6 +1919,7 @@ def register_routes(
         "admin_set_agent_frontend_state": admin_set_agent_frontend_state,
         "admin_get_agent_websites_security": admin_get_agent_websites_security,
         "admin_set_agent_websites_security": admin_set_agent_websites_security,
+        "admin_set_agent_website_auth": admin_set_agent_website_auth,
         "admin_sign_out_all_agent_sessions": admin_sign_out_all_agent_sessions,
         "admin_get_default_agent_website": admin_get_default_agent_website,
         "admin_set_default_agent_website": admin_set_default_agent_website,

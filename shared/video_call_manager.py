@@ -29,6 +29,7 @@ import subprocess
 import textwrap
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from io import BytesIO
@@ -702,6 +703,7 @@ class IncomingVideoTrackSink:
         max_width: int = 960,
         jpeg_quality: int = 70,
         recording_enabled: bool = False,
+        audio_recording_enabled: bool = False,
         recording_dir: Optional[str] = None,
         recording_mode: str = INBOUND_VIDEO_RECORDING_MODE_VIDEO,
         image_interval_seconds: float = DEFAULT_INBOUND_VIDEO_IMAGE_INTERVAL_SECONDS,
@@ -715,6 +717,11 @@ class IncomingVideoTrackSink:
         self.recording_enabled = bool(recording_enabled)
         self.recording_dir = str(recording_dir or "").strip()
         self.recording_mode = normalize_inbound_video_recording_mode(recording_mode)
+        self.audio_recording_enabled = bool(
+            self.recording_enabled
+            and audio_recording_enabled
+            and self.recording_mode == INBOUND_VIDEO_RECORDING_MODE_VIDEO
+        )
         self.image_interval_seconds = normalize_inbound_video_image_interval_seconds(image_interval_seconds)
         self._recording_session_dir: Optional[Path] = None
         self._recording_manifest_path: Optional[Path] = None
@@ -723,6 +730,12 @@ class IncomingVideoTrackSink:
         self._recording_lock = threading.RLock()
         self._recording_container: Any = None
         self._recording_stream: Any = None
+        self._recording_audio_stream: Any = None
+        self._recording_audio_resampler: Any = None
+        # ponytail: buffer up to 30 seconds for a slow video start; spool PCM if that lag is observed in practice.
+        self._recording_audio_pending_chunks = deque(maxlen=1500)
+        self._recording_last_audio_pts = 0
+        self._recording_audio_frame_count = 0
         self._recording_video_path: Optional[Path] = None
         self._recording_video_temp_path: Optional[Path] = None
         self._recording_video_buffer: Optional[BytesIO] = None
@@ -923,6 +936,34 @@ class IncomingVideoTrackSink:
                     logger.warning("Failed to record inbound video fallback image: %s", fallback_exc)
                     self.recording_enabled = False
 
+    def record_audio_chunk(self, chunk: bytes) -> bool:
+        """Mux normalized inbound call audio into this session's MP4."""
+        if not self.audio_recording_enabled or not chunk:
+            return False
+        usable_length = len(chunk) - (len(chunk) % 2)
+        if usable_length <= 0:
+            return True
+        with self._recording_lock:
+            session_dir = self._ensure_recording_session_dir()
+            if session_dir is None or self._recording_video_disabled:
+                return False
+            sample_count = usable_length // 2
+            started_at_ms = self._recording_started_at_ms or int(time.time() * 1000)
+            elapsed_ms = max(0, int(time.time() * 1000) - started_at_ms)
+            pts = max(self._recording_last_audio_pts, elapsed_ms * 16)
+            self._recording_last_audio_pts = pts + sample_count
+            if self._recording_audio_stream is None:
+                self._recording_audio_pending_chunks.append((pts, bytes(chunk[:usable_length])))
+                return True
+            try:
+                self._encode_recording_audio_chunk_locked(bytes(chunk[:usable_length]), pts=pts)
+            except Exception as exc:
+                self._recording_video_disabled = True
+                self._close_video_recording_locked(discard=True)
+                logger.warning("Failed to record inbound call audio to MP4; falling back to image snapshots: %s", exc)
+                return False
+            return True
+
     def _record_mp4_frame_locked(
         self,
         session_dir: Path,
@@ -962,6 +1003,9 @@ class IncomingVideoTrackSink:
                 "sessions": sorted(self.session_ids),
                 "source": "ios",
                 "codec": self._recording_codec,
+                "audio_codec": "aac" if self._recording_audio_stream is not None else None,
+                "audio_sample_rate": 16000 if self._recording_audio_stream is not None else None,
+                "encoded_audio_frames": self._recording_audio_frame_count,
                 "fps": fps,
                 "encoded_frames": self._recording_video_frame_count,
                 "frame_pts": frame_pts,
@@ -1045,12 +1089,54 @@ class IncomingVideoTrackSink:
             with contextlib.suppress(OSError):
                 temp_video_path.unlink()
             raise RuntimeError(f"No MP4 video encoder is available: {last_error}")
+
+        audio_stream = None
+        audio_resampler = None
+        if self.audio_recording_enabled:
+            try:
+                audio_stream = container.add_stream("aac", rate=16000)
+                audio_stream.layout = "mono"
+                audio_resampler = _av.AudioResampler(format="fltp", layout="mono", rate=16000)
+            except Exception as exc:
+                container.close()
+                self._recording_video_buffer = None
+                with contextlib.suppress(OSError):
+                    temp_video_path.unlink()
+                raise RuntimeError(f"No MP4 audio encoder is available: {exc}") from exc
         self._recording_container = container
         self._recording_stream = stream
+        self._recording_audio_stream = audio_stream
+        self._recording_audio_resampler = audio_resampler
         self._recording_video_path = video_path
         self._recording_video_temp_path = None if secure_storage_enabled() else temp_video_path
         self._recording_dimensions = (target_width, target_height)
         self._recording_video_fps = fps
+        pending_chunks = list(self._recording_audio_pending_chunks)
+        self._recording_audio_pending_chunks.clear()
+        for pts, chunk in pending_chunks:
+            self._encode_recording_audio_chunk_locked(chunk, pts=pts)
+
+    def _encode_recording_audio_chunk_locked(self, chunk: bytes, *, pts: int) -> None:
+        if (
+            self._recording_container is None
+            or self._recording_audio_stream is None
+            or self._recording_audio_resampler is None
+            or AudioFrame is None
+        ):
+            raise RuntimeError("MP4 audio recording stream is unavailable")
+        samples = len(chunk) // 2
+        if samples <= 0:
+            return
+        frame = AudioFrame(format="s16", layout="mono", samples=samples)
+        frame.planes[0].update(chunk)
+        frame.sample_rate = 16000
+        frame.pts = int(pts)
+        frame.time_base = Fraction(1, 16000)
+        for output_frame in self._recording_audio_resampler.resample(frame):
+            output_frame.time_base = Fraction(1, 16000)
+            for packet in self._recording_audio_stream.encode(output_frame):
+                self._recording_container.mux(packet)
+        self._recording_audio_frame_count += 1
 
     def _recording_image(self, image: Any, jpeg_bytes: bytes) -> Any:
         if Image is None:
@@ -1145,14 +1231,21 @@ class IncomingVideoTrackSink:
     def _close_video_recording_locked(self, *, discard: bool = False) -> None:
         container = self._recording_container
         stream = self._recording_stream
+        audio_stream = self._recording_audio_stream
+        audio_resampler = self._recording_audio_resampler
         video_path = self._recording_video_path
         temp_video_path = self._recording_video_temp_path
         video_buffer = self._recording_video_buffer
         self._recording_container = None
         self._recording_stream = None
+        self._recording_audio_stream = None
+        self._recording_audio_resampler = None
+        self._recording_audio_pending_chunks.clear()
         self._recording_video_fps = int(DEFAULT_INBOUND_VIDEO_MAX_FPS)
         self._recording_video_frame_count = 0
+        self._recording_audio_frame_count = 0
         self._recording_last_video_pts = -1
+        self._recording_last_audio_pts = 0
         self._recording_video_path = None
         self._recording_video_temp_path = None
         self._recording_video_buffer = None
@@ -1163,6 +1256,14 @@ class IncomingVideoTrackSink:
         if container is None:
             return
         try:
+            if audio_stream is not None:
+                if audio_resampler is not None:
+                    for frame in audio_resampler.resample(None):
+                        frame.time_base = Fraction(1, 16000)
+                        for packet in audio_stream.encode(frame):
+                            container.mux(packet)
+                for packet in audio_stream.encode(None):
+                    container.mux(packet)
             if stream is not None:
                 for packet in stream.encode(None):
                     container.mux(packet)
