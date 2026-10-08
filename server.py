@@ -241,6 +241,7 @@ from core_server.services import (
     _register_admin_frontend_proxy,
     sync_managed_frontend_backends,
     stop_managed_frontend_backends,
+    _managed_frontend_shutdown_timeout,
     start_autoyou_page_service_background,
     stop_autoyou_page_service_background,
     sync_server_advertisement,
@@ -318,6 +319,11 @@ from shared.process_lifecycle import (
     live_pids,
     process_spawn_kwargs,
     start_parent_process_watchdog,
+)
+from shared.managed_runtime_service import (
+    is_managed_runtime_alive,
+    start_managed_runtime_service,
+    stop_managed_runtime_service,
 )
 from shared.first_run import (
     CURRENT_AGREEMENT_VERSION,

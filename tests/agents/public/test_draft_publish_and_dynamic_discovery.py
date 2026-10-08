@@ -18,6 +18,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import asyncio
 import importlib.machinery
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +55,67 @@ def test_dynamic_agent_specs_added_when_installed_and_has_website_backend(tmp_pa
     assert "custom_agent" in specs
     assert specs["custom_agent"]["app_import"] == "autoyou_agents.custom_agent.website.backend.app:app"
     assert specs["custom_agent"]["recommended_port"] == 8099
+
+
+def test_rust_website_manifest_starts_and_stops_its_managed_process(tmp_path, monkeypatch):
+    agents_root = tmp_path / "autoyou_agents"
+    agent_dir = agents_root / "rust_web_agent"
+    website_dir = agent_dir / "website"
+    website_dir.mkdir(parents=True)
+    code = (
+        "import os; from http.server import BaseHTTPRequestHandler, HTTPServer; "
+        "H=type('H',(BaseHTTPRequestHandler,),{"
+        "'do_GET':lambda self:(self.send_response(200),self.end_headers()), "
+        "'log_message':lambda *args:None}); "
+        "HTTPServer((os.environ['HOST'],int(os.environ['PORT'])),H).serve_forever()"
+    )
+    manifest = {
+        "agent_name": "rust_web_agent",
+        "title": "Rust service",
+        "requires_proxy_registration": True,
+        "managed_runtime": {
+            "type": "process",
+            "command": [sys.executable, "-u", "-c", code],
+            "health_path": "/healthz",
+        },
+    }
+    (website_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    original_handles = dict(server.STATE.managed_frontend_servers or {})
+    original_ports = dict(server.STATE.dynamic_agent_proxy_ports or {})
+    server.STATE.managed_frontend_servers = {}
+    server.STATE.dynamic_agent_proxy_ports = {}
+    monkeypatch.setattr(server, "_AUTOYOU_AGENTS_ROOT", agents_root)
+    monkeypatch.setattr(server, "_workspace_agents_root", lambda: agents_root)
+    monkeypatch.setattr(server, "load_agent_install_registry", lambda agents_root=None, **_: {"installed_agents": ["rust_web_agent"]})
+    monkeypatch.setattr(server, "_get_agent_frontend_enabled", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(server, "get_logs_dir", lambda *_args, **_kwargs: tmp_path / "logs")
+
+    try:
+        spec = server._managed_frontend_runtime_specs()["rust_web_agent"]
+        assert spec["managed_runtime"]["type"] == "process"
+        assert spec["agent_dir"] == str(agent_dir)
+        port = asyncio.run(server._start_managed_frontend_backend("rust_web_agent"))
+        assert port is not None
+        handle = server.STATE.managed_frontend_servers["rust_web_agent"]["runtime_service"]
+        assert handle.process.poll() is None
+        assert server.STATE.dynamic_agent_proxy_ports["rust_web_agent"] == port
+        assert server._managed_frontend_shutdown_timeout() == 25.0
+
+        real_stop = server.stop_managed_runtime_service
+        monkeypatch.setattr(server, "stop_managed_runtime_service", lambda *_args: False)
+        assert asyncio.run(server._stop_managed_frontend_backend("rust_web_agent")) is False
+        assert "rust_web_agent" in server.STATE.managed_frontend_servers
+        assert "rust_web_agent" not in server.STATE.dynamic_agent_proxy_ports
+
+        monkeypatch.setattr(server, "stop_managed_runtime_service", real_stop)
+        assert asyncio.run(server._stop_managed_frontend_backend("rust_web_agent")) is True
+        assert handle.process.poll() is not None
+        assert "rust_web_agent" not in server.STATE.dynamic_agent_proxy_ports
+    finally:
+        assert asyncio.run(server._stop_managed_frontend_backend("rust_web_agent")) is True
+        server.STATE.managed_frontend_servers = original_handles
+        server.STATE.dynamic_agent_proxy_ports = original_ports
 
 
 def test_dynamic_agent_specs_added_for_compiled_extension_backend(tmp_path, monkeypatch):

@@ -153,6 +153,19 @@ def backend_stack_label(value: Any) -> str:
     return "Python + FastAPI"
 
 
+def default_managed_runtime(backend_stack: Any) -> Dict[str, Any] | None:
+    """Launch the scaffolded Rust website with AutoYou's managed process lifecycle."""
+    if normalize_backend_stack(backend_stack) != RUST_BACKEND_STACK:
+        return None
+    return {
+        "type": "process",
+        "command": ["cargo", "run", "--release", "--", "--port", "{port}"],
+        "working_directory": "website/backend",
+        "health_path": "/health",
+        "startup_timeout_seconds": 600,
+    }
+
+
 def frontend_stack_label(value: Any) -> str:
     normalized = normalize_frontend_stack(value)
     for choice in FRONTEND_STACK_CHOICES:

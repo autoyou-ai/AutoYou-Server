@@ -24,6 +24,7 @@ from .website_scaffold import (
     normalize_backend_stack,
     normalize_frontend_stack,
 )
+from shared.managed_runtime_service import normalize_managed_runtime
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-6881e0bbc8d9d66f3d117bb5"
 
@@ -110,6 +111,7 @@ def build_frontend_manifest(
     shared_session_eligible: bool = True,
     bypass_global_otp: bool = False,
     backend_stack: str = DEFAULT_BACKEND_STACK,
+    managed_runtime: Optional[Dict[str, Any]] = None,
     icon: Optional[str] = None,
     accent: Optional[str] = None,
     category: Optional[str] = None,
@@ -144,6 +146,11 @@ def build_frontend_manifest(
             {"icon": icon, "accent": accent, "category": category, "keywords": list(keywords or [])}
         )
     )
+    if managed_runtime is not None:
+        normalized_runtime = normalize_managed_runtime(managed_runtime)
+        if normalized_runtime is None:
+            raise ValueError("managed_runtime must declare a valid process or docker-compose backend")
+        manifest["managed_runtime"] = normalized_runtime
     return manifest
 
 
@@ -194,6 +201,10 @@ def _normalize_frontend_manifest_payload(
             )
             direct_forward_port = None
 
+    managed_runtime = normalize_managed_runtime(payload.get("managed_runtime"))
+    if payload.get("managed_runtime") is not None and managed_runtime is None:
+        LOGGER.warning("Ignoring invalid managed runtime declaration in frontend manifest for %s", normalized_agent_name)
+
     return {
         **_normalize_presentation(payload),
         "agent_name": normalized_agent_name,
@@ -212,6 +223,7 @@ def _normalize_frontend_manifest_payload(
         "auth_default": _normalize_auth_default(payload.get("auth_default")),
         "shared_session_eligible": bool(payload.get("shared_session_eligible", True)),
         "bypass_global_otp": bool(payload.get("bypass_global_otp", False)),
+        **({"managed_runtime": managed_runtime} if managed_runtime is not None else {}),
         "manifest_path": str(manifest_path),
         "website_root": str(website_root),
     }

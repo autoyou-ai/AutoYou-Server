@@ -54,6 +54,7 @@ from autoyou_agents.shared_tools.website_scaffold import (
     DEFAULT_BACKEND_STACK,
     DEFAULT_FRONTEND_STACK,
     backend_stack_label,
+    default_managed_runtime,
     build_website_template_context,
     frontend_stack_label,
     iter_template_outputs,
@@ -297,6 +298,7 @@ def scaffold_website_split(
                 requires_proxy_registration=True,
                 frontend_stack=stack,
                 backend_stack=backend,
+                managed_runtime=default_managed_runtime(backend),
             )
             created_manifest_path = write_frontend_manifest(agent_dir, manifest)
             created_files.append(str(created_manifest_path))

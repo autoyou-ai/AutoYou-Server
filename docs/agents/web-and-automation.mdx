@@ -12,17 +12,13 @@ Web & Automation agents deliver sandboxed headless browser automation, client br
 ## 1. `browser_agent`
 
 - **Location**: `autoyou_agents/browser_agent/`
-- **Role**: Headless and headful real-browser automation engine. Supports Chromium via Playwright, as well as native WKWebView on macOS for sandboxed App Store compliance.
-- **Security Safeguards**:
-  - Private network filtering and DNS pinning to prevent Server-Side Request Forgery (SSRF) against internal services.
-  - Parent-owned pipe control instead of vulnerable remote debugging listening ports.
-  - Automatic screenshot capture, DOM traversal, and action recording.
+- **Role**: Framework-agnostic AutoYou tools backed by the separately running `auto-browser` controller. The default controller URL is `http://127.0.0.1:8000`; `AUTO_BROWSER_BASE_URL` can point to another controller.
+- **Lifecycle**: `browser_agent` is an HTTP client and does not own the controller process or its Docker containers. It can use a shared or remote controller, so start and stop that controller through its own deployment. The agent closes browser sessions with `browser_close_session`.
 - **Key Tools**:
-  - `navigate_url(url: str)`: Loads a webpage safely, checking URL safety against the internal blocklist.
-  - `click_element(selector: str)`: Simulates user click on DOM buttons, links, or inputs.
-  - `fill_form(selector: str, text: str)`: Injects text into form fields.
-  - `take_page_screenshot()`: Captures full-page or viewport visual rendering.
-  - `extract_dom_text(selector: str = "body")`: Extracts clean readable text from DOM elements.
+  - `browser_open_session()` / `browser_navigate(url)`: Open a session and navigate the controller's browser.
+  - `browser_observe()` / `browser_screenshot()`: Inspect page content and capture a screenshot.
+  - `browser_click()` / `browser_type()` / `browser_scroll()`: Interact with the active browser session.
+  - `browser_run_goal(goal)` / `browser_list_sessions()` / `browser_close_session()`: Run a browser task and manage sessions.
 
 ---
 

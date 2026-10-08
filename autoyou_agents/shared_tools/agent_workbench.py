@@ -48,6 +48,7 @@ from .website_scaffold import (
     DEFAULT_BACKEND_STACK,
     DEFAULT_FRONTEND_STACK,
     backend_stack_label,
+    default_managed_runtime,
     build_website_template_context,
     frontend_stack_label,
     iter_template_outputs,
@@ -895,6 +896,7 @@ def scaffold_frontend_draft(
         requires_proxy_registration=True,
         frontend_stack=stack,
         backend_stack=backend,
+        managed_runtime=default_managed_runtime(backend),
     )
     manifest_path = write_frontend_manifest(draft_dir, manifest)
     created_files.append(str(manifest_path.resolve()))
@@ -945,6 +947,7 @@ def save_draft_frontend_manifest(
     requires_proxy_registration: bool = True,
     frontend_stack: Optional[str] = None,
     backend_stack: Optional[str] = None,
+    managed_runtime: Optional[Dict[str, Any]] = None,
     manifest: Optional[Dict[str, Any]] = None,
     agents_root: Optional[Path] = None,
     app_name: str = "AutoYou",
@@ -967,6 +970,7 @@ def save_draft_frontend_manifest(
         )
         frontend_stack = manifest.get("frontend_stack", frontend_stack)
         backend_stack = manifest.get("backend_stack", backend_stack)
+        managed_runtime = manifest.get("managed_runtime", managed_runtime)
 
     stack = normalize_frontend_stack(
         frontend_stack
@@ -978,6 +982,8 @@ def save_draft_frontend_manifest(
         if backend_stack not in (None, "")
         else existing_manifest.get("backend_stack", DEFAULT_BACKEND_STACK)
     )
+    if managed_runtime is None:
+        managed_runtime = existing_manifest.get("managed_runtime") or default_managed_runtime(backend)
     manifest_title = (
         str(title)
         if title is not None
@@ -997,6 +1003,7 @@ def save_draft_frontend_manifest(
         requires_proxy_registration=requires_proxy_registration,
         frontend_stack=stack,
         backend_stack=backend,
+        managed_runtime=managed_runtime,
     )
     if existing_manifest.get("direct_forward_port") not in (None, ""):
         manifest["direct_forward_port"] = existing_manifest.get("direct_forward_port")

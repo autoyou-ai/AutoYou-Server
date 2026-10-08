@@ -3011,6 +3011,9 @@ def _find_available_local_port(
 
 def _agent_frontend_backend_app_exists(agent_dir: Path) -> bool:
     runtime = _runtime()
+    manifest = runtime.load_frontend_manifest(agent_dir) or {}
+    if manifest.get("managed_runtime"):
+        return True
     backend_dir = agent_dir / "website" / "backend"
     if (backend_dir / "app.py").is_file():
         return True
@@ -3028,11 +3031,15 @@ def _managed_frontend_runtime_specs() -> Dict[str, Dict[str, Any]]:
         if not manifest or not manifest.get("requires_proxy_registration", True):
             continue
         recommended_port = manifest.get("recommended_port") or config.get("default_port")
-        specs[agent_name] = {
+        spec = {
             **config,
             "agent_name": agent_name,
             "recommended_port": int(recommended_port) if recommended_port else None,
         }
+        if manifest.get("managed_runtime"):
+            spec["managed_runtime"] = manifest["managed_runtime"]
+            spec["agent_dir"] = str(runtime._AUTOYOU_AGENTS_ROOT / agent_name)
+        specs[agent_name] = spec
 
     # Also discover dynamically installed agents (not in MANAGED_FRONTEND_APPS) that
     # ship a website backend so their proxy gets started after `install` via sync.
@@ -3052,11 +3059,16 @@ def _managed_frontend_runtime_specs() -> Dict[str, Dict[str, Any]]:
                 if not runtime._agent_frontend_backend_app_exists(agent_dir):
                     continue
                 recommended_port = manifest.get("recommended_port")
-                specs[agent_name] = {
+                spec = {
                     "agent_name": agent_name,
-                    "app_import": f"autoyou_agents.{agent_name}.website.backend.app:app",
                     "recommended_port": int(recommended_port) if recommended_port else None,
+                    "agent_dir": str(agent_dir),
                 }
+                if manifest.get("managed_runtime"):
+                    spec["managed_runtime"] = manifest["managed_runtime"]
+                else:
+                    spec["app_import"] = f"autoyou_agents.{agent_name}.website.backend.app:app"
+                specs[agent_name] = spec
                 break
     except Exception:
         pass
@@ -3188,23 +3200,49 @@ def _load_managed_frontend_app(spec: Dict[str, Any]) -> Any:
     return getattr(module, attribute_name)
 
 
-async def _stop_managed_frontend_backend(agent_name: str) -> None:
+async def _stop_managed_frontend_backend(agent_name: str) -> bool:
     runtime = _runtime()
     handle = dict((runtime.STATE.managed_frontend_servers or {}).pop(agent_name, {}) or {})
     runtime.STATE.dynamic_agent_proxy_ports.pop(agent_name, None)
     server_instance = handle.get("server")
     thread = handle.get("thread")
+    runtime_service = handle.get("runtime_service")
+    clean = True
 
     if server_instance is not None:
         try:
             server_instance.should_exit = True
         except Exception as exc:
             runtime.LOGGER.warning("Failed to signal managed frontend shutdown for %s: %s", agent_name, exc)
+            clean = False
 
     if thread and thread.is_alive():
-        await runtime.asyncio.to_thread(thread.join, 10)
+        try:
+            await runtime.asyncio.to_thread(thread.join, 10)
+        except Exception as exc:
+            runtime.LOGGER.warning("Could not join managed frontend thread for %s: %s", agent_name, exc)
+            clean = False
         if thread.is_alive():
             runtime.LOGGER.warning("Managed frontend thread for %s did not stop within timeout", agent_name)
+            clean = False
+
+    if runtime_service is not None:
+        try:
+            stopped = await runtime.asyncio.to_thread(
+                runtime.stop_managed_runtime_service,
+                runtime_service,
+                runtime.LOGGER,
+            )
+        except Exception as exc:
+            runtime.LOGGER.warning("Could not stop managed runtime for %s: %s", agent_name, exc)
+            stopped = False
+        if not stopped:
+            runtime.LOGGER.warning("Managed runtime for %s did not stop cleanly", agent_name)
+            clean = False
+
+    if not clean:
+        runtime.STATE.managed_frontend_servers[agent_name] = handle
+    return clean
 
 
 async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
@@ -3217,10 +3255,13 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
 
     existing = (runtime.STATE.managed_frontend_servers or {}).get(agent_name) or {}
     existing_thread = existing.get("thread")
+    existing_runtime = existing.get("runtime_service")
     existing_port = existing.get("port")
+    existing_alive = (existing_thread is not None and existing_thread.is_alive()) or (
+        existing_runtime is not None and runtime.managed_runtime_is_alive(existing_runtime)
+    )
     if (
-        existing_thread
-        and existing_thread.is_alive()
+        existing_alive
         and existing_port
         and runtime.is_port_in_use(int(existing_port), host="127.0.0.1")
     ):
@@ -3228,10 +3269,47 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
         return int(existing_port)
 
     if existing:
-        await runtime._stop_managed_frontend_backend(agent_name)
+        if not await runtime._stop_managed_frontend_backend(agent_name):
+            return None
 
     preferred_port = int(spec.get("recommended_port") or spec.get("default_port") or 0)
     target_port = runtime._find_available_local_port(preferred_port, host="127.0.0.1")
+    managed_runtime = spec.get("managed_runtime")
+    if managed_runtime:
+        try:
+            agent_dir = Path(spec.get("agent_dir") or (runtime._AUTOYOU_AGENTS_ROOT / agent_name))
+            log_path = (
+                runtime.get_logs_dir("AutoYou", anchor=runtime.__file__)
+                / "managed-runtimes"
+                / f"{agent_name}.log"
+            )
+            runtime_service = await runtime.start_managed_runtime_service(
+                managed_runtime,
+                agent_name=agent_name,
+                agent_dir=agent_dir,
+                port=target_port,
+                log_path=log_path,
+                logger=runtime.LOGGER,
+            )
+        except Exception as exc:
+            runtime.LOGGER.error("Managed runtime failed to start for %s: %s", agent_name, exc, exc_info=True)
+            await runtime._stop_managed_frontend_backend(agent_name)
+            return None
+        runtime.STATE.managed_frontend_servers[agent_name] = {
+            "agent_name": agent_name,
+            "port": target_port,
+            "runtime_service": runtime_service,
+            "managed_runtime": managed_runtime,
+        }
+        runtime.STATE.dynamic_agent_proxy_ports[agent_name] = int(target_port)
+        runtime.LOGGER.info(
+            "Managed frontend runtime started: agent=%s port=%d type=%s",
+            agent_name,
+            target_port,
+            managed_runtime["type"],
+        )
+        return int(target_port)
+
     try:
         app_target = runtime._load_managed_frontend_app(spec)
     except Exception as exc:
@@ -3347,11 +3425,29 @@ async def sync_managed_frontend_backends() -> Dict[str, Optional[int]]:
     return started_ports
 
 
-async def stop_managed_frontend_backends() -> None:
+async def stop_managed_frontend_backends() -> bool:
     runtime = _runtime()
-    for agent_name in list((runtime.STATE.managed_frontend_servers or {}).keys()):
-        await runtime._stop_managed_frontend_backend(agent_name)
+    agent_names = list((runtime.STATE.managed_frontend_servers or {}).keys())
+    results = await runtime.asyncio.gather(
+        *(runtime._stop_managed_frontend_backend(agent_name) for agent_name in agent_names),
+        return_exceptions=True,
+    )
+    clean = True
+    for agent_name, result in zip(agent_names, results):
+        if isinstance(result, BaseException) or result is False:
+            runtime.LOGGER.warning("Managed frontend cleanup failed for %s: %s", agent_name, result)
+            clean = False
     runtime._sync_frontend_registry_from_builder_payload(runtime._build_agent_builder_listing_payload())
+    return clean
+
+
+def _managed_frontend_shutdown_timeout() -> float:
+    runtime = _runtime()
+    timeout = 10.0
+    for handle in (runtime.STATE.managed_frontend_servers or {}).values():
+        service = handle.get("runtime_service") or {}
+        timeout = max(timeout, float(getattr(service, "shutdown_timeout_seconds", 0)) + 15.0)
+    return timeout
 
 
 async def start_autoyou_page_service_background():
@@ -3601,7 +3697,11 @@ async def _stop_runtime_services_for_shutdown() -> None:
     all_clean = True
     all_clean &= await runtime._run_shutdown_step("Auth Server", runtime.stop_auth_server(), 10.0)
     all_clean &= await runtime._run_shutdown_step("AI Agent Server", runtime.stop_ai_agent_server(), 15.0)
-    all_clean &= await runtime._run_shutdown_step("Managed frontend backends", runtime.stop_managed_frontend_backends(), 10.0)
+    all_clean &= await runtime._run_shutdown_step(
+        "Managed frontend backends",
+        runtime.stop_managed_frontend_backends(),
+        runtime._managed_frontend_shutdown_timeout(),
+    )
     all_clean &= await runtime._run_shutdown_step("For AutoYou Page Service", runtime.stop_autoyou_page_service_background(), 15.0)
     all_clean &= await runtime._run_shutdown_step(
         "Public reverse proxy service",
