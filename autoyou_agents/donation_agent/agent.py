@@ -194,7 +194,15 @@ def _crypto_donation_routes_from_env() -> list[dict[str, Any]]:
         if not public_url or public_url in seen_urls:
             continue
         seen_urls.add(public_url)
-        asset_symbol = _safe_text(raw.get("asset_symbol") or raw.get("assetSymbol") or raw.get("token_symbol") or "USDC", 16)
+        asset_symbol = _safe_text(
+            raw.get("asset_symbol") or raw.get("assetSymbol") or raw.get("token_symbol"),
+            16,
+        )
+        network = _safe_text(raw.get("network"), 64)
+        # Never publish a hosted checkout with an inferred asset or network.
+        # A mistaken default could send supporters to the wrong payment rail.
+        if not asset_symbol or not network:
+            continue
         status = _safe_crypto_route_status(raw.get("status"))
         routes.append(
             {
@@ -202,9 +210,9 @@ def _crypto_donation_routes_from_env() -> list[dict[str, Any]]:
                 "label": _safe_text(raw.get("label"), 100) or "Hosted crypto donation",
                 "provider": _safe_text(raw.get("provider"), 80) or "hosted_crypto",
                 "type": "crypto",
-                "asset_symbol": asset_symbol.upper() or "USDC",
-                "token_symbol": asset_symbol.upper() or "USDC",
-                "network": _safe_text(raw.get("network"), 64) or "ethereum",
+                "asset_symbol": asset_symbol.upper(),
+                "token_symbol": asset_symbol.upper(),
+                "network": network,
                 "status": status,
                 "public_url": public_url,
                 "custody_model": _safe_text(raw.get("custody_model") or raw.get("custodyModel"), 80)

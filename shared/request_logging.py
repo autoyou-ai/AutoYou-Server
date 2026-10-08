@@ -16,6 +16,7 @@ import logging
 from typing import Iterable
 
 from fastapi import Request
+from shared.http_request_monitor import safe_path_for_http_log
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-f7cfc6bcddfffe9320079b17"
 
@@ -40,9 +41,9 @@ def install_route_aware_request_logging(
 
     @app.middleware("http")
     async def _route_aware_request_logger(request: Request, call_next):
-        path = request.url.path or "/"
-        query = request.url.query
-        target = f"{path}?{query}" if query else path
+        # Query values often carry OTP codes, session IDs, or other credentials.
+        # Keep logs useful for routing diagnostics without writing those values.
+        raw_path = request.url.path or "/"
         client = request.client
         client_display = f"{client.host}:{client.port}" if client else "-"
         http_version = request.scope.get("http_version", "1.1")
@@ -54,6 +55,7 @@ def install_route_aware_request_logging(
         try:
             response = await call_next(request)
         except Exception:
+            target = safe_path_for_http_log(request)
             logger.exception(
                 '%s - "%s %s HTTP/%s" %s',
                 client_display,
@@ -64,10 +66,12 @@ def install_route_aware_request_logging(
             )
             raise
 
+        target = safe_path_for_http_log(request)
+
         quiet_poll = (
             request.method == "GET"
             and response.status_code < 400
-            and any(path.startswith(prefix) for prefix in debug_prefixes)
+            and any(raw_path.startswith(prefix) for prefix in debug_prefixes)
         )
         log_method = logger.debug if quiet_poll else logger.info
         log_method(

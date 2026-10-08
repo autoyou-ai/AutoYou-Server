@@ -57,6 +57,7 @@ from shared.remote_access_policy import (
 )
 from shared.lan_direct_access import PASS_COOKIE_NAME, REDEEM_PATH, safe_next_path
 from shared.request_logging import install_route_aware_request_logging
+from shared.http_request_monitor import install_http_request_capture
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
 from shared.url_safety import (
     UnsafeURLError,
@@ -1076,7 +1077,6 @@ class AutoYouPageService:
             logger_name="autoyou.http.page_service",
             debug_path_prefixes=("/health",),
         )
-
         @self.app.middleware("http")
         async def home_network_browser_gate(request: Request, call_next):
             """Hold browsers on other devices to HTTPS and the remote client role.
@@ -1128,6 +1128,7 @@ class AutoYouPageService:
 
         # Setup routes
         self._setup_routes()
+        install_http_request_capture(self.app, service_name="websites")
     
     def _setup_routes(self) -> None:
         """Setup HTTP routes for the For AutoYou Page website."""

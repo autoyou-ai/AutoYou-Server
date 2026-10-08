@@ -46,6 +46,9 @@ node_modules/
 *.db-shm
 *.db-wal
 *.db.bak
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 *.log
 trae_agent.log
 corehost-trace.txt

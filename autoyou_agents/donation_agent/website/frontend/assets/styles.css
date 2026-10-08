@@ -196,6 +196,8 @@ html, body {
   margin: 0 0 18px;
 }
 
+.crypto-route-picker[hidden] { display: none; }
+
 .crypto-route-picker-controls {
   display: grid;
   align-content: start;

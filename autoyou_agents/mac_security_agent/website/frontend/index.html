@@ -85,6 +85,7 @@
           <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="connections">All connections</button>
           <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="processes">Processes</button>
           <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="peers">Remote peers</button>
+          <button class="view-tab" type="button" role="tab" aria-selected="false" data-view="http">HTTP activity</button>
         </nav>
 
         <section id="summary-view" class="view-panel">
@@ -137,6 +138,34 @@
               <div id="connection-list" class="connection-list"><div class="empty-state">No connections yet.</div></div>
             </section>
           </div>
+        </section>
+
+        <section id="http-view" class="view-panel hidden" aria-live="polite">
+          <section class="panel capture-panel">
+            <div class="capture-heading">
+              <div><p class="eyebrow">INBOUND REQUEST VISIBILITY</p><h2>HTTP activity</h2><p class="muted">Capture requests received by AutoYou's admin, AI agent, website, and agent-app listeners.</p></div>
+              <label class="capture-switch" for="http-capture-toggle"><input id="http-capture-toggle" type="checkbox"><span>Capture requests</span></label>
+            </div>
+            <div class="capture-actions"><span id="http-capture-status" class="status-chip">Capture is off</span><button id="http-refresh" class="button secondary" type="button">Refresh activity</button></div>
+            <p class="capture-privacy">This stores source IP and port, destination service and port, method, sanitized path, status, browser, and referrer origin. It never stores request bodies, cookies, authorization values, or query values. History keeps up to 25,000 events for 30 days. Probe paths and cross-listener activity are scan clues, not proof of malicious intent or device identity.</p>
+          </section>
+          <section class="metric-grid http-metrics" aria-label="HTTP activity summary">
+            <article class="metric-card"><span>Requests in 24 hours</span><strong id="http-events-24h">0</strong><small>metadata only</small></article>
+            <article class="metric-card"><span>Unique sources</span><strong id="http-sources-24h">0</strong><small>source IP addresses</small></article>
+            <article class="metric-card accent"><span>Probe signals</span><strong id="http-probes-24h">0</strong><small>known scan paths or unusual methods</small></article>
+            <article class="metric-card"><span>Stored events</span><strong id="http-events-total">0</strong><small>up to 30 days / 25,000 events</small></article>
+          </section>
+          <div class="http-overview-grid">
+            <section class="panel"><div class="panel-heading"><div><p class="eyebrow">SOURCE ACTIVITY</p><h2>Recent sources</h2></div></div><div id="http-source-list" class="http-source-list"><div class="empty-state">Enable capture to collect requests.</div></div></section>
+            <section class="panel"><div class="panel-heading"><div><p class="eyebrow">LISTENER ACTIVITY</p><h2>Services and ports</h2></div></div><div id="http-service-list" class="http-service-list"><div class="empty-state">No HTTP services recorded yet.</div></div><p class="footer-note">Other listening ports and their process owners are in All connections with the Listening filter.</p></section>
+          </div>
+          <section class="panel http-events-panel">
+            <div class="panel-heading"><div><p class="eyebrow">LATEST REQUESTS</p><h2>Request timeline</h2></div><span id="http-last-event" class="muted">No captured requests</span></div>
+            <div class="http-toolbar"><input id="http-search" type="search" placeholder="Filter by source, service, path, or browser" aria-label="Filter HTTP requests"><select id="http-kind-filter" aria-label="Filter request signals"><option value="all">All requests</option><option value="probe">Probe signals</option><option value="unmatched">Unmatched routes</option><option value="errors">HTTP errors</option></select><span id="http-result-count" class="muted">0 requests</span></div>
+            <div id="http-event-list" class="http-event-list"><div class="empty-state">Enable capture to see inbound HTTP activity.</div></div>
+            <div class="http-event-footer"><button id="http-load-older" class="button secondary" type="button" hidden>Load older requests</button></div>
+          </section>
+          <p class="footer-note">HTTP metadata only. WebSocket messages, packet payloads, requests to unrelated external services, and scans of closed ports are not visible here.</p>
         </section>
         <section id="selection-panel" class="panel selection-panel hidden" aria-live="polite"><div class="panel-heading"><div><p class="eyebrow">SELECTED RELATIONSHIP</p><h2 id="selection-title">Peer details</h2></div><button id="selection-close" class="icon-button" type="button" aria-label="Close selected peer details">Ã—</button></div><div id="selection-details" class="selection-details"></div><div class="policy-actions"><button class="button secondary" type="button" disabled>Permit (planned)</button><button class="button danger" type="button" disabled>Block (planned)</button><span class="muted">Read-only now; stable policy keys are retained for future enforcement.</span></div></section>
         <section id="enrichment-panel" class="panel enrichment-panel hidden" aria-live="polite">

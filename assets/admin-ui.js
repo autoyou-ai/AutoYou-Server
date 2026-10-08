@@ -6839,7 +6839,7 @@
 
         var routesMarkup = Array.isArray(routes) && routes.length ? "<div class=\"ayu-list\">" + routes.map(function (route) {
             var routeUrl = routeLaunchUrl(route);
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || route.path || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || route.path || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) + routeAuthActionMarkup(route) : "") + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
         }).join("") + "</div>" : "<div class=\"ayu-empty\">No browser routes were discovered yet.</div>";
 
         var agentSessionsMarkup = "<div class=\"ayu-note ayu-note-blue\">Shared sign-in applies to eligible agent websites in the same browser. Existing sign-ins in this browser are recognized when you save; another browser activates sharing when it revisits a website where it is already signed in. Agents can opt out individually.</div>"
@@ -7128,6 +7128,19 @@
         return route.auth_mode === "open" ? "green" : "amber";
     }
 
+    function routeAuthActionMarkup(route) {
+        var name = String(route.agent_name || "");
+        if (!name) {
+            return "";
+        }
+        var isOpen = String(route.auth_mode || "").toLowerCase() === "open";
+        var mode = isOpen ? "totp" : "open";
+        var label = isOpen ? "Require OTP" : "Allow without OTP";
+        var variant = isOpen ? "secondary" : "ghost";
+        return button(label, "agent-website-auth:" + name + ":" + mode, variant, "shield", "sm")
+            + button("Use default", "agent-website-auth:" + name + ":default", "ghost", "bolt", "sm");
+    }
+
     function renderBrowserRoutesPanelBody(routes, browser) {
         var defaultWebsite = getByPath(browser, "default_website", {});
         var currentDefaultName = String(getByPath(defaultWebsite, "agent_name", "") || "");
@@ -7139,6 +7152,9 @@
                 var name = String(route.agent_name || "");
                 var isDefault = Boolean(route.default) || (name && name === currentDefaultName);
                 var actions = badge(routeBadgeLabel(route), routeBadgeTone(route));
+                if (name) {
+                    actions += badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) + routeAuthActionMarkup(route);
+                }
                 if (isDefault) {
                     actions += badge("DEFAULT", "green");
                 } else if (name) {
@@ -9710,6 +9726,24 @@
                 await refreshBootstrap("Default website set to " + (getByPath(defaultResp, "default_website.title", defaultWebsiteName) || defaultWebsiteName) + ".");
             } else {
                 setNotice("error", getByPath(defaultResp, "error", "Failed to set the default website."));
+            }
+            return;
+        }
+        if (action.indexOf("agent-website-auth:") === 0) {
+            var authParts = action.substring("agent-website-auth:".length).split(":");
+            var authAgentName = authParts[0] || "";
+            var authMode = authParts[1] || "";
+            if (!authAgentName || !["totp", "open", "default"].includes(authMode)) {
+                return;
+            }
+            var authDraft = snapshotPageForm();
+            var authResp = await postJson("/api/agent-websites/" + encodeURIComponent(authAgentName) + "/auth", { mode: authMode });
+            if (authResp && authResp.success) {
+                await refreshBootstrap(authMode === "totp" ? "OTP is required for " + authAgentName + "." : (authMode === "open" ? "OTP is not required for " + authAgentName + "." : "Default OTP policy restored for " + authAgentName + "."));
+                restorePageDraft(authDraft);
+                renderApp();
+            } else {
+                setNotice("error", getByPath(authResp, "error", "Agent website OTP setting failed."));
             }
             return;
         }

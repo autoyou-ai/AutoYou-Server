@@ -3,7 +3,7 @@
 var bootstrap = window.__BOOTSTRAP__ || {};
 var agentName = bootstrap.agent_name || 'mac_security_agent';
 var auth = bootstrap.auth || {};
-var state = {snapshot: null, overview: null, view: 'summary', refreshTimer: null, busy: false, collectorBlocked: false, mapFeatures: null, mapLoading: false, selectedPeerKey: '', focusProcessKey: ''};
+var state = {snapshot: null, overview: null, view: 'summary', refreshTimer: null, httpRefreshTimer: null, busy: false, httpBusy: false, collectorBlocked: false, mapFeatures: null, mapLoading: false, selectedPeerKey: '', focusProcessKey: '', httpMonitor: null};
 
 function $(id) { return document.getElementById(id); }
 function escapeHtml(value) {
@@ -51,6 +51,7 @@ function showDashboard() {
   loadBios();
   loadMapData();
   if (!state.refreshTimer) state.refreshTimer = setInterval(function() { loadSnapshot(); loadHistory(); }, 5000);
+  if (!state.httpRefreshTimer) state.httpRefreshTimer = setInterval(function() { if (state.view === 'http') loadHttpMonitor(); }, 15000);
 }
 function showLogin(message) {
   $('auth-chip').textContent = 'Locked';
@@ -188,8 +189,88 @@ function lookupIp(ip) { $('enrichment-panel').classList.remove('hidden'); $('enr
 function mapPeers() { var ips = state.overview ? (state.overview.unmapped_public_ips || []).slice(0, 12) : []; if (!ips.length) { $('map-status').textContent = 'No unmapped public peers in this snapshot'; return; } $('map-peers').disabled = true; $('map-status').textContent = 'Mapping ' + ips.length + ' public peers...'; requestJson('./api/network/enrich-batch', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ips: ips})}).then(function(data) { $('map-status').textContent = formatCount(data.mapped || 0) + ' peers enriched; refreshing view'; loadSnapshot(); }).catch(function(error) { $('map-status').textContent = error.message; }).finally(function() { $('map-peers').disabled = false; }); }
 function loadSnapshot(force) { if (state.busy || (state.collectorBlocked && !force)) return; state.busy = true; $('refresh-button').disabled = true; $('snapshot-status').textContent = 'Collecting...'; requestJson('./api/network/snapshot').then(function(data) { var previous = captureUiState(); state.collectorBlocked = false; $('snapshot-error').classList.add('hidden'); $('snapshot-error-detail').textContent = ''; state.snapshot = data.snapshot || {}; state.overview = currentOverview(state.snapshot); renderSummary(state.snapshot); renderConnections(state.snapshot.connections || []); restoreUiState(previous); }).catch(function(error) { $('snapshot-status').textContent = 'Snapshot unavailable'; $('snapshot-error-detail').textContent = error.message; $('snapshot-error').classList.remove('hidden'); if (/sandboxed macOS app cannot read system-wide socket ownership/i.test(error.message)) state.collectorBlocked = true; }).finally(function() { state.busy = false; $('refresh-button').disabled = false; }); }
 function loadHistory() { requestJson('./api/network/history?limit=24').then(renderHistory).catch(function() {}); }
+function renderHttpMonitor(data) {
+  state.httpMonitor = data || {};
+  var summary = state.httpMonitor.summary || {}, enabled = Boolean(state.httpMonitor.enabled);
+  $('http-capture-toggle').checked = enabled;
+  $('http-capture-status').textContent = enabled ? 'Capture is on' : 'Capture is off';
+  $('http-capture-status').classList.toggle('authenticated', enabled);
+  $('http-events-24h').textContent = formatCount(summary.events_24h);
+  $('http-sources-24h').textContent = formatCount(summary.unique_sources_24h);
+  $('http-probes-24h').textContent = formatCount(summary.probe_signals_24h);
+  $('http-events-total').textContent = formatCount(summary.total_events);
+  $('http-last-event').textContent = summary.last_event ? 'Last request ' + new Date(summary.last_event).toLocaleString() : 'No captured requests';
+  var sources = state.httpMonitor.top_sources || [];
+  $('http-source-list').innerHTML = sources.length ? sources.map(function(item) {
+    var listenerCount = Number(item.destination_ports || 0);
+    var activity = formatCount(item.probes) + ' probe signals / ' + formatCount(item.unmatched) + ' unmatched';
+    var listeners = listenerCount > 1 ? 'Across ' + formatCount(listenerCount) + ' listeners' : 'Across ' + formatCount(listenerCount) + ' listener';
+    return '<article class="http-source-row"><div><strong>' + escapeHtml(item.source_ip) + '</strong><small>' + escapeHtml(item.source_scope) + ' source / ' + escapeHtml(listeners) + '</small></div><span><b>' + formatCount(item.requests) + '</b><small>' + escapeHtml(activity) + '</small></span></article>';
+  }).join('') : '<div class="empty-state">No inbound requests have been captured in the last 24 hours.</div>';
+  var services = state.httpMonitor.services || [];
+  $('http-service-list').innerHTML = services.length ? services.map(function(item) {
+    var label = item.agent_name ? item.service + ' / ' + item.agent_name : item.service;
+    return '<article class="http-service-row"><div><strong>' + escapeHtml(label) + '</strong><small>' + escapeHtml(item.last_seen || '') + '</small></div><span><b>:' + escapeHtml(item.destination_port || 'unknown') + '</b><small>' + formatCount(item.requests) + ' requests</small></span></article>';
+  }).join('') : '<div class="empty-state">Listener activity appears after the first captured request.</div>';
+  $('http-load-older').hidden = !state.httpMonitor.has_more;
+  renderHttpEvents();
+}
+function renderHttpEvents() {
+  var events = state.httpMonitor ? (state.httpMonitor.events || []) : [];
+  var query = String($('http-search').value || '').toLowerCase().trim(), kindFilter = $('http-kind-filter').value;
+  var visible = events.filter(function(item) {
+    if (kindFilter === 'probe' && item.event_kind !== 'probe') return false;
+    if (kindFilter === 'unmatched' && item.event_kind !== 'unmatched') return false;
+    if (kindFilter === 'errors' && Number(item.status_code) < 400) return false;
+    return !query || [item.source_ip, item.service, item.agent_name, item.destination_host, item.method, item.path, item.route, item.user_agent, item.referer_origin].join(' ').toLowerCase().indexOf(query) >= 0;
+  });
+  $('http-result-count').textContent = formatCount(visible.length) + ' requests';
+  if (!visible.length) { $('http-event-list').innerHTML = '<div class="empty-state">No requests match this filter.</div>'; return; }
+  $('http-event-list').innerHTML = visible.map(function(item) {
+    var kind = item.event_kind === 'probe' ? 'probe' : (item.event_kind === 'unmatched' ? 'unmatched' : '');
+    var source = (item.source_ip || 'unknown source') + (item.source_port ? ':' + item.source_port : '');
+    var target = (item.service || 'service') + (item.agent_name ? ' / ' + item.agent_name : '') + (item.destination_port ? ':' + item.destination_port : '');
+    var targetHost = item.destination_host ? ' (' + item.destination_host + ')' : '';
+    var route = item.route && item.route !== item.path ? '<small>Route: ' + escapeHtml(item.route) + '</small>' : '';
+    var queryNote = item.query_keys && item.query_keys.length ? '<small>Query names: ' + escapeHtml(item.query_keys.join(', ')) + ' (values hidden)</small>' : '';
+    var referrer = item.referer_origin ? '<small>Referrer: ' + escapeHtml(item.referer_origin) + '</small>' : '';
+    var signal = item.signal ? '<span class="http-signal ' + kind + '">' + escapeHtml(item.signal) + '</span>' : '';
+    var statusClass = Number(item.status_code) >= 400 ? 'bad' : (Number(item.status_code) >= 300 ? 'redirect' : '');
+    return '<article class="http-event-row ' + kind + '"><div class="http-event-top"><span class="http-method">' + escapeHtml(item.method) + '</span><span class="http-status ' + statusClass + '">' + escapeHtml(item.status_code) + '</span><time>' + escapeHtml(new Date(item.captured_at).toLocaleString()) + '</time>' + signal + '</div><div class="http-event-main"><div><strong>' + escapeHtml(source) + '</strong><small>' + escapeHtml(item.source_scope) + ' peer</small></div><div><strong>' + escapeHtml(target + targetHost) + '</strong><small>' + escapeHtml(item.path) + '</small>' + route + queryNote + referrer + '<small>' + escapeHtml(item.user_agent || 'Browser identity unavailable') + '</small></div></div></article>';
+  }).join('');
+}
+function loadHttpMonitor(append) {
+  if (state.httpBusy) return;
+  append = append === true;
+  state.httpBusy = true;
+  $('http-last-event').textContent = 'Refreshing activity...';
+  $('http-load-older').disabled = true;
+  var current = state.httpMonitor;
+  var cursor = append && current && current.events.length ? current.events[current.events.length - 1].id : null;
+  var path = './api/http-monitor?limit=100' + (cursor ? '&before_id=' + encodeURIComponent(cursor) : '');
+  requestJson(path).then(function(data) {
+    if (append && current) {
+      data.events = current.events.concat(data.events || []);
+    } else if (current && current.events.length > 100) {
+      var currentIds = new Set((data.events || []).map(function(item) { return Number(item.id); }));
+      data.events = (data.events || []).concat(current.events.filter(function(item) { return !currentIds.has(Number(item.id)); }));
+      data.events.sort(function(left, right) { return Number(right.id) - Number(left.id); });
+      data.has_more = current.has_more;
+      data.next_cursor = current.next_cursor;
+    }
+    renderHttpMonitor(data);
+  }).catch(function(error) { $('http-last-event').textContent = error.message; }).finally(function() { state.httpBusy = false; $('http-load-older').disabled = false; });
+}
+function setHttpCaptureEnabled(enabled) {
+  $('http-capture-toggle').disabled = true;
+  requestJson('./api/http-monitor', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({enabled: Boolean(enabled)})}).then(loadHttpMonitor).catch(function(error) {
+    $('http-capture-status').textContent = error.message;
+    $('http-capture-toggle').checked = !enabled;
+  }).finally(function() { $('http-capture-toggle').disabled = false; });
+}
 function loadBios() { $('bios-details').innerHTML = '<div class="empty-state">Reading firmware inventory...</div>'; requestJson('./api/system/bios').then(function(data) { var inventory = data.inventory || {}, bios = inventory.bios || {}, system = inventory.system || {}, board = inventory.baseboard || {}, tpm = inventory.tpm || {}; var tpmValue = tpm.status || (tpm.TpmPresent == null ? 'Unavailable' : (tpm.TpmPresent ? (tpm.TpmReady ? 'Present / ready' : 'Present / not ready') : 'Not present')); $('bios-details').innerHTML = [['BIOS', [bios.Manufacturer, bios.SMBIOSBIOSVersion || bios.Version].filter(Boolean).join(' · ') || 'Unavailable'], ['Release', bios.ReleaseDate || 'Unavailable'], ['System', [system.Vendor, system.Name, system.Version].filter(Boolean).join(' · ') || 'Unavailable'], ['Board', [board.Manufacturer, board.Product, board.Version].filter(Boolean).join(' · ') || 'Unavailable'], ['TPM', tpmValue]].map(function(row) { return '<div class="enrichment-row"><span>' + escapeHtml(row[0]) + '</span><strong>' + escapeHtml(row[1]) + '</strong></div>'; }).join(''); }).catch(function(error) { $('bios-details').innerHTML = '<div class="empty-state">' + escapeHtml(error.message) + '</div>'; }); }
-function setView(view) { state.view = view; Array.prototype.forEach.call(document.querySelectorAll('.view-tab'), function(tab) { var active = tab.dataset.view === view; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', active ? 'true' : 'false'); }); $('summary-view').classList.toggle('hidden', view !== 'summary'); $('peers-view').classList.toggle('hidden', view !== 'peers'); $('connections-view').classList.toggle('hidden', view === 'summary' || view === 'peers'); $('connections-view').classList.toggle('process-only', view === 'processes'); }
+function setView(view) { state.view = view; Array.prototype.forEach.call(document.querySelectorAll('.view-tab'), function(tab) { var active = tab.dataset.view === view; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', active ? 'true' : 'false'); }); $('summary-view').classList.toggle('hidden', view !== 'summary'); $('peers-view').classList.toggle('hidden', view !== 'peers'); $('connections-view').classList.toggle('hidden', view === 'summary' || view === 'peers' || view === 'http'); $('connections-view').classList.toggle('process-only', view === 'processes'); $('http-view').classList.toggle('hidden', view !== 'http'); if (view === 'http') loadHttpMonitor(); }
 document.addEventListener('click', function(event) { var target = event.target.closest ? event.target.closest('[data-inspect-ip],[data-select-peer],[data-map-peer],[data-focus-process]') : null; if (!target) return; if (target.dataset.inspectIp) lookupIp(target.dataset.inspectIp); else if (target.dataset.selectPeer || target.dataset.mapPeer) selectPeer(target.dataset.selectPeer || target.dataset.mapPeer); else if (target.dataset.focusProcess) focusProcess(target.dataset.focusProcess); });
-$('refresh-button').addEventListener('click', function() { loadSnapshot(true); }); $('bios-refresh').addEventListener('click', loadBios); $('map-peers').addEventListener('click', mapPeers); $('connection-filter').addEventListener('change', function() { if (state.snapshot) renderConnections(state.snapshot.connections || []); }); $('enrichment-close').addEventListener('click', function() { $('enrichment-panel').classList.add('hidden'); }); $('selection-close').addEventListener('click', function() { state.selectedPeerKey = ''; $('selection-panel').classList.add('hidden'); }); $('view-tabs').addEventListener('click', function(event) { var tab = event.target.closest('.view-tab'); if (tab) setView(tab.dataset.view); }); $('otp-submit').addEventListener('click', login); $('otp-input').addEventListener('keydown', function(event) { if (event.key === 'Enter') login(); });
+$('refresh-button').addEventListener('click', function() { loadSnapshot(true); }); $('bios-refresh').addEventListener('click', loadBios); $('map-peers').addEventListener('click', mapPeers); $('http-refresh').addEventListener('click', loadHttpMonitor); $('http-capture-toggle').addEventListener('change', function() { setHttpCaptureEnabled(this.checked); }); $('http-search').addEventListener('input', renderHttpEvents); $('http-kind-filter').addEventListener('change', renderHttpEvents); $('connection-filter').addEventListener('change', function() { if (state.snapshot) renderConnections(state.snapshot.connections || []); }); $('enrichment-close').addEventListener('click', function() { $('enrichment-panel').classList.add('hidden'); }); $('selection-close').addEventListener('click', function() { state.selectedPeerKey = ''; $('selection-panel').classList.add('hidden'); }); $('view-tabs').addEventListener('click', function(event) { var tab = event.target.closest('.view-tab'); if (tab) setView(tab.dataset.view); }); $('otp-submit').addEventListener('click', login); $('otp-input').addEventListener('keydown', function(event) { if (event.key === 'Enter') login(); });
+$('http-load-older').addEventListener('click', function() { loadHttpMonitor(true); });
 initTheme(); setView('summary'); initAuth();
