@@ -309,6 +309,124 @@ def test_internet_classifier_can_ignore_a_bare_url_without_losing_other_signals(
     assert internet_agent_module.is_internet_request("see www.example.com") is True
     assert internet_agent_module.is_internet_request("see www.example.com", url_is_signal=False) is False
     assert internet_agent_module.is_internet_request("search www.example.com", url_is_signal=False) is True
+    assert internet_agent_module.is_internet_request("open www.example.com", url_is_signal=False) is False
+
+
+# ── A link is not, by itself, a request to browse ──────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Content: see https://example.com/a and www.example.com/docs for details",
+        "Can you add example.com/gl-x to my page",
+        "Reply with exactly this sentence: Try example.com/guide for the walkthrough.",
+        "save this link https://example.com/read-later for tomorrow",
+    ],
+)
+def test_a_link_inside_ordinary_text_is_not_a_web_request(text):
+    assert internet_agent_module.is_internet_request(text) is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "www.example.com",
+        "see www.example.com",
+        "open amazon.com",
+        "visit https://example.com/news and summarize it",
+        "What does https://example.com say about pricing?",
+        "check example.org/status please",
+    ],
+)
+def test_a_link_with_a_web_verb_or_on_its_own_still_routes_to_the_web(text):
+    assert internet_agent_module.is_internet_request(text) is True
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Can you add example.com/gl-x to my page", True),
+        ("save https://example.com/a to my page", True),
+        ("add that to my page feed", False),  # explicit feed phrase, but no link: model decides
+        ("add a button to my page", False),
+        ("show the items on my page", False),
+        ("add example.com to my notes", False),
+    ],
+)
+def test_adding_a_link_to_my_page_is_a_page_feed_request(text, expected):
+    assert root_agent_module._is_page_feed_request(text) is expected
+
+
+# ── Context is attached at tool-call time, whoever chose the dispatch ──────────
+
+
+def _tool_context(*items):
+    events = [SimpleNamespace(content=types.Content(role=role, parts=[types.Part(text=text)])) for role, text in items]
+    events.insert(1, SimpleNamespace(content=None))  # state-delta style events carry no content
+    return SimpleNamespace(session=SimpleNamespace(events=events))
+
+
+def _agent_tool(name):
+    return SimpleNamespace(name=name)
+
+
+def test_the_models_own_page_dispatch_gets_the_url_it_forgot_to_copy():
+    """The live failure: the model sent 'add that to my page feed' with no URL, and the child asked for one."""
+    context = _tool_context(
+        ("user", "Reply with exactly this sentence: Try example.com/guide for the walkthrough."),
+        ("model", "Try example.com/guide for the walkthrough."),
+        ("user", "add that to my page feed"),
+    )
+    args = {"request": "add that to my page feed"}
+
+    assert root_agent_module._root_before_tool_callback(_agent_tool("autoyou_page_agent"), args, context) is None
+    assert "[AutoYou previous referenced URL: https://example.com/guide]" in args["request"]
+
+
+def test_the_models_own_notes_dispatch_carries_the_previous_answer_even_when_it_paraphrases():
+    context = _tool_context(
+        ("user", "How many page feed items do I have"),
+        ("model", FEED_ANSWER),
+        ("user", "Save it to notes"),
+    )
+    args = {"request": "Save the page feed summary to the user's notes"}  # no pronoun in the paraphrase
+
+    root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), args, context)
+
+    assert FEED_ANSWER in args["request"]
+    assert "[AutoYou previous user request]" in args["request"]
+
+
+def test_the_two_stage_router_call_shape_is_covered_too(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_resolve_specialist_tool", lambda name: (name, object()))
+    context = _tool_context(("user", "q"), ("model", FEED_ANSWER), ("user", "Save it to notes"))
+    args = {"agent": "autoyou_notes_agent", "request": "Save it to notes"}
+
+    root_agent_module._root_before_tool_callback(_agent_tool(root_agent_module._ROUTER_TOOL_NAME), args, context)
+
+    assert FEED_ANSWER in args["request"]
+
+
+def test_context_is_not_attached_twice_or_to_other_specialists():
+    context = _tool_context(("user", "q"), ("model", FEED_ANSWER), ("user", "Save it to notes"))
+    first = {"request": "Save it to notes"}
+    root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), first, context)
+    again = dict(first)
+    root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), again, context)
+    other = {"request": "Save it to notes"}
+    root_agent_module._root_before_tool_callback(_agent_tool("autoyou_internet_agent"), other, context)
+
+    assert again == first
+    assert other == {"request": "Save it to notes"}
+
+
+def test_the_hook_ignores_calls_without_a_request_or_conversation():
+    assert root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), {}, _tool_context(("user", "x"))) is None
+    empty = SimpleNamespace(session=SimpleNamespace(events=[]))
+    args = {"request": "Save it to notes"}
+    assert root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), args, empty) is None
+    assert args == {"request": "Save it to notes"}
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
