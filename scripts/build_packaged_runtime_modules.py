@@ -473,6 +473,13 @@ def build_runtime_module_plan(
                 raise FileNotFoundError(f"Missing native desktop runtime module: {path}")
         compile_specs += tuple(ModuleBuildSpec(path) for path in desktop_paths)
         bridge_stubs.add(Path("v2/__init__.py"))
+    for spec in compile_specs:
+        for parent in spec.source_relative_path.parents:
+            if parent == Path("."):
+                break
+            initializer = parent / "__init__.py"
+            if _source_path(repo_root, initializer).is_file():
+                bridge_stubs.add(initializer)
     return RuntimeModulePlan(
         compile_specs=tuple(sorted(compile_specs, key=lambda spec: spec.source_relative_path.as_posix())),
         asset_files=tuple(sorted(asset_files, key=lambda path: path.as_posix())),
