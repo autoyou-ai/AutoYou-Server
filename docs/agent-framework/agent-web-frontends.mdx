@@ -111,4 +111,33 @@ In `manifest.json`, configure how the browser proxy handles requests:
 ```
 
 - **`path_proxy` (Default)**: Static files are served directly by the FastAPI web gateway on port `8067` at `/agent/{agent_name}/`.
-- **`direct_forward`**: Used for agents running a separate internal HTTP server (such as Node.js or a Python FastAPI instance on port `8101`). Requests are reverse-proxied to that internal port.
+- **`direct_forward`**: Used for agents running a separate internal HTTP server. Requests are reverse-proxied to that internal port.
+
+## Managed Backend Processes
+
+An installed agent can declare an external website service in `website/manifest.json`. AutoYou starts it when the agent is installed and its website is enabled, registers its loopback port for `/agent/{agent_name}/` proxying, and stops it when the website is disabled, the agent is removed, or the server shuts down. This works for a Rust service as well as other executables.
+
+The Rust website scaffold (`backend_stack: "rust_axum"`) writes a managed process declaration that runs `cargo run --release`. That path requires Rust/Cargo on `PATH`; a packaged agent can instead point `command` at its platform-specific, prebuilt executable.
+
+```json
+{
+  "agent_name": "rust_agent",
+  "title": "Rust Agent",
+  "requires_proxy_registration": true,
+  "backend_stack": "rust_axum",
+  "managed_runtime": {
+    "type": "process",
+    "command": ["cargo", "run", "--release", "--", "--port", "{port}"],
+    "working_directory": "website/backend",
+    "health_path": "/health",
+    "startup_timeout_seconds": 600,
+    "shutdown_timeout_seconds": 10
+  }
+}
+```
+
+The process is launched directly without a shell from inside the agent package. Relative executable and working-directory paths must remain inside that package. AutoYou passes `HOST=127.0.0.1`, `PORT`, and the equivalent `AUTOYOU_HOST` / `AUTOYOU_PORT` values. The service should listen on that loopback port and provide an HTTP health route; the manifest's `health_path` is optional.
+
+For a Docker Compose backend, declare `type: "docker-compose"` and a `compose_file` path relative to the agent package. Compose should bind its published host port using `${HOST:-127.0.0.1}:${PORT}:<container-port>`; the service inside the container listens on `0.0.0.0`. AutoYou assigns a private, stable Compose project to each installed agent and shuts down only that project with `docker compose down --remove-orphans`. Its named volumes and images are retained.
+
+Only installed agents with `requires_proxy_registration: true` and an enabled website are started. Missing executables, Cargo, Docker, or an unhealthy service leave the frontend unregistered and are logged by the server.

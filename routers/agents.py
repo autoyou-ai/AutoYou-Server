@@ -1339,6 +1339,7 @@ def register_routes(
                 requires_proxy_registration=bool(payload.get("requires_proxy_registration", True)),
                 frontend_stack=payload.get("frontend_stack"),
                 backend_stack=payload.get("backend_stack"),
+                managed_runtime=payload.get("managed_runtime"),
                 agents_root=server._workspace_agents_root(),
             )
             return server._build_agent_workbench_success_response(
