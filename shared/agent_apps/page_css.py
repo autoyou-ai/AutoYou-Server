@@ -275,11 +275,13 @@ h1 {
   bottom: calc(0.75rem + env(safe-area-inset-bottom));
   max-height: 52vh; max-height: 52dvh; display: flex; flex-direction: column; gap: 0.7rem;
   padding: 0.25rem 0.9rem 0.85rem; border-radius: 1.7rem;
+  overflow: hidden;
   background: var(--glass); border: 1px solid var(--line); box-shadow: var(--shadow);
   -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
-  transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.1);
+  transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.1), max-height 0.25s, padding 0.25s, gap 0.25s;
 }
-.dock-grab { align-self: center; display: grid; place-items: center; width: 4.5rem; height: 1.4rem; color: var(--faint); }
+.dock-content { display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.7rem; min-height: 0; overflow: hidden; }
+.dock-grab { align-self: center; display: grid; flex: 0 0 1.4rem; place-items: center; width: 4.5rem; height: 1.4rem; color: var(--faint); }
 .dock-grab i { display: block; width: 2.4rem; height: 0.28rem; border-radius: 99px; background: currentColor; opacity: 0.5; }
 .dock-head { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
 .dock .icon { width: 3.6rem; border-radius: 23%; }
@@ -311,8 +313,14 @@ h1 {
 .btn:active { transform: scale(0.97); }
 .btn.primary { flex: 1.25; color: var(--accent-ink); background: var(--accent); border-color: transparent; }
 .btn.primary[aria-disabled="true"] { filter: grayscale(1) opacity(0.5); pointer-events: none; }
-.dock-hint { margin: 0; font-size: 0.78rem; color: var(--faint); text-align: center; }
+.dock-hint { display: none; margin: 0; font-size: 0.78rem; color: var(--faint); text-align: center; }
 .is-dragging .dock-hint { color: var(--accent); }
+
+@media (max-width: 61.999rem) {
+  .dock[data-collapsed="1"] { max-height: 2rem; gap: 0; padding: 0 0.9rem; }
+  .dock[data-collapsed="1"] .dock-content { visibility: hidden; }
+  .dock[data-collapsed="1"] .dock-grab { touch-action: none; }
+}
 
 /* ---------- appearance sheet ---------- */
 .sheet {
@@ -358,6 +366,7 @@ h1 {
     max-height: calc(100vh - 7rem); margin-top: 0.4rem; padding: 1.2rem; gap: 1rem;
   }
   .dock-grab { display: none; }
+  .dock-hint { display: block; }
   .dock .icon { width: 4.6rem; }
   .dock-desc { display: block; -webkit-line-clamp: unset; font-size: calc(0.97rem * var(--sd)); }
   .dock-meta { display: flex; }

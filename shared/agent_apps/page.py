@@ -161,22 +161,24 @@ __SPRITE__
         <p><button type="button" class="link" id="empty-clear">Clear search</button></p>
       </div>
     </main>
-    <aside class="dock" id="dock" data-expanded="0" aria-label="About the selected app">
-      <button type="button" class="dock-grab" aria-label="Show more or less about this app"><i></i></button>
-      <div class="dock-head">
-        <span class="icon" id="dock-icon" style="--a:#8e9bff;--b:#6a3df0"></span>
-        <div class="dock-text">
-          <div class="dock-title"><h2 id="dock-name">__FIRST_TITLE__</h2><span class="pill" id="dock-cat"></span></div>
+    <aside class="dock" id="dock" data-expanded="0" data-collapsed="0" aria-label="About the selected app">
+      <div class="dock-content" id="dock-content">
+        <div class="dock-head">
+          <span class="icon" id="dock-icon" style="--a:#8e9bff;--b:#6a3df0"></span>
+          <div class="dock-text">
+            <div class="dock-title"><h2 id="dock-name">__FIRST_TITLE__</h2><span class="pill" id="dock-cat"></span></div>
+          </div>
+        </div>
+        <div class="dock-body" id="dock-body">
+          <p class="dock-desc" id="dock-desc">__FIRST_DESCRIPTION__</p>
+          <div class="dock-meta" id="dock-meta"></div>
+        </div>
+        <div class="dock-actions" id="dock-actions">
+          <a class="btn primary" id="dock-open" href="#">__OPEN_ICON__Open</a>
+          <button type="button" class="btn" id="dock-copy">__COPY_ICON__Copy link</button>
         </div>
       </div>
-      <div class="dock-body">
-        <p class="dock-desc" id="dock-desc">__FIRST_DESCRIPTION__</p>
-        <div class="dock-meta" id="dock-meta"></div>
-      </div>
-      <div class="dock-actions">
-        <a class="btn primary" id="dock-open" href="#">__OPEN_ICON__Open</a>
-        <button type="button" class="btn" id="dock-copy">__COPY_ICON__Copy link</button>
-      </div>
+      <button type="button" class="dock-grab" aria-label="Hide selected app details" aria-expanded="true" aria-controls="dock-content"><i></i></button>
       <p class="dock-hint" id="dock-hint">Slide to preview. Hold to move. Pinch to resize.</p>
     </aside>
   </div>
