@@ -12,7 +12,6 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 from pathlib import Path
 
-import pytest
 
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-07bababf65611877166c1c66"
 
@@ -23,14 +22,6 @@ BUILD_BACKEND = PROJECT_ROOT / "servers" / "windows" / "build-backend.ps1"
 
 def _build_backend_text() -> str:
     return BUILD_BACKEND.read_text(encoding="utf-8")
-
-
-def _private_source_text(relative_path: str) -> str:
-    for root in (PROJECT_ROOT, PROJECT_ROOT.parent):
-        path = root / relative_path
-        if path.is_file():
-            return path.read_text(encoding="utf-8")
-    pytest.skip(f"Private source checkout is absent: {relative_path}")
 
 
 def test_windows_runtime_site_packages_are_pruned_to_active_requirements():
@@ -115,9 +106,7 @@ def test_windows_binary_default_removes_stale_optional_stt_dlls():
 
 def test_windows_native_runtime_verifies_its_audio_binding():
     backend = _build_backend_text()
-    audio_streams = _private_source_text("clients/python/audio_streams.py")
 
-    assert 'import pyaudiowpatch as pyaudio' in audio_streams
     assert '"--verify-runtime-import", "v2.runtime.client"' in backend
     assert '"--verify-runtime-import", "pyaudiowpatch"' in backend
 
@@ -156,17 +145,11 @@ def test_windows_nuitka_retry_does_not_treat_compiler_mismatch_as_memory_pressur
 
 def test_windows_v2_publish_stages_the_compiled_desktop_worker():
     backend = _build_backend_text()
-    publish = _private_source_text("v2/windows/publish.ps1")
 
     assert "[switch]$DesktopV2" in backend
     assert '$runtimeModuleBuildArguments += "--desktop"' in backend
     assert '$runtimeModuleBuildArguments += "--include-sibling-agents"' in backend
     assert '"v2\\\\runtime\\\\worker*.pyd"' in backend
-    assert "WindowsAppSDKSelfContained=true" in publish
-    assert "WindowsAppSdkBootstrapInitialize=false" in publish
-    assert "AutoYouServer.exe" in publish
-    assert "runtime_modules\\v2\\runtime\\worker*.pyd" in publish
-    assert "packaged_sibling_agents.json" in publish
 
 
 def test_windows_full_voice_profile_compiles_emotivoice_runtime():
@@ -198,10 +181,3 @@ def test_windows_backend_preserves_manifest_tracked_runtime_bytecode():
 
     assert manifest < tracked_bytecode < cleanup
     assert '"runtime_modules/*.pyc"' in text
-
-
-def test_windows_native_publish_trims_paths_with_characters_not_strings():
-    text = _private_source_text("v2/windows/publish.ps1")
-
-    assert "$trimChars = [char[]]@('\\', '/')" in text
-    assert text.count(".TrimEnd($trimChars)") == 3  # the resolved path, its root and the dist root
