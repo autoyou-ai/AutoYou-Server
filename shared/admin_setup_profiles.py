@@ -759,6 +759,7 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
         safe_patch.setdefault("video_call", {}).update(
             {
                 "record_my_video": False,
+                "record_audio_only_calls": False,
                 "silent_recording_enabled": False,
                 "background_mode_enabled": False,
                 "capture_audio": False,

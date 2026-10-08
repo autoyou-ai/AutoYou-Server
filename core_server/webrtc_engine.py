@@ -152,6 +152,7 @@ class WebRTCManager:
         self._outbound_call_audio_signature: Optional[Tuple[Any, ...]] = None
         self.background_audio_state_by_session: Dict[str, Dict[str, Any]] = {}
         self.silent_recorders: Dict[str, Any] = {}
+        self.audio_only_call_recorders: Dict[str, Any] = {}
         self.rewarded_ad_completion_by_session: Dict[str, Dict[str, Any]] = {}
         # Prevent a repeated browser/tool request from presenting a second
         # native ad while the first rewarded-ad control is still active.
@@ -2603,6 +2604,55 @@ class WebRTCManager:
             _runtime.LOGGER.warning("Failed to write silent recording chunk for %s: %s", session_id, exc)
         return True
 
+    def _close_audio_only_call_recorders_for_ids(self, session_ids: Iterable[str]) -> None:
+        closed_recorders: List[Any] = []
+        for session_id in list(session_ids or []):
+            normalized_session_id = str(session_id or "").strip()
+            if not normalized_session_id:
+                continue
+            recorder = self.audio_only_call_recorders.pop(normalized_session_id, None)
+            if recorder is None or any(recorder is current for current in closed_recorders):
+                continue
+            closed_recorders.append(recorder)
+            try:
+                recorder.close()
+            except Exception as exc:
+                _runtime.LOGGER.warning("Failed to close audio-only call recording for %s: %s", normalized_session_id, exc)
+
+    def _get_or_create_audio_only_call_recorder(self, session_id: str) -> Optional[Any]:
+        if _runtime.StreamingWavBatchRecorder is None:
+            return None
+        alias_ids = self._ordered_related_session_ids(session_id)
+        for alias_id in alias_ids:
+            recorder = self.audio_only_call_recorders.get(alias_id)
+            if recorder is not None:
+                for register_alias in alias_ids:
+                    self.audio_only_call_recorders[register_alias] = recorder
+                return recorder
+        recorder_session_id = str(alias_ids[0] if alias_ids else session_id or "session").strip() or "session"
+        recorder = _runtime.StreamingWavBatchRecorder(
+            session_id=recorder_session_id,
+            output_dir=Path(_runtime._resolve_video_recording_dir(cfg=(_runtime.STATE.config or {}))) / "audio-only",
+            max_batch_seconds=_runtime.DEFAULT_AUDIO_RECORDING_BATCH_SECONDS,
+            filename_prefix="autoyou-audio-only-call",
+        )
+        for alias_id in alias_ids:
+            self.audio_only_call_recorders[alias_id] = recorder
+        return recorder
+
+    def _write_audio_only_call_chunk(self, session_id: str, chunk: bytes) -> bool:
+        if not _runtime._get_audio_only_call_recording_enabled(cfg=(_runtime.STATE.config or {})):
+            self._close_audio_only_call_recorders_for_ids(self._ordered_related_session_ids(session_id))
+            return False
+        recorder = self._get_or_create_audio_only_call_recorder(session_id)
+        if recorder is None:
+            return True
+        try:
+            recorder.write(chunk)
+        except Exception as exc:
+            _runtime.LOGGER.warning("Failed to write audio-only call recording for %s: %s", session_id, exc)
+        return True
+
     def _background_audio_consumer_enabled(self, *, cfg: Optional[Dict[str, Any]] = None) -> bool:
         effective_cfg = cfg if cfg is not None else (_runtime.STATE.config or {})
         return bool(
@@ -2675,6 +2725,7 @@ class WebRTCManager:
             self.background_audio_state_by_session,
             self.screen_sessions,
             self.silent_recorders,
+            self.audio_only_call_recorders,
         )
         if any(normalized_session_id in mapping for mapping in state_maps):
             return True
@@ -2787,6 +2838,17 @@ class WebRTCManager:
             if background_state.get("silent_recording"):
                 self._write_silent_recording_chunk(session_id, chunk)
             return
+        video_sink = self.video_sinks.get(str(session_id))
+        recorded_with_video = False
+        if video_sink is not None:
+            record_audio = getattr(video_sink, "record_audio_chunk", None)
+            if callable(record_audio):
+                try:
+                    recorded_with_video = bool(record_audio(chunk))
+                except Exception as exc:
+                    _runtime.LOGGER.warning("Failed to mux call audio for %s: %s", _runtime.redact_identifier(session_id), exc)
+        if not recorded_with_video:
+            self._write_audio_only_call_chunk(session_id, chunk)
         if audio_manager is None:
             return
         if not _runtime._get_video_call_agent_processing_enabled(cfg=(_runtime.STATE.config or {})):
@@ -6066,6 +6128,7 @@ class WebRTCManager:
                         track,
                         session_id=str(chat_id),
                         recording_enabled=_runtime._get_video_record_my_video_enabled(cfg=(_runtime.STATE.config or {})),
+                        audio_recording_enabled=True,
                         recording_dir=_runtime._resolve_video_recording_dir(cfg=(_runtime.STATE.config or {})),
                         recording_mode=_runtime._get_video_recording_mode(cfg=(_runtime.STATE.config or {})),
                         image_interval_seconds=_runtime._get_video_image_interval_seconds(cfg=(_runtime.STATE.config or {})),
@@ -6499,6 +6562,7 @@ class WebRTCManager:
                             track,
                             session_id=str(session_id),
                             recording_enabled=_runtime._get_video_record_my_video_enabled(cfg=(_runtime.STATE.config or {})),
+                            audio_recording_enabled=True,
                             recording_dir=_runtime._resolve_video_recording_dir(cfg=(_runtime.STATE.config or {})),
                             recording_mode=_runtime._get_video_recording_mode(cfg=(_runtime.STATE.config or {})),
                             image_interval_seconds=_runtime._get_video_image_interval_seconds(cfg=(_runtime.STATE.config or {})),
@@ -6844,6 +6908,10 @@ class WebRTCManager:
             cleanup_id: self.silent_recorders.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
         }
+        expected_audio_only_call_recorders = {
+            cleanup_id: self.audio_only_call_recorders.get(cleanup_id, missing)
+            for cleanup_id in cleanup_ids
+        }
         expected_rewarded_ad_completion = {
             cleanup_id: self.rewarded_ad_completion_by_session.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
@@ -6966,6 +7034,21 @@ class WebRTCManager:
                 _runtime.LOGGER.info("Closed silent recording writer for %s", cleanup_id)
             except Exception as e:
                 _runtime.LOGGER.warning("Error closing silent recording writer for %s: %s", cleanup_id, e)
+
+        closed_audio_only_call_recorders: List[Any] = []
+        for cleanup_id in cleanup_ids:
+            recorder = expected_audio_only_call_recorders.get(cleanup_id, missing)
+            if recorder is missing:
+                continue
+            pop_if_current(self.audio_only_call_recorders, cleanup_id, recorder)
+            if any(recorder is current for current in closed_audio_only_call_recorders):
+                continue
+            closed_audio_only_call_recorders.append(recorder)
+            try:
+                recorder.close()
+                _runtime.LOGGER.info("Closed audio-only call recording for %s", cleanup_id)
+            except Exception as e:
+                _runtime.LOGGER.warning("Error closing audio-only call recording for %s: %s", cleanup_id, e)
 
         stopped_video_sinks: List[Any] = []
         for cleanup_id in cleanup_ids:
@@ -11052,6 +11135,7 @@ class WebRTCManager:
         await _runtime.asyncio.to_thread(self.screen_listen_mixer.close)
         self.background_audio_state_by_session.clear()
         self.silent_recorders.clear()
+        self.audio_only_call_recorders.clear()
         self.voice_command_queues.clear()
         self.voice_command_workers.clear()
         self.pending_voice_chat_messages.clear()
@@ -11097,6 +11181,7 @@ class WebRTCManager:
                 | set(self.audio_transceivers.keys())
                 | set(self.background_audio_state_by_session.keys())
                 | set(self.silent_recorders.keys())
+                | set(self.audio_only_call_recorders.keys())
                 | set(getattr(_runtime.STATE, "audio_managers", {}).keys())
             )
 
@@ -11174,6 +11259,13 @@ class WebRTCManager:
                 except Exception as e:
                     _runtime.LOGGER.warning(f"Error closing orphan silent recording writer {session_id}: {e}")
             self.silent_recorders.clear()
+            for session_id, recorder in list(self.audio_only_call_recorders.items()):
+                try:
+                    recorder.close()
+                    _runtime.LOGGER.info("Closed orphan audio-only call recording during shutdown: %s", session_id)
+                except Exception as e:
+                    _runtime.LOGGER.warning("Error closing orphan audio-only call recording %s: %s", session_id, e)
+            self.audio_only_call_recorders.clear()
             self.background_audio_state_by_session.clear()
             self._voice_chat_flush_locks.clear()
             self._offline_queue_flush_locks.clear()

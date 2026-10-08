@@ -212,6 +212,7 @@ def test_safety_recording_recipe_is_explicit_and_incognito_can_turn_it_off():
     assert incognito_video["silent_recording_enabled"] is False
     assert incognito_video["background_mode_enabled"] is False
     assert incognito_video["record_my_video"] is False
+    assert incognito_video["record_audio_only_calls"] is False
     assert incognito_video["capture_audio"] is False
 
 

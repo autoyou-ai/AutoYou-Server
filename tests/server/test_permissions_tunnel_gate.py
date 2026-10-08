@@ -70,6 +70,7 @@ def test_app_on_this_computer_can_read_and_change_permissions(local_admin):
     assert local_admin.get("/api/admin/bootstrap").json()["metadata"]["permissions_editable"] is True
     assert local_admin.get("/api/admin/permissions").status_code == 200
     assert local_admin.post("/api/admin/permissions", json={"audio_call_enabled": False}).status_code == 200
+    assert local_admin.post("/api/admin/permissions", json={"audio_only_call_recording_enabled": True}).status_code == 200
     assert local_admin.post("/api/admin/config", json=PERMISSION_PATCH).status_code == 200
 
 
@@ -156,5 +157,4 @@ def test_remote_private_network_client_blocked_by_default(local_admin, monkeypat
     assert remote_client.post("/api/admin/permissions", json={"audio_call_enabled": False}).status_code == 403
     blocked = remote_client.post("/api/admin/config", json=PERMISSION_PATCH)
     assert blocked.status_code == 403
-
 
