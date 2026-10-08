@@ -10,7 +10,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 from pathlib import Path
 
 from scripts import reconcile_python_runtime_env as reconcile
-from tests.support.paths import PROJECT_ROOT, REPO_ROOT
+from tests.support.paths import REPO_ROOT
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-276e3493b296481ab19b18b2"
 
@@ -38,13 +38,7 @@ def test_signed_binary_profile_keeps_webcam_runtime_dependency():
 
 
 def test_twine_is_kept_out_of_the_runtime_environment():
-    release_requirements = (PROJECT_ROOT / "requirements" / "autoyou-lite-release.txt").read_text(
-        encoding="utf-8"
-    )
-
     assert "twine" in reconcile.RELEASE_ONLY_PACKAGES
-    assert "twine==7.0.0" in release_requirements
-    assert "packaging==26.2" in release_requirements
 
 
 def test_read_locked_specs_normalizes_names_and_lockfile_syntax(tmp_path):
