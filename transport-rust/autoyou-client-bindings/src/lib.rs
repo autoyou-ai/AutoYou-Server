@@ -380,6 +380,21 @@ pub fn validate_peer_pairing(descriptor_json: String, proof_json: String, now_ms
 }
 
 #[uniffi::export]
+pub fn room_approval_grant(protected_store: Vec<u8>, remote_endpoint: String, origin_sender: String,
+    room_id: String, room_epoch: String, scopes: Vec<String>, expires_at_ms: u64, now_ms: u64)
+    -> Result<String, BindingError> {
+    let grant = autoyou_session::peer::room_approval_grant(&protected_store, &remote_endpoint, origin_sender,
+        &room_id, &room_epoch, scopes, expires_at_ms, now_ms)?;
+    serde_json::to_string(&grant).map_err(|_| BindingError::InvalidInput)
+}
+
+#[uniffi::export]
+pub fn validate_room_pairing(descriptor_json: String, proof_json: String, room_id: String,
+    room_epoch: String, now_ms: u64) -> Result<String, BindingError> {
+    Ok(autoyou_session::peer::room_pairing(&descriptor_json, &proof_json, &room_id, &room_epoch, now_ms)?)
+}
+
+#[uniffi::export]
 pub fn endpoint_id_from_key(mut secret_key: Vec<u8>) -> Result<String, BindingError> {
     if secret_key.len()!=32 { secret_key.fill(0); return Err(BindingError::InvalidInput); }
     let key: [u8;32]=secret_key.as_slice().try_into().map_err(|_|BindingError::InvalidInput)?;
