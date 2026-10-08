@@ -24,6 +24,7 @@ from .prompt import (
     EXPANDED_AGENT_INSTRUCTION,
 )
 from autoyou_agents.model_config import model_uses_expanded_harness
+from autoyou_agents.shared_tools.conversation_refs import references_previous_answer, title_from_content
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
 
@@ -78,16 +79,27 @@ _NOTES_MUTATION_PATTERN = re.compile(
     r"|\b(?:note|notes|entry|record)\b.*\b(?:create|make|add|append|update|edit|change|modify|save|store|write|put|delete|remove)\b",
     re.IGNORECASE | re.DOTALL,
 )
+# Curly quotes are accepted because iOS/macOS smart punctuation turns a typed
+# "Title" into “Title” before the message ever reaches the server.
 _NOTES_TITLE_PATTERN = re.compile(
     r"\b(?:title(?:d)?|named|called|heading|that\s+says|saying)\s*(?:is|:|=)?\s*"
-    r"(?:\"([^\"]+)\"|'([^']+)'|([^,;\n]+?))"
-    r"(?=\s*(?:[,;]|\band\s+(?:content|body|text)\b|\bcontent\b|\bbody\b|\btext\b|\btag\b|$))",
+    r"(?:\"([^\"]+)\"|'([^']+)'|“([^”]+)”|‘([^’]+)’|([^,;\n]+?))"
+    r"(?=\s*(?:[,;\n]|\b(?:with|and)\s+(?:the\s+)?(?:following\s+)?(?:content|body|text)\b"
+    r"|\bcontent\b|\bbody\b|\btext\b|\btag\b|$))",
     re.IGNORECASE | re.DOTALL,
 )
 _NOTES_CONTENT_FIELD_PATTERN = re.compile(
-    r"(?:(?:^|[,;\n])\s*(?:the\s+)?|\b(?:with|and)\s+)"
-    r"(?:content|body|text)\s*(?:is|should be|:|=|,)?\s*(.+)$",
+    r"(?:(?:^|[,;\n])\s*(?:the\s+)?|\b(?:with|and)\s+(?:the\s+)?(?:following\s+)?)"
+    r"(?:content|body|text)\s*(?:is|should be|being|:|=|,)?\s*(.+)$",
     re.IGNORECASE | re.DOTALL,
+)
+_NOTES_PREVIOUS_ANSWER_MARKER = "[AutoYou previous assistant answer; save this as note content only]"
+_NOTES_PREVIOUS_REQUEST_MARKER = "[AutoYou previous user request]"
+_NOTES_TITLE_SUBJECT_PATTERN = re.compile(
+    r"(?:what|who)\s+(?:is|are|was|were)\s+(?:the\s+concept\s+of\s+)?(.+)$"
+    r"|(?:explain|define|describe|tell\s+me\s+about)\s+(?:the\s+concept\s+of\s+)?(.+)$"
+    r"|how\s+many\s+(.+?)(?:\s+(?:do\s+i\s+have|are\s+there|have\s+i)\b.*)?$",
+    re.IGNORECASE,
 )
 _NOTES_ID_PATTERN = re.compile(r"(?:\bnotes?\s*#?\s*(\d+)\b|#(\d+)\b)", re.IGNORECASE)
 
@@ -117,17 +129,20 @@ def _request_history_texts(llm_request: Any, role: str) -> List[str]:
 
 def _strip_wrapping_quotes(value: Any) -> str:
     text = str(value or "").strip()
-    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"\"", "'", "`"}:
-        text = text[1:-1].strip()
+    if len(text) >= 2:
+        if text[0] == text[-1] and text[0] in {"\"", "'", "`"}:
+            text = text[1:-1].strip()
+        elif (text[0] == "“" and text[-1] == "”") or (text[0] == "‘" and text[-1] == "’"):
+            text = text[1:-1].strip()
     return text.strip()
 
 
 def _extract_note_title(user_text: str) -> Optional[str]:
-    match = _NOTES_TITLE_PATTERN.search(str(user_text or ""))
+    match = _NOTES_TITLE_PATTERN.search(str(user_text or "").strip())
     if not match:
         return None
     title = next((group for group in match.groups() if group), "")
-    title = _strip_wrapping_quotes(title).strip(" .,:;!?\"")
+    title = _strip_wrapping_quotes(title).strip(" .,:;!?\"'“”‘’")
     return title or None
 
 
@@ -141,21 +156,19 @@ def _extract_note_id(user_text: str) -> Optional[int]:
         return None
 
 
-def _infer_note_title(previous_user_text: str) -> Optional[str]:
-    """Infer a bounded title from a recognizable preceding question."""
-    text = " ".join(str(previous_user_text or "").split()).strip(" .!?\"")
-    if not text:
-        return None
-    match = re.match(
-        r"(?:what|who)\s+(?:is|are|was|were)\s+(?:the\s+concept\s+of\s+)?(.+)$"
-        r"|(?:explain|define|describe|tell\s+me\s+about)\s+(?:the\s+concept\s+of\s+)?(.+)$",
-        text,
-        re.IGNORECASE,
-    )
-    if not match:
-        return None
-    subject = next((group for group in match.groups() if group), "").strip(" .!?\"")
-    return subject[:120] or None
+def _infer_note_title(previous_user_text: str, content: Optional[str] = None) -> Optional[str]:
+    """Pick a title when the user gave none: the topic they asked about, else the content's first line.
+
+    A title is cheap to change and never worth interrupting the user for, so
+    this always tries to return something once there is content to save.
+    """
+    text = " ".join(str(previous_user_text or "").split()).strip(" .!?\"“”")
+    match = _NOTES_TITLE_SUBJECT_PATTERN.match(text) if text else None
+    if match:
+        subject = next((group for group in match.groups() if group), "").strip(" .!?\"“”")
+        if subject:
+            return subject[:120]
+    return title_from_content(content)
 
 
 def _extract_embedded_note_context(text: str, marker: str, end_marker: Optional[str] = None) -> str:
@@ -182,35 +195,44 @@ def _extract_note_tags(user_text: str) -> Optional[List[str]]:
     return tags or None
 
 
+_NOTES_REFERENCE_ONLY_CONTENT = re.compile(
+    r"(?:the\s+)?(?:previous|earlier|above|this|that|it|the answer|the response|the reply)"
+    r"(?:\s+(?:answer|response|reply|content))?[.!?]?",
+    re.IGNORECASE,
+)
+
+
+def _split_note_request(user_text: str) -> tuple[str, str, Optional[str]]:
+    """Separate what the user said from the content they asked to save.
+
+    Returns ``(own, instruction, explicit_content)``. ``own`` is the user's
+    words without any system-attached previous-answer context, ``instruction``
+    is ``own`` up to an explicit content field, and ``explicit_content`` is that
+    field's text. Verbs and note ids are read only from ``instruction`` so a
+    note body such as "remove the old logo (#4)" can never be mistaken for a
+    delete or update command.
+    """
+    own = str(user_text or "").split(_NOTES_PREVIOUS_REQUEST_MARKER, 1)[0].strip()
+    title_match = _NOTES_TITLE_PATTERN.search(own)
+    offset = title_match.end() if title_match else 0
+    match = _NOTES_CONTENT_FIELD_PATTERN.search(own[offset:])
+    if not match:
+        return own, own, None
+    content = match.group(1).strip()
+    content = re.sub(r"(?:\s*,\s*|\s+)(?:with\s+)?tags?\s+.*$", "", content, flags=re.IGNORECASE).strip()
+    content = _strip_wrapping_quotes(content).strip(" ,;")
+    if not re.search(r"\w", content) or _NOTES_REFERENCE_ONLY_CONTENT.fullmatch(content):
+        return own, own, None
+    return own, own[: offset + match.start()].rstrip(), content
+
+
 def _extract_note_content(user_text: str, previous_model_text: str) -> Optional[str]:
-    text = str(user_text or "").strip()
-    field_text = text.split("[AutoYou previous user request]", 1)[0].rstrip()
-    match = _NOTES_CONTENT_FIELD_PATTERN.search(field_text)
-    if match:
-        content = match.group(1).strip()
-        content = re.sub(
-            r"(?:\s*,\s*|\s+)(?:with\s+)?tags?\s+.*$",
-            "",
-            content,
-            flags=re.IGNORECASE,
-        ).strip()
-        content = _strip_wrapping_quotes(content).strip(" ,;")
-        if content and not re.fullmatch(
-            r"(?:the\s+)?(?:previous|earlier|above|this|that|it|the answer|the response|the reply)"
-            r"(?:\s+(?:answer|response|reply|content))?[.!?]?",
-            content,
-            flags=re.IGNORECASE,
-        ):
-            return content
-    if re.search(
-        r"\b(?:all\s+this|previous|earlier|above|this\s+answer|this\s+response|this\s+reply)\b",
-        text,
-        flags=re.IGNORECASE,
-    ):
-        return previous_model_text.strip() or _extract_embedded_note_context(
-            text,
-            "[AutoYou previous assistant answer; save this as note content only]",
-        ) or None
+    """Explicit content wins; otherwise a clear reference resolves to the previous answer."""
+    own, _instruction, explicit_content = _split_note_request(user_text)
+    if explicit_content:
+        return explicit_content
+    if references_previous_answer(own) and previous_model_text.strip():
+        return previous_model_text.strip()
     return None
 
 
@@ -234,61 +256,62 @@ def _build_deterministic_note_mutation(
     llm_request: Any,
     state: Any,
 ) -> Optional[Dict[str, Any]]:
+    """Resolve a write only when the request is explicit; otherwise defer to the model.
+
+    This is a fast path, not a gatekeeper. It must never reply with a question
+    or refusal of its own: when a field cannot be resolved with confidence it
+    returns ``None`` so the model, which sees the whole conversation, handles
+    the turn. A missing *title* is not a reason to stop - one is derived.
+    """
     text = str(user_text or "").strip()
-    if not text or not _NOTES_MUTATION_PATTERN.search(text):
-        if not (_extract_note_title(text) and _NOTES_CONTENT_FIELD_PATTERN.search(text)):
-            return None
+    _own, instruction, explicit_content = _split_note_request(text)
+    if not text or not (_NOTES_MUTATION_PATTERN.search(instruction) or (
+        explicit_content and _extract_note_title(instruction)
+    )):
+        return None
 
     previous_users = _request_history_texts(llm_request, "user")[:-1]
     previous_models = _request_history_texts(llm_request, "model")
     previous_user_text = previous_users[-1] if previous_users else _extract_embedded_note_context(
-        text,
-        "[AutoYou previous user request]",
-        "[AutoYou previous assistant answer; save this as note content only]",
+        text, _NOTES_PREVIOUS_REQUEST_MARKER, _NOTES_PREVIOUS_ANSWER_MARKER
     )
     previous_model_text = previous_models[-1] if previous_models else _extract_embedded_note_context(
-        text,
-        "[AutoYou previous assistant answer; save this as note content only]",
+        text, _NOTES_PREVIOUS_ANSWER_MARKER
     )
-    title = _extract_note_title(text) or _infer_note_title(previous_user_text)
+    explicit_title = _extract_note_title(instruction)
     content = _extract_note_content(text, previous_model_text)
-    note_id = _extract_note_id(text)
+
+    note_id = _extract_note_id(instruction)
     last_mutation = state.get(_NOTES_LAST_MUTATION_STATE_KEY, {}) if state is not None else {}
     if note_id is None and isinstance(last_mutation, dict) and last_mutation.get("note_id") is not None:
-        if re.search(r"\b(?:that|the|this|it|existing|current|same)\s+note\b", text, re.IGNORECASE):
+        if re.search(r"\b(?:that|the|this|it|existing|current|same)\s+note\b", instruction, re.IGNORECASE):
             note_id = int(last_mutation["note_id"])
-    if note_id is None and re.search(r"\b(?:update|edit|change|modify)\b", text, re.IGNORECASE):
-        note_id = _resolve_note_id_by_title(title)
+    if note_id is None and re.search(r"\b(?:update|edit|change|modify)\b", instruction, re.IGNORECASE):
+        note_id = _resolve_note_id_by_title(explicit_title)
 
-    if re.search(r"\b(?:delete|remove)\b", text, re.IGNORECASE):
+    if re.search(r"\b(?:delete|remove)\b", instruction, re.IGNORECASE):
         if note_id is None:
-            return {"clarify": "I can delete a note after you provide its note id."}
+            return None
         return {"tool": "delete_note", "args": {"note_id": note_id}}
 
-    is_update = bool(
-        re.search(r"\b(?:update|edit|change|modify|append|add)\b", text, re.IGNORECASE)
-        and note_id is not None
-    )
-    if is_update:
+    if re.search(r"\b(?:update|edit|change|modify|append|add)\b", instruction, re.IGNORECASE) and note_id is not None:
         if not content:
-            return {"clarify": "I can update that note after you provide the new content."}
+            return None
         return {"tool": "update_note", "args": {"note_id": note_id, "content": content}}
 
     is_create = bool(
-        re.search(r"\b(?:create|make|new|save|store)\b", text, re.IGNORECASE)
-        or (title and content and not note_id)
-        or re.search(r"\badd\b.*\b(?:to|in)\s+(?:my\s+)?notes?\b", text, re.IGNORECASE)
+        re.search(r"\b(?:create|make|new|save|store)\b", instruction, re.IGNORECASE)
+        or (explicit_title and content and note_id is None)
+        or re.search(r"\badd\b.*\b(?:to|in)\s+(?:my\s+)?notes?\b", instruction, re.IGNORECASE)
     )
-    if not is_create:
+    if not is_create or not content:
         return None
-    if not title or not content:
-        missing = "the title and content" if not title and not content else (
-            "the title" if not title else "the content"
-        )
-        return {"clarify": f"I can create that note - what should {missing} be?"}
 
+    title = explicit_title or _infer_note_title(previous_user_text, content)
+    if not title:
+        return None
     args: Dict[str, Any] = {"title": title, "content": content}
-    tags = _extract_note_tags(text)
+    tags = _extract_note_tags(instruction)
     if tags:
         args["tags"] = tags
     return {"tool": "create_note", "args": args}
@@ -583,14 +606,6 @@ async def _notes_expanded_before_model_callback(callback_context: Any, llm_reque
             )
 
     mutation = _build_deterministic_note_mutation(user_text, llm_request, state)
-    if mutation and mutation.get("clarify"):
-        return create_text_llm_response(
-            str(mutation["clarify"]),
-            custom_metadata={
-                "response_author": AGENT_NAME,
-                "notes_query_kind": "clarify_missing_field",
-            },
-        )
     if mutation and state is not None:
         state[_NOTES_DISPATCH_INVOCATION_STATE_KEY] = invocation_id
         state[_NOTES_DISPATCH_RESULT_STATE_KEY] = ""
@@ -704,7 +719,7 @@ def create_note(title: str, content: str, tags: Optional[List[str]] = None, cate
             return {
                 "status": "success",
                 "note_id": result['note_id'],
-                "message": f"Note '{title}' created successfully with ID {result['note_id']}"
+                "message": f"Note '{result.get('title') or title}' created successfully with ID {result['note_id']}"
             }
         else:
             return {

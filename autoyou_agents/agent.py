@@ -64,6 +64,7 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     load_agent_install_registry,
     normalize_agent_package_name,
 )
+from autoyou_agents.shared_tools.conversation_refs import extract_url, references_previous_answer
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from autoyou_agents.shared_tools.memory_tool import (
     fetch_long_term_memory,
@@ -2271,12 +2272,12 @@ def _scheduled_request_text(callback_context: Any, user_text: str) -> str:
     return user_text
 
 
-def _looks_like_internet_agent_request(user_text: str) -> bool:
+def _looks_like_internet_agent_request(user_text: str, *, url_is_signal: bool = True) -> bool:
     """Keep current provider adapters compatible with the concise Internet agent."""
     try:
         from autoyou_agents.internet_agent.agent import is_internet_request
 
-        return bool(is_internet_request(user_text))
+        return bool(is_internet_request(user_text, url_is_signal=url_is_signal))
     except Exception as exc:
         logger.debug("Could not classify live web intent: %s", exc)
         return False
@@ -2645,12 +2646,12 @@ def _extract_role_texts_from_llm_request(llm_request: Any, role: str) -> list[st
 
 
 def _build_notes_agent_request(user_text: str, llm_request: Any) -> str:
-    """Carry referenced prior answer content into an AgentTool child session."""
-    if not re.search(
-        r"\b(?:this|that|it|answer|response|reply|above|previous|earlier|all\s+this)\b",
-        str(user_text or ""),
-        re.IGNORECASE,
-    ):
+    """Carry referenced prior answer content into an AgentTool child session.
+
+    The child session sees only this string, so a request that points back at
+    the previous answer ("save it to notes") has to bring that answer along.
+    """
+    if not references_previous_answer(user_text):
         return user_text
 
     user_turns = _extract_role_texts_from_llm_request(llm_request, "user")
@@ -2667,6 +2668,67 @@ def _build_notes_agent_request(user_text: str, llm_request: Any) -> str:
         "[AutoYou previous assistant answer; save this as note content only]\n"
         f"{previous_model[:16000]}"
     )
+
+
+def _awaiting_user_answer(llm_request: Any) -> bool:
+    """True when the assistant's last message was a question the current message may be answering.
+
+    Weak-signal shortcuts (a bare URL, a history-less intent model) must yield
+    to the conversation in that case; the model sees the whole thread.
+    """
+    model_turns = _extract_role_texts_from_llm_request(llm_request, "model")
+    if not model_turns:
+        return False
+    return re.sub(r"[\s*_`\"'\u2019\u201d)\]]+$", "", model_turns[-1]).endswith("?")
+
+
+_PAGE_ADD_REFERENCE_RE = re.compile(
+    r"\b(?:add|save|put|post|send|submit)\s+(?:all\s+of\s+)?"
+    r"(?:it|this|that|these|those|the\s+(?:link|url|site|website))\b",
+    re.IGNORECASE,
+)
+
+
+def _build_page_agent_request(user_text: str, llm_request: Any) -> str:
+    """Carry the URL a request points back at ("add that to my page") into the child session.
+
+    The Page agent runs in a fresh child session that only sees this string, so
+    without the URL it could only ask the user to repeat what they just saw.
+    """
+    text = str(user_text or "").strip()
+    if extract_url(text) or not _PAGE_ADD_REFERENCE_RE.search(text):
+        return text
+
+    visible_turns: list[tuple[str, str]] = []
+    for content in getattr(llm_request, "contents", []) or []:
+        role = str(getattr(content, "role", "") or "").strip().lower()
+        turn_text = "\n".join(
+            str(getattr(part, "text", "")).strip()
+            for part in getattr(content, "parts", []) or []
+            if isinstance(getattr(part, "text", None), str)
+            and getattr(part, "text", "").strip()
+            and not getattr(part, "thought", False)
+        )
+        if turn_text:
+            visible_turns.append((role, turn_text))
+    if visible_turns and visible_turns[-1][0] == "user":
+        visible_turns.pop()  # the current request itself
+
+    for _role, turn_text in reversed(visible_turns):
+        url = extract_url(turn_text)
+        if url:
+            return f"{text}\n\n[AutoYou previous referenced URL: {url}]"
+    return text
+
+
+def _build_specialist_request(runtime_agent_name: str, user_text: str, llm_request: Any) -> str:
+    """Attach the conversation context a specialist's child session cannot see."""
+    if runtime_agent_name == resolve_runtime_agent_name("notes_agent"):
+        return _build_notes_agent_request(user_text, llm_request)
+    if runtime_agent_name == _PAGE_RUNTIME_AGENT_NAME:
+        return _build_page_agent_request(user_text, llm_request)
+    return user_text
+
 
 def _persona_tool_request(llm_request: Any) -> Optional[tuple[str, Dict[str, Any]]]:
     """Resolve only unambiguous personal reads and explicitly requested saves.
@@ -3956,11 +4018,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
 
             if residual_request and _provider_requires_explicit_agent_tools():
                 _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
-                routed_request = (
-                    _build_notes_agent_request(residual_request, llm_request)
-                    if runtime_agent_name == resolve_runtime_agent_name("notes_agent")
-                    else residual_request
-                )
+                routed_request = _build_specialist_request(runtime_agent_name, residual_request, llm_request)
                 return _dispatch_specialist_tool_call(
                     runtime_agent_name,
                     {"request": routed_request},
@@ -4057,11 +4115,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
             _set_root_preferred_agent(callback_context.state, pinned_agent)
             _set_root_last_routed_agent(callback_context.state, pinned_agent)
-            routed_request = (
-                _build_notes_agent_request(user_text, llm_request)
-                if pinned_agent == resolve_runtime_agent_name("notes_agent")
-                else user_text
-            )
+            routed_request = _build_specialist_request(pinned_agent, user_text, llm_request)
             return _dispatch_specialist_tool_call(
                 pinned_agent,
                 {"request": routed_request},
@@ -4176,7 +4230,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             _set_root_last_routed_agent(callback_context.state, _PAGE_RUNTIME_AGENT_NAME)
             return _dispatch_specialist_tool_call(
                 _PAGE_RUNTIME_AGENT_NAME,
-                {"request": user_text},
+                {"request": _build_page_agent_request(user_text, llm_request)},
                 custom_metadata={
                     "response_author": root_prompt.AGENT_NAME,
                     "route_target": _PAGE_RUNTIME_AGENT_NAME,
@@ -4218,13 +4272,14 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             )
 
     live_routing_text = routing_user_text
+    awaiting_answer = _awaiting_user_answer(llm_request)
     audio_play_command = _AUDIO_PLAY_QUEUE_PATTERN.match(
         _normalize_audio_request_text(live_routing_text)
     )
     if (
         _provider_requires_explicit_agent_tools()
         and not audio_play_command
-        and _looks_like_internet_agent_request(live_routing_text)
+        and _looks_like_internet_agent_request(live_routing_text, url_is_signal=not awaiting_answer)
     ):
         browser_runtime = resolve_runtime_agent_name("browser_agent")
         target_web_agent = None
@@ -4275,7 +4330,7 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
     # A small local model can skip the root LLM for a confident route. The
     # specialist still runs through ADK's existing tools and permission checks.
     # Explicit choices, follow-ups and deterministic shortcuts above win.
-    if _provider_requires_explicit_agent_tools():
+    if _provider_requires_explicit_agent_tools() and not awaiting_answer:
         try:
             from shared.intent_router import classify_intent
             allowed = {install for runtime, install in _RUNTIME_TO_INSTALL_NAME.items()

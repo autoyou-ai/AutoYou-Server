@@ -59,8 +59,14 @@ EXPANDED_AGENT_INSTRUCTION = AGENT_INSTRUCTION + """
 
 Expanded mutation discipline:
 - For a clear create request, identify the title and content before calling
-  `create_note`. If either field is absent, ask for that field instead of
-  guessing.
+  `create_note`. When saving previous conversation context, an answer, or when
+  a title is not explicitly provided, infer a concise, relevant title from the
+  topic or the first line of content rather than blocking the user with clarification.
+- A request may carry the earlier question and answer under
+  `[AutoYou previous user request]` and `[AutoYou previous assistant answer; ...]`.
+  Treat that block as background. Save it only when the user's own words point
+  at it ("it", "that", "the above"); otherwise save what the user wrote. Do not
+  ask the user to repeat content that is already in the request.
 - For update or delete requests, identify the exact note id or resolve an
   exact title before changing storage. Re-read an existing note when the
   request depends on its current content.
