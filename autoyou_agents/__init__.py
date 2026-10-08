@@ -29,25 +29,32 @@ LOGGER = logging.getLogger(__name__)
 __all__ = ["app", "root_agent"]
 # from __debug_provenance_q__ import payment
 
+def _runtime_agent_roots(package_dir: Path, dynamic_root: Path) -> list[Path]:
+    """Folders besides this package whose agent packages import as ``autoyou_agents.<name>``.
+
+    ``private/`` is git-ignored: copy (or link) your own agent packages there to
+    run them without adding them to this repository. The dynamic root is where
+    agents are scaffolded at runtime, and may hold its own ``private/``.
+    """
+    return [package_dir / "private", dynamic_root, dynamic_root / "private"]
+
+
 def _extend_package_path_for_runtime_agents() -> None:
-    """Allow compiled builds to import user-scaffolded autoyou_agents packages."""
+    """Let ``autoyou_agents`` import agent packages that are not part of this repository."""
     try:
-        from shared.platform_runtime import get_dynamic_agents_root, is_compiled
+        from shared.platform_runtime import get_dynamic_agents_root
 
         package_path = globals().get("__path__", None)
         if package_path is None:
             return
-        sibling = Path(__file__).resolve().parents[2] / "autoyou_agents"
-        if not is_compiled() and (sibling / "__init__.py").is_file():
-            sibling_path = str(sibling.resolve())
-            if sibling_path not in package_path:
-                package_path.append(sibling_path)
-            private_root = sibling / "private"
-            if private_root.is_dir() and str(private_root.resolve()) not in package_path:
-                package_path.append(str(private_root.resolve()))
-        dynamic_root = str(get_dynamic_agents_root("AutoYou", anchor=__file__))
-        if dynamic_root not in package_path:
-            package_path.append(dynamic_root)
+        package_dir = Path(__file__).resolve().parent
+        dynamic_root = Path(get_dynamic_agents_root("AutoYou", anchor=__file__))
+        # A folder that does not exist yet is listed too, so an agent copied in
+        # while the server runs is found by the next import.
+        for root in _runtime_agent_roots(package_dir, dynamic_root):
+            entry = str(root.resolve())
+            if entry not in package_path and Path(entry) != package_dir:
+                package_path.append(entry)
     except Exception as exc:
         LOGGER.debug("Could not extend autoyou_agents package path: %s", exc)
 

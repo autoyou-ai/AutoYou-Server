@@ -326,6 +326,10 @@ def _iter_frontend_manifest_roots(agents_root: Path) -> List[Path]:
     resolved_agents_root = Path(agents_root).resolve()
     if resolved_agents_root not in roots:
         roots.append(resolved_agents_root)
+    for root in tuple(roots):
+        private_root = root / "private"
+        if private_root.is_dir() and private_root not in roots:
+            roots.append(private_root)
     return roots
 
 
