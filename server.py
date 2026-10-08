@@ -3985,6 +3985,11 @@ def _https_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
     turn HTTPS on by default (it can still be explicitly disabled via
     ``server.https_enabled = false``).
     """
+    env_explicit = os.environ.get("AUTOYOU_HTTPS_ENABLED", "").strip().lower()
+    if env_explicit in {"1", "true", "yes", "on"}:
+        return True
+    if env_explicit in {"0", "false", "no", "off"}:
+        return False
     base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
     server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
     explicit = server_cfg.get("https_enabled")
@@ -4104,6 +4109,8 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "websites_urls": websites_urls,
         "ca_certificate_path": "/ca.crt" if (admin_https_live or page_https_port) else "",
         "remote_access_role": _get_remote_browser_access_role(base_cfg),
+        "allow_remote_admin_permissions": _allow_remote_admin_permissions(base_cfg),
+        "allow_remote_admin_permissions_next_boot": _normalize_config_bool(server_cfg.get("allow_remote_admin_permissions"), False),
     }
 
 
@@ -8461,7 +8468,7 @@ _REMOTE_BROWSER_PROTECTED_CONFIG: Dict[str, Optional[Set[str]]] = {
     "admin_frontend": None,
     "tunnelmole": None,
     "mcp": None,
-    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled"},
+    "server": {"bind_host", "https_enabled", "https_port", "home_network_websites", "discovery_enabled", "allow_remote_admin_permissions"},
     "autoyou_page": {"remote_access_role"},
     "ai_agent": {"lan_access_enabled"},
 }
@@ -8479,7 +8486,7 @@ REMOTE_BROWSER_CLOUD_CONFIG_DENIAL = (
 def _request_via_remote_browser_proxy(request: Request) -> bool:
     """Whether AutoYou forwarded this request for a paired or home-network browser."""
     peer = request.client.host if request.client else None
-    if not _is_loopback_client_host(peer):
+    if not _csrf_peer_is_private_or_loopback(peer or ""):
         return False
     return bool(
         request.headers.get(REMOTE_BROWSER_HEADER)
@@ -8510,6 +8517,23 @@ def _request_forwarded_from_elsewhere(request: Request) -> bool:
         return False
 
 
+def _allow_remote_admin_permissions(cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """Whether admin sessions over private network/container IPs may modify permissions.
+
+    Opt-in via AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1 or server.allow_remote_admin_permissions=true.
+    Allows admins connected from WSL, Docker bridge, or private LAN (over HTTPS) to edit
+    computer permissions and media capture settings. Public tunnels remain blocked.
+    """
+    env_val = os.environ.get("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", "").strip().lower()
+    if env_val in {"1", "true", "yes", "on"}:
+        return True
+    if env_val in {"0", "false", "no", "off"}:
+        return False
+    base_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
+    server_cfg = base_cfg.get("server", {}) if isinstance(base_cfg, dict) else {}
+    return _normalize_config_bool(server_cfg.get("allow_remote_admin_permissions"), False)
+
+
 def _request_is_from_this_computer(request: Request) -> bool:
     """Whether an app on this computer itself sent the request.
 
@@ -8517,11 +8541,19 @@ def _request_is_from_this_computer(request: Request) -> bool:
     reverse proxy on this computer also arrive from loopback. Gates that mean
     "only the person at this computer" (permissions, Local Pair ownership) must
     use this, not the peer address alone.
+    When AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1 or server.allow_remote_admin_permissions=true
+    is active, direct connections from private-network / container peers (such as WSL
+    virtual adapters or Docker bridges) that are not forwarded through public tunnels
+    or remote browser proxies are also allowed.
     """
+    if _request_via_remote_browser_proxy(request) or _request_forwarded_from_elsewhere(request):
+        return False
     peer = request.client.host if request.client else None
-    return (_is_loopback_client_host(peer)
-            and not _request_via_remote_browser_proxy(request)
-            and not _request_forwarded_from_elsewhere(request))
+    if _is_loopback_client_host(peer):
+        return True
+    if _allow_remote_admin_permissions() and _csrf_peer_is_private_or_loopback(peer or ""):
+        return True
+    return False
 
 
 def _local_pair_device_ownership(request: Request) -> str:
@@ -13308,6 +13340,11 @@ def _apply_admin_ui_config_patch(
                     touched_sections.add("server")
             except (TypeError, ValueError):
                 pass
+        if "allow_remote_admin_permissions" in server_payload:
+            server_cfg["allow_remote_admin_permissions"] = _normalize_config_bool(
+                server_payload.get("allow_remote_admin_permissions"), False
+            )
+            touched_sections.add("server")
 
     ai_agent_payload = payload.get("ai_agent")
     if isinstance(ai_agent_payload, dict):
