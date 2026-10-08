@@ -1488,6 +1488,7 @@ from shared.custom_voice_tts import (
     list_custom_voice_statuses,
 )
 from shared.request_logging import install_route_aware_request_logging
+from shared.http_request_monitor import install_http_request_capture
 from shared.chat_session_identity import (
     alias_webrtc_chat_session,
     bind_transport_chat_owner,
@@ -8900,6 +8901,11 @@ auth_app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Requested-With"],
 )
+
+# Install last so locked, CSRF-rejected, and other guarded inbound requests are
+# still visible to the opt-in monitor.
+install_http_request_capture(admin_app, service_name="admin")
+install_http_request_capture(auth_app, service_name="auth")
 
 # Session id -> last-used time. A sniffed or forgotten cookie must not stay a
 # full admin credential until the next restart, so idle sessions expire.

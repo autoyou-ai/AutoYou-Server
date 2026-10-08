@@ -370,6 +370,77 @@ def test_post_agent_websites_security_can_disable_otp(monkeypatch):
         server.STATE.config_unlock_password = original_config_unlock_password
 
 
+def test_admin_can_set_one_agent_website_otp_mode(monkeypatch):
+    import copy
+    import json
+
+    from autoyou_agents.shared_tools import scheduler_mission_control as mission_control
+
+    original_config = server.STATE.config
+    persisted = []
+    try:
+        server.STATE.config = server._default_config()
+        monkeypatch.setattr(server, "_require_api_login", lambda _request: None)
+        monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+        monkeypatch.setattr(
+            server,
+            "_build_agent_website_routes",
+            lambda _cfg: [{"agent_name": "notes_agent"}, {"agent_name": "page_agent"}],
+        )
+        monkeypatch.setattr(server, "_describe_totp_capabilities", lambda _cfg: {"totp_configured": True})
+        monkeypatch.setattr(server, "_loaded_config_for_update", lambda: copy.deepcopy(server.STATE.config))
+        monkeypatch.setattr(server, "_persist_state_config", lambda cfg: persisted.append(copy.deepcopy(cfg)))
+
+        request = _anon_request()
+
+        async def fake_json():
+            return {"mode": "totp"}
+
+        request.json = fake_json
+        result = asyncio.run(server.admin_set_agent_website_auth("notes_agent", request))
+        body = json.loads(result.body)
+
+        assert body["success"] is True
+        assert body["agent_name"] == "notes_agent"
+        assert body["auth_mode"] == "totp"
+        assert persisted[-1][mission_control.UI_SECURITY_CONFIG_KEY]["notes_agent"]["auth_mode"] == "totp"
+        assert "page_agent" not in persisted[-1][mission_control.UI_SECURITY_CONFIG_KEY]
+    finally:
+        server.STATE.config = original_config
+
+
+def test_individual_otp_gate_respects_global_disable(monkeypatch):
+    import json
+
+    original_config = server.STATE.config
+    try:
+        server.STATE.config = server._default_config()
+        server.STATE.config["agent_websites"]["disable_otp"] = True
+        monkeypatch.setattr(server, "_require_api_login", lambda _request: None)
+        monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+        monkeypatch.setattr(server, "_build_agent_website_routes", lambda _cfg: [{"agent_name": "page_agent"}])
+        request = _anon_request()
+
+        async def fake_json():
+            return {"mode": "totp"}
+
+        request.json = fake_json
+        result = asyncio.run(server.admin_set_agent_website_auth("page_agent", request))
+
+        assert result.status_code == 409
+        assert "OTP is disabled for all agent websites" in json.loads(result.body)["error"]
+    finally:
+        server.STATE.config = original_config
+
+
+def test_admin_ui_exposes_per_agent_otp_controls():
+    script = (Path(server.__file__).resolve().parent / "assets" / "admin-ui.js").read_text(encoding="utf-8")
+
+    assert "Require OTP" in script
+    assert "Allow without OTP" in script
+    assert '"/api/agent-websites/" + encodeURIComponent(authAgentName) + "/auth"' in script
+
+
 def test_enabling_shared_sessions_promotes_an_existing_agent_login(monkeypatch, tmp_path):
     from autoyou_agents.shared_tools import scheduler_mission_control as sessions
 

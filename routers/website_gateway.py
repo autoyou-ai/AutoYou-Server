@@ -64,6 +64,9 @@ class WebsiteGateway:
 
     def forwarded_scope(self, scope: Dict[str, Any], connection: HTTPConnection) -> Dict[str, Any]:
         forwarded = {key: value for key, value in scope.items() if key not in _ADMIN_ROUTING_KEYS}
+        # The outer admin listener records the original remote peer and this
+        # website route. Suppress a duplicate localhost row from the nested app.
+        forwarded["autoyou.capture_skip"] = True
         if self.server._request_via_remote_browser_proxy(connection):
             # A paired device's browser: AutoYou stamped who it is, and the
             # website apps apply its remote client role from those headers.

@@ -3321,6 +3321,13 @@ async def _start_managed_frontend_backend(agent_name: str) -> Optional[int]:
         )
         await runtime._stop_managed_frontend_backend(agent_name)
         return None
+    from shared.http_request_monitor import install_http_request_capture
+
+    install_http_request_capture(
+        app_target,
+        service_name="agent_website",
+        agent_name=agent_name,
+    )
     config = runtime.uvicorn.Config(
         app_target,
         host="127.0.0.1",

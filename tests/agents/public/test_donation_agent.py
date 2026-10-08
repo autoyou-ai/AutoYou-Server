@@ -165,6 +165,28 @@ def test_donation_agent_prefers_reviewed_active_crypto_route_registry(monkeypatc
     assert "Raw wallet addresses are not official" in handoff["channel"]["note"]
 
 
+def test_donation_agent_does_not_infer_hosted_crypto_asset_or_network(monkeypatch):
+    monkeypatch.setenv(
+        "AUTOYOU_FUNDING_CRYPTO_DONATION_ROUTES_JSON",
+        json.dumps(
+            [
+                {
+                    "id": "incomplete-route",
+                    "label": "Incomplete route",
+                    "status": "active",
+                    "publicUrl": "https://crypto.autoyou.test/checkout",
+                }
+            ]
+        ),
+    )
+
+    status = get_donation_agent_status()
+
+    assert status["crypto_donation_routes"] == []
+    crypto = next(channel for channel in status["channels"] if channel["id"] == "crypto")
+    assert crypto["status"] == "setup_required"
+
+
 def test_donation_agent_ignores_private_crypto_route_registry(monkeypatch):
     monkeypatch.delenv("AUTOYOU_CRYPTO_DONATION_URL", raising=False)
     monkeypatch.setenv(
@@ -946,6 +968,7 @@ def test_donation_agent_frontend_renders_public_support_page():
 
     html = donation_ui_backend._FRONTEND_DIR.joinpath("index.html").read_text(encoding="utf-8")
     js = donation_ui_backend._FRONTEND_DIR.joinpath("assets", "app.js").read_text(encoding="utf-8")
+    css = donation_ui_backend._FRONTEND_DIR.joinpath("assets", "styles.css").read_text(encoding="utf-8")
 
     # The public support page is intentionally OTP-free and fluff-free.
     assert 'id="auth-form"' not in html
@@ -966,6 +989,9 @@ def test_donation_agent_frontend_renders_public_support_page():
     assert "./api/crypto-qr" in js
     assert "api.qrserver.com" not in js
     assert "seed phrase" in html
+    assert "hosted_crypto_routes" in js
+    assert "Open hosted checkout" in js
+    assert ".crypto-route-picker[hidden]" in css
 
     # Providers, socials, and share support render when configured.
     assert 'id="provider-list"' in html
@@ -1138,3 +1164,69 @@ def test_donation_agent_ui_donation_links_route_is_public(monkeypatch, tmp_path)
     assert "private" not in text
     assert "seed" not in text
     assert "c:\\" not in text
+
+
+def test_donation_links_route_publishes_only_active_https_hosted_crypto_routes(monkeypatch, tmp_path):
+    from autoyou_agents.donation_agent import donation_links
+    from autoyou_agents.donation_agent.website.backend import app as donation_ui_backend
+
+    monkeypatch.setenv("AUTOYOU_DONATIONS_CONFIG_PATH", str(tmp_path / "missing.json"))
+    monkeypatch.delenv("AUTOYOU_CRYPTO_DONATION_URL", raising=False)
+    monkeypatch.setenv(
+        "AUTOYOU_FUNDING_CRYPTO_DONATION_ROUTES_JSON",
+        json.dumps(
+            [
+                {
+                    "id": "active-route",
+                    "label": "USDC hosted checkout",
+                    "provider": "Example Checkout",
+                    "assetSymbol": "USDC",
+                    "network": "Base",
+                    "status": "active",
+                    "publicUrl": "https://checkout.autoyou.test/donate",
+                },
+                {
+                    "id": "query-route",
+                    "label": "Tokenized route",
+                    "provider": "Example Checkout",
+                    "assetSymbol": "USDC",
+                    "network": "Base",
+                    "status": "active",
+                    "publicUrl": "https://checkout.autoyou.test/donate?token=synthetic",
+                },
+                {
+                    "id": "private-route",
+                    "label": "Unsafe route",
+                    "provider": "Example Checkout",
+                    "assetSymbol": "USDC",
+                    "network": "Base",
+                    "status": "active",
+                    "publicUrl": "https://checkout.autoyou.test/unsafe",
+                    "walletAddress": "synthetic-wallet-address-only",
+                },
+            ]
+        ),
+    )
+    donation_links.get_public_donation_links(force_reload=True)
+
+    payload = TestClient(donation_ui_backend.app).get("/api/donation-links").json()
+
+    assert payload["success"] is True
+    links = payload["links"]
+    assert links["crypto_configured"] is True
+    assert links["hosted_crypto_routes"] == [
+        {
+            "id": "active-route",
+            "label": "USDC hosted checkout",
+            "provider": "Example Checkout",
+            "asset_symbol": "USDC",
+            "network": "Base",
+            "public_url": "https://checkout.autoyou.test/donate",
+            "status": "active",
+        }
+    ]
+    provider_ids = [entry["id"] for entry in links["providers"]]
+    assert "crypto" not in provider_ids
+    response_text = str(payload)
+    assert "synthetic" not in response_text
+    assert "synthetic-wallet-address-only" not in response_text

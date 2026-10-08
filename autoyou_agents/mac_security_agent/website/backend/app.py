@@ -22,10 +22,12 @@ from typing import Any
 from fastapi import Request
 
 from autoyou_agents.shared_tools.scheduler_mission_control import (
+    _admin_ui_session_is_authenticated_for_open_http_monitor,
     _describe_chat_auth_state,
     _json_response,
     create_agent_chat_app,
 )
+from shared.http_request_monitor import install_http_monitor_routes, install_http_request_capture
 
 from ...network_tool import (
     CollectorError,
@@ -179,4 +181,12 @@ app = create_agent_chat_app(
     description="Read-only macOS TCP and UDP connection visibility attributed to local processes.",
     frontend_dir=_FRONTEND_DIR,
     extra_routes_fn=_extra_routes,
+)
+install_http_request_capture(app, service_name="agent_website", agent_name=_AGENT_NAME)
+install_http_monitor_routes(
+    app,
+    agent_name=_AGENT_NAME,
+    auth_state=_describe_chat_auth_state,
+    json_response=_json_response,
+    admin_is_logged_in=_admin_ui_session_is_authenticated_for_open_http_monitor,
 )

@@ -279,6 +279,10 @@ def _merged_public_providers(links: dict[str, Any]) -> list[dict[str, Any]]:
     for channel in channels:
         if not isinstance(channel, dict):
             continue
+        # Hosted crypto checkouts are rendered in the dedicated crypto section,
+        # where the exact asset and network are shown alongside the provider.
+        if str(channel.get("type") or "").strip().lower() == "crypto":
+            continue
         channel_id = str(channel.get("id") or "").strip()
         url = str(channel.get("url") or "").strip()
         if not channel_id or channel_id in seen or channel.get("status") != "active" or not url:
@@ -295,11 +299,64 @@ def _merged_public_providers(links: dict[str, Any]) -> list[dict[str, Any]]:
     return providers
 
 
+def _public_hosted_crypto_routes() -> list[dict[str, str]]:
+    """Return only active, public HTTPS checkout routes with exact metadata."""
+    try:
+        routes = get_donation_agent_status().get("crypto_donation_routes") or []
+    except Exception:
+        return []
+
+    public_routes: list[dict[str, str]] = []
+    for route in routes:
+        if not isinstance(route, dict) or route.get("status") != "active":
+            continue
+        public_url = str(route.get("public_url") or "").strip()
+        try:
+            parsed = urlparse(public_url)
+            hostname = parsed.hostname
+        except ValueError:
+            continue
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or not hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            continue
+        asset_symbol = str(route.get("asset_symbol") or "").strip()
+        network = str(route.get("network") or "").strip()
+        if not asset_symbol or not network:
+            continue
+        # Whitelist public display fields. In particular, no raw registry
+        # payload, addresses, payment IDs, or credentials cross this boundary.
+        public_routes.append(
+            {
+                "id": str(route.get("id") or "")[:80],
+                "label": str(route.get("label") or "Hosted crypto checkout")[:100],
+                "provider": str(route.get("provider") or "Hosted provider")[:80],
+                "asset_symbol": asset_symbol[:16],
+                "network": network[:64],
+                "public_url": public_url,
+                "status": "active",
+            }
+        )
+    return public_routes
+
+
 def _extra_routes(app, agent_name: str) -> None:
     @app.get("/api/donation-links")
     async def api_donation_links():
         """Public, cache-friendly payload for the donation page. No local auth."""
         links = get_public_donation_links()
+        hosted_crypto_routes = _public_hosted_crypto_routes()
+        links = {
+            **links,
+            "crypto_configured": bool(links.get("crypto_configured") or hosted_crypto_routes),
+            "hosted_crypto_routes": hosted_crypto_routes,
+        }
         response = _json_response(
             {
                 "success": True,
