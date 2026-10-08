@@ -5,7 +5,7 @@
 //! proof result and native TLS context, and persist returned grants before use.
 //! There is one protocol owner across Python, Swift and Kotlin.
 
-use autoyou_protocol::{Principal, PAIR_ALPN, SESSION_ALPN};
+use autoyou_protocol::{Principal, PAIR_ALPN, SESSION_ALPN, ROOM_PAIR_ALPN, ROOM_SESSION_ALPN};
 use autoyou_protocol::enrollment::{Challenge, Kind, Message};
 use base64::{Engine, engine::general_purpose::URL_SAFE};
 use serde::{Deserialize, Serialize};
@@ -121,6 +121,10 @@ impl ClientSession {
         let max_lifetime = if answer.grant.origin_transport == "peer" {
             crate::acceptor::AcceptorSession::peer_grant(&answer.grant, now_ms)?;
             crate::peer::INVITATION_LIFETIME_SECONDS
+        } else if answer.grant.origin_transport == "room" {
+            crate::acceptor::AcceptorSession::room_grant(&answer.grant,now_ms)?;
+            if answer.capabilities.get("application").and_then(Value::as_str) != Some("room") { return Err(ClientError::Denied); }
+            crate::peer::INVITATION_LIFETIME_SECONDS
         } else { 60 };
         if answer.version != 1 || answer.grant.endpoint_id != self.local_endpoint ||
             answer.ticket.is_empty() || answer.ticket.len() > 16*1024 ||
@@ -160,12 +164,21 @@ impl ClientSession {
             !matches!(self.phase, Phase::Enrolling | Phase::Connecting) { return Err(ClientError::Stale); }
         self.expected_id = Some(connection_id); Ok(())
     }
+    pub fn dial_protocol(&self) -> Result<&'static [u8], ClientError> {
+        let grant = self.peer.as_ref().ok_or(ClientError::Denied)?;
+        let room = grant.origin_transport == "room";
+        if room { crate::acceptor::AcceptorSession::room_grant(grant,0)?; }
+        Ok(match (room,self.secret.is_some()) {
+            (true,true) => ROOM_PAIR_ALPN, (true,false) => ROOM_SESSION_ALPN,
+            (false,true) => PAIR_ALPN, (false,false) => SESSION_ALPN,
+        })
+    }
     fn check_context(&self, operation: u64, context: &ClientContext, now_ms: u64) -> Result<(), ClientError> {
         if operation != self.operation || self.expected_id != Some(context.connection_id) ||
             !matches!(self.phase, Phase::Enrolling | Phase::Connecting | Phase::Authorizing) { return Err(ClientError::Stale); }
         if now_ms >= self.deadline_ms || !context.initiator || context.local_endpoint != self.local_endpoint ||
             self.peer.as_ref().is_none_or(|grant| grant.endpoint_id != context.remote_endpoint || grant.expires_at_ms <= now_ms) ||
-            context.protocol.as_bytes() != if self.secret.is_some() { PAIR_ALPN } else { SESSION_ALPN } {
+            context.protocol.as_bytes() != self.dial_protocol()? {
             return Err(ClientError::Denied);
         }
         Ok(())
@@ -189,8 +202,7 @@ impl ClientSession {
             self.validate_challenge(context, &challenge, grant, now_ms)?;
             let local = endpoint_bytes(&self.local_endpoint).map_err(|_| ClientError::Invalid)?;
             let remote = endpoint_bytes(&context.remote_endpoint).map_err(|_| ClientError::Invalid)?;
-            let digest = if self.secret.is_some() { challenge.pairing_binding(&context.exporter, &local, &remote) }
-                else { challenge.binding(&context.exporter, &local, &remote) }.map_err(|_| ClientError::Invalid)?;
+            let digest = challenge.binding_for_alpn(&context.exporter, &local, &remote, context.protocol.as_bytes()).map_err(|_| ClientError::Invalid)?;
             let mut admitted = grant.clone(); admitted.scopes = challenge.scopes.clone(); admitted.expires_at_ms = challenge.expires_at_ms;
             let capabilities_json = serde_json::to_string(&challenge.capabilities).map_err(|_| ClientError::Invalid)?;
             self.pending = Some(Pending { context: context.clone(), digest, generation: challenge.generation,

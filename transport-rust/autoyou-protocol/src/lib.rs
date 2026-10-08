@@ -18,6 +18,8 @@ pub mod delivery;
 
 pub const PAIR_ALPN: &[u8] = b"autoyou/pair/1";
 pub const SESSION_ALPN: &[u8] = b"autoyou/session/1";
+pub const ROOM_PAIR_ALPN: &[u8] = b"autoyou/room-pair/1";
+pub const ROOM_SESSION_ALPN: &[u8] = b"autoyou/room-session/1";
 pub const MEDIA_ALPN: &[u8] = b"autoyou/media/1";
 pub const MAGIC: [u8; 4] = *b"AYIR";
 pub const WIRE_VERSION: u8 = 1;
@@ -251,6 +253,11 @@ impl Envelope {
     /// Match the legacy business handler's normalization, including Python's
     /// extra ASCII separator whitespace, so casing/padding cannot bypass it.
     pub fn additional_required_scope(&self) -> Option<&'static str> {
+        match self.header.message_type {
+            MessageType::RoomChat => return Some("room"),
+            MessageType::RoomFederationChat => return Some("room_federation"),
+            _ => {},
+        }
         if self.header.message_type != MessageType::VoiceCallControl { return None; }
         let event = self.payload.get("event").and_then(Value::as_str)?;
         let event = event.trim_matches(|ch: char| ch.is_whitespace() || ('\u{001c}'..='\u{001f}').contains(&ch)).to_lowercase();
@@ -476,6 +483,20 @@ mod tests {
     fn chunks_cannot_reintroduce_sctp_state_on_iroh() {
         let json = br#"{"header":{"message_id":"synthetic","message_type":"chunk","timestamp":1.0},"payload":{}}"#;
         assert_eq!(Envelope::from_slice(json).unwrap_err(), ProtocolError::LegacyChunk);
+    }
+    #[test]
+    fn chat_authority_alone_cannot_carry_room_or_federation_chat() {
+        for (kind,scope) in [("room_chat","room"),("room_federation_chat","room_federation")] {
+            let envelope = Envelope::from_slice(&serde_json::to_vec(&serde_json::json!({
+                "header":{"message_id":"synthetic-room-chat","message_type":kind,"timestamp":1},"payload":{}
+            })).unwrap()).unwrap();
+            assert_eq!(envelope.required_scope(),Some("chat"));
+            assert_eq!(envelope.additional_required_scope(),Some(scope));
+            let mut admission = Admission::default(); admission.admit(principal(),"synthetic-endpoint").unwrap();
+            let header = FrameHeader { lane:Lane::Application,generation:7,stream_id:0,sequence:0,length:0 };
+            assert!(admission.check(&header,envelope.required_scope(),500).is_ok());
+            assert!(matches!(admission.check(&header,envelope.additional_required_scope(),500),Err(ProtocolError::ScopeDenied)));
+        }
     }
 
     #[test]

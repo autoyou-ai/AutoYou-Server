@@ -36,7 +36,10 @@ impl Challenge {
     pub fn pairing_binding(&self, exporter: &[u8;32], initiator: &[u8;32], acceptor: &[u8;32]) -> Result<[u8;32], ProtocolError> {
         self.binding_for_alpn(exporter, initiator, acceptor, PAIR_ALPN)
     }
-    fn binding_for_alpn(&self, exporter: &[u8;32], initiator: &[u8;32], acceptor: &[u8;32], alpn: &[u8]) -> Result<[u8;32], ProtocolError> {
+    pub fn binding_for_alpn(&self, exporter: &[u8;32], initiator: &[u8;32], acceptor: &[u8;32], alpn: &[u8]) -> Result<[u8;32], ProtocolError> {
+        if ![crate::PAIR_ALPN, crate::SESSION_ALPN, crate::ROOM_PAIR_ALPN, crate::ROOM_SESSION_ALPN].contains(&alpn) {
+            return Err(ProtocolError::UnsupportedVersion);
+        }
         self.validate()?;
         let mut capabilities = self.capabilities.clone();
         let mut scopes = self.scopes.clone(); scopes.sort();
@@ -124,5 +127,14 @@ mod tests {
         let challenge = challenge();
         assert_ne!(challenge.binding(&[1;32], &[2;32], &[3;32]).unwrap(),
             challenge.pairing_binding(&[1;32], &[2;32], &[3;32]).unwrap());
+    }
+    #[test]
+    fn every_application_role_and_phase_has_a_distinct_transcript() {
+        let challenge = challenge();
+        let mut bindings = std::collections::BTreeSet::new();
+        for protocol in [crate::PAIR_ALPN,crate::SESSION_ALPN,crate::ROOM_PAIR_ALPN,crate::ROOM_SESSION_ALPN] {
+            assert!(bindings.insert(challenge.binding_for_alpn(&[1;32],&[2;32],&[3;32],protocol).unwrap()));
+        }
+        assert!(challenge.binding_for_alpn(&[1;32],&[2;32],&[3;32],b"autoyou/unknown/1").is_err());
     }
 }

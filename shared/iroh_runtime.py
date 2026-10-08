@@ -132,6 +132,14 @@ class IrohSessionRuntime:
             raise ConnectionError("endpoint runtime is closed")
         return self.endpoint.dial(ticket, expected_endpoint, pairing)
 
+    def dial_application(self, ticket: str, expected_endpoint: str, *, protocol: str) -> int:
+        if self._closing:
+            raise ConnectionError("endpoint runtime is closed")
+        dial = getattr(self.endpoint, "dial_application", None)
+        if protocol not in {"autoyou/room-pair/1", "autoyou/room-session/1"} or not callable(dial):
+            raise SessionDenied("native Lobby protocol is unavailable")
+        return dial(ticket, expected_endpoint, protocol)
+
     def _connection(self, context: ConnectionContext) -> _Connection:
         connection = self._connections.get(context.connection_id)
         if self._closing or connection is None or connection.context != context or connection.cleanup is not None:
@@ -220,7 +228,8 @@ class IrohSessionRuntime:
                     if self._closing:
                         break
                     if event.kind == self.api.TransportEventKind.CONNECTED:
-                        if len(self._connections) >= _MAX_CONNECTIONS or len(event.exporter) != 32 or event.protocol not in {"autoyou/pair/1", "autoyou/session/1"}:
+                        if len(self._connections) >= _MAX_CONNECTIONS or len(event.exporter) != 32 or event.protocol not in {
+                                "autoyou/pair/1", "autoyou/session/1", "autoyou/room-pair/1", "autoyou/room-session/1"}:
                             self.endpoint.disconnect(event.connection_id)
                             continue
                         context = ConnectionContext(event.connection_id, event.endpoint_id, self._info.endpoint_id,

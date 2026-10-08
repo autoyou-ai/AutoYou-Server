@@ -11,7 +11,7 @@ use std::{
     thread::JoinHandle,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use autoyou_protocol::{Admission, Envelope, Frame, FrameHeader, HEADER_BYTES, Lane, Principal, PAIR_ALPN, SESSION_ALPN};
+use autoyou_protocol::{Admission, Envelope, Frame, FrameHeader, HEADER_BYTES, Lane, Principal, PAIR_ALPN, SESSION_ALPN, ROOM_PAIR_ALPN, ROOM_SESSION_ALPN};
 use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayMap, RelayMode, RelayUrl, SecretKey, TransportAddr,
     endpoint::{Connection, PortmapperConfig, QuicTransportConfig, ReadError, ReadExactError, RecvStream, presets}};
 use iroh_tickets::endpoint::EndpointTicket;
@@ -221,17 +221,18 @@ struct Slot {
     closed: AtomicBool,
 }
 impl Slot {
-    fn device_floor_key(&self, device: &str) -> (Option<String>, String) {
+    fn device_floor_key(&self, device: &str) -> (Option<String>, bool, String) {
         // A remote Computer issues its own device namespace. Incoming grants
         // still use this endpoint's single authoritative device registry.
-        (self.initiator.then(|| self.connection.remote_id().to_string()), device.to_owned())
+        (self.initiator.then(|| self.connection.remote_id().to_string()),
+            self.connection.alpn() == ROOM_SESSION_ALPN, device.to_owned())
     }
 }
 struct DeviceFloor { generation: u64, epoch: u64, endpoint_id: String }
 struct Shared {
     slots: Mutex<HashMap<u64, Arc<Slot>>>,
     pending_dials: Mutex<HashMap<u64, Arc<PendingDial>>>,
-    device_floors: Mutex<HashMap<(Option<String>, String), DeviceFloor>>,
+    device_floors: Mutex<HashMap<(Option<String>, bool, String), DeviceFloor>>,
     events: Mutex<Events>,
     info: Mutex<(String,String)>,
     closed: AtomicBool,
@@ -247,7 +248,7 @@ struct Shared {
 struct PendingDial { canceled: AtomicBool, wake: Notify }
 
 enum Command {
-    Dial { id: u64, address: EndpointAddr, pair: bool, pending: Arc<PendingDial> }, NetworkChanged,
+    Dial { id: u64, address: EndpointAddr, protocol: &'static [u8], pending: Arc<PendingDial> }, NetworkChanged,
     #[cfg(test)] Crash,
 }
 
@@ -341,6 +342,11 @@ impl EndpointHost {
         if slot.closed.load(Ordering::Acquire) { Err(HostError::Closed) } else { Ok(slot) }
     }
     pub fn dial(&self, ticket: &str, expected_endpoint: &str, pair: bool) -> Result<u64, HostError> {
+        self.dial_application(ticket,expected_endpoint,if pair { PAIR_ALPN } else { SESSION_ALPN })
+    }
+    pub fn dial_application(&self, ticket: &str, expected_endpoint: &str, protocol: &[u8]) -> Result<u64, HostError> {
+        let protocol = [PAIR_ALPN, SESSION_ALPN, ROOM_PAIR_ALPN, ROOM_SESSION_ALPN].into_iter()
+            .find(|allowed| *allowed == protocol).ok_or(HostError::InvalidConfig)?;
         self.open()?;
         let address = self.policy.ticket_address(ticket, expected_endpoint)?;
         let id = self.shared.next_id.fetch_add(1, Ordering::Relaxed);
@@ -348,7 +354,7 @@ impl EndpointHost {
         let mut dials = self.shared.pending_dials.lock().map_err(|_| HostError::Worker)?;
         if dials.len() >= 32 { return Err(HostError::Backpressure); }
         dials.insert(id, pending.clone());
-        if self.commands.try_send(Command::Dial { id, address, pair, pending }).is_err() {
+        if self.commands.try_send(Command::Dial { id, address, protocol, pending }).is_err() {
             dials.remove(&id); return Err(HostError::Backpressure);
         }
         Ok(id)
@@ -357,14 +363,19 @@ impl EndpointHost {
         principal.validate().map_err(|_| HostError::NotAuthorized)?;
         if principal.expires_at_ms <= now_ms() { return Err(HostError::NotAuthorized); }
         let slot = self.slot(id)?;
-        if slot.connection.alpn() != SESSION_ALPN { return Err(HostError::NotAuthorized); }
+        if ![SESSION_ALPN, ROOM_SESSION_ALPN].contains(&slot.connection.alpn()) { return Err(HostError::NotAuthorized); }
+        if slot.connection.alpn() == ROOM_SESSION_ALPN &&
+             (!["room", "chat"].iter().all(|required| principal.scopes.iter().any(|scope| scope == *required)) ||
+             principal.scopes.iter().any(|scope| !matches!(scope.as_str(), "room"|"chat"|"room_federation"|"files"|"media"))) {
+            return Err(HostError::NotAuthorized);
+        }
         let key = slot.device_floor_key(&principal.device_id);
         let mut floors = self.shared.device_floors.lock().map_err(|_| HostError::Worker)?;
         if let Some(floor) = floors.get(&key) {
             if principal.generation <= floor.generation || principal.authorization_epoch < floor.epoch ||
                 principal.endpoint_id != floor.endpoint_id { return Err(HostError::NotAuthorized); }
         } else if floors.len() >= MAX_DEVICE_FLOORS { return Err(HostError::Backpressure); }
-        if floors.iter().any(|(device, floor)| device.0 == key.0 && device != &key && floor.endpoint_id == principal.endpoint_id) {
+        if floors.iter().any(|(device, floor)| device.0 == key.0 && device.1 == key.1 && device != &key && floor.endpoint_id == principal.endpoint_id) {
             return Err(HostError::NotAuthorized);
         }
         slot.admission.lock().map_err(|_| HostError::Worker)?
@@ -701,7 +712,7 @@ fn clear_queued_media(slot: &Slot, source_id: u64) -> Result<(), HostError> {
 async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<Endpoint, HostError> {
     let secret = SecretKey::from_bytes(&key); key.fill(0);
     let mut builder = Endpoint::builder(presets::Minimal).secret_key(secret)
-        .alpns(vec![PAIR_ALPN.to_vec(), SESSION_ALPN.to_vec()]).clear_ip_transports()
+        .alpns(vec![PAIR_ALPN.to_vec(), SESSION_ALPN.to_vec(), ROOM_PAIR_ALPN.to_vec(), ROOM_SESSION_ALPN.to_vec()]).clear_ip_transports()
         .clear_address_lookup().portmapper_config(PortmapperConfig::Disabled)
         .transport_config(QuicTransportConfig::builder()
             .max_concurrent_uni_streams(16u32.into()).max_concurrent_bidi_streams(0u32.into())
@@ -735,7 +746,7 @@ fn authorize_header(slot: &Slot, header: &FrameHeader, inbound: bool) -> Result<
         return Err(HostError::NotAuthorized);
     }
     let admission = slot.admission.lock().map_err(|_| HostError::Worker)?;
-    if slot.connection.alpn() == PAIR_ALPN && header.lane != Lane::Enrollment {
+    if [PAIR_ALPN, ROOM_PAIR_ALPN].contains(&slot.connection.alpn()) && header.lane != Lane::Enrollment {
         return Err(HostError::NotAuthorized);
     }
     if header.lane == Lane::Enrollment {
@@ -828,13 +839,13 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
             }
             command = commands.recv() => {
                 match command {
-                    Some(Command::Dial { id, address, pair, pending }) if handshakes.len() < 8 => {
+                    Some(Command::Dial { id, address, protocol, pending }) if handshakes.len() < 8 => {
                         let endpoint = endpoint.clone();
                         handshakes.spawn(async move {
                             let result = if pending.canceled.load(Ordering::Acquire) { Err(HostError::Closed) } else { tokio::select! {
                                 _ = pending.wake.notified() => Err(HostError::Closed),
                                 result = tokio::time::timeout(Duration::from_secs(10),
-                                endpoint.connect(address, if pair { PAIR_ALPN } else { SESSION_ALPN }))
+                                endpoint.connect(address, protocol))
                                     => result.map_err(|_| HostError::Timeout).and_then(|result| result.map_err(|_| HostError::Worker)),
                             } };
                             (id, true, result)
@@ -1203,6 +1214,71 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    #[test]
+    fn peer_and_room_share_an_endpoint_without_sharing_admission_or_pairing_lanes() {
+        let caller = EndpointHost::start(EndpointPolicy::local(),[71;32]).unwrap();
+        let host = EndpointHost::start(EndpointPolicy::local(),[72;32]).unwrap();
+        let (remote,ticket) = host.endpoint_info().unwrap();
+        let local = caller.endpoint_info().unwrap().0;
+        let mut calls = BTreeMap::new();
+        for protocol in [PAIR_ALPN,SESSION_ALPN,ROOM_PAIR_ALPN,ROOM_SESSION_ALPN] {
+            calls.insert(String::from_utf8(protocol.to_vec()).unwrap(),caller.dial_application(&ticket,&remote,protocol).unwrap());
+        }
+        assert!(caller.dial_application(&ticket,&remote,b"autoyou/unknown/1").is_err());
+        let mut accepted = BTreeMap::new(); let mut connected = BTreeMap::new();
+        let deadline = std::time::Instant::now()+Duration::from_secs(5);
+        while accepted.len()<4 || connected.len()<4 {
+            for event in caller.poll(64).unwrap() {
+                if let HostEvent::Connected {connection_id,protocol,initiator,..} = event {
+                    assert!(initiator); assert_eq!(calls.get(&protocol),Some(&connection_id)); connected.insert(protocol,connection_id);
+                }
+            }
+            for event in host.poll(64).unwrap() {
+                if let HostEvent::Connected {connection_id,protocol,initiator,..} = event {
+                    assert!(!initiator); accepted.insert(protocol,connection_id);
+                }
+            }
+            assert!(std::time::Instant::now()<deadline); std::thread::sleep(Duration::from_millis(5));
+        }
+        let principal = |endpoint: String,room: bool| Principal {endpoint_id:endpoint,
+            device_id:if room {"synthetic-room-device"} else {"synthetic-peer-device"}.into(),
+            owner_id:"synthetic-owner".into(),conversation_id:if room {"synthetic-room"} else {"synthetic-peer"}.into(),
+            generation:1,authorization_epoch:1,expires_at_ms:now_ms()+60_000,
+            scopes:vec!["chat".into(),if room {"room"} else {"peer"}.into()]};
+        for protocol in [PAIR_ALPN,ROOM_PAIR_ALPN] {
+            let name=String::from_utf8(protocol.to_vec()).unwrap(); let id=calls[&name];
+            assert!(caller.admit(id,principal(remote.clone(),protocol==ROOM_PAIR_ALPN)).is_err());
+            assert!(caller.send(id,Frame {lane:Lane::Application,generation:1,stream_id:0,sequence:0,payload:vec![]},None).is_err());
+            let payload=autoyou_protocol::enrollment::Message {version:1,kind:autoyou_protocol::enrollment::Kind::Confirm,challenge:None,binding:Some(vec![3;32])}.to_vec().unwrap();
+            caller.send(id,Frame {lane:Lane::Enrollment,generation:0,stream_id:0,sequence:0,payload},None).unwrap();
+        }
+        for room in [false,true] {
+            let name=String::from_utf8(if room {ROOM_SESSION_ALPN} else {SESSION_ALPN}.to_vec()).unwrap();
+            if room { assert!(caller.admit(calls[&name],principal(remote.clone(),false)).is_err()); }
+            caller.admit(calls[&name],principal(remote.clone(),room)).unwrap();
+            host.admit(accepted[&name],principal(local.clone(),room)).unwrap();
+            caller.activate(calls[&name]).unwrap(); host.activate(accepted[&name]).unwrap();
+            let payload=serde_json::to_vec(&serde_json::json!({"header":{"message_id":"synthetic-message","message_type":if room {"room_chat"} else {"chat"},"timestamp":1},"payload":{"text":"synthetic-body"}})).unwrap();
+            caller.send(calls[&name],Frame {lane:Lane::Application,generation:1,stream_id:0,sequence:0,payload},None).unwrap();
+            if !room {
+                let payload=serde_json::to_vec(&serde_json::json!({"header":{"message_id":"synthetic-message","message_type":"room_chat","timestamp":1},"payload":{}})).unwrap();
+                assert!(caller.send(calls[&name],Frame {lane:Lane::Application,generation:1,stream_id:0,sequence:0,payload},None).is_err());
+            }
+        }
+        let deadline=std::time::Instant::now()+Duration::from_secs(5); let mut received=BTreeMap::new();
+        while received.len()<2 {
+            for event in host.poll(64).unwrap() {
+                if let HostEvent::Frame {connection_id,frame,..} = event { if frame.lane==Lane::Application {
+                    received.insert(connection_id,Envelope::from_slice(&frame.payload).unwrap().header.message_type);
+                }}
+            }
+            assert!(std::time::Instant::now()<deadline); std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(received[&accepted["autoyou/session/1"]],autoyou_protocol::MessageType::Chat);
+        assert_eq!(received[&accepted["autoyou/room-session/1"]],autoyou_protocol::MessageType::RoomChat);
+        caller.shutdown().unwrap(); host.shutdown().unwrap();
+    }
     #[test]
     fn input_send_deadline_is_mandatory_and_bounded() {
         assert_eq!(super::input_send_deadline(Some(300), 100).unwrap(), 300);

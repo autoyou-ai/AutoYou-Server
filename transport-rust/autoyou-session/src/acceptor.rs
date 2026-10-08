@@ -1,11 +1,11 @@
 // Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 // Licensed under the AutoYou Source-Available License.
 
-//! Accepted Peer Link enrollment. Platform adapters atomically persist returned
+//! Accepted Peer Link or Lobby enrollment. Platform adapters atomically persist returned
 //! store bytes before calling `persisted`; tickets never become grants.
 
 use std::collections::BTreeMap;
-use autoyou_protocol::{PAIR_ALPN, SESSION_ALPN};
+use autoyou_protocol::{PAIR_ALPN, SESSION_ALPN, ROOM_PAIR_ALPN, ROOM_SESSION_ALPN};
 use autoyou_protocol::enrollment::{Challenge, Kind, Message};
 use base64::{Engine, engine::general_purpose::URL_SAFE};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -28,6 +28,7 @@ struct Pending {
 
 pub struct AcceptorSession {
     local_endpoint: String, capabilities: Map<String, Value>,
+    room: bool,
     invitations: BTreeMap<[u8;32], Invitation>, pending: BTreeMap<u64, Pending>,
 }
 
@@ -38,7 +39,13 @@ impl AcceptorSession {
             serde_json::to_vec(&capabilities).map_err(|_| ClientError::Invalid)?.len() > 8192 {
             return Err(ClientError::Invalid);
         }
-        Ok(Self { local_endpoint, capabilities, invitations: BTreeMap::new(), pending: BTreeMap::new() })
+        let room = match capabilities.get("application").and_then(Value::as_str) {
+            Some("room") => true,
+            Some("peer") => false,
+            None if !capabilities.contains_key("application") => false,
+            _ => return Err(ClientError::Invalid),
+        };
+        Ok(Self { local_endpoint, capabilities, room, invitations: BTreeMap::new(), pending: BTreeMap::new() })
     }
     pub(crate) fn peer_grant(grant: &ClientGrant, now: u64) -> Result<(), ClientError> {
         grant.validate(now)?;
@@ -49,9 +56,24 @@ impl AcceptorSession {
         }
         Ok(())
     }
+    pub(crate) fn room_grant(grant: &ClientGrant, now: u64) -> Result<(), ClientError> {
+        grant.validate(now)?;
+        if !["room", "chat"].iter().all(|required| grant.scopes.iter().any(|scope| scope == *required)) ||
+            grant.scopes.iter().any(|scope| !matches!(scope.as_str(), "room"|"chat"|"room_federation"|"files"|"media")) ||
+            grant.origin_transport != "room" || grant.pairing_mode != "room-v4" || grant.device_ownership != "shared" {
+            return Err(ClientError::Denied);
+        }
+        Ok(())
+    }
+    fn approved_grant(&self, grant: &ClientGrant, now: u64) -> Result<(), ClientError> {
+        if self.room { Self::room_grant(grant,now) } else { Self::peer_grant(grant,now) }
+    }
+    fn pairing(&self, context: &ClientContext) -> bool {
+        context.protocol.as_bytes() == if self.room { ROOM_PAIR_ALPN } else { PAIR_ALPN }
+    }
     fn context(&self, context: &ClientContext) -> Result<(), ClientError> {
         if context.initiator || context.local_endpoint != self.local_endpoint || context.connection_id == 0 ||
-            ![PAIR_ALPN, SESSION_ALPN].contains(&context.protocol.as_bytes()) ||
+            !(if self.room { [ROOM_PAIR_ALPN, ROOM_SESSION_ALPN] } else { [PAIR_ALPN, SESSION_ALPN] }).contains(&context.protocol.as_bytes()) ||
             context.remote_endpoint == self.local_endpoint {
             return Err(ClientError::Denied);
         }
@@ -66,7 +88,7 @@ impl AcceptorSession {
     }
     /// Called only by the application's existing human/proof approval owner.
     pub fn issue(&mut self, grant: ClientGrant, ticket: String, now: u64) -> Result<String, ClientError> {
-        Self::peer_grant(&grant, now)?;
+        self.approved_grant(&grant, now)?;
         if grant.endpoint_id == self.local_endpoint { return Err(ClientError::Denied); }
         let descriptor = serde_json::json!({"transport":"iroh", "version":1,"type":"answer",
             "endpoint_id":self.local_endpoint,"ticket":ticket});
@@ -90,14 +112,13 @@ impl AcceptorSession {
         let mut nonce = vec![0;32];
         SystemRandom::new().fill(&mut nonce).map_err(|_| ClientError::Closed)?;
         let mut capabilities = self.capabilities.clone();
-        if context.protocol.as_bytes() == PAIR_ALPN { capabilities.insert("device_id".into(), Value::String(grant.device_id.clone())); }
+        if self.pairing(context) { capabilities.insert("device_id".into(), Value::String(grant.device_id.clone())); }
         let challenge = Challenge { initiator_endpoint: context.remote_endpoint.clone(), acceptor_endpoint: self.local_endpoint.clone(),
             nonce, generation, authorization_epoch: grant.authorization_epoch, expires_at_ms: grant.expires_at_ms,
             scopes: grant.scopes.clone(), capabilities };
         let remote = endpoint_bytes(&context.remote_endpoint).map_err(|_| ClientError::Invalid)?;
         let local = endpoint_bytes(&self.local_endpoint).map_err(|_| ClientError::Invalid)?;
-        let digest = if context.protocol.as_bytes() == PAIR_ALPN { challenge.pairing_binding(&context.exporter, &remote, &local) }
-            else { challenge.binding(&context.exporter, &remote, &local) }.map_err(|_| ClientError::Invalid)?;
+        let digest = challenge.binding_for_alpn(&context.exporter, &remote, &local, context.protocol.as_bytes()).map_err(|_| ClientError::Invalid)?;
         let payload = Message { version:1, kind:Kind::Challenge, challenge:Some(challenge), binding:None }
             .to_vec().map_err(|_| ClientError::Invalid)?;
         Ok((payload,digest))
@@ -108,9 +129,9 @@ impl AcceptorSession {
         if self.pending.contains_key(&context.connection_id) || self.pending.len() >= 32 { return Err(ClientError::Denied); }
         let mut pending = Pending { context, phase:Phase::WaitingRedeem, deadline:now.saturating_add(10_000),
             grant:None, generation:0, digest:None, challenge:None };
-        let update = if pending.context.protocol.as_bytes() == SESSION_ALPN {
+        let update = if !self.pairing(&pending.context) {
             let peer = client_store::load(store,&pending.context.remote_endpoint,now)?;
-            Self::peer_grant(&peer.grant,now)?;
+            self.approved_grant(&peer.grant,now)?;
             let generation = peer.generation_floor.checked_add(1).ok_or(ClientError::Closed)?;
             let updated = client_store::admit(store,&peer.grant,generation,now)?;
             let (challenge,digest) = self.challenge(&pending.context,&peer.grant,generation)?;
@@ -131,7 +152,7 @@ impl AcceptorSession {
             // A redemption is consumed before checking who presented it.
             let invitation = self.invitations.remove(&key).ok_or(ClientError::Denied)?;
             if invitation.deadline <= now || invitation.grant.endpoint_id != context.remote_endpoint { return Err(ClientError::Denied); }
-            Self::peer_grant(&invitation.grant,now)?;
+            self.approved_grant(&invitation.grant,now)?;
             let (challenge,digest) = self.challenge(context,&invitation.grant,1)?;
             pending.phase = Phase::Confirm; pending.deadline = invitation.deadline;
             pending.grant = Some(invitation.grant); pending.generation = 1; pending.digest = Some(digest);
@@ -146,8 +167,8 @@ impl AcceptorSession {
             return Err(ClientError::Denied);
         }
         let grant = pending.grant.as_ref().ok_or(ClientError::Stale)?;
-        Self::peer_grant(grant,now)?;
-        if context.protocol.as_bytes() == PAIR_ALPN {
+        self.approved_grant(grant,now)?;
+        if self.pairing(context) {
             let updated = client_store::register(store,grant.clone(),now)?;
             pending.phase = Phase::PersistPairing;
             self.pending.insert(context.connection_id,pending);
@@ -158,7 +179,7 @@ impl AcceptorSession {
         Ok(self.ready(pending)?.into())
     }
     fn ready(&self, pending: Pending) -> Result<Step, ClientError> {
-        let pairing = pending.context.protocol.as_bytes() == PAIR_ALPN;
+        let pairing = self.pairing(&pending.context);
         let outgoing = Message { version:1,kind:Kind::Ready,challenge:None,binding:Some(pending.digest.ok_or(ClientError::Stale)?.to_vec()) }
             .to_vec().map_err(|_| ClientError::Invalid)?;
         Ok(Step { outgoing:Some(outgoing),grant:pending.grant,generation:pending.generation,
@@ -219,11 +240,23 @@ mod tests {
     }
     #[test]
     fn both_sides_require_proof_and_atomic_persistence_then_recover_with_new_generation() {
-        let (caller,accepted) = contexts(PAIR_ALPN,1);
-        let mut host = AcceptorSession::new(accepted.local_endpoint.clone(),serde_json::json!({"transport":"iroh","peer":true}).as_object().unwrap().clone()).unwrap();
+        for room in [false,true] { pairing_and_recovery(room); }
+    }
+    fn pairing_and_recovery(room: bool) {
+        let (pair,session) = if room { (ROOM_PAIR_ALPN,ROOM_SESSION_ALPN) } else { (PAIR_ALPN,SESSION_ALPN) };
+        let (caller,accepted) = contexts(pair,1);
+        let mut capabilities = serde_json::json!({"transport":"iroh","peer":true}).as_object().unwrap().clone();
+        let mut approved = grant(caller.local_endpoint.clone());
+        if room {
+            capabilities = serde_json::json!({"transport":"iroh","application":"room","room_id":"synthetic-room","epoch":"synthetic-epoch"}).as_object().unwrap().clone();
+            approved.origin_transport = "room".into(); approved.pairing_mode = "room-v4".into();
+            approved.scopes = vec!["room".into(),"chat".into(),"room_federation".into(),"files".into(),"media".into()];
+        }
+        let mut host = AcceptorSession::new(accepted.local_endpoint.clone(),capabilities).unwrap();
         let mut client = ClientSession::new(caller.local_endpoint.clone()).unwrap();
-        let proof = host.issue(grant(caller.local_endpoint.clone()),ticket(),1000).unwrap();
+        let proof = host.issue(approved,ticket(),1000).unwrap();
         let operation = client.begin_verified_pairing(proof.as_bytes(),1000).unwrap();
+        assert_eq!(client.dial_protocol().unwrap(),pair);
         client.bind_dial(operation,1).unwrap();
         let mut store = client_store::empty();
         assert!(host.connected(accepted.clone(),&store,1000).unwrap().application.outgoing.is_none());
@@ -240,8 +273,9 @@ mod tests {
         client.pairing_persisted(operation).unwrap();
         let paired_grant = paired.grant.unwrap();
         for generation in 1..=2 {
-            let (caller,accepted) = contexts(SESSION_ALPN,generation+1);
+            let (caller,accepted) = contexts(session,generation+1);
             let operation = client.begin_session(paired_grant.clone(),ticket(),generation-1,1100).unwrap();
+            assert_eq!(client.dial_protocol().unwrap(),session);
             client.bind_dial(operation,caller.connection_id).unwrap();
             client.connected(operation,&caller,1100).unwrap();
             let step = host.connected(accepted.clone(),&store,1100).unwrap();
@@ -254,6 +288,42 @@ mod tests {
             assert!(client.receive(operation,&caller,&ready.outgoing.unwrap(),1100).unwrap().ready);
             client.lost(operation,1200,0).unwrap();
         }
+    }
+    #[test]
+    fn room_authority_and_context_cannot_be_widened_or_reused_by_peer_role() {
+        let (caller,accepted) = contexts(ROOM_PAIR_ALPN,1);
+        let mut room = AcceptorSession::new(accepted.local_endpoint.clone(),serde_json::json!({"application":"room"}).as_object().unwrap().clone()).unwrap();
+        let mut peer = AcceptorSession::new(accepted.local_endpoint.clone(),Map::new()).unwrap();
+        let peer_grant = grant(accepted.remote_endpoint.clone());
+        assert!(room.issue(peer_grant.clone(),ticket(),1000).is_err());
+        let mut approved = peer_grant;
+        approved.origin_transport = "room".into(); approved.pairing_mode = "room-v4".into();
+        approved.scopes = vec!["room".into(),"chat".into()];
+        assert!(peer.issue(approved.clone(),ticket(),1000).is_err());
+        for scope in ["peer","browser","control","pairing"] {
+            let mut widened = approved.clone(); widened.scopes.push(scope.into());
+            assert!(room.issue(widened,ticket(),1000).is_err());
+        }
+        for required in ["room","chat"] {
+            let mut narrowed = approved.clone(); narrowed.scopes.retain(|s| s != required);
+            assert!(room.issue(narrowed,ticket(),1000).is_err());
+        }
+        let mut own = approved.clone(); own.device_ownership = "own".into();
+        assert!(room.issue(own,ticket(),1000).is_err());
+        let mut mode = approved.clone(); mode.pairing_mode = "manual-peer".into();
+        assert!(room.issue(mode,ticket(),1000).is_err());
+        assert!(peer.connected(accepted.clone(),&client_store::empty(),1000).is_err());
+        let (_,wrong) = contexts(PAIR_ALPN,1);
+        assert!(room.connected(wrong,&client_store::empty(),1000).is_err());
+        let proof = room.issue(approved,ticket(),1000).unwrap();
+        let mut client = ClientSession::new(caller.local_endpoint.clone()).unwrap();
+        let op = client.begin_verified_pairing(proof.as_bytes(),1000).unwrap();
+        client.bind_dial(op,1).unwrap();
+        let mut wrong = caller.clone(); wrong.protocol = String::from_utf8(PAIR_ALPN.to_vec()).unwrap();
+        assert!(client.connected(op,&wrong,1000).is_err());
+        let mut wrong: Value = serde_json::from_str(&proof).unwrap(); wrong["capabilities"]["application"] = Value::String("peer".into());
+        let mut fresh = ClientSession::new(caller.local_endpoint).unwrap();
+        assert!(fresh.begin_verified_pairing(&serde_json::to_vec(&wrong).unwrap(),1000).is_err());
     }
     #[test]
     fn wrong_purpose_context_persistence_revoke_and_expiry_are_denied() {

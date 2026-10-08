@@ -59,6 +59,7 @@ class IrohClientService:
         self._history_deletion = False
         self._lifecycle_revision = 0
         self.incoming: Any = None
+        self.room_incoming: Any = None
         self._incoming: dict[int, tuple[ConnectionContext, Any]] = {}
         self._endpoint_owner: IrohClientService | None = None
         self._children: set[IrohClientService] = set()
@@ -149,6 +150,8 @@ class IrohClientService:
         """Called only after the requested OTP/PAKE/account/local proof succeeds."""
         if self.runtime is None or self._closing:
             raise ConnectionError("client endpoint is not running")
+        if answer.get("grant", {}).get("origin_transport") == "room" and not callable(getattr(self.core, "dial_protocol", None)):
+            raise SessionDenied("native Lobby enrollment requires the qualified room protocol API")
         await self._cancel_recovery()
         async with self._gate:
             if self._history_deletion:
@@ -159,7 +162,7 @@ class IrohClientService:
             try:
                 encoded = json.dumps(answer, allow_nan=False, separators=(",", ":"))
                 operation = self.core.begin_verified_pairing(encoded, self.now_ms())
-                request = self.runtime.dial(answer["ticket"], answer["endpoint_id"], pairing=True)
+                request = self._dial(answer["ticket"], answer["endpoint_id"], pairing=True)
                 self.core.bind_dial(operation, request)
                 self._bind_request(request, operation)
             except BaseException:
@@ -192,12 +195,14 @@ class IrohClientService:
             if self._history_deletion:
                 raise SessionDenied("local history deletion is in progress")
             grant = await asyncio.to_thread(self.grants.grant_for_endpoint, endpoint_id)
+            if grant.origin_transport == "room" and not callable(getattr(self.core, "dial_protocol", None)):
+                raise SessionDenied("native Lobby reconnect requires the qualified room protocol API")
             floor = await asyncio.to_thread(self.grants.generation_floor, endpoint_id)
             future = self._new_future()
             request = None
             try:
                 operation = self.core.begin_session(_grant_json(grant), ticket, floor, self.now_ms())
-                request = self.runtime.dial(ticket, endpoint_id)
+                request = self._dial(ticket, endpoint_id, pairing=False)
                 self.core.bind_dial(operation, request)
                 self._bind_request(request, operation)
             except BaseException:
@@ -217,6 +222,25 @@ class IrohClientService:
                 await self._retire_attempt(operation)
             raise
 
+    def _dial(self, ticket: str, endpoint_id: str, *, pairing: bool) -> int:
+        get_protocol = getattr(self.core, "dial_protocol", None)
+        protocol = get_protocol() if callable(get_protocol) else (
+            "autoyou/pair/1" if pairing else "autoyou/session/1")
+        expected = {"autoyou/pair/1", "autoyou/room-pair/1"} if pairing else {
+            "autoyou/session/1", "autoyou/room-session/1"}
+        if protocol not in expected:
+            raise SessionDenied("native dial protocol does not match the operation")
+        if protocol.startswith("autoyou/room-"):
+            return self.runtime.dial_application(ticket, endpoint_id, protocol=protocol)
+        return self.runtime.dial(ticket, endpoint_id, pairing=pairing)
+
+    def _incoming_owner(self, context: ConnectionContext) -> Any:
+        if context.protocol in {"autoyou/room-pair/1", "autoyou/room-session/1"}:
+            return self.room_incoming
+        if context.protocol in {"autoyou/pair/1", "autoyou/session/1"}:
+            return self.incoming
+        return None
+
     def _context(self, context: ConnectionContext) -> Any:
         return self.runtime.api.ClientConnectionContext(connection_id=context.connection_id,
             remote_endpoint=context.remote_endpoint_id, local_endpoint=context.local_endpoint_id,
@@ -228,9 +252,10 @@ class IrohClientService:
             await child._connected(runtime, context)
             return
         if not context.initiator:
-            owner = self.incoming
-            allowed = context.protocol == "autoyou/session/1" or (
-                context.protocol == "autoyou/pair/1" and getattr(owner, "allow_pairing", False) is True)
+            owner = self._incoming_owner(context)
+            allowed = context.protocol in {"autoyou/session/1", "autoyou/room-session/1"} or (
+                context.protocol in {"autoyou/pair/1", "autoyou/room-pair/1"} and
+                getattr(owner, "allow_pairing", False) is True)
             if self._closing or owner is None or not allowed:
                 raise SessionDenied("unsolicited client connection")
             self._incoming[context.connection_id] = (context, owner)
@@ -257,7 +282,7 @@ class IrohClientService:
             return
         if not context.initiator:
             incoming = self._incoming.get(context.connection_id)
-            if self._closing or incoming is None or incoming[0] != context or incoming[1] is not self.incoming:
+            if self._closing or incoming is None or incoming[0] != context or incoming[1] is not self._incoming_owner(context):
                 raise SessionDenied("obsolete incoming connection")
             await incoming[1].enrollment(runtime, context, payload)
             return
@@ -268,7 +293,7 @@ class IrohClientService:
             action = self.core.receive(operation, self._context(context), payload, self.now_ms())
             if action.capabilities_json is not None:
                 self._capabilities = json.loads(action.capabilities_json)
-            if context.protocol == "autoyou/pair/1":
+            if context.protocol in {"autoyou/pair/1", "autoyou/room-pair/1"}:
                 if action.close_connection:
                     grant = _decode_grant(action.grant_json)
                     await asyncio.to_thread(self.grants.register, grant)
@@ -314,7 +339,7 @@ class IrohClientService:
         incoming = self._incoming.get(getattr(channel, "connection_id", None))
         if incoming is not None:
             context, owner = incoming
-            if self._closing or owner is not self.incoming or channel.binding.transport_id != context.transport_id:
+            if self._closing or owner is not self._incoming_owner(context) or channel.binding.transport_id != context.transport_id:
                 raise SessionDenied("obsolete incoming stream")
             self.runtime.registry.check(channel.binding)
             await owner.binary(channel, frame)

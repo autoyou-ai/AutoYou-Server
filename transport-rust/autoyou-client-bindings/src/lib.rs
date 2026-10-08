@@ -4,7 +4,7 @@
 //! Typed generated host boundary. Foreign runtimes never supply callbacks to a
 //! QUIC worker or run Tokio futures on a UI/Python event loop.
 
-use autoyou_protocol::{Envelope, Frame, Lane, Principal, SESSION_ALPN, transcript_binding};
+use autoyou_protocol::{Envelope, Frame, Lane, Principal, SESSION_ALPN, ROOM_SESSION_ALPN, transcript_binding};
 use autoyou_session::scheduler::Scheduler;
 use autoyou_session::host::{EndpointHost as RustEndpointHost, EndpointPolicy, HostError, HostEvent};
 use std::sync::{Arc, Mutex};
@@ -200,6 +200,11 @@ impl ClientSession {
         Ok(ClientDialTarget { endpoint_id: session.peer().ok_or(BindingError::PermissionDenied)?.endpoint_id.clone(),
             ticket: session.ticket().ok_or(BindingError::PermissionDenied)?.into(), pairing: phase == Phase::Enrolling })
     }
+    pub fn dial_protocol(&self) -> Result<String, BindingError> {
+        let session = self.session.lock().map_err(|_| BindingError::Closed)?;
+        if !matches!(session.snapshot().phase, Phase::Enrolling | Phase::Connecting) { return Err(BindingError::PermissionDenied); }
+        Ok(String::from_utf8(session.dial_protocol()?.to_vec()).map_err(|_| BindingError::InvalidInput)?)
+    }
     pub fn bind_dial(&self, operation: u64, connection_id: u64) -> Result<(), BindingError> {
         Ok(self.session.lock().map_err(|_| BindingError::Closed)?.bind_dial(operation,connection_id)?)
     }
@@ -261,7 +266,7 @@ pub struct AdmissionContext {
 #[uniffi::export]
 pub fn admission_binding(context: AdmissionContext) -> Result<Vec<u8>, BindingError> {
     if context.exporter.len() != 32 || context.challenge.len() != 32 || context.generation == 0 ||
-        context.protocol.as_bytes() != SESSION_ALPN || context.capabilities_json.len() > 8192 {
+        ![SESSION_ALPN, ROOM_SESSION_ALPN].contains(&context.protocol.as_bytes()) || context.capabilities_json.len() > 8192 {
         return Err(BindingError::InvalidInput);
     }
     let capabilities: serde_json::Value = serde_json::from_str(&context.capabilities_json).map_err(|_| BindingError::InvalidInput)?;
@@ -491,6 +496,9 @@ impl SharedEndpoint {
     }
     pub fn dial(&self, ticket: String, expected_endpoint: String, pairing: bool) -> Result<u64, BindingError> {
         Ok(self.host.dial(&ticket, &expected_endpoint, pairing)?)
+    }
+    pub fn dial_application(&self, ticket: String, expected_endpoint: String, protocol: String) -> Result<u64, BindingError> {
+        Ok(self.host.dial_application(&ticket,&expected_endpoint,protocol.as_bytes())?)
     }
     pub fn admit(&self, connection_id: u64, grant: SessionGrant) -> Result<(), BindingError> {
         self.host.admit(connection_id, Principal { endpoint_id: grant.endpoint_id,
