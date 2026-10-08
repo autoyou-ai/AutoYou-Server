@@ -221,18 +221,19 @@ struct Slot {
     closed: AtomicBool,
 }
 impl Slot {
-    fn device_floor_key(&self, device: &str) -> (Option<String>, bool, String) {
+    fn device_floor_key(&self, principal: &Principal) -> (Option<String>, Option<String>, String) {
         // A remote Computer issues its own device namespace. Incoming grants
         // still use this endpoint's single authoritative device registry.
         (self.initiator.then(|| self.connection.remote_id().to_string()),
-            self.connection.alpn() == ROOM_SESSION_ALPN, device.to_owned())
+            (self.connection.alpn() == ROOM_SESSION_ALPN).then(|| principal.conversation_id.clone()),
+            principal.device_id.clone())
     }
 }
 struct DeviceFloor { generation: u64, epoch: u64, endpoint_id: String }
 struct Shared {
     slots: Mutex<HashMap<u64, Arc<Slot>>>,
     pending_dials: Mutex<HashMap<u64, Arc<PendingDial>>>,
-    device_floors: Mutex<HashMap<(Option<String>, bool, String), DeviceFloor>>,
+    device_floors: Mutex<HashMap<(Option<String>, Option<String>, String), DeviceFloor>>,
     events: Mutex<Events>,
     info: Mutex<(String,String)>,
     closed: AtomicBool,
@@ -369,7 +370,7 @@ impl EndpointHost {
              principal.scopes.iter().any(|scope| !matches!(scope.as_str(), "room"|"chat"|"room_federation"|"files"|"media"))) {
             return Err(HostError::NotAuthorized);
         }
-        let key = slot.device_floor_key(&principal.device_id);
+        let key = slot.device_floor_key(&principal);
         let mut floors = self.shared.device_floors.lock().map_err(|_| HostError::Worker)?;
         if let Some(floor) = floors.get(&key) {
             if principal.generation <= floor.generation || principal.authorization_epoch < floor.epoch ||
@@ -385,7 +386,7 @@ impl EndpointHost {
         for (old_id, old) in self.shared.slots.lock().map_err(|_| HostError::Worker)?.iter() {
             if *old_id != id {
                 let mut admission = old.admission.lock().map_err(|_| HostError::Worker)?;
-                if matches!(&*admission, Admission::Admitted(previous) if old.device_floor_key(&previous.device_id) == key) {
+                if matches!(&*admission, Admission::Admitted(previous) if old.device_floor_key(previous) == key) {
                     admission.revoke(); old.connection.close(1u32.into(), b"session superseded");
                 }
             }
