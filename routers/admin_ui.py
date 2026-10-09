@@ -130,7 +130,7 @@ def register_routes(
             if server.WEBRTC is not None:
                 await server.WEBRTC.broadcast_server_profile()
             payload = await server._build_admin_ui_bootstrap_payload()
-            return server._json_response_no_store(payload)
+            return server._json_response_no_store(server._with_admin_request_metadata(payload, request))
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
@@ -154,7 +154,7 @@ def register_routes(
             if server.WEBRTC is not None:
                 await server.WEBRTC.broadcast_server_profile()
             payload = await server._build_admin_ui_bootstrap_payload()
-            return server._json_response_no_store(payload)
+            return server._json_response_no_store(server._with_admin_request_metadata(payload, request))
         except Exception as exc:
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})

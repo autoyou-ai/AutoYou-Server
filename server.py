@@ -3828,6 +3828,14 @@ logging.getLogger("google_adk.google.adk.tools._function_parameter_parse_util").
 # or "0.0.0.0" to allow LAN/remote access. Defaults to "127.0.0.1".
 SERVER_BIND_HOST: str = os.getenv("AUTOYOU_BIND_HOST", "127.0.0.1")
 
+#: Who chose SERVER_BIND_HOST for this process: the saved ``server.bind_host``
+#: (``config``), a ``--host`` option or ``AUTOYOU_BIND_HOST`` (``launcher``), or
+#: the desktop app's local network switch (``desktop_app``). Only ``config``
+#: lets the admin page's saved choice decide the next start; the others pass
+#: the same host again, whatever is saved.
+BIND_HOST_SOURCES = ("config", "launcher", "desktop_app")
+SERVER_BIND_HOST_SOURCE: str = "config"
+
 
 def _normalize_config_bool(raw_value: Any, default: bool) -> bool:
     if isinstance(raw_value, bool):
@@ -3855,12 +3863,19 @@ def _configured_server_bind_host(cfg: Optional[Dict[str, Any]] = None) -> str:
     return _normalize_server_bind_host(server_cfg.get("bind_host", "127.0.0.1"))
 
 
-def _set_runtime_bind_host(host: Any) -> str:
+def _set_runtime_bind_host(host: Any, source: Optional[str] = None) -> str:
     normalized = str(host or "127.0.0.1").strip() or "127.0.0.1"
     os.environ["AUTOYOU_BIND_HOST"] = normalized
-    global SERVER_BIND_HOST
+    global SERVER_BIND_HOST, SERVER_BIND_HOST_SOURCE
     SERVER_BIND_HOST = normalized
+    if source in BIND_HOST_SOURCES:
+        SERVER_BIND_HOST_SOURCE = source
     return normalized
+
+
+def _bind_host_follows_saved_choice() -> bool:
+    """Whether the next start reads ``server.bind_host`` rather than a launcher's host."""
+    return SERVER_BIND_HOST_SOURCE == "config"
 
 
 def _native_unlock_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
@@ -4091,14 +4106,25 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
             admin_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/")
             websites_urls.append(f"https://{host_address}:{_https_port(base_cfg)}/home-network/websites")
     secure_everywhere = admin_https_live and (page_https_port or not websites_port_open)
+    saved_enabled = _configured_server_bind_host(base_cfg) == "0.0.0.0"
+    https_env = os.environ.get("AUTOYOU_HTTPS_ENABLED", "").strip()
+    remote_permissions_env = os.environ.get("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", "").strip()
     return {
         "enabled": live,
-        "next_boot_enabled": _configured_server_bind_host(base_cfg) == "0.0.0.0",
+        # What the next start will do. A launcher that passed its own host
+        # (``--host``, ``AUTOYOU_BIND_HOST``, the desktop app) passes it again,
+        # so the saved choice only decides when the process followed it.
+        "next_boot_enabled": saved_enabled if _bind_host_follows_saved_choice() else live,
+        "saved_enabled": saved_enabled,
+        "bind_host_source": SERVER_BIND_HOST_SOURCE,
         "websites_mode": websites_mode_live,
         "websites_mode_next_boot": _home_network_websites_mode(base_cfg),
         "https": bool(live and (admin_https_live or page_https_port)),
+        # Whether a TLS listener is serving at all, home network or not.
+        "https_listener": bool(admin_https_live or _page_service_https_port_live()),
         "https_next_boot": _https_enabled(base_cfg),
         "https_explicit": server_cfg.get("https_enabled") is not None,
+        "https_source": "environment" if https_env else ("config" if server_cfg.get("https_enabled") is not None else "default"),
         "plain_http_exposed": bool(live and not secure_everywhere),
         "discovery": bool(live and getattr(STATE, "server_advertisement", None) is not None),
         "discovery_enabled": _discovery_advertising_enabled(base_cfg),
@@ -4107,8 +4133,13 @@ def _home_network_web_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "websites_urls": websites_urls,
         "ca_certificate_path": "/ca.crt" if (admin_https_live or page_https_port) else "",
         "remote_access_role": _get_remote_browser_access_role(base_cfg),
+        # Read on every request, so a saved change applies at once.
         "allow_remote_admin_permissions": _allow_remote_admin_permissions(base_cfg),
         "allow_remote_admin_permissions_next_boot": _normalize_config_bool(server_cfg.get("allow_remote_admin_permissions"), False),
+        "allow_remote_admin_permissions_source": "environment" if remote_permissions_env else "config",
+        # The AI Agent developer API's own HTTPS port; AutoYou apps never need it.
+        "ai_agent_lan_access": _ai_agent_lan_access_enabled(base_cfg),
+        "ai_agent_lan_https_port": _ai_agent_lan_https_port(base_cfg),
         # Local Pair devices load website apps straight from the HTTPS mirror.
         "direct_websites": bool(websites_port_open and page_https_port),
         "vpn_addresses": _vpn_addresses_enabled(base_cfg),
@@ -4138,13 +4169,16 @@ def _ai_agent_lan_access_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
 
 
 def _configured_ai_agent_bind_host(cfg: Optional[Dict[str, Any]] = None) -> str:
-    """Bind host for the AI Agent server's plain listener.
+    """Bind host for the AI Agent server's plain, unauthenticated listener.
 
-    Loopback-only unless LAN access has been explicitly opted into (see
-    ``_ai_agent_lan_access_enabled``), independent of the admin UI's own
-    ``server.bind_host``/``--host``.
+    Always loopback on a computer: LAN access (see
+    ``_ai_agent_lan_access_enabled``) adds the separate HTTPS port with its
+    one-time-code gate, and the plain port never joins the network beside it.
+    Only inside a container with LAN access on does it follow the bind host,
+    because Docker's port publishing (loopback in the shipped compose file)
+    cannot reach a listener bound to the container's own loopback.
     """
-    if not _ai_agent_lan_access_enabled(cfg):
+    if not _ai_agent_lan_access_enabled(cfg) or not _running_in_container():
         return "127.0.0.1"
     return SERVER_BIND_HOST
 
@@ -8511,6 +8545,32 @@ def _request_is_from_this_computer(request: Request) -> bool:
     if _allow_remote_admin_permissions() and _csrf_peer_is_private_or_loopback(peer or ""):
         return True
     return False
+
+
+def _admin_request_metadata(request: Request) -> Dict[str, Any]:
+    """What the admin page may do from the connection that asked."""
+    client_host = request.client.host if request.client else None
+    return {
+        "permissions_editable": bool(_request_is_from_this_computer(request)),
+        "allow_remote_admin_permissions": bool(_allow_remote_admin_permissions()),
+        "is_loopback_client": bool(_is_loopback_client_host(client_host)),
+    }
+
+
+def _with_admin_request_metadata(payload: Any, request: Request) -> Any:
+    """Stamp the caller's access facts onto a bootstrap, or a response carrying one.
+
+    Every response that hands the admin page a fresh bootstrap must carry
+    them: the page replaces its whole bootstrap with it, and without
+    ``permissions_editable`` the Permissions screen turns view-only after
+    any save until the page is reloaded.
+    """
+    target = payload.get("bootstrap") if isinstance(payload, dict) and isinstance(payload.get("bootstrap"), dict) else payload
+    if isinstance(target, dict):
+        metadata = target.setdefault("metadata", {})
+        if isinstance(metadata, dict):
+            metadata.update(_admin_request_metadata(request))
+    return payload
 
 
 def _local_pair_device_ownership(request: Request) -> str:

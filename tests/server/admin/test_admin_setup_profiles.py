@@ -318,10 +318,15 @@ def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
     assert "overview-bind-local" in asset
     assert 'getByPath(status, "instance.bind_host", "")' in asset
     assert "Runtime bind host is not reported in this snapshot." in asset
-    assert "Next boot: \" + escapeHtml(nextHostSummary)" in asset
-    assert 'var accessActionHost = liveHostKnown ? normalizeOverviewBindHost(liveHost) : nextHost;' in asset
+    # Rows show what runs now; the next start is mentioned only when a saved
+    # change is pending, and a launcher's own --host wins over the saved choice.
+    assert "Next boot access" not in asset
+    assert 'var nextHost = hostFollowsSaved ? savedHost : liveAccess;' in asset
+    assert 'var hostPending = liveHostKnown && nextHost !== liveAccess;' in asset
+    assert "Saved for the next start: " in asset
+    assert "overview-bind-keep" in asset
     assert 'var accessAction = nextHost === "0.0.0.0"' not in asset
-    assert "Turn on the home network with HTTPS on next boot" in asset
+    assert "Turn on the home network with HTTPS after restart" in asset
     # Home network access, HTTPS and the admin-port-only website route are
     # turned on together.
     assert 'server: { bind_host: bindHost, https_enabled: true, home_network_websites: "path_proxy" }' in asset

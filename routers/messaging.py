@@ -47,7 +47,7 @@ def register_routes(
                 {
                     "success": True,
                     "allow_code": allow_code,
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:
@@ -109,7 +109,7 @@ def register_routes(
                 {
                     **server._telegram_sender_discovery_payload(),
                     "message": "Telegram sender approval list updated.",
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:

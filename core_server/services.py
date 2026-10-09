@@ -3830,6 +3830,26 @@ def _install_aiortc_exception_filter() -> None:
     loop.set_exception_handler(_handler)
 
 
+def launch_bind_host_source(argv: List[str], environ: Any) -> str:
+    """Who picked this process's bind host, before the saved config is read.
+
+    ``config`` when nothing did, so the saved ``server.bind_host`` applies;
+    ``desktop_app`` for the desktop app's owned server; ``launcher`` for a
+    ``--host`` option or ``AUTOYOU_BIND_HOST`` from anything else. A launcher
+    passes the same host on every start, which is why the saved choice cannot
+    change it.
+    """
+    explicit = bool(environ.get("AUTOYOU_BIND_HOST")) or any(
+        arg == "--host" or str(arg).startswith("--host=")
+        for arg in argv
+    )
+    if not explicit:
+        return "config"
+    if str(environ.get("AUTOYOU_NATIVE_OWNED_SERVER", "")).strip() == "1":
+        return "desktop_app"
+    return "launcher"
+
+
 async def main():
     """Main async function to handle server startup."""
     runtime = _runtime()
@@ -3864,10 +3884,8 @@ async def main():
         ),
     )
     parser.add_argument("--tunnelmole", action="store_true", help="Enable the public reverse proxy")
-    bind_host_explicit = bool(runtime.os.getenv("AUTOYOU_BIND_HOST")) or any(
-        arg == "--host" or str(arg).startswith("--host=")
-        for arg in runtime.sys.argv[1:]
-    )
+    bind_host_source = launch_bind_host_source(runtime.sys.argv[1:], runtime.os.environ)
+    bind_host_explicit = bind_host_source != "config"
     args = parser.parse_args()
 
     # Update global port variables
@@ -3886,7 +3904,7 @@ async def main():
     # Mirror the startup host into environment/global before bootstrap. If the
     # operator did not explicitly choose a host, the saved next-boot config is
     # applied after config unlock below.
-    runtime._set_runtime_bind_host(args.host)
+    runtime._set_runtime_bind_host(args.host, source=bind_host_source)
     runtime.LOGGER.info("Runtime dependency versions: %s", runtime.get_runtime_dependency_versions())
 
     # Install event-loop exception handler to suppress noisy-but-harmless
