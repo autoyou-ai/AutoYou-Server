@@ -9,6 +9,14 @@ license-file.workspace = true
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]
 
+[features]
+bindgen = ["uniffi/bindgen"]
+
+[[bin]]
+name = "autoyou-bindgen"
+path = "src/bin/autoyou-bindgen.rs"
+required-features = ["bindgen"]
+
 [dependencies]
 sha2.workspace = true
 autoyou-protocol.workspace = true

@@ -18,6 +18,7 @@ from shared.iroh_grants import EndpointGrantRegistry, PairedEndpoint
 from shared.iroh_keys import EndpointKeys
 from shared.iroh_pairing import VerifiedPairingRedemption, PAIR_ALPN
 from shared.iroh_runtime import IrohSessionRuntime
+from shared.iroh_release import server_transport_config
 from shared.iroh_state_store import ProtectedTransportState
 from shared.session_transport import SessionDenied, TransportPolicy
 
@@ -99,7 +100,7 @@ class IrohServerService:
             return (client.has_credentials() and fingerprint == client._token_fingerprint()
                 and (cloud.get("user_id"),cloud.get("server_id")) == (owner,device)
                 and cloud.get("pair_enabled") is not False
-                and ((self.runtime.STATE.config or {}).get("session_transport") or {}).get("core") == pins)
+                and server_transport_config(self.runtime.STATE.config or {}).get("core") == pins)
         async def request(method,path,payload):
             return await client.request_iroh(method,path,payload,issuer=pins["issuer"],token_fingerprint=fingerprint)
         routing = None
@@ -108,12 +109,12 @@ class IrohServerService:
                 await self.fence_cloud_authority(expected_routing=routing)
         state = ProtectedTransportState(keys=EndpointKeys(role="server",purpose="core"),unlocked_password=unlocked_password)
         async with self._cloud_lock:
-            routing = await self.endpoint.configure_core_routing(policy=(self.runtime.STATE.config["session_transport"])["iroh"],
+            routing = await self.endpoint.configure_core_routing(policy=server_transport_config(self.runtime.STATE.config or {})["iroh"],
                 state=state,issuer=pins["issuer"],public_key=pins["public_key"],owner_id=owner,device_id=device,
                 request=request,is_current=current,on_denied=denied,check_authority=self.refresh_core_grants)
 
     async def sync_core_cloud(self) -> None:
-        config = ((self.runtime.STATE.config or {}).get("session_transport") or {}).get("core")
+        config = server_transport_config(self.runtime.STATE.config or {}).get("core")
         if not config or self.endpoint is None:
             return
         if not isinstance(config, dict) or set(config) != {"issuer", "public_key"}:
@@ -296,7 +297,7 @@ async def start_server_transport(runtime: Any) -> None:
 
 
 async def _start_server_transport_locked(runtime: Any) -> None:
-    config = (runtime.STATE.config or {}).get("session_transport", {})
+    config = server_transport_config(runtime.STATE.config or {})
     if not isinstance(config, dict):
         raise ValueError("invalid session transport configuration")
     mode = TransportPolicy(config.get("mode", "legacy"))
@@ -312,7 +313,7 @@ async def _start_server_transport_locked(runtime: Any) -> None:
         unlocked_password=password), now_ms=lambda: int(time.time() * 1000))
     service = IrohServerService(runtime=runtime, grants=grants,
         capabilities={"transport": "iroh", "wire_version": 1, "chat": True, "browser": True,
-                       "pairing": True, "files": True, "media": False},
+                       "pairing": True, "files": True, "media": True},
         grant_seconds=config.get("grant_seconds", 86400))
     try:
         await service.start(policy=policy, unlocked_password=password)

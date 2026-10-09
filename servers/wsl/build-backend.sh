@@ -731,16 +731,19 @@ if manifest_path.is_file():
     # Rebuild the tracked file map from the files that actually survived
     # packaging and scrubbing. A stale entry can remain when an asset was
     # renamed or omitted between the runtime plan and the final bundle.
-    runtime_modules_root = bundle_root / "runtime_modules"
     tracked_files = {}
-    if runtime_modules_root.is_dir():
-        for tracked_path in sorted(path for path in runtime_modules_root.rglob("*") if path.is_file()):
+    for tracked_root in manifest.get("tracked_roots", ["runtime_modules"]):
+        for tracked_path in sorted(path for path in (bundle_root / tracked_root).rglob("*") if path.is_file()):
             relative_path = tracked_path.relative_to(bundle_root).as_posix()
             digest = hashlib.sha256()
             with tracked_path.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(chunk)
             tracked_files[relative_path] = digest.hexdigest()
+    for relative_path in manifest.get("files", {}):
+        tracked_path = bundle_root / relative_path
+        if tracked_path.is_file() and not any(tracked_path.is_relative_to(bundle_root / root) for root in manifest.get("tracked_roots", ["runtime_modules"])):
+            tracked_files[relative_path] = hashlib.sha256(tracked_path.read_bytes()).hexdigest()
     manifest["files"] = tracked_files
     # Serializing the manifest after the binary scrub can reintroduce a
     # builder path if a generated manifest field carried one. Apply the same

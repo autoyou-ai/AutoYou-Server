@@ -814,6 +814,8 @@ def build_packaged_runtime_modules(
         )
 
     manifest = _build_integrity_manifest(bundle_root, output_root, plan)
+    from runpy import run_path
+    run_path(str(SERVER_ROOT / "scripts/stage_iroh_runtime.py"))["stage_from_environment"](bundle_root, manifest)
     manifest_path = bundle_root / RUNTIME_INTEGRITY_MANIFEST
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest

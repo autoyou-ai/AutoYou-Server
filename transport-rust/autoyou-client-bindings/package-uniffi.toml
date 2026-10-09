@@ -1,0 +1,3 @@
+[crates.autoyou_client_bindings.bindings.swift]
+module_name = "AutoYouTransport"
+ffi_module_name = "AutoYouTransportFFI"

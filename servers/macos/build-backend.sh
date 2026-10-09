@@ -3826,6 +3826,8 @@ codesign_binaries() {
         done < "$sorted_paths"
         rm -f "$sorted_paths"
 
+        "$PYTHON_CMD" "$PROJECT_ROOT/scripts/stage_iroh_runtime.py" --refresh-signed --bundle "$app_path/Contents/MacOS"
+
         # ------------------------------------------------------------------ #
         # Step 2: Sign the .app bundle itself (no --deep; contents already signed)
         # ------------------------------------------------------------------ #
@@ -3850,7 +3852,9 @@ codesign_binaries() {
             fi
         done < "$sorted_paths"
         rm -f "$sorted_paths"
-        
+
+        "$PYTHON_CMD" "$PROJECT_ROOT/scripts/stage_iroh_runtime.py" --refresh-signed --bundle "$dist_path"
+
         # Sign the main executable specifically
         if [[ -f "$exe_path" ]]; then
             log "Signing main executable: $exe_path"
