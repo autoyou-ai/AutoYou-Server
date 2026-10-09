@@ -678,6 +678,22 @@ def test_overlay_agent_takes_its_runtime_name_and_aliases_from_its_package(overl
     assert "lantern tunnel" in root_agent_module._EXPLICIT_ROUTE_ALIASES["autoyou_lantern_agent"]
 
 
+def test_overlay_agent_load_survives_older_identity_module(monkeypatch, overlay_agents, caplog):
+    from autoyou_agents.shared_tools import agent_identity
+
+    monkeypatch.delattr(agent_identity, "register_runtime_agent_name")
+    monkeypatch.setattr(agent_identity, "_DECLARED_RUNTIME_AGENT_NAMES", {})
+    monkeypatch.setattr(root_agent_module, "_OVERLAY_AGENT_ROUTING", {})
+    monkeypatch.setattr(root_agent_module, "_RUNTIME_TO_INSTALL_NAME", {})
+    monkeypatch.setattr(root_agent_module, "_EXPLICIT_ROUTE_ALIASES", {})
+
+    root_agent_module._register_overlay_agent_package("lantern_agent")
+
+    assert root_agent_module.resolve_runtime_agent_name("lantern_agent") == "lantern_agent"
+    assert root_agent_module._OVERLAY_AGENT_ROUTING["lantern_agent"]["label"] == "Lantern Tunnel"
+    assert "cannot register overlay names" in caplog.text
+
+
 def test_overlay_agent_adds_its_own_lines_to_the_root_prompt(overlay_agents):
     sub_agent_lines, routing_lines = root_agent_module._build_registry_defined_agent_sections(
         ["lantern_agent", "lantern_relay_agent"]
