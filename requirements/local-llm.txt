@@ -5,4 +5,4 @@ onnxruntime>=1.24.2,<2
 huggingface_hub>=0.34.0,<2.0.0
 # datasets 5.0.0 caps fsspec at <=2026.4.0; keep the shared Hugging Face
 # stack compatible with optional tuning installs in reused build venvs.
-fsspec[http]>=2025.9.0,<=2026.4.0
+fsspec[http]<=2026.6.0,>=2026.6.0
