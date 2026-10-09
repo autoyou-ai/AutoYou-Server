@@ -4,7 +4,7 @@
 
 <h1 align="center">AutoYou Server</h1>
 
-<p align="center"><strong>You are not the product.</strong><br>A self-hosted AI server for the computer you already own.</p>
+<p align="center"><strong>You are not the product. You are the owner.</strong><br>A self-hosted AI server for the computer you already own.</p>
 
 <p align="center">
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml/badge.svg?branch=main" alt="Public checks"></a>
