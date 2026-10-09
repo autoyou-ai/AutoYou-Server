@@ -43,6 +43,7 @@ class CoreRoutingOwner:
                 raise ValueError("Core transport requires HTTPS")
         self.api, self.endpoint, self.state = api, endpoint, state
         self.policy = json.dumps(policy, separators=(",", ":"), allow_nan=False)
+        self.relay_only = policy.get("relay_only") is True
         self.issuer, self.public_key, self.owner_id, self.device_id = issuer, public_key, owner_id, device_id
         self.request, self.is_current, self.on_denied, self.now_ms = request, is_current, on_denied, now_ms
         self._revision = 0
@@ -132,6 +133,18 @@ class CoreRoutingOwner:
             raise ConnectionError("Core has no fresh relay routing for this endpoint")
         return record.ticket
 
+    async def wait_for_routes(self) -> None:
+        revision = self._revision
+        deadline = asyncio.get_running_loop().time() + 5
+        while not self.endpoint.current_relay_urls():
+            self._current(revision)
+            if asyncio.get_running_loop().time() >= deadline:
+                if self.relay_only:
+                    raise ConnectionError("The approved Core relay is unavailable")
+                return
+            await asyncio.sleep(0.1)
+        await self.refresh()
+
     async def device_record(self, *, device_id: str, endpoint_id: str, owner_id: str | None = None):
         if not re.fullmatch(r"[a-z0-9]{15}", device_id):
             raise SessionDenied("invalid Core device")
@@ -162,6 +175,8 @@ class CoreRoutingOwner:
                 if self.check_authority:
                     await self.check_authority()
             except CoreAccessDenied:
+                if self._closed or not self.is_current():
+                    break
                 self.status = "denied"
                 await self.invalidate()
                 if self.on_denied:

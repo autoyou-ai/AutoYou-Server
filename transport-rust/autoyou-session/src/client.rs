@@ -107,6 +107,17 @@ impl ClientSession {
     }
     pub fn peer(&self) -> Option<&ClientGrant> { self.peer.as_ref() }
     pub fn ticket(&self) -> Option<&str> { self.ticket.as_deref() }
+    pub fn update_routing(&mut self, operation:u64, ticket:String) -> Result<(),ClientError> {
+        if operation!=self.operation { return Err(ClientError::Stale); }
+        if !matches!(self.phase,Phase::Enrolling|Phase::Connecting) || self.expected_id.is_some() {
+            return Err(ClientError::Denied);
+        }
+        if ticket.len()>16*1024 { return Err(ClientError::Invalid); }
+        let parsed=ticket.parse::<iroh_tickets::endpoint::EndpointTicket>().map_err(|_|ClientError::Invalid)?;
+        let address=parsed.endpoint_addr();
+        if self.peer.as_ref().is_none_or(|peer|peer.endpoint_id!=address.id.to_string()) { return Err(ClientError::Denied); }
+        self.ticket=Some(ticket);Ok(())
+    }
     fn start_operation(&mut self) -> Result<u64, ClientError> {
         if matches!(self.phase, Phase::Enrolling | Phase::Connecting | Phase::Authorizing | Phase::Online | Phase::ChangingPath) {
             return Err(ClientError::Denied);
@@ -290,6 +301,20 @@ mod tests {
             generation: 1, authorization_epoch: 1, expires_at_ms: 100_000, scopes: vec!["chat".into()], capabilities }
     }
     fn encoded(challenge: Challenge) -> Vec<u8> { Message { version: 1, kind: Kind::Challenge, challenge: Some(challenge), binding: None }.to_vec().unwrap() }
+    #[test]
+    fn routing_update_pins_peer_operation_and_does_not_change_grants_or_generation() {
+        let (local,remote)=ids();let mut session=ClientSession::new(local.clone()).unwrap();
+        let op=session.begin_session(grant(remote.clone()),"synthetic-ticket".into(),7,1000).unwrap();
+        let ticket=|id:&str|iroh_tickets::endpoint::EndpointTicket::new(iroh::EndpointAddr::new(id.parse().unwrap())).to_string();
+        let before=session.snapshot();let peer=session.peer().unwrap().clone();
+        assert!(session.update_routing(op+1,ticket(&remote)).is_err());
+        assert!(session.update_routing(op,ticket(&local)).is_err());
+        assert!(session.update_routing(op,"invalid".into()).is_err());
+        session.update_routing(op,ticket(&remote)).unwrap();
+        assert_eq!(session.peer(),Some(&peer));assert_eq!(session.snapshot().generation,before.generation);
+        assert_eq!(session.snapshot().authorization_epoch,before.authorization_epoch);
+        session.bind_dial(op,7).unwrap();assert!(session.update_routing(op,ticket(&remote)).is_err());
+    }
     #[test]
     fn client_pairing_requires_exact_native_context_and_store_commit() {
         let (local,remote) = ids(); let ctx = context(local.clone(),remote.clone(),true);

@@ -46,10 +46,11 @@ class ClientGrantRegistry:
         value = json.loads(peer.grant_json)
         return PairedEndpoint(**dict(value, scopes=frozenset(value["scopes"])))
 
-    def register(self, grant: PairedEndpoint) -> None:
+    def register(self, grant: PairedEndpoint, *, core_device_id: str | None = None) -> None:
         def update(value: Any) -> tuple[dict, None]:
             try:
                 state = self.api.register_client_grant(_json(value), _grant_json(grant), self.now_ms())
+                state = self.api.associate_core_client_peer(state, grant.endpoint_id, core_device_id)
             except self.api.BindingError.InvalidInput:
                 raise ProtectedTransportStateUnavailable("stored client grants are invalid") from None
             except self.api.BindingError.PermissionDenied:
@@ -62,6 +63,19 @@ class ClientGrantRegistry:
 
     def generation_floor(self, endpoint_id: str) -> int:
         return self._peer(self.store.read(default_factory=self._empty), endpoint_id).generation_floor
+
+    def deny_core_endpoint(self, endpoint_id: str) -> None:
+        def update(value):
+            return json.loads(bytes(self.api.deny_core_client_peer(_json(value),endpoint_id))), None
+        self.store.transaction(update,default_factory=self._empty)
+
+    def associate_core_endpoint(self, endpoint_id: str, device: str) -> None:
+        def update(value):
+            return json.loads(bytes(self.api.associate_core_client_peer(_json(value),endpoint_id,device))),None
+        self.store.transaction(update,default_factory=self._empty)
+
+    def core_device_for_endpoint(self, endpoint_id: str) -> str | None:
+        return getattr(self._peer(self.store.read(default_factory=self._empty),endpoint_id),"core_device_id",None)
 
     def binding_for_remote_generation(self, endpoint_id: str, transport_id: str, *, generation: int,
                                      authorization_epoch: int, expires_at_ms: int,

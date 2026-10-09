@@ -49,10 +49,22 @@ else:raise AssertionError('Corrupt protected Core floors accepted')
 info=api.core_info()
 derived=api.accept_core_device_routing_record(config.protected_store,args[0],*args[1:3],*args[4:6],args[7],policy)
 assert derived.owner_id=='account00000001' and derived.epoch==4
+grant=dict(endpoint_id=args[5],device_id='synthetic-core-device',owner_key='synthetic-owner',canonical_user_id='synthetic-user',
+    conversation_key='synthetic-conversation',origin_transport='cloud',origin_sender_id='synthetic-sender',pairing_mode='cloud_pair',
+    device_ownership='shared',authorization_epoch=3,expires_at_ms=args[7]+10000,scopes=['chat'])
+paired=api.register_client_grant(api.empty_client_store(),json.dumps(grant),args[7])
+paired=api.associate_core_client_peer(paired,args[5],'client000000001')
+assert api.load_client_peer(paired,args[5],args[7]).core_device_id=='client000000001'
+denied=api.deny_core_client_peer(paired,args[5])
+try:api.load_client_peer(denied,args[5],args[7])
+except api.BindingError.PermissionDenied:pass
+else:raise AssertionError('Stored Core denial permitted offline admission')
+fresh=api.register_client_grant(denied,json.dumps(grant),args[7])
+assert api.load_client_peer(fresh,args[5],args[7]).session_grant.authorization_epoch==3
 files={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
-(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=12,network=False,
+(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=15,network=False,
     lock_sha256=info.lock_sha256,files=files),indent=2))
-print('Generated Core API: 12 checks passed')
+print('Generated Core API: 15 checks passed')
 "#;
     let script=out.join("core_qualification.py");fs::write(&script,source).unwrap();
     let mut command=if cfg!(windows) { let mut c=Command::new("py");c.arg("-3");c } else { Command::new("python3") };

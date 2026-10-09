@@ -92,6 +92,7 @@ AUTOPAIR_DECOMPRESSED_MAX_LENGTH: int = 131072
 AUTOPAIR_ANSWER_METADATA_KEYS: Tuple[str, ...] = (
     "transport",
     "iroh",
+    "core_device_id",
     "owner_key",
     "canonical_user_id",
     "canonical_session_id",

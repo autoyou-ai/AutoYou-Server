@@ -82,6 +82,7 @@ fn session_grant(grant: Principal) -> SessionGrant {
 pub struct StoredClientPeer {
     pub grant_json: String, pub generation_floor: u64, pub canonical_user_id: String,
     pub device_ownership: String, pub session_grant: SessionGrant,
+    pub core_device_id:Option<String>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -105,7 +106,8 @@ pub fn load_client_peer(state: Vec<u8>, endpoint_id: String, now_ms: u64) -> Res
     let peer = autoyou_session::client_store::load(&state, &endpoint_id, now_ms)?;
     Ok(StoredClientPeer { grant_json: serde_json::to_string(&peer.grant).map_err(|_| BindingError::InvalidInput)?,
         generation_floor: peer.generation_floor, canonical_user_id: peer.grant.canonical_user_id.clone(),
-        device_ownership: peer.grant.device_ownership.clone(), session_grant: session_grant(peer.grant.principal(peer.generation_floor)) })
+        device_ownership: peer.grant.device_ownership.clone(), core_device_id:peer.core_device,
+        session_grant: session_grant(peer.grant.principal(peer.generation_floor)) })
 }
 
 #[uniffi::export]
@@ -201,6 +203,9 @@ impl ClientSession {
         if !matches!(phase, Phase::Enrolling | Phase::Connecting) { return Err(BindingError::PermissionDenied); }
         Ok(ClientDialTarget { endpoint_id: session.peer().ok_or(BindingError::PermissionDenied)?.endpoint_id.clone(),
             ticket: session.ticket().ok_or(BindingError::PermissionDenied)?.into(), pairing: phase == Phase::Enrolling })
+    }
+    pub fn update_routing(&self, operation:u64, ticket:String) -> Result<(),BindingError> {
+        Ok(self.session.lock().map_err(|_|BindingError::Closed)?.update_routing(operation,ticket)?)
     }
     pub fn dial_protocol(&self) -> Result<String, BindingError> {
         let session = self.session.lock().map_err(|_| BindingError::Closed)?;
@@ -364,6 +369,16 @@ pub fn peer_approval_grant(protected_store: Vec<u8>, remote_endpoint: String, or
 #[uniffi::export]
 pub fn revoke_client_peer(protected_store: Vec<u8>, remote_endpoint: String, authorization_epoch: u64) -> Result<Vec<u8>, BindingError> {
     Ok(autoyou_session::client_store::revoke_endpoint(&protected_store, &remote_endpoint, authorization_epoch)?)
+}
+
+#[uniffi::export]
+pub fn deny_core_client_peer(protected_store:Vec<u8>,remote_endpoint:String)->Result<Vec<u8>,BindingError> {
+    Ok(autoyou_session::client_store::deny_core_endpoint(&protected_store,&remote_endpoint)?)
+}
+
+#[uniffi::export]
+pub fn associate_core_client_peer(protected_store:Vec<u8>,remote_endpoint:String,core_device_id:Option<String>)->Result<Vec<u8>,BindingError> {
+    Ok(autoyou_session::client_store::associate_core_endpoint(&protected_store,&remote_endpoint,core_device_id.as_deref())?)
 }
 
 #[uniffi::export]

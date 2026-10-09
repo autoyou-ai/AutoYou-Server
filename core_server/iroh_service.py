@@ -213,6 +213,7 @@ class IrohServerService:
             if routing.status == "denied" or revision != self._cloud_revision:
                 raise SessionDenied("Core cloud authority changed during pairing")
             core_device_id = origin.core_device_id
+            await routing.wait_for_routes()
         identity = self.runtime.bind_transport_chat_owner(origin.transport, origin.sender_id,
             raw_session_id=raw_session_id, pairing_mode=origin.pairing_mode)
         self.runtime.WEBRTC.remember_device_ownership(identity, origin.device_ownership)
@@ -233,6 +234,8 @@ class IrohServerService:
             expires_at_ms=int(time.time() * 1000) + self.grant_seconds * 1000, scopes=scopes)
         descriptor = self.pairing.issue_after_verified_proof(self.endpoint, grant,core_device_id=core_device_id)
         metadata = self.runtime._build_client_session_identity_payload(identity, pairing_mode=origin.pairing_mode)
+        if origin.transport == "cloud" and routing is not None:
+            metadata = dict(metadata, core_device_id=routing.device_id)
         return dict(metadata, transport="iroh", iroh=descriptor, session_id=raw_session_id)
 
     async def revoke_device(self, device_id: str, *, authorization_epoch: int) -> bool:

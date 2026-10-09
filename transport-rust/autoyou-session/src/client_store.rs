@@ -14,14 +14,18 @@ const MAX_DEVICES: usize = 4096;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Row { grant: ClientGrant, generation: u64, revoked: bool }
+struct Row {
+    grant: ClientGrant, generation: u64, revoked: bool,
+    #[serde(default,skip_serializing_if="std::ops::Not::not")] core_denied:bool,
+    #[serde(default,skip_serializing_if="Option::is_none")] core_device:Option<String>,
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct State { schema: u8, devices: BTreeMap<String, Row> }
 
 #[derive(Clone)]
-pub struct StoredPeer { pub grant: ClientGrant, pub generation_floor: u64 }
+pub struct StoredPeer { pub grant: ClientGrant, pub generation_floor: u64, pub core_device:Option<String> }
 
 fn decode(bytes: &[u8]) -> Result<State, ClientError> {
     if bytes.len() > MAX_STORE { return Err(ClientError::Invalid); }
@@ -30,7 +34,8 @@ fn decode(bytes: &[u8]) -> Result<State, ClientError> {
     let mut endpoints = BTreeSet::new();
     for (device, row) in &state.devices {
         row.grant.validate(0)?;
-        if device != &row.grant.device_id || !endpoints.insert(&row.grant.endpoint_id) {
+        if device != &row.grant.device_id || !endpoints.insert(&row.grant.endpoint_id) ||
+            row.core_device.as_ref().is_some_and(|device|!core_identifier(device)) {
             return Err(ClientError::Invalid);
         }
     }
@@ -69,23 +74,24 @@ pub fn register(bytes: &[u8], grant: ClientGrant, now_ms: u64) -> Result<Vec<u8>
         return Err(ClientError::Denied);
     }
     let generation = old.map_or(0, |row| row.generation);
-    state.devices.insert(grant.device_id.clone(), Row { grant, generation, revoked: false });
+    let core_device=old.and_then(|row|row.core_device.clone());
+    state.devices.insert(grant.device_id.clone(), Row { grant, generation, revoked: false, core_denied:false,core_device });
     encode(&state)
 }
 
 pub fn load(bytes: &[u8], endpoint: &str, now_ms: u64) -> Result<StoredPeer, ClientError> {
     let state = decode(bytes)?;
     let row = state.devices.values().find(|row| row.grant.endpoint_id == endpoint).ok_or(ClientError::Denied)?;
-    if row.revoked { return Err(ClientError::Denied); }
+    if row.revoked || row.core_denied { return Err(ClientError::Denied); }
     row.grant.validate(now_ms)?;
-    Ok(StoredPeer { grant: row.grant.clone(), generation_floor: row.generation })
+    Ok(StoredPeer { grant: row.grant.clone(), generation_floor: row.generation,core_device:row.core_device.clone() })
 }
 
 pub fn admit(bytes: &[u8], proposed: &ClientGrant, generation: u64, now_ms: u64) -> Result<Vec<u8>, ClientError> {
     proposed.validate(now_ms)?;
     let mut state = decode(bytes)?;
     let row = state.devices.get_mut(&proposed.device_id).ok_or(ClientError::Denied)?;
-    if row.revoked || !same_association(proposed, &row.grant) || generation <= row.generation ||
+    if row.revoked || row.core_denied || !same_association(proposed, &row.grant) || generation <= row.generation ||
         proposed.authorization_epoch != row.grant.authorization_epoch || proposed.expires_at_ms > row.grant.expires_at_ms ||
         proposed.scopes.iter().any(|scope| !row.grant.scopes.contains(scope)) {
         return Err(ClientError::Denied);
@@ -99,6 +105,24 @@ pub fn revoke(bytes: &[u8], device: &str, authorization_epoch: u64) -> Result<Ve
     let row = state.devices.get_mut(device).ok_or(ClientError::Denied)?;
     mark_revoked(row, authorization_epoch)?;
     encode(&state)
+}
+
+pub fn deny_core_endpoint(bytes:&[u8],endpoint:&str)->Result<Vec<u8>,ClientError> {
+    crate::host::endpoint_bytes(endpoint).map_err(|_| ClientError::Invalid)?;
+    let mut state=decode(bytes)?;
+    // Core can fence cloud use; only fresh host-verified pairing clears this local fence.
+    if let Some(row)=state.devices.values_mut().find(|row|row.grant.endpoint_id==endpoint) { row.core_denied=true; }
+    encode(&state)
+}
+fn core_identifier(device:&str)->bool {
+    device.len()==15 && device.bytes().all(|value|value.is_ascii_digit() || value.is_ascii_lowercase())
+}
+pub fn associate_core_endpoint(bytes:&[u8],endpoint:&str,device:Option<&str>)->Result<Vec<u8>,ClientError> {
+    if device.is_some_and(|value|!core_identifier(value)) { return Err(ClientError::Invalid); }
+    let mut state=decode(bytes)?;
+    let row=state.devices.values_mut().find(|row|row.grant.endpoint_id==endpoint).ok_or(ClientError::Denied)?;
+    if row.revoked || row.core_denied || device.is_some_and(|device|row.core_device.as_ref().is_some_and(|old|old!=device)) { return Err(ClientError::Denied); }
+    row.core_device=device.map(str::to_owned);encode(&state)
 }
 
 pub fn revoke_endpoint(bytes: &[u8], endpoint: &str, authorization_epoch: u64) -> Result<Vec<u8>, ClientError> {
@@ -127,6 +151,27 @@ mod tests {
             scopes: vec!["chat".into(), "http".into()] }
     }
 
+    #[test]
+    fn core_denial_survives_reopen_without_inventing_a_host_authorization_epoch() {
+        let g=grant();assert_eq!(deny_core_endpoint(&empty(),&g.endpoint_id).unwrap(),empty());
+        assert!(deny_core_endpoint(&empty(),"invalid").is_err());
+        let saved=register(&empty(),g.clone(),10).unwrap();
+        let saved=admit(&saved,&g,7,20).unwrap();
+        let saved=associate_core_endpoint(&saved,&g.endpoint_id,Some("client000000001")).unwrap();
+        assert!(associate_core_endpoint(&saved,&g.endpoint_id,Some("client000000002")).is_err());
+        let denied=deny_core_endpoint(&saved,&g.endpoint_id).unwrap();
+        assert!(load(&denied,&g.endpoint_id,30).is_err());
+        assert!(admit(&denied,&g,8,30).is_err());
+        assert_eq!(next_authorization_epoch(&denied,&g.device_id).unwrap(),g.authorization_epoch+1);
+        let fresh=register(&denied,g.clone(),30).unwrap();
+        let peer=load(&fresh,&g.endpoint_id,30).unwrap();
+        assert_eq!(peer.generation_floor,7);assert_eq!(peer.grant,g);
+        assert_eq!(peer.core_device.as_deref(),Some("client000000001"));
+        assert!(associate_core_endpoint(&denied,&g.endpoint_id,None).is_err());
+        let manual=associate_core_endpoint(&fresh,&g.endpoint_id,None).unwrap();
+        assert!(load(&manual,&g.endpoint_id,30).unwrap().core_device.is_none());
+        let revoked=revoke(&denied,&g.device_id,4).unwrap();assert!(register(&revoked,g,30).is_err());
+    }
     #[test]
     fn persisted_generations_scope_and_association_never_rewind() {
         let g = grant(); let state = register(&empty(), g.clone(), 10).unwrap();

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import re
 import secrets
 import time
 from dataclasses import asdict
@@ -54,6 +55,8 @@ class IrohClientService:
         self._channel: Any = None
         self._capabilities: dict[str, Any] = {}
         self._peer: tuple[str, str] | None = None
+        self.core_device: str | None = None
+        self._next_core_device: str | None = None
         self._recovery: asyncio.Task | None = None
         self._closing = False
         self._history_deletion = False
@@ -153,15 +156,19 @@ class IrohClientService:
         if answer.get("grant", {}).get("origin_transport") == "room" and not callable(getattr(self.core, "dial_protocol", None)):
             raise SessionDenied("native Lobby enrollment requires the qualified room protocol API")
         await self._cancel_recovery()
+        self._lifecycle_revision += 1
+        captured = self._lifecycle_revision
+        device = self._next_core_device
+        answer = dict(answer, ticket=await self._routing_ticket(answer["endpoint_id"],answer["ticket"],device))
         async with self._gate:
-            if self._history_deletion:
-                raise SessionDenied("local history deletion is in progress")
-            self._lifecycle_revision += 1
+            if self._history_deletion or self._lifecycle_revision != captured:
+                raise SessionDenied("client pairing operation is no longer current")
             future = self._new_future()
             request = None
             try:
                 encoded = json.dumps(answer, allow_nan=False, separators=(",", ":"))
                 operation = self.core.begin_verified_pairing(encoded, self.now_ms())
+                self.core_device = device
                 request = self._dial(answer["ticket"], answer["endpoint_id"], pairing=True)
                 self.core.bind_dial(operation, request)
                 self._bind_request(request, operation)
@@ -188,9 +195,75 @@ class IrohClientService:
         self._peer = (endpoint_id, ticket)
         return await self._connect_existing(endpoint_id, ticket)
 
+    def use_core_device(self, device: str | None) -> None:
+        if device is not None and not re.fullmatch(r"[a-z0-9]{15}",device):
+            raise SessionDenied("invalid registered Core device")
+        self._next_core_device = device
+
+    async def _deny_core_endpoint(self, endpoint: str) -> None:
+        from shared.iroh_delivery import _joined_disk
+        try:
+            await _joined_disk(self.grants.deny_core_endpoint,endpoint)
+        finally:
+            self.core.revoke()
+            await self._disconnect_owned()
+
+    async def deny_core_authority(self) -> None:
+        owner = self._endpoint_owner or self
+        async def deny(client):
+            if client.core_device is not None and client._peer is not None:
+                await client._deny_core_endpoint(client._peer[0])
+        results = await asyncio.gather(*(deny(client) for client in (owner,*tuple(owner._children))),return_exceptions=True)
+        if any(isinstance(result,BaseException) for result in results):
+            raise SessionDenied("Core-derived authority could not be persisted")
+
+    async def check_core_authority(self) -> None:
+        owner = self._endpoint_owner or self
+        permits = asyncio.Semaphore(4)
+        async def check(client):
+            if client.core_device is None or client._peer is None or client._closing:
+                return
+            async with permits:
+                try:
+                    await client._routing_ticket(*client._peer,client.core_device)
+                except SessionDenied:
+                    pass  # The lookup already persisted and physically fenced this client.
+        await asyncio.gather(*(check(client) for client in (owner,*tuple(owner._children))))
+
+    async def _routing_ticket(self, endpoint: str, ticket: str, device: str | None) -> str:
+        if device is None:
+            return ticket
+        routing = self.runtime.core_routing
+        if routing is None:
+            raise SessionDenied("registered Core authority is unavailable")
+        revision = self._lifecycle_revision
+        def current():
+            callback = getattr(routing,"is_current",None)
+            return revision==self._lifecycle_revision and not self._closing and self.runtime.core_routing is routing and (not callable(callback) or callback())
+        if not current():
+            raise SessionDenied("Core routing operation is obsolete")
+        if routing.status == "denied":
+            await self._deny_core_endpoint(endpoint)
+            raise SessionDenied("Core cloud authority requires a fresh verified pairing")
+        try:
+            value = await routing.lookup(device_id=device,endpoint_id=endpoint)
+        except (SessionDenied,self.runtime.api.BindingError.PermissionDenied,self.runtime.api.BindingError.InvalidTicket,self.runtime.api.BindingError.InvalidInput):
+            if not current():
+                raise SessionDenied("Core routing operation is obsolete") from None
+            await self._deny_core_endpoint(endpoint)
+            raise
+        except (OSError,TimeoutError,ConnectionError):
+            value = ticket
+        if not current() or routing.status == "denied":
+            raise SessionDenied("Core routing operation is obsolete")
+        return value or ticket
+
     async def _connect_existing(self, endpoint_id: str, ticket: str) -> Any:
         if self.runtime is None or self._closing:
             raise ConnectionError("client endpoint is not running")
+        if self.core_device is None and isinstance(self.grants,ClientGrantRegistry):
+            self.core_device = await asyncio.to_thread(self.grants.core_device_for_endpoint,endpoint_id)
+        ticket = await self._routing_ticket(endpoint_id,ticket,self.core_device)
         async with self._gate:
             if self._history_deletion:
                 raise SessionDenied("local history deletion is in progress")
@@ -202,6 +275,7 @@ class IrohClientService:
             request = None
             try:
                 operation = self.core.begin_session(_grant_json(grant), ticket, floor, self.now_ms())
+                self._peer = (endpoint_id,ticket)
                 request = self._dial(ticket, endpoint_id, pairing=False)
                 self.core.bind_dial(operation, request)
                 self._bind_request(request, operation)
@@ -296,7 +370,10 @@ class IrohClientService:
             if context.protocol in {"autoyou/pair/1", "autoyou/room-pair/1"}:
                 if action.close_connection:
                     grant = _decode_grant(action.grant_json)
-                    await asyncio.to_thread(self.grants.register, grant)
+                    if isinstance(self.grants,ClientGrantRegistry):
+                        await asyncio.to_thread(self.grants.register,grant,core_device_id=self.core_device)
+                    else:
+                        await asyncio.to_thread(self.grants.register,grant)
                     self.core.pairing_persisted(operation)
                     runtime.disconnect(context, user_requested=False)
                     if self._future is not None and not self._future.done():
