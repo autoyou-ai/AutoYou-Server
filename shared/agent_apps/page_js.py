@@ -708,6 +708,9 @@ JS = r"""
     try { if (grid.hasPointerCapture && grid.hasPointerCapture(g.id)) { grid.releasePointerCapture(g.id); } } catch (_) {}
     if (g.mode === 'drag') { finishDrag(g, cancelled); suppressUntil = now() + 450; }
     else if (g.mode === 'scrub' || g.mode === 'blocked') { suppressUntil = now() + 450; }
+    else if (!cancelled && g.mode === 'press' && g.type === 'touch') {
+      suppressUntil = now() + 450; openApp(g.name);
+    }
   }
   function finishDrag(g, cancelled) {
     var li = g.cell, ghost = g.ghost, list = g.list;
