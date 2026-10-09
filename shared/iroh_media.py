@@ -68,6 +68,7 @@ class _Source:
     retirement: asyncio.Task | None = None
     dropped_frames: int = 0
     consent_check: Callable[[], None] | None = None
+    apply_feedback: Callable[[Any], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True)
@@ -196,13 +197,17 @@ class IrohMedia:
             device_queue_us: Callable[[], int] | None = None,
             quality: EncodingQuality = EncodingQuality(),
             consent_check: Callable[[], None] | None = None,
-            reservation: NativeMediaReservation | None = None) -> bool:
+            reservation: NativeMediaReservation | None = None,
+            encoded: bool = False,
+            apply_feedback: Callable[[Any], Awaitable[None]] | None = None) -> bool:
         async with self._gate:
             self._check()
             if self._cleanup_error is not None:
                 raise RuntimeError("previous media adapter cleanup failed")
             if binding.session != self.binding or (binding.direction == "send" and (capture is None or render is not None)) or \
-                    (binding.direction == "receive" and (render is None or capture is not None)):
+                    (binding.direction == "receive" and (render is None or capture is not None)) or \
+                    type(encoded) is not bool or encoded and binding.direction != "send" or \
+                    apply_feedback is not None and (binding.direction != "send" or not callable(apply_feedback)):
                 raise SessionDenied("media adapter does not match approved direction/session")
             binding.check(self.channel.registry,now_ms=self.now_ms(),approved_source=binding,
                 current_media_generation=binding.media_generation)
@@ -226,7 +231,8 @@ class IrohMedia:
                 raise SessionDenied("native source capacity belongs to another process scope")
             reservation.check(binding)
             reservation.attached = True
-            creating = asyncio.create_task(self._codec(None,lambda: self.encoder_factory(api=self.api,binding=binding,quality=quality)
+            creating = asyncio.create_task(self._codec(None,lambda: self.encoder_factory(api=self.api,binding=binding,quality=quality,
+                **({"encoded": True} if encoded else {}))
                 if binding.direction == "send" else self.decoder_factory(binding)))
             try:
                 codec = await _join_owned(creating)
@@ -244,6 +250,7 @@ class IrohMedia:
                 asyncio.Queue(maxsize=2 if binding.kind in {MediaKind.CAMERA,MediaKind.SCREEN} else 8))
             source.reservation = reservation
             source.consent_check = consent_check
+            source.apply_feedback = apply_feedback
             try:
                 self._check()
                 if consent_check is not None: consent_check()
@@ -414,6 +421,15 @@ class IrohMedia:
         self._check()
         source = self._sources.get(("send",source_id))
         if source is None: raise SessionDenied("media feedback has no approved sender")
+        self._source_check(source)
+        if source.apply_feedback is not None:
+            job = asyncio.create_task(source.apply_feedback(feedback), name="iroh-media-adapter-feedback")
+            source.codec_jobs.add(job)
+            try:
+                await _join_owned(job)
+            finally:
+                source.codec_jobs.discard(job)
+            self._source_check(source)
         await self._codec(source,source.codec.feedback,feedback)
 
     async def revoke_source(self, source_id: int, direction: str) -> None:

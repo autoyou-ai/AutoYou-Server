@@ -35,8 +35,11 @@ class EncodingQuality:
 
 
 class AVMediaEncoder:
-    def __init__(self, *, api: Any, binding: MediaSourceBinding, quality: EncodingQuality) -> None:
+    def __init__(self, *, api: Any, binding: MediaSourceBinding, quality: EncodingQuality, encoded: bool = False) -> None:
         quality.check()
+        if type(encoded) is not bool:
+            raise ValueError("invalid local encoded media adapter")
+        self._encoded = encoded
         self.api, self.binding, self.quality = api, binding, quality
         self._codec = None
         self._closed = False
@@ -53,6 +56,10 @@ class AVMediaEncoder:
         self._quality_scale = 1000
         self._keyframe_required = True
         if binding.kind in {MediaKind.MICROPHONE, MediaKind.SYSTEM_AUDIO}:
+            if binding.codec not in {MediaCodec.OPUS, MediaCodec.PCM16}:
+                raise SessionDenied("audio codec was not negotiated")
+            if encoded:
+                return
             self._resampler = av.AudioResampler(format="s16", layout="mono" if binding.channels == 1 else "stereo", rate=48000)
             self._fifo = av.AudioFifo()
             if binding.codec == MediaCodec.OPUS:
@@ -84,6 +91,8 @@ class AVMediaEncoder:
 
     def _packet(self, data: bytes, *, timestamp_us: int, duration_us: int,
                 width: int = 0, height: int = 0, keyframe: bool = False) -> Any:
+        if self._sequence >= 2**64 - 1:
+            raise SessionDenied("media source packet counter is exhausted")
         packet = self.api.MediaPacket(kind=int(self.binding.kind), codec=int(self.binding.codec), keyframe=keyframe,
             media_generation=self.binding.media_generation, authorization_epoch=self.binding.session.authorization_epoch,
             source_id=self.binding.source_id, sequence=self._sequence, timestamp_us=timestamp_us,
@@ -101,9 +110,30 @@ class AVMediaEncoder:
             raise ConnectionError("media encoder is closed")
         if type(timestamp_us) is not int or not 0 <= timestamp_us < 2**63:
             raise ValueError("invalid native monotonic media clock")
+        if self._encoded:
+            return self._forward(frame)
         if self.binding.kind in {MediaKind.MICROPHONE, MediaKind.SYSTEM_AUDIO}:
             return self._audio(frame, timestamp_us)
         return self._video(frame, timestamp_us)
+
+    def _forward(self, frame: Any) -> list[Any]:
+        audio = self.binding.kind in {MediaKind.MICROPHONE, MediaKind.SYSTEM_AUDIO}
+        if not isinstance(frame, EncodedMedia) or not isinstance(frame.kind, MediaKind) or not isinstance(frame.codec, MediaCodec) or \
+                frame.kind != self.binding.kind or frame.codec != self.binding.codec or \
+                type(frame.data) is not bytes or not 0 < len(frame.data) <= (16 * 1024 if audio else 4 * 1024 * 1024) or \
+                type(frame.timestamp_us) is not int or not 0 <= frame.timestamp_us < 2**63 or \
+                type(frame.duration_us) is not int or not 0 < frame.duration_us <= 1_000_000 or type(frame.keyframe) is not bool or \
+                any(type(value) is not int for value in (frame.width, frame.height, frame.channels)) or \
+                frame.channels != self.binding.channels or \
+                (audio and (frame.width or frame.height or frame.keyframe)) or \
+                (not audio and not (0 < frame.width <= self.binding.width and 0 < frame.height <= self.binding.height)):
+            raise SessionDenied("encoded sample exceeds its local child profile")
+        if not audio:
+            if self._keyframe_required and not frame.keyframe:
+                return []
+            self._keyframe_required = False
+        return [self._packet(frame.data, timestamp_us=frame.timestamp_us, duration_us=frame.duration_us,
+            width=frame.width, height=frame.height, keyframe=frame.keyframe)]
 
     def _audio(self, frame: Any, timestamp_us: int) -> list[Any]:
         if not isinstance(frame, av.AudioFrame) or not 8000 <= frame.sample_rate <= 192000 or \
@@ -200,6 +230,20 @@ class AVMediaEncoder:
     def close(self) -> None:
         self._closed = True
         self._codec = self._fifo = self._resampler = None
+
+
+@dataclass(frozen=True)
+class EncodedMedia:
+    """Local admitted payload only; parent lease, sequence and epoch are absent."""
+    kind: MediaKind
+    codec: MediaCodec
+    data: bytes
+    timestamp_us: int
+    duration_us: int
+    width: int = 0
+    height: int = 0
+    channels: int = 0
+    keyframe: bool = False
 
 
 @dataclass(frozen=True)

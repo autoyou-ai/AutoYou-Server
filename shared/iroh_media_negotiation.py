@@ -41,6 +41,8 @@ class NativeMediaAdapter:
     capture: Callable[[], Awaitable[Any]] | None = None
     render: Callable[[Any], Awaitable[None]] | None = None
     device_queue_us: Callable[[], int] | None = None
+    encoded: bool = False
+    apply_feedback: Callable[[Any], Awaitable[None]] | None = None
     _closing: asyncio.Task | None = field(default=None,init=False)
 
     async def close(self) -> None:
@@ -228,7 +230,9 @@ class IrohMediaNegotiation:
             # source work and physical retirement, including failed cleanup.
             acquired = await self.media.approve_source(binding,capture=adapter.capture,render=adapter.render,
                 close_adapter=adapter.close,device_queue_us=adapter.device_queue_us,quality=approval.quality,
-                consent_check=lambda: self._current(binding),reservation=reservation)
+                consent_check=lambda: self._current(binding),reservation=reservation,
+                **({"encoded": adapter.encoded, "apply_feedback": adapter.apply_feedback}
+                    if adapter.encoded is not False or adapter.apply_feedback is not None else {}))
             if not acquired:
                 await adapter.close()
                 reservation.release()
