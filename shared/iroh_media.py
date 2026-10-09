@@ -69,6 +69,7 @@ class _Source:
     dropped_frames: int = 0
     consent_check: Callable[[], None] | None = None
     apply_feedback: Callable[[Any], Awaitable[None]] | None = None
+    fence_adapter: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -199,7 +200,8 @@ class IrohMedia:
             consent_check: Callable[[], None] | None = None,
             reservation: NativeMediaReservation | None = None,
             encoded: bool = False,
-            apply_feedback: Callable[[Any], Awaitable[None]] | None = None) -> bool:
+            apply_feedback: Callable[[Any], Awaitable[None]] | None = None,
+            fence_adapter: Callable[[], None] | None = None) -> bool:
         async with self._gate:
             self._check()
             if self._cleanup_error is not None:
@@ -207,7 +209,8 @@ class IrohMedia:
             if binding.session != self.binding or (binding.direction == "send" and (capture is None or render is not None)) or \
                     (binding.direction == "receive" and (render is None or capture is not None)) or \
                     type(encoded) is not bool or encoded and binding.direction != "send" or \
-                    apply_feedback is not None and (binding.direction != "send" or not callable(apply_feedback)):
+                    apply_feedback is not None and (binding.direction != "send" or not callable(apply_feedback)) or \
+                    fence_adapter is not None and not callable(fence_adapter):
                 raise SessionDenied("media adapter does not match approved direction/session")
             binding.check(self.channel.registry,now_ms=self.now_ms(),approved_source=binding,
                 current_media_generation=binding.media_generation)
@@ -251,6 +254,7 @@ class IrohMedia:
             source.reservation = reservation
             source.consent_check = consent_check
             source.apply_feedback = apply_feedback
+            source.fence_adapter = fence_adapter
             try:
                 self._check()
                 if consent_check is not None: consent_check()
@@ -446,11 +450,16 @@ class IrohMedia:
             source.closing = True
             self._observe(source, retired=True)
             error = None
+            if source.fence_adapter is not None:
+                try:
+                    source.fence_adapter()
+                except BaseException as exc:
+                    error = exc
             if source.binding.direction == "receive":
                 try:
                     self.playout.revoke_source(source.binding.source_id)
                 except BaseException as exc:
-                    error = exc
+                    if error is None: error = exc
             try:
                 self.endpoint.revoke_media_source(self.channel.connection_id,source.binding.source_id,source.binding.direction == "receive")
             except (self.api.BindingError.Closed,self.api.BindingError.UnknownConnection):
