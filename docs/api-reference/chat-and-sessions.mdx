@@ -1,201 +1,82 @@
 ---
 title: "Chat & Sessions APIs"
-description: "Specifications for submitting conversational turns, querying conversation history, delivering human replies, and screen listening."
+description: "Admin-app routes for sending chat turns, reading conversation history, replying to a device in person, and choosing whose screen-session audio the computer plays."
 ---
 
 # Chat & Sessions APIs
 
-AutoYou Server maintains complete conversation histories for all connected clients, pairing sessions, and messaging bridges inside `sessions.db`.
+The server keeps every conversation it holds, with paired devices and messaging bridges, in its session store (`sessions.db`). These admin-app routes need an admin sign-in. The AI Agent worker has its own chat route, described in the [AI Agent worker reference](/api-reference/ai-agent-worker). Errors follow the shape in the [API overview](/api-reference/overview).
 
 ---
 
-## Conversational Turns
+## Chat turns
 
 ### `POST /api/chat`
-Submits a user prompt or multimodal turn to the AutoYou AI orchestrator.
 
-#### Request Payload
-```json
-{
-  "message": "Summarize the latest system logs and check storage status.",
-  "session_id": "sess_01J8YXZ0QW4T9P",
-  "agent_override": null, // Optional target agent name e.g. "coding_agent"
-  "stream": false
-}
-```
+Puts a turn to AutoYou AI as the signed-in operator. Used inside someone else's conversation, it is still a question to the AI; the device is sent nothing.
 
-#### Response (`200 OK`)
-```json
-{
-  "reply": "System logs show 0 errors in the last 24 hours. Free disk space is 128.4 GB.",
-  "author": "AutoYou AI",
-  "agent": "admin_agent",
-  "tools_invoked": ["check_disk_space", "scan_system_logs"],
-  "timestamp": 1727999120456
-}
-```
+| Field | Description |
+| :--- | :--- |
+| `message` | The text of the turn. |
+| `user_id` | The conversation owner. Defaults to the console's own chat user. |
+| `session_id` | The conversation. When omitted, the server creates one named `admin-chat-<random>`. |
+| `context` | A list of attachment groups. At most 32 entries, and at most 48 MiB of encoded attachment data in total (`413` otherwise). |
+| `metadata` | Extra request metadata. The server adds `client: "admin-web"` and `source: "admin_web"`, and decides itself where the turn was typed. |
+
+The response is the chat response object: `response` (the reply), `session_id`, `message_id`, `timestamp`, `agent_name`, `metadata`, and `voice_reply_transcript` when the turn was a voice note. A synthesized voice reply is inlined as `voice_reply_audio`, and generated images or video as `media_reply_attachments`. A failure returns `500` with `"Chat request failed"`.
 
 ---
 
-## Session Management & History
+## Conversation history
 
 ### `GET /api/chat/sessions`
-Lists all conversations stored on this server, including active connection flags (`live: true/false`).
 
-#### Response (`200 OK`)
-```json
-{
-  "sessions": [
-    {
-      "session_id": "sess_01J8YXZ0QW4T9P",
-      "title": "System Diagnostics & Notes",
-      "user_id": "usr_desktop_owner",
-      "last_activity": "2026-10-03T16:50:00Z",
-      "message_count": 14,
-      "live": true
-    },
-    {
-      "session_id": "sess_98a7b6c5d4",
-      "title": "Audio Library Management",
-      "user_id": "usr_iphone17",
-      "last_activity": "2026-10-03T14:22:10Z",
-      "message_count": 8,
-      "live": false
-    }
-  ]
-}
-```
+Lists the conversations the server holds, newest first.
+
+| Query | Description |
+| :--- | :--- |
+| `limit` | 1 to 100. Defaults to 60. |
+| `q` | Filter by text. |
+| `user_id` | Only conversations for this owner. |
+
+The response contains `success`, `viewer`, `sessions`, `count`, and a `voice_training` summary. Each session has `user_id`, `session_id`, `title` and `custom_title`, `preview`, `origin`, `identity` (who the conversation is with), `message_count`, `created_at`, `last_activity`, counts and flags for voice notes, files, and voice training, and `live`, which is true when the device is connected now.
 
 ### `GET /api/chat/session`
-Fetches the ordered message transcript for a specific conversation.
 
-#### Query Parameters
-- `session_id` (string, required): Session identifier.
-- `limit` (int, optional): Return only the most recent $N$ messages.
+Returns one conversation. `user_id` and `session_id` are both required (`400` otherwise).
 
-#### Response (`200 OK`)
-```json
-{
-  "session_id": "sess_01J8YXZ0QW4T9P",
-  "truncated": false,
-  "messages": [
-    {
-      "id": "msg_001",
-      "author": "user",
-      "text": "What is the CPU usage?",
-      "timestamp": 1727998900000
-    },
-    {
-      "id": "msg_002",
-      "author": "AutoYou AI",
-      "text": "Current CPU usage is 14%.",
-      "timestamp": 1727998901200
-    }
-  ]
-}
-```
+An optional `limit` returns only the newest that many messages and adds `truncated: true`. The response carries the session information plus `identity`, `messages`, `files`, `voice_training`, `title`, `auto_title`, `custom_title`, `session_id`, and `user_id`. Each message has `role` (`user` or `assistant`), `author`, `content`, `timestamp`, and `attachments`. `author` is `self` for turns the operator typed and `counterpart` for the other side.
+
+### `POST /api/chat/session/title`
+
+Names a conversation on this server only. Clients are never told. Body: `user_id`, `session_id`, and `title`.
 
 ---
 
-## Human Operator Direct Reply
+## Replying to a device in person
 
 ### `POST /api/chat/session/reply`
-Allows the operator at the server machine to send words directly to a connected client device without prompting the AI:
 
-#### Request Payload
-```json
-{
-  "session_id": "sess_01J8YXZ0QW4T9P",
-  "user_id": "usr_iphone17",
-  "message": "I will be back at my desk in 15 minutes."
-}
-```
+The operator answers a device's conversation directly. Nothing is asked of the AI: the text goes to the connected device as a message from the server's name, and it is kept in that device's conversation, marked as the operator's.
 
-#### Response (`200 OK`)
-```json
-{
-  "delivered": true,
-  "recipient": "usr_iphone17",
-  "timestamp": 1727999200000
-}
-```
+Body: `user_id` and `message`. The message can be at most 4,000 characters (`413` otherwise), and `user_id` cannot be the console's own conversation (`400`).
 
-<Note>
-If the target device is disconnected, this route immediately returns `delivered: false` with reason `"Device not connected"`. It intentionally does not queue stale messages for future delivery.
-</Note>
+The reply is delivered only while the device is connected. Otherwise the route answers `{"success": true, "delivered": false, "reason": "..."}`, stores nothing, and does not keep the message for the device's next connection, so history never shows a reply nobody received. `delivered: true` means the message was handed to the device's open connection. A guest relayed by another device has no connection of its own and cannot be answered this way.
 
 ---
 
-## Ambient Screen Listening
+## Listen to screen participants
 
-### `GET /api/screen-listen`
-Returns the status of passive visual observation.
+### `GET /api/screen-listen`, `POST /api/screen-listen`
 
-### `POST /api/screen-listen`
-Enables or disables periodic passive screenshot sampling for contextual agent memory:
+Listen controls whether this computer plays the unmuted phone microphones of people who are connected to its screen, without AI processing. These routes are available only from the computer itself and answer `403` otherwise.
+
+`GET` returns the mixer state, plus `participants` (the connected screen sessions in watch or interactive mode that have an active voice call) and `inputs` (the most recent screen input records, up to 50).
+
+`POST` sets the selection:
+
 ```json
-{
-  "enabled": true,
-  "interval_seconds": 60
-}
+{ "mode": "selected", "selected": ["participant-session-id"] }
 ```
 
----
-
-## AI Agent Worker Process Endpoints (`routers/ai_agent.py`)
-
-When the AI Agent engine runs as a dedicated worker (port `8081` loopback or LAN HTTPS), it exposes direct conversational and session inspection endpoints:
-
-### `GET /api/sessions/{user_id}/{session_id}`
-
-Retrieves detailed conversation state, token counters, and metadata for a specific user and session.
-
-#### Response (`200 OK`)
-```json
-{
-  "user_id": "operator",
-  "session_id": "sess_8f29ab01",
-  "created_at": 1727998900000,
-  "last_updated": 1727999120456,
-  "turn_count": 6,
-  "active_agent": "coding_agent",
-  "model": "qwen2.5-coder:7b"
-}
-```
-
-### `GET /api/status`
-
-Returns live telemetry from the AI worker process:
-
-#### Response (`200 OK`)
-```json
-{
-  "status": "healthy",
-  "service": "AutoYou AI Agent",
-  "loaded_agents": ["admin_agent", "coding_agent", "browser_agent"],
-  "active_sessions": 2,
-  "memory_rss_mb": 420.5
-}
-```
-
-### `POST /api/internal/runtime-settings`
-
-Dynamically applies parent-authorized settings without restarting the worker subprocess. Requires `AUTOYOU_AI_AGENT_INTERNAL_TOKEN`.
-
-#### Request Payload
-```json
-{
-  "temperature": 0.4,
-  "max_tokens": 4096,
-  "system_instruction_override": null
-}
-```
-
-### `GET /dev/build_graph/{app_name}`
-
-Returns the structured DOT graph representation of the Google ADK multi-agent execution hierarchy for `{app_name}`.
-
-### `GET /dev/build_graph_image/{app_name}`
-
-Returns the rendered graphical diagram (SVG/PNG) visualizing the agent routing tree and tool connections.
-
+`mode` is `off`, `all`, or `selected`. With `selected`, the list holds at most 16 identifiers of at most 128 characters each, and each must be a connected interactive participant (`400` otherwise: "Choose a connected screen participant"). `503` means the computer's audio output is unavailable. The request body is limited to 4 KiB.

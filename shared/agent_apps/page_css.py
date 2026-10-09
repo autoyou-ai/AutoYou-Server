@@ -317,9 +317,9 @@ h1 {
 .is-dragging .dock-hint { color: var(--accent); }
 
 @media (max-width: 61.999rem) {
+  .dock-grab { touch-action: none; }
   .dock[data-collapsed="1"] { max-height: 2rem; gap: 0; padding: 0 0.9rem; }
   .dock[data-collapsed="1"] .dock-content { visibility: hidden; }
-  .dock[data-collapsed="1"] .dock-grab { touch-action: none; }
 }
 
 /* ---------- appearance sheet ---------- */

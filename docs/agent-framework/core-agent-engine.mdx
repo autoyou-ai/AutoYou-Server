@@ -30,7 +30,7 @@ graph TD
 
     subgraph "Specialist Subagents & Tools"
         RootAgent --> Registry[shared_tools/agent_install_registry.py]
-        RootAgent --> Subagents[40+ Domain Specialists]
+        RootAgent --> Subagents[Domain Specialists]
         RootAgent --> SharedTools[shared_tools/ Common Utilities]
     end
 ```
@@ -92,70 +92,38 @@ def __getattr__(name: str) -> Any:
 
 ## 2. Root Orchestrator: `autoyou_agents/agent.py`
 
-[`autoyou_agents/agent.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/agent.py) is the core operational engine of the AutoYou Agent Development Kit (ADK). Spanning nearly 5,000 lines of hardened Python, it resolves several systemic failure modes common in local open-weights LLMs.
+[`autoyou_agents/agent.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/agent.py) is the core operational engine of the AutoYou Agent Development Kit (ADK). Over 5,000 lines long, it handles several failure modes that are common with local open-weights models.
 
-### The LiteLLM Monkey-Patch (`_patched_acompletion`)
+### The LiteLLM patch (`_patched_acompletion`)
 
-Standard LiteLLM assumes cloud-grade behavior (unlimited context, strict JSON compliance, structured tool responses). Local models running via Ollama, llama.cpp, or vLLM frequently suffer from KV cache overflows, truncated reasoning blocks, and schema drift. 
-
-`agent.py` intercepts `litellm.acompletion` with `_patched_acompletion`:
-
-```python
-async def _patched_acompletion(*args, **kwargs):
-    """Fault-tolerant acompletion interceptor with automated recovery."""
-    # 1. Clean up input messages and normalize tool definitions
-    clean_kwargs = _preprocess_ollama_request(kwargs)
-    
-    try:
-        return await _original_acompletion(*args, **clean_kwargs)
-    except Exception as exc:
-        # 2. Check for Ollama Context Window / Memory Truncation
-        if _is_ollama_context_truncation_error(exc):
-            LOGGER.warning("Ollama context truncation detected; re-anchoring conversation...")
-            recovered_messages = _reanchor_latest_ollama_user_query(clean_kwargs.get("messages", []))
-            clean_kwargs["messages"] = recovered_messages
-            _mark_ollama_context_recovery(exc)
-            return await _original_acompletion(*args, **clean_kwargs)
-
-        # 3. Check for Truncated Tool Call Arguments
-        if _is_ollama_truncated_tool_call_error(exc):
-            new_num_predict = _raised_num_predict_for_truncated_tool_call(clean_kwargs)
-            if new_num_predict:
-                LOGGER.info("Bumping num_predict to %d for truncated tool call", new_num_predict)
-                clean_kwargs.setdefault("options", {})["num_predict"] = new_num_predict
-                return await _original_acompletion(*args, **clean_kwargs)
-
-        # 4. Fallback: Retry without tools if model collapsed on JSON schema
-        if _should_retry_ollama_without_tools(exc, clean_kwargs):
-            LOGGER.error("Model collapsed during tool generation; executing fallback text completion")
-            clean_kwargs.pop("tools", None)
-            return await _original_acompletion(*args, **clean_kwargs)
-            
-        raise exc
-```
-
-### Key Recovery Mechanisms
+Local models served through Ollama can run out of memory, lose the user's question when the context is truncated, cut a tool call off in the middle of its JSON, or echo the tool schema back as text. `agent.py` wraps `litellm.acompletion` with `_patched_acompletion`. For Ollama chat models it first flattens message content and prepares the tool definitions, then calls LiteLLM inside a retry loop with these recoveries:
 
 <CardGroup cols={2}>
-  <Card title="Ollama KV Cache Recovery" icon="memory">
-    Detects `_OLLAMA_MEMORY_ERROR_FRAGMENT` ("model requires more memory than available"). Automatically compresses older turns and preserves system prompts and the latest user turn.
+  <Card title="Memory allocation failure" icon="memory">
+    When Ollama reports that its memory layout cannot be allocated, the wrapper halves `num_ctx`, down to a floor of 4,096, and retries.
   </Card>
-  <Card title="Tool Call Truncation Repair" icon="wrench">
-    Catches premature EOF tokens when small models generate complex JSON arguments. Automatically raises `num_predict` and resubmits the turn.
+  <Card title="Cut-off tool call" icon="wrench">
+    The wrapper raises `num_predict` once and retries. If the tool call is still cut off, it retries once without the tool payload so the turn can answer from what it already gathered.
   </Card>
-  <Card title="Dynamic Agent Tool Synthesis" icon="diagram-project">
-    Iterates through active agents registered in `agent_install_registry.json` and synthesizes ADK `AgentTool` instances dynamically.
+  <Card title="Context truncation" icon="scissors">
+    When the model can no longer find the user's question, the wrapper moves the latest user turn after the tool results and retries once.
   </Card>
-  <Card title="Instruction Synthesis & Filtering" icon="filter">
-    Rewrites the system prompt dynamically so that uninstalled or disabled subagents are omitted from the advertised tool catalog.
+  <Card title="Tool-schema echo" icon="filter">
+    If the model collapses into echoing the tool schema, the wrapper retries once without the tools.
   </Card>
 </CardGroup>
 
-### Two-Stage Routing Protocol
+Responses are normalized after a successful call, for both streaming and non-streaming replies. Other errors are logged with a summary of the recent messages and the advertised tool names, and then raised.
 
-When running ultra-compact models (e.g. 3B parameters), presenting 40+ tool schemas simultaneously causes severe prompt dilution and hallucinated tool calls. `agent.py` implements **Two-Stage Routing**:
-1. **Stage 1 (Intent Classification)**: The root agent routes to a high-level specialist domain (e.g., `autoyou_notes_agent` or `autoyou_coding_agent`).
-2. **Stage 2 (Domain Execution)**: The target specialist executes within its isolated tool context, returning concrete results to the root.
+### Specialist tools and instruction filtering
+
+For each installed agent, the root builds an ADK `AgentTool`. The system prompt is rewritten at load time so that agents that are uninstalled or disabled are left out of the catalog the model sees.
+
+### Two-stage routing
+
+Advertising every installed specialist as its own tool puts dozens of function declarations in front of the model, and small local models collapse under that. Under **two-stage routing** the root advertises one dispatcher tool, `route_to_specialist`, and the specialist catalog lives in the dispatcher's description. Each specialist's own tools stay scoped to its child session, so the number of tools the root advertises no longer grows with the number of installed agents. The routing rules in the prompt are rewritten to say "call `route_to_specialist` with `agent` set to ...".
+
+Two-stage routing is always on for Apple Intelligence. Otherwise `AUTOYOU_TWO_STAGE_ROUTER` overrides it (`0`, `false`, `no`, or `off` turns it off), and by default the model policy chooses: small or unrecognized models use the dispatcher, and models that use the expanded harness, below, advertise specialists directly. Gemma 4 e2b and e4b are the exception: they use the expanded harness with the dispatcher.
 
 ---
 
@@ -296,35 +264,9 @@ _REASONING_ANSWER_STOP_MARKERS = (
 
 The adapter scans output streams, detects reasoning boundaries, extracts the visible user response, and strips internal scratchpad commentary before the response reaches the UI.
 
-### Missing Tool Result Recovery
+### Missing tool result repair
 
-When local models execute multi-turn tool loops, network timeouts or process interruptions can result in missing tool result messages. Many OpenAI-compatible providers throw fatal HTTP 400 errors if an assistant tool call is not immediately followed by a matching tool response ID.
-
-`litellm_ollama_adapter.py` automatically inspects the message history, identifies orphaned `tool_calls`, and injects synthetic error placeholders:
-
-```python
-def repair_missing_tool_results(messages: list[dict]) -> list[dict]:
-    """Ensure every assistant tool_call has a matching tool response block."""
-    repaired = []
-    pending_tool_ids = set()
-    
-    for msg in messages:
-        role = msg.get("role")
-        if role == "assistant" and "tool_calls" in msg:
-            for tc in msg["tool_calls"]:
-                pending_tool_ids.add(tc.get("id"))
-        elif role == "tool":
-            pending_tool_ids.discard(msg.get("tool_call_id"))
-        repaired.append(msg)
-        
-    for missing_id in pending_tool_ids:
-        repaired.append({
-            "role": "tool",
-            "tool_call_id": missing_id,
-            "content": json.dumps({"error": _DEFAULT_MISSING_TOOL_RESULT_MESSAGE})
-        })
-    return repaired
-```
+Earlier compatibility bugs could leave a persisted session with an assistant tool call that has no matching tool result. Many providers reject that history. `repair_missing_tool_results()` finds those orphaned tool calls and adds a placeholder result for each ("Error: Missing tool result (tool execution may have been interrupted before a response was recorded)."). It uses the `tool_responses` role for Gemma 4 models and `tool` otherwise. Old and new sessions can then continue without repeated warnings.
 
 ---
 
@@ -343,18 +285,18 @@ PROVIDER_GOOGLE   = "google"               # Google Gemini via AI Studio or Vert
 PROVIDER_APPLE    = "apple_intelligence"  # On-device macOS Foundation Model
 ```
 
-### Parameter Sizing & Context Windows
+### Harness profile and context size
 
-The module parses model tags (e.g., `qwen2.5:3b`, `llama3.1:8b`, `deepseek-r1:70b`) to determine parameter size and select the appropriate harness profile:
+`resolve_agent_harness_profile()` chooses between two agent harnesses:
 
 ```python
-AGENT_HARNESS_COMPACT = "compact"   # For 3B-8B models: stripped schemas, single-stage tools
-AGENT_HARNESS_EXPANDED = "expanded" # For 14B+ models: rich multi-tool capability
+AGENT_HARNESS_COMPACT = "compact"
+AGENT_HARNESS_EXPANDED = "expanded"
 ```
 
-Context windows (`num_ctx`) are calculated dynamically via `shared.ollama_context_policy.recommend_ollama_num_ctx()` based on available host RAM/VRAM:
-- **Compact profile**: Constrains prompt schemas to under 2,048 tokens.
-- **Expanded profile**: Scales up to 32,768 or 128,000 tokens for coding and deep research agents.
+Automatic mode fails closed to **compact** for unknown models. It chooses **expanded** for `gpt-oss`, for Gemma 4, for Ministral 3 models larger than 8B, and for other models with a known size of 20B parameters or more. A tag without a size, or `:latest`, stays compact unless the active Ollama metadata reports a large size for that exact tag. Set `AUTOYOU_AGENT_HARNESS_PROFILE` to `auto`, `compact`, or `expanded` to override the choice.
+
+The context window (`num_ctx`) is recommended by `shared.ollama_context_policy.recommend_ollama_num_ctx()` from the host's available memory.
 
 ---
 

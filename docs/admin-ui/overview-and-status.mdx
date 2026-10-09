@@ -1,71 +1,52 @@
 ---
-title: "Admin UI: Overview & System Health"
-description: "Telemetry dashboard, hardware monitoring, service lifecycle indicators, and operational health views in admin-ui.js."
+title: "Admin UI: Overview"
+description: "The Overview screen of the admin console: what is running, how the server is exposed, and the controls for its main services."
 ---
 
-# Overview & System Health
+# Overview
 
-The **Overview** view (`renderOverview()` in `assets/admin-ui.js`) serves as the primary mission control dashboard for AutoYou Server operators. It delivers a real-time summary of hardware metrics, active client sessions, background service statuses, and scheduled tasks.
-
----
-
-## Screen Layout & Sub-Panels
-
-```
-+-------------------------------------------------------------------------+
-| [Header] AutoYou Server | Status: HEALTHY | Uptime: 4d 12h | Mode: Secure|
-+-------------------------------------------------------------------------+
-| Quick Controls: [Restart Server] [Clear Cache] [Toggle Mic Sharing]    |
-+-------------------------------------------------------------------------+
-| System Telemetry:                                                       |
-|  CPU: [||||||||||        ] 42%      Memory: [||||||||||||||    ] 8.2/16GB |
-|  Disk: [||||||           ] 35%      GPU VRAM: [||||||||        ] 4.1/8GB  |
-+-------------------------------------------------------------------------+
-| Services:                                                               |
-|  * FastAPI Core       : RUNNING (Port 8001)                             |
-|  * Agent Web Proxy    : RUNNING (Port 8067)                             |
-|  * WebRTC Engine      : ACTIVE (2 PeerConnections, 1 DataChannel)       |
-|  * Node WhatsApp      : CONNECTED (Session Authenticated)               |
-|  * Signal Daemon      : STANDBY                                         |
-|  * Ollama LLM Runner  : READY (Port 11434, llama3:8b loaded)            |
-+-------------------------------------------------------------------------+
-| Access & Network Endpoints:                                             |
-|  Local Address : http://192.168.1.145:8001/admin                        |
-|  Loopback      : http://127.0.0.1:8001/admin                            |
-|  Proxy URL     : http://127.0.0.1:8067/                                 |
-+-------------------------------------------------------------------------+
-```
+The **Overview** screen (`renderOverview()` in `assets/admin-ui.js`) shows what is running on this machine right now, what is optional, and what still needs local setup before phones or desktop clients connect. It is the first screen after sign-in, and its data comes from `GET /api/admin/bootstrap`.
 
 ---
 
-## Component Breakdown in `admin-ui.js`
+## Panels
 
-### 1. `renderOverviewQuickControls()`
-Renders interactive action chips for immediate system operations:
-- **Restart Server Core**: Dispatches `POST /ai-agent-server/restart` to reboot agent workers without dropping WebRTC connections.
-- **Toggle Screen Listen**: Toggles passive desktop activity observation via `POST /api/screen-listen`.
-- **Purge Temporary Files**: Cleans up expired cache files, dangling audio temporary files, and stale database WAL checkpoints.
+| Panel | What it shows |
+| :--- | :--- |
+| **Access & unlock** | Live exposure, the network mode for the next start, nearby pairing, and system credential unlock |
+| **Media & capture** | Video, audio, AI voice, and recording state, without opening the detailed Live View |
+| **Set up your phone** | One scan for the pairing methods available on this computer (the setup QR code) |
+| **Server identity & appearance** | The display name that clients and setup QR codes use, and the console theme |
+| **What is live right now** | Actual service state from the current bootstrap snapshot |
+| **Quick controls** | Start, stop, and restart for the main services |
+| **Operator next steps** | A pointer to the setup wizard for first-run work, then to the screen that owns each setting |
 
-### 2. `renderOverviewServiceRow()`
-Iterates over all internal and companion subprocesses returned by `GET /api/status` and `GET /api/autoyou-page-service/status`:
-- Displays green/amber/red operational badges.
-- Displays restart buttons beside failing services.
-- Surfaces companion process crash logs directly in collapsible drawer dialogs.
+### Access & unlock
 
-### 3. `renderOverviewAccessPanel()`
-Calculates and renders all reachable network routes:
-- **LAN Local Pair IP**: Resolved dynamically by `shared/local_network_info.py`.
-- **Agent Websites Directory**: Quick links to open active agent web apps on port `8067`.
-- **Public Tunnel Status**: Shows Tunnelmole HTTPS domain if active.
+This panel is where you decide how the server is exposed. It shows the address the server is listening on now and the one it will use after the next start, and it lets you change them:
 
-### 4. `renderSchedulerQueue()`
-Pulls real-time telemetry from `GET /api/scheduler/live-summary` and renders:
-- Pending scheduled notifications (e.g. reminders, cron triggers).
-- Active background tasks and progress bars.
-- Alarms and pending agent invocation jobs.
+- **Bind host.** `127.0.0.1` keeps the server on this computer. A LAN setting listens on your network. The change applies at the next start, and it is one of the settings a remote browser cannot change.
+- **HTTPS.** Whether the admin console is also served over TLS. The server reports its own effective setting, including its default for home-network use.
+- **System credential unlock.** Whether this computer may sign in to the console with the server password saved in the operating system's credential store (`security.native_unlock_enabled`).
 
-### 5. `renderBootSweepHistory()`
-Presents an audit log of startup initialization checks:
-- Keystore integrity verification.
-- Database schema migrations and index checks.
-- Optional dependencies scan (Node, Docker, Ollama, Playwright).
+See [Security & Authentication](/architecture/security-and-auth) before exposing the server beyond loopback.
+
+### Quick controls
+
+Each row shows a status badge and the actions that apply:
+
+| Service | Actions | Routes |
+| :--- | :--- | :--- |
+| **AutoYou AI** (the AI Agent worker) | Start or stop, and restart after provider changes, prompt updates, or agent installs | `/ai-agent-server/start`, `/stop`, `/restart` |
+| **Browser & Page** (the page service) | Start or stop, and restart | `/autoyou-page-service/start`, `/stop`, `/restart` |
+| **Public proxy** (the Tunnelmole public link) | Start or stop, and refresh the issued URL status | `/tunnelmole/start`, `/stop`, `/refresh` |
+
+All of these are `POST` routes that need an admin sign-in. Service status comes from `GET /api/ai-agent-server/status`, `GET /api/autoyou-page-service/status`, and `GET /api/tunnelmole/status`.
+
+---
+
+## Related screens
+
+- **Live View** shows cloud routing, connected clients, task delivery, messaging partners, and browser routes. See [Live View & Media](live-view-and-media.mdx).
+- **Connectivity** has the AutoYou Cloud link, the public link, connected clients, the notification queue (queued reminder and task deliveries waiting for a connection or retry window, read from `GET /api/scheduler/notification-queue`), and connection helpers. Task summaries come from `GET /api/scheduler/live-summary`.
+- **Help & Guides** has the built-in documentation, public field guides, a runtime snapshot for debugging, and **Boot Sweep**, a small mini-game whose high scores are kept on the server.

@@ -1,88 +1,117 @@
 ---
 title: "Adding Custom API Routers"
-description: "How to extend AutoYou Server with new domain-specific FastAPI routers and mount them to the composition root."
+description: "How to add a new route module to AutoYou Server and register it on the admin app."
 ---
 
 # Adding Custom API Routers
 
-AutoYou Server organizes its HTTP endpoints into domain-specific modules under `routers/` rather than treating `server.py` as a monolith. This guide explains how to author and register a new router.
+AutoYou Server keeps its HTTP routes in modules under `routers/` instead of in `server.py`. Each module exposes a `register_routes()` function that `server.py` calls once at start-up. This guide adds a small example module, `routers/analytics.py`, following the same pattern. The example name is only an illustration.
+
+The two FastAPI apps and what each serves are described in the [API overview](/api-reference/overview). Put a route on the admin app if it needs a signed-in operator, which is the usual case.
 
 ---
 
-## 1. Create the Router File
+## 1. Create the router module
 
-Create `routers/analytics.py`:
+Create `routers/analytics.py`. `register_routes` receives both apps and the server module, and returns a dictionary of names to export into `server.py`'s namespace (empty here):
 
-```python routers/analytics.py
-"""Analytics and telemetry router for AutoYou Server."""
+```python
+# routers/analytics.py
+"""Example analytics routes."""
 
-from fastapi import FastAPI, Request, HTTPException
+from __future__ import annotations
+
+from typing import Any, Callable, Dict
+
+from fastapi import FastAPI, Request
+
+
+def register_routes(
+    admin_app: FastAPI,
+    auth_app: FastAPI,
+    server: Any,
+) -> Dict[str, Callable[..., Any]]:
+    @admin_app.get("/api/analytics/summary")
+    async def analytics_summary(request: Request):
+        """Return a small summary for the signed-in operator."""
+        auth_error = server._require_api_login_json(request)
+        if auth_error is not None:
+            return auth_error
+        return {"success": True, "active_sessions": 0}
+
+    return {}
+```
+
+`server._require_api_login_json(request)` returns `None` when the request is signed in (a valid `admin_session` cookie, or a valid bearer token) and a `401` JSON response otherwise. Return it as shown. Use `server._require_api_login(request)` for routes whose errors are not JSON. Keep route handlers thin and reuse the server's existing helpers rather than copying logic into the router.
+
+Use the response shape the other routes use: `{"success": true, ...}` on success and `{"success": false, "error": "..."}` on failure.
+
+---
+
+## 2. Register it in `server.py`
+
+Import the module next to the other router imports, then call it after the apps are created:
+
+```python
+from routers.analytics import register_routes as register_analytics_routes
+
+admin_app, auth_app = create_apps(LOGGER)
+# ... the existing register_* calls ...
+globals().update(register_analytics_routes(admin_app, auth_app, sys.modules[__name__]))
+```
+
+A route registered on the auth app is part of the public pairing surface and is reachable before the server is unlocked only if it is on the unlock allow-list, so register on `auth_app` only deliberately.
+
+---
+
+## 3. Test it
+
+Router tests build a bare FastAPI app and a small fake server, so they never touch real configuration or runtime state. Run them with an isolated test root:
+
+```python
+# tests/server/test_analytics_router.py
+from types import SimpleNamespace
+
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
 
-def register_routes(app: FastAPI, get_server_state=None) -> None:
-    """Registers analytics routes onto the main FastAPI instance."""
+from routers.analytics import register_routes
 
-    @app.get("/api/analytics/summary")
-    async def get_analytics_summary(request: Request):
-        """Returns aggregated agent interaction metrics."""
-        # Optional: verify admin session token
-        auth_header = request.headers.get("Authorization")
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="Missing authorization header")
 
-        return JSONResponse({
-            "status": "success",
-            "metrics": {
-                "total_agent_turns_today": 128,
-                "active_sessions": 3,
-                "average_response_ms": 340.5
-            }
-        })
+def _client(signed_in: bool) -> TestClient:
+    def require_login(request):
+        if signed_in:
+            return None
+        return JSONResponse(status_code=401, content={"success": False, "error": "Authentication required"})
+
+    admin_app, auth_app = FastAPI(), FastAPI()
+    register_routes(admin_app, auth_app, SimpleNamespace(_require_api_login_json=require_login))
+    return TestClient(admin_app)
+
+
+def test_requires_sign_in():
+    assert _client(False).get("/api/analytics/summary").status_code == 401
+
+
+def test_returns_summary_when_signed_in():
+    response = _client(True).get("/api/analytics/summary")
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+```
+
+```bash
+AUTOYOU_TEST_ROOT="$(mktemp -d)" python -m pytest tests/server/test_analytics_router.py -q
 ```
 
 ---
 
-## 2. Mount in `server.py`
+## 4. Update the reference pages
 
-Open `server.py` and register the new module in the application startup sequence:
+The [route catalog](/api-reference/route-catalog) is generated from the router modules. After adding a route, regenerate it:
 
-```python
-# Import the new router
-from routers import analytics
-
-# Inside configure_routes() or router registration block:
-analytics.register_routes(app, get_server_state=get_state)
+```bash
+python scripts/generate_reference_docs.py
 ```
 
-<Warning>
-**Formatting Constraint**: Maintain the project's strict 4-line blank space rule between top-level functional blocks in `server.py`.
-</Warning>
-
----
-
-## 3. Authoring Router Tests
-
-Create `tests/server/api/test_analytics_router.py`:
-
-```python
-import pytest
-from httpx import AsyncClient, ASGITransport
-from server import app
-
-@pytest.mark.asyncio
-async def test_analytics_summary_endpoint():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Test missing auth
-        res_unauth = await client.get("/api/analytics/summary")
-        assert res_unauth.status_code == 401
-
-        # Test authenticated call
-        res_auth = await client.get(
-            "/api/analytics/summary",
-            headers={"Authorization": "Bearer test_token"}
-        )
-        assert res_auth.status_code == 200
-        data = res_auth.json()
-        assert "metrics" in data
-```
+A test fails when the generated pages are out of date. The generator also stops with a message if a module in `routers/` is not listed in `ROUTER_FILES` in `scripts/generate_reference_docs.py`; add your new module there, with a title and a one-line purpose, so its routes appear in the catalog.

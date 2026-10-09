@@ -39,12 +39,13 @@ servers/windows/dist/AutoYou-win-x64/
 ```
 
 It contains the native host, the packaged backend, and selected runtime files.
-Version metadata comes from the repository `VERSION` file, currently `81.0.0`.
+Version metadata comes from the repository `VERSION` file, currently `81.0.2`.
 
 Review `servers/windows/dist/AutoYou-win-x64/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
-Use constitutes agreement to the applicable license terms, including the
-warranty disclaimer and liability limits to the extent permitted by law.
+Use constitutes agreement to the AutoYou Terms of Use (EULA), License,
+responsibility terms, warranty disclaimer, and liability limits to the extent
+permitted by law.
 Separate services have separate terms.
 
 Free redistribution is permitted subject to [LICENSE](../../LICENSE). Identify

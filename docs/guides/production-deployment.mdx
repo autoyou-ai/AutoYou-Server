@@ -1,83 +1,75 @@
 ---
 title: "Production Deployment & Hardening"
-description: "Hardening checklists, systemd service configuration, Docker Compose deployment, reverse proxies, and TLS termination."
+description: "Hardening checklist, Docker Compose, a systemd example, and reverse-proxy guidance for running AutoYou Server on a dedicated machine."
 ---
 
 # Production Deployment & Hardening
 
-Deployment instructions do not grant additional license rights. Institutional
-Use and Commercial Exploitation require the separate Enterprise agreement
-described in [LICENSE](../../LICENSE). Review the selected dependency profile
-and actual resolved inventory before deployment.
+Deployment instructions do not grant additional license rights. Institutional Use and Commercial Exploitation require the separate Enterprise agreement described in [LICENSE](../../LICENSE). Review the selected dependency profile and the actual resolved inventory before deployment.
 
-When deploying AutoYou Server in production environments, dedicated office servers, or cloud virtual machines, follow these hardening and reliability guidelines.
+AutoYou Server is built to run on a computer you control. When you run it on a dedicated machine, an office server, or a virtual machine, use the guidance below. Keep the admin console local: the safest way to reach it from elsewhere is Cloud Pair or Peer Link, not a public address.
 
 ---
 
-## 1. Production Security Hardening Checklist
+## 1. Hardening checklist
 
-- [ ] **Activate Secure Professional Tier**: Set `AUTOYOU_SECURITY_MODE=secure_professional` in `.env` or via API.
-- [ ] **Enforce TOTP 2FA**: Complete authenticator enrollment immediately upon initial boot.
-- [ ] **Restrict Loopback Listeners**: Verify `AUTOYOU_HOST=127.0.0.1` so sensitive admin ports cannot be queried from untrusted network interfaces.
-- [ ] **Rotate Storage Keys Regularly**: Trigger atomic re-encryption via `POST /api/admin/security/storage/rotate`.
-- [ ] **Disable Unverified Senders**: In the Telegram/Signal settings, require explicit operator approval for discovered senders.
+- [ ] **Choose a security mode.** In the admin console under **Security**, select Secure Professional or Secure Professional Maximus. There is no environment variable for it. See [Security Modes](../security/security-modes.md).
+- [ ] **Set up the authenticator** before relying on Secure Professional pairing.
+- [ ] **Use a strong, unique server password.** For unattended first setup, provide `AUTOYOU_SERVER_PASSWORD` through your environment or a secret manager rather than a command line.
+- [ ] **Keep the default loopback bind.** Every listener binds to `127.0.0.1` unless you set `AUTOYOU_BIND_HOST` (or pass `--host`). Listen on your LAN only when you need to, and expect the server to offer HTTPS when you do.
+- [ ] **Rotate the storage key** after a suspected exposure. In Maximus mode, call `POST /api/admin/security/storage/rotate` or use the Security screen.
+- [ ] **Approve Telegram senders explicitly.** Discovered senders are approved from the Telegram settings (`POST /api/telegram/senders/approve`).
+- [ ] **Decide on public STUN.** The server advertises Google's public STUN servers by default. Set `AUTOYOU_DISABLE_PUBLIC_STUN=1` or `AUTOYOU_LOCAL_STUNTURN_HOST` to change that. See [Data Privacy](../security/data-privacy.md).
+- [ ] **Disable what you do not use**: native unlock (`security.native_unlock_enabled`), the MCP bridge (`AUTOYOU_ENABLE_MCP_PARTNER=0`), and the Tunnelmole download (`AUTOYOU_NO_DOWNLOAD_TUNNELMOLE=1`).
+- [ ] **Back up** your data folders and test restoring them.
 
 ---
 
-## 2. Docker Compose Production Stack
+## 2. Docker Compose
 
-Use the production `docker-compose.yml` to supervise the server, companion Node workers, and Redis queues:
+The repository ships a `docker-compose.yml` that you can run with:
 
-```yaml docker-compose.yml
-version: "3.8"
-
-services:
-  autoyou-server:
-    build: .
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8001:8001"
-      - "127.0.0.1:8067:8067"
-    environment:
-      - AUTOYOU_SECURITY_MODE=secure_professional
-      - OLLAMA_API_BASE=http://host.docker.internal:11434
-    volumes:
-      - ./data:/app/data
-      - ./config.keystore.enc:/app/config.keystore.enc
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+```bash
+docker compose up --build
 ```
 
+It requires `AUTOYOU_SERVER_PASSWORD`; Compose refuses to start without it. Its main features, from the file in the repository:
+
+- **Ports.** It publishes `8001` (admin), `8067` (page service), `8081` (AI Agent worker), and `8481` (AI Agent worker over HTTPS with a one-time code), each bound to host loopback (`127.0.0.1`). Check how your Docker version publishes ports before relying on loopback isolation.
+- **Data.** A named volume, `autoyou-data`, holds the application data.
+- **Signal.** A `signal-cli-rest-api` container runs beside the server for the Signal bridge, with its own named volume.
+- **Models.** `OLLAMA_API_BASE` points to Ollama on the host.
+- **Page service trust.** `AUTOYOU_PAGE_TRUST_NETWORK_PEERS=1` is set because port `8067` is published on the host's loopback only, so the Docker gateway peer is this computer's own browser.
+
+Build arguments let you leave out optional components, for example `AUTOYOU_INCLUDE_COGNEE=0` and `AUTOYOU_INCLUDE_TUNING=0`.
+
 ---
 
-## 3. Linux Systemd Service Setup
+## 3. systemd (Linux)
 
-To run AutoYou Server as an automatic background daemon on Linux:
-
-Create `/etc/systemd/system/autoyou.service`:
+The supported entry point is the launcher, which prepares the Python environment and then starts the server. This unit is an example; adjust the paths, user, and profile for your system and test it before depending on it.
 
 ```ini
 [Unit]
-Description=AutoYou Server Core
-After=network.target
+Description=AutoYou Server
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=autoyou
 WorkingDirectory=/opt/AutoYou-Server
-ExecStart=/opt/AutoYou-Server/.venv/bin/python server.py
-Restart=always
+EnvironmentFile=/etc/autoyou/autoyou.env
+ExecStart=/opt/AutoYou-Server/run_autoyou.sh --profile base
+Restart=on-failure
 RestartSec=5
-Environment=AUTOYOU_SECURITY_MODE=secure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start the service:
+Put `AUTOYOU_SERVER_PASSWORD` in the environment file and restrict its permissions (`chmod 600`, owned by root or the service user). Enable the unit with:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now autoyou
@@ -85,36 +77,20 @@ sudo systemctl enable --now autoyou
 
 ---
 
-## 4. Reverse Proxy & TLS with Caddy or Nginx
+## 4. Reverse proxy
 
-When exposing agent websites or Cloud Relay over the public internet, place a reverse proxy in front of AutoYou Server:
+Do not publish the admin app (`8001`) on a public address. If you serve agent websites to people outside your network, put a proxy in front of the **page service** (`8067`) only, and terminate TLS at the proxy:
 
-### Example Caddyfile
 ```caddy
-server.example.com {
-    reverse_proxy 127.0.0.1:8001 {
-        header_up X-Forwarded-Proto {scheme}
-    }
-}
-
 apps.example.com {
     reverse_proxy 127.0.0.1:8067
 }
 ```
 
+A proxy delivers requests from `127.0.0.1`. The server treats a request that carries a forwarding header such as `X-Forwarded-For` as coming from somewhere else, so it is handled as a shared device and a remote browser, which cannot change credentials or security settings. Make sure your proxy sets those headers, and keep agent-website sign-in and 2FA on. See [Security & Authentication](/architecture/security-and-auth).
+
 ---
 
-## 5. Hosting Developer Documentation (Mintlify on IONOS DNS)
+## 5. Reading these docs
 
-AutoYou Server's developer documentation under `/docs` is configured for Mintlify (`mint.json`). To host the documentation on your custom subdomain at `docs.autoyou.me`:
-
-1. **Connect GitHub to Mintlify**: Connect `autoyou-ai/AutoYou-Server` via [app.mintlify.com](https://app.mintlify.com) and configure the documentation root directory to `/docs`.
-2. **Configure Custom Domain**: In the Mintlify project settings, set the Custom Domain to `docs.autoyou.me`.
-3. **Configure IONOS DNS Settings**:
-   - Log into your **IONOS Control Panel**.
-   - Navigate to **Domains & SSL** &rarr; `autoyou.me` &rarr; **DNS Settings**.
-   - Click **Add Record** &rarr; select **CNAME**.
-   - **Host Name**: `docs`
-   - **Points To**: `cname.mintlify.site` (or the CNAME target displayed in your Mintlify dashboard).
-   - **TTL**: `1 hour` (or default).
-4. **SSL Provisioning**: Mintlify automatically provisions and renews a free Let's Encrypt SSL certificate within minutes once the DNS record propagates.
+The documentation is Markdown and MDX in the `docs/` folder, with a Mintlify configuration (`docs.json` and `mint.json`). You can read the files directly in the repository or host them with Mintlify.

@@ -1,111 +1,98 @@
 ---
 title: "WebRTC & DataChannels Architecture"
-description: "In-depth guide to AutoYou Server's WebRTC signaling, media streaming pipelines, and DataChannel chunking protocol."
+description: "How AutoYou Server signals WebRTC connections, frames DataChannel messages, and streams media."
 ---
 
 # WebRTC & DataChannels Architecture
 
-Real-time audio, video, and bidirectional messaging between AutoYou Server and connected clients (AutoYou Connect, Android, iOS, and Web) are powered by an asynchronous **WebRTC engine** built upon `aiortc` and optimized for low latency and high reliability over unreliable networks.
+Real-time audio, video, and messaging between AutoYou Server and its clients run on a WebRTC engine built on `aiortc` (`core_server/webrtc_engine.py`). Media is protected by DTLS-SRTP and DataChannels by DTLS, between the two endpoints. See the [security architecture](/architecture/security-and-auth) for how the pairing messages that set the link up are protected.
 
 ---
 
-## WebRTC Signaling & Connection Flow
+## Signaling and connection flow
 
-WebRTC requires an out-of-band signaling mechanism to exchange SDP (Session Description Protocol) offers, answers, and ICE (Interactive Connectivity Establishment) candidates before the direct peer-to-peer transport is established.
+WebRTC needs an out-of-band channel to exchange SDP offers, answers, and ICE candidates before the link opens. Pairing routes (`/api/autopair_hello`, `/api/autopair`) and the signaling routes `POST /signal/{session_id}` and `GET /signal/{session_id}` carry that exchange. The signaling routes are served by the **auth app**, which listens on port `8002` by default; see the [auth app reference](/api-reference/auth-app).
+
+In Secure and Secure Professional modes the offer, answer, and trickled ICE candidates are encrypted under the session key from the pairing handshake. See [Pairing & Device Discovery](/architecture/pairing-and-discovery).
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client as AutoYou Client (Connect / Mobile)
-    participant Server as AutoYou Server (/signal/{session_id})
-    participant Engine as WebRTC Engine (core_server/webrtc_engine.py)
+    participant Client as AutoYou app
+    participant Server as AutoYou Server
+    participant Engine as WebRTC engine
 
-    Client->>Server: POST /signal/{session_id} (SDP Offer + ICE Candidates)
-    Server->>Engine: Parse Offer & Allocate RTCPeerConnection
-    Engine->>Engine: Attach Media Transceivers (Opus Audio, VP8/H.264 Video)
-    Engine->>Engine: Open "autoyou-control" & "autoyou-data" DataChannels
-    Engine-->>Server: Generate SDP Answer + Server ICE Candidates
-    Server-->>Client: 200 OK (SDP Answer JSON)
-    Client<<->>Engine: Direct Peer-to-Peer DTLS / SRTP Handshake
-    Client<<->>Engine: DataChannel Open ("autoyou-data")
+    Client->>Server: SDP offer (pairing routes or /signal/{session_id})
+    Server->>Engine: Create the peer connection and apply ICE servers
+    Engine-->>Server: SDP answer and candidates
+    Server-->>Client: Answer
+    Client<<->>Engine: DTLS handshake, then media and DataChannel traffic
 ```
+
+The server builds the ICE configuration from the `iceServers` in its configuration. If none is saved, it advertises Google's public STUN servers by default. Set `AUTOYOU_DISABLE_PUBLIC_STUN=1` or `AUTOYOU_LOCAL_STUNTURN_HOST` to change that. A client may also supply its own `iceServers` in its offer. Cloud-provided relay helpers are merged in when your account is entitled to them.
+
+The server accepts the data channel that the client opens; it does not require a particular channel label.
 
 ---
 
-## DataChannel Framing & Chunking Protocol
+## DataChannel messages
 
-WebRTC DataChannels have strict MTU and buffer limits across browsers and operating systems (typically 16KB to 64KB per message). To send large messages—such as full LLM completions, agent workspace diffs, audio clips, and images—AutoYou Server implements an automatic **Framing and Chunk Acknowledgement Protocol**.
-
-### Chunk Segmentation & Ack Window
-- **Chunk Size**: Payloads exceeding 16KB are automatically split into 16,384-byte chunks.
-- **Window Size**: 64 chunks in flight before mandatory pause.
-- **Timeout**: 7.0 seconds chunk ack timeout with automatic retransmission.
-
-### Envelope Structure
-
-All DataChannel messages are encoded as JSON objects containing standard header envelopes:
+`shared/datachannel_manager.py` defines the message envelope. Every message is a JSON object:
 
 ```json
 {
   "header": {
-    "session_id": "sess_89f1a23c4d5e",
-    "user_id": "usr_main_desktop",
-    "message_id": "msg_01J8YXZ0QW4T9P",
-    "timestamp": 1727998800123
+    "message_id": "string",
+    "message_type": "chat",
+    "timestamp": 1727998800.123,
+    "session_id": "string or null",
+    "user_id": "string or null"
   },
-  "type": "chat",
-  "payload": {
-    "text": "Hello, how can I assist you today?",
-    "author": "AutoYou AI",
-    "streaming": false
-  }
+  "payload": {},
+  "chunk_info": null
 }
 ```
 
-### Handled DataChannel Message Types
+`chunk_info` is present only on chunk messages. It carries `chunk_id`, `total_chunks`, `chunk_index`, `chunk_size`, `total_size`, and a `checksum`.
 
-The `DataChannelManager` registers dedicated handlers for the following message types:
+### Message types
 
-| Message Type | Direction | Description |
-| :--- | :--- | :--- |
-| **`chat`** | Bidirectional | Text messages, conversational turns, and structured responses. |
-| **`chunk`** | Bidirectional | Segmented payload block for large payloads. |
-| **`chunk_ack`** | Bidirectional | Acknowledgement receipt confirming chunk arrival. |
-| **`voice_call_control`** | Bidirectional | Call signaling: `call_start`, `call_ringing`, `call_accept`, `call_end`. |
-| **`http_response`** | Server $\rightarrow$ Client | Proxied HTTP response over WebRTC data transport. |
-| **`http_sse_start`** | Server $\rightarrow$ Client | Initiates a streamed Server-Sent Events stream. |
-| **`http_sse_event`** | Server $\rightarrow$ Client | Individual event payload within an active SSE stream. |
-| **`http_sse_end`** | Server $\rightarrow$ Client | Signals the end of an SSE stream. |
-| **`http_ws_upgrade`** | Bidirectional | Establishes a tunnelled WebSocket connection over the DataChannel. |
-| **`http_ws_data`** | Bidirectional | WebSocket text or binary frame data. |
-| **`http_stream_open`** | Server $\rightarrow$ Client | Opens an arbitrary binary download stream. |
-| **`http_stream_data`** | Server $\rightarrow$ Client | Segment of streamed binary data. |
-| **`pairing_control`** | Bidirectional | In-session security re-authentication and capability renegotiation. |
-| **`ping` / `pong`** | Bidirectional | Heartbeat keepalive measuring round-trip latency. |
+| Family | `message_type` values |
+| :--- | :--- |
+| Conversation | `chat`, `error` |
+| HTTP proxy | `http_request`, `http_request_cancel`, `http_response` |
+| Server-sent events | `http_sse_start`, `http_sse_event`, `http_sse_end` |
+| Generic streams | `http_stream_open`, `http_stream_data`, `http_stream_end`, `http_stream_abort` |
+| WebSocket proxy | `http_ws_upgrade`, `http_ws_data`, `http_ws_close` |
+| Chunking | `chunk`, `chunk_ack` |
+| Keepalive | `ping`, `pong` |
+| Calls and pairing | `voice_call_control`, `pairing_control` |
+| Peer Link and rooms | `peer_control`, `room_bridge_control`, `room_control`, `room_chat`, `room_federation_control`, `room_federation_chat` |
+
+The HTTP, SSE, stream, and WebSocket types let a client reach the server's web content, including agent websites, through the encrypted link without any open port on the client side.
+
+### Chunking and acknowledgement
+
+Large messages are split into chunks, and each chunk is acknowledged. The defaults, from `shared/datachannel_manager.py`:
+
+| Setting | Default |
+| :--- | :--- |
+| Chunk size | 1,024 bytes. The adaptive frame size steps through 8,192, 4,096, 2,048, and 1,024 bytes. |
+| Acknowledgement window | 64 chunks in flight |
+| Acknowledgement timeout | 7.0 seconds per chunk (`AUTOYOU_CHUNK_ACK_TIMEOUT_SECONDS`) |
+| Retries | 5 per chunk |
+| Reassembly timeout | 60 seconds |
+| Buffered-amount high-water mark | 256 KiB |
+
+The receiver enforces limits so that a peer cannot exhaust its memory: at most 6,500,000 chunks and about 1.5 GiB for a single message, and 2 GiB across all partial reassemblies. The conservative 1 KiB chunk size exists because larger single frames were observed to disappear silently on some Windows, WSL, iOS, and Android sessions, while the chunk and acknowledgement path stayed reliable.
 
 ---
 
-## Media Streaming Pipelines
+## Media pipelines
 
-In addition to DataChannels, AutoYou Server provides hardware-accelerated media streaming capabilities:
+- **Voice and calls.** Call setup and control use `voice_call_control` messages. Whether the computer's microphone and sound are shared with a caller depends on the connection; see the note on shared devices in [Cloud Pair & Remote Access](/architecture/cloud-and-remote). Microphone sharing is controlled with `PUT /api/webrtc/microphone-sharing`.
+- **Desktop screen sharing.** The server captures displays with `mss` and prefers H.264 for remote desktop video when the peer supports it. `GET /api/webrtc/monitors` lists the attached displays.
+- **Virtual video file playback.** Upload with `POST /api/webrtc/video-file/upload`, then control playback with `POST /api/webrtc/video-file/play` and `POST /api/webrtc/video-file/pause`. `POST /api/webrtc/video-file/status` reports state, and `GET /api/webrtc/video-files` lists uploaded files.
+- **Remote input.** For remote desktop control, the server accepts input over `WEBSOCKET /api/webrtc/game-input/stream` and `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`.
 
-### 1. Low-Latency Voice Engine
-- **Audio Codec**: Opus (48 kHz sample rate, 20ms packet duration, dynamic bitrate 24–64 kbps).
-- **Echo Cancellation & DTX**: Discontinuous Transmission (DTX) reduces bandwidth during silence.
-- **Audio Routing**: Microphones can be toggled via `PUT /api/webrtc/microphone-sharing`.
-
-### 2. Desktop Screen Sharing
-- **Capture Backends**: `mss` (multi-monitor fast desktop capture) or native OS APIs.
-- **Frame Encoding**: VP8 or H.264 video track pushed to client video players.
-- **Monitors Discovery**: `GET /api/webrtc/monitors` lists all attached displays with resolutions and coordinates.
-
-### 3. Virtual Video File Playback
-- Developers can upload and stream MP4/WebM video files directly into an active WebRTC session via `POST /api/webrtc/video-file/upload` and `POST /api/webrtc/video-file/play`.
-- Controlled via `POST /api/webrtc/video-file/pause` and status checks on `/api/webrtc/video-file/status`.
-
-### 4. Interactive Low-Latency Game Input
-For remote desktop control or game streaming, AutoYou Server provides high-frequency low-latency WebSocket input channels:
-- `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`
-- `WEBSOCKET /api/webrtc/game-input/stream`
-
-These channels receive normalized mouse delta coordinates, keypress codes, and gamepad analog states, injecting them directly into the host OS input queue with sub-5ms processing delay.
+The complete list of WebRTC routes is in the [route catalog](/api-reference/route-catalog).

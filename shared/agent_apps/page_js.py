@@ -448,7 +448,10 @@ JS = r"""
     var collapsed = dock.getAttribute('data-collapsed') === '1';
     if (collapsed && target && target.classList.contains('dock-grab')) {
       dockSwipe = { y: e.touches[0].clientY, collapsed: true };
-    } else if (!collapsed && target && target.classList.contains('dock-desc') && dockBody.scrollTop <= 0) {
+    } else if (!collapsed && target && (
+      target.classList.contains('dock-grab') ||
+      (target.classList.contains('dock-desc') && dockBody.scrollTop <= 0)
+    )) {
       dockSwipe = { y: e.touches[0].clientY, collapsed: false };
     }
   }, { passive: true });

@@ -1,296 +1,349 @@
 ---
-title: "Shared Tools & Subsystems Architecture"
-description: "Architecture and design of AutoYou's shared agent utilities: dynamic installation registry, workbench sandbox, semantic memory, desktop automation, and web scaffolding."
+title: "Shared Tools & Subsystems"
+description: "The helper modules in autoyou_agents/shared_tools/, generated from the source."
 ---
 
-# Shared Tools & Subsystems Architecture
-
-The directory [`autoyou_agents/shared_tools/`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools) provides reusable infrastructure, state registries, sandboxing harnesses, and hardware-control bridges shared across all 40+ built-in and dynamic agents.
-
-```mermaid
-graph TD
-    Agent[Agent Implementation / agent.py] --> SharedTools[shared_tools Package]
-    
-    subgraph "Lifecycle & Sandboxing"
-        SharedTools --> Registry[agent_install_registry.py]
-        SharedTools --> Workbench[agent_workbench.py]
-        SharedTools --> Identity[agent_identity.py]
-    end
-
-    subgraph "Memory & Context Grounding"
-        SharedTools --> MemoryTool[memory_tool.py]
-        SharedTools --> DateTimeTool[datetime_tool.py]
-    end
-
-    subgraph "Desktop & System Automation"
-        SharedTools --> DesktopCtrl[desktop_app_control.py]
-        SharedTools --> AssetStore[desktop_asset_store.py]
-        SharedTools --> Shortcuts[desktop_app_agent_shortcuts.py]
-    end
-
-    subgraph "Frontends & Handoffs"
-        SharedTools --> Scaffold[website_scaffold.py]
-        SharedTools --> WebProxy[agent_web_proxy.py]
-        SharedTools --> CodingHandoff[coding_handoff.py]
-    end
-```
-
----
-
-## 1. Dynamic Agent Registry: `agent_install_registry.py`
-
-[`agent_install_registry.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/agent_install_registry.py) manages the persistent installation state of all subagents in the system.
-
-### Persistent State File: `agent_install_registry.json`
-
-Installation state is stored as secure JSON on disk:
-- In production, it resides under the platform configuration directory (`get_config_dir("AutoYou") / "agent_install_registry.json"`).
-- In automated test suites, it resolves under `AUTOYOU_TEST_ROOT` to prevent mutating live operator setups.
-
-```python
-DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
-    "admin_agent": True,
-    "ads_watching_agent": True,
-    "agent_builder_agent": False,    # Opt-in: developer scaffolding
-    "audio_agent": True,
-    "backup_agent": False,          # Opt-in: browser-paired backups
-    "browser_agent": False,          # Opt-in: heavy automation bundle
-    "client_browser_control_agent": True,
-    "coding_agent": False,           # Opt-in: repo-aware coding assistant
-    "data_collector_agent": False,   # Opt-in: consented conversation logging
-    "internet_agent": True,
-    "notes_agent": True,
-    "page_agent": True,
-    # ... additional agents configured by default policy
-}
-```
-
-### Registry API Methods
-
-```python
-def is_agent_installed(agent_name: str) -> bool:
-    """Check if an agent is currently installed and active."""
-
-def install_agent(agent_name: str) -> bool:
-    """Mark an agent as installed in the registry and persist to disk."""
-
-def uninstall_agent(agent_name: str) -> bool:
-    """Mark an agent as uninstalled, preventing its tools from loading."""
-
-def get_installed_agent_names() -> list[str]:
-    """Return all currently active agent names for prompt synthesis."""
-```
-
-When an agent is uninstalled:
-1. Its entry in `agent_install_registry.json` is updated to `false`.
-2. The root agent automatically rewrites its system prompt via `_filter_prompt_section_by_installed_agents()`.
-3. The uninstalled agent's `AgentTool` is removed from the advertised tool catalog, eliminating hallucinated routing attempts.
-
----
-
-## 2. Sandbox Testing: `agent_workbench.py`
-
-[`agent_workbench.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/agent_workbench.py) provides an isolated execution harness for developers and operators to test agents and tool definitions without launching the full web server.
-
-### Features
-
-- **Isolated Execution**: Runs an agent instance with simulated user sessions.
-- **Tool Tracing**: Captures all tool inputs, return values, execution timings, and exceptions.
-- **Multi-Turn Evaluation**: Simulates multi-turn conversations to verify whether the agent completes goals or gets trapped in progress loops.
-
-### Workbench Test Execution Example
-
-```python
-from autoyou_agents.shared_tools.agent_workbench import AgentWorkbench
-
-async def test_custom_agent():
-    workbench = AgentWorkbench()
-    
-    # Load candidate agent definition from a directory
-    test_agent = workbench.load_agent_from_path("autoyou_agents/notes_agent")
-    
-    # Execute a test turn in an isolated sandbox session
-    result = await workbench.execute_turn(
-        agent=test_agent,
-        prompt="Create a note titled 'Deploy checklist' with content 'Run test gate'",
-        session_id="workbench-test-session"
-    )
-    
-    assert result.success is True
-    assert "Deploy checklist" in result.response_text
-    assert len(result.tool_calls) == 1
-    assert result.tool_calls[0].tool_name == "create_note"
-```
-
----
-
-## 3. Semantic Memory Interface: `memory_tool.py`
-
-[`memory_tool.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/memory_tool.py) bridges the root agent and specialist agents with persistent memory systems.
-
-### Dual-Tier Memory Backing
-
-```mermaid
-flowchart LR
-    Agent[Agent] --> MemTool[memory_tool.py]
-    MemTool --> FastTier[Tier 1: SQLite Short-Term / sessions.db]
-    MemTool --> GraphTier[Tier 2: Cognee Semantic Graph / vendor/cognee]
-```
-
-1. **Tier 1: Local SQLite (`sessions.db`)**: Stores exact recent chat turns, session metadata, and conversation history. Fast, deterministic, and requires zero external neural models.
-2. **Tier 2: Semantic Memory (Cognee)**: Stores vector embeddings and knowledge graph entities for associative recall across sessions (see [Vendor & Memory Subsystems](/agent-framework/vendor-and-memory)).
-
-### Exposed Tool Functions
-
-```python
-@tool
-async def search_memory(query: str, limit: int = 5) -> dict:
-    """
-    Search past conversations, user preferences, and saved context.
-    
-    Args:
-        query: Natural language search query or keywords.
-        limit: Maximum number of relevant memories to retrieve.
-    """
-
-@tool
-async def remember_long_term_memory(fact: str, category: str = "general") -> dict:
-    """
-    Persist an explicit fact or preference into long-term semantic memory.
-    
-    Args:
-        fact: The concrete information to remember across sessions.
-        category: Contextual bucket ('user_preference', 'project_detail', etc.).
-    """
-```
-
----
-
-## 4. Real-Time Temporal Grounding: `datetime_tool.py`
-
-[`datetime_tool.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/datetime_tool.py) injects real-time temporal grounding into model context.
-
-### The Temporal Hallucination Problem
-
-Local open-weights models have no internal clock and rely on training cutoffs. Without temporal grounding, models make incorrect assumptions about:
-- Current day of the week, month, or year.
-- Relative temporal offsets (*"tomorrow"*, *"next Tuesday"*, *"3 days ago"*).
-- Timezone offsets when scheduling cron jobs or setting reminders via `notify_agent` and `tasks_agent`.
-
-### Implementation
-
-`datetime_tool.py` provides deterministic clock queries:
-
-```python
-@tool
-def get_current_datetime(timezone_name: str = "UTC") -> dict:
-    """
-    Returns the exact current date, time, day of the week, and timezone offset.
-    
-    Args:
-        timezone_name: Target IANA timezone identifier (e.g. 'America/New_York').
-    """
-    now = datetime.now(timezone.utc)
-    return {
-        "iso": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d"),
-        "time": now.strftime("%H:%M:%S"),
-        "day_of_week": now.strftime("%A"),
-        "year": now.year,
-        "is_dst": False,
-        "timezone": "UTC"
-    }
-```
-
----
-
-## 5. Multi-Agent Delegation: `coding_handoff.py`
-
-[`coding_handoff.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/coding_handoff.py) manages structured delegation protocols between orchestrator agents and implementation specialists (`coding_agent`, `files_agent`, `cli_agent`).
-
-### Handoff Protocol Flow
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Root as Root Agent
-    participant Handoff as coding_handoff.py
-    participant Coding as coding_agent
-    participant Files as files_agent
-
-    Root->>Handoff: initiate_handoff(task="Refactor auth endpoint", target="coding_agent")
-    Handoff->>Files: Collect relevant repository files (tokens & AST)
-    Files-->>Handoff: Return file context bundle
-    Handoff->>Coding: Dispatch execution package with sandboxed workspace
-    Coding-->>Handoff: Return code diff and unit test verification
-    Handoff-->>Root: Return synthesized handoff summary
-```
-
-The handoff package encapsulates:
-- Task specifications and acceptance criteria.
-- Scoped workspace directory paths.
-- Execution timeout limits and allowed tool permissions.
-- Test outcome assertions.
-
----
-
-## 6. Desktop UI Automation Suite
-
-The desktop automation suite consists of:
-- [`desktop_app_control.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_app_control.py)
-- [`desktop_asset_store.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_asset_store.py)
-- [`desktop_asset_schema.json`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_asset_schema.json)
-- [`desktop_app_agent_shortcuts.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/desktop_app_agent_shortcuts.py)
-
-### Multi-Modal Desktop Control
-
-This subsystem enables desktop bridge agents (such as `claude_desktop_agent`, `codex_desktop_agent`, and `remote_desktop_agent`) to interact with native desktop interfaces across Windows and macOS.
-
-```mermaid
-graph LR
-    Agent[Desktop Agent] --> DesktopCtrl[desktop_app_control.py]
-    DesktopCtrl --> AccTree[OS Accessibility Tree / UI Automation]
-    DesktopCtrl --> VisionMatch[Computer Vision / Template Matching]
-    DesktopCtrl --> AssetStore[Calibrated Asset Store]
-```
-
-### Visual Asset Packs (`desktop_asset_store.py`)
-
-Rather than relying purely on brittle screen pixel coordinates:
-1. **Visual Anchors**: Visual asset packs store calibrated UI icons, button templates, and anchor coordinates governed by `desktop_asset_schema.json`.
-2. **Template Matching**: When the accessibility tree does not expose named elements (common in Electron apps or custom game UIs), OpenCV/numpy template matching locates the target control.
-3. **Coordinate Scaling**: DPI-aware coordinate scaling translates Retina / 4K coordinates to native display coordinates before mouse click dispatch.
-
----
-
-## 7. Web Scaffolding & Security Gate: `website_scaffold.py`
-
-[`website_scaffold.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/website_scaffold.py) generates single-page browser frontends for agents.
-
-### Automatic Injection of the Fail-Closed Security Gate
-
-When an agent front-end is generated or hosted:
-1. `website_scaffold.py` injects the mandatory **TOTP Security Gate** into the HTML markup.
-2. The `<main>` and `<body>` containers are marked with `inert` and `style="display: none;"` by default.
-3. Only upon successful verification of the agent session cookie or pairing token via `/api/admin/verify_admin_totp` does the JavaScript frontend remove the `inert` attribute and render the UI.
-
-```html
-<!-- Example of injected security gate in generated frontends -->
-<div id="autoyou-auth-gate" class="fixed inset-0 bg-gray-950 flex items-center justify-center z-50">
-  <div class="bg-gray-900 border border-gray-800 p-6 rounded-lg max-w-md w-full">
-    <h3 class="text-lg font-semibold text-white mb-2">Agent Security Verification</h3>
-    <p class="text-sm text-gray-400 mb-4">Enter your AutoYou pairing TOTP to access this agent interface.</p>
-    <input id="totp-input" type="text" maxlength="6" class="w-full bg-gray-800 border border-gray-700 px-3 py-2 rounded text-white" />
-    <button onclick="verifyAgentAuth()" class="mt-4 w-full bg-blue-600 hover:bg-blue-500 py-2 rounded text-white font-medium">Verify & Unlock</button>
-  </div>
-</div>
-```
-
----
-
-## 8. Sandboxed Process Environment: `_subprocess_env.py`
-
-[`_subprocess_env.py`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/shared_tools/_subprocess_env.py) provides safe process launching primitives:
-- Strips production secrets, keystore credentials, and master encryption keys from the spawned process environment.
-- Enforces execution timeouts to prevent hanging subprocesses from locking up worker threads.
-- Redirects stderr and stdout to structured rotating log files for post-mortem analysis by the self-improvement loop.
+{/* Generated by scripts/generate_reference_docs.py. Do not edit by hand. */}
+
+# Shared Tools & Subsystems
+
+`autoyou_agents/shared_tools/` holds helpers that more than one agent uses: the agent install registry, agent draft handling, website scaffolding and registration, desktop-app bridges, workspace tools, and small utilities such as the date and time tool. This page is generated from the source with `python scripts/generate_reference_docs.py`, and a test fails when it is out of date. Each entry shows the module's own description and its public functions and classes with the first line of their docstrings.
+
+These are plain Python modules, not a framework: an agent's tools are ordinary functions, as described in [Building Custom Agents](building-agents.mdx).
+
+## `_subprocess_env.py`
+
+Shared helper to scrub secrets from subprocess environments.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `scrubbed_subprocess_env` | function | Return a copy of ``os.environ`` with known-sensitive names removed. |
+
+## `agent_directory.py`
+
+Shared helpers for shaping user-facing AutoYou agent directory entries.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `package_agent_name` | function | Map a runtime or raw agent id to the on-disk package name. |
+| `command_name_for_agent` | function | Return the human command token used in direct steering messages. |
+| `concise_agent_description` | function | Reduce long prompt copy to a short picker-friendly sentence. |
+| `load_agent_prompt_description` | function | Load prompt-first description text for an agent with frontend fallback. |
+| `build_agent_directory_entry` | function | Build a stable user-facing directory entry for an installed agent. |
+| `build_agent_directory_payload` | function | Build the canonical user-facing agent directory payload. |
+
+## `agent_identity.py`
+
+Shared helpers for canonical AutoYou agent ids and display labels.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `resolve_runtime_agent_name` | function | Return the canonical runtime agent id for a raw/legacy agent name. |
+| `register_runtime_agent_name` | function | Record the runtime id an agent package declares for itself. |
+| `is_root_agent_name` | function | Return True when the name refers to the AutoYou root agent. |
+| `format_agent_display_name` | function | Humanize an agent id for UI display. |
+
+## `agent_install_registry.py`
+
+Disk-backed install state for AutoYou sub-agents.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `runtime_install_block_reason` | function | &nbsp; |
+| `normalize_agent_package_name` | function | Normalize a runtime or package-facing agent name to its package directory. |
+| `is_builtin_agent_name` | function | Return True when an agent is part of the trusted packaged runtime set. |
+| `can_install_agent_in_runtime` | function | Return True when the current runtime is allowed to execute this agent. |
+| `get_agent_install_registry_path` | function | &nbsp; |
+| `discover_agent_directories` | function | Return a list of agent package names. |
+| `load_agent_install_registry` | function | &nbsp; |
+| `write_agent_install_registry` | function | &nbsp; |
+| `refresh_agent_install_registry` | function | &nbsp; |
+| `set_agent_installed` | function | &nbsp; |
+| `get_installed_agent_names` | function | &nbsp; |
+| `is_agent_installed` | function | &nbsp; |
+
+## `agent_web_proxy.py`
+
+Shared helpers for registering agent-local web servers with AutoYou's proxy.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `normalize_agent_name` | function | Normalize arbitrary user input to AutoYou's ``snake_case_agent`` form. |
+| `call_admin_api` | function | Call the AutoYou admin API with a localhost compatibility fallback. |
+| `register_agent_web_port` | function | Register an agent-local HTTP port with AutoYou's localhost-only proxy bridge. |
+
+## `agent_workbench.py`
+
+Shared workspace-draft helpers for the AutoYou agent studio.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_agent_drafts_root` | function | &nbsp; |
+| `get_agent_draft_dir` | function | &nbsp; |
+| `list_agent_draft_names` | function | &nbsp; |
+| `load_agent_draft_metadata` | function | &nbsp; |
+| `update_agent_draft_metadata` | function | &nbsp; |
+| `delete_agent_draft` | function | &nbsp; |
+| `extract_prompt_string_value` | function | &nbsp; |
+| `replace_prompt_string_value` | function | &nbsp; |
+| `resolve_live_agent_dir` | function | &nbsp; |
+| `build_live_agent_source_info` | function | &nbsp; |
+| `read_live_instruction_payload` | function | &nbsp; |
+| `read_draft_instruction_payload` | function | &nbsp; |
+| `scaffold_agent_draft` | function | &nbsp; |
+| `clone_live_agent_to_draft` | function | &nbsp; |
+| `save_draft_instruction` | function | &nbsp; |
+| `scaffold_frontend_draft` | function | &nbsp; |
+| `save_draft_frontend_manifest` | function | &nbsp; |
+| `build_draft_runtime_test` | function | &nbsp; |
+| `publish_agent_draft` | function | &nbsp; |
+| `build_agent_draft_summary` | function | &nbsp; |
+
+## `builder_suite.py`
+
+Shared helpers for the AutoYou agent-builder workflow suite.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `configured_builder_suite_ollama_model` | function | Return the operator-preferred builder-suite Ollama model tag. |
+| `resolve_builder_suite_ollama_model` | function | Resolve the best installed Qwen model for agent-building workflows. |
+| `builder_suite_status` | function | Return install and model status for the builder workflow suite. |
+| `install_builder_suite_agents` | function | Install the conservative agent-builder workflow suite. |
+
+## `coding_handoff.py`
+
+Shared coding handoff helpers for builder -&gt; coding-agent workflows.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `normalize_frontend_requirement` | function | &nbsp; |
+| `build_coding_handoff_payload` | function | Create a structured handoff payload for coding_agent. |
+
+## `conversation_refs.py`
+
+Small, dependency-free helpers for resolving "it / that / the above" in chat.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `references_previous_answer` | function | True when ``text`` points at the previous answer rather than carrying its own. |
+| `title_from_content` | function | Derive a short title from the first meaningful line of ``content``. |
+| `extract_url` | function | Return the first URL in ``text`` ("" if none), accepting a bare domain like ``AutoYou.me``. |
+
+## `datetime_tool.py`
+
+No module docstring.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_current_datetime` | function | &nbsp; |
+| `inject_realtime_datetime_into_request` | function | Inject the real current date/time into an ADK LlmRequest system instruction. |
+
+## `desktop_app_agent_shortcuts.py`
+
+Deterministic one-tool shortcuts for weak desktop bridge models.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `desktop_exact_tool_call_from_text` | function | Return a deterministic tool call when the request explicitly names one tool or expresses a clear desktop action intent. |
+| `make_desktop_exact_tool_callback` | function | &nbsp; |
+
+## `desktop_app_control.py`
+
+Reusable desktop automation helpers for bridge agents.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `current_platform_details` | function | &nbsp; |
+| `detect_installed_app_version` | function | Best-effort detection of the installed target app version (for version-aware pack selection). |
+| `select_desktop_asset_pack` | function | &nbsp; |
+| `list_desktop_asset_packs` | function | &nbsp; |
+| `note_user_abort` | function | Latch a user abort so in-flight retries stop instead of re-grabbing the pointer. |
+| `clear_user_abort` | function | &nbsp; |
+| `user_abort_active` | function | True while a recent abort should keep desktop automation switched off. |
+| `list_recent_desktop_screenshot_paths` | function | Return recent screenshot image paths from the user's Desktop for attachment tools. |
+| `get_desktop_app_release_status` | function | Compact release gate payload for weak local models. |
+| `handle_desktop_modal_dialogs` | function | Dismiss any modal dialog the app raised in response to the last action. |
+| `get_desktop_app_prompt` | function | Read the live unsent composer by selecting and copying its contents. |
+| `get_desktop_app_status` | function | &nbsp; |
+| `capture_desktop_app_screenshot` | function | &nbsp; |
+| `refresh_desktop_agent_llm_reference` | function | &nbsp; |
+| `send_prompt_to_desktop_app` | function | &nbsp; |
+| `select_desktop_app_project` | function | &nbsp; |
+| `select_desktop_app_permissions` | function | &nbsp; |
+| `select_desktop_app_model` | function | &nbsp; |
+| `add_text_to_desktop_app_prompt` | function | &nbsp; |
+| `replace_desktop_app_prompt` | function | &nbsp; |
+| `attach_files_to_desktop_app_prompt` | function | &nbsp; |
+| `clear_desktop_app_prompt` | function | Clear the desktop composer, preferring the app's native new-chat action. |
+| `stop_desktop_app_prompt` | function | Ask the desktop app to stop its current generation. |
+| `send_current_desktop_app_prompt` | function | &nbsp; |
+| `queue_current_desktop_app_prompt` | function | &nbsp; |
+| `get_desktop_app_prompt_status` | function | Inspect the active desktop prompt window for processing/idle state. |
+| `copy_final_response_from_desktop_app` | function | &nbsp; |
+| `wait_until_idle_and_copy_desktop_response` | function | Poll-until-idle: copy the desktop app's latest response until the text stabilizes. |
+| `parse_desktop_usage_text` | function | Parse a Codex-style usage blob into structured windows with absolute local reset times. |
+| `get_desktop_app_usage` | function | Read the desktop app's usage panel (e.g. Codex 5h + Weekly) via OCR. |
+
+## `desktop_app_manifest.py`
+
+Shared manifest helpers for desktop-app bridge agents.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `normalize_platform_tag` | function | &nbsp; |
+| `build_desktop_asset_pack` | function | &nbsp; |
+| `build_desktop_app_manifest` | function | &nbsp; |
+| `write_desktop_app_manifest` | function | &nbsp; |
+| `load_desktop_app_manifest` | function | &nbsp; |
+| `discover_desktop_app_manifests` | function | &nbsp; |
+| `render_desktop_agent_llm_reference` | function | &nbsp; |
+| `write_desktop_agent_llm_reference` | function | &nbsp; |
+
+## `desktop_app_registry.py`
+
+Disk-backed registry for desktop bridge agent manifests.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_desktop_app_registry_path` | function | &nbsp; |
+| `build_desktop_app_registry` | function | &nbsp; |
+| `write_desktop_app_registry` | function | &nbsp; |
+| `refresh_desktop_app_registry` | function | &nbsp; |
+| `load_desktop_app_registry` | function | &nbsp; |
+
+## `desktop_asset_store.py`
+
+Per-user storage and import for locally calibrated desktop asset packs.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_user_desktop_agents_root` | function | Return private per-user agent data, honoring AUTOYOU_TEST_ROOT first. |
+| `get_user_desktop_assets_dir` | function | &nbsp; |
+| `discover_packaged_desktop_agents` | function | List code-owned desktop agents that ship a generic manifest template. |
+| `get_packaged_desktop_agent_dir` | function | &nbsp; |
+| `get_setup_prompt` | function | &nbsp; |
+| `get_packaged_desktop_agent_template` | function | &nbsp; |
+| `render_desktop_asset_setup_prompt` | function | &nbsp; |
+| `get_desktop_asset_agent_catalog` | function | &nbsp; |
+| `load_user_desktop_asset_packs` | function | Read packs from user data, accepting only contained, regular sprite files. |
+| `get_desktop_asset_preferences` | function | &nbsp; |
+| `save_desktop_asset_preferences` | function | &nbsp; |
+| `detect_desktop_theme` | function | Best-effort system appearance. Applications may override this preference. |
+| `detect_display_scale` | function | &nbsp; |
+| `effective_desktop_asset_preferences` | function | &nbsp; |
+| `list_user_desktop_asset_packs` | function | &nbsp; |
+| `import_user_desktop_asset_bundle` | function | &nbsp; |
+| `remove_user_desktop_asset_pack` | function | &nbsp; |
+| `export_user_desktop_asset_pack` | function | &nbsp; |
+
+## `frontend_manifest.py`
+
+Shared helpers for generated sub-agent website manifests.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `normalize_entry_path` | function | &nbsp; |
+| `build_frontend_manifest` | function | &nbsp; |
+| `write_frontend_manifest` | function | &nbsp; |
+| `load_frontend_manifest` | function | &nbsp; |
+| `build_frontend_discovery_entry` | function | &nbsp; |
+| `discover_frontend_manifests` | function | &nbsp; |
+| `resolve_agent_auth_manifest` | function | Live (uncached) auth-relevant manifest lookup for a single agent. |
+
+## `frontend_registry.py`
+
+Shared disk-backed registry for frontend-enabled AutoYou sub-agents.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_frontend_registry_path` | function | &nbsp; |
+| `build_frontend_registry` | function | &nbsp; |
+| `write_frontend_registry` | function | &nbsp; |
+| `refresh_frontend_registry` | function | &nbsp; |
+| `load_frontend_registry` | function | &nbsp; |
+
+## `localhost_auth.py`
+
+Small TOTP/session fallback for agent websites run without ``server.py``.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `verify_totp` | function | Verify a standard RFC 6238 code without adding a runtime dependency. |
+| `LoopbackTotpAuth` | class | Process-local, expiring TOTP sessions for one loopback-only agent. |
+| `get_loopback_totp_auth` | function | Return the stable in-process auth store for ``agent_name``. |
+
+## `memory_tool.py`
+
+No module docstring.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `remember_long_term_memory` | function | Store an explicit durable memory through AutoYou's active memory backend. |
+| `fetch_long_term_memory` | function | Search long-term memory wired through session_utils/service_manager. |
+| `scan_entire_memory` | function | Scan all matching memory in the current logical conversation by default. |
+| `scan_all_client_memory` | function | Privileged owner-level memory search across all connected client identities. |
+
+## `scheduler_mission_control.py`
+
+No module docstring.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `clear_all_agent_sessions` | function | Admin 'sign out everywhere' kill switch. |
+| `clear_shared_agent_sessions` | function | &nbsp; |
+| `install_agent_website_auth` | function | Apply the shared OTP boundary to a bespoke agent website. |
+| `build_tasks_live_summary` | function | &nbsp; |
+| `create_scheduler_mission_control_app` | function | &nbsp; |
+| `create_agent_website_app` | function | Create a protected static website app for an agent. |
+| `create_agent_chat_app` | function | Create a FastAPI chat UI app for an agent with OTP auth and ADK proxy. |
+
+## `website_handoff.py`
+
+Shared website-agent handoff helpers.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `build_website_handoff_payload` | function | Create the structured builder -&gt; website agent payload. |
+| `build_frontend_proxy_handoff_payload` | function | &nbsp; |
+| `build_agent_website_builder_handoff_payload` | function | &nbsp; |
+
+## `website_scaffold.py`
+
+Shared stack metadata for AutoYou agent website scaffolds.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `normalize_backend_stack` | function | &nbsp; |
+| `normalize_frontend_stack` | function | &nbsp; |
+| `backend_stack_label` | function | &nbsp; |
+| `default_managed_runtime` | function | Launch the scaffolded Rust website with AutoYou's managed process lifecycle. |
+| `frontend_stack_label` | function | &nbsp; |
+| `backend_stack_choices_payload` | function | &nbsp; |
+| `frontend_stack_choices_payload` | function | &nbsp; |
+| `backend_template_outputs` | function | &nbsp; |
+| `frontend_template_outputs` | function | &nbsp; |
+| `package_slug_for_agent` | function | &nbsp; |
+| `rust_crate_name_for_agent` | function | &nbsp; |
+| `build_website_template_context` | function | &nbsp; |
+| `iter_template_outputs` | function | &nbsp; |
+
+## `workspace_tools.py`
+
+Workspace editing tools for repo-aware coding agents.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `get_workspace_root` | function | Return the repository root visible to coding tools. |
+| `list_workspace` | function | List files and directories under a workspace path. |
+| `search_workspace` | function | Search text files in the workspace for a literal or regex pattern. |
+| `read_file` | function | Read a text file from the workspace with numbered lines. |
+| `write_file` | function | Write a full text file under the workspace root. |
+| `replace_text` | function | Replace exact text in a workspace file. |
+| `insert_before` | function | Insert text immediately before a marker in a workspace file. |
+| `insert_after` | function | Insert text immediately after a marker in a workspace file. |
+| `create_directory` | function | Create a directory under the workspace root. |
+| `move_path` | function | Move or rename a file or directory inside the workspace. |
+| `delete_path` | function | Delete a file or directory under the workspace root. |
+| `run_command` | function | Run a non-destructive shell command inside the workspace. |
+| `git_status` | function | Return `git status --short --branch` for the workspace. |
+| `git_diff` | function | Return a git diff for the workspace or a specific file. |

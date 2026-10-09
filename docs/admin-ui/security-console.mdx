@@ -1,109 +1,72 @@
 ---
 title: "Admin UI: Security Console"
-description: "Interactive security administration, TOTP 2FA enrollment, keystore encryption rotation, and agent security profile management in admin-ui.js."
+description: "The Security screen of the admin console: security mode and tier, password, the shared authenticator, the setup QR code, and per-agent 2FA profiles."
 ---
 
 # Security Console
 
-The **Security Console** (`renderSecurityScreen()` in `assets/admin-ui.js`) provides comprehensive administrative controls over authentication, cryptographic secrets, access tiers, and agent execution boundaries.
+The **Security** screen (`renderSecurityScreen()` in `assets/admin-ui.js`) holds the controls for how devices pair with your server and how its data is protected. The API behind each control is in [Security & TOTP APIs](/api-reference/security-and-totp), and the model behind it is in [Security & Authentication](/architecture/security-and-auth).
+
+These controls change credentials and the security posture, so they work only from the computer itself or from an HTTPS admin session opened directly on the admin port. A paired device's browser can read the console but cannot change them.
 
 ---
 
-## Security Console Capabilities
+## Security mode and pairing tier
 
-```mermaid
-graph TD
-    SecScreen[Security Console: renderSecurityScreen]
-    
-    SecScreen --> Passwords[Password Management: renderPasswordManagementBody]
-    SecScreen --> TOTP[TOTP 2FA Management: renderTotpManagementBody]
-    SecScreen --> Tiers[Security Tiers Selector: normal / secure / secure_professional]
-    SecScreen --> KeystoreRotate[Storage Encryption Rotation: renderSecureStorageAlert]
-    SecScreen --> Profiles[Agent Security Profiles: renderAgentSecurityProfilesBody]
-    SecScreen --> Firewall[Home Network Policy: renderHomeNetworkSecurity]
-```
+- **Security mode** switches between Normal, Secure Mode, Secure Professional, and Secure Professional Maximus. The help text under the selector describes the selected mode. See [Security Modes](../security/security-modes.md).
+- **Pairing security tier** switches between **Quick Pairing**, where a client can pair with one chat message, and **Enhanced Pairing**, which adds an extra round trip for every client and makes password guessing harder.
+
+Each has its own save button (`POST /api/admin/security/mode` and `POST /api/admin/security/tier`). Leaving Maximus decrypts the protected stores back to plaintext, and the console warns on every screen if any protected store was left sealed and needs a restart of the services that hold it.
 
 ---
 
-## Password Management & Generation
+## Password
 
-Implemented via `renderPasswordManagementBody()`:
-- **Master Password Update**: Updates the master password protecting the local server. Submitting the form calls `POST /api/admin/password`.
-- **Built-in Password Generator**: `renderPasswordGeneratorTools()` generates high-entropy random passphrases (alphanumeric, symbols, or diceware word combinations) directly within the browser without external network requests.
-- **Verification Strength Meter**: Real-time evaluation of password entropy and minimum length compliance.
+The password panel changes the server password used by pairing and secure-mode flows (`POST /api/admin/password`). The new password must be entered twice and pass a strength check that rejects short and very common passwords. A built-in generator (`POST /api/admin/password/generate`) offers a strong random one. Changing the password re-encrypts the configuration under it.
 
 ---
 
-## TOTP 2FA Enrollment & Recovery
+## Authenticator
 
-The TOTP subsystem (`renderTotpManagementBody()`) manages two-factor authentication tokens:
+The authenticator panel (`renderTotpManagementBody()`) manages the one shared authenticator used for Secure Professional pairing, authenticator pair-code mode, and elevation for the admin agent.
 
-### 1. New Authenticator Enrollment
-1. Clicking **"Set up Authenticator"** calls `POST /admin/security/totp/generate`.
-2. The UI renders the `showTotpSecretModal()` containing:
-   - Visual QR code generated via local HTML5 Canvas rendering.
-   - Plaintext Base32 secret key for manual entry.
-3. The operator enters a 6-digit confirmation code, calling `POST /api/native/security/totp/confirm`.
-4. Upon confirmation, the TOTP badge updates to **ACTIVE**.
+1. **Set up** creates a new secret and shows a QR code and a setup link (`showTotpSecretModal()`). Scan the QR code with an authenticator app, or copy the setup key.
+2. **Import** replaces the secret with an existing Base32 secret or authenticator link, for example when moving to a new computer.
+3. **Show** and **current code** display the saved secret and the code it produces now.
+4. **Delete** removes the saved secret.
 
-### 2. Manual Secret Import & Key Deletion
-- **Import**: Operators migrating from another machine can import an existing Base32 seed using `POST /admin/security/totp/import`.
-- **Emergency Delete**: Operators can remove TOTP protection via `POST /admin/security/totp/delete` (requires local physical loopback access).
+The server does not generate recovery codes.
 
 ---
 
-## Security Tier Selector
+## Automatic Configuration Setup
 
-The console allows toggling the global security policy:
-
-```javascript
-// admin-ui.js security tier selection handler
-async function updateSecurityTier(selectedTier) {
-  const res = await fetchJSON('/api/admin/security/tier', {
-    method: 'POST',
-    body: JSON.stringify({ tier: selectedTier })
-  });
-  if (res.ok) {
-    showNotice(`Security tier updated to ${selectedTier}`, 'success');
-    renderApp();
-  }
-}
-```
-
-- When moving to **`secure_professional`**, the interface verifies that TOTP is active before allowing the switch.
+This panel creates a setup QR code that configures a supported Android or iOS app in one scan (`GET /api/settings/export-qr`). **The QR code contains your server password and the shared authenticator secret.** Show it only on a screen you control and never share a screenshot of it. See [Pairing & Device Discovery](/architecture/pairing-and-discovery#setup-qr-code-automatic-configuration).
 
 ---
 
-## Agent Security Profiles & Sandbox Policy
+## Per-agent 2FA profiles
 
-AutoYou Server allows operators to define fine-grained permission profiles for individual AI agents:
+Agent websites such as the Persona agent can require their own second factor. This panel issues independent 2FA profiles and assigns each to an agent website.
 
-```
-+-------------------------------------------------------------------------+
-| Agent Security Profiles                                                |
-+-------------------------------------------------------------------------+
-| Profile Name    | Network Access | Filesystem Access | Shell Execution |
-| Standard Agent  | Denied         | Sandbox (/tmp)    | Denied          |
-| Web Automator   | Outbound Only  | Downloads Only    | Denied          |
-| System Admin    | Full LAN       | Workspace Root    | Approved Tools  |
-+-------------------------------------------------------------------------+
-| Assigned Agents:                                                        |
-|  * browser_agent      -> Web Automator  [Reassign] [Wipe State]         |
-|  * coding_agent       -> Standard Agent [Reassign] [Wipe State]         |
-|  * admin_agent        -> System Admin   [Reassign] [Wipe State]         |
-+-------------------------------------------------------------------------+
-```
-
-### Profile Operations
-- **Assign Profile**: Maps an agent to a security profile via `POST /api/agent-security/profiles/{profile_id}/assign`.
-- **Wipe Agent State**: Completely removes cached conversation memory, browser cookies, and local database keys for a compromised agent via `POST /api/agent-security/agents/{agent_name}/wipe`.
-- **Verify Integrity**: Audits agent tool decorators against declared security boundaries via `POST /api/agent-security/verify`.
+- A profile's secret is derived from the server password and is not stored, so it is shown **once**, when the profile is created. The console cannot show it again.
+- **Assign** attaches a profile to an agent. **Wipe** on an agent removes its assignment. **Wipe** on a profile deletes the profile, and every agent that used it loses its 2FA requirement.
+- Recovery means wiping the profile and creating a new one.
 
 ---
 
-## Storage Encryption Key Rotation
+## Prompt Override
 
-When the operator changes the master server password or initiates a security audit, `renderSecureStorageAlert()` provides a one-click re-encryption tool.
-- Invokes `POST /api/admin/security/storage/rotate`.
-- Re-encrypts `config.keystore.enc` atomically with a fresh salt and nonce.
-- Ensures existing sessions remain valid without dropping live WebRTC calls.
+Prompt Override is an advanced control for locked runtimes. The root agent's instructions are locked in packaged runtimes. When Prompt Override is active, the saved override prompt takes precedence over the built-in one, and the change takes effect on the next restart. Activating it records an acknowledgement that you accept responsibility for custom prompts and for changes to the safety behavior built into AutoYou (`POST /api/jailbreak/activate`; `POST /api/jailbreak/deactivate` removes it). The console marks an active override in red. Leave it inactive unless you know why you need it.
+
+---
+
+## Maximus storage key
+
+In Maximus mode, the console can rotate the storage key (`POST /api/admin/security/storage/rotate`). It re-encrypts the protected files under a new key and reports how many were re-encrypted. It restarts the AI Agent worker if it was running.
+
+---
+
+## Home network exposure
+
+When pages or the admin console are exposed to other devices on your home network, the console shows the URLs they can open and warns if they would be served over plain HTTP, readable by anyone on the same Wi-Fi.

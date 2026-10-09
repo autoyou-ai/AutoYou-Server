@@ -1,122 +1,61 @@
 ---
 title: "Pairing & WebRTC Signaling APIs"
-description: "Specifications for AutoPair, Local Pair discovery, WebRTC SDP signaling, and QR code mobile bootstrapping."
+description: "Routes for the secure pairing handshake, WebRTC signaling, local pair information, the setup QR code, and Live Pair."
 ---
 
 # Pairing & WebRTC Signaling APIs
 
-These endpoints coordinate client authentication, network address resolution, and the initial WebRTC signaling exchange required to establish encrypted DataChannels and media streams.
+These routes coordinate device authentication and the signaling exchange that opens an encrypted WebRTC link. How pairing works, and how the modes differ, is explained in [Pairing & Device Discovery](/architecture/pairing-and-discovery) and [Security Modes](/security/security-modes). Every route is listed in the [route catalog](/api-reference/route-catalog).
 
 ---
 
-## AutoPair Handshake
+## Secure pairing handshake (admin app)
 
-### `POST /api/autopair_hello`
-First contact from a client attempting zero-touch pairing over loopback or local LAN.
+Local Pair and Auto Pair share a two-step handshake in Secure and Secure Professional modes. The bodies are not JSON: they are the text of the password-authenticated key exchange messages (`shared/pairing_cpace.py`), and the offer in the second step is encrypted under the key the first step established.
 
-#### Request Payload
-```json
-{
-  "client_name": "MacBook-Pro",
-  "client_version": "81.0.0",
-  "platform": "macos",
-  "client_id": "client_mac_8f9a2b"
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `POST /api/autopair_hello` | The first step. Success returns the handshake answer as plain text; a failure returns `{"error": "..."}` with `400`. |
+| `POST /api/autopair` | The second step. Submits the encrypted WebRTC offer and returns the encrypted answer. Plaintext offers are rejected in the secure modes. |
 
-#### Response (`200 OK`)
-```json
-{
-  "server_name": "Studio-Host",
-  "server_version": "81.0.0",
-  "supported_tiers": ["normal", "secure", "secure_professional"],
-  "challenge_nonce": "9a38f7c1d2e4b5a60123456789abcdef"
-}
-```
+Details that matter when you call them:
 
-### `POST /api/autopair`
-Submits challenge response and receives session authorization credentials.
-
-#### Request Payload
-```json
-{
-  "client_id": "client_mac_8f9a2b",
-  "challenge_response": "derived_hmac_proof...",
-  "password": "" // Empty if in local zero-touch profile
-}
-```
-
-#### Response (`200 OK`)
-```json
-{
-  "authenticated": true,
-  "session_id": "sess_01J8YXZ0QW4T9P",
-  "session_token": "sec_token_9a12b3c4d5",
-  "browser_proxy_port": 8067,
-  "ice_servers": [
-    { "urls": ["stun:stun.l.google.com:19302"] }
-  ]
-}
-```
+- **Identity.** The pairing identity comes from the `session_id` query parameter or the `X-AutoYou-Session-Id` header, and the client platform from `X-AutoYou-Platform`. Both steps must use the same identity so the second step finds the key the first established.
+- **No sign-in needed on the private network.** The handshake proves the server password without sending it, so a caller on this computer or the private network needs no admin session. A caller from elsewhere without a session is refused.
+- **Rate limits.** Repeated attempts return `429` with "Too many pairing attempts."; a pairing subsystem that is not ready returns `503`.
+- **Bluetooth.** A Bluetooth pairing platform is refused unless Bluetooth pairing is enabled.
 
 ---
 
-## WebRTC Signaling (`/signal/{session_id}`)
+## OTP and signaling (auth app)
 
-### `POST /signal/{session_id}`
-Submits the client's WebRTC SDP Offer and ICE candidates, receiving the server's SDP Answer.
-
-#### Request Payload
-```json
-{
-  "sdp": "v=0\r\no=- 4239842 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1\r\n...",
-  "type": "offer",
-  "candidates": [
-    {
-      "candidate": "candidate:842163049 1 udp 1677729535 192.168.1.145 54128 typ host...",
-      "sdpMid": "0",
-      "sdpMLineIndex": 0
-    }
-  ]
-}
-```
-
-#### Response (`200 OK`)
-```json
-{
-  "sdp": "v=0\r\no=- 9842398 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1\r\n...",
-  "type": "answer",
-  "candidates": [
-    {
-      "candidate": "candidate:1049281 1 udp 2130706431 192.168.1.145 59002 typ host...",
-      "sdpMid": "0",
-      "sdpMLineIndex": 0
-    }
-  ]
-}
-```
+One-time-code pairing, `POST /auth`, and the `/signal/{session_id}` routes are served by the auth app on port `8002`. They are described in the [auth app reference](/api-reference/auth-app). Offers, answers, and trickled ICE candidates travel through them.
 
 ---
 
-## Local Pair Information
+## Local pair information
 
-### `GET /api/local-pair-info`
-Provides LAN IP and port information to clients browsing local mDNS beacons.
-
-#### Response (`200 OK`)
-```json
-{
-  "lan_ip": "192.168.1.145",
-  "admin_port": 8001,
-  "proxy_port": 8067,
-  "server_name": "Studio-Desktop",
-  "device_ownership": "own"
-}
-```
+`GET /api/local-pair-info` returns the connection details a phone on the same network needs: `addresses`, `primary_address`, `port`, `bind_host`, `loopback_only`, `lan_reachable`, `server_name`, and `success`. It needs an admin sign-in, and it emits no discovery traffic.
 
 ---
 
-## QR Code Export
+## Setup QR code
 
-### `GET /api/settings/export-qr`
-Generates a mobile pairing bundle encoded as a QR code SVG or Base64 data URL.
+`GET /api/settings/export-qr` returns a QR code for one-scan configuration of a supported mobile app. It needs an admin sign-in.
+
+<Warning>
+The QR payload is not encrypted and contains the server password and the shared authenticator secret. Anyone who scans it can pair with the server. See [Pairing & Device Discovery](/architecture/pairing-and-discovery#setup-qr-code-automatic-configuration) for its fields.
+</Warning>
+
+---
+
+## Live Pair
+
+These routes need an admin sign-in and drive the QR-based pairing in the admin console.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/live-pair/status` | The current live-pairing state, with QR frames to display |
+| `POST /api/live-pair/scan` | Decode a QR code from a JPEG camera frame (`data:image/jpeg;base64,...`, up to about 2 MB). Needs OpenCV. |
+| `POST /api/live-pair` | Submit a pairing message (up to 70,000 bytes) and receive the result, the response text, and QR frames |
+| `GET /api/bluetooth-pairing/status` | The state of Bluetooth pairing |

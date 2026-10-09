@@ -56,7 +56,6 @@ from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_too
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
-    register_runtime_agent_name,
     resolve_runtime_agent_name,
 )
 from autoyou_agents.shared_tools.agent_install_registry import (
@@ -1777,7 +1776,17 @@ def _register_overlay_agent_package(agent_name: str) -> None:
         logger.debug("%s has no readable prompt module: %s", install_name, exc)
         return
 
-    register_runtime_agent_name(install_name, getattr(prompt_module, "AGENT_NAME", ""))
+    try:
+        from autoyou_agents.shared_tools.agent_identity import (
+            register_runtime_agent_name,
+        )
+    except ImportError:
+        logger.warning(
+            "%s declares a runtime name, but the loaded identity module cannot register overlay names",
+            install_name,
+        )
+    else:
+        register_runtime_agent_name(install_name, getattr(prompt_module, "AGENT_NAME", ""))
     runtime_name = resolve_runtime_agent_name(install_name) or install_name
     _RUNTIME_TO_INSTALL_NAME.setdefault(runtime_name, install_name)
     raw_aliases = getattr(prompt_module, "ROUTE_ALIASES", ())

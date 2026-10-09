@@ -1,118 +1,90 @@
 ---
 title: "Website Gateway & Page Service"
-description: "In-process website proxy, agent web app mounting (/agent/{name}/*), page feed database, and RFC 10008 HTTP QUERY."
+description: "The page service that hosts agent websites on port 8067, the website gateway that serves them on the admin origin, and HTTP QUERY search."
 ---
 
-# Website Gateway & Page Service (`routers/website_gateway.py`)
+# Website Gateway & Page Service
 
-The **Website Gateway** mounts agent web applications directly behind the main admin origin, eliminating the need for complex multi-port reverse proxy configurations in home network setups.
+Agent websites are served by the **page service** (`autoyou_page_service.py`). It listens on port `8067` by default (`AUTOYOU_PAGE_PORT`) and is the shared host for every agent website and for the website directory. The **website gateway** (`routers/website_gateway.py`) serves the same page service on the admin origin, behind the admin sign-in.
 
 ```mermaid
 graph TD
-    Browser[Client Browser] -->|Admin Origin :8123 / :8443| Gateway["routers/website_gateway.py<br/>WebsiteGateway ASGI Endpoint"]
-    
-    subgraph "In-Process Page Service"
-        Gateway --> Router[URL Path Router]
-        Router --> StaticAssets["Static Asset Server<br/>index.html, CSS, JS"]
-        Router --> WSTunnel["WebSocket Tunnel<br/>Full-Duplex Socket Forwarding"]
-        Router --> PageFeed["Page Feed Publisher<br/>page_feed.db (SQLite)"]
-        Router --> QueryAPI["Directory & RFC 10008 QUERY<br/>/api/agent-websites"]
-    end
+    Browser[Browser or paired device]
+    Page["Page service (:8067)"]
+    Gateway["Website gateway (admin origin :8001 / :8443)"]
+    Agents["/agent/{name}/ website frontends"]
 
-    subgraph "Mounted Agent Applications"
-        StaticAssets --> NotesApp["/agent/notes_agent/"]
-        StaticAssets --> AudioApp["/agent/audio_agent/"]
-        StaticAssets --> BuilderApp["/agent/agent_builder_agent/"]
-        StaticAssets --> CustomApps["/agent/{custom_agent}/"]
-    end
+    Browser -->|"direct_forward: device pass"| Page
+    Browser -->|"path_proxy: admin sign-in"| Gateway
+    Gateway -->|in-process| Page
+    Page --> Agents
 ```
 
 ---
 
-## 1. In-Process Gateway Architecture
+## How browsers reach agent websites
 
-In `path_proxy` home-network mode, only the admin port listens beyond loopback. A remote browser signs in over HTTPS and reaches every website app under `/agent/{name}/` on that same origin. 
+The server setting `server.home_network_websites` decides how a browser on your home network reaches website apps:
 
-Each request is handed to the page service **in-process**: no second listener, no extra hop, and identical media streaming capabilities.
+| Mode | Behavior |
+| :--- | :--- |
+| `direct_forward` (default) | The page service listens on the home network as well as on this computer. Every request from another device needs a device pass: a Local Pair device gets one over its data channel, and a browser gets one by signing in to the admin page. |
+| `path_proxy` | The page service stays on this computer. Browsers on other devices sign in on the admin port, over HTTPS, and reach every website app under `/agent/<name>/` on that same origin. |
 
-```
-Client Request -> [Admin Origin: 8123 / 8443] -> WebsiteGateway ASGI Endpoint -> In-Process Page Service -> Agent Frontend (:8067)
-```
-
----
-
-## 2. Website Gateway Route Catalog
-
-The following paths are intercepted on the admin origin and forwarded to the page service:
-
-```http
-GET   /websites
-GET   /agent-websites
-GET   /agent-frontends
-GET   /api/websites
-GET   /api/agent-websites
-QUERY /api/agent-websites
-GET   /api/agent-frontends
-GET   /api/agent-directory
-ALL   /agent/{agent_name}
-ALL   /agent/{agent_name}/{proxy_path:path}
-```
+The page service listens beyond loopback only when the server itself is bound beyond loopback (`AUTOYOU_BIND_HOST`) **and** the mode is `direct_forward`. This setting is protected from remote browsers. Each agent website also has its own route mode, `path_proxy` or `direct_forward`; a few, such as `admin_agent`, require `direct_forward`.
 
 ---
 
-## 3. Agent Web App Mounting (`/agent/{agent_name}/*`)
+## Page service routes
 
-Each agent with a `website/frontend/` directory (e.g. `audio_agent`, `notes_agent`, `agent_builder_agent`) is automatically served under `/agent/{agent_name}/`.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /`, `GET /websites`, `GET /agent-websites` | The website directory page. `GET /` redirects to the default agent website. `q` filters the directory. |
+| `GET /agent-frontends` | Redirects to `/websites` |
+| `GET /api/websites`, `GET /api/agent-websites` | The registered agent frontends as JSON |
+| `QUERY /api/websites`, `QUERY /api/agent-websites` | Search the registered agent frontends with a JSON body (below) |
+| `OPTIONS /api/websites`, `OPTIONS /api/agent-websites` | Advertises `Allow: GET, HEAD, OPTIONS, QUERY` and `Accept-Query: "application/json"` |
+| `GET /api/agent-frontends` | The registered agent frontends as JSON |
+| `GET /api/agent-directory` | The directory of installed agents |
+| `GET /api/ui/theme`, `POST /api/ui/theme` | Read or set the shared theme (`dark` or `light`) |
+| `GET /agent/{agent_name}` | Redirects to `/agent/{agent_name}/` if an installed frontend is registered; otherwise the request is refused |
+| `ANY /agent/{agent_name}/{proxy_path}` | Proxies to the agent website (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD, QUERY) |
+| `WEBSOCKET /agent/{agent_name}/{proxy_path}` | WebSocket proxy to the agent website |
+| `GET /api/status`, `GET /api/info`, `GET /health` | Status and liveness |
 
-### Features
-- **Static Assets**: Serves `index.html`, CSS stylesheets, and bundled JavaScript.
-- **WebSocket Tunnels**: Full-duplex WebSocket connections are forwarded directly to the agent's internal backend logic.
-- **Remote Client Identity**: The gateway automatically translates and preserves remote browser identity headers (`REMOTE_BROWSER_IDENTITY_HEADERS`) for paired mobile devices.
+Each agent with a website serves it from `autoyou_agents/{agent_name}/website/` and is reached at `/agent/{agent_name}/`.
 
----
+### Gateway routes on the admin origin
 
-## 4. RFC 10008 HTTP QUERY Support
+The gateway registers these paths on the admin app. The page service answers them unchanged, but only for a signed-in admin session:
 
-AutoYou Server natively implements **RFC 10008 HTTP QUERY** on directory and website search endpoints:
+`/websites`, `/agent-websites`, `/agent-frontends`, `/api/websites`, `/api/agent-websites`, `/api/agent-frontends`, `/api/agent-directory`, `/agent/{agent_name}`, and `/agent/{agent_name}/{proxy_path}` (with WebSocket support under `/agent/`).
 
-<CodeGroup>
-```http Request
-QUERY /api/agent-websites HTTP/1.1
-Host: 127.0.0.1:8123
-Content-Type: application/json
-Accept-Query: application/json
-
-{
-  "category": "coding-and-building",
-  "has_frontend": true,
-  "limit": 10
-}
-```
-
-```json 200 OK Response
-{
-  "results": [
-    {
-      "name": "agent_builder_agent",
-      "title": "Agent Builder",
-      "category": "coding-and-building",
-      "route": "/agent/agent_builder_agent/",
-      "proxy_port": 8067,
-      "status": "active"
-    }
-  ]
-}
-```
-</CodeGroup>
-
-This permits complex JSON filtering without running into URL query parameter length restrictions or leaking sensitive search terms in proxy access logs.
+Without a sign-in, a page request is redirected to `/login` and an API request gets `401`. If the page service is not running, the gateway answers `503`. The gateway also decides who the browser is: an operator signed in with the admin password is presented to the website as this computer, any identity the browser claimed is dropped, and a paired device's browser keeps the identity AutoYou stamped on it.
 
 ---
 
-## 5. Page Feed & Social Publisher (`page_feed.db`)
+## HTTP QUERY search
 
-Powers `page_agent` for authoring, querying, and distributing rich media cards, social posts, and agent-generated documents:
+The directory search uses the HTTP `QUERY` method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)), which carries the search in a JSON body instead of the URL.
 
-- **Database**: Dedicated SQLite store at `page_feed.db`.
-- **Feed Search**: Full-text search and tag aggregation across published items.
-- **Media Streaming**: High-throughput media streaming supporting HTTP 206 Partial Content range requests.
+```bash
+curl --request QUERY http://127.0.0.1:8067/api/agent-websites \
+  --header 'Content-Type: application/json' \
+  --data '{"query":"calendar scheduling","limit":24}'
+```
+
+| Field | Rules |
+| :--- | :--- |
+| `query` | A string of at most 200 characters. An empty string returns everything. |
+| `limit` | An integer from 1 through 50. The default is 24. |
+
+The body must be a JSON object of at most 4,096 bytes with `Content-Type: application/json`. Other values return `415` or `400` (wrong content type), `413` (too large), `422` (wrong types or ranges), or `400` (invalid JSON).
+
+The response is the frontend registry payload with the matches in `frontends`, ordered by relevance, plus `query`, `count` (matches returned), and `total` (all registered). Each frontend includes fields such as `agent_name`, `route_mode`, and the launch path.
+
+---
+
+## Page feed
+
+The Page agent keeps feed items in `page_feed.db` (tables `feed_items`, `item_tags`, and `blobs`). Its web interface is served as an ordinary agent website at `/agent/page_agent/`.

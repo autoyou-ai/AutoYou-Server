@@ -24,7 +24,7 @@ Feature that displays your computer's local web services (localhost apps) on you
 One-shot pairing method using messaging apps (Telegram, WhatsApp, Signal).
 
 ### AutoYou Cloud
-Optional bootstrap service that helps devices find each other. Does NOT store your data or AI.
+Optional service that helps devices find each other and can relay encrypted traffic when a direct link is not possible. Your chats, notes, and files stay on your computer. See [Data Privacy](security/data-privacy.md) for what the service can see.
 
 ---
 
@@ -44,7 +44,7 @@ Text-based conversation with your AI. Supports multi-turn, memory, and context.
 AI model hosted externally (Gemini, OpenAI, Claude). Requires internet and API key.
 
 ### Cloud-Pair
-Device pairing using AutoYou Cloud with Google OAuth. Enables auto-reconnection and remote access.
+Device pairing through the optional AutoYou Cloud rendezvous, using an AutoYou account sign-in. Lets a device find your computer from another network.
 
 ### Coding Agent
 Specialized agent for programming tasks: debugging, code review, generation.
@@ -128,7 +128,7 @@ Open authentication standard. Used for Google Sign-In.
 Local LLM runner. Downloads and runs models on your computer.
 
 ### OTP
-One-Time Password. Code for manual pairing (6-8 digits).
+One-Time Password. A short-lived code for manual pairing.
 
 ---
 

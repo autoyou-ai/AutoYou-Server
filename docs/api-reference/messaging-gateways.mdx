@@ -1,123 +1,60 @@
 ---
 title: "Messaging Gateways APIs"
-description: "Specifications for WhatsApp, Signal, and Telegram messaging connectors and approval queues."
+description: "Admin-app routes for the WhatsApp, Signal, and Telegram connectors, including sender approval and direct sends."
 ---
 
 # Messaging Gateways APIs
 
-AutoYou Server bridges external messaging channels directly into the agent runtime, allowing operators and approved contacts to interact with agents via WhatsApp, Signal, and Telegram.
+These admin-app routes control the optional messaging bridges. They need an admin sign-in. The screen that uses them is described in [Messaging](/admin-ui/messaging-bridges). Errors follow the shape in the [API overview](/api-reference/overview).
+
+Each bridge can be turned off in the server's settings. A disabled bridge answers requests with a "feature disabled" response instead of acting.
 
 ---
 
-## WhatsApp Gateway
+## Sending
 
-### `GET /api/whatsapp/status`
-Returns the status of the background Node.js WhatsApp Puppeteer worker.
+The send routes share a similar body. `attachments` and `context` are optional lists.
 
-#### Response (`200 OK`)
-```json
-{
-  "running": true,
-  "state": "CONNECTED", // "INITIALIZING" | "SCAN_QR_CODE" | "CONNECTED" | "DISCONNECTED"
-  "phone_number": "+14155552671",
-  "battery_level": 94
-}
-```
-
-### `GET /api/whatsapp/qr`
-Retrieves the raw QR code string or SVG for device pairing.
-
-#### Response (`200 OK`)
-```json
-{
-  "qr_string": "2@b9f1a23c4d5e...==,ABCD,1",
-  "qr_svg": "<svg xmlns='http://www.w3.org/2000/svg'..."
-}
-```
-
-### `POST /api/whatsapp/send`
-Dispatches an outbound text message to a WhatsApp recipient.
-
-#### Request Payload
-```json
-{
-  "recipient": "+14155552671",
-  "message": "Hello from AutoYou Assistant!"
-}
-```
-
-### `POST /api/whatsapp/reset`
-Clears stored browser session caches and forces a clean Puppeteer re-initialization.
+| Route | Body |
+| :--- | :--- |
+| `POST /api/telegram/send` | `message`, `chat_id`, optional `reply_to_message_id`, `attachments`, `context` |
+| `POST /api/telegram-user/send` | `message`, optional `attachments`, `context`. Sends to the account's Saved Messages. |
+| `POST /api/signal/send` | `message`, `to`, optional `attachments`, `context` |
+| `POST /api/whatsapp/send` | `message`, `to`, optional `attachments`, `context` |
 
 ---
 
-## Signal Gateway
+## Telegram Bot
 
-### `GET /api/signal/status`
-Returns the operational state of the local `signal-cli` daemon.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram/senders` | Senders that have messaged the bot, with their approval state |
+| `POST /api/telegram/senders/approve` | Approve senders. Body: `{"sender_ids": ["..."]}`. |
+| `POST /admin/telegram/allow-code`, `POST /api/admin/telegram/allow-code` | Create the code that lets a Telegram user be allowed |
 
-#### Response (`200 OK`)
-```json
-{
-  "running": true,
-  "registered_number": "+14155552671",
-  "device_id": 2
-}
-```
+## Telegram User (Saved Messages)
 
-### `GET /api/signal/qr`
-Generates a linking URI (`tsdevice:/?uuid=...`) formatted as a QR code image to link the server as a companion Signal device.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram-user/status`, `GET /api/telegram-user/qr` | Connection state and the QR code for signing in |
+| `POST /api/telegram-user/2fa` | Submit the account's two-step verification password. Body: `{"password": "..."}`. |
+| `GET /api/telegram-user/messages` | Recent Saved Messages activity. Metadata only; message bodies stay in the consent-gated local path. |
+| `POST /api/telegram-user/restart`, `POST /api/telegram-user/disconnect` | Restart or end the connection |
 
-### `POST /api/signal/send`
-Sends an end-to-end encrypted message over the Signal protocol.
+## Signal
 
-#### Request Payload
-```json
-{
-  "recipient": "+14155552671",
-  "message": "Backup completed successfully."
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/signal/status`, `GET /api/signal/detailed-status` | Service and pairing state, with integration states in the detailed form |
+| `GET /api/signal/device-name` | The linked device name, when available |
+| `GET /api/signal/qr` | The QR code for linking AutoYou as a device. Query: `refresh`, `force`. |
+| `GET /api/signal/messages` | The recent message log |
+| `POST /api/signal/restart`, `POST /api/signal/cleanup` | Restart the service, or clean up the pairing and reset its configuration |
 
----
+## WhatsApp
 
-## Telegram Gateway (Bot & User Client)
-
-### `GET /api/telegram/senders`
-Returns the approval queue of unverified Telegram users who have initiated conversations with the bot.
-
-#### Response (`200 OK`)
-```json
-{
-  "pending_senders": [
-    {
-      "user_id": 84210948,
-      "username": "johndoe",
-      "first_name": "John",
-      "initial_message": "Hello, can you help me?",
-      "timestamp": 1727999300000
-    }
-  ]
-}
-```
-
-### `POST /api/telegram/senders/approve`
-Approves a pending sender, allowing AutoYou agents to process their requests.
-
-#### Request Payload
-```json
-{
-  "user_id": 84210948,
-  "assigned_profile": "Standard Agent"
-}
-```
-
-### `POST /api/telegram-user/2fa`
-Submits the two-step verification password when authenticating a full Telegram User client.
-
-#### Request Payload
-```json
-{
-  "password": "MyTelegramCloudPassword"
-}
-```
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/whatsapp/status`, `GET /api/whatsapp/qr` | Connection state and the QR code for signing in |
+| `POST /api/whatsapp/restart`, `POST /api/whatsapp/reset` | Restart the bridge, or reset its session |
+| `POST /webhook/whatsapp` | Inbound events from the `wwebjs-api` container used in compiled builds |

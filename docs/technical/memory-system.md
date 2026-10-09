@@ -100,34 +100,7 @@ chat. OpenClaw owns its workspace memory, such as `USER.md`; it is not copied in
 AutoYou's Persona journal. These semantics follow the
 [OpenClaw HTTP contract](https://docs.openclaw.ai/gateway/openai-http-api).
 
-## Validation on 26 September 2026
-
-The native macOS v2 app was built and connected using a saved Windows connection.
-The authenticated Persona website and specialist reported an existing profile,
-while a new chat's unqualified name question incorrectly queried empty session
-memory. This reproduced the routing fault without modifying the live profile.
-Read-only test messages intentionally remain in those validation conversations.
-After rebuilding and restarting the native client, the saved connection again
-reported the same profile size. The Windows server itself was not restarted.
-
-Isolated checks cover explicit saves, new-conversation reads, replay without a
-second write, failed-write reporting, a fresh-process read, website/store parity,
-and unchanged authentication gates. Opt-in tests exercise real local Apple
-Intelligence, Gemma 4 E2B, and Ministral 3B; the Windows connection uses Ministral
-3:8B. These are distinct checks, not a claim that the patched Windows binary has
-already been deployed.
-
-The final focused run passed 52 checks, including the real model probes. Each
-simple save used zero model generations; a new-conversation read used one.
-The required `scripts/e2e_validate.py changed` gate passed 2,659 server tests,
-34 native macOS tests, all six site probes, and all seven selected server probes.
-The signed native app and helper passed signature verification. This was a
-checkout-backed native development build, not a compiled standalone server.
-
-MiniLM measured 315 ms for initial loading, 0.87 ms median and 1.84 ms p95 over
-100 warm classifications of one short request on this Mac. This measures
-classifier overhead, not end-to-end chat latency or general routing accuracy.
-The shared Swift classifier also passes the actual-model routing vectors on Mac.
+## Tests
 
 ```sh
 AUTOYOU_TEST_INTENT_MODEL=1 .venv/bin/python -m pytest tests/server/runtime/test_intent_router.py -q
@@ -135,7 +108,4 @@ AUTOYOU_TEST_INTENT_MODEL=1 .venv/bin/python -m pytest tests/server/runtime/test
 AUTOYOU_TEST_PERSONA_MODELS=1 AUTOYOU_APPLE_MODEL_HELPER=/path/to/AutoYou.app/Contents/Helpers/AutoYouModel .venv/bin/python -m pytest tests/agents/public/test_persona_agent.py -k live_persona -q
 ```
 
-The live model test requires the named local models already installed. Pytest
-redirects all profile writes and keystore access through `AUTOYOU_TEST_ROOT`.
-Windows/Linux server binaries and Android/iOS apps were not built in this check;
-their packaging paths were inspected, rather than claiming device acceptance.
+The live model test requires the named local models to be installed already. Pytest redirects all profile writes and keystore access through `AUTOYOU_TEST_ROOT`.

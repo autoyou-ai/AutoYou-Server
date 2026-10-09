@@ -7,7 +7,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-AUTOYOU_BUILD_VERSION="81.0.0"
+AUTOYOU_BUILD_VERSION="81.0.2"
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
     AUTOYOU_BUILD_VERSION="$(head -n 1 "$SCRIPT_DIR/VERSION" | tr -d '\r\n')"
 fi

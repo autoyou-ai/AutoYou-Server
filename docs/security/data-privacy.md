@@ -1,376 +1,70 @@
 ---
 title: Data Privacy & Ownership
-description: Your data remains yours. Here's exactly how.
+description: Where AutoYou keeps your data, what can leave your computer, and which services are involved
 ---
 
 # Data Privacy & Ownership
 
-A simple principle: **Your data belongs to you. Not us.**
+AutoYou Server runs on your computer, and its data lives there. This page describes where data is stored and which optional services can receive some of it. It describes the software. The legal terms for AutoYou's own services, your rights, and how to contact the maintainers are in the [privacy policy](https://www.autoyou.me/privacy/).
 
-## The Privacy Promise
+## What stays on your computer
 
-AutoYou is designed so that:
+By default the server stores these on the computer it runs on:
 
-✅ **Your data stays local** - On your computer, by default  
-✅ **No cloud sync** - Unless you explicitly enable it  
-✅ **No tracking** - We don't log your activity  
-✅ **No monetization** - Your data isn't sold or used for ads  
-✅ **You're in control** - You decide what's stored and where  
+| Data | Where it lives |
+| --- | --- |
+| Conversations and message history | `sessions.db` (SQLite) |
+| Notes, memory, and agent outputs | The agents' data folders and databases |
+| Attachments and voice recordings | `uploads/` and the agents' folders |
+| Server configuration and credentials | `config.keystore.enc`, or `config.encrypted` as a fallback, which are encrypted |
+| Agent security profiles | `agent_security.db` |
+| Page feed items | `page_feed.db` |
+| Optional device location samples | The server's Location Timeline, only after you enable sharing, grant operating-system permission, and enable recording on your server |
 
----
+Apart from the encrypted configuration, these files are protected by your operating system's permissions. In **Secure Professional Maximus** mode the server also encrypts saved sessions, agent data, websites, notes, and settings on disk. See [Security Modes](security-modes.md).
 
-## What Data Do We Collect?
+The server source contains no analytics or crash-reporting SDK, and the server does not configure an OpenTelemetry exporter. The Google ADK dependency bundles OpenTelemetry libraries. Check the [dependency review](../../requirements/README.md) for what a given profile installs.
 
-### During Setup
+## What can leave your computer
 
-| Data | Where | Why |
-|------|-------|-----|
-| Email | Server (if Cloud-Pair) | Optional identity |
-| Password hash | Server only | Authentication |
-| Configuration | Server only | Settings storage |
+Some features involve other parties. Each one is optional or has a setting, and each has its own data handling:
 
-### During Use
+| Feature | What is sent | To whom |
+| --- | --- | --- |
+| Cloud model providers (Gemini, OpenAI, Anthropic, and others) | The prompts and context you send to that provider | The provider you chose, under its terms |
+| Cloud Pair | Account email, device ID, short-lived pairing details, and connection metadata | AutoYou Cloud |
+| Relay fallback | Encrypted packets and connection metadata | AutoYou Cloud |
+| Public STUN servers | The public address and port a WebRTC connection appears from | Google's public STUN servers by default |
+| Telegram, Signal, and WhatsApp bridges | Messages you route through them | Those services, under their terms |
+| Public tunnel for Website Apps | Traffic to the public URL | The tunnel host |
+| Software update checks | A request to the update feed, authenticated with the account link. On by default, but inactive until the server is linked to an account. Turn off with `software_update.enabled` or `AUTOYOU_SOFTWARE_UPDATES_ENABLED=0`. | AutoYou Cloud |
+| Model and tool downloads | Standard download requests for models, packages, and native tools | The hosts that serve them |
 
-| Data | Where | Why |
-|------|-------|-----|
-| Chat history | Your computer | Conversation context |
-| Notes & files | Your computer | Your data storage |
-| Voice recordings | Your computer | Voice interaction |
-| Model responses | Your computer | Chat history |
-| Optional device location | Your connected AutoYou server | Location Timeline, only while connected and after you enable sharing, grant OS permission, and enable recording on your server |
+The [connection-helper documentation](../technical/webrtc.md) states that AutoYou Cloud does not decrypt message content, voice audio, files, or browsing content. Connection services and peers can still see network addresses and timing, because WebRTC does not hide your public IP from the other side.
 
-### What We Don't Collect Into AutoYou Cloud
+### Public STUN
 
-❌ **Conversation content** - Never sent to cloud unless you choose cloud AI  
-**Location:** Off by default. If you enable device location sharing and grant OS permission, your connected AutoYou server can store location samples in its Location Timeline when its recording control and Location Timeline agent are enabled. These samples go to the server you selected; this is separate from AutoYou's coarse network-derived location used for relay selection or local lobby discovery.
-❌ **Device identifiers** - Not correlated  
-❌ **Browsing history** - Not logged  
-❌ **Personal metadata** - Not harvested  
-❌ **Behavior patterns** - Not analyzed  
+By default the server advertises Google's public STUN servers so WebRTC can discover its public address, including for Local Pair. To keep that lookup off the internet, set `AUTOYOU_DISABLE_PUBLIC_STUN=1` before starting the server, or point the server at your own STUN and TURN host with `AUTOYOU_LOCAL_STUNTURN_HOST` (plus `AUTOYOU_LOCAL_TURN_USERNAME` and `AUTOYOU_LOCAL_TURN_PASSWORD` for TURN). Without any STUN or TURN server, connections across NAT may fail.
 
----
+## Cloud model providers
 
-## Data Locations
+When you choose a cloud model, your prompt and the context sent with it go to that provider, and the answer comes back. The provider's policy applies to that request. Your other local data stays local unless a tool you use sends it as part of a prompt. Review each provider's terms before using it:
 
-### Default: Everything Local
+- [Google Privacy Policy](https://policies.google.com/privacy)
+- [OpenAI Privacy Policy](https://openai.com/privacy)
+- [Anthropic Privacy Policy](https://www.anthropic.com/privacy)
 
-```
-Your Computer
-├── Chat messages
-├── Notes & files
-├── Voice recordings
-├── Optional location timeline (when enabled)
-├── Agent outputs
-└── User preferences
+## Your controls
 
-(Not in cloud)
-```
+- **Choose the integrations.** Cloud providers, Cloud Pair, messaging bridges, and public tunnels are opt-in.
+- **Keep it local.** Use Local Pair on your own network and a local model through Ollama to avoid cloud services for chat. Set `AUTOYOU_DISABLE_PUBLIC_STUN=1` to avoid the STUN lookup.
+- **Own your files.** Your data is ordinary files and SQLite databases in the server's data folders. You can copy them for a backup, or delete them. The Backup agent offers resumable file transfers at `/agent/backup_agent/`.
+- **Reset.** On the computer running the server, the sign-in page can erase AutoYou's local data and shut the server down after you type `RESET`.
 
-### Optional: With Cloud AI
+## If your computer is compromised
 
-If using Gemini/OpenAI:
+A person or program with access to your computer or to a paired device has that endpoint's access. AutoYou cannot protect data from malware that runs as you. Keep your operating system updated, use full-disk encryption on laptops that travel, use a strong unique server password, and keep backups.
 
-```
-Your Computer        Cloud AI Provider
-├── Chat             └── Only queries
-├── Notes               (not stored)
-├── Files
-└── Everything else
-```
+## Questions
 
-### Optional: With Cloud-Pair
-
-If using Google Sign-In for pairing:
-
-```
-Your Computer        AutoYou Cloud
-├── Everything       └── Email & device ID
-│                       (for pairing only)
-└── No chat/notes
-    go to cloud
-```
-
----
-
-## Data Retention
-
-### On Your Computer
-
-**Default:** Forever (or until you delete)
-
-You control:
-
-- When to delete
-- What to keep
-- How to backup
-- Whether to archive
-
-### In AutoYou Cloud (If Cloud-Pair Used)
-
-**Device registration:** Until you sign out  
-**Pairing metadata:** Only during pairing  
-**OAuth tokens:** Session-based (short-lived)  
-
-Request deletion anytime: Email privacy@autoyou.me
-
----
-
-## Your Rights
-
-### Right to Access
-
-See all data AutoYou has about you:
-
-1. **Admin Panel** → **Data** → **Download**
-2. Exports as JSON
-3. Includes all notes, chat, settings
-4. You can review it locally
-
-### Right to Delete
-
-Delete any/all data:
-
-1. **Admin Panel** → **Data** → **Delete**
-2. Choose what to delete (all or selective)
-3. Immediate removal
-4. No recovery (unless you have backups)
-
-### Right to Portability
-
-Export your data in standard format:
-
-1. **Admin Panel** → **Data** → **Export**
-2. Format: JSON or markdown
-3. Compatible with other tools
-4. No restrictions
-
-### Right to Correction
-
-Edit or fix your data:
-
-1. Edit notes directly
-2. Modify preferences
-3. Delete wrong entries
-4. All changes immediate
-
----
-
-## Data Sharing
-
-### Who Can See Your Data?
-
-**By default:**
-
-| Person/Entity | Can See |
-|---|---|
-| You | ✅ Everything |
-| Other paired devices (your own) | ✅ Everything |
-| AutoYou team | ❌ Nothing |
-| Cloud (if using) | ⚠️ Only AI queries |
-| Others | ❌ Nothing (access-controlled) |
-
-### Explicit Sharing
-
-You can choose to share:
-
-1. **Browser Forwarding** - Give someone access to your app
-2. **Document exports** - Share notes via email
-3. **Cloud sync** - Enable selective sync to cloud
-4. **API integration** - Connect to third-party services
-
-**All explicit - no implicit sharing.**
-
-### Third-Party Integrations
-
-If connecting to external services:
-
-- Telegram Bot, Telegram User, WhatsApp, Signal (optional)
-- Cloud AI providers (optional)
-- Custom agents (if added)
-
-**You choose** which integrations to enable.
-
----
-
-## Security of Your Data
-
-### Local Storage
-
-Your computer's security depends on:
-
-- **OS permissions** - Windows/macOS/Linux access control
-- **Disk encryption** - BitLocker/FileVault (your choice)
-- **Physical security** - Not stolen, not accessed by others
-- **Password strength** - Your login password
-
-**We assume:** Only you have access to your computer.
-
-### Backup & Recovery
-
-**Backup recommendations:**
-
-1. **Local backup** - External drive, NAS, time machine
-2. **Cloud backup** - Optional (your choice)
-3. **Encrypted backup** - Use disk encryption
-4. **Test recovery** - Verify backups work
-
-**You own backups** - We don't have copies.
-
-### If Your Device is Compromised
-
-If malware or hacker gains access:
-
-⚠️ **AutoYou can't help.** They have full access.
-
-**Prevention:**
-
-- Keep OS updated
-- Use antivirus/malware protection
-- Strong passwords
-- 2FA on important accounts
-- Don't trust public WiFi
-
----
-
-## Cloud AI Privacy (If You Choose It)
-
-### Google Gemini
-
-When using Gemini:
-
-- **Your query** is sent to Google
-- **Your response** comes back
-- **Google's policy** applies to that query
-- **Your local data** stays local
-
-See: [Google Privacy Policy](https://policies.google.com/privacy)
-
-### OpenAI API
-
-When using OpenAI:
-
-- **Your query** is sent to OpenAI
-- **Your response** comes back
-- **OpenAI's policy** applies to that query
-- **Your local data** stays local
-
-See: [OpenAI Privacy Policy](https://openai.com/privacy)
-
-### Anthropic Claude
-
-When using Claude:
-
-- **Your query** is sent to Anthropic
-- **Your response** comes back
-- **Anthropic's policy** applies
-- **Your local data** stays local
-
-See: [Anthropic Privacy Policy](https://www.anthropic.com/privacy)
-
-**Important:** Each provider has different data handling policies. Review theirs before use.
-
----
-
-## Privacy by Default
-
-### What You Get Automatically
-
-✅ **Local storage** - No cloud sync  
-✅ **No tracking** - Activity not logged  
-✅ **No analytics** - We don't monitor usage  
-✅ **No sharing** - Data not shared  
-✅ **Encrypted transport** - DTLS encryption  
-
-### What You Must Opt-In To
-
-You must explicitly enable:
-
-- Cloud-Pair (Google Sign-In)
-- Cloud AI (Gemini, OpenAI, etc.)
-- Cloud backup
-- Third-party integrations
-- Telemetry (if offered)
-
-**Default is private. Cloud is optional.**
-
----
-
-## Compliance & Standards
-
-### GDPR (EU)
-
-AutoYou respects GDPR principles:
-
-✅ Data minimization - Only store necessary data  
-✅ Purpose limitation - Only use for your AI  
-✅ User control - You control your data  
-✅ Right to deletion - You can delete anytime  
-
-**Note:** Not GDPR-certified. Consult your lawyer for compliance needs.
-
-### CCPA (California)
-
-If using AutoYou from California:
-
-✅ Right to know - See all data collected  
-✅ Right to delete - Delete your data  
-✅ Right to opt-out - Opt out of sharing  
-✅ No discrimination - Exercising rights has no penalty  
-
----
-
-## Privacy Incident Response
-
-### If There's a Data Breach
-
-**We will:**
-
-1. Investigate immediately
-2. Notify affected users (if applicable)
-3. Document what happened
-4. Share findings publicly
-5. Implement fixes
-
-**What we do:**
-
-- Transparency first
-- No cover-ups
-- Rapid patching
-- User notification
-
----
-
-## Your Responsibilities
-
-You also play a role in privacy:
-
-✅ **Keep password safe** - Don't share with others  
-✅ **Secure your device** - Antivirus, updates  
-✅ **Review permissions** - What apps have access  
-✅ **Encrypt disk** - BitLocker/FileVault (optional)  
-✅ **Backup safely** - Encrypted backups  
-✅ **Monitor access** - Who can reach your data  
-
----
-
-## Privacy Questions?
-
-If you have privacy concerns:
-
-📧 **Email:** privacy@autoyou.me\
-📋 **Submit:** [Privacy Request Form](https://autoyou.ai/privacy)  
-📞 **Call:** Contact us via website  
-
-We respond within 30 days.
-
----
-
-## Next Steps
-
-- [Security Modes →](security-modes.md)
-- [Encryption Details →](encryption.md)
-- [What is AutoYou →](../../README.md)
-
----
-
-**Your privacy is sacred.** We treat it that way.
+For privacy requests or questions about AutoYou's services, see the [privacy policy](https://www.autoyou.me/privacy/). To report a security issue, follow [SECURITY.md](https://github.com/autoyou-ai/AutoYou-Server/blob/main/SECURITY.md).

@@ -1,104 +1,57 @@
 ---
 title: "Cloud & Peer Rendezvous APIs"
-description: "Specifications for remote Cloud Relay, Tunnelmole HTTPS reverse proxy, and client-to-client peer rendezvous."
+description: "Routes for the optional AutoYou Cloud link, the Tunnelmole public link, and Peer Link rendezvous."
 ---
 
 # Cloud & Peer Rendezvous APIs
 
-These endpoints govern remote connectivity, public reverse proxy tunnels, mobile push notifications, and decentralized client-to-client peer connections.
+These routes cover the optional remote-access helpers. The concepts, trust boundaries, and flows are explained in [Cloud Pair & Remote Access](/architecture/cloud-and-remote). The admin-app routes below need an admin sign-in. Errors follow the shape in the [API overview](/api-reference/overview).
 
 ---
 
-## Cloud Relay Management
+## AutoYou Cloud (admin app)
 
-### `GET /api/cloud/status`
-Returns the status of the server's registration with the AutoYou Cloud rendezvous network.
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/cloud/status` | none | Registration and connection status |
+| `GET /api/cloud/link-start` | none | Redirect the browser to the AutoYou Cloud sign-in |
+| `GET /api/cloud/callback` | query from the sign-in redirect | Receive the redirect back and save the server token |
+| `POST /api/cloud/activate` | none | Make this server the active AutoYou Cloud server for the account |
+| `POST /api/cloud/reregister` | none | Register again after the token was rejected |
+| `POST /api/cloud/unregister` | none | Remove the registration and stop the event stream |
+| `GET /api/cloud/ice-preview` | none | Show the `iceServers` this server would advertise on `/auth` |
+| `GET /api/cloud/devices` | none | Devices whose Cloud Pair keys this computer saved, and any awaiting approval |
+| `POST /api/cloud/devices/approval` | `required` | Require (or stop requiring) owner approval for new Cloud Pair devices |
+| `POST /api/cloud/devices/{device_id}/approve` | none | Accept the key a pending device presented |
+| `POST /api/cloud/devices/{device_id}/forget` | none | Drop a saved or pending device key |
+| `POST /api/cloud/push-client` | none | Ask paired clients to reconnect through AutoYou Cloud |
+| `POST /api/cloud/notify-client` | `title`, `body`, optional `category`, `data` | Send a notification to your opted-in client devices through AutoYou Cloud |
 
-#### Response (`200 OK`)
-```json
-{
-  "active": true,
-  "registered_server_id": "srv_01J8YXZ0QW4T9P",
-  "cloud_endpoint": "https://auth.autoyou.me",
-  "turn_relays_active": 4,
-  "last_heartbeat": "2026-10-03T16:54:10Z"
-}
-```
+Changing who may pair through AutoYou Cloud (the approval and device routes) is refused for remote browsers.
 
-### `POST /api/cloud/activate`
-Activates remote Cloud Relay using operator credentials.
+### Guest access (x402)
 
-#### Request Payload
-```json
-{
-  "auth_token": "usr_token_9a1b2c3d...",
-  "allow_remote_browsing": true
-}
-```
-
-### `POST /api/cloud/notify-client`
-Sends an Apple Push Notification (APNs) or Google Cloud Messaging (FCM) wakeup signal to a sleeping phone or tablet.
-
-#### Request Payload
-```json
-{
-  "device_id": "dev_ios_iphone17",
-  "title": "Incoming AutoYou Call",
-  "body": "AutoYou Server is requesting a voice session."
-}
-```
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/cloud/guest-access`, `POST /api/cloud/guest-access` | `enabled`, `price_credits`, `pass_ttl_seconds` | Read or set the guest-access pricing and mirror it to AutoYou Cloud |
+| `GET /api/v1/x402/connect` | none | Discovery: returns the payment requirements (HTTP `402`) |
+| `POST /api/v1/x402/connect` | `guest_pass` or `auth_token` | Verify an AutoYou Cloud subscription and issue a short-lived connection token |
+| `POST /api/v1/pair` | `text` | Process a pairing command authenticated by an x402 access token |
 
 ---
 
-## Tunnelmole Public HTTPS Hosting
+## Public link (Tunnelmole)
 
-### `GET /api/tunnelmole/website-hosting`
-Returns the current state and public HTTPS address of the embedded Tunnelmole proxy.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/tunnelmole/status` | State of the public link and its URL |
+| `GET /api/tunnelmole/website-hosting`, `POST /api/tunnelmole/website-hosting` | Read or set website hosting over the public link |
+| `POST /tunnelmole/start`, `POST /tunnelmole/stop`, `POST /tunnelmole/refresh` | Start or stop the public link, or refresh its URL status |
 
-#### Response (`200 OK`)
-```json
-{
-  "enabled": true,
-  "status": "connected",
-  "public_url": "https://a1b2c3d4.tm.autoyou.me",
-  "target_port": 8067,
-  "bytes_transferred": 1420950
-}
-```
-
-### `POST /tunnelmole/start`
-Starts the background Tunnelmole process and allocates a public domain.
-
-### `POST /tunnelmole/stop`
-Shuts down the public tunnel immediately, closing external access.
+The public link is off by default and, in its default timed mode, closes after a timeout.
 
 ---
 
-## Peer Rendezvous Protocol
+## Peer Link rendezvous (auth app)
 
-### `POST /v1/peer/rendezvous/open`
-Opens a rendezvous invitation slot, enabling another client to connect directly and relay through this machine.
-
-#### Request Payload
-```json
-{
-  "role": "host",
-  "expires_in_seconds": 300,
-  "relay_capabilities": ["chat", "browser_proxy", "calls"]
-}
-```
-
-#### Response (`200 OK`)
-```json
-{
-  "invitation_id": "inv_01J8YXZ789AB",
-  "expires_at": 1728000000000,
-  "rendezvous_url": "https://app.autoyou.me/peer/add?id=inv_01J8YXZ789AB"
-}
-```
-
-### `GET /v1/peer/rendezvous/{invitation_id}/offer`
-The joining guest client fetches the host's WebRTC SDP offer.
-
-### `POST /v1/peer/rendezvous/{invitation_id}/answer`
-The guest client posts its matching SDP answer to finalize the peer link.
+The `/v1/peer/rendezvous/...` routes and `GET /peer/add` are on the auth app and are deliberately unauthenticated. Their routes, behavior, and safeguards are described in [Cloud Pair & Remote Access](/architecture/cloud-and-remote#peer-link-rendezvous). The admin app also serves `GET /api/peer/rendezvous/status`.

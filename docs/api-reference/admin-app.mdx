@@ -1,292 +1,77 @@
 ---
-title: "@admin_app Route Catalog"
-description: "Administrative control plane, operator authentication, TOTP second-factor elevation, system diagnostics, and agent management endpoints."
+title: "Admin App Reference"
+description: "The admin app: the web console, sign-in, credentials, and the groups of routes it serves."
 ---
 
-# `@admin_app` Route Catalog (Control Plane & Feature APIs)
+# Admin App Reference
 
-`@admin_app` serves the full Admin UI console (`assets/admin-ui.js`), processes elevated administrative commands, orchestrates the agent catalog, and coordinates background messaging integrations.
+The admin app is the first of the two FastAPI applications that `server.py` creates with `create_apps()`. It serves the web console and the management API that the console, the desktop and mobile apps, and paired devices use.
 
-Unlike `@auth_app`, `@admin_app` requires the server's keystore to be unlocked and enforces administrative authentication (session cookies or Bearer tokens).
+- **Port:** `8001` by default (`AUTOYOU_ADMIN_PORT`). A TLS listener on `8443` is offered when the server is bound beyond loopback. The default bind host is `127.0.0.1`.
+- **Console:** `GET /` and `GET /admin` serve the single-page console, whose code is `assets/admin-ui.js` and `assets/admin-ui.css`. `GET /legacy` serves an older dashboard.
+- **Routes:** every route is listed in the [route catalog](/api-reference/route-catalog). The catalog is generated from the source, so it is the authoritative list.
 
-```mermaid
-graph TD
-    Admin[Operator / Admin Browser] -->|Port 8123 / 8443| AdminApp["@admin_app Control Plane"]
-    
-    subgraph "@admin_app Subsystems"
-        AdminApp --> SessionAPI["Session & Auth<br/>/api/admin/*"]
-        AdminApp --> TOTPAPI["Security Tier & TOTP<br/>/api/totp/* & /api/security/mode"]
-        AdminApp --> DiagAPI["Diagnostics & Logs<br/>/api/health, /api/logs, /api/system/*"]
-        AdminApp --> AgentAPI["Agent Management<br/>/api/agents/* & /api/agent-security/*"]
-    end
-```
+The [auth app](/api-reference/auth-app) is the separate pairing surface. Some routes, such as the unlock routes, are registered on both apps.
 
 ---
 
-## 1. Administrative Session & Authentication
+## Signing in
 
-These endpoints manage operator sign-in, session tokens, and password updates.
+| Route | Purpose |
+| :--- | :--- |
+| `GET /login`, `POST /login` | The sign-in page and the form that creates an admin session |
+| `GET /logout` | End the session |
+| `POST /api/login/native-unlock` | Sign in from the computer itself with the server password saved in the operating system's credential store. Loopback only, and it can be turned off with `security.native_unlock_enabled`. |
+| `POST /api/login/factory-reset` | Erase AutoYou's local data and shut the server down. Loopback only, and the body must contain `{"confirmation": "RESET"}`. |
 
-### `POST /api/admin/login`
+A successful sign-in sets the `admin_session` cookie. The server also accepts a bearer token from `POST /api/admin/session/verify`, which exchanges a valid authenticator code for a token that lasts one hour. `GET /api/admin/session/capabilities` reports whether an authenticator is configured. The credential model, session lifetime, and the limits on remote browsers are described in [Security & Authentication](/architecture/security-and-auth).
 
-Authenticates the operator password, establishing an `admin_session` cookie or issuing a Bearer token.
-
-<CodeGroup>
-```http Request
-POST /api/admin/login HTTP/1.1
-Host: 127.0.0.1:8123
-Content-Type: application/json
-
-{
-  "password": "CorrectHorseBatteryStaple123!"
-}
-```
-
-```json 200 OK Response
-{
-  "status": "authenticated",
-  "session_token": "admin_sess_9a8b7c6d5e",
-  "security_tier": "secure",
-  "totp_required": false
-}
-```
-</CodeGroup>
+While the server is `SetupPending` or `Locked`, API paths return `451` or `401` and browser paths redirect to `/login`.
 
 ---
 
-### `GET /api/admin/session`
+## Route groups
 
-Validates the active session, returning operator identity, permissions, and active security tier.
+| Group | Source | What is in it |
+| :--- | :--- | :--- |
+| Admin and configuration | `routers/admin.py` | Bootstrap, configuration, password and security settings, authenticator setup, the chat and conversation API, status, scheduler summaries, and setup recipes |
+| Console and sign-in | `routers/admin_ui.py` | Console pages and assets, sign-in, native unlock, factory reset, software updates, guides, and legal documents |
+| Agents and Agent Builder | `routers/agents.py` | Agent catalog and install state, the workbench, agent website frontends, bookmarks, provider status, and per-agent 2FA profiles |
+| Pairing, unlock, and signaling | `routers/pairing.py` | Setup and unlock, the secure pairing handshake, local pair information, live pairing, and the setup QR code |
+| WebRTC and media | `routers/webrtc.py` | Live sessions, microphone and screen sharing, video-file playback, and remote input |
+| Messaging connectors | `routers/messaging.py` | Telegram, Signal, and WhatsApp control |
+| Models and speech | `routers/models.py` | The model library, speech models, and WebRTC configuration parsing |
+| Companion services | `routers/services.py` | The AI Agent worker, the page service, the Tunnelmole public link, status, and shutdown |
+| AutoYou Cloud | `routers/cloud.py` | Cloud Pair registration, device approval, and guest access |
+| MCP bridge | `routers/mcp.py` | Routes used by MCP clients |
+| Moderation | `routers/moderation.py` | Reports and blocks |
+| Peer Link | `routers/peer_rendezvous.py` | Invite page and rendezvous status |
+| Website gateway | `routers/website_gateway.py` | Agent websites served on the admin origin, behind the admin sign-in. See [Website Gateway & Page Service](/api-reference/website-gateway). |
 
-<CodeGroup>
-```http Request
-GET /api/admin/session HTTP/1.1
-Host: 127.0.0.1:8123
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-```
+### Password and security settings
 
-```json 200 OK Response
-{
-  "authenticated": true,
-  "user_id": "operator",
-  "security_mode": "secure",
-  "totp_elevated": true,
-  "elevated_expires_in": 1800
-}
-```
-</CodeGroup>
+These routes need an admin sign-in, and a remote browser cannot use them.
 
----
+| Route | Purpose |
+| :--- | :--- |
+| `POST /api/admin/password`, `POST /api/admin/password/generate` | Change the server password, or generate a strong one |
+| `POST /api/admin/security/mode` | Set the security mode: `normal`, `secure`, `secure_professional`, or `secure_professional_maximus` |
+| `POST /api/admin/security/tier` | Set the pairing tier: Quick (`B`) or Enhanced (`A`) |
+| `POST /api/admin/security/storage/rotate` | Rotate the storage key (Maximus only) |
+| `POST /api/admin/config` | Update configuration. Some sections are protected from remote browsers. |
 
-### `POST /api/admin/logout`
+### Authenticator
 
-Invalidates the active administrative session token immediately.
+`POST /admin/security/totp/generate`, `show`, `import`, and `delete`, `GET /admin/security/totp/current-code`, and `POST /api/native/security/totp/setup`, `confirm`, `import`, and `delete` manage the shared authenticator.
 
-<CodeGroup>
-```http Request
-POST /api/admin/logout HTTP/1.1
-Host: 127.0.0.1:8123
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-```
+### Chat
 
-```json 200 OK Response
-{
-  "status": "logged_out"
-}
-```
-</CodeGroup>
+`POST /api/chat` sends a turn to AutoYou AI. `GET /api/chat/sessions` and `GET /api/chat/session` read conversation history, and `POST /api/chat/session/reply` sends your own words to a connected device. These are explained in the [server overview](../technical/server.md).
 
----
+### Agents
 
-## 2. Security Tier & TOTP Second-Factor
+`GET /api/agents/manage`, `POST /api/agents/install`, `POST /api/agents/uninstall`, and `POST /api/agents/frontend` manage installed agents and their website frontends. The workbench routes under `/api/agents/workbench/{agent_name}` cover testing, cloning, publishing, and discarding an agent draft.
 
-AutoYou Server implements a tiered security posture. Sensitive operations (such as resetting database stores, re-configuring messaging bridges, or exposing public Cloudflare tunnels) require TOTP elevation.
+### Status
 
-### `GET /api/totp/status`
-
-Checks whether 2FA TOTP is configured on the host and whether the current session has elevated privileges.
-
-<CodeGroup>
-```http Request
-GET /api/totp/status HTTP/1.1
-Host: 127.0.0.1:8123
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-```
-
-```json 200 OK Response
-{
-  "enabled": true,
-  "elevated": true,
-  "elevation_remaining_seconds": 1640
-}
-```
-</CodeGroup>
-
----
-
-### `POST /api/totp/verify`
-
-Submits a 6-digit TOTP code to elevate session privileges for sensitive operations.
-
-<CodeGroup>
-```http Request
-POST /api/totp/verify HTTP/1.1
-Host: 127.0.0.1:8123
-Content-Type: application/json
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-
-{
-  "code": "849201"
-}
-```
-
-```json 200 OK Response
-{
-  "elevated": true,
-  "expires_in": 1800
-}
-```
-</CodeGroup>
-
----
-
-### `POST /api/security/mode`
-
-Adjusts the active host security profile (`normal`, `secure`, or `secure_professional`).
-
-<CodeGroup>
-```http Request
-POST /api/security/mode HTTP/1.1
-Host: 127.0.0.1:8123
-Content-Type: application/json
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-
-{
-  "mode": "secure_professional"
-}
-```
-
-```json 200 OK Response
-{
-  "mode": "secure_professional",
-  "active_restrictions": [
-    "require_totp_for_all_mutations",
-    "disallow_remote_debuggers",
-    "enforce_sandbox_filesystem"
-  ]
-}
-```
-</CodeGroup>
-
----
-
-## 3. System Telemetry, Logs & Process Controls
-
-```http
-GET  /api/health
-GET  /api/diagnostics
-GET  /api/logs
-POST /api/system/restart
-```
-
-### `GET /api/health`
-
-Returns detailed telemetry across all server subsystems:
-
-<CodeGroup>
-```json 200 OK Response
-{
-  "status": "healthy",
-  "uptime_seconds": 86400,
-  "keystore": {
-    "status": "unlocked",
-    "path": "config.keystore.enc"
-  },
-  "processes": {
-    "ai_agent_worker": "running",
-    "page_service": "running",
-    "webrtc_daemon": "idle"
-  },
-  "system": {
-    "cpu_percent": 4.2,
-    "memory_used_mb": 620,
-    "disk_free_gb": 142.5
-  }
-}
-```
-</CodeGroup>
-
----
-
-### `GET /api/logs`
-
-Retrieves recent server logs with automatic PII and secret redaction.
-
-- **Query Parameters**:
-  - `limit`: Number of log entries to retrieve (default: `100`).
-  - `level`: Minimum log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
-  - `filter`: Keyword filter string.
-
----
-
-## 4. Agent Workbench & Security Management
-
-```http
-GET  /api/agents/overview
-POST /api/agents/install
-POST /api/agents/uninstall
-GET  /api/agents/workbench/{agent_name}
-POST /api/agents/workbench/{agent_name}/test
-POST /api/agents/workbench/{agent_name}/publish
-POST /api/agent-security/agents/{agent_name}/wipe
-POST /api/agents/ai/restart
-```
-
-### `GET /api/agents/overview`
-
-Lists all 40+ built-in and dynamic agents, their installation states, and active web frontends:
-
-<CodeGroup>
-```json 200 OK Response
-{
-  "agents": [
-    {
-      "name": "notes_agent",
-      "title": "Notes Assistant",
-      "installed": true,
-      "has_frontend": true,
-      "route": "/agent/notes_agent/",
-      "permissions": ["database_read", "database_write"]
-    },
-    {
-      "name": "coding_agent",
-      "title": "Coding Specialist",
-      "installed": false,
-      "has_frontend": false,
-      "permissions": ["filesystem_sandbox", "shell_execution"]
-    }
-  ]
-}
-```
-</CodeGroup>
-
----
-
-### `POST /api/agents/ai/restart`
-
-Restarts the dedicated AI Agent worker subprocess or reloads the in-process agent runtime. Useful after installing new skills or updating model configurations.
-
-<CodeGroup>
-```http Request
-POST /api/agents/ai/restart HTTP/1.1
-Host: 127.0.0.1:8123
-Cookie: admin_session=admin_sess_9a8b7c6d5e
-```
-
-```json 200 OK Response
-{
-  "status": "restarting",
-  "worker_pid": 48291
-}
-```
-</CodeGroup>
+`GET /api/status` is a basic status check, `GET /api/connection/status` returns a connection-helper snapshot, and `GET /api/datachannel-status` reports DataChannel state. Status payloads describe this computer, so a direct caller from the network must be signed in to read them.

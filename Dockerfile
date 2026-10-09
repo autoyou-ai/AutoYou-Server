@@ -2,8 +2,10 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 
-# Use a multi-arch compatible Python image as the base
-FROM python:3.11-slim-bullseye
+# Use a current multi-arch compatible Python image as the base. Bullseye
+# security package indexes have moved on, while Bookworm remains supported by
+# the current Debian mirrors and receives the active security stream.
+FROM python:3.11-slim-bookworm
 
 # Set the working directory in the container
 WORKDIR /app
@@ -57,6 +59,7 @@ COPY scripts/gen_locked_constraints.py ./scripts/gen_locked_constraints.py
 COPY scripts/install_realtimestt_runtime.py ./scripts/install_realtimestt_runtime.py
 COPY node/whatsapp/package.json ./node/whatsapp/
 COPY node/whatsapp/package-lock.json ./node/whatsapp/
+COPY node/whatsapp/vendor ./node/whatsapp/vendor
 
 # Install dependencies
 # This layer is cached and only re-runs if the dependency files change.
@@ -69,7 +72,10 @@ RUN python -m pip install --upgrade 'pip>=26.1.2,<27' \
     && if [ "$AUTOYOU_INCLUDE_COGNEE" = "1" ]; then python -m pip install --no-cache-dir -r requirements/cognee.txt -c "$locked_constraints"; fi \
     && if [ "$AUTOYOU_INCLUDE_TUNING" = "1" ]; then python -m pip install --no-cache-dir -r requirements/tuning.txt -c "$locked_constraints"; fi \
     && python -m pip check
-RUN npm ci --omit=dev --prefix ./node/whatsapp
+# The image already installs Debian's Chromium above. Do not download a second
+# Puppeteer browser during the build, and keep the vendored extract-zip package
+# available while npm resolves the locked dependency tree.
+RUN PUPPETEER_SKIP_DOWNLOAD=1 npm ci --omit=dev --prefix ./node/whatsapp
 
 # Create non-root user and set ownership of /app
 RUN groupadd --gid 1000 autoyou \

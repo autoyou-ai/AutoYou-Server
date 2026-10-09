@@ -1,107 +1,74 @@
 ---
-title: "Admin UI: Live View & Media Controls"
-description: "Real-time WebRTC media inspection, camera and desktop screen capture, virtual video injection, and low-latency input in admin-ui.js."
+title: "Admin UI: Live View, Interact & Media"
+description: "The Live View, Interact, Video & Calls, and Permissions screens of the admin console, and the WebRTC media routes behind them."
 ---
 
-# Live View & Media Controls
+# Live View, Interact & Media
 
-The **Live View** screen (`renderLiveViewScreen()` in `assets/admin-ui.js`) is the real-time visual monitoring and media interaction surface of AutoYou Server. It embeds an interactive HTML5 WebRTC video player connected directly to the server's streaming engine.
-
----
-
-## Live View Architecture
-
-```mermaid
-graph LR
-    subgraph Browser: admin-ui.js
-        VideoElem[<video> HTML5 Element]
-        MediaControls[Media Selectors & Input Capture]
-        StatsOverlay[WebRTC Stats: FPS, Bitrate, RTT]
-    end
-
-    subgraph FastAPI Server: :8001
-        SignalingRoute[/signal/{session_id} /api/chat/call/offer]
-        WebRTC[/api/webrtc/* Endpoints]
-        GameWS[/api/webrtc/hosted-game/api/game/native-input]
-    end
-
-    subgraph Host OS Capture
-        ScreenCap[Desktop Screen Capture: mss]
-        CamCap[Camera Capture: OpenCV]
-        VirtualVideo[Video File Player: PyAV]
-        OSInput[OS Input Injector: PyAutoGUI]
-    end
-
-    MediaControls -->|Select Source| WebRTC
-    MediaControls -->|Send Game Input| GameWS
-    GameWS --> OSInput
-
-    SignalingRoute <--> VideoElem
-    ScreenCap --> VideoElem
-    CamCap --> VideoElem
-    VirtualVideo --> VideoElem
-    VideoElem --> StatsOverlay
-```
+Four screens in `assets/admin-ui.js` cover what is connected to the server and how media is captured and played. The routes behind them are listed in the [route catalog](/api-reference/route-catalog); the transport is described in [WebRTC & DataChannels](/architecture/webrtc-and-datachannels).
 
 ---
 
-## Screen & Camera Source Selection
+## Live View
 
-The toolbar above the live player lets the operator switch active video feeds:
+`renderLiveViewScreen()` gives a single scan of the server's current connections.
 
-### 1. Monitor & Desktop Sharing
-- Fetches available screens via `GET /api/webrtc/monitors`.
-- Allows selecting the primary display, secondary monitors, or virtual head-less frames.
-- Captures full desktop frames at 30–60 FPS with minimal CPU impact using direct memory buffer copies.
-
-### 2. Physical Camera Devices
-- Enumerates connected USB webcams and virtual cameras via `GET /api/webrtc/camera-devices`.
-- Dynamically attaches the selected camera track to the active WebRTC PeerConnection without interrupting the call.
-
----
-
-## Audio Devices & Microphone Sharing
-
-Managed via `initialAudioSources()`:
-- **Audio Inputs**: Enumerates available microphone inputs via `GET /api/webrtc/audio-devices`.
-- **Microphone Sharing Toggle**: By default, host server microphones remain closed. Toggling the microphone switch dispatches:
-  ```http
-  PUT /api/webrtc/microphone-sharing HTTP/1.1
-  Host: 127.0.0.1:8001
-  Content-Type: application/json
-
-  {
-    "enabled": true,
-    "device_id": "default"
-  }
-  ```
+| Panel | What it shows |
+| :--- | :--- |
+| **Cloud Pair** | Whether this server is linked to AutoYou Cloud and receiving client requests |
+| **Connected clients** | Current client reachability, without direct-send controls |
+| **Tasks & deliveries** | Tasks Mission Control counts plus the outbound delivery backlog |
+| **Messaging partners** | Transport health only. Direct sends stay in Messaging. |
+| **Browser routes** | Frontend discovery and launch paths that browser clients can see |
 
 ---
 
-## Virtual Video File Injection
+## Interact
 
-For automated testing, demonstrations, or agent video processing, the Live View panel supports uploading and injecting pre-recorded video files directly into the active WebRTC stream:
+`renderInteractScreen()` shows the live screen participants and their choice or controller inputs.
 
-```
-+-------------------------------------------------------------------------+
-| Virtual Video Stream Injection                                          |
-+-------------------------------------------------------------------------+
-| [ Upload MP4/WebM ]  demo_screencast.mp4 (48.2 MB)                     |
-| Status: Playing | Position: 01:24 / 04:15 | Loop: [x]                   |
-| Controls: [ Pause ] [ Resume ] [ Stop ] [ Loop Track ]                  |
-+-------------------------------------------------------------------------+
-```
-
-1. **Upload**: Sends binary multipart video data to `POST /api/webrtc/video-file/upload`.
-2. **Playback**: Starts streaming frames with `POST /api/webrtc/video-file/play`.
-3. **Control**: Controls playback position via `/pause`, `/resume`, and `/stop`.
+- **Listen** plays the unmuted phone microphones of connected participants on this computer's speakers, without AI processing. It is controlled with `GET /api/screen-listen` and `POST /api/screen-listen`, and it is available only from the computer itself.
+- **Inputs** lists recent controller and direction presses from participants.
 
 ---
 
-## Native Game & Remote Desktop Input
+## Video & Calls
 
-When controlling a remote machine or playing games running on the host, the Live View canvas captures user interaction events:
+`renderVideoScreen()` chooses the devices, capture profiles, playback inputs, and storage locations that calls use.
 
-- **Mouse Delta Tracking**: Captures pointer lock (`requestPointerLock`) and transmits raw $(\Delta x, \Delta y)$ mouse movements.
-- **Keyboard Codes**: Dispatches standard `KeyboardEvent.code` values.
-- **WebSocket Transport**: All inputs stream over a dedicated low-overhead WebSocket connection to `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input`.
+| Panel | What it covers |
+| :--- | :--- |
+| **Computer audio and video devices** | Microphones and cameras used as computer media sources |
+| **Playback and input sources** | Files and source ids for video playback and API-fed frames |
+| **Display and capture quality** | The monitor, resolution profile, and bitrate for computer screen video |
+| **Current permission status** | A read-only view of the settings managed in Permissions |
+| **Current audio mix** | The active computer audio sources and the connection state |
+
+The routes involved:
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/webrtc/monitors` | List the attached displays |
+| `GET /api/webrtc/microphone-sharing`, `PUT /api/webrtc/microphone-sharing` | Read or change whether the computer's microphone is shared |
+| `GET /api/webrtc/video-files` | List uploaded video files |
+| `POST /api/webrtc/video-file/upload` | Upload a video file |
+| `POST /api/webrtc/video-file/play`, `POST /api/webrtc/video-file/pause`, `POST /api/webrtc/video-file/status` | Play, pause, and read the state of a video file injected into a call |
+| `WEBSOCKET /api/webrtc/game-input/stream`, `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input` | Remote input |
+
+Screen capture uses `mss`, and desktop video prefers H.264 when the peer supports it.
+
+---
+
+## Permissions
+
+`renderPermissionsScreen()` reviews what this computer allows AutoYou and paired devices to capture, record, save, and access.
+
+| Panel | What it covers |
+| :--- | :--- |
+| **Calls and audio** | Microphone capture, computer audio, transcription, voice recording, safety recording, and location |
+| **Video and computer control** | Screen, camera, API, playback, video recording, Remote Desktop input, and game mode |
+| **Chat, memory, and network access** | Chat retention and AutoYou AI reachability |
+| **Paired browser access** | The remote web role, and whether paired devices may open this computer's admin website |
+| **Where recordings and chat history are saved** | The resolved locations on this computer, including saved chat transcripts and the event memory database |
+
+Whether a paired device's browser may change credentials is not a permission here: credentials and the security posture can always be changed only from the computer itself. See [Security & Authentication](/architecture/security-and-auth).

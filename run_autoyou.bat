@@ -6,7 +6,7 @@ setlocal
 
 cd /d "%~dp0"
 
-set "AUTOYOU_BUILD_VERSION=81.0.0"
+set "AUTOYOU_BUILD_VERSION=81.0.2"
 if exist "%~dp0VERSION" (
     set /p AUTOYOU_BUILD_VERSION=<"%~dp0VERSION"
 )

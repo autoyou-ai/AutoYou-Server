@@ -1,452 +1,93 @@
 ---
 title: Security Modes
-description: Understanding and choosing security levels
+description: What each security mode protects and how to choose one
 ---
 
 # Security Modes
 
-AutoYou offers four security modes for device pairing. Choose based on your network and how much local data protection you want.
+AutoYou has four security modes. The mode controls how device-pairing messages are protected, and the highest mode also protects data stored on your computer. One mode applies to the whole server, so every device pairs under the same rules.
 
-## Quick Comparison
+Change it in the admin console under **Security**. For the implementation details, see [Security & Authentication Architecture](../architecture/security-and-auth.mdx).
 
-| Mode | Protection Level | Pairing Method | When to Use | Complexity |
-|------|-----------------|-----------------|-------------|-----------|
-| **Normal** | Low | OTP code | Home network | Simple |
-| **Secure** | Medium | Password | Untrusted network | Medium |
-| **Secure Professional** | High | Password + 2FA | Public WiFi | Advanced |
-| **Secure Professional Maximus** | Highest | Password + 2FA + protected AutoYou data | Sensitive local data | Advanced |
+## Quick comparison
 
----
+| Mode | Pairing messages | What a device needs to pair | Data on this computer |
+| --- | --- | --- | --- |
+| **Normal** | Not encrypted | A one-time code | Unchanged |
+| **Secure** | Encrypted with the server password | The server password | Unchanged |
+| **Secure Professional** | Encrypted with the server password | The server password and a current authenticator code | Unchanged |
+| **Secure Professional Maximus** | Same as Secure Professional | The server password and a current authenticator code | Saved sessions, agent data, websites, notes, and settings are encrypted |
 
-## Mode 1: Normal Security
+A new installation starts in **Secure** mode.
 
-### What It Does
+## Normal
 
-Uses **one-time OTP codes** for pairing. Minimal protection.
+Pairing uses a one-time code, and the pairing messages themselves are not encrypted. Anyone who can observe them can read them. Use it only on a network you trust and only for older local-first clients that need it.
 
-### Pairing Flow
+## Secure
 
-```
-Server generates OTP: 847392
-You tell phone the code (or scan QR)
-Phone connects without password
-```
+Pairing messages are encrypted with the server password. A device proves it knows the password without sending it, so someone who records the exchange cannot use the recording to test password guesses. This is a good default for a home or office network.
 
-### Security
+## Secure Professional
 
-- Codes are one-time only
-- Works offline (no cloud needed)
-- Warning: No password required
-- Warning: Anyone nearby can intercept
+Secure Professional adds a second factor. The device also supplies the current six-digit code from the shared authenticator. Use it when the server can be reached from networks you do not control.
 
-### Best For
+AutoYou keeps **one** shared authenticator setup. The same setup serves Secure Professional pairing, the authenticator pair-code mode, and elevation for the admin agent.
 
-- **Home network only**
-- **Trusted WiFi**
-- **Quick setup**
-- **Testing**
+### Setting up the authenticator
 
-### When NOT to Use
+1. Open **Security** in the admin console.
+2. Create or import the authenticator. A QR code and a setup key are shown.
+3. Add it to an authenticator app, such as Google Authenticator, 1Password, or Microsoft Authenticator, by scanning the QR code or typing the setup key.
+4. Confirm with the current six-digit code.
 
-- Public WiFi
-- Coffee shops
-- Shared networks
-- Sensitive data
+The **setup key** is the long value you add to the authenticator app once. The **pairing code** is the six-digit number the app shows, which changes every 30 seconds. If a client has separate fields for them, put the setup key in the setup-key field and the current six-digit number in the code field.
 
-### Setup
+AutoYou does not generate or store recovery codes. Keep the authenticator device safe, and treat the setup key like a password.
 
-1. **Admin Panel** -> **Settings** -> **Security**
-2. Select **Normal**
-3. Click **Save**
+## Secure Professional Maximus
 
-Next pairing will use OTP codes.
+Maximus keeps the same password-and-authenticator pairing protection and also encrypts AutoYou-managed data on the computer: saved sessions, agent data, websites, notes, settings, and the databases behind them. The key is held in the operating system's credential store.
 
----
+It does not protect files outside AutoYou-managed storage, and it does not protect data you send to a cloud model provider. To replace the storage key, an admin session can rotate it (`POST /api/admin/security/storage/rotate`). A password change does not by itself replace the storage key.
 
-## Mode 2: Secure
+## Pairing security tier
 
-### What It Does
+A separate setting controls how much work a chat-message pairing takes:
 
-Uses **password-protected pairing**. Requires server password.
+- **Quick Pairing** lets a client pair with one chat message and has the best compatibility.
+- **Enhanced Pairing** requires an extra round trip for every client, which makes password guessing harder.
 
-### Pairing Flow
+## Changing modes
 
-```
-Server generates pairing code
-Phone receives code + prompts for password
-You enter password from setup
-Phone connects securely
-```
+Select a different mode under **Security** and save it. Moving up to Secure Professional needs an authenticator set up first. Moving down removes the protection the higher mode provided, so do it only on a network you trust.
 
-### Security
+Credentials and security settings can be changed only from the computer itself or from an HTTPS admin session opened directly on the admin port. A paired device's browser can read the console but cannot change them.
 
-- Requires password knowledge
-- One-time pairing code
-- Encrypted exchange
-- Good balance of security & usability
+## If you are locked out
 
-### Best For
+- **Forgot the server password, but you can still sign in:** change it under **Security** in the admin console.
+- **Forgot the server password and cannot sign in:** there is no recovery code. On the computer running the server, the sign-in page offers a local reset that erases AutoYou's local data and shuts the server down after you type `RESET`. Restore from your own backup afterward if you have one.
+- **Lost the authenticator device:** set up a new authenticator from an admin session on the computer itself, and update the code source on each device that pairs.
 
-- **Untrusted WiFi**
-- **Guest networks**
-- **Most common use case**
-- **Home + office**
+## Choosing a mode
 
-### When to Upgrade to Professional
+| Situation | Suggested mode |
+| --- | --- |
+| Home network, only your own devices | Secure |
+| Shared or guest network | Secure |
+| The server is reachable from the internet, or you travel with sensitive data | Secure Professional or Maximus |
+| Shared computer or travel laptop where saved data should not stay readable on disk | Maximus |
+| Older client that cannot do secure pairing, on a network you trust | Normal |
 
-- Public hotspots (airport, etc.)
-- High-sensitivity data
-- Multi-user environments
-- Enterprise networks
+## Good habits
 
-### Setup
+- Use a strong, unique server password. The admin console can generate one.
+- Keep the operating system and AutoYou up to date, and use full-disk encryption on laptops that travel.
+- Do not share the server password, the authenticator setup key, or codes.
+- Keep backups. A reset or a lost key can make encrypted data unrecoverable.
 
-1. **Admin Panel** -> **Settings** -> **Security**
-2. Select **Secure**
-3. Confirm your password (from setup)
-4. Click **Save**
+## Next steps
 
----
-
-## Mode 3: Secure Professional
-
-### What It Does
-
-Uses **password + an authenticator app code** for maximum security.
-
-### Pairing Flow
-
-```
-Server generates pairing code
-Phone receives code + prompts for password
-You enter password from setup
-You also enter the current 2FA code from your authenticator app
-Phone connects securely
-```
-
-### Security
-
-- Requires password
-- Requires an authenticator app code
-- Two-factor authentication
-- Maximum protection
-- Even if password leaked, attacker needs 2FA
-
-### Best For
-
-- **Public WiFi**
-- **Airport/hotel networks**
-- **Enterprise environments**
-- **Highly sensitive data**
-- **Remote access critical**
-
-### Setup
-
-1. **Admin Panel** -> **Settings** -> **Security**
-2. Select **Secure Professional**
-3. Confirm your password
-4. Set up 2FA:
-   - Scan QR code with authenticator app
-   - Or manually enter code
-   - **Save backup codes** in secure location
-5. Click **Save**
-
-### What Is the 2FA Code?
-
-Your authenticator app creates a fresh sign-in code:
-
-- 6-digit code that changes every 30 seconds
-- Generated by authenticator app on your phone
-- Examples: Google Authenticator, Authy, Microsoft Authenticator
-- No cloud required (works offline)
-
-### Setup Key vs. Pairing Code
-
-These are two different values:
-
-- **Authenticator setup key:** the long value shown by AutoYou. Add it to your authenticator app once.
-- **Pairing 2FA code:** the current six-digit value generated by the authenticator app. It changes regularly and is the value used when pairing.
-
-If the client shows both fields, put the long setup key in **Authenticator setup key** and the current six-digit value in **Pairing 2FA Code**. Do not paste the long setup key into a six-digit code field. If the client offers only an authenticator secret field, the setup key belongs there.
-
-### 2FA Setup Walkthrough
-
-**Step 1: Choose Authenticator App**
-
-Any of these work:
-
-- Google Authenticator
-- Authy (recommended)
-- Microsoft Authenticator
-- 1Password
-- LastPass
-
-**Step 2: Enable in Admin Panel**
-
-1. **Settings** -> **Security** -> **Secure Professional**
-2. Click **Enable 2FA**
-3. A QR code appears
-
-**Step 3: Scan in Authenticator App**
-
-1. Open your authenticator app
-2. Select "Add" or "+" button
-3. Scan the QR code
-4. AutoYou appears in your app
-5. A 6-digit code appears (changes every 30s)
-
-**Step 4: Verify**
-
-1. Enter the 6-digit code from app
-2. Click **Verify**
-3. You see "2FA enabled"
-
-**Step 5: Save Backup Codes**
-
-Backup codes appear (10 single-use codes):
-
-```
-1A2B3C4D
-5E6F7G8H
-...
-```
-
-**Save these** in a secure place (safe, password manager, etc).
-
-**If you lose your phone**, you'll need backup codes to regain access.
-
-### Using Secure Professional
-
-When pairing a new device:
-
-1. Enter pairing code
-2. Enter password
-3. **Also enter the current 2FA code**
-4. Get current code from authenticator app (valid for 30 seconds)
-5. Enter it
-6. Connected!
-
----
-
-## Mode 4: Secure Professional Maximus
-
-### What It Does
-
-Secure Professional Maximus keeps the same password-and-authenticator pairing protection and also protects AutoYou-managed local data on the computer. This includes saved conversations, notes, settings, agent data, attachments, and temporary voice-note media handled by AutoYou.
-
-It does not automatically protect files outside AutoYou-managed storage or data sent to a cloud AI provider that you choose to use.
-
-### Best For
-
-- Sensitive personal or business data
-- Shared computers or travel laptops
-- Local voice notes and media that should not remain readable on disk
-- Users who want stronger protection for the server's saved data
-
-### Setup
-
-1. Open **Settings** -> **Security**.
-2. Select **Secure Professional Maximus**.
-3. Finish authenticator setup and verify the current six-digit code.
-4. Save the recovery information shown by the server.
-5. Pair the client with the server password and a current authenticator code.
-
-Maximus protects local AutoYou data separately from the pairing password. If the Admin UI offers **Rotate local protection**, use it after a suspected exposure or as part of your security routine. A pairing-password change does not by itself replace a locally managed protection key.
-
----
-
-## Changing Security Modes
-
-### Upgrade (More Secure)
-
-```
-Normal -> Secure: No problem
-Secure -> Professional: Need authenticator app
-Professional -> Maximus: Keep the authenticator and enable local data protection
-```
-
-**Steps:**
-
-1. **Admin Panel** -> **Settings** -> **Security**
-2. Select new mode
-3. Complete setup (2FA if needed)
-4. Click **Save**
-
-Already-paired devices **stay connected** but need to re-pair for new mode.
-
-### Downgrade (Less Secure)
-
-```
-Professional -> Secure: You'll lose 2FA
-Secure -> Normal: You'll lose password protection
-```
-
-**Steps:**
-
-1. **Admin Panel** -> **Settings** -> **Security**
-2. Select lower security mode
-3. Click **Save**
-
-**Warning:** This reduces security. Ensure you're on a trusted network.
-
----
-
-## After Pairing: Ongoing Security
-
-### What Happens After You Pair
-
-Once paired, the **pairing security mode is locked in**. After each pairing:
-
-- **All traffic encrypted** with the encrypted app connection
-- **Session tokens** prevent unauthorized use
-- **Device authentication** via paired credentials
-- Warning: **Pairing mode doesn't apply** to ongoing connections
-
-### Server Password vs 2FA Code
-
-**Server Password:**
-- Set during initial setup
-- Required for all pairing attempts
-- Can be reset from Admin Panel
-- Protects admin access
-
-**2FA code:**
-- Only used if Secure Professional is selected
-- Protects during pairing
-- Changes every 30 seconds
-- Backup codes exist for emergencies
-
-**Maximus local protection:**
-- Protects AutoYou-managed data saved on your computer
-- Does not replace the server password or six-digit pairing code
-- Can be rotated from the Admin UI when that control is available
-
----
-
-## Scenarios
-
-### Scenario 1: Home Alone Network
-
-**Situation:** Home WiFi, only your phone/devices
-
-**Choose:** **Normal** or **Secure**
-
-Reasoning: Closed network, low risk.
-
-**Command:**
-```
-Admin Panel -> Settings -> Security -> Normal
-```
-
----
-
-### Scenario 2: Guest WiFi at Friend's House
-
-**Situation:** Friend's WiFi, others connected
-
-**Choose:** **Secure**
-
-Reasoning: Untrusted network, but friends aren't attackers.
-
-**Command:**
-```
-Admin Panel -> Settings -> Security -> Secure
-```
-
----
-
-### Scenario 3: Coffee Shop / Public WiFi
-
-**Situation:** Airport, Starbucks, hotel, unknown network
-
-**Choose:** **Secure Professional**
-
-Reasoning: Anyone could be listening.
-
-**Command:**
-```
-Admin Panel -> Settings -> Security -> Secure Professional
-(Set up 2FA first)
-```
-
----
-
-### Scenario 4: Remote Access from Anywhere
-
-**Situation:** Want to connect from office, home, coffee shop, airplane
-
-**Choose:** **Secure Professional** + **Cloud-Pair**
-
-Reasoning: Maximum security for non-local connections.
-
-**Setup:**
-1. Server: Sign in with Google
-2. Phone: Sign in with Google
-3. Server: Set to Secure Professional (with 2FA)
-
----
-
-## Recovery & Edge Cases
-
-### "I Lost My 2FA Device"
-
-What to do:
-
-1. Still have backup codes? Use one to re-authenticate
-2. No backup codes? You must:
-   - Disable 2FA temporarily
-   - Re-enable with new authenticator
-   - Or downgrade security mode
-
-**Prevention:** Save backup codes immediately when enabling 2FA
-
-### "I Forgot My Server Password"
-
-If you have access to Admin Panel:
-
-1. **Settings** -> **Change Password**
-2. Enter old password
-3. Enter new password
-4. Save
-
-If locked out:
-
-- Use backup codes to authenticate
-- Or reset via recovery process (see admin docs)
-
-### "Multiple Phones, Different Security Modes?"
-
-Not possible currently.
-
-The security mode applies to all pairings. All devices must use the same mode.
-
----
-
-## Security Best Practices
-
-### Do's
-
-- Use **Secure Professional** for public networks
-- Save backup codes for your authenticator setup
-- Change password regularly
-- Keep authenticator app on separate device
-- Use strong password (8+ chars, mix of types)
-
-### Don'ts
-
-- Don't use Normal mode on public WiFi
-- Don't share passwords or 2FA codes
-- Don't take screenshots of 2FA codes
-- Don't keep only one backup code
-- Don't reuse password with other services
-
----
-
-## Next Steps
-
-- [Encryption Details ->](encryption.md)
-- [Data Privacy ->](data-privacy.md)
-
----
-
-**Security configured!** Your connection is protected.
+- [Encryption](encryption.md)
+- [Data privacy](data-privacy.md)

@@ -162,6 +162,7 @@ __SPRITE__
       </div>
     </main>
     <aside class="dock" id="dock" data-expanded="0" data-collapsed="0" aria-label="About the selected app">
+      <button type="button" class="dock-grab" aria-label="Hide selected app details" aria-expanded="true" aria-controls="dock-content"><i></i></button>
       <div class="dock-content" id="dock-content">
         <div class="dock-head">
           <span class="icon" id="dock-icon" style="--a:#8e9bff;--b:#6a3df0"></span>
@@ -178,7 +179,6 @@ __SPRITE__
           <button type="button" class="btn" id="dock-copy">__COPY_ICON__Copy link</button>
         </div>
       </div>
-      <button type="button" class="dock-grab" aria-label="Hide selected app details" aria-expanded="true" aria-controls="dock-content"><i></i></button>
       <p class="dock-hint" id="dock-hint">Slide to preview. Hold to move. Pinch to resize.</p>
     </aside>
   </div>

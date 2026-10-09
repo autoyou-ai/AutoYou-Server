@@ -3,7 +3,7 @@
 Use the [macOS server instructions](../servers/macos/README.md) and
 [Intel notes](../servers/macos/intel/README.md) for prerequisites, architecture
 limits, profiles, and output paths. The app version comes from the repository
-`VERSION` file, currently `81.0.0`.
+`VERSION` file, currently `81.0.2`.
 
 From the repository root:
 

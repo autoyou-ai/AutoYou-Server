@@ -1,122 +1,113 @@
 ---
-title: "Security & Encryption Architecture"
-description: "Detailed breakdown of AutoYou Server's cryptographic keystore, security modes, TOTP 2FA, and storage encryption rotation."
+title: "Security & Authentication Architecture"
+description: "How AutoYou Server authenticates operators, protects stored data, secures pairing, and limits what remote browsers can change."
 ---
 
-# Security & Encryption Architecture
+# Security & Authentication Architecture
 
-AutoYou Server implements local authentication, keystore protection, and encrypted connection paths. The effective protections depend on configuration, endpoint security, and enabled integrations; external services may receive the credentials or content needed for their operation.
+AutoYou Server combines local authentication, encrypted storage, authenticated pairing, and encrypted connection paths. The protection you get depends on the security mode you choose, your configuration, the security of the computer and paired devices, and the integrations you enable. External services receive whatever data their role requires.
 
----
-
-## Cryptographic Keystore Architecture
-
-The server stores all sensitive configuration in an encrypted vault file (`config.keystore.enc` or `config.encrypted`).
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Admin as Operator / Admin
-    participant Server as AutoYou Server (crypt/keystore.py)
-    participant Argon as Argon2id KDF
-    participant Sodium as libsodium (crypto_secretbox)
-    participant Disk as config.keystore.enc
-
-    Admin->>Server: Provide Admin Password
-    Server->>Argon: Derive Master Key (Password, Salt, Memory=64MB, Iterations=3)
-    Argon-->>Server: 256-bit Encryption Key
-    Server->>Sodium: Decrypt ciphertext using Derived Key & Nonce
-    Sodium-->>Server: Plaintext Configuration JSON
-    Server->>Server: Mount in-memory configuration & clear derived key
-```
-
-### 1. Key Derivation Function (KDF)
-- **Algorithm**: **Argon2id** (configured in accordance with RFC 9106 standards).
-- **Parameters**: High memory cost (64MB) and multi-pass iterations to resist GPU-based brute-force attacks.
-- **Salt**: 16-byte cryptographically secure random salt stored alongside the ciphertext header.
-
-### 2. Authenticated Encryption
-- **Cipher**: `libsodium` authenticated symmetric encryption (`crypto_secretbox_easy` using **XSalsa20-Poly1305** or **XChaCha20-Poly1305-IETF**).
-- **Nonce**: 24-byte unique random nonce generated per write operation.
-- **Integrity**: Any bit flip in the ciphertext or header triggers an immediate verification failure, preventing tamper attacks.
+This page describes what the source implements. For the vulnerability reporting process and operator guidance, see [SECURITY.md](https://github.com/autoyou-ai/AutoYou-Server/blob/main/SECURITY.md).
 
 ---
 
-## Security Tiers (Modes)
+## Unlock states
 
-AutoYou Server operates in one of three configurable security tiers:
+The server is always in one of these states, reported by `GET /v1/unlock/status` in the `state` field:
 
-| Tier | Policy Name | Intended Deployment | Authentication Requirements |
-| :--- | :--- | :--- | :--- |
-| **Tier 1** | `normal` | Single-user local desktop | Single admin password. TOTP is optional. Local network auto-pairing enabled. |
-| **Tier 2** | `secure` | Home LAN / Small team | Enforces session timeouts. Disables unauthenticated network discovery. Pairing requires explicit one-time PIN (OTP). |
-| **Tier 3** | `secure_professional` | Enterprise / Public exposure | **Mandatory TOTP 2FA** for all admin API routes. Immediate session revocation on idle. Strict IP rate limiting and audit logging. |
+| State | Meaning |
+| :--- | :--- |
+| `SetupPending` | No saved configuration exists. The operator must create the server password and accept the current license terms through `POST /v1/unlock/setup`. |
+| `Locked` | A saved configuration exists but has not been unlocked in this process. `POST /v1/unlock/verify` unlocks it with the server password. |
+| `Ready` | Configuration is loaded and the server is serving requests. |
 
-You can switch the server's security mode dynamically through the Admin UI or via API:
-
-```http
-POST /api/admin/security/mode HTTP/1.1
-Host: 127.0.0.1:8001
-Content-Type: application/json
-Authorization: Bearer <ADMIN_SESSION_TOKEN>
-
-{
-  "mode": "secure_professional"
-}
-```
+While the state is not `Ready`, a request to an API path receives a JSON error: HTTP `451` with `"state": "SetupPending"`, or HTTP `401` with `"state": "Locked"`. A browser request is redirected to `/login`. Only the unlock routes, `/login`, a short list of local helper routes, public legal documents, and static assets are reachable before then.
 
 ---
 
-## Two-Factor Authentication (TOTP 2FA)
+## Operator sign-in
 
-AutoYou Server implements RFC 6238 Time-Based One-Time Password (TOTP) verification:
+Signing in to the admin console creates a server-side session and sets an `admin_session` cookie that is `HttpOnly` and `SameSite=Strict`, and `Secure` when the request used HTTPS. Sessions are held in server memory, so restarting the server ends them. A session expires after 12 hours of inactivity by default; set `AUTOYOU_ADMIN_SESSION_IDLE_SECONDS` to change that.
 
-- **Algorithm**: HMAC-SHA1 / HMAC-SHA256.
-- **Interval**: 30-second window with $\pm 1$ step drift allowance for clock skew.
-- **Digits**: 6-digit verification codes.
-- **Secret Storage**: Base32-encoded secret stored within the encrypted keystore.
+Other protections on the admin app:
 
-### TOTP Lifecycle Endpoints
-
-```mermaid
-graph LR
-    Generate[POST /admin/security/totp/generate] --> Show[POST /admin/security/totp/show]
-    Show --> Confirm[POST /api/native/security/totp/confirm]
-    Confirm --> Active[TOTP Active on All Routes]
-    Active --> Rotate[POST /admin/security/totp/delete]
-```
-
-1. **Generate**: `POST /admin/security/totp/generate` generates a 32-character random Base32 secret.
-2. **Display**: `POST /admin/security/totp/show` returns the `otpauth://` URI and QR code image for Google Authenticator / 1Password / Apple Keychain.
-3. **Verify**: The operator submits the 6-digit code to confirm activation.
-4. **Current Code Inspection**: `GET /admin/security/totp/current-code` allows local inspection if authorized by physical terminal access.
+- **Cross-site request guard.** State-changing requests must carry an `Origin` or `Referer` that matches the server host, or they are rejected with `403`.
+- **Host header validation.** Requests with malformed `Host` headers are rejected with `400`.
+- **Rate limiting.** Pairing authentication (`POST /auth`) is limited per client address and globally, and answers `429` when the limit is exceeded.
+- **Where a request came from.** A request that carries a forwarding header (`X-AutoYou-Tunnel-Client-IP`, `X-Forwarded-For`, `Forwarded`, `CF-Connecting-IP`) is treated as coming from somewhere else, even though a proxy delivers it from `127.0.0.1`. It is a shared device, and it is not this computer for audio.
 
 ---
 
-## Zero-Knowledge Unlock Protocol
+## Remote browsers cannot change credentials
 
-When running in headless or locked server environments, the server boots in a restricted **LOCKED** state where all agent execution and persistent data access is paused until unlocked:
+A paired device's browser reaches the admin app through the WebRTC proxy, and a home-network browser can reach it through the page service. Both arrive from `127.0.0.1`, so a localhost check alone cannot tell them from the operator at this computer.
 
-```http
-POST /v1/unlock/verify HTTP/1.1
-Host: 127.0.0.1:8001
-Content-Type: application/json
-
-{
-  "passphrase": "operator-master-passphrase"
-}
-```
-
-- When verified, the master encryption key is loaded into RAM and protected by memory-pinning APIs where available.
-- Upon receiving a shutdown signal (`SIGINT`, `SIGTERM`, or `POST /shutdown`), the server securely zeroes out all decrypted keys in memory before terminating.
+Whatever remote role is configured, such a request may sign in and read, but it cannot change the server's credentials or security posture. Those routes stay with the computer itself and with an HTTPS admin session opened directly on the admin port. They include changing the password, the security mode and tier, rotating the storage key, setting up or removing the authenticator, security profiles for agent websites, factory reset, and the first-run setup route. Configuration sections that widen who can reach the server, such as `security`, `tunnelmole`, `mcp`, and the bind host, are protected the same way.
 
 ---
 
-## Atomic Keystore Rotation
+## Configuration at rest
 
-AutoYou Server supports online, zero-downtime password and encryption key rotation through `POST /api/admin/security/storage/rotate`:
+Server configuration and credentials are stored encrypted. There are two storage formats:
 
-1. Generates a fresh random salt and nonce.
-2. Re-derives a new master encryption key using the new password.
-3. Re-encrypts the in-memory configuration dictionary with the new key.
-4. Atomically writes the new ciphertext to a temporary file (`config.keystore.enc.tmp`) and renames it over the original file (`atomic replace`), ensuring corruption cannot occur if power is interrupted.
+| File | How it is protected |
+| :--- | :--- |
+| `config.keystore.enc` | A [Fernet](https://cryptography.io/en/latest/fernet/) token. The Fernet key is a random 32-byte value held in the operating system's credential store: macOS Keychain, Windows Credential Manager, or Linux Secret Service. |
+| `config.encrypted` | Used when no operating-system credential store is available. A Fernet key is derived from the server password with PBKDF2-HMAC-SHA256 (600,000 iterations) and a random per-file salt. |
+
+Fernet is AES-128-CBC with an HMAC-SHA256 integrity check, so any change to the ciphertext is detected when it is decrypted. The key lives in the credential store, so moving to a new computer means setting the server up again.
+
+Files outside the encrypted configuration, such as the SQLite databases listed in the [architecture overview](/architecture/overview), are protected by the operating system's file permissions and, in Secure Professional Maximus mode, by the storage protection described below.
+
+---
+
+## Security modes
+
+The server runs in one of four modes. The mode controls how pairing messages are protected, and Maximus also protects data on disk. Set it in the admin console under **Security** or with `POST /api/admin/security/mode`.
+
+| Mode | Value | What it does |
+| :--- | :--- | :--- |
+| Normal | `normal` | Pairing messages are not encrypted. Intended only for older local-first clients. |
+| Secure | `secure` | Pairing messages are encrypted with the server password. |
+| Secure Professional | `secure_professional` | Pairing messages are encrypted with the password, and pairing also requires a current code from the shared authenticator (TOTP). |
+| Secure Professional Maximus | `secure_professional_maximus` | Everything in Secure Professional, plus encryption of saved sessions, agent data, websites, notes, and settings stored on this computer. |
+
+A separate **pairing security tier** sets how much work a chat-message pairing takes. **Quick Pairing** (tier B) lets a client pair with one message and has the best compatibility. **Enhanced Pairing** (tier A) requires an extra round trip for every client, which makes password guessing harder. Change it with `POST /api/admin/security/tier`.
+
+### Pairing handshake
+
+In Secure and Secure Professional modes, the `POST /auth` handshake proves knowledge of the server password with a password-authenticated key exchange: a CPace-family construction over ristretto255 that uses libsodium (see `shared/pairing_cpace.py`). The password is proven, not sent. A captured transcript cannot be used to test password guesses offline, and the resulting session key encrypts the pairing offer, answer, and ICE candidates. The module documents where its construction differs from the registered CPace ciphersuite.
+
+### Secure Professional Maximus storage
+
+Maximus keeps the server's mutable data from sitting in plaintext on disk. JSON and binary files become Fernet envelopes, and each SQLite database is held in memory and written to disk as an encrypted snapshot. The Fernet key comes from the operating system's credential store, with a password-derived key and a per-installation salt as the fallback. Existing plaintext databases are migrated on first open and removed only after the encrypted snapshot is durable.
+
+`POST /api/admin/security/storage/rotate` rotates the key and re-encrypts the protected data. It answers `409` when Maximus storage is not active, and it restarts the AI Agent worker if one was running. Maximus does not protect files outside AutoYou-managed storage, and it does not protect data you send to a cloud model provider.
+
+---
+
+## Authenticator (TOTP)
+
+The shared authenticator follows RFC 6238: six-digit codes that change every 30 seconds, generated and checked with `pyotp`. The server accepts the adjacent time step to allow for clock drift.
+
+One shared setup serves three purposes: Secure Professional pairing, authenticator pair-code mode, and admin-agent elevation. Manage it from **Security** in the admin console, or with these routes:
+
+- `POST /admin/security/totp/generate`, `POST /admin/security/totp/show`, `GET /admin/security/totp/current-code`, `POST /admin/security/totp/import`, and `POST /admin/security/totp/delete`
+- `POST /api/native/security/totp/setup`, `confirm`, `import`, and `delete`
+
+The admin agent confirms the operator with `POST /api/admin/session/verify`. A valid code returns a token that is good for one hour. `GET /api/admin/session/capabilities` reports whether a usable authenticator is configured.
+
+The server does not generate or store recovery codes. If you lose the authenticator device, set up a new authenticator from an admin session on the computer itself.
+
+### Per-agent 2FA profiles
+
+Agent websites can require their own second factor. A profile's secret is derived on demand from the server password and a stored salt with HKDF-SHA256, so no secret is stored and the console cannot display one. Profiles and their agent assignments live in `agent_security.db`. Recovery means wiping the profile and creating a new one (`POST /api/agent-security/profiles/{profile_id}/wipe`).
+
+---
+
+## What this does not cover
+
+- Encryption protects a connection, not the endpoints. Malware on the server computer or on a paired device has that endpoint's access.
+- Agents run with the server's permissions. Browser automation, file access, desktop control, and command execution are powerful.
+- Cloud model providers, messaging bridges, public tunnels, and connection services have their own data flows and terms.
+- Running a server makes you responsible for updates, backups, and credentials.
