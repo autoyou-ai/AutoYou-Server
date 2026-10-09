@@ -38,11 +38,19 @@ for index,value in [(1,'00'*32),(2,'https://other.example.invalid'),(3,'account0
     try:api.verify_core_routing_record(*forged)
     except api.BindingError.PermissionDenied:pass
     else:raise AssertionError('Forged Core routing context accepted')
+saved=api.accept_core_routing_record(api.empty_core_routing_store(),*args[:6],args[7],policy)
+assert saved.epoch==4 and json.loads(bytes(saved.protected_store))['clock_floor_ms']==args[7]
+config=api.accept_core_relay_configuration(saved.protected_store,json.dumps(data['relay_envelope']),*args[1:6],args[7],policy)
+assert config.epoch==4 and json.loads(config.credentials_json)[0]['url']=='http://127.0.0.1:32123/'
+assert json.loads(config.credentials_json)[0]['token']
+try:api.accept_core_relay_configuration(b'corrupt',json.dumps(data['relay_envelope']),*args[1:6],args[7],policy)
+except api.BindingError:pass
+else:raise AssertionError('Corrupt protected Core floors accepted')
 info=api.core_info()
 files={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
-(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=8,network=False,
+(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=11,network=False,
     lock_sha256=info.lock_sha256,files=files),indent=2))
-print('Generated Core API: 8 checks passed')
+print('Generated Core API: 11 checks passed')
 "#;
     let script=out.join("core_qualification.py");fs::write(&script,source).unwrap();
     let mut command=if cfg!(windows) { let mut c=Command::new("py");c.arg("-3");c } else { Command::new("python3") };

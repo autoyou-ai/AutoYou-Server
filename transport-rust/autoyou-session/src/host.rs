@@ -43,7 +43,7 @@ pub enum HostError {
 #[serde(deny_unknown_fields)]
 pub struct RelayPolicy {
     pub url: String,
-    pub token: String,
+    #[serde(default)] pub token: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -54,12 +54,13 @@ pub struct EndpointPolicy {
     #[serde(default)] pub relay_only: bool,
     #[serde(default)] pub local_only: bool,
     #[serde(default)] pub allow_lan_peers: bool,
+    #[serde(default)] pub brokered_relays: bool,
 }
 
 impl EndpointPolicy {
     pub fn local() -> Self {
         Self { bind_addresses: vec!["127.0.0.1:0".into()], relays: vec![],
-            relay_only: false, local_only: true, allow_lan_peers: false }
+            relay_only: false, local_only: true, allow_lan_peers: false, brokered_relays: false }
     }
     pub(crate) fn validate(&self) -> Result<(), HostError> {
         if self.bind_addresses.len() > 4 || self.relays.len() > 8 ||
@@ -74,9 +75,12 @@ impl EndpointPolicy {
             let socket: SocketAddr = address.parse().map_err(|_| HostError::InvalidConfig)?;
             if self.local_only && !socket.ip().is_loopback() { return Err(HostError::InvalidConfig); }
         }
+        let mut approved = Vec::new();
         for relay in &self.relays {
             let url: RelayUrl = relay.url.parse().map_err(|_| HostError::InvalidConfig)?;
-            if relay.token.is_empty() || relay.token.len() > 16*1024 ||
+            if (self.brokered_relays && !relay.token.is_empty()) ||
+                (!self.brokered_relays && relay.token.is_empty()) || relay.token.len() > 16*1024 ||
+                approved.contains(&url) ||
                 !url.username().is_empty() || url.password().is_some() ||
                 url.query().is_some() || url.fragment().is_some() || url.path() != "/" {
                 return Err(HostError::InvalidConfig);
@@ -86,6 +90,7 @@ impl EndpointPolicy {
                     .parse().map_err(|_| HostError::InvalidConfig)?;
                 if !ip.is_loopback() || !matches!(url.scheme(), "http" | "https") { return Err(HostError::InvalidConfig); }
             } else if url.scheme() != "https" { return Err(HostError::InvalidConfig); }
+            approved.push(url);
         }
         Ok(())
     }
@@ -244,12 +249,18 @@ struct Shared {
     write_slots: Arc<Semaphore>,
     control_slots: Arc<Semaphore>,
     scheduling_cursor: AtomicU64,
+    relay_generation: AtomicU64,
 }
 
 struct PendingDial { canceled: AtomicBool, wake: Notify }
 
 enum Command {
     Dial { id: u64, address: EndpointAddr, protocol: &'static [u8], pending: Arc<PendingDial> }, NetworkChanged,
+    CoreProof { payload: String, issuer: String, owner: String, device: String,
+        reply: std::sync::mpsc::SyncSender<Result<String, HostError>> },
+    CoreRelays { relays: Vec<crate::core_routing::RelayCredential>, expires_at_ms: u64, generation: u64,
+        reply: std::sync::mpsc::SyncSender<Result<(), HostError>> },
+    #[cfg(test)] RelayCount(std::sync::mpsc::SyncSender<usize>),
     #[cfg(test)] Crash,
 }
 
@@ -296,6 +307,7 @@ impl EndpointHost {
             send_bytes: Arc::new(Semaphore::new(16*1024*1024)),
             write_slots: Arc::new(Semaphore::new(8)), control_slots: Arc::new(Semaphore::new(2)),
             scheduling_cursor: AtomicU64::new(0),
+            relay_generation: AtomicU64::new(1),
         });
         let (commands, receiver) = mpsc::channel(32);
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
@@ -308,14 +320,14 @@ impl EndpointHost {
                 Err(_) => { let _ = ready_tx.send(Err(HostError::Worker)); return; }
             };
             runtime.block_on(async {
-                let endpoint = match tokio::time::timeout(Duration::from_secs(8), bind_endpoint(&worker_policy, key)).await {
+                let (endpoint,relay_map) = match tokio::time::timeout(Duration::from_secs(8), bind_endpoint(&worker_policy, key)).await {
                     Ok(Ok(endpoint)) => endpoint,
                     Ok(Err(error)) => { let _ = ready_tx.send(Err(error)); return; }
                     Err(_) => { let _ = ready_tx.send(Err(HostError::Timeout)); return; }
                 };
                 update_info(&endpoint, &worker_policy, &worker_shared);
                 if ready_tx.send(Ok(())).is_err() { endpoint.close().await; return; }
-                run(endpoint.clone(), worker_shared.clone(), receiver, worker_policy).await;
+                run(endpoint.clone(), worker_shared.clone(), receiver, worker_policy,relay_map).await;
                 let _ = tokio::time::timeout(Duration::from_secs(3), endpoint.close()).await;
             });
             worker_shared.closed.store(true, Ordering::Release);
@@ -333,6 +345,51 @@ impl EndpointHost {
 
     pub fn endpoint_info(&self) -> Result<(String,String), HostError> {
         self.open()?; self.shared.info.lock().map(|info| info.clone()).map_err(|_| HostError::Worker)
+    }
+    pub fn sign_core_proof(&self, payload: String, issuer: String, owner: String, device: String)
+        -> Result<String, HostError> {
+        self.open()?;
+        if payload.len()>4096 || issuer.len()>2048 || owner.len()!=15 || device.len()!=15 {
+            return Err(HostError::NotAuthorized);
+        }
+        let (reply, receiver)=std::sync::mpsc::sync_channel(1);
+        self.commands.try_send(Command::CoreProof { payload,issuer,owner,device,reply }).map_err(|_|HostError::Backpressure)?;
+        receiver.recv_timeout(Duration::from_secs(5)).map_err(|_|HostError::Timeout)?
+    }
+    pub fn core_relay_generation(&self)->Result<u64,HostError> {
+        self.open()?;Ok(self.shared.relay_generation.load(Ordering::Acquire))
+    }
+    /// Callers persist the verified Core floor before installing its credentials.
+    pub fn set_core_relays(&self, credentials: &str, expires_at_ms:u64, generation:u64)->Result<(),HostError> {
+        self.open()?;
+        if !self.policy.brokered_relays || credentials.len()>64*1024 ||
+            generation!=self.shared.relay_generation.load(Ordering::Acquire) { return Err(HostError::NotAuthorized); }
+        let relays:Vec<crate::core_routing::RelayCredential>=serde_json::from_str(credentials).map_err(|_|HostError::InvalidConfig)?;
+        let now=now_ms();
+        if relays.len()>8 || (!relays.is_empty() && (expires_at_ms<=now || expires_at_ms>now.saturating_add(150_000))) {
+            return Err(HostError::NotAuthorized);
+        }
+        let mut urls=Vec::new();
+        for relay in &relays {
+            let url:RelayUrl=relay.url.parse().map_err(|_|HostError::InvalidConfig)?;
+            if relay.token.is_empty() || relay.token.len()>4096 || urls.contains(&url) ||
+                !self.policy.relays.iter().any(|approved| approved.url.parse::<RelayUrl>().ok()==Some(url.clone())) {
+                return Err(HostError::InvalidConfig);
+            }
+            urls.push(url);
+        }
+        let (reply,receiver)=std::sync::mpsc::sync_channel(1);
+        self.commands.try_send(Command::CoreRelays { relays,expires_at_ms,generation,reply }).map_err(|_|HostError::Backpressure)?;
+        match receiver.recv_timeout(Duration::from_secs(5)) {
+            Ok(result)=>result,
+            Err(_)=>{ self.shared.relay_generation.fetch_add(1,Ordering::AcqRel);Err(HostError::Timeout) }
+        }
+    }
+    pub fn clear_core_relays(&self)->Result<(),HostError> {
+        self.open()?;
+        if !self.policy.brokered_relays { return Ok(()); }
+        let generation=self.shared.relay_generation.fetch_add(1,Ordering::AcqRel)+1;
+        self.set_core_relays("[]",0,generation)
     }
     fn open(&self) -> Result<(), HostError> {
         if self.shared.closed.load(Ordering::Acquire) { Err(HostError::Closed) } else { Ok(()) }
@@ -710,7 +767,7 @@ fn clear_queued_media(slot: &Slot, source_id: u64) -> Result<(), HostError> {
     Ok(())
 }
 
-async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<Endpoint, HostError> {
+async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<(Endpoint,RelayMap), HostError> {
     let secret = SecretKey::from_bytes(&key); key.fill(0);
     let mut builder = Endpoint::builder(presets::Minimal).secret_key(secret)
         .alpns(vec![PAIR_ALPN.to_vec(), SESSION_ALPN.to_vec(), ROOM_PAIR_ALPN.to_vec(), ROOM_SESSION_ALPN.to_vec()]).clear_ip_transports()
@@ -726,17 +783,19 @@ async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<Endp
         }
     }
     let map = RelayMap::empty();
-    for relay in &policy.relays {
+    for relay in policy.relays.iter().filter(|_| !policy.brokered_relays) {
         let url: RelayUrl = relay.url.parse().map_err(|_| HostError::InvalidConfig)?;
         map.insert(url.clone(), Arc::new(RelayConfig::new(url, None).with_auth_token(&relay.token)));
     }
-    builder.relay_mode(if map.is_empty() { RelayMode::Disabled } else { RelayMode::Custom(map) })
-        .bind().await.map_err(|_| HostError::Worker)
+    let endpoint=builder.relay_mode(if map.is_empty() && !policy.brokered_relays { RelayMode::Disabled } else { RelayMode::Custom(map.clone()) })
+        .bind().await.map_err(|_| HostError::Worker)?;
+    Ok((endpoint,map))
 }
 
 fn update_info(endpoint: &Endpoint, policy: &EndpointPolicy, shared: &Shared) {
     let address = if policy.local_only {
-        EndpointAddr::new(endpoint.id()).with_addrs(endpoint.bound_sockets().into_iter().map(TransportAddr::Ip))
+        let relays=endpoint.addr().addrs.into_iter().filter(TransportAddr::is_relay);
+        EndpointAddr::new(endpoint.id()).with_addrs(endpoint.bound_sockets().into_iter().map(TransportAddr::Ip).chain(relays))
     } else { endpoint.addr() };
     if let Ok(mut info) = shared.info.lock() { *info = (endpoint.id().to_string(), EndpointTicket::new(address).to_string()); }
 }
@@ -821,12 +880,13 @@ fn authorize_payload(slot: &Slot, frame: &Frame, inbound: bool) -> Result<(), Ho
     Ok(())
 }
 
-async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiver<Command>, policy: EndpointPolicy) {
+async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiver<Command>, policy: EndpointPolicy,_relay_map:RelayMap) {
     let mut handshakes: JoinSet<(u64, bool, Result<Connection, HostError>)> = JoinSet::new();
     let mut readers: JoinSet<u64> = JoinSet::new();
     let mut writers = JoinSet::new();
     let mut tick = tokio::time::interval(Duration::from_millis(5));
     let mut refresh = tokio::time::interval(Duration::from_secs(1));
+    let mut relay_deadline:Option<(tokio::time::Instant,u64)>=None;
     while !shared.closed.load(Ordering::Acquire) {
         tokio::select! {
             incoming = endpoint.accept(), if handshakes.len() < 8 => {
@@ -857,6 +917,37 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                         let _ = shared.events.lock().unwrap().push(HostEvent::Failed { request_id: id, code: "busy" });
                     }
                     Some(Command::NetworkChanged) => { endpoint.network_change().await; }
+                    Some(Command::CoreProof {payload,issuer,owner,device,reply}) => {
+                        let result=crate::core_routing::sign_endpoint_proof(endpoint.secret_key().to_bytes(),
+                            &payload,&issuer,&owner,&device,now_ms());
+                        let _=reply.send(result);
+                    }
+                    Some(Command::CoreRelays {relays,expires_at_ms,generation,reply}) => {
+                        let result=if generation!=shared.relay_generation.load(Ordering::Acquire) { Err(HostError::NotAuthorized) }
+                        else {
+                            for approved in &policy.relays {
+                                let url:RelayUrl=approved.url.parse().unwrap();
+                                if !relays.iter().any(|relay| relay.url.parse::<RelayUrl>().ok()==Some(url.clone())) {
+                                    endpoint.remove_relay(&url).await;
+                                }
+                            }
+                            for relay in &relays {
+                                if generation!=shared.relay_generation.load(Ordering::Acquire) { break; }
+                                let url:RelayUrl=relay.url.parse().unwrap();
+                                endpoint.insert_relay(url.clone(),Arc::new(RelayConfig::new(url,None).with_auth_token(&relay.token))).await;
+                            }
+                            if generation!=shared.relay_generation.load(Ordering::Acquire) {
+                                for approved in &policy.relays { endpoint.remove_relay(&approved.url.parse().unwrap()).await; }
+                                relay_deadline=None;Err(HostError::NotAuthorized)
+                            } else {
+                                relay_deadline=if relays.is_empty() { None } else {
+                                    Some((tokio::time::Instant::now()+Duration::from_millis(expires_at_ms.saturating_sub(now_ms())),generation))
+                                };Ok(())
+                            }
+                        };
+                        update_info(&endpoint,&policy,&shared);let _=reply.send(result);
+                    }
+                    #[cfg(test)] Some(Command::RelayCount(reply)) => { let _=reply.send(_relay_map.len()); }
                     #[cfg(test)]
                     Some(Command::Crash) => { panic!("synthetic worker failure"); }
                     None => break,
@@ -914,7 +1005,14 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
             Some(result) = writers.join_next(), if !writers.is_empty() => { if result.is_err() { break; } }
             _ = shared.wake.notified() => { pump(&shared, &mut writers); }
             _ = tick.tick() => { pump(&shared, &mut writers); }
-            _ = refresh.tick() => { update_info(&endpoint, &policy, &shared); }
+            _ = refresh.tick() => {
+                if relay_deadline.is_some_and(|(deadline,generation)| tokio::time::Instant::now()>=deadline ||
+                    generation!=shared.relay_generation.load(Ordering::Acquire)) {
+                    for approved in &policy.relays { endpoint.remove_relay(&approved.url.parse().unwrap()).await; }
+                    relay_deadline=None;
+                }
+                update_info(&endpoint, &policy, &shared);
+            }
         }
     }
     for slot in shared.slots.lock().unwrap().values() { slot.connection.close(0u32.into(), b"host shutdown"); }
@@ -1216,6 +1314,30 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    #[test]
+    fn brokered_relay_renewal_fences_logout_and_expires_without_rotating_endpoint() {
+        let mut policy=EndpointPolicy::local();policy.brokered_relays=true;
+        policy.relays.push(RelayPolicy {url:"http://127.0.0.1:9/".into(),token:String::new()});
+        let host=EndpointHost::start(policy.clone(),[69;32]).unwrap();
+        let count=|| {
+            let (reply,receiver)=std::sync::mpsc::sync_channel(1);
+            host.commands.try_send(Command::RelayCount(reply)).unwrap();receiver.recv_timeout(Duration::from_secs(3)).unwrap()
+        };
+        let identity=host.endpoint_info().unwrap().0;assert_eq!(count(),0);
+        let generation=host.core_relay_generation().unwrap();
+        let credentials=r#"[{"url":"http://127.0.0.1:9/","token":"synthetic-endpoint-credential"}]"#;
+        host.set_core_relays(credentials,now_ms()+60_000,generation).unwrap();assert_eq!(count(),1);
+        host.clear_core_relays().unwrap();assert_eq!(count(),0);
+        assert!(host.set_core_relays(credentials,now_ms()+60_000,generation).is_err());
+        assert!(host.set_core_relays(r#"[{"url":"http://127.0.0.1:8/","token":"synthetic"}]"#,
+            now_ms()+60_000,host.core_relay_generation().unwrap()).is_err());
+        host.set_core_relays(credentials,now_ms()+50,host.core_relay_generation().unwrap()).unwrap();
+        let deadline=std::time::Instant::now()+Duration::from_secs(3);
+        while count()!=0 { assert!(std::time::Instant::now()<deadline);std::thread::sleep(Duration::from_millis(20)); }
+        assert_eq!(identity,host.endpoint_info().unwrap().0);
+        policy.relays[0].token="project-secret".into();assert!(policy.validate().is_err());
+        host.shutdown().unwrap();
+    }
     #[test]
     fn peer_and_room_share_an_endpoint_without_sharing_admission_or_pairing_lanes() {
         let caller = EndpointHost::start(EndpointPolicy::local(),[71;32]).unwrap();

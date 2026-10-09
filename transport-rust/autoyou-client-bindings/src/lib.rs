@@ -503,6 +503,14 @@ impl SharedEndpoint {
         let (endpoint_id, ticket) = self.host.endpoint_info()?;
         Ok(EndpointInfo { endpoint_id, ticket })
     }
+    pub fn sign_core_proof(&self,payload:String,issuer:String,owner_id:String,device_id:String)->Result<String,BindingError> {
+        Ok(self.host.sign_core_proof(payload,issuer,owner_id,device_id)?)
+    }
+    pub fn core_relay_generation(&self)->Result<u64,BindingError> { Ok(self.host.core_relay_generation()?) }
+    pub fn set_core_relays(&self,credentials_json:String,expires_at_ms:u64,generation:u64)->Result<(),BindingError> {
+        Ok(self.host.set_core_relays(&credentials_json,expires_at_ms,generation)?)
+    }
+    pub fn clear_core_relays(&self)->Result<(),BindingError> { Ok(self.host.clear_core_relays()?) }
     pub fn diagnostics(&self, connection_id: u64) -> Result<TransportDiagnostics, BindingError> {
         let value = self.host.diagnostics(connection_id)?;
         Ok(TransportDiagnostics { generation: value.generation, authorization_epoch: value.authorization_epoch,
