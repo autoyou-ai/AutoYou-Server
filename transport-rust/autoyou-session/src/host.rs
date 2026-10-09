@@ -15,6 +15,8 @@ use autoyou_protocol::{Admission, Envelope, Frame, FrameHeader, HEADER_BYTES, La
 use iroh::{Endpoint, EndpointAddr, RelayConfig, RelayMap, RelayMode, RelayUrl, SecretKey, TransportAddr,
     endpoint::{Connection, PortmapperConfig, QuicTransportConfig, ReadError, ReadExactError, RecvStream, presets}};
 use iroh_tickets::endpoint::EndpointTicket;
+use base64::{Engine,engine::general_purpose::STANDARD};
+use iroh::tls::CaTlsConfig;
 use serde::Deserialize;
 use tokio::{sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc}, task::JoinSet};
 use crate::{connection_binding, media::{SourceLease, Sources, MEDIA_EXPIRED_CODE},
@@ -55,12 +57,17 @@ pub struct EndpointPolicy {
     #[serde(default)] pub local_only: bool,
     #[serde(default)] pub allow_lan_peers: bool,
     #[serde(default)] pub brokered_relays: bool,
+    #[serde(default)] pub proxy_url: Option<String>,
+    #[serde(default)] pub extra_ca_der: Vec<String>,
+    #[serde(default="enabled")] pub advertise_direct_hints: bool,
 }
+fn enabled()->bool { true }
 
 impl EndpointPolicy {
     pub fn local() -> Self {
         Self { bind_addresses: vec!["127.0.0.1:0".into()], relays: vec![],
-            relay_only: false, local_only: true, allow_lan_peers: false, brokered_relays: false }
+            relay_only: false, local_only: true, allow_lan_peers: false, brokered_relays: false,
+            proxy_url:None,extra_ca_der:vec![],advertise_direct_hints:true }
     }
     pub(crate) fn validate(&self) -> Result<(), HostError> {
         if self.bind_addresses.len() > 4 || self.relays.len() > 8 ||
@@ -71,10 +78,23 @@ impl EndpointPolicy {
         if std::env::var_os("AUTOYOU_TEST_ROOT").is_some() && !self.local_only {
             return Err(HostError::InvalidConfig);
         }
+        let mut families=std::collections::BTreeSet::new();
         for address in &self.bind_addresses {
             let socket: SocketAddr = address.parse().map_err(|_| HostError::InvalidConfig)?;
+            if !families.insert(socket.is_ipv4()) { return Err(HostError::InvalidConfig); }
             if self.local_only && !socket.ip().is_loopback() { return Err(HostError::InvalidConfig); }
         }
+        if let Some(proxy)=&self.proxy_url {
+            let url:RelayUrl=proxy.parse().map_err(|_|HostError::InvalidConfig)?;
+            if proxy.len()>2048 || !matches!(url.scheme(),"http"|"https") || url.host_str().is_none()
+                || url.port()==Some(0) || !url.username().is_empty() || url.password().is_some()
+                || url.query().is_some() || url.fragment().is_some() || url.path()!="/" {
+                return Err(HostError::InvalidConfig);
+            }
+            if self.local_only && !url.host_str().unwrap().trim_matches(['[',']']).parse::<IpAddr>()
+                .map_err(|_|HostError::InvalidConfig)?.is_loopback() { return Err(HostError::InvalidConfig); }
+        }
+        self.ca_tls_config()?;
         let mut approved = Vec::new();
         for relay in &self.relays {
             let url: RelayUrl = relay.url.parse().map_err(|_| HostError::InvalidConfig)?;
@@ -93,6 +113,23 @@ impl EndpointPolicy {
             approved.push(url);
         }
         Ok(())
+    }
+
+    fn ca_tls_config(&self)->Result<CaTlsConfig,HostError> {
+        if self.extra_ca_der.len()>8 { return Err(HostError::InvalidConfig); }
+        let mut store=rustls::RootCertStore::empty();let mut roots=Vec::new();
+        for encoded in &self.extra_ca_der {
+            if encoded.len()>24*1024 { return Err(HostError::InvalidConfig); }
+            let bytes=STANDARD.decode(encoded).map_err(|_|HostError::InvalidConfig)?;
+            if bytes.is_empty() || bytes.len()>16*1024 || STANDARD.encode(&bytes)!=*encoded {
+                return Err(HostError::InvalidConfig);
+            }
+            let certificate=rustls::pki_types::CertificateDer::from(bytes);
+            if roots.contains(&certificate) { return Err(HostError::InvalidConfig); }
+            store.add(certificate.clone()).map_err(|_|HostError::InvalidConfig)?;
+            roots.push(certificate);
+        }
+        Ok(CaTlsConfig::embedded().with_extra_roots(roots))
     }
 
     pub(crate) fn ticket_address(&self, ticket: &str, expected_endpoint: &str) -> Result<EndpointAddr, HostError> {
@@ -784,6 +821,10 @@ async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<(End
             .stream_receive_window((1024*1024u32).into()).receive_window((4*1024*1024u32).into())
             .send_window(8*1024*1024).datagram_receive_buffer_size(None)
             .keep_alive_interval(Duration::from_secs(10)).build());
+    builder=builder.ca_tls_config(policy.ca_tls_config()?);
+    if let Some(proxy)=&policy.proxy_url {
+        builder=builder.proxy_url(proxy.parse::<RelayUrl>().map_err(|_|HostError::InvalidConfig)?.into());
+    }
     if !policy.relay_only {
         for address in &policy.bind_addresses {
             builder = builder.bind_addr(address.parse::<SocketAddr>().map_err(|_| HostError::InvalidConfig)?).map_err(|_| HostError::InvalidConfig)?;
@@ -804,7 +845,7 @@ fn update_info(endpoint: &Endpoint, policy: &EndpointPolicy, shared: &Shared,rel
         let relays=endpoint.addr().addrs.into_iter().filter(TransportAddr::is_relay);
         EndpointAddr::new(endpoint.id()).with_addrs(endpoint.bound_sockets().into_iter().map(TransportAddr::Ip).chain(relays))
     } else { endpoint.addr() };
-    address.addrs.retain(|hint|match hint {TransportAddr::Relay(url)=>relay_map.get(url).is_some(),_=>!policy.relay_only});
+    address.addrs.retain(|hint|match hint {TransportAddr::Relay(url)=>relay_map.get(url).is_some(),_=>!policy.relay_only && policy.advertise_direct_hints});
     if let Ok(mut info) = shared.info.lock() { *info = (endpoint.id().to_string(), EndpointTicket::new(address).to_string()); }
 }
 
@@ -1327,6 +1368,47 @@ async fn read_connection(id: u64, slot: Arc<Slot>, shared: Arc<Shared>) -> u64 {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    #[test]
+    fn enterprise_policy_retains_tls_verification_and_explicit_proxy_scope() {
+        use rustls::pki_types::{CertificateDer,ServerName,UnixTime};
+        let mut policy=EndpointPolicy::local();
+        policy.proxy_url=Some("http://127.0.0.1:8080/".into());
+        let ca=include_str!("../tests/fixtures/synthetic-enterprise-ca.b64").trim().to_owned();
+        policy.extra_ca_der.push(ca.clone());assert!(policy.validate().is_ok());
+        let config=policy.ca_tls_config().unwrap();
+        let verifier=config.server_cert_verifier(Arc::new(rustls::crypto::ring::default_provider())).unwrap();
+        let leaf=CertificateDer::from(STANDARD.decode(include_str!("../tests/fixtures/synthetic-enterprise-relay.b64").trim()).unwrap());
+        let name=ServerName::try_from("relay.example.test").unwrap();
+        let now=UnixTime::since_unix_epoch(Duration::from_secs(1_800_000_000));
+        assert!(verifier.verify_server_cert(&leaf,&[],&name,&[],now).is_ok());
+        assert!(verifier.verify_server_cert(&leaf,&[],&ServerName::try_from("other.example.test").unwrap(),&[],now).is_err());
+        assert!(verifier.verify_server_cert(&leaf,&[],&name,&[],UnixTime::since_unix_epoch(Duration::from_secs(3_000_000_000))).is_err());
+        let public=CaTlsConfig::embedded().server_cert_verifier(Arc::new(rustls::crypto::ring::default_provider())).unwrap();
+        assert!(public.verify_server_cert(&leaf,&[],&name,&[],now).is_err());
+        policy.extra_ca_der.push(ca);assert!(policy.validate().is_err());policy.extra_ca_der.clear();
+        for value in ["","not-base64","Zm9v","AA=="] {
+            policy.extra_ca_der=vec![value.into()];assert!(policy.validate().is_err());
+        }
+        policy.extra_ca_der.clear();
+        for proxy in ["http://user:secret@127.0.0.1/","socks5://127.0.0.1/","http://127.0.0.1/path",
+            "http://127.0.0.1/?token=secret","http://127.0.0.1/#fragment","http://127.0.0.1:0/","http://192.0.2.1/"] {
+            policy.proxy_url=Some(proxy.into());assert!(policy.validate().is_err());
+        }
+        policy.proxy_url=None;policy.bind_addresses.push("127.0.0.1:0".into());assert!(policy.validate().is_err());
+    }
+    #[test]
+    fn enterprise_direct_hint_privacy_does_not_change_endpoint_identity() {
+        let mut policy=EndpointPolicy::local();policy.advertise_direct_hints=false;
+        let host=EndpointHost::start(policy,[61;32]).unwrap();
+        let (identity,ticket)=host.endpoint_info().unwrap();
+        let ticket:EndpointTicket=ticket.parse().unwrap();
+        assert!(ticket.endpoint_addr().addrs.is_empty());
+        assert_eq!(ticket.endpoint_addr().id.to_string(),identity);
+        assert_eq!(identity,endpoint_id_from_key([61;32]));
+        host.shutdown().unwrap();
+        let defaults:EndpointPolicy=serde_json::from_value(serde_json::json!({"bind_addresses":["127.0.0.1:0"],"local_only":true})).unwrap();
+        assert!(defaults.advertise_direct_hints && defaults.proxy_url.is_none() && defaults.extra_ca_der.is_empty());
+    }
     #[test]
     fn brokered_relay_renewal_fences_logout_and_expires_without_rotating_endpoint() {
         let mut policy=EndpointPolicy::local();policy.brokered_relays=true;
