@@ -53,6 +53,7 @@ class IrohServerService:
         self.files: Any = None
         self.media: Any = None
         self._lifecycle_lock = asyncio.Lock()
+        self._cloud_lock = asyncio.Lock()
         self._core_context = None
         self._cloud_revision = 0
 
@@ -92,16 +93,24 @@ class IrohServerService:
         cloud = (self.runtime.STATE.config or {}).get("cloud") or {}
         owner, device = cloud.get("user_id", ""), cloud.get("server_id", "")
         fingerprint = client._token_fingerprint()
+        pins = dict(config)
+        def current():
+            cloud = (self.runtime.STATE.config or {}).get("cloud") or {}
+            return (client.has_credentials() and fingerprint == client._token_fingerprint()
+                and (cloud.get("user_id"),cloud.get("server_id")) == (owner,device)
+                and cloud.get("pair_enabled") is not False
+                and ((self.runtime.STATE.config or {}).get("session_transport") or {}).get("core") == pins)
         async def request(method,path,payload):
-            return await client.request_iroh(method,path,payload,issuer=config["issuer"],token_fingerprint=fingerprint)
+            return await client.request_iroh(method,path,payload,issuer=pins["issuer"],token_fingerprint=fingerprint)
+        routing = None
         async def denied():
-            await self.fence_cloud_authority()
+            if routing is not None:
+                await self.fence_cloud_authority(expected_routing=routing)
         state = ProtectedTransportState(keys=EndpointKeys(role="server",purpose="core"),unlocked_password=unlocked_password)
-        await self.endpoint.configure_core_routing(policy=(self.runtime.STATE.config["session_transport"])["iroh"],
-            state=state,issuer=config["issuer"],public_key=config["public_key"],owner_id=owner,device_id=device,
-            request=request,is_current=lambda:client.has_credentials() and fingerprint==client._token_fingerprint()
-                and ((self.runtime.STATE.config or {}).get("cloud") or {}).get("pair_enabled") is not False,
-            on_denied=denied,check_authority=self.refresh_core_grants)
+        async with self._cloud_lock:
+            routing = await self.endpoint.configure_core_routing(policy=(self.runtime.STATE.config["session_transport"])["iroh"],
+                state=state,issuer=pins["issuer"],public_key=pins["public_key"],owner_id=owner,device_id=device,
+                request=request,is_current=current,on_denied=denied,check_authority=self.refresh_core_grants)
 
     async def sync_core_cloud(self) -> None:
         config = ((self.runtime.STATE.config or {}).get("session_transport") or {}).get("core")
@@ -119,20 +128,30 @@ class IrohServerService:
         context = (client._token_fingerprint(), cloud.get("user_id"), cloud.get("server_id"),
                    config["issuer"], config["public_key"])
         if context != self._core_context:
+            if self._core_context is not None and context[1:] != self._core_context[1:]:
+                await self.fence_cloud_authority()
             await self.configure_core_cloud(config, client,
                 unlocked_password=self.runtime.STATE.config_unlock_password or self.runtime.STATE.server_password)
             self._core_context = context
         self.endpoint.core_routing.wake()
 
-    async def fence_cloud_authority(self, *, core_device_id: str | None = None) -> None:
-        self._cloud_revision += 1
-        routing = self.endpoint.core_routing if self.endpoint is not None else None
-        if core_device_id is None and routing is not None and routing.status != "denied":
-            routing.status = "denied"
-            await routing.invalidate()
-        await self.pairing.cancel_origin("cloud",core_device_id=core_device_id)
-        if self.endpoint is not None:
-            await self.admission.revoke_origin(self.endpoint,"cloud",core_device_id=core_device_id)
+    def _core_current(self, routing: Any) -> bool:
+        return (self.endpoint is not None and self.endpoint.core_routing is routing
+            and not self.endpoint._closing and not routing._closed and routing.is_current())
+
+    async def fence_cloud_authority(self, *, core_device_id: str | None = None,
+                                    expected_routing: Any = None) -> None:
+        async with self._cloud_lock:
+            if expected_routing is not None and not self._core_current(expected_routing):
+                return
+            self._cloud_revision += 1
+            routing = self.endpoint.core_routing if self.endpoint is not None else None
+            if core_device_id is None and routing is not None and routing.status != "denied":
+                routing.status = "denied"
+                await routing.invalidate()
+            await self.pairing.cancel_origin("cloud",core_device_id=core_device_id)
+            if self.endpoint is not None:
+                await self.admission.revoke_origin(self.endpoint,"cloud",core_device_id=core_device_id)
 
     async def refresh_core_grants(self) -> None:
         from shared.iroh_core import CoreAccessDenied
@@ -144,15 +163,19 @@ class IrohServerService:
                   if connection.channel is not None}
         devices = await _joined_disk(lambda:self.grants.authority_devices(active))
         async def verify(device,endpoint):
+            if not self._core_current(owner):
+                return
             try:
                 await owner.device_record(device_id=device,endpoint_id=endpoint)
             except CoreAccessDenied as denial:
+                if not self._core_current(owner):
+                    return
                 if denial.status in {403,404}:
-                    await self.fence_cloud_authority(core_device_id=device)
+                    await self.fence_cloud_authority(core_device_id=device,expected_routing=owner)
                 else:
                     raise
             except (owner.api.BindingError.PermissionDenied,owner.api.BindingError.InvalidTicket):
-                await self.fence_cloud_authority(core_device_id=device)
+                await self.fence_cloud_authority(core_device_id=device,expected_routing=owner)
         semaphore = asyncio.Semaphore(4)
         async def bounded(device,endpoint):
             async with semaphore:
@@ -167,21 +190,23 @@ class IrohServerService:
             grant = await _joined_disk(self.grants.grant_for_endpoint,context.remote_endpoint_id)
             if grant.origin_transport == "cloud":
                 device = await _joined_disk(self.grants.authority_device,context.remote_endpoint_id)
-                if routing.status == "denied" or device is None:
+                if not self._core_current(routing) or routing.status == "denied" or device is None:
                     raise SessionDenied("Core cloud authority requires a fresh verified pairing")
                 try:
                     await routing.device_record(device_id=device,endpoint_id=context.remote_endpoint_id)
                 except CoreAccessDenied as denial:
                     if denial.status in {403,404}:
-                        await self.fence_cloud_authority(core_device_id=device)
+                        await self.fence_cloud_authority(core_device_id=device,expected_routing=routing)
                     else:
-                        await self.fence_cloud_authority()
+                        await self.fence_cloud_authority(expected_routing=routing)
                     raise
                 except (routing.api.BindingError.PermissionDenied,routing.api.BindingError.InvalidTicket):
-                    await self.fence_cloud_authority(core_device_id=device)
+                    await self.fence_cloud_authority(core_device_id=device,expected_routing=routing)
                     raise
                 except (OSError,TimeoutError,ConnectionError):
                     pass  # Existing paired grant and expiry still govern a Core outage.
+                if not self._core_current(routing):
+                    raise SessionDenied("Core cloud context changed during admission")
         owner = self.pairing if context.protocol == PAIR_ALPN else self.admission
         await owner.connected(transport, context)
 
@@ -207,13 +232,13 @@ class IrohServerService:
         routing = self.endpoint.core_routing
         if origin.transport == "cloud" and routing is not None:
             revision = self._cloud_revision
-            if routing.status == "denied" or not re.fullmatch(r"[a-z0-9]{15}",origin.core_device_id):
+            if not self._core_current(routing) or routing.status == "denied" or not re.fullmatch(r"[a-z0-9]{15}",origin.core_device_id):
                 raise SessionDenied("registered Core device proof is required")
             await routing.device_record(device_id=origin.core_device_id,endpoint_id=endpoint_id)
-            if routing.status == "denied" or revision != self._cloud_revision:
-                raise SessionDenied("Core cloud authority changed during pairing")
             core_device_id = origin.core_device_id
             await routing.wait_for_routes()
+            if not self._core_current(routing) or routing.status == "denied" or revision != self._cloud_revision:
+                raise SessionDenied("Core cloud authority changed during pairing")
         identity = self.runtime.bind_transport_chat_owner(origin.transport, origin.sender_id,
             raw_session_id=raw_session_id, pairing_mode=origin.pairing_mode)
         self.runtime.WEBRTC.remember_device_ownership(identity, origin.device_ownership)
@@ -232,6 +257,8 @@ class IrohServerService:
             device_ownership=origin.device_ownership,
             authorization_epoch=(await asyncio.to_thread(self.grants.authorization_epoch,device_id))+1,
             expires_at_ms=int(time.time() * 1000) + self.grant_seconds * 1000, scopes=scopes)
+        if core_device_id is not None and (not self._core_current(routing) or revision != self._cloud_revision):
+            raise SessionDenied("Core cloud authority changed during pairing")
         descriptor = self.pairing.issue_after_verified_proof(self.endpoint, grant,core_device_id=core_device_id)
         metadata = self.runtime._build_client_session_identity_payload(identity, pairing_mode=origin.pairing_mode)
         if origin.transport == "cloud" and routing is not None:

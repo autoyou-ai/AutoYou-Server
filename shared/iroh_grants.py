@@ -71,6 +71,10 @@ class EndpointGrantRegistry:
                     raise ValueError
                 if row.get("core_device_id") is not None and not re.fullmatch(r"[a-z0-9]{15}",row["core_device_id"]):
                     raise ValueError
+                if row.get("core_device") is not None and not re.fullmatch(r"[a-z0-9]{15}",row["core_device"]):
+                    raise ValueError
+                if type(row.get("core_denied",False)) is not bool:
+                    raise ValueError
             return value
         except (ValueError, TypeError, KeyError, SessionDenied):
             raise ProtectedTransportStateUnavailable("stored endpoint grants are invalid") from None
@@ -125,13 +129,14 @@ class EndpointGrantRegistry:
 
     def authority_devices(self, devices: set[str] | None = None) -> tuple[tuple[str,str], ...]:
         state=self._state(self.store.read(default_factory=self._empty))
-        return tuple((row["core_device_id"],self._grant(row).endpoint_id) for device,row in state["devices"].items()
-                     if row.get("core_device_id") and not row["revoked"] and self._grant(row).origin_transport=="cloud"
+        return tuple((row.get("core_device") or row["core_device_id"],self._grant(row).endpoint_id) for device,row in state["devices"].items()
+                     if (row.get("core_device") or (row.get("core_device_id") and self._grant(row).origin_transport=="cloud"))
+                     and not row["revoked"] and not row.get("core_denied",False)
                      and (devices is None or device in devices))
 
     def authority_device(self, endpoint_id: str) -> str | None:
         state = self._state(self.store.read(default_factory=self._empty))
-        return next((row.get("core_device_id") for row in state["devices"].values()
+        return next((row.get("core_device") or row.get("core_device_id") for row in state["devices"].values()
                      if self._grant(row).endpoint_id == endpoint_id and not row["revoked"]), None)
 
     def revoke_origin(self, origin: str, *, core_device_id: str | None = None) -> tuple[tuple[str,int], ...]:
@@ -151,7 +156,7 @@ class EndpointGrantRegistry:
         def update(value: dict) -> tuple[dict, SessionBinding]:
             state = self._state(value)
             row = next((row for row in state["devices"].values() if self._grant(row).endpoint_id == endpoint_id), None)
-            if row is None or row["revoked"]:
+            if row is None or row["revoked"] or row.get("core_denied",False):
                 raise SessionDenied("endpoint has no active pairing grant")
             grant = self._grant(row)
             if grant.expires_at_ms <= self.now_ms() or row["generation"] == 2**64 - 1:
@@ -168,7 +173,7 @@ class EndpointGrantRegistry:
     def grant_for_endpoint(self, endpoint_id: str) -> PairedEndpoint:
         state = self._state(self.store.read(default_factory=self._empty))
         row = next((row for row in state["devices"].values() if self._grant(row).endpoint_id == endpoint_id), None)
-        if row is None or row["revoked"]:
+        if row is None or row["revoked"] or row.get("core_denied",False):
             raise SessionDenied("endpoint has no active pairing grant")
         grant = self._grant(row)
         if grant.expires_at_ms <= self.now_ms():
@@ -179,7 +184,7 @@ class EndpointGrantRegistry:
         """Read the protected counter; an in-memory retry cannot rewind it."""
         state = self._state(self.store.read(default_factory=self._empty))
         row = next((row for row in state["devices"].values() if self._grant(row).endpoint_id == endpoint_id), None)
-        if row is None or row["revoked"] or self._grant(row).expires_at_ms <= self.now_ms():
+        if row is None or row["revoked"] or row.get("core_denied",False) or self._grant(row).expires_at_ms <= self.now_ms():
             raise SessionDenied("endpoint has no active pairing grant")
         return row["generation"]
 
@@ -193,7 +198,7 @@ class EndpointGrantRegistry:
         def update(value: dict) -> tuple[dict, SessionBinding]:
             state = self._state(value)
             row = next((row for row in state["devices"].values() if self._grant(row).endpoint_id == endpoint_id), None)
-            if row is None or row["revoked"]:
+            if row is None or row["revoked"] or row.get("core_denied",False):
                 raise SessionDenied("endpoint has no active pairing grant")
             grant = self._grant(row)
             if generation <= row["generation"] or authorization_epoch != grant.authorization_epoch or \

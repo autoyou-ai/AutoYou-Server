@@ -23,6 +23,7 @@ class RustAcceptorAdmission:
             json.dumps(capabilities, allow_nan=False, separators=(",", ":")))
         self._gate = asyncio.Lock()
         self._devices = {}
+        self._core_devices = {}
         self._contexts = {}
         self._timer = None
 
@@ -35,17 +36,23 @@ class RustAcceptorAdmission:
             remote_endpoint=context.remote_endpoint_id, local_endpoint=context.local_endpoint_id,
             exporter=context.exporter, protocol=context.protocol, initiator=context.initiator)
 
-    def issue_after_verified_proof(self, runtime, grant):
+    def issue_after_verified_proof(self, runtime, grant, *, core_device_id=None):
         if runtime is not self.runtime:
             raise SessionDenied("acceptor approval belongs to another endpoint")
+        if core_device_id is not None:
+            import re
+            if not re.fullmatch(r"[a-z0-9]{15}",core_device_id):
+                raise SessionDenied("invalid approved Core peer device")
         proof = json.loads(self.core.issue_after_verified_proof(_grant_json(grant), runtime.endpoint_info.ticket, self._now()))
         self._devices[grant.device_id] = grant.endpoint_id
+        self._core_devices[grant.endpoint_id] = core_device_id
         return proof
 
     def cancel_device(self, device_id):
         endpoint = self._devices.pop(device_id, None)
         if endpoint is None:
             return
+        self._core_devices.pop(endpoint,None)
         for connection_id in self.core.cancel_endpoint(endpoint):
             context = self._contexts.get(connection_id)
             if context is not None:
@@ -70,7 +77,11 @@ class RustAcceptorAdmission:
 
     async def _apply(self, context, action, old):
         if action.protected_store is not None:
-            await self._persist(old, action.protected_store)
+            proposed = action.protected_store
+            if context.remote_endpoint_id in self._core_devices:
+                proposed = self.runtime.api.associate_core_client_peer(proposed,context.remote_endpoint_id,
+                    self._core_devices[context.remote_endpoint_id])
+            await self._persist(old, proposed)
             current = await self._store()
             step = self.core.persisted(self._context(context), _bytes(current), self._now())
         else:

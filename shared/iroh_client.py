@@ -61,6 +61,7 @@ class IrohClientService:
         self._closing = False
         self._history_deletion = False
         self._lifecycle_revision = 0
+        self._core_cloud_lock = asyncio.Lock()
         self.incoming: Any = None
         self.room_incoming: Any = None
         self._incoming: dict[int, tuple[ConnectionContext, Any]] = {}
@@ -214,6 +215,8 @@ class IrohClientService:
             if client.core_device is not None and client._peer is not None:
                 await client._deny_core_endpoint(client._peer[0])
         results = await asyncio.gather(*(deny(client) for client in (owner,*tuple(owner._children))),return_exceptions=True)
+        if owner.incoming is not None and hasattr(owner.incoming,"deny_core_authority"):
+            await owner.incoming.deny_core_authority()
         if any(isinstance(result,BaseException) for result in results):
             raise SessionDenied("Core-derived authority could not be persisted")
 
@@ -229,6 +232,8 @@ class IrohClientService:
                 except SessionDenied:
                     pass  # The lookup already persisted and physically fenced this client.
         await asyncio.gather(*(check(client) for client in (owner,*tuple(owner._children))))
+        if owner.incoming is not None and hasattr(owner.incoming,"check_core_authority"):
+            await owner.incoming.check_core_authority()
 
     async def _routing_ticket(self, endpoint: str, ticket: str, device: str | None) -> str:
         if device is None:
