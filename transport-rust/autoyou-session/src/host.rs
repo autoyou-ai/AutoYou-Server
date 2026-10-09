@@ -61,7 +61,7 @@ impl EndpointPolicy {
         Self { bind_addresses: vec!["127.0.0.1:0".into()], relays: vec![],
             relay_only: false, local_only: true, allow_lan_peers: false }
     }
-    fn validate(&self) -> Result<(), HostError> {
+    pub(crate) fn validate(&self) -> Result<(), HostError> {
         if self.bind_addresses.len() > 4 || self.relays.len() > 8 ||
             (self.relay_only && self.relays.is_empty()) ||
             (!self.relay_only && self.bind_addresses.is_empty()) {
@@ -90,7 +90,7 @@ impl EndpointPolicy {
         Ok(())
     }
 
-    fn ticket_address(&self, ticket: &str, expected_endpoint: &str) -> Result<EndpointAddr, HostError> {
+    pub(crate) fn ticket_address(&self, ticket: &str, expected_endpoint: &str) -> Result<EndpointAddr, HostError> {
         if ticket.len() > 8192 || expected_endpoint.len() > 128 { return Err(HostError::InvalidTicket); }
         let ticket: EndpointTicket = ticket.parse().map_err(|_| HostError::InvalidTicket)?;
         let mut address = ticket.endpoint_addr().clone();

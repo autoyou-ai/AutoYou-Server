@@ -22,6 +22,8 @@ mod audio_dsp;
 pub use audio_dsp::*;
 mod audio_opus;
 pub use audio_opus::*;
+mod core_routing;
+pub use core_routing::*;
 
 uniffi::setup_scaffolding!();
 

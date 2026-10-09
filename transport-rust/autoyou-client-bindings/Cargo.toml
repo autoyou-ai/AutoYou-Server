@@ -17,6 +17,7 @@ uniffi.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
 base64.workspace = true
+zeroize.workspace = true
 sonora.workspace = true
 opusic-c.workspace = true
 

@@ -13,6 +13,7 @@ use std::net::SocketAddr;
 pub mod scheduler;
 pub mod ordering;
 pub mod host;
+pub mod core_routing;
 pub mod client;
 pub mod client_store;
 pub mod file_store;
