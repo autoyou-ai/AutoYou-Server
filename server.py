@@ -7263,16 +7263,15 @@ async def _notify_cloud_client(
 
 def _pairing_transport_preflight(offer: Any) -> str:
     """Policy check without consuming an OTP or loading a native artifact."""
+    from shared.iroh_release import server_transport_config
     from shared.session_transport import SessionDenied, TransportPolicy
     if offer is not None and not isinstance(offer, dict):
         raise SessionDenied("invalid session transport offer")
     requested = offer.get("transport") if isinstance(offer, dict) else None
-    if requested not in {None, "legacy", "iroh"}:
+    if requested is not None and (not isinstance(requested, str) or requested not in {"legacy", "iroh"}):
         raise SessionDenied("unsupported session transport offer")
-    config = (STATE.config or {}).get("session_transport", {})
-    if not isinstance(config, dict):
-        raise SessionDenied("invalid session transport policy")
     try:
+        config = server_transport_config(STATE.config or {})
         policy = TransportPolicy(config.get("mode", "legacy"))
     except ValueError:
         raise SessionDenied("invalid session transport policy") from None
