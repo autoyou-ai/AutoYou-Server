@@ -185,6 +185,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/quickstart.mdx',
     "docs/glossary.md",
     "docs/index.md",
+    "docs/releases/81.0.1.md",
     "docs/legal/release-artifacts.json",
     "docs/legal/release-model.md",
     "docs/legal/security-contact.md",

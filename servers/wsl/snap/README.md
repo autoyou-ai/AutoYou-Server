@@ -5,7 +5,7 @@ of the AutoYou server backend. It has not been built with `snapcraft`,
 reviewed, or uploaded anywhere.
 
 The Snap version is adopted from the repository root `VERSION` file, currently
-`81.0.0`; it is not declared independently in `snapcraft.yaml`.
+`81.0.2`; it is not declared independently in `snapcraft.yaml`.
 
 Running it end to end requires:
 

@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-04T02:51:56+00:00
+Generated: 2026-10-09T09:16:15+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 

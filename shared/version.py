@@ -30,7 +30,7 @@ from typing import Optional
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-53e2667619966c3c11575743"
 
 
-_DEFAULT_VERSION = "81.0.0"
+_DEFAULT_VERSION = "81.0.2"
 _VERSION_FILENAME = "VERSION"
 
 # Release channels the update feed understands.
@@ -64,7 +64,7 @@ def _read_version_file() -> Optional[str]:
     return None
 
 def get_version() -> str:
-    """Return the running application version string (e.g. ``81.0.0``)."""
+    """Return the running application version string (e.g. ``81.0.2``)."""
     env_version = os.environ.get("AUTOYOU_VERSION", "").strip()
     if env_version:
         return env_version

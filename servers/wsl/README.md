@@ -1,7 +1,7 @@
 # AutoYou Server for WSL/Linux
 
 This directory builds a Linux/WSL standalone server backend with Nuitka.
-It uses the repository `VERSION` value, currently `81.0.0`, and includes selected
+It uses the repository `VERSION` value, currently `81.0.2`, and includes selected
 runtime packages and their legal notices.
 
 ## Local build
@@ -42,6 +42,11 @@ servers/wsl/artifacts/backend/AutoYouServer/AutoYou
 Keep the executable together with its `runtime_modules/`, `runtime_stdlib/`,
 `runtime_site_packages/`, native libraries, resources, and legal bundle.
 Copying the executable alone does not copy the complete runtime.
+
+Review `Legal/LICENSE`, `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and
+`sbom.cdx.json` in the packaged backend. Use constitutes agreement to the
+AutoYou Terms of Use (EULA), License, responsibility terms, warranty disclaimer,
+and liability limits to the extent permitted by law.
 
 For local operation:
 

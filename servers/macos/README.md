@@ -39,12 +39,13 @@ for resolving and auditing that conflict.
 
 Typical outputs are `servers/macos/build/AutoYou.app` and
 `servers/macos/build/AutoYou.dmg`; the exact outputs depend on build options.
-Version metadata comes from the repository `VERSION` file, currently `81.0.0`.
+Version metadata comes from the repository `VERSION` file, currently `81.0.2`.
 
 Review `servers/macos/build/AutoYou.app/Contents/Resources/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
-Use constitutes agreement to the applicable license terms, including the
-warranty disclaimer and liability limits to the extent permitted by law.
+Use constitutes agreement to the AutoYou Terms of Use (EULA), License,
+responsibility terms, warranty disclaimer, and liability limits to the extent
+permitted by law.
 Separate services have separate terms.
 
 Identify shared builds as unofficial and retain all required notices and source

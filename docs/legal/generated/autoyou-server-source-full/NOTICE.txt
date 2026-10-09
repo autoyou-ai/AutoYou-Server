@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server source/full profile (autoyou-server-source-full)
 Release profile: source-full
 Dependency profile: full
-Generated: 2026-10-04T02:51:56+00:00
+Generated: 2026-10-09T09:16:15+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
