@@ -47,6 +47,8 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import asyncio
+import json
+import re
 import hashlib
 import logging
 import os
@@ -173,6 +175,39 @@ class CloudEntitlementsClient:
     @property
     def account_api_url(self) -> str:
         return self._account_api_url
+
+    async def request_iroh(self, method: str, path: str, payload: dict | None, *, issuer: str,
+                           token_fingerprint: str) -> dict:
+        from shared.iroh_core import CoreAccessDenied
+        if issuer.rstrip("/") != self._account_api_url or method not in {"GET", "POST"} or not re.fullmatch(
+            r"/v1/iroh/(?:relay-credentials|endpoints/(?:challenge|associate|[a-z0-9]{15}(?:/(?:ownership|routing))?))", path
+        ):
+            raise ValueError("invalid native Core request")
+        if not self.has_credentials() or token_fingerprint != self._token_fingerprint():
+            raise CoreAccessDenied(401)
+        client = self._get_http_client()
+        try:
+            async with client.stream(method, self._account_api_url + path, json=payload,
+                                     headers={"Authorization": f"Bearer {self._pb_token}", "User-Agent": "AutoYou/iroh (Core transport)"}, follow_redirects=False) as response:
+                if token_fingerprint != self._token_fingerprint():
+                    raise CoreAccessDenied(401)
+                if response.status_code in {401, 402, 403, 404}:
+                    raise CoreAccessDenied(response.status_code)
+                if response.status_code >= 300:
+                    raise ConnectionError("Core routing request is unavailable")
+                raw = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(raw) + len(chunk) > 64 * 1024:
+                        raise ValueError("Core response exceeds its protocol limit")
+                    raw.extend(chunk)
+        except httpx.RequestError:
+            raise ConnectionError("Core routing request is unavailable") from None
+        if token_fingerprint != self._token_fingerprint():
+            raise CoreAccessDenied(401)
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise ValueError("invalid Core response")
+        return value
 
     @property
     def auth_api_url(self) -> str:

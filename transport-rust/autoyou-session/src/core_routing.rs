@@ -21,6 +21,7 @@ const MAX_EPOCH: u64 = (1 << 53) - 1;
 struct Challenge {
     schema_version: u8, issuer: String, owner_id: String, device_id: String,
     endpoint_id: String, epoch: u64, nonce: String, issued_at: u64, expires_at: u64,
+    #[serde(default)] purpose:Option<String>, #[serde(default)] relay_urls:Option<Vec<String>>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,6 +31,7 @@ struct Envelope { schema_version: u8, key_id: String, payload: String, signature
 struct Record {
     schema_version: u8, issuer: String, audience: String, owner_id: String, device_id: String,
     endpoint_id: String, epoch: u64, issued_at: u64, expires_at: u64, relay_urls: Vec<String>,
+    #[serde(default)] routing_revision:u64,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -44,13 +46,17 @@ pub struct RelayConfiguration { pub epoch:u64, pub expires_at_ms:u64, pub relays
 
 #[derive(Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Floor { endpoint:String, epoch:u64 }
+struct Floor {
+    endpoint:String, epoch:u64, #[serde(default,skip_serializing_if="Option::is_none")] owner:Option<String>,
+    #[serde(default)] routing_revision:u64,
+}
 #[derive(Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Store { schema:u8, clock_floor_ms:u64, records:BTreeMap<String,Floor> }
 
 pub struct RoutingRecord {
     pub epoch: u64, pub expires_at_ms: u64, pub ticket: String,
+    pub routing_revision:u64,
 }
 
 fn identifier(value: &str) -> bool {
@@ -87,24 +93,39 @@ fn verify_envelope(encoded:&str,public_key:&str,domain:&[u8],maximum:usize)->Res
 }
 
 pub fn empty_store()->Vec<u8> { br#"{"schema":1,"clock_floor_ms":0,"records":{}}"#.to_vec() }
+pub(crate) fn published_routes(encoded:&str)->Result<Option<Vec<String>>,HostError> {
+    let value:Challenge=serde_json::from_slice(&payload(encoded)?).map_err(|_|HostError::NotAuthorized)?;
+    Ok(value.relay_urls)
+}
 fn store(bytes:&[u8],issuer:&str,public_key:&str,owner:&str,device:&str,endpoint:&str)
-    ->Result<(Store,String,u64),HostError> {
+    ->Result<(Store,(String,String),u64),HostError> {
     if bytes.len()>2*1024*1024 { return Err(HostError::InvalidConfig); }
     let value:Store=serde_json::from_slice(bytes).map_err(|_|HostError::InvalidConfig)?;
-    if value.schema!=1 || value.records.len()>4096 || value.records.iter().any(|(key,row)|
-        unhex::<32>(key).is_err() || unhex::<32>(&row.endpoint).is_err() || row.epoch==0 || row.epoch>MAX_EPOCH) {
+    if value.schema!=1 || value.records.len()>8192 || value.records.iter().any(|(key,row)|
+        unhex::<32>(key).is_err() || unhex::<32>(&row.endpoint).is_err() || row.epoch==0 || row.epoch>MAX_EPOCH
+        || row.routing_revision>MAX_EPOCH || row.owner.as_ref().is_some_and(|owner|!identifier(owner))) {
         return Err(HostError::InvalidConfig);
     }
     let context=serde_json::to_vec(&[issuer,public_key,owner,device]).map_err(|_|HostError::InvalidConfig)?;
     let key=hex(&Sha256::digest(context));
-    let epoch=if let Some(row)=value.records.get(&key) {
-        if row.endpoint!=endpoint { return Err(HostError::NotAuthorized); } row.epoch
-    } else { if value.records.len()>=4096 { return Err(HostError::Backpressure); } 0 };
-    Ok((value,key,epoch))
+    let device_key=hex(&Sha256::digest(serde_json::to_vec(&["device",issuer,public_key,device]).map_err(|_|HostError::InvalidConfig)?));
+    let mut epoch=0;let mut missing=0;
+    for key in [&key,&device_key] {
+        if let Some(row)=value.records.get(key) {
+            if row.endpoint!=endpoint || row.owner.as_ref().is_some_and(|pinned|pinned!=owner) { return Err(HostError::NotAuthorized); }
+            epoch=epoch.max(row.epoch);
+        } else { missing+=1; }
+    }
+    if value.records.len()+missing>8192 { return Err(HostError::Backpressure); }
+    Ok((value,(key,device_key),epoch))
 }
-fn save(mut value:Store,key:String,endpoint:&str,epoch:u64,now_ms:u64)->Result<Vec<u8>,HostError> {
+fn save(mut value:Store,keys:(String,String),endpoint:&str,owner:&str,epoch:u64,now_ms:u64,revision:Option<u64>)->Result<Vec<u8>,HostError> {
     value.clock_floor_ms=value.clock_floor_ms.max(now_ms);
-    value.records.insert(key,Floor { endpoint:endpoint.into(),epoch });
+    for key in [keys.0,keys.1] {
+        let floor=value.records.get(&key).filter(|row|row.epoch==epoch).map_or(0,|row|row.routing_revision);
+        if revision.is_some_and(|revision|revision<floor) { return Err(HostError::NotAuthorized); }
+        value.records.insert(key,Floor { endpoint:endpoint.into(),epoch,owner:Some(owner.into()),routing_revision:revision.unwrap_or(floor) });
+    }
     serde_json::to_vec(&value).map_err(|_|HostError::InvalidConfig)
 }
 
@@ -113,7 +134,7 @@ pub fn accept_routing_record(bytes:&[u8],encoded:&str,public_key:&str,issuer:&st
     let (state,key,epoch)=store(bytes,issuer,public_key,owner,device,endpoint)?;
     let now=now_ms.max(state.clock_floor_ms);
     let record=verify_routing_record(encoded,public_key,issuer,owner,device,endpoint,epoch,now,policy)?;
-    let saved=save(state,key,endpoint,record.epoch,now)?;Ok((record,saved))
+    let saved=save(state,key,endpoint,owner,record.epoch,now,Some(record.routing_revision))?;Ok((record,saved))
 }
 
 pub fn accept_relay_configuration(bytes:&[u8],encoded:&str,public_key:&str,issuer:&str,owner:&str,
@@ -121,12 +142,22 @@ pub fn accept_relay_configuration(bytes:&[u8],encoded:&str,public_key:&str,issue
     let (state,key,epoch)=store(bytes,issuer,public_key,owner,device,endpoint)?;
     let now=now_ms.max(state.clock_floor_ms);
     let record=verify_relay_configuration(encoded,public_key,issuer,owner,device,endpoint,epoch,now,policy)?;
-    let saved=save(state,key,endpoint,record.epoch,now)?;Ok((record,saved))
+    let saved=save(state,key,endpoint,owner,record.epoch,now,None)?;Ok((record,saved))
+}
+
+pub fn accept_device_routing_record(bytes:&[u8],encoded:&str,public_key:&str,issuer:&str,device:&str,
+    endpoint:&str,now_ms:u64,policy:&EndpointPolicy)->Result<(RoutingRecord,Vec<u8>,String),HostError> {
+    // Owner discovery comes only from verified Core, for an already paired endpoint/device.
+    let raw=verify_envelope(encoded,public_key,RECORD_DOMAIN,4096)?;
+    let value:Record=serde_json::from_slice(&raw).map_err(|_|HostError::NotAuthorized)?;
+    let (record,saved)=accept_routing_record(bytes,encoded,public_key,issuer,&value.owner_id,device,endpoint,now_ms,policy)?;
+    Ok((record,saved,value.owner_id))
 }
 
 pub fn verify_relay_configuration(encoded:&str,public_key:&str,issuer:&str,owner:&str,device:&str,
     endpoint:&str,minimum_epoch:u64,now_ms:u64,policy:&EndpointPolicy)->Result<RelayConfiguration,HostError> {
     let raw=verify_envelope(encoded,public_key,RELAY_DOMAIN,64*1024)?;
+    iroh::EndpointId::from_bytes(&unhex::<32>(endpoint)?).map_err(|_|HostError::NotAuthorized)?;
     let value:RelayRecord=serde_json::from_slice(&raw).map_err(|_|HostError::NotAuthorized)?;
     let now=now_ms/1000;
     if value.schema_version!=1 || value.audience!="autoyou-iroh-relays" || issuer.is_empty() || issuer.len()>2048
@@ -159,6 +190,11 @@ pub fn sign_endpoint_proof(mut key: [u8;32], encoded: &str, issuer: &str,
         || !identifier(owner) || !identifier(device) || value.owner_id != owner || value.device_id != device
         || value.endpoint_id != secret.public().to_string() || value.epoch >= MAX_EPOCH
         || unhex::<32>(&value.nonce).is_err() || value.issued_at > now
+        || match (&value.purpose,&value.relay_urls) {
+            (None,None)=>false,
+            (Some(purpose),Some(urls)) if purpose=="routing"=>urls.len()>8 || urls.iter().any(|url|url.len()>2048),
+            _=>true,
+        }
         || value.expires_at != value.issued_at.saturating_add(60) || now >= value.expires_at {
         return Err(HostError::NotAuthorized);
     }
@@ -174,24 +210,26 @@ pub fn verify_routing_record(encoded: &str, public_key: &str, issuer: &str,
     if value.schema_version != 1 || value.issuer != issuer || issuer.is_empty() || issuer.len() > 2048
         || value.audience != "autoyou-iroh-routing" || !identifier(owner) || !identifier(device)
         || value.owner_id != owner || value.device_id != device || value.endpoint_id != endpoint
-        || value.epoch == 0 || value.epoch < minimum_epoch || value.epoch > MAX_EPOCH
+        || value.epoch == 0 || value.epoch < minimum_epoch || value.epoch > MAX_EPOCH || value.routing_revision>MAX_EPOCH
         || value.issued_at > now.saturating_add(30) || now >= value.expires_at
-        || value.expires_at != value.issued_at.saturating_add(120) || value.relay_urls.len() > 8 {
+        || value.expires_at <= value.issued_at || value.expires_at > value.issued_at.saturating_add(120) || value.relay_urls.len() > 8 {
         return Err(HostError::NotAuthorized);
     }
     // Neither an envelope's key_id nor a new relay URL can replace pinned local policy.
     policy.validate()?;
     let endpoint = iroh::EndpointId::from_bytes(&endpoint_bytes(endpoint)?).map_err(|_| HostError::NotAuthorized)?;
     let mut addresses = Vec::new();
+    let no_routes=value.relay_urls.is_empty();
     for url in value.relay_urls {
         let relay: iroh::RelayUrl = url.parse().map_err(|_| HostError::InvalidTicket)?;
         if addresses.contains(&TransportAddr::Relay(relay.clone())) { return Err(HostError::InvalidTicket); }
         addresses.push(TransportAddr::Relay(relay));
     }
     let ticket = EndpointTicket::new(EndpointAddr::new(endpoint).with_addrs(addresses)).to_string();
-    // Empty remote routing records are not used to discard an enrolled LAN ticket.
-    policy.ticket_address(&ticket, &endpoint.to_string())?;
-    Ok(RoutingRecord { epoch: value.epoch, expires_at_ms: value.expires_at.saturating_mul(1000), ticket })
+    let ticket=if no_routes { String::new() } else {
+        policy.ticket_address(&ticket, &endpoint.to_string())?;ticket
+    };
+    Ok(RoutingRecord { epoch: value.epoch, expires_at_ms: value.expires_at.saturating_mul(1000), ticket, routing_revision:value.routing_revision })
 }
 
 #[cfg(test)]
@@ -200,6 +238,41 @@ mod tests {
     use crate::host::RelayPolicy;
     fn fixture() -> serde_json::Value {
         serde_json::from_str(include_str!("../../tests/fixtures/core-routing-v1.json")).unwrap()
+    }
+    #[test]
+    fn newer_home_routing_cannot_be_replaced_by_an_older_signed_reply() {
+        let data=fixture();let key=data["core_public_key"].as_str().unwrap();let endpoint=data["endpoint_id"].as_str().unwrap();
+        let mut policy=EndpointPolicy::local();policy.relays.push(RelayPolicy {url:"http://127.0.0.1:32123/".into(),token:"synthetic-token".into()});
+        let mut envelope=data["routing_envelope"].clone();
+        let mut value:serde_json::Value=serde_json::from_slice(&STANDARD.decode(envelope["payload"].as_str().unwrap()).unwrap()).unwrap();
+        let sign=|value:&serde_json::Value| {
+            let raw=serde_json::to_vec(value).unwrap();let mut result=envelope.clone();
+            result["payload"]=serde_json::json!(STANDARD.encode(&raw));
+            result["signature"]=serde_json::json!(hex(&SecretKey::from_bytes(&[0x33;32]).sign(&[RECORD_DOMAIN,raw.as_slice()].concat()).to_bytes()));result.to_string()
+        };
+        let accept=|state:&[u8],wire:&str|accept_device_routing_record(state,wire,key,"https://core.example.invalid",
+            "client000000001",endpoint,1_800_000_000_000,&policy);
+        value["routing_revision"]=serde_json::json!(2);value["relay_urls"]=serde_json::json!([]);
+        let (record,saved,_)=accept(&empty_store(),&sign(&value)).unwrap();assert!(record.ticket.is_empty());
+        value["routing_revision"]=serde_json::json!(1);assert!(accept(&saved,&sign(&value)).is_err());
+        value["routing_revision"]=serde_json::json!(2);assert!(accept(&saved,&sign(&value)).is_ok());
+        envelope["signature"]=serde_json::json!("00".repeat(64));assert!(accept(&empty_store(),&envelope.to_string()).is_err());
+    }
+    #[test]
+    fn device_lookup_discovers_only_verified_owner_and_retains_device_owner_and_epoch_pin() {
+        let data=fixture();let encoded=data["routing_envelope"].to_string();
+        let key=data["core_public_key"].as_str().unwrap();let endpoint=data["endpoint_id"].as_str().unwrap();
+        let mut policy=EndpointPolicy::local();policy.relays.push(RelayPolicy {url:"http://127.0.0.1:32123/".into(),token:"synthetic-token".into()});
+        let accept=|state:&[u8],wire:&str|accept_device_routing_record(state,wire,key,"https://core.example.invalid",
+            "client000000001",endpoint,1_800_000_000_000,&policy);
+        let (_,saved,owner)=accept(&empty_store(),&encoded).unwrap();assert_eq!(owner,"account00000001");
+        let mut changed=data["routing_envelope"].clone();
+        let mut record:serde_json::Value=serde_json::from_slice(&STANDARD.decode(changed["payload"].as_str().unwrap()).unwrap()).unwrap();
+        record["owner_id"]=serde_json::json!("account00000002");record["epoch"]=serde_json::json!(5);
+        let raw=serde_json::to_vec(&record).unwrap();changed["payload"]=serde_json::json!(STANDARD.encode(&raw));
+        changed["signature"]=serde_json::json!(hex(&SecretKey::from_bytes(&[0x33;32]).sign(&[RECORD_DOMAIN,raw.as_slice()].concat()).to_bytes()));
+        assert!(accept(&saved,&changed.to_string()).is_err());
+        changed["signature"]=serde_json::json!("00".repeat(64));assert!(accept(&empty_store(),&changed.to_string()).is_err());
     }
     #[test]
     fn core_golden_proof_is_domain_separated_and_binds_current_identity() {

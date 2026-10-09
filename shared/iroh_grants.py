@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import re
 from typing import Any, Callable
 
 from shared.iroh_state_store import ProtectedTransportState, ProtectedTransportStateUnavailable
@@ -68,6 +69,8 @@ class EndpointGrantRegistry:
                 endpoints.add(grant.endpoint_id)
                 if type(row["generation"]) is not int or not 0 <= row["generation"] < 2**64 or type(row["revoked"]) is not bool:
                     raise ValueError
+                if row.get("core_device_id") is not None and not re.fullmatch(r"[a-z0-9]{15}",row["core_device_id"]):
+                    raise ValueError
             return value
         except (ValueError, TypeError, KeyError, SessionDenied):
             raise ProtectedTransportStateUnavailable("stored endpoint grants are invalid") from None
@@ -81,8 +84,10 @@ class EndpointGrantRegistry:
         grant.validate()
         return grant
 
-    def register(self, grant: PairedEndpoint) -> None:
+    def register(self, grant: PairedEndpoint, *, core_device_id: str | None = None) -> None:
         grant.validate()
+        if core_device_id is not None and (grant.origin_transport != "cloud" or not re.fullmatch(r"[a-z0-9]{15}",core_device_id)):
+            raise SessionDenied("invalid verified Core grant device")
         if grant.expires_at_ms <= self.now_ms():
             raise SessionDenied("pairing grant has expired")
 
@@ -104,6 +109,11 @@ class EndpointGrantRegistry:
             raw = asdict(grant)
             raw["scopes"] = sorted(grant.scopes)
             devices[grant.device_id] = {"grant": raw, "generation": existing["generation"] if existing else 0, "revoked": False}
+            associated = core_device_id or (existing or {}).get("core_device_id")
+            if associated is not None:
+                if existing and existing.get("core_device_id") not in {None, associated}:
+                    raise SessionDenied("Core grant device requires authorized recovery")
+                devices[grant.device_id]["core_device_id"] = associated
             return state, None
 
         self.store.transaction(update, default_factory=self._empty)
@@ -112,6 +122,30 @@ class EndpointGrantRegistry:
         state = self._state(self.store.read(default_factory=self._empty))
         row = state["devices"].get(device_id)
         return self._grant(row).authorization_epoch if row is not None else 0
+
+    def authority_devices(self, devices: set[str] | None = None) -> tuple[tuple[str,str], ...]:
+        state=self._state(self.store.read(default_factory=self._empty))
+        return tuple((row["core_device_id"],self._grant(row).endpoint_id) for device,row in state["devices"].items()
+                     if row.get("core_device_id") and not row["revoked"] and self._grant(row).origin_transport=="cloud"
+                     and (devices is None or device in devices))
+
+    def authority_device(self, endpoint_id: str) -> str | None:
+        state = self._state(self.store.read(default_factory=self._empty))
+        return next((row.get("core_device_id") for row in state["devices"].values()
+                     if self._grant(row).endpoint_id == endpoint_id and not row["revoked"]), None)
+
+    def revoke_origin(self, origin: str, *, core_device_id: str | None = None) -> tuple[tuple[str,int], ...]:
+        def update(value):
+            state=self._state(value);revoked=[]
+            for device,row in state["devices"].items():
+                grant=self._grant(row)
+                if row["revoked"] or grant.origin_transport!=origin or (core_device_id is not None and row.get("core_device_id")!=core_device_id):
+                    continue
+                epoch=grant.authorization_epoch+1
+                if epoch>=2**64: raise SessionDenied("authorization epoch exhausted")
+                row["grant"]["authorization_epoch"]=epoch;row["revoked"]=True;revoked.append((device,epoch))
+            return state,tuple(revoked)
+        return self.store.transaction(update,default_factory=self._empty)
 
     def binding_for_connection(self, endpoint_id: str, transport_id: str) -> SessionBinding:
         def update(value: dict) -> tuple[dict, SessionBinding]:

@@ -73,6 +73,8 @@ class IrohSessionRuntime:
         self._poll_task: asyncio.Task | None = None
         self._closing = False
         self._shutdown_task: asyncio.Task | None = None
+        self.core_routing: Any = None
+        self._core_lock = asyncio.Lock()
         self._info = endpoint.endpoint_info()
         self._send_capacity = SendCapacity()
         self.events = ConnectionEvents()
@@ -126,6 +128,27 @@ class IrohSessionRuntime:
             raise ConnectionError("endpoint runtime is closed")
         # Refresh routing hints after interface changes without changing identity.
         return self.endpoint.endpoint_info()
+
+    async def configure_core_routing(self, **context: Any) -> Any:
+        from shared.iroh_core import CoreRoutingOwner
+        if self._closing:
+            raise SessionDenied("endpoint runtime is closed")
+        async with self._core_lock:
+            if self.core_routing is not None:
+                await self.core_routing.close()
+                self.core_routing = None
+            if self._closing:
+                raise SessionDenied("endpoint runtime is closed")
+            owner = CoreRoutingOwner(api=self.api, endpoint=self.endpoint, **context)
+            self.core_routing = owner
+            owner.start()
+            return owner
+
+    async def clear_core_routing(self) -> None:
+        async with self._core_lock:
+            owner, self.core_routing = self.core_routing, None
+            if owner is not None:
+                await owner.close()
 
     def dial(self, ticket: str, expected_endpoint: str, *, pairing: bool = False) -> int:
         if self._closing:
@@ -200,6 +223,8 @@ class IrohSessionRuntime:
     def network_changed(self) -> None:
         if not self._closing:
             self.endpoint.network_changed()
+            if self.core_routing is not None:
+                self.core_routing.wake()
 
     async def join_disconnected(self, context: ConnectionContext) -> None:
         """Join dispatch, storage and the host cleanup callback after disconnect."""
@@ -468,6 +493,7 @@ class IrohSessionRuntime:
 
     async def _close_owned(self) -> None:
         try:
+            await self.clear_core_routing()
             # Stop event production before taking the ownership snapshot.
             if self._poll_task and self._poll_task is not asyncio.current_task():
                 if not self._poll_task.done() and not self._poll_task.cancelling():

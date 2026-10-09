@@ -143,5 +143,14 @@ class PairedEndpointAdmission:
                 channel.disconnect()
             return changed
 
+    async def revoke_origin(self, runtime: IrohSessionRuntime, origin: str, *, core_device_id: str | None = None) -> None:
+        from shared.iroh_delivery import _joined_disk
+        async with self._gate:
+            revoked = await _joined_disk(lambda:self.grants.revoke_origin(origin,core_device_id=core_device_id))
+            for device,epoch in revoked:
+                channel = runtime.registry.revoke(device,minimum_epoch=epoch)
+                if channel is not None:
+                    channel.disconnect()
+
     async def closed(self, context: ConnectionContext, _binding: SessionBinding | None, _user_requested: bool) -> None:
         self._pending.pop(context.transport_id, None)

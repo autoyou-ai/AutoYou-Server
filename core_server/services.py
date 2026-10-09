@@ -850,6 +850,8 @@ async def _cloud_sse_listener_loop():
             runtime.STATE.cloud_connected = False
             runtime.STATE.cloud_last_sse_activity_at = 0.0
             runtime.STATE.cloud_token_rejected = True
+            if runtime.STATE.iroh_service is not None:
+                await runtime.STATE.iroh_service.fence_cloud_authority()
             return
         if not _shared_key_registered:
             _shared_key_registered = await runtime._register_shared_device_public_key()
@@ -879,6 +881,8 @@ async def _cloud_sse_listener_loop():
                                 runtime.STATE.cloud_connected = False
                                 runtime.STATE.cloud_last_sse_activity_at = 0.0
                                 runtime.STATE.cloud_token_rejected = False
+                                if runtime.STATE.iroh_service is not None:
+                                    await runtime.STATE.iroh_service.fence_cloud_authority()
                                 return
                             if status_code == 200:
                                 runtime.LOGGER.warning(
@@ -907,6 +911,8 @@ async def _cloud_sse_listener_loop():
                             runtime.STATE.cloud_connected = False
                             runtime.STATE.cloud_last_sse_activity_at = 0.0
                             runtime.STATE.cloud_token_rejected = True
+                            if runtime.STATE.iroh_service is not None:
+                                await runtime.STATE.iroh_service.fence_cloud_authority()
                             return  # Exit the loop entirely; task will be garbage-collected
                         await runtime.asyncio.sleep(_401_backoff)
                         _401_backoff = min(_401_backoff * 2, 600)  # Cap at 10 minutes
@@ -932,6 +938,8 @@ async def _cloud_sse_listener_loop():
                     runtime.STATE.cloud_connected = True
                     runtime.STATE.cloud_token_rejected = False
                     runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
+                    if runtime.STATE.iroh_service is not None:
+                        await runtime.STATE.iroh_service.sync_core_cloud()
                     _stream_opened_at = runtime.time.monotonic()
                     _stream_superseded = False
                     runtime.LOGGER.info(f"AutoYou Cloud: SSE connected to {url}")
@@ -1008,6 +1016,8 @@ async def _cloud_sse_listener_loop():
 async def _start_cloud_sse_listener():
     """Start or restart the AutoYou Cloud SSE listener task."""
     runtime = _runtime()
+    if runtime.STATE.iroh_service is not None:
+        await runtime.STATE.iroh_service.sync_core_cloud()
     if runtime.STATE.cloud_sse_task and not runtime.STATE.cloud_sse_task.done():
         runtime.STATE.cloud_sse_task.cancel()
         try:

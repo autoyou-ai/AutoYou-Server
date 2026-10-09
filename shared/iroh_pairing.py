@@ -33,6 +33,7 @@ class _Invitation:
     grant: PairedEndpoint
     deadline: float
     redemption_id: bytes
+    core_device_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,8 @@ class VerifiedPairingRedemption:
         self._issued = {key: value for key, value in self._issued.items() if value.deadline > now}
         self._pending = {key: value for key, value in self._pending.items() if value.invitation.deadline > now}
 
-    def issue_after_verified_proof(self, runtime: IrohSessionRuntime, grant: PairedEndpoint) -> dict[str, Any]:
+    def issue_after_verified_proof(self, runtime: IrohSessionRuntime, grant: PairedEndpoint,
+                                   *, core_device_id: str | None = None) -> dict[str, Any]:
         """Only a successful host-owned pairing entry point may call this."""
         grant.validate()
         runtime.api.validate_endpoint_id(grant.endpoint_id)
@@ -66,7 +68,7 @@ class VerifiedPairingRedemption:
             raise SessionDenied("pairing invitation capacity has been reached")
         secret = secrets.token_bytes(32)
         key = hashlib.sha256(secret).digest()
-        self._issued[key] = _Invitation(grant, self.now() + PAIR_TTL_SECONDS, key)
+        self._issued[key] = _Invitation(grant, self.now() + PAIR_TTL_SECONDS, key,core_device_id)
         info = runtime.endpoint_info
         raw_grant = asdict(grant)
         raw_grant["scopes"] = sorted(grant.scopes)
@@ -90,6 +92,14 @@ class VerifiedPairingRedemption:
                         if invitation.grant.device_id != device_id}
         self._pending = {key: pending for key, pending in self._pending.items()
                          if pending.invitation.grant.device_id != device_id}
+
+    async def cancel_origin(self, origin: str, *, core_device_id: str | None = None) -> None:
+        def retained(invitation):
+            return invitation.grant.origin_transport != origin or (
+                core_device_id is not None and invitation.core_device_id != core_device_id)
+        async with self._gate:
+            self._issued = {key:value for key,value in self._issued.items() if retained(value)}
+            self._pending = {key:value for key,value in self._pending.items() if retained(value.invitation)}
 
     async def connected(self, _runtime: IrohSessionRuntime, context: ConnectionContext) -> None:
         if context.protocol != PAIR_ALPN or context.initiator:
@@ -125,7 +135,12 @@ class VerifiedPairingRedemption:
                 if pending is None or pending.context != context or \
                         not secrets.compare_digest(bytes(message.binding), pending.digest):
                     raise SessionDenied("pairing confirmation was rejected")
-                await asyncio.to_thread(self.grants.register, pending.invitation.grant)
+                from shared.iroh_delivery import _joined_disk
+                if pending.invitation.core_device_id is None:
+                    await _joined_disk(self.grants.register,pending.invitation.grant)
+                else:
+                    await _joined_disk(lambda:self.grants.register(pending.invitation.grant,
+                        core_device_id=pending.invitation.core_device_id))
                 runtime.send_enrollment(context, bytes(runtime.api.encode_enrollment(runtime.api.EnrollmentMessage(
                     kind=runtime.api.EnrollmentKind.READY, challenge=None, binding=pending.digest))))
             else:

@@ -47,10 +47,12 @@ try:api.accept_core_relay_configuration(b'corrupt',json.dumps(data['relay_envelo
 except api.BindingError:pass
 else:raise AssertionError('Corrupt protected Core floors accepted')
 info=api.core_info()
+derived=api.accept_core_device_routing_record(config.protected_store,args[0],*args[1:3],*args[4:6],args[7],policy)
+assert derived.owner_id=='account00000001' and derived.epoch==4
 files={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
-(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=11,network=False,
+(root/'core-qualification.json').write_text(json.dumps(dict(passed=True,cases=12,network=False,
     lock_sha256=info.lock_sha256,files=files),indent=2))
-print('Generated Core API: 11 checks passed')
+print('Generated Core API: 12 checks passed')
 "#;
     let script=out.join("core_qualification.py");fs::write(&script,source).unwrap();
     let mut command=if cfg!(windows) { let mut c=Command::new("py");c.arg("-3");c } else { Command::new("python3") };

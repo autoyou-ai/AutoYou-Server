@@ -325,7 +325,7 @@ impl EndpointHost {
                     Ok(Err(error)) => { let _ = ready_tx.send(Err(error)); return; }
                     Err(_) => { let _ = ready_tx.send(Err(HostError::Timeout)); return; }
                 };
-                update_info(&endpoint, &worker_policy, &worker_shared);
+                update_info(&endpoint, &worker_policy, &worker_shared,&relay_map);
                 if ready_tx.send(Ok(())).is_err() { endpoint.close().await; return; }
                 run(endpoint.clone(), worker_shared.clone(), receiver, worker_policy,relay_map).await;
                 let _ = tokio::time::timeout(Duration::from_secs(3), endpoint.close()).await;
@@ -345,6 +345,13 @@ impl EndpointHost {
 
     pub fn endpoint_info(&self) -> Result<(String,String), HostError> {
         self.open()?; self.shared.info.lock().map(|info| info.clone()).map_err(|_| HostError::Worker)
+    }
+    pub fn current_relay_urls(&self)->Result<Vec<String>,HostError> {
+        let (_,ticket)=self.endpoint_info()?;
+        let ticket:EndpointTicket=ticket.parse().map_err(|_|HostError::InvalidTicket)?;
+        Ok(ticket.endpoint_addr().addrs.iter().filter_map(|address|match address {
+            TransportAddr::Relay(url)=>Some(url.to_string()),_=>None,
+        }).collect())
     }
     pub fn sign_core_proof(&self, payload: String, issuer: String, owner: String, device: String)
         -> Result<String, HostError> {
@@ -792,11 +799,12 @@ async fn bind_endpoint(policy: &EndpointPolicy, mut key: [u8;32]) -> Result<(End
     Ok((endpoint,map))
 }
 
-fn update_info(endpoint: &Endpoint, policy: &EndpointPolicy, shared: &Shared) {
-    let address = if policy.local_only {
+fn update_info(endpoint: &Endpoint, policy: &EndpointPolicy, shared: &Shared,relay_map:&RelayMap) {
+    let mut address = if policy.local_only {
         let relays=endpoint.addr().addrs.into_iter().filter(TransportAddr::is_relay);
         EndpointAddr::new(endpoint.id()).with_addrs(endpoint.bound_sockets().into_iter().map(TransportAddr::Ip).chain(relays))
     } else { endpoint.addr() };
+    address.addrs.retain(|hint|match hint {TransportAddr::Relay(url)=>relay_map.get(url).is_some(),_=>!policy.relay_only});
     if let Ok(mut info) = shared.info.lock() { *info = (endpoint.id().to_string(), EndpointTicket::new(address).to_string()); }
 }
 
@@ -918,8 +926,13 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                     }
                     Some(Command::NetworkChanged) => { endpoint.network_change().await; }
                     Some(Command::CoreProof {payload,issuer,owner,device,reply}) => {
-                        let result=crate::core_routing::sign_endpoint_proof(endpoint.secret_key().to_bytes(),
-                            &payload,&issuer,&owner,&device,now_ms());
+                        let current:Vec<String>=endpoint.addr().addrs.into_iter().filter_map(|hint|match hint {
+                            TransportAddr::Relay(url) if _relay_map.get(&url).is_some()=>Some(url.to_string()),_=>None,
+                        }).collect();
+                        let result=crate::core_routing::published_routes(&payload).and_then(|routes| {
+                            if routes.is_some_and(|routes|routes!=current) { return Err(HostError::NotAuthorized); }
+                            crate::core_routing::sign_endpoint_proof(endpoint.secret_key().to_bytes(),&payload,&issuer,&owner,&device,now_ms())
+                        });
                         let _=reply.send(result);
                     }
                     Some(Command::CoreRelays {relays,expires_at_ms,generation,reply}) => {
@@ -945,7 +958,7 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                                 };Ok(())
                             }
                         };
-                        update_info(&endpoint,&policy,&shared);let _=reply.send(result);
+                        update_info(&endpoint,&policy,&shared,&_relay_map);let _=reply.send(result);
                     }
                     #[cfg(test)] Some(Command::RelayCount(reply)) => { let _=reply.send(_relay_map.len()); }
                     #[cfg(test)]
@@ -1011,7 +1024,7 @@ async fn run(endpoint: Endpoint, shared: Arc<Shared>, mut commands: mpsc::Receiv
                     for approved in &policy.relays { endpoint.remove_relay(&approved.url.parse().unwrap()).await; }
                     relay_deadline=None;
                 }
-                update_info(&endpoint, &policy, &shared);
+                update_info(&endpoint, &policy, &shared,&_relay_map);
             }
         }
     }
@@ -1324,6 +1337,15 @@ mod tests {
             host.commands.try_send(Command::RelayCount(reply)).unwrap();receiver.recv_timeout(Duration::from_secs(3)).unwrap()
         };
         let identity=host.endpoint_info().unwrap().0;assert_eq!(count(),0);
+        let now=now_ms()/1000;
+        let mut challenge=serde_json::json!({"schema_version":1,"issuer":"https://core.example.invalid",
+            "owner_id":"account00000001","device_id":"client000000001","endpoint_id":identity,
+            "epoch":0,"nonce":"11".repeat(32),"issued_at":now,"expires_at":now+60,
+            "purpose":"routing","relay_urls":[]});
+        let encode=|value:&serde_json::Value| { use base64::Engine;base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(value).unwrap()) };
+        assert!(host.sign_core_proof(encode(&challenge),"https://core.example.invalid".into(),"account00000001".into(),"client000000001".into()).is_ok());
+        challenge["relay_urls"]=serde_json::json!(["http://127.0.0.1:9/"]);
+        assert!(host.sign_core_proof(encode(&challenge),"https://core.example.invalid".into(),"account00000001".into(),"client000000001".into()).is_err());
         let generation=host.core_relay_generation().unwrap();
         let credentials=r#"[{"url":"http://127.0.0.1:9/","token":"synthetic-endpoint-credential"}]"#;
         host.set_core_relays(credentials,now_ms()+60_000,generation).unwrap();assert_eq!(count(),1);
@@ -1337,6 +1359,8 @@ mod tests {
         assert_eq!(identity,host.endpoint_info().unwrap().0);
         policy.relays[0].token="project-secret".into();assert!(policy.validate().is_err());
         host.shutdown().unwrap();
+        policy.relays[0].token.clear();policy.relay_only=true;
+        let only=EndpointHost::start(policy,[70;32]).unwrap();assert!(only.current_relay_urls().unwrap().is_empty());only.shutdown().unwrap();
     }
     #[test]
     fn peer_and_room_share_an_endpoint_without_sharing_admission_or_pairing_lanes() {

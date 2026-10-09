@@ -507,6 +507,7 @@ impl SharedEndpoint {
         Ok(self.host.sign_core_proof(payload,issuer,owner_id,device_id)?)
     }
     pub fn core_relay_generation(&self)->Result<u64,BindingError> { Ok(self.host.core_relay_generation()?) }
+    pub fn current_relay_urls(&self)->Result<Vec<String>,BindingError> { Ok(self.host.current_relay_urls()?) }
     pub fn set_core_relays(&self,credentials_json:String,expires_at_ms:u64,generation:u64)->Result<(),BindingError> {
         Ok(self.host.set_core_relays(&credentials_json,expires_at_ms,generation)?)
     }

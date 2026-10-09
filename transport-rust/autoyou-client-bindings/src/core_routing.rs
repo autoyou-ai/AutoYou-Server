@@ -8,6 +8,7 @@ pub struct CoreRoutingRecord { pub epoch: u64, pub expires_at_ms: u64, pub ticke
 #[derive(Clone, uniffi::Record)]
 pub struct StoredCoreRoutingRecord {
     pub epoch:u64, pub expires_at_ms:u64, pub ticket:String, pub protected_store:Vec<u8>,
+    pub owner_id:String,
 }
 #[derive(Clone, uniffi::Record)]
 pub struct CoreRelayConfiguration {
@@ -25,7 +26,17 @@ pub fn accept_core_routing_record(protected_store:Vec<u8>,envelope_json:String,c
     let policy:EndpointPolicy=serde_json::from_str(&policy_json).map_err(|_|BindingError::InvalidInput)?;
     let (value,saved)=autoyou_session::core_routing::accept_routing_record(&protected_store,&envelope_json,
         &core_public_key,&issuer,&owner_id,&device_id,&endpoint_id,now_ms,&policy)?;
-    Ok(StoredCoreRoutingRecord {epoch:value.epoch,expires_at_ms:value.expires_at_ms,ticket:value.ticket,protected_store:saved})
+    Ok(StoredCoreRoutingRecord {epoch:value.epoch,expires_at_ms:value.expires_at_ms,ticket:value.ticket,protected_store:saved,owner_id})
+}
+
+#[uniffi::export]
+pub fn accept_core_device_routing_record(protected_store:Vec<u8>,envelope_json:String,core_public_key:String,
+    issuer:String,device_id:String,endpoint_id:String,now_ms:u64,policy_json:String)->Result<StoredCoreRoutingRecord,BindingError> {
+    if policy_json.len()>64*1024 { return Err(BindingError::InvalidInput); }
+    let policy:EndpointPolicy=serde_json::from_str(&policy_json).map_err(|_|BindingError::InvalidInput)?;
+    let (value,saved,owner_id)=autoyou_session::core_routing::accept_device_routing_record(&protected_store,&envelope_json,
+        &core_public_key,&issuer,&device_id,&endpoint_id,now_ms,&policy)?;
+    Ok(StoredCoreRoutingRecord {epoch:value.epoch,expires_at_ms:value.expires_at_ms,ticket:value.ticket,protected_store:saved,owner_id})
 }
 
 #[uniffi::export]

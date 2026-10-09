@@ -6880,6 +6880,9 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
                 )
             except Exception as exc:
                 LOGGER.warning(f"AutoYou Cloud: failed to invalidate entitlements cache: {exc}")
+        service = STATE.iroh_service
+        if service is not None:
+            await service.sync_core_cloud()
         return
 
     # ── Remote ICE candidates pushed by the cloud from the mobile client ────
@@ -6939,6 +6942,8 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
     if (invalid_shared_device_profile or shared_device_pin_refusal) and command == "/autopair_candidates":
         LOGGER.warning("AutoYou Cloud: dropped shared-device candidates with invalid or refused key metadata")
         return
+    from core_server.iroh_service import CORE_PAIRING_DEVICE
+    core_context = CORE_PAIRING_DEVICE.set(str(client_device_id or "").strip())
     try:
         if invalid_shared_device_profile:
             response_payload = _json.dumps({"error": "Computer settings have changed. Scan its setup QR and try again."})
@@ -7051,6 +7056,8 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             relay_id,
             command,
         )
+    finally:
+        CORE_PAIRING_DEVICE.reset(core_context)
 
     if len(response_payload.encode("utf-8")) > 131072:
         response_payload = _json.dumps({"error": "Cloud pairing relay response was too large."})
@@ -7292,7 +7299,7 @@ async def _handle_verified_autopair_offer(chat_id: str, payload: Dict[str, Any])
     """Called only after the existing pairing entry point verifies its proof."""
     offer = payload.get("offer")
     if _pairing_transport_preflight(offer) == "iroh":
-        from core_server.iroh_service import VerifiedPairingOrigin
+        from core_server.iroh_service import CORE_PAIRING_DEVICE, VerifiedPairingOrigin
         from shared.session_transport import SessionDenied
         service = STATE.iroh_service
         if service is None:
@@ -7302,7 +7309,8 @@ async def _handle_verified_autopair_offer(chat_id: str, payload: Dict[str, Any])
         if not platform or not sender:
             raise SessionDenied("verified pairing origin is required")
         mode = _resolve_pairing_mode_for_transport(platform, payload.get("_autoyou_pairing_mode"))
-        origin = VerifiedPairingOrigin(platform, sender, mode, payload.get("_autoyou_device_ownership"))
+        origin = VerifiedPairingOrigin(platform, sender, mode, payload.get("_autoyou_device_ownership"),
+            CORE_PAIRING_DEVICE.get() if platform == "cloud" else "")
         return await service.issue_after_verified_pairing(offer, origin=origin, raw_session_id=str(chat_id))
     return await WEBRTC.handle_autopair_offer(chat_id, payload)
 

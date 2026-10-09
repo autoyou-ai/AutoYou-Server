@@ -41,7 +41,7 @@ class EndpointKeys:
                  purpose: str = "identity") -> None:
         if role not in {"server", "client", "lite"}:
             raise ValueError("unsupported endpoint role")
-        if purpose not in {"identity", "grants", "delivery", "resume"}:
+        if purpose not in {"identity", "grants", "delivery", "resume", "core"}:
             raise ValueError("unsupported endpoint key purpose")
         self.role, self.purpose = role, purpose
         suffix = "" if purpose == "identity" else f"/{purpose}"
