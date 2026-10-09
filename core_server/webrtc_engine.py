@@ -67,6 +67,7 @@ from shared.remote_access_policy import (
 from shared.room_call_listener import computer_presence
 from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
+from shared.h264_encoders import install_aiortc_h264_encoder
 from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
 from shared.live_pairing import LivePairing
 
@@ -5926,6 +5927,7 @@ class WebRTCManager:
         if offer_data.get("_autoyou_loopback_pairing") or _runtime._env_flag_enabled("AUTOYOU_ENABLE_LOOPBACK_ICE"):
             _runtime._install_loopback_ice_candidates()
         configure_sctp_fragment_size()
+        install_aiortc_h264_encoder()
         _runtime._apply_ice_consent_tolerance()
         await prime_turn_udp_probe(custom_ice_servers or _runtime._get_pairing_ice_servers())
         pc = _runtime.RTCPeerConnection(self._create_rtc_configuration_with_custom_ice(custom_ice_servers))
@@ -6432,6 +6434,7 @@ class WebRTCManager:
 
             _runtime.LOGGER.info(f"Creating RTCPeerConnection for {session_id}")
             configure_sctp_fragment_size()
+            install_aiortc_h264_encoder()
             _runtime._apply_ice_consent_tolerance()
             await prime_turn_udp_probe(custom_ice_servers or _runtime._get_pairing_ice_servers())
             pc = _runtime.RTCPeerConnection(self._create_rtc_configuration_with_custom_ice(custom_ice_servers))
