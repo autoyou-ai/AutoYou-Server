@@ -438,7 +438,14 @@ class IrohSessionRuntime:
                     queue.task_done()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as error:
+            location = error.__traceback__
+            while location is not None and location.tb_next is not None:
+                location = location.tb_next
+            _LOG.debug("Stream dispatch failed: lane=%s error=%s function=%s line=%s",
+                getattr(frame, "lane", None), type(error).__name__,
+                location.tb_frame.f_code.co_name if location is not None else "unknown",
+                location.tb_lineno if location is not None else 0)
             try:
                 self.disconnect(connection.context, user_requested=False)
             except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
