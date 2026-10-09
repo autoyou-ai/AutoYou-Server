@@ -126,7 +126,7 @@ def native_store_uri(product: str = DEFAULT_PRODUCT) -> str:
     if is_app_store_build():
         return "macappstore://showUpdatesPage"
     if _windows_package_name():
-        product_id = WINDOWS_STORE_PRODUCT_IDS.get(product)
+        product_id = WINDOWS_STORE_PRODUCT_IDS.get(product.removesuffix("-iroh"))
         return f"ms-windows-store://pdp/?ProductId={product_id}" if product_id else ""
     return ""
 
@@ -202,6 +202,7 @@ class UpdateManifest:
     git_commit: str = ""
     artifacts: Dict[str, UpdateArtifact] = field(default_factory=dict)
     raw: Dict[str, Any] = field(default_factory=dict)
+    transport_generation: str = "legacy"
 
 def _load_trusted_keys() -> Dict[str, Ed25519PublicKey]:
     """Resolve trusted Ed25519 public keys (env overrides + bundled)."""
@@ -268,6 +269,16 @@ class UpdateService:
         self._product = str(product or os.environ.get("AUTOYOU_UPDATE_PRODUCT") or DEFAULT_PRODUCT).strip()
         if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", self._product):
             raise UpdateError(f"Invalid update product id: {self._product!r}")
+        self._app_root = Path(app_root) if app_root else self._resolve_app_root()
+        from shared.iroh_release import load_release_config
+        release = (load_release_config(resources_root=self._app_root)
+                   if app_root and (self._app_root / "transport/release.json").is_file()
+                   else load_release_config() if not app_root else None)
+        self._transport_generation = release["generation"] if release else "legacy"
+        if self._transport_generation == "iroh" and not self._product.endswith("-iroh"):
+            self._product += "-iroh"
+        if self._transport_generation == "legacy" and self._product.endswith("-iroh"):
+            raise UpdateError("A legacy installation cannot select the Iroh update feed")
         if feed_base is not None:
             self._feed_base = str(feed_base).rstrip("/")
         else:
@@ -277,7 +288,6 @@ class UpdateService:
         if self._channel not in SUPPORTED_CHANNELS:
             raise UpdateError(f"Invalid update channel: {self._channel!r}")
         self._trusted_keys = trusted_keys if trusted_keys is not None else _load_trusted_keys()
-        self._app_root = Path(app_root) if app_root else self._resolve_app_root()
         self._http_get = http_get or self._default_http_get
         self._auth_token = str(auth_token or "").strip()
         self._cookie_header = str(cookie_header or "").strip()
@@ -499,6 +509,9 @@ class UpdateService:
         channel = str(payload.get("channel") or "").strip()
         if channel not in SUPPORTED_CHANNELS:
             raise UpdateError("Update manifest is missing a supported 'channel'")
+        generation = payload.get("transport_generation", "legacy")
+        if not isinstance(generation, str) or generation not in {"legacy", "iroh"} or (product.endswith("-iroh") != (generation == "iroh")):
+            raise UpdateError("Update product and transport generation mismatch")
         artifacts: Dict[str, UpdateArtifact] = {}
         raw_artifacts = payload.get("artifacts") or {}
         if not isinstance(raw_artifacts, dict):
@@ -540,6 +553,7 @@ class UpdateService:
             git_commit=git_commit,
             artifacts=artifacts,
             raw=payload,
+            transport_generation=generation,
         )
 
     def fetch_manifest(self, url: Optional[str] = None, *, timeout: float = 15.0) -> UpdateManifest:
@@ -567,6 +581,8 @@ class UpdateService:
         return manifest
 
     def _validate_manifest_scope(self, manifest: UpdateManifest) -> None:
+        if manifest.transport_generation != self._transport_generation:
+            raise UpdateError("Cross-generation automatic update is forbidden; retain the compatible release lane")
         if manifest.product != self._product:
             raise UpdateError(
                 f"Update manifest product mismatch (expected {self._product!r}, got {manifest.product!r})"
@@ -575,6 +591,17 @@ class UpdateService:
             raise UpdateError(
                 f"Update manifest channel mismatch (expected {self._channel!r}, got {manifest.channel!r})"
             )
+
+    def _update_eligibility(self) -> tuple[bool, str]:
+        if self._transport_generation == "legacy":
+            return True, ""
+        from shared.iroh_release import update_eligibility
+        return update_eligibility(self._product, platform_key())
+
+    def _require_update_eligible(self) -> None:
+        okay, reason = self._update_eligibility()
+        if not okay:
+            raise UpdateError(reason)
 
     # ── version comparison ────────────────────────────────────────────────
     @staticmethod
@@ -616,10 +643,14 @@ class UpdateService:
         self._validate_manifest_scope(resolved)
         plat = platform_key()
         artifact = resolved.artifacts.get(plat)
+        eligible, reason = self._update_eligibility()
         return {
             "current_version": current,
             "latest_version": resolved.version,
-            "update_available": self._version_gt(resolved.version, current),
+            "update_available": eligible and self._version_gt(resolved.version, current),
+            "update_eligible": eligible,
+            "eligibility_reason": reason,
+            "transport_generation": self._transport_generation,
             "product": self._product,
             "channel": resolved.channel,
             "install_kind": self.install_kind(),
@@ -685,6 +716,7 @@ class UpdateService:
         if manifest is None:
             raise UpdateError("Source updates require a signed manifest with a pinned git commit")
         self._validate_manifest_scope(manifest)
+        self._require_update_eligible()
         if not manifest.git_commit:
             raise UpdateError("Signed source update manifest has no pinned git commit")
         if self.install_kind() != "source":
@@ -848,6 +880,7 @@ class UpdateService:
         self._ensure_enabled()
         resolved = manifest or self.fetch_manifest()
         self._validate_manifest_scope(resolved)
+        self._require_update_eligible()
         plat = platform_key()
         artifact = resolved.artifacts.get(plat)
         if artifact is None:
@@ -868,6 +901,7 @@ class UpdateService:
         if manifest is None:
             raise UpdateError("Docker updates require a signed manifest with a pinned git commit")
         self._validate_manifest_scope(manifest)
+        self._require_update_eligible()
         if not manifest.git_commit:
             raise UpdateError("Signed Docker update manifest has no pinned git commit")
         signed_commit = self._safe_git_commit(manifest.git_commit)

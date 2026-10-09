@@ -10,7 +10,9 @@ import hashlib
 import ipaddress
 import json
 import os
+import platform
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -158,6 +160,31 @@ def server_transport_config(config: dict) -> dict:
     result = dict(mode="prefer_iroh", iroh=release["policy"], core=release["core"])
     result.update({key: value for key, value in transport.items() if key not in {"iroh", "core"}})
     return result
+
+
+def update_eligibility(product: str, target: str) -> tuple[bool, str]:
+    """The frozen generation's local minimums; stores also enforce package minimums."""
+    def at_least(value: str, required: tuple[int, ...]) -> bool:
+        if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", value):
+            return False
+        parts = tuple(map(int, value.split(".")))
+        return (parts + (0,) * len(required))[:len(required)] >= required
+    if sys.version_info < (3, 11):
+        return False, "The Iroh runtime requires Python 3.11 or newer. Retain the legacy generation."
+    if target == "windows-x64":
+        okay = at_least(platform.win32_ver()[1], (10, 0, 19041))
+        reason = "The Iroh generation requires Windows 10 build 19041 or newer."
+    elif target in {"macos-arm64", "macos-x64"}:
+        minimum = 14 if product.removesuffix("-iroh") == "autoyou-connect" else 13
+        okay = at_least(platform.mac_ver()[0], (minimum,))
+        reason = f"The Iroh generation requires macOS {minimum} or newer."
+    elif target in {"linux-x64", "linux-arm64", "wsl-x64", "wsl-arm64", "docker-x64", "docker-arm64"}:
+        name, version = platform.libc_ver()
+        okay = name == "glibc" and at_least(version, (2, 35))
+        reason = "The Iroh generation requires glibc 2.35 or newer."
+    else:
+        return False, "This architecture has no supported Iroh update artifact. Retain the legacy generation."
+    return okay, "" if okay else reason + " Retain the legacy generation."
 
 
 def source_fingerprints(workspace: Path) -> dict[str, str]:

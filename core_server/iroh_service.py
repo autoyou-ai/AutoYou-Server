@@ -301,7 +301,13 @@ async def _start_server_transport_locked(runtime: Any) -> None:
     if not isinstance(config, dict):
         raise ValueError("invalid session transport configuration")
     mode = TransportPolicy(config.get("mode", "legacy"))
-    if mode == TransportPolicy.LEGACY or getattr(runtime.STATE, "iroh_service", None) is not None:
+    owned = getattr(runtime.STATE, "iroh_service", None)
+    if mode == TransportPolicy.LEGACY:
+        if owned is not None:
+            await owned.stop()
+            runtime.STATE.iroh_service = None
+        return
+    if owned is not None:
         return
     if runtime._config_write_block_reason() is not None:
         raise SessionDenied("server configuration must be unlocked before transport startup")

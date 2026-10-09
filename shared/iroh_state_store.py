@@ -34,6 +34,7 @@ class ProtectedTransportState:
         self.root = keys.root / "state"
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "state.enc"
+        self.rollback_baseline = self.root / "rollback-baseline.enc"
 
     def _fernet(self, *, create: bool) -> Fernet:
         try:
@@ -64,11 +65,29 @@ class ProtectedTransportState:
     def transaction(self, update: Callable[[Any], tuple[Any, _Result]], *, default_factory: Callable[[], Any]) -> _Result:
         """Persist first, then return the new grant/counter/receipt to its caller."""
         with _STATE_LOCK, EndpointLease(self.root, identity_transaction=True):
-            value, result = update(self._read(default_factory))
+            before = self._read(default_factory)
+            baseline_plaintext = None
+            if not self.path.exists() and not self.rollback_baseline.exists():
+                baseline_plaintext = json.dumps(before, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+                if len(baseline_plaintext) > _MAX_STATE_BYTES // 2:
+                    raise ProtectedTransportStateUnavailable("protected transport state exceeds its bound")
+            value, result = update(before)
             plaintext = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
             if len(plaintext) > _MAX_STATE_BYTES // 2:
                 raise ProtectedTransportStateUnavailable("protected transport state exceeds its bound")
             ciphertext = self._fernet(create=not self.path.exists()).encrypt(plaintext)
+            if not self.rollback_baseline.exists():
+                # Evidence only: automatic rollback never restores stale authority or receipts.
+                baseline = self.path.read_bytes() if self.path.exists() else self._fernet(create=False).encrypt(
+                    baseline_plaintext)
+                descriptor, temporary = tempfile.mkstemp(dir=self.root, prefix="rollback-", suffix=".tmp")
+                try:
+                    with os.fdopen(descriptor, "wb") as handle:
+                        handle.write(baseline); handle.flush(); os.fsync(handle.fileno())
+                    os.replace(temporary, self.rollback_baseline)
+                    if os.name != "nt": self.rollback_baseline.chmod(0o600)
+                finally:
+                    if os.path.exists(temporary): os.unlink(temporary)
             descriptor, temporary = tempfile.mkstemp(dir=self.root, prefix="state-", suffix=".tmp")
             try:
                 with os.fdopen(descriptor, "wb") as handle:
