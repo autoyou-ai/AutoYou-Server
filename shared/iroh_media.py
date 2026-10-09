@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from copy import deepcopy
 import json
 import time
 from typing import Any, Awaitable, Callable
@@ -69,6 +70,14 @@ class _Source:
     consent_check: Callable[[], None] | None = None
 
 
+@dataclass(frozen=True)
+class MediaSourceObservation:
+    binding: MediaSourceBinding
+    current_check: Callable[[], bool]
+    frame: Any = None
+    retired: bool = False
+
+
 class IrohMedia:
     def __init__(self, *, channel: Any, now_ms: Callable[[], int] | None = None,
                  monotonic_us: Callable[[], int] | None = None,
@@ -80,6 +89,7 @@ class IrohMedia:
         self.monotonic_us = monotonic_us or (lambda: time.monotonic_ns()//1000)
         self.encoder_factory, self.decoder_factory = encoder_factory, decoder_factory
         self._sources: dict[tuple[str,int], _Source] = {}
+        self._observers: dict[object, Callable[[MediaSourceObservation], None]] = {}
         self._closing = False
         self._cleanup = None
         self._playout_worker = None
@@ -107,6 +117,46 @@ class IrohMedia:
         source.binding.check(self.channel.registry,now_ms=self.now_ms(),approved_source=source.binding,
             current_media_generation=source.binding.media_generation)
         if source.consent_check is not None: source.consent_check()
+
+    def observe_inbound(self, observer: Callable[[MediaSourceObservation], None]) -> Callable[[], None]:
+        """Bounded synchronous metadata/sample consumers; no capture or consent widening."""
+        self._check()
+        if not callable(observer) or len(self._observers) >= 4:
+            raise SessionDenied("native media observer is unavailable")
+        token = object()
+        self._observers[token] = observer
+        for source in tuple(self._sources.values()):
+            if source.binding.direction == "receive" and not source.closing:
+                self._observe(source, tokens=(token,))
+        def stop():
+            self._observers.pop(token, None)
+        return stop
+
+    def _observe(self, source: _Source, frame=None, *, retired=False, tokens=None) -> None:
+        if source.binding.direction != "receive":
+            return
+        deadline = frame.expires_at_us if frame is not None else None
+        def current():
+            try:
+                self._source_check(source)
+                return deadline is None or self.monotonic_us() < deadline
+            except SessionDenied:
+                return False
+        for token in tuple(self._observers) if tokens is None else tokens:
+            observer = self._observers.get(token)
+            if observer is None or not retired and not current():
+                continue
+            try:
+                observer(MediaSourceObservation(source.binding, current, deepcopy(frame), retired))
+            except Exception:
+                # A metadata consumer cannot end the primary physical playback.
+                self._observers.pop(token, None)
+                for owned in tuple(self._sources.values()):
+                    if owned.binding.direction == "receive":
+                        try:
+                            observer(MediaSourceObservation(owned.binding, lambda: False, retired=True))
+                        except Exception:
+                            pass
 
     async def _codec(self, source: _Source | None, function: Callable, *args) -> Any:
         if source is not None:
@@ -206,6 +256,7 @@ class IrohMedia:
                     name="iroh-media-source")
                 if self._playout_worker is None:
                     self._playout_worker = asyncio.create_task(self._run_playout(),name="iroh-media-playout")
+                self._observe(source)
             except BaseException:
                 await self._stop_source(source)
                 raise
@@ -313,6 +364,7 @@ class IrohMedia:
                             source.dropped_frames += 1
                             continue
                         frame.reset_decoder = True
+                    self._observe(source, frame)
                     decoded = await self._codec(source,source.codec.decode,frame)
                     self._source_check(source)
                     if source.decoder_revision != revision or self.monotonic_us() >= frame.expires_at_us:
@@ -376,6 +428,7 @@ class IrohMedia:
     def _begin_stop_source(self, source: _Source) -> None:
         if source.cleanup is None:
             source.closing = True
+            self._observe(source, retired=True)
             error = None
             if source.binding.direction == "receive":
                 try:
@@ -453,6 +506,7 @@ class IrohMedia:
             except BaseException as exc:
                 if self._cleanup_error is None: self._cleanup_error = exc
         if self._retirements: await asyncio.gather(*tuple(self._retirements),return_exceptions=True)
+        self._observers.clear()
         if self.call_owner is not None:
             try:
                 await self.call_owner.close()
