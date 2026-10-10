@@ -647,9 +647,18 @@ echo "Copying release legal bundle..."
 scrub_runtime_modules_bytecode() {
     local runtime_modules_root="${FINAL_BACKEND_ROOT}/runtime_modules"
     if [[ -d "$runtime_modules_root" ]]; then
-        find "$runtime_modules_root" -type d -name '__pycache__' -prune -exec rm -rf {} +
-        find "$runtime_modules_root" -type f \( -name '*.pyc' -o -name '*.pyo' \) \
-            ! -path "$runtime_modules_root/autoyou_agents/__init__.pyc" -delete
+        "$PYTHON_CMD" - "${FINAL_BACKEND_ROOT}" <<'PY_BYTECODE'
+import json
+import sys
+from pathlib import Path
+
+bundle = Path(sys.argv[1]).resolve()
+tracked = json.loads((bundle / "runtime_integrity.json").read_text(encoding="utf-8"))["files"]
+# Package initializers carry exports; preserve all manifest-owned bridges like Windows.
+for path in (bundle / "runtime_modules").rglob("*"):
+    if path.is_file() and path.suffix in {".pyc", ".pyo"} and path.relative_to(bundle).as_posix() not in tracked:
+        path.unlink()
+PY_BYTECODE
     fi
 }
 
@@ -676,10 +685,6 @@ for name, expected in manifest["files"].items():
     path = (bundle / name).resolve()
     if not path.is_relative_to(bundle):
         raise SystemExit(f"Runtime integrity path escapes bundle: {name}")
-    if (not path.is_file() and name.startswith("runtime_modules/")
-            and path.suffix in {".pyc", ".pyo"}
-            and name != "runtime_modules/autoyou_agents/__init__.pyc"):
-        continue
     if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         raise SystemExit(f"Runtime integrity failed after bytecode cleanup: {name}")
     retained[name] = expected

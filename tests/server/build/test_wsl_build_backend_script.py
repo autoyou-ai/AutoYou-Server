@@ -95,12 +95,13 @@ def test_packaged_launcher_does_not_steal_server_auth_arg():
     assert "ArgumentParser(add_help=False, allow_abbrev=False)" in launcher
 
 
-@pytest.mark.parametrize("damage", [None, "missing-module", "missing-agent-bridge", "modified-module", "escaping-path"])
+@pytest.mark.parametrize("damage", [None, "missing-module", "missing-agent-bridge", "missing-package-bridge", "modified-module", "escaping-path"])
 def test_wsl_cleanup_without_path_marker_preserves_runtime_integrity(tmp_path, damage):
     bundle = tmp_path / "bundle"
     files = {
         "runtime_modules/server.so": b"synthetic compiled module",
         "runtime_modules/autoyou_agents/__init__.pyc": b"synthetic required bridge",
+        "runtime_modules/shared/__init__.pyc": b"synthetic package exports",
         "transport/release.json": b"synthetic public config",
     }
     hashes = {}
@@ -109,12 +110,13 @@ def test_wsl_cleanup_without_path_marker_preserves_runtime_integrity(tmp_path, d
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         hashes[name] = hashlib.sha256(data).hexdigest()
-    hashes["runtime_modules/shared/__init__.pyc"] = "0" * 64
     manifest = {"version": 1, "files": hashes, "allowed_python_files": ["transport/bindings.py"]}
     if damage == "missing-module":
         (bundle / "runtime_modules/server.so").unlink()
     elif damage == "missing-agent-bridge":
         (bundle / "runtime_modules/autoyou_agents/__init__.pyc").unlink()
+    elif damage == "missing-package-bridge":
+        (bundle / "runtime_modules/shared/__init__.pyc").unlink()
     elif damage == "modified-module":
         (bundle / "runtime_modules/server.so").write_bytes(b"modified synthetic module")
     elif damage == "escaping-path":
@@ -137,6 +139,27 @@ def test_wsl_cleanup_without_path_marker_preserves_runtime_integrity(tmp_path, d
         assert refreshed["allowed_python_files"] == manifest["allowed_python_files"]
         for name, data in files.items():
             assert (bundle / name).read_bytes() == data
+
+
+def test_wsl_bytecode_cleanup_preserves_declared_package_exports(tmp_path):
+    bundle = tmp_path / "bundle"
+    bridge = bundle / "runtime_modules/shared/agent_apps/__init__.pyc"
+    cache = bridge.parent / "__pycache__/untracked.pyc"
+    bridge.parent.mkdir(parents=True)
+    cache.parent.mkdir()
+    bridge.write_bytes(b"synthetic package exports")
+    cache.write_bytes(b"synthetic import cache")
+    manifest_path = bundle / "runtime_integrity.json"
+    manifest_path.write_text(json.dumps({"files": {bridge.relative_to(bundle).as_posix(): hashlib.sha256(bridge.read_bytes()).hexdigest()}}))
+    before = manifest_path.read_bytes()
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    code = text.split("<<'PY_BYTECODE'\n", 1)[1].split("\nPY_BYTECODE", 1)[0]
+    result = subprocess.run([sys.executable, "-", str(bundle)], input=code, text=True,
+                            capture_output=True, env={**os.environ, "AUTOYOU_TEST_ROOT": str(tmp_path)})
+    assert result.returncode == 0, result.stderr
+    assert bridge.read_bytes() == b"synthetic package exports"
+    assert not cache.exists()
+    assert manifest_path.read_bytes() == before
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Exercises the Linux build shell")
