@@ -285,7 +285,13 @@ class RuntimeModulePlan:
 
 
 def _is_skipped_path(relative_path: Path) -> bool:
-    return any(part in SKIP_DIRECTORY_NAMES for part in relative_path.parts)
+    return (
+        any(part in SKIP_DIRECTORY_NAMES for part in relative_path.parts)
+        or sys.platform == "darwin" and (
+            "model_picker_agent" in relative_path.parts
+            or relative_path == Path("shared/llmfit_integration.py")
+        )
+    )
 
 
 def _is_trusted_runtime_source(relative_path: Path) -> bool:
