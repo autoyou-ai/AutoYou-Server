@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS binary-default build (autoyou-server-macos-default)
 Release profile: binary-default
 Dependency profile: binary-default
-Generated: 2026-10-09T09:16:15+00:00
+Generated: 2026-10-10T02:44:08+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
