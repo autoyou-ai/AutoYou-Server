@@ -19,6 +19,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import copy
 import re
+import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 
 from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PACKAGE_NAMES
@@ -77,6 +78,10 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
 }
 
 BASE_AGENT_NAMES = tuple(sorted(KNOWN_AGENT_LABELS))
+
+
+def _model_picker_available() -> bool:
+    return sys.platform != "darwin"
 
 AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "admin_agent": ("core", "security"),
@@ -509,7 +514,10 @@ def build_agent_release_catalog(
     agents_payload: Optional[Mapping[str, Any]] = None,
     available_agents: Optional[Iterable[Any]] = None,
 ) -> Dict[str, Any]:
-    agents = [classify_agent(name) for name in _collect_agent_names(agents_payload, available_agents)]
+    names = _collect_agent_names(agents_payload, available_agents)
+    if not _model_picker_available():
+        names = [name for name in names if name != "model_picker_agent"]
+    agents = [classify_agent(name) for name in names]
     release_ready = [agent for agent in agents if agent["release_state"] == "release_ready"]
     review_required = [agent for agent in agents if agent["release_state"] == "review_required"]
     excluded = [agent for agent in agents if agent["release_state"] == "excluded_from_release"]
@@ -566,6 +574,16 @@ def build_setup_profile_payload(
     api_route_count: int = 0,
 ) -> Dict[str, Any]:
     agent_catalog = build_agent_release_catalog(agents_payload)
+    decision_tree = _copy_json(DECISION_TREE)
+    profile_templates = [_profile_for_runtime(profile) for profile in PROFILE_TEMPLATES]
+    if not _model_picker_available():
+        for question in decision_tree:
+            if question.get("id") == "ai_path":
+                question["options"] = [option for option in question["options"]
+                                       if option.get("id") != "model_picker"]
+            for option in question.get("options", []):
+                option["description"] = str(option.get("description") or "").replace(
+                    ", and model picker guidance", "")
     payload = {
         "version": PROFILE_CATALOG_VERSION,
         "title": "Guided local setup",
@@ -574,8 +592,8 @@ def build_setup_profile_payload(
             "choices into validated config suggestions, restart notes, and risk "
             "warnings without using AI."
         ),
-        "decision_tree": _copy_json(DECISION_TREE),
-        "profile_templates": _copy_json(PROFILE_TEMPLATES),
+        "decision_tree": decision_tree,
+        "profile_templates": profile_templates,
         "feature_catalog": _copy_json(FEATURE_CATALOG),
         "agent_release": agent_catalog,
         "coverage": _coverage_payload(api_route_count=api_route_count, agent_catalog=agent_catalog),
@@ -596,6 +614,17 @@ def _profile_by_id(profile_id: str) -> Dict[str, Any]:
         if profile["id"] == normalized:
             return _copy_json(profile)
     return _copy_json(next(profile for profile in PROFILE_TEMPLATES if profile["id"] == "custom_mix"))
+
+
+def _profile_for_runtime(profile: Mapping[str, Any]) -> Dict[str, Any]:
+    result = _copy_json(profile)
+    if not _model_picker_available():
+        defaults = result.get("defaults", {})
+        if defaults.get("ai_path") == "model_picker":
+            defaults["ai_path"] = "local_ollama"
+        result["description"] = str(result.get("description") or "").replace(
+            "model picker, ", "").replace(" and local model guidance", "")
+    return result
 
 
 def _as_string_list(raw: Any) -> List[str]:
@@ -624,6 +653,8 @@ def _normalize_answers(answers: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         "ai_path": str(raw.get("ai_path") or defaults.get("ai_path") or "local_ollama").strip().lower(),
         "agent_visibility": str(raw.get("agent_visibility") or defaults.get("agent_visibility") or "release_ready").strip().lower(),
     }
+    if not _model_picker_available() and merged["ai_path"] == "model_picker":
+        merged["ai_path"] = "local_ollama"
 
     intents = _as_string_list(defaults.get("intents"))
     for intent in _as_string_list(raw.get("intents")):
@@ -644,7 +675,9 @@ def _warning(severity: str, title: str, body: str, action: str = "") -> Dict[str
 def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     intents = set(_as_string_list(answers.get("intents")))
     ai_path = str(answers.get("ai_path") or "")
-    names: List[str] = ["admin_agent", "model_picker_agent"]
+    names: List[str] = ["admin_agent"]
+    if _model_picker_available():
+        names.append("model_picker_agent")
     if "incognito" not in intents:
         names.append("memory_agent")
 
@@ -671,7 +704,7 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
         add("hermes_agent")
     if ai_path == "openclaw":
         add("openclaw_agent")
-    if ai_path in {"model_picker", "cloud_provider", "google_gemini"}:
+    if ai_path in {"model_picker", "cloud_provider", "google_gemini"} and _model_picker_available():
         add("model_picker_agent")
     if intents & {"agent_websites", "api_integrations", "creator"}:
         add("agent_builder_agent", "skills_agent")
@@ -795,7 +828,7 @@ def compile_setup_recipe(
     api_route_count: int = 0,
 ) -> Dict[str, Any]:
     normalized = _normalize_answers(answers)
-    profile = _profile_by_id(normalized["profile_id"])
+    profile = _profile_for_runtime(_profile_by_id(normalized["profile_id"]))
     agent_catalog = build_agent_release_catalog(agents_payload)
     include_review = normalized["agent_visibility"] == "include_review"
     intents = set(_as_string_list(normalized.get("intents")))
@@ -1001,10 +1034,10 @@ def compile_setup_recipe(
             }
         )
 
-    next_actions = [
-        "Open Model Picker Agent when unsure which local or cloud model fits a feature.",
-        "Use the AI & Models screen to download local models or set hosted provider credentials.",
-    ]
+    next_actions = []
+    if _model_picker_available():
+        next_actions.append("Open Model Picker Agent when unsure which local or cloud model fits a feature.")
+    next_actions.append("Use the AI & Models screen to download local models or set hosted provider credentials.")
     if "messaging" in intents:
         next_actions.append("Open Messaging to configure Telegram Bot, Telegram User, Signal, or WhatsApp only when those partners are needed.")
     if "video_calls" in intents:
@@ -1027,6 +1060,13 @@ def compile_setup_recipe(
     if network_scope == "public_proxy":
         next_actions.append("Create or verify the shared authenticator before starting the public link.")
 
+    tooltips = {
+        "model_picker_agent": "Open the Model Picker Agent website when you are unsure which local or cloud model to choose.",
+        "hermes_agent": "Choose Hermes when its local gateway should handle the session.",
+        "openclaw_agent": "Choose OpenClaw when its browser and gateway flow should be primary.",
+    }
+    if not _model_picker_available():
+        tooltips.pop("model_picker_agent")
     return {
         "success": True,
         "version": PROFILE_CATALOG_VERSION,
@@ -1053,9 +1093,5 @@ def compile_setup_recipe(
         "feature_groups": _copy_json(FEATURE_CATALOG),
         "coverage": _coverage_payload(api_route_count=api_route_count, agent_catalog=agent_catalog),
         "next_actions": next_actions,
-        "tooltips": {
-            "model_picker_agent": "Open the Model Picker Agent website when you are unsure which local or cloud model to choose.",
-            "hermes_agent": "Choose Hermes when its local gateway should handle the session.",
-            "openclaw_agent": "Choose OpenClaw when its browser and gateway flow should be primary.",
-        },
+        "tooltips": tooltips,
     }

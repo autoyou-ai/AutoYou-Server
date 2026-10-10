@@ -74,6 +74,14 @@ class RootAgentFallbackTest(unittest.TestCase):
         ):
             self.assertIsNone(root_agent_module._load_agent_factory("custom_agent"))
 
+    def test_load_agent_factory_disables_model_picker_on_macos(self):
+        with mock.patch.object(root_agent_module.sys, "platform", "darwin"), mock.patch.object(
+            root_agent_module.importlib,
+            "import_module",
+            side_effect=AssertionError("macOS must not import the model picker agent"),
+        ):
+            self.assertIsNone(root_agent_module._load_agent_factory("model_picker_agent"))
+
     def test_load_agent_ingest_callable_skips_workspace_agents_in_packaged_runtime(self):
         with mock.patch.object(root_agent_module, "is_compiled", return_value=True), mock.patch.object(
             root_agent_module,

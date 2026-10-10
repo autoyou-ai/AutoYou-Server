@@ -100,6 +100,28 @@ def test_runtime_module_plan_excludes_autoyou_lite_from_main_bundle(tmp_path):
     assert "autoyou_lite/server.py" not in compiled_paths
 
 
+def test_runtime_module_plan_omits_model_picker_and_llmfit_only_on_macos(tmp_path, monkeypatch):
+    _populate_required_runtime_sources(tmp_path)
+    _write_text(tmp_path / "autoyou_agents" / "model_picker_agent" / "agent.py")
+    _write_text(tmp_path / "autoyou_agents" / "model_picker_agent" / "website" / "index.html")
+    _write_text(tmp_path / "shared" / "llmfit_integration.py")
+
+    monkeypatch.setattr(runtime_builder.sys, "platform", "darwin")
+    mac_plan = runtime_builder.build_runtime_module_plan(tmp_path)
+    mac_compiled = {spec.source_relative_path.as_posix() for spec in mac_plan.compile_specs}
+    mac_assets = {path.as_posix() for path in mac_plan.asset_files}
+    assert not any("model_picker_agent" in path for path in mac_compiled | mac_assets)
+    assert "shared/llmfit_integration.py" not in mac_compiled
+
+    monkeypatch.setattr(runtime_builder.sys, "platform", "linux")
+    other_plan = runtime_builder.build_runtime_module_plan(tmp_path)
+    other_compiled = {spec.source_relative_path.as_posix() for spec in other_plan.compile_specs}
+    other_assets = {path.as_posix() for path in other_plan.asset_files}
+    assert "autoyou_agents/model_picker_agent/agent.py" in other_compiled
+    assert "autoyou_agents/model_picker_agent/website/index.html" in other_assets
+    assert "shared/llmfit_integration.py" in other_compiled
+
+
 def _manifest(tmp_path, **fields):
     import json
 

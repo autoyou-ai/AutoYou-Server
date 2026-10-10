@@ -10,15 +10,14 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
-from pathlib import Path
-
-from tests.support.paths import ensure_repo_on_path
+from tests.support.paths import REPO_ROOT, ensure_repo_on_path
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-1d4e1f2af359a2dd8fcc6048"
 
 
 ensure_repo_on_path()
 
+import shared.admin_setup_profiles as setup_profiles
 from shared.admin_onboarding import build_connectivity_guide_html
 from shared.admin_setup_profiles import (
     build_setup_profile_payload,
@@ -79,6 +78,22 @@ def test_setup_profile_payload_does_not_invent_missing_route_counts():
 
     assert payload["coverage"]["api_route_count"] == 0
     assert payload["coverage"]["api_route_count_label"] == "Unavailable"
+
+
+def test_macos_setup_hides_model_picker_and_falls_back_to_local_ollama(monkeypatch):
+    monkeypatch.setattr(setup_profiles.sys, "platform", "darwin")
+    payload = build_setup_profile_payload({}, _agents_payload(), api_route_count=241)
+    assert "model_picker" not in str(payload).lower()
+    assert "model picker" not in str(payload).lower()
+
+    recipe = compile_setup_recipe(
+        {"profile_id": "agent_workbench", "ai_path": "model_picker"},
+        agents_payload=_agents_payload(),
+        api_route_count=241,
+    )
+    assert recipe["answers"]["ai_path"] == "local_ollama"
+    assert "model_picker_agent" not in {agent["name"] for agent in recipe["recommended_agents"]}
+    assert "model picker" not in str(recipe).lower()
 
 
 def test_lan_recipe_warns_about_0_0_0_0_websites_browser_and_agent_websites():
@@ -244,7 +259,7 @@ def test_native_gateway_paths_apply_their_distinct_provider_ids():
 
 
 def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
-    asset = Path("assets/admin-ui.js").read_text(encoding="utf-8")
+    asset = (REPO_ROOT / "assets" / "admin-ui.js").read_text(encoding="utf-8")
 
     assert "state.pendingActions[action]" in asset
     assert 'setByPath(state, "pendingActions." + action' not in asset
@@ -301,10 +316,15 @@ def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
     assert "overview-bind-local" in asset
     assert 'getByPath(status, "instance.bind_host", "")' in asset
     assert "Runtime bind host is not reported in this snapshot." in asset
-    assert "Next boot: \" + escapeHtml(nextHostSummary)" in asset
-    assert 'var accessActionHost = liveHostKnown ? normalizeOverviewBindHost(liveHost) : nextHost;' in asset
+    # Rows show what runs now; the next start is mentioned only when a saved
+    # change is pending, and a launcher's own --host wins over the saved choice.
+    assert "Next boot access" not in asset
+    assert 'var nextHost = hostFollowsSaved ? savedHost : liveAccess;' in asset
+    assert 'var hostPending = liveHostKnown && nextHost !== liveAccess;' in asset
+    assert "Saved for the next start: " in asset
+    assert "overview-bind-keep" in asset
     assert 'var accessAction = nextHost === "0.0.0.0"' not in asset
-    assert "Turn on the home network with HTTPS on next boot" in asset
+    assert "Turn on the home network with HTTPS after restart" in asset
     # Home network access, HTTPS and the admin-port-only website route are
     # turned on together.
     assert 'server: { bind_host: bindHost, https_enabled: true, home_network_websites: "path_proxy" }' in asset

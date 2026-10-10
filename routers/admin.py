@@ -1017,13 +1017,7 @@ def register_routes(
         if auth_error:
             return auth_error
         payload = await server._build_admin_ui_bootstrap_payload()
-        metadata = payload.setdefault("metadata", {})
-        if isinstance(metadata, dict):
-            metadata["permissions_editable"] = bool(server._request_is_from_this_computer(request))
-            metadata["allow_remote_admin_permissions"] = bool(server._allow_remote_admin_permissions())
-            client_host = request.client.host if request.client else None
-            metadata["is_loopback_client"] = bool(server._is_loopback_client_host(client_host))
-        return server._json_response_no_store(payload)
+        return server._json_response_no_store(server._with_admin_request_metadata(payload, request))
 
     @admin_app.post("/api/setup/recipe/preview")
     async def admin_setup_recipe_preview(request: Request):
@@ -1086,7 +1080,8 @@ def register_routes(
             return permission_error
 
         try:
-            return server._json_response_no_store(await server._apply_admin_ui_config_update(payload))
+            bootstrap = await server._apply_admin_ui_config_update(payload)
+            return server._json_response_no_store(server._with_admin_request_metadata(bootstrap, request))
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
@@ -1185,7 +1180,7 @@ def register_routes(
                     "include_guarded": include_guarded,
                     "include_security": include_security,
                     "recipe": refreshed_recipe,
-                    "bootstrap": bootstrap,
+                    "bootstrap": server._with_admin_request_metadata(bootstrap, request),
                 }
             )
         except ValueError as exc:
@@ -1259,7 +1254,7 @@ def register_routes(
                     "ai_agent_restarted": worker_restarted,
                     "storage_unsealed": storage_unsealed,
                     "storage_recovery": storage_recovery,
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:
@@ -1447,7 +1442,7 @@ def register_routes(
                 {
                     "success": True,
                     "tier": tier,
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:
@@ -1478,7 +1473,7 @@ def register_routes(
                     "message": "Maximus storage key rotated and protected data re-encrypted.",
                     "secure_storage": status,
                     "ai_agent_restarted": worker_restarted,
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:
@@ -1535,7 +1530,7 @@ def register_routes(
                 {
                     "success": True,
                     "message": "Password updated",
-                    "bootstrap": await server._build_admin_ui_bootstrap_payload(),
+                    "bootstrap": server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request),
                 }
             )
         except Exception as exc:
@@ -1737,7 +1732,9 @@ def register_routes(
             server._save_admin_profile_image(image_payload)
             if server.WEBRTC is not None:
                 await server.WEBRTC.broadcast_server_profile()
-            return server._json_response_no_store(await server._build_admin_ui_bootstrap_payload())
+            return server._json_response_no_store(
+                server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request)
+            )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
@@ -1760,7 +1757,9 @@ def register_routes(
             server._delete_admin_profile_image_files()
             if server.WEBRTC is not None:
                 await server.WEBRTC.broadcast_server_profile()
-            return server._json_response_no_store(await server._build_admin_ui_bootstrap_payload())
+            return server._json_response_no_store(
+                server._with_admin_request_metadata(await server._build_admin_ui_bootstrap_payload(), request)
+            )
         except Exception as exc:
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})

@@ -2493,214 +2493,7 @@
 
     function checkbox(path, label, hint, extraAttrs) {
         var riskNotes = {
-            "connectivity.tunnelmole.enabled": "<div class=\"ayu-note ayu-note-red\"><strong>Public exposure risk</strong><p>The public link makes Websites & Browser and pairing reachable from the internet. Use Secure Professional, authenticator pair-code mode, URL-only sharing, and a timed lifetime. Never expose the admin page publicly.</p></div>",
-            "aiAgent.lan_access_enabled": "<div class=\"ayu-note ayu-note-red\"><strong>Home network exposure risk</strong><p>This exposes the AI Agent runtime (it can create/read chat sessions, browse the internet, and run scheduled tasks) to other devices on your local network, over a dedicated HTTPS port protected by a one-time code. The local dev-ui port (8081) stays loopback-only either way. Only enable this on a trusted network.</p></div>",
-        };
-        var riskNote = riskNotes[path] || "";
-        return "<label class=\"ayu-checkbox\"><input type=\"checkbox\" data-bind=\"" + escapeHtml(path) + "\"" + (getByPath(state.forms, path, false) ? " checked" : "") + (extraAttrs ? " " + extraAttrs : "") + "><div><span>" + escapeHtml(label) + "</span>" + (hint ? "<small>" + escapeHtml(hint) + "</small>" : "") + "</div></label>" + riskNote;
-    }
-
-    function modelKey(name) {
-        return String(name || "").replace(/[^a-zA-Z0-9_.-]/g, "_");
-    }
-
-    function activeJobList(payload) {
-        return Array.isArray(getByPath(payload, "jobs", [])) ? getByPath(payload, "jobs", []) : [];
-    }
-
-    function hasActiveJobs(payload) {
-        return activeJobList(payload).some(function (job) {
-            var status = String(getByPath(job, "status", "")).toLowerCase();
-            return status === "queued" || status === "running";
-        });
-    }
-
-    function localModelNames() {
-        var models = Array.isArray(getByPath(state.aiLibrary, "local.models", [])) ? getByPath(state.aiLibrary, "local.models", []) : [];
-        return models.map(function (model) {
-            return String(model.name || model.model || model.digest || "");
-        }).filter(Boolean);
-    }
-
-    function modelAvailableLocally(reference) {
-        var requested = String(reference || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-        if (!requested) {
-            return false;
-        }
-        return localModelNames().some(function (candidate) {
-            var normalized = String(candidate || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-            return normalized === requested || (requested.indexOf(":") === -1 && normalized.split(":")[0] === requested);
-        });
-    }
-
-    function normalizeBehaviorValue(value, fieldName) {
-        if (!hasValue(value)) {
-            return "";
-        }
-        if (fieldName === "num_ctx") {
-            return String(parseInt(value, 10));
-        }
-        return String(Number(value));
-    }
-
-    function syncModelBehaviorFormFromResponse(payload) {
-        if (!payload) {
-            return;
-        }
-        var mode = String(getByPath(payload, "mode", getByPath(state.forms, "modelBehavior.mode", "accurate")) || "accurate");
-        setByPath(state.forms, "modelBehavior.mode", mode);
-        ["temperature", "top_p", "top_k", "repeat_penalty"].forEach(function (fieldName) {
-            var overrideValue = getByPath(payload, "advanced_overrides." + fieldName, null);
-            var presetValue = getByPath(payload, "modes." + mode + ".params." + fieldName, getByPath(payload, "preset_params." + fieldName, ""));
-            var effectiveValue = hasValue(overrideValue) ? overrideValue : presetValue;
-            setByPath(state.forms, "modelBehavior." + fieldName, hasValue(effectiveValue) ? String(effectiveValue) : "");
-        });
-        var numCtxOverride = getByPath(payload, "advanced_overrides.num_ctx", null);
-        setByPath(state.forms, "modelBehavior.num_ctx", hasValue(numCtxOverride) ? String(numCtxOverride) : "");
-        setByPath(state.forms, "modelBehavior.show_thinking", Boolean(getByPath(payload, "show_thinking", false)));
-        setByPath(state.forms, "modelBehavior.thinking_level", getByPath(payload, "thinking_level", "") || "");
-    }
-
-    function buildModelBehaviorPayload() {
-        var source = getByPath(state.forms, "modelBehavior", {});
-        var mode = String(source.mode || getByPath(state.aiLibrary, "behavior.mode", "accurate") || "accurate");
-        var presetParams = getByPath(state.aiLibrary, "behavior.modes." + mode + ".params", {});
-        var payload = { mode: mode };
-        ["temperature", "top_p", "top_k", "repeat_penalty"].forEach(function (fieldName) {
-            var rawValue = getByPath(source, fieldName, "");
-            if (!hasValue(rawValue)) {
-                payload[fieldName] = "";
-                return;
-            }
-            var normalizedCurrent = normalizeBehaviorValue(rawValue, fieldName);
-            var normalizedPreset = normalizeBehaviorValue(getByPath(presetParams, fieldName, ""), fieldName);
-            payload[fieldName] = normalizedCurrent === normalizedPreset ? "" : rawValue;
-        });
-        payload.num_ctx = hasValue(getByPath(source, "num_ctx", "")) ? getByPath(source, "num_ctx", "") : "";
-        payload.show_thinking = Boolean(getByPath(source, "show_thinking", false));
-        payload.thinking_level = getByPath(source, "thinking_level", "") || "";
-        return payload;
-    }
-
-    function renderProgressTrack(percent, tone) {
-        var safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
-        return "<div class=\"ayu-progress\"><div class=\"ayu-progress-fill" + (tone ? " " + escapeHtml(tone) : "") + "\" style=\"width:" + escapeHtml(String(safePercent)) + "%\"></div></div>";
-    }
-
-    function joinList(values) {
-        if (!Array.isArray(values) || values.length === 0) {
-            return "";
-        }
-        return values.join(", ");
-    }
-
-    function splitListValue(value) {
-        if (Array.isArray(value)) {
-            return value.map(function (item) {
-                return String(item == null ? "" : item).trim();
-            }).filter(Boolean);
-        }
-        return String(value == null ? "" : value).split(/[,\s]+/).map(function (item) {
-            return item.trim();
-        }).filter(Boolean);
-    }
-
-    function hasValue(value) {
-        if (Array.isArray(value)) {
-            return value.length > 0;
-        }
-        return value != null && String(value).trim() !== "";
-    }
-
-    function valueAttr(value) {
-        return escapeHtml(value == null ? "" : value);
-    }
-
-    var PASSWORD_GENERATOR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_=+?";
-
-    function generateRandomPassword(length) {
-        var size = Math.max(16, Math.min(128, Number(length) || 24));
-        var values = new Uint32Array(size);
-        if (window.crypto && window.crypto.getRandomValues) {
-            window.crypto.getRandomValues(values);
-        } else {
-            for (var fallbackIndex = 0; fallbackIndex < size; fallbackIndex += 1) {
-                values[fallbackIndex] = Math.floor(Math.random() * 4294967296);
-            }
-        }
-        var password = "";
-        for (var index = 0; index < size; index += 1) {
-            password += PASSWORD_GENERATOR_ALPHABET[values[index] % PASSWORD_GENERATOR_ALPHABET.length];
-        }
-        return password;
-    }
-
-    function setSecurityPasswordDraft(password) {
-        setByPath(state.forms, "security.new_password", password || "");
-        setByPath(state.forms, "security.confirm_password", password || "");
-    }
-
-    function hasSecurityPasswordDraft() {
-        return hasValue(getByPath(state.forms, "security.new_password", "")) || hasValue(getByPath(state.forms, "security.confirm_password", ""));
-    }
-
-    function input(path, options) {
-        var type = options && options.type ? options.type : "text";
-        var placeholder = options && options.placeholder ? options.placeholder : "";
-        var extraAttrs = options && options.extraAttrs ? options.extraAttrs : "";
-        var value = getByPath(state.forms, path, "");
-        var secretAttrs = type === "password" ? " autocomplete=\"new-password\"" : "";
-        return "<input class=\"ayu-input\" data-bind=\"" + escapeHtml(path) + "\" type=\"" + escapeHtml(type) + "\" value=\"" + valueAttr(value) + "\" placeholder=\"" + escapeHtml(placeholder) + "\"" + secretAttrs + " " + extraAttrs + ">";
-    }
-
-    function passwordInput(path, placeholder) {
-        var value = getByPath(state.forms, path, "");
-        var visible = state.securityPasswordVisible && hasSecurityPasswordDraft();
-        return "<input class=\"ayu-input\" data-bind=\"" + escapeHtml(path) + "\" type=\"" + (visible ? "text" : "password") + "\" value=\"" + valueAttr(value) + "\" placeholder=\"" + escapeHtml(placeholder || "") + "\" autocomplete=\"new-password\">";
-    }
-
-    function selectSecurityPasswordDraft() {
-        var passwordField = root ? root.querySelector('[data-bind="security.new_password"]') : null;
-        if (!passwordField || typeof passwordField.focus !== "function" || typeof passwordField.select !== "function") {
-            return false;
-        }
-        passwordField.focus();
-        passwordField.select();
-        return true;
-    }
-
-    function renderPasswordDraftFields() {
-        return "<div class=\"ayu-grid-2\">" + field("New password", passwordInput("security.new_password", "New password")) + field("Confirm password", passwordInput("security.confirm_password", "Repeat the new password")) + "</div>";
-    }
-
-    function renderPasswordGeneratorTools() {
-        var visible = state.securityPasswordVisible && hasSecurityPasswordDraft();
-        return "<div class=\"ayu-inline-actions ayu-password-actions\">" + button("Generate password", "security-generate-password", "secondary", "key", "sm") + button(visible ? "Hide password" : "Show password", "security-toggle-password", "ghost", visible ? "eyeOff" : "eye", "sm") + button("Copy password", "security-copy-password", "ghost", "copy", "sm") + "</div>";
-    }
-
-    function textarea(path, options) {
-        var rows = options && options.rows ? options.rows : 6;
-        var placeholder = options && options.placeholder ? options.placeholder : "";
-        var extraClass = options && options.extraClass ? options.extraClass : "";
-        var extraAttrs = options && options.extraAttrs ? options.extraAttrs : "";
-        return "<textarea class=\"ayu-textarea " + escapeHtml(extraClass) + "\" data-bind=\"" + escapeHtml(path) + "\" rows=\"" + escapeHtml(rows) + "\" placeholder=\"" + escapeHtml(placeholder) + "\" " + extraAttrs + ">" + escapeHtml(getByPath(state.forms, path, "")) + "</textarea>";
-    }
-
-    function select(path, options, extraAttrs) {
-        var current = String(getByPath(state.forms, path, ""));
-        var markup = (options || []).map(function (item) {
-            var value = typeof item === "string" ? item : item.value;
-            var label = typeof item === "string" ? item : item.label;
-            var disabled = typeof item === "string" ? false : Boolean(item.disabled);
-            return "<option value=\"" + escapeHtml(value) + "\"" + (String(value) === current ? " selected" : "") + (disabled ? " disabled" : "") + ">" + escapeHtml(label) + "</option>";
-        }).join("");
-        return "<select class=\"ayu-select\" data-bind=\"" + escapeHtml(path) + "\"" + (extraAttrs ? " " + extraAttrs : "") + ">" + markup + "</select>";
-    }
-
-    function checkbox(path, label, hint, extraAttrs) {
-        var riskNotes = {
-            "connectivity.tunnelmole.enabled": "<div class=\"ayu-note ayu-note-red\"><strong>Public exposure risk</strong><p>The public link makes Websites & Browser and pairing reachable from the internet. Use Secure Professional, authenticator pair-code mode, URL-only sharing, and a timed lifetime. Never expose the admin page publicly.</p></div>",
-            "aiAgent.lan_access_enabled": "<div class=\"ayu-note ayu-note-red\"><strong>Home network exposure risk</strong><p>This exposes the AI Agent runtime (it can create/read chat sessions, browse the internet, and run scheduled tasks) to other devices on your local network, over a dedicated HTTPS port protected by a one-time code. The local dev-ui port (8081) stays loopback-only either way. Only enable this on a trusted network.</p></div>",
+            "connectivity.tunnelmole.enabled": "<div class=\"ayu-note ayu-note-red\"><strong>Public exposure risk</strong><p>The public link makes Websites & Browser and pairing reachable from the internet. Use Secure Professional, authenticator pair-code mode, URL-only sharing, and a timed lifetime. Never expose the admin page publicly.</p></div>"
         };
         var riskNote = riskNotes[path] || "";
         return "<label class=\"ayu-checkbox\"><input type=\"checkbox\" data-bind=\"" + escapeHtml(path) + "\"" + (getByPath(state.forms, path, false) ? " checked" : "") + (extraAttrs ? " " + extraAttrs : "") + "><div><span>" + escapeHtml(label) + "</span>" + (hint ? "<small>" + escapeHtml(hint) + "</small>" : "") + "</div></label>" + riskNote;
@@ -5778,29 +5571,51 @@
             + "</div>";
     }
 
+    function bindHostSourceLabel(source) {
+        if (source === "desktop_app") {
+            return "the AutoYou desktop app's local network switch";
+        }
+        if (source === "launcher") {
+            return "the command that started AutoYou (--host or AUTOYOU_BIND_HOST)";
+        }
+        return "";
+    }
+
+    function bindHostShortLabel(host) {
+        return normalizeOverviewBindHost(host) === "0.0.0.0" ? "home network access" : "local-only access";
+    }
+
     function renderOverviewAccessPanel() {
         var cfg = bootstrapConfig();
         var status = getByPath(state.bootstrap, "status", {});
         var serverName = getByPath(state.bootstrap, "admin.server_name", getByPath(cfg, "server.name", "AutoYou-Server"));
-        var liveHost = getByPath(status, "instance.bind_host", "");
-        var liveHostKnown = hasValue(liveHost);
-        var nextHost = normalizeOverviewBindHost(getByPath(state.forms, "overview.bindHost", getByPath(cfg, "server.bind_host", "127.0.0.1")));
-        var nativeUnlockEnabled = asBoolean(getByPath(state.forms, "overview.nativeUnlockEnabled", getByPath(cfg, "security.native_unlock_enabled", true)), true);
         var securityMode = String(getByPath(cfg, "security.mode", "secure") || "secure");
-        // The server reports its own effective HTTPS setting, including the
-        // home-network default; derive it here only for an older server.
+        // Every row shows what is running now. The server reports what the
+        // next start will do; that is shown only when it differs, which is
+        // what a "... after restart" button leaves behind.
         var home = getByPath(status, "home_network", null);
         var homeReported = Boolean(home && typeof home.https_next_boot === "boolean");
-        var httpsExplicit = getByPath(state.forms, "overview.httpsEnabled", getByPath(cfg, "server.https_enabled", null));
-        var httpsEnabled = hasValue(getByPath(state.forms, "overview.httpsEnabled", null))
-            ? asBoolean(httpsExplicit, false)
-            : (homeReported
-                ? home.https_next_boot
-                : ((httpsExplicit === null || httpsExplicit === undefined)
-                    ? (securityMode === "secure_professional_maximus" || nextHost === "0.0.0.0")
-                    : asBoolean(httpsExplicit, false)));
-        var httpsLive = asBoolean(getByPath(home, "https", false), false);
-        var homeLive = homeReported ? asBoolean(getByPath(home, "enabled", false), false) : (liveHostKnown && normalizeOverviewBindHost(liveHost) === "0.0.0.0");
+        var liveHost = getByPath(status, "instance.bind_host", "");
+        var liveHostKnown = hasValue(liveHost);
+        var savedHost = normalizeOverviewBindHost(getByPath(cfg, "server.bind_host", "127.0.0.1"));
+        var liveAccess = liveHostKnown ? normalizeOverviewBindHost(liveHost) : savedHost;
+        // A launcher that passed its own host passes it again on the next
+        // start, so the saved choice only decides when this process followed it.
+        var bindHostSource = String(getByPath(home, "bind_host_source", "config") || "config");
+        var hostFollowsSaved = bindHostSource === "config";
+        var nextHost = hostFollowsSaved ? savedHost : liveAccess;
+        var hostPending = liveHostKnown && nextHost !== liveAccess;
+        var homeLive = homeReported ? asBoolean(getByPath(home, "enabled", false), false) : (liveHostKnown && liveAccess === "0.0.0.0");
+        var httpsExplicit = getByPath(cfg, "server.https_enabled", null);
+        var httpsNext = homeReported
+            ? home.https_next_boot
+            : ((httpsExplicit === null || httpsExplicit === undefined)
+                ? (securityMode === "secure_professional_maximus" || nextHost === "0.0.0.0")
+                : asBoolean(httpsExplicit, false));
+        var httpsLive = asBoolean(getByPath(home, "https_listener", getByPath(home, "https", false)), false);
+        var httpsFromEnv = getByPath(home, "https_source", "") === "environment";
+        var httpsPending = homeReported && httpsNext !== httpsLive;
+        var nativeUnlockEnabled = asBoolean(getByPath(cfg, "security.native_unlock_enabled", true), true);
         var websitesMode = normalizeHomeNetworkWebsitesMode(getByPath(home, "websites_mode_next_boot", getByPath(cfg, "server.home_network_websites", nextHost === "0.0.0.0" ? "path_proxy" : "direct_forward")));
         var discoveryEnabled = asBoolean(getByPath(home, "discovery_enabled", getByPath(cfg, "server.discovery_enabled", true)), true);
         var discoveryLive = asBoolean(getByPath(home, "discovery", false), false);
@@ -5810,30 +5625,48 @@
         var bluetoothRuntime = getByPath(status, "bluetooth_pairing", {});
         var bluetoothRunning = Boolean(getByPath(bluetoothRuntime, "running", false));
         var adminFrontendEnabled = asBoolean(getByPath(state.forms, "page.admin_frontend_enabled", getByPath(cfg, "agent_frontends.admin_agent", false)), false);
-        var remotePermsLive = asBoolean(getByPath(state.bootstrap, "metadata.allow_remote_admin_permissions", getByPath(home, "allow_remote_admin_permissions", false)), false);
-        var remotePermsExplicit = getByPath(state.forms, "overview.allowRemoteAdminPermissions", getByPath(cfg, "server.allow_remote_admin_permissions", null));
-        var remotePermsNextBoot = hasValue(remotePermsExplicit) ? asBoolean(remotePermsExplicit, false) : asBoolean(getByPath(home, "allow_remote_admin_permissions_next_boot", getByPath(cfg, "server.allow_remote_admin_permissions", false)), false);
-        var nextHostHelp = nextHost === "0.0.0.0"
-            ? "Advertise " + serverName + " to the home network on next boot. Requires shutdown."
-            : "Boot local-only on 127.0.0.1 next time. Requires shutdown.";
+        // Network admin permissions are read on every request: a save applies at once.
+        var remotePermsOn = asBoolean(getByPath(state.bootstrap, "metadata.allow_remote_admin_permissions", getByPath(home, "allow_remote_admin_permissions", false)), false);
+        var remotePermsFromEnv = getByPath(home, "allow_remote_admin_permissions_source", "") === "environment";
+
+        var accessHelp = liveHostKnown
+            ? (liveAccess === "0.0.0.0" ? "This process listens on every network address (0.0.0.0), so devices on your home network can reach " + serverName + "." : "This process listens on this computer only (127.0.0.1).")
+            : "Runtime bind host is not reported in this snapshot.";
+        if (!hostFollowsSaved) {
+            accessHelp += " Chosen by " + bindHostSourceLabel(bindHostSource) + ", which sets it again on the next start.";
+            if (savedHost !== liveAccess) {
+                accessHelp += " The saved choice here (" + bindHostShortLabel(savedHost) + ") applies only when AutoYou starts without it.";
+            }
+        }
+        if (hostPending) {
+            accessHelp += " Saved: switches to " + bindHostShortLabel(nextHost) + (nextHost === "0.0.0.0" ? " with HTTPS" : "") + " when AutoYou restarts.";
+        }
+        var httpsHelp = httpsLive
+            ? "Admin and Websites & Browser are also served over TLS; home-network browsers are moved to it. Install this server's certificate on each device so it is trusted."
+            : (homeLive ? "Home network devices use plain HTTP. Turn HTTPS on." : "Services are served over plain HTTP on this computer only.");
+        if (httpsPending) {
+            httpsHelp += httpsNext ? " Saved: HTTPS starts when AutoYou restarts." : " Saved: HTTPS stops when AutoYou restarts.";
+        }
+        if (httpsFromEnv) {
+            httpsHelp += " Set by AUTOYOU_HTTPS_ENABLED.";
+        }
         var rows = renderStatusRows([
             {
-                label: "Live machine access",
-                value: liveHostKnown ? bindHostAccessLabel(liveHost) : "Unknown",
-                help: liveHostKnown ? (normalizeOverviewBindHost(liveHost) === "0.0.0.0" ? "This process is bound to 0.0.0.0 now." : "This process is bound to localhost now.") : "Runtime bind host is not reported in this snapshot."
-            },
-            { label: "Next boot access", value: bindHostAccessLabel(nextHost), help: nextHostHelp },
-            {
-                label: "System credential unlock",
-                value: nativeUnlockEnabled ? "Enabled next boot" : "Disabled next boot",
-                help: nativeUnlockEnabled ? "The login screen can offer OS Keychain/Credential Manager unlock after restart." : "Password entry is required after restart."
+                label: "Home network access",
+                value: liveHostKnown
+                    ? bindHostAccessLabel(liveAccess) + (hostPending ? " · " + (nextHost === "0.0.0.0" ? "home network" : "local only") + " after restart" : "")
+                    : "Unknown",
+                help: accessHelp
             },
             {
                 label: "Local HTTPS",
-                value: (httpsLive ? "Running now" : "Off now") + " · " + (httpsEnabled ? "on next boot" : "off next boot"),
-                help: httpsEnabled
-                    ? "Admin and Websites & Browser are also served over TLS; home-network browsers are moved to it. Install this server's certificate on each device so it is trusted."
-                    : (nextHost === "0.0.0.0" ? "Home network devices would use plain HTTP. Turn HTTPS on." : "Services are served over plain HTTP on this computer only.")
+                value: (httpsLive ? "On" : "Off") + (httpsPending ? " · " + (httpsNext ? "on" : "off") + " after restart" : ""),
+                help: httpsHelp
+            },
+            {
+                label: "System credential unlock",
+                value: nativeUnlockEnabled ? "On" : "Off",
+                help: nativeUnlockEnabled ? "The sign-in page can unlock with the OS Keychain/Credential Manager instead of the password." : "Signing in always needs the password."
             },
             {
                 label: "Website apps on the home network",
@@ -5866,16 +5699,23 @@
             },
             {
                 label: "Network admin permissions (WSL / Docker / LAN)",
-                value: (remotePermsLive ? "Enabled now" : "Disabled now") + " · " + (remotePermsNextBoot ? "enabled next boot" : "disabled next boot"),
-                help: remotePermsNextBoot
-                    ? "Admins connecting from WSL, Docker, or LAN over HTTPS can view and modify hardware permissions and capture settings."
-                    : "Hardware permissions can only be changed from localhost (127.0.0.1)."
-            },
+                value: remotePermsOn ? "Allowed" : "This computer only",
+                help: (remotePermsOn
+                    ? "Admins signed in over HTTPS from WSL, Docker, or the home network can change hardware permissions and capture settings."
+                    : "Hardware permissions can only be changed from this computer (127.0.0.1).")
+                    + (remotePermsFromEnv ? " Set by AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS." : "")
+            }
         ]);
-        var accessActionHost = liveHostKnown ? normalizeOverviewBindHost(liveHost) : nextHost;
-        var accessAction = accessActionHost === "0.0.0.0"
-            ? button("Change to local-only machine access on next boot", "overview-bind-local", "secondary", "shield", "sm")
-            : button("Turn on the home network with HTTPS on next boot", "overview-bind-home", "secondary", "wifi", "sm");
+        var accessAction = "";
+        if (hostFollowsSaved) {
+            if (hostPending) {
+                accessAction = button("Keep " + bindHostShortLabel(liveAccess) + " after restart", "overview-bind-keep", "secondary", "refresh", "sm");
+            } else if (liveAccess === "0.0.0.0") {
+                accessAction = button("Change to local-only access after restart", "overview-bind-local", "secondary", "shield", "sm");
+            } else {
+                accessAction = button("Turn on the home network with HTTPS after restart", "overview-bind-home", "secondary", "wifi", "sm");
+            }
+        }
         var websitesActions = websitesMode === "direct_forward"
             ? button("Only through the admin sign-in", "overview-home-websites:path_proxy", "ghost", "shield", "sm")
             : button("Let paired devices open them directly", "overview-home-websites:direct_forward", "secondary", "page", "sm");
@@ -5886,29 +5726,48 @@
             ? button("Stop nearby discovery", "overview-discovery:disable", "ghost", "eye", "sm")
             : button("Turn on nearby discovery", "overview-discovery:enable", "secondary", "wifi", "sm");
         var unlockAction = nativeUnlockEnabled
-            ? button("Disable keychain unlock next boot", "overview-native-unlock:disable", "ghost", "shield", "sm")
-            : button("Enable keychain unlock next boot", "overview-native-unlock:enable", "secondary", "key", "sm");
-        var httpsAction = httpsEnabled
-            ? button("Disable HTTPS on next boot", "overview-https:disable", "ghost", "shield", "sm")
-            : button("Enable HTTPS on next boot", "overview-https:enable", "secondary", "shield", "sm");
-        var remotePermsAction = remotePermsNextBoot
-            ? button("Disable network admin permissions next boot", "overview-remote-permissions:disable", "ghost", "shield", "sm")
-            : button("Allow network admin permissions next boot", "overview-remote-permissions:enable", "secondary", "shield", "sm");
-        var httpsNote = httpsEnabled
-            ? "<div class=\"ayu-note ayu-note-blue\"><strong>Local HTTPS:</strong> After restart, Admin and Websites & Browser are also reachable over https://. To make them trusted (no browser warnings), each device installs this server's certificate one time: <a href=\"/ca.crt\" download>Download CA certificate</a>. Safari, iOS and Android never trust a private certificate automatically  -  this one-time install is expected.</div>"
+            ? button("Turn off system credential unlock", "overview-native-unlock:disable", "ghost", "shield", "sm")
+            : button("Turn on system credential unlock", "overview-native-unlock:enable", "secondary", "key", "sm");
+        var httpsAction = "";
+        if (!httpsFromEnv) {
+            if (httpsPending) {
+                httpsAction = button("Keep HTTPS " + (httpsLive ? "on" : "off") + " after restart", "overview-https:" + (httpsLive ? "enable" : "disable"), "ghost", "refresh", "sm");
+            } else {
+                httpsAction = httpsNext
+                    ? button("Turn off HTTPS after restart", "overview-https:disable", "ghost", "shield", "sm")
+                    : button("Turn on HTTPS after restart", "overview-https:enable", "secondary", "shield", "sm");
+            }
+        }
+        var remotePermsAction = remotePermsFromEnv
+            ? ""
+            : (remotePermsOn
+                ? button("Turn off network admin permissions", "overview-remote-permissions:disable", "ghost", "shield", "sm")
+                : button("Allow network admin permissions", "overview-remote-permissions:enable", "secondary", "shield", "sm"));
+        // The home network block already links the certificate while it is live.
+        var httpsNote = (httpsPending && httpsNext) || (httpsLive && !homeLive)
+            ? "<div class=\"ayu-note ayu-note-blue\"><strong>Local HTTPS:</strong> " + (httpsLive ? "" : "After restart, Admin and Websites & Browser are also reachable over https://. ") + "To make it trusted (no browser warnings), each device installs this server's certificate one time: <a href=\"/ca.crt\" download>Download CA certificate</a>. Safari, iOS and Android never trust a private certificate automatically  -  this one-time install is expected.</div>"
             : "";
-        var noteTone = nextHost === "0.0.0.0" || nativeUnlockEnabled ? "amber" : "green";
-        var nextHostSummary = nextHost === "0.0.0.0" ? "home network access" : "local-only access";
+        var pendingChanges = [];
+        if (hostPending) {
+            pendingChanges.push(bindHostShortLabel(nextHost) + (nextHost === "0.0.0.0" ? (httpsNext ? " with HTTPS" : " without HTTPS") : ""));
+        }
+        if (httpsPending && !(hostPending && nextHost === "0.0.0.0")) {
+            pendingChanges.push("HTTPS " + (httpsNext ? "on" : "off"));
+        }
+        var restartNote = pendingChanges.length
+            ? "<div class=\"ayu-note ayu-note-amber\"><strong>Restart AutoYou to apply.</strong> Saved for the next start: " + escapeHtml(pendingChanges.join(", ")) + ".</div>"
+            : "<div class=\"ayu-note ayu-note-gray\">Network access and HTTPS are read when AutoYou starts; the other settings here apply right away.</div>";
         var credentialNote = "<div class=\"ayu-note ayu-note-gray\"><strong>Credentials stay on this computer.</strong> Connected devices can sign in and see settings their role allows, but passwords, two-factor, security mode and network exposure only change here or in an HTTPS admin session opened directly on this computer.</div>";
         var homeNetworkNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>Home network:</strong> " + escapeHtml(homeNetworkWebsitesHelp(websitesMode)) + "<p>Website apps and nearby discovery change right away; sharing on the network, HTTPS and VPN addresses apply after a restart.</p></div><div class=\"ayu-inline-actions\">" + websitesActions + vpnAction + discoveryAction + "</div>";
-        var wslDockerNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>WSL, Docker, and Virtual IP Access:</strong> If hosting inside WSL or Docker and connecting via IP (e.g. <code>172.x.x.x</code>):<p>1. <strong>Login requires HTTPS:</strong> Connect over <code>https://&lt;ip&gt;:8443/</code> (or behind a trusted TLS proxy with <code>AUTOYOU_TRUSTED_HTTPS_PROXY=1</code>).</p><p>2. <strong>Permissions modification:</strong> Enable <em>Allow network admin permissions next boot</em> above (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) so your admin login over the virtual IP can change hardware permissions. Public tunnels remain blocked.</p></div>";
+        var wslDockerNote = "<div class=\"ayu-note ayu-note-blue ayu-network-note\"><strong>WSL, Docker, and Virtual IP Access:</strong> If hosting inside WSL or Docker and connecting via IP (e.g. <code>172.x.x.x</code>):<p>1. <strong>Login requires HTTPS:</strong> Connect over <code>https://&lt;ip&gt;:8443/</code> (or behind a trusted TLS proxy with <code>AUTOYOU_TRUSTED_HTTPS_PROXY=1</code>).</p><p>2. <strong>Permissions modification:</strong> Choose <em>Allow network admin permissions</em> above (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) so your admin login over the virtual IP can change hardware permissions. It applies right away. Public tunnels remain blocked.</p></div>";
         return rows
-            + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsEnabled)
+            + renderHomeNetworkSecurity(home, homeLive || nextHost === "0.0.0.0", httpsNext)
             + homeNetworkNote
             + wslDockerNote
             + "<div class=\"ayu-inline-actions\">" + button("Manage permissions", "nav:permissions", "secondary", "shield") + "</div>"
             + credentialNote
-            + "<div class=\"ayu-note ayu-note-" + escapeHtml(noteTone) + "\"><strong>Requires shutdown.</strong> Next boot: " + escapeHtml(nextHostSummary) + (nextHost === "0.0.0.0" ? (httpsEnabled ? " with HTTPS" : " without HTTPS") : "") + ". Network binding, HTTPS, network admin permissions and keychain unlock are read when AutoYou starts.</div><div class=\"ayu-inline-actions\">" + accessAction + unlockAction + httpsAction + remotePermsAction + "</div>" + httpsNote;
+            + restartNote
+            + "<div class=\"ayu-inline-actions\">" + accessAction + httpsAction + unlockAction + remotePermsAction + "</div>" + httpsNote;
     }
 
     function renderOverviewMediaPanel() {
@@ -6047,7 +5906,7 @@
                 help: card.sub
             };
         }));
-        var accessPanel = panel("Access & unlock", "Live exposure, next-boot network mode, nearby pairing, and system credential unlock.", renderOverviewAccessPanel());
+        var accessPanel = panel("Access & unlock", "What this computer exposes right now, nearby pairing, and system credential unlock.", renderOverviewAccessPanel());
         var mediaPanel = panel("Media & capture", "Video, audio, AI voice, and recording state without opening the detailed live view.", renderOverviewMediaPanel());
         var updatePanel = renderSoftwareUpdatePanel();
 
@@ -6185,9 +6044,9 @@
 
         var hasGuarded = Object.keys(getByPath(recipe, "guarded_config_patch", {}) || {}).length > 0 || restartItems.length > 0;
         var guardedButton = hasGuarded ? button("Apply guarded network settings", "setup-apply-guarded-recipe", "danger", "shield") : "";
-        var tooltip = getByPath(recipe, "tooltips.model_picker_agent", "Use Model Picker Agent when you are unsure which model to choose.");
+        var tooltip = getByPath(recipe, "tooltips.model_picker_agent", "Choose a local or hosted model in AI & Models.");
 
-        return "<section id=\"ayu-setup-recipe\" class=\"ayu-setup-recipe-card\"><div class=\"ayu-setup-recipe-head\"><div><h3>" + escapeHtml(recipe.title || "Setup plan") + "</h3><p>" + escapeHtml(recipe.summary || "") + "</p></div>" + badge(prettyLabel(recipe.risk_level || "low") + " risk", setupRiskTone(recipe.risk_level || "low")) + "</div>" + renderSetupCoverage(payload) + warningMarkup + restartMarkup + sectionMarkup + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-setup-recipe-block\"><h4>Recommended agents</h4>" + agentMarkup + "</div><div class=\"ayu-note ayu-note-blue\"><strong>Model picker:</strong> " + escapeHtml(tooltip) + "</div>" + nextMarkup + "<div class=\"ayu-inline-actions\">" + button("Refresh preview", "setup-preview-recipe", "secondary", "refresh") + button("Apply safe settings", "setup-apply-recipe", "primary", "save") + guardedButton + button("Open Websites & Browser", "setup-open-screen:page", "ghost", "page") + button("Open Video & Calls", "setup-open-screen:video", "ghost", "video") + "</div></section>";
+        return "<section id=\"ayu-setup-recipe\" class=\"ayu-setup-recipe-card\"><div class=\"ayu-setup-recipe-head\"><div><h3>" + escapeHtml(recipe.title || "Setup plan") + "</h3><p>" + escapeHtml(recipe.summary || "") + "</p></div>" + badge(prettyLabel(recipe.risk_level || "low") + " risk", setupRiskTone(recipe.risk_level || "low")) + "</div>" + renderSetupCoverage(payload) + warningMarkup + restartMarkup + sectionMarkup + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-setup-recipe-block\"><h4>Recommended agents</h4>" + agentMarkup + "</div><div class=\"ayu-note ayu-note-blue\"><strong>Model choice:</strong> " + escapeHtml(tooltip) + "</div>" + nextMarkup + "<div class=\"ayu-inline-actions\">" + button("Refresh preview", "setup-preview-recipe", "secondary", "refresh") + button("Apply safe settings", "setup-apply-recipe", "primary", "save") + guardedButton + button("Open Websites & Browser", "setup-open-screen:page", "ghost", "page") + button("Open Video & Calls", "setup-open-screen:video", "ghost", "video") + "</div></section>";
     }
 
     function renderSetupGuidedMap() {
@@ -7443,7 +7302,7 @@
         var isLoopback = asBoolean(getByPath(state.bootstrap, "metadata.is_loopback_client", true), true);
         var accessNote = editable
             ? ("<div class=\"ayu-note ayu-note-green\"><strong>" + (isLoopback ? "Local admin controls are available." : "Network admin controls are active.") + "</strong> Permission changes save to this computer immediately after you save this section.</div>")
-            : "<div class=\"ayu-note ayu-note-amber\"><strong>View only from this connection.</strong> Open the admin page on this computer at 127.0.0.1 and sign in as admin to change its permissions. If running inside WSL, Docker, or hosting over network IP, enable <em>Allow network admin permissions next boot</em> in Overview (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) and connect over HTTPS.</div>";
+            : "<div class=\"ayu-note ayu-note-amber\"><strong>View only from this connection.</strong> Open the admin page on this computer at 127.0.0.1 and sign in as admin to change its permissions. If running inside WSL, Docker, or hosting over network IP, choose <em>Allow network admin permissions</em> in Overview (or set <code>AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS=1</code>) and connect over HTTPS.</div>";
         function localOnly(markup) {
             return editable ? markup : "<fieldset disabled style=\"border:0;padding:0;margin:0;min-width:0\">" + markup + "</fieldset>";
         }
@@ -7471,9 +7330,21 @@
             + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
             + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
+        // AutoYou apps and the admin page reach AutoYou AI through this server
+        // whatever this says; it only opens the agent runtime's own API.
+        var homeNetwork = getByPath(state.bootstrap, "status.home_network", null);
+        var machineOnHomeNetwork = asBoolean(getByPath(homeNetwork, "enabled", false), false);
+        var aiApiPort = getByPath(homeNetwork, "ai_agent_lan_https_port", 8481);
+        var aiApiSaved = asBoolean(getByPath(state.bootstrap, "config.ai_agent.lan_access_enabled", false), false);
+        var aiApiNote = aiApiSaved
+            ? (machineOnHomeNetwork
+                ? "<div class=\"ayu-note ayu-note-red\"><strong>Developer API open on the home network</strong><p>Devices on your network that have a one-time code can use the AI Agent runtime on https://&lt;this computer&gt;:" + escapeHtml(aiApiPort) + " - create and read chat sessions, browse the internet and run scheduled tasks. Port " + escapeHtml(getByPath(state.bootstrap, "admin.ai_agent_port", 8081)) + " stays on this computer.</p></div>"
+                : "<div class=\"ayu-note ayu-note-gray\"><strong>No effect right now.</strong> This computer is local-only, so the developer API is reachable only from this computer.</div>")
+            : "";
         var dataPermissions = checkbox("aiAgent.record_messages_in_database", "Save chat and event memory", "Stores AutoYou AI chat and event memory in the local database shown below.")
-            + checkbox("aiAgent.lan_access_enabled", "Allow AutoYou AI access from the home network", "Exposes the AI Agent on a separate HTTPS port protected by a one-time code.")
-            + "<div class=\"ayu-inline-actions\">" + button("Save data and network permissions", "save-permissions-data", "primary", "save") + "</div>";
+            + checkbox("aiAgent.lan_access_enabled", "Open the AI Agent developer API to the home network", "Not needed for AutoYou apps: paired phones and browsers already use AutoYou AI through this computer. This opens the agent runtime's own API on HTTPS port " + aiApiPort + " behind a one-time code, for developer tools. Only on a trusted network.")
+            + aiApiNote
+            + "<div class=\"ayu-inline-actions\">" + button("Save chat and developer access", "save-permissions-data", "primary", "save") + "</div>";
         var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "viewer")))
             + checkbox("page.admin_frontend_enabled", "Share this computer's Admin website with paired browsers", "When enabled, paired browsers can open the Admin website. Its password and authenticator checks still apply.")
             + "<div class=\"ayu-inline-actions\">" + button("Save browser permissions", "save-permissions-web", "primary", "save") + "</div>";
@@ -7507,11 +7378,11 @@
             { label: "Remote Desktop control", value: yesNo(getByPath(video, "remote_desktop.control_enabled", false)) },
             { label: "Game mode", value: yesNo(getByPath(video, "remote_desktop.game_enabled", false)) },
             { label: "Chat and event memory", value: yesNo(getByPath(state.forms, "aiAgent.record_messages_in_database", true)) },
-            { label: "Home network AI access", value: yesNo(getByPath(state.forms, "aiAgent.lan_access_enabled", false)) },
+            { label: "AI Agent developer API on the home network", value: aiApiSaved ? (machineOnHomeNetwork ? "Open on port " + aiApiPort : "On, but this computer is local-only") : "Off" },
             { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "viewer")) },
             { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat, memory, and network access", "Chat retention and AutoYou AI reachability.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
     }
 
     function renderVideoScreen() {
@@ -9419,15 +9290,26 @@
         }
         if (action === "overview-bind-home" || action === "overview-bind-local") {
             var bindHost = action === "overview-bind-home" ? "0.0.0.0" : "127.0.0.1";
-            setByPath(state.forms, "overview.bindHost", bindHost);
             if (bindHost === "0.0.0.0") {
                 // Home network access comes with HTTPS and the safest website
                 // route: only the admin port opens, website apps stay behind
                 // its sign-in, pages and notes never travel over plain HTTP.
-                await patchConfig({ server: { bind_host: bindHost, https_enabled: true, home_network_websites: "path_proxy" } }, "Home network access with HTTPS will apply after shutdown and restart. Website apps stay behind the admin sign-in. Install this server's CA certificate (/ca.crt) once on each device.");
+                await patchConfig({ server: { bind_host: bindHost, https_enabled: true, home_network_websites: "path_proxy" } }, "Saved: home network access with HTTPS starts when AutoYou restarts. Website apps stay behind the admin sign-in. Install this server's CA certificate (/ca.crt) once on each device.");
                 return;
             }
-            await patchConfig({ server: { bind_host: bindHost } }, "Local-only access will apply after shutdown and restart.");
+            await patchConfig({ server: { bind_host: bindHost } }, "Saved: AutoYou becomes local-only when it restarts.");
+            return;
+        }
+        if (action === "overview-bind-keep") {
+            // Undo a pending change: save the access this process already has,
+            // without touching the HTTPS choice that came with it.
+            var keepHost = normalizeOverviewBindHost(getByPath(state.bootstrap, "status.instance.bind_host", getByPath(bootstrapConfig(), "server.bind_host", "127.0.0.1")));
+            var keepPatch = { bind_host: keepHost };
+            var savedHttps = getByPath(bootstrapConfig(), "server.https_enabled", null);
+            if (savedHttps !== null && savedHttps !== undefined) {
+                keepPatch.https_enabled = asBoolean(savedHttps, false);
+            }
+            await patchConfig({ server: keepPatch }, keepHost === "0.0.0.0" ? "Home network access stays on after restart." : "AutoYou stays local-only after restart.");
             return;
         }
         if (action === "overview-https:enable" || action === "overview-https:disable") {
@@ -9437,8 +9319,10 @@
             if (!httpsOn && exposedToNetwork && !window.confirm("Turn HTTPS off while home network access is on?\n\nOther devices on your network would then open pages, notes and the sign-in page over plain HTTP, readable by anyone on the same Wi-Fi.")) {
                 return;
             }
-            setByPath(state.forms, "overview.httpsEnabled", httpsOn);
-            await patchConfig({ server: { https_enabled: httpsOn } }, httpsOn ? "HTTPS will apply after shutdown and restart. Install this server's CA certificate (/ca.crt) on each device to trust it." : "HTTPS will be turned off after shutdown and restart.");
+            var httpsRunning = asBoolean(getByPath(state.bootstrap, "status.home_network.https_listener", getByPath(state.bootstrap, "status.home_network.https", false)), false);
+            await patchConfig({ server: { https_enabled: httpsOn } }, httpsOn === httpsRunning
+                ? (httpsOn ? "HTTPS stays on after restart." : "HTTPS stays off after restart.")
+                : (httpsOn ? "Saved: HTTPS starts when AutoYou restarts. Install this server's CA certificate (/ca.crt) on each device to trust it." : "Saved: HTTPS stops when AutoYou restarts."));
             return;
         }
         if (action.indexOf("overview-home-websites:") === 0) {
@@ -9475,14 +9359,12 @@
         }
         if (action.indexOf("overview-native-unlock:") === 0) {
             var nativeUnlockEnabled = action.split(":")[1] === "enable";
-            setByPath(state.forms, "overview.nativeUnlockEnabled", nativeUnlockEnabled);
-            await patchConfig({ security: { native_unlock_enabled: nativeUnlockEnabled } }, nativeUnlockEnabled ? "System credential unlock will be available after restart." : "System credential unlock will be disabled after restart.");
+            await patchConfig({ security: { native_unlock_enabled: nativeUnlockEnabled } }, nativeUnlockEnabled ? "The sign-in page now offers system credential unlock." : "The sign-in page no longer offers system credential unlock.");
             return;
         }
         if (action.indexOf("overview-remote-permissions:") === 0) {
             var remotePermsOn = action.split(":")[1] === "enable";
-            setByPath(state.forms, "overview.allowRemoteAdminPermissions", remotePermsOn);
-            await patchConfig({ server: { allow_remote_admin_permissions: remotePermsOn } }, remotePermsOn ? "Network admin permissions will apply after shutdown and restart. Admins connecting from WSL, Docker, or LAN over HTTPS will be able to edit hardware permissions." : "Network admin permissions disabled for next boot. Permissions will require localhost.");
+            await patchConfig({ server: { allow_remote_admin_permissions: remotePermsOn } }, remotePermsOn ? "Network admin permissions are on. Admins signed in over HTTPS from WSL, Docker, or the home network can now edit hardware permissions." : "Network admin permissions are off. Permissions can now be changed only from this computer.");
             return;
         }
         if (action.indexOf("service:") === 0) {
@@ -9961,7 +9843,7 @@
             return;
         }
         if (action === "save-permissions-data") {
-            await savePermissions(["chat_memory_enabled", "ai_agent_lan_access_enabled"], "Data and network permissions updated.");
+            await savePermissions(["chat_memory_enabled", "ai_agent_lan_access_enabled"], "Chat and developer access updated.");
             return;
         }
         if (action === "save-permissions-web") {

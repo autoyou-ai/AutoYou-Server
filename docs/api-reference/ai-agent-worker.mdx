@@ -13,9 +13,9 @@ The AI Agent worker runs the Google ADK agent runtime in its own process (`--run
 
 | Setting | Default | Environment override | Notes |
 | :--- | :--- | :--- | :--- |
-| Worker port (HTTP) | `8081` | `AUTOYOU_AI_PORT` or `AUTOYOU_AI_AGENT_SERVER_PORT` | Loopback unless LAN access is enabled. |
+| Worker port (HTTP) | `8081` | `AUTOYOU_AI_PORT` or `AUTOYOU_AI_AGENT_SERVER_PORT` | Always loopback on a computer. Only inside a container with LAN access on does it follow `AUTOYOU_BIND_HOST`, so Docker can publish it. |
 | LAN HTTPS port | `8481` | `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT`, or `ai_agent.lan_https_port` in the configuration | Opt-in. A twin listener of the same app, protected by the one-time-code gate below. |
-| LAN access | Off | `ai_agent.lan_access_enabled` in the configuration | When off, the worker binds to `127.0.0.1` regardless of `AUTOYOU_BIND_HOST`. |
+| LAN access | Off | `ai_agent.lan_access_enabled` in the configuration, or `AUTOYOU_AI_AGENT_LAN_ACCESS` | Opens the LAN HTTPS port on the server's bind host. AutoYou apps never need it: paired devices reach the agent through the server. |
 
 The `ai_agent.lan_access_enabled` setting is protected: a remote browser cannot change it. See [Security & Authentication](/architecture/security-and-auth).
 

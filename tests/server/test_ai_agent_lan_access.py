@@ -76,14 +76,26 @@ def test_bind_host_stays_loopback_regardless_of_admin_bind_host():
         assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": False}}) == "127.0.0.1"
 
 
-def test_bind_host_follows_admin_host_only_when_opted_in():
+def test_plain_listener_stays_loopback_on_a_computer_even_when_opted_in():
+    """LAN access adds the HTTPS + one-time-code port; the unauthenticated
+    plain port never joins the network beside it."""
     import server
 
-    with patch.object(server, "SERVER_BIND_HOST", "0.0.0.0"):
-        assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": True}}) == "0.0.0.0"
-
-    with patch.object(server, "SERVER_BIND_HOST", "127.0.0.1"):
+    with patch.object(server, "SERVER_BIND_HOST", "0.0.0.0"),             patch.object(server, "_running_in_container", lambda: False):
         assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": True}}) == "127.0.0.1"
+
+
+def test_plain_listener_follows_the_bind_host_only_inside_a_container_when_opted_in():
+    """Docker publishes the port from outside the container, which cannot
+    reach a listener bound to the container's own loopback."""
+    import server
+
+    with patch.object(server, "_running_in_container", lambda: True):
+        with patch.object(server, "SERVER_BIND_HOST", "0.0.0.0"):
+            assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": True}}) == "0.0.0.0"
+            assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": False}}) == "127.0.0.1"
+        with patch.object(server, "SERVER_BIND_HOST", "127.0.0.1"):
+            assert _configured_ai_agent_bind_host({"ai_agent": {"lan_access_enabled": True}}) == "127.0.0.1"
 
 
 def test_lan_https_port_default_and_override():

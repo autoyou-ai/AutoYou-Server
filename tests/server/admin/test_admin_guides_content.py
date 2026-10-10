@@ -72,7 +72,7 @@ def test_admin_guides_include_video_call_and_pairing_gates(monkeypatch):
     pair_html = pair_resp.json()["html"]
     assert "Local Pair" in pair_html
     assert "Bluetooth Pair" in pair_html
-    assert "Advertise to home network on next boot" in pair_html
+    assert "Turn on the home network with HTTPS after restart" in pair_html
 
 
 def test_agents_guide_uses_user_facing_app_gate_copy(monkeypatch):

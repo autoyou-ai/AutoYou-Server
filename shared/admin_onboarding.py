@@ -661,8 +661,8 @@ def build_pairing_guide_html() -> str:
       <h2>Local Pair</h2>
       <ol>
         <li>Keep the phone and computer on the same Wi-Fi or network.</li>
-        <li>On Overview, use <strong>Advertise to home network on next boot</strong> if the phone must reach this computer from another device.</li>
-        <li>Shut down and restart AutoYou so the next-boot network mode takes effect.</li>
+        <li>On Overview, check <strong>Home network access</strong>. If it says local only, use <strong>Turn on the home network with HTTPS after restart</strong>.</li>
+        <li>Shut down and restart AutoYou so the saved network mode takes effect. AutoYou started with <code>--host 0.0.0.0</code> is already on the home network.</li>
         <li>On the phone, choose <strong>Local Pair - same Wi-Fi / network</strong> and enter the address and port shown on Overview.</li>
       </ol>
       <div class='guide-callout'>

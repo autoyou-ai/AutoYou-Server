@@ -137,6 +137,21 @@ def normalize_inbound_video_image_interval_seconds(raw_value: Any, default: floa
     return max(1.0, min(3600.0, value))
 
 
+def _recording_video_codecs() -> Tuple[str, ...]:
+    """H.264 from the encoder that works on this computer, then MPEG-4 Part 2.
+
+    Store builds have no libx264, and FFmpeg's generic "h264" name can pick a
+    GPU encoder that fails only once frames arrive.
+    """
+    try:
+        from shared.h264_encoders import select_h264_encoder
+
+        return (select_h264_encoder(), "mpeg4")
+    except Exception as exc:
+        logger.warning("No H.264 encoder for video recording, using MPEG-4: %s", exc)
+        return ("mpeg4",)
+
+
 def inbound_video_recording_format_for_mode(recording_mode: str) -> str:
     mode = normalize_inbound_video_recording_mode(recording_mode)
     if mode == INBOUND_VIDEO_RECORDING_MODE_IMAGES:
@@ -1072,7 +1087,7 @@ class IncomingVideoTrackSink:
             raise
         stream = None
         last_error: Optional[Exception] = None
-        for codec in ("libx264", "h264", "mpeg4"):
+        for codec in _recording_video_codecs():
             try:
                 candidate = container.add_stream(codec, rate=fps)
                 candidate.width = target_width

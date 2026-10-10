@@ -15,7 +15,9 @@ param(
     [switch]$AcceptTerms,
     [switch]$SkipLocalBuildAcknowledgement,
     [string]$Version,
-    [int]$JobCount = 0  # 0 = auto-detect CPU cores
+    [int]$JobCount = 0,  # 0 = auto-detect CPU cores
+    # A PyAV wheel without x264/x265 from scripts/build_codec_clean_av.py; Store packages need one.
+    [string]$AvWheel = $env:AUTOYOU_AV_WHEEL
 )
 
 $ErrorActionPreference = "Stop"
@@ -1589,6 +1591,12 @@ if ($requirementsIncludesTuning) {
     $reconcileArguments += "--include-tuning"
 }
 Invoke-CheckedCommand -FilePath $pythonExe -Arguments $reconcileArguments
+if (-not [string]::IsNullOrWhiteSpace($AvWheel)) {
+    $avWheelPath = (Resolve-Path -LiteralPath $AvWheel).Path
+    Write-Host "Replacing PyAV with the codec-clean wheel $avWheelPath (no x264/x265)..."
+    Invoke-CheckedCommand -FilePath $pythonExe -Arguments @("-m", "pip", "install", "--no-deps", "--force-reinstall", $avWheelPath)
+    Invoke-CheckedCommand -FilePath $pythonExe -Arguments @((Join-Path $repoRoot "scripts\build_codec_clean_av.py"), "--check-installed")
+}
 Assert-PipDependencyConsistency -PythonExe $pythonExe
 Assert-InstalledOptionalRuntimeImports -PythonExe $pythonExe -PackageNames @("huggingface-hub", "transformers")
 if ($requirementsIncludesVoice) {
