@@ -19,6 +19,7 @@ __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-1d4e1f2af359a2dd8fcc6048"
 
 ensure_repo_on_path()
 
+import shared.admin_setup_profiles as setup_profiles
 from shared.admin_onboarding import build_connectivity_guide_html
 from shared.admin_setup_profiles import (
     build_setup_profile_payload,
@@ -79,6 +80,22 @@ def test_setup_profile_payload_does_not_invent_missing_route_counts():
 
     assert payload["coverage"]["api_route_count"] == 0
     assert payload["coverage"]["api_route_count_label"] == "Unavailable"
+
+
+def test_macos_setup_hides_model_picker_and_falls_back_to_local_ollama(monkeypatch):
+    monkeypatch.setattr(setup_profiles.sys, "platform", "darwin")
+    payload = build_setup_profile_payload({}, _agents_payload(), api_route_count=241)
+    assert "model_picker" not in str(payload).lower()
+    assert "model picker" not in str(payload).lower()
+
+    recipe = compile_setup_recipe(
+        {"profile_id": "agent_workbench", "ai_path": "model_picker"},
+        agents_payload=_agents_payload(),
+        api_route_count=241,
+    )
+    assert recipe["answers"]["ai_path"] == "local_ollama"
+    assert "model_picker_agent" not in {agent["name"] for agent in recipe["recommended_agents"]}
+    assert "model picker" not in str(recipe).lower()
 
 
 def test_lan_recipe_warns_about_0_0_0_0_websites_browser_and_agent_websites():

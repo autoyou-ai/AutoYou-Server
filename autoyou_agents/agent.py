@@ -1626,11 +1626,14 @@ except Exception as _import_err:
     logger.warning("media_generation_agent static import failed: %s", _import_err)
     _create_media_generation_agent = None  # type: ignore[assignment]
 
-try:
-    from autoyou_agents.model_picker_agent.agent import create_model_picker_agent as _create_model_picker_agent
-except Exception as _import_err:
-    logger.warning("model_picker_agent static import failed: %s", _import_err)
-    _create_model_picker_agent = None  # type: ignore[assignment]
+if sys.platform == "darwin":
+    _create_model_picker_agent = None
+else:
+    try:
+        from autoyou_agents.model_picker_agent.agent import create_model_picker_agent as _create_model_picker_agent
+    except Exception as _import_err:
+        logger.warning("model_picker_agent static import failed: %s", _import_err)
+        _create_model_picker_agent = None  # type: ignore[assignment]
 
 try:
     from autoyou_agents.persona_agent.agent import create_persona_agent as _create_persona_agent
@@ -1707,6 +1710,9 @@ def _load_agent_factory(agent_name: str):
     compiler.  In dev mode the dynamic fallback also handles agents that were
     scaffolded at runtime by agent_builder_agent.
     """
+    if sys.platform == "darwin" and agent_name == "model_picker_agent":
+        return None
+
     factory = _STATIC_AGENT_FACTORY_MAP.get(agent_name)
     if factory is not None:
         return factory
