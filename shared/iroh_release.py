@@ -196,10 +196,14 @@ def source_fingerprints(workspace: Path) -> dict[str, str]:
 def validate_sdk(root: Path, *, workspace: Path, target: str) -> dict:
     if target not in TARGETS:
         raise ValueError("unsupported Iroh SDK target")
+    # Native libraries embed raw lock bytes; Git exports may convert line endings.
+    lock = (workspace / "Cargo.lock").read_bytes()
+    lf = lock.replace(b"\r\n", b"\n")
+    lock_hashes = tuple(hashlib.sha256(data).hexdigest() for data in (lock, lf, lf.replace(b"\n", b"\r\n")))
     value = read_json(root / "sdk-manifest.json", 1024 * 1024)
     if (any(type(value.get(k)) is not type(v) or value.get(k) != v for k, v in SDK_API.items()) or value.get("target_tag") != target
             or value.get("target_triple") != TARGETS[target][0]
-            or value.get("lock_sha256") != digest(workspace / "Cargo.lock")
+            or value.get("lock_sha256") not in lock_hashes
             or value.get("source_fingerprints") != source_fingerprints(workspace)):
         raise ValueError("native SDK source, dependency graph or target mismatch")
     files = value.get("files")
