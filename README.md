@@ -4,7 +4,7 @@
 
 <h1 align="center">AutoYou Server</h1>
 
-<p align="center"><strong>You are not the product. You are the owner.</strong><br>A self-hosted AI server for the computer you already own.</p>
+<p align="center"><strong>You are not the product. You are the owner.</strong><br>A self-hosted AI server for the computer you already own.<br>Use it locally or on your Home Wi-Fi, or access from anywhere securely via Internet.<br>Only you and your trusted contacts can access your AutoYou Server. AutoYou is entirely P2P.<br>Build your own App Store, runs serverless Web Applications just like ANY cloud SaaS applications without Usage limits or API costs.<br>Build and host your own games and share them with your friends using Game Mode.<br>Unlimited AI chat, voice calls with AI, Lobby chat, Peer voice & video calls across all devices, video-conference meetings and remote-desktop control - everything on-device with no telemetry/diagnostics/usage metrics captured by default.<br> Works without VPN, Supports Tailscale VPN providers, build your own support, deploy on your own Cloud.</p>
 
 <p align="center">
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml/badge.svg?branch=main" alt="Public checks"></a>
@@ -52,13 +52,17 @@ cd AutoYou-Server
 Windows:
 
 ```powershell
-.\run_autoyou.bat --profile base
+$ .\run_autoyou.bat --profile base
+(OR)
+$ .\run_autoyou.bat --profile full --host 0.0.0.0
 ```
 
 macOS or Linux:
 
 ```bash
-./run_autoyou.sh --profile base
+$ ./run_autoyou.sh --profile base
+(OR)
+$ .\run_autoyou.bat --profile full --host 0.0.0.0
 ```
 
 The launcher bootstraps a Python environment, installs dependencies from

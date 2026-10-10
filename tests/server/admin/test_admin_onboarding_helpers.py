@@ -194,6 +194,82 @@ def test_runtime_status_counts_cloud_models_separately(monkeypatch):
     assert status["selected_model_installed"] is True
 
 
+def test_parse_ollama_search_results_handles_modern_layout():
+    service = ModelLibraryService()
+    modern_html = """
+    <html>
+      <body>
+        <div id="searchresults">
+          <ul>
+            <li class="border-b border-black/[0.08]">
+              <a class="group flex items-start justify-between gap-6 py-6" href="/library/synthetic-llama">
+                <div class="min-w-0 flex-1">
+                  <h2 class="truncate text-xl font-medium" title="synthetic-llama">
+                    <span>synthetic-llama</span>
+                  </h2>
+                  <p class="mt-1 text-sm text-black/60">A synthetic model for testing.</p>
+                  <div class="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
+                    <span class="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 text-indigo-600">tools</span>
+                    <span class="inline-flex rounded-md bg-[#ddf4ff] px-2 py-0.5 text-blue-600">8b</span>
+                    <span class="inline-flex rounded-md bg-[#ddf4ff] px-2 py-0.5 text-blue-600">70b</span>
+                  </div>
+                </div>
+                <span class="inline-flex tabular-nums text-black/60" title="1,000,000 downloads">
+                  <span>1.0M</span>
+                </span>
+              </a>
+            </li>
+          </ul>
+          <div hx-get="/search?page=2">Next</div>
+        </div>
+      </body>
+    </html>
+    """
+
+    items, has_more = service._parse_ollama_search_results(modern_html, 1)
+
+    assert len(items) == 1
+    assert items[0]["id"] == "synthetic-llama"
+    assert items[0]["title"] == "synthetic-llama"
+    assert items[0]["summary"] == "A synthetic model for testing."
+    assert "tools" in items[0]["capabilities"]
+    assert items[0]["sizes"] == ["8b", "70b"]
+    assert items[0]["pull_count"] == "1,000,000"
+    assert items[0]["has_cloud_badge"] is False
+    assert has_more is True
+
+
+def test_search_huggingface_gguf_passes_filter_param():
+    service = ModelLibraryService()
+    captured_kwargs = {}
+
+    class FakeHfApi:
+        def list_models(self, **kwargs):
+            nonlocal captured_kwargs
+            captured_kwargs = kwargs
+            return [
+                SimpleNamespace(
+                    id="synthetic/test-model-gguf",
+                    downloads=42,
+                    likes=10,
+                    pipeline_tag="text-generation",
+                    author="synthetic",
+                    last_modified="2026-10-10",
+                    tags=["gguf", "synthetic"],
+                )
+            ]
+
+    service._hf_api = FakeHfApi()
+    res = service.search_huggingface_gguf("test-query", page=1, page_size=5)
+
+    assert captured_kwargs.get("filter") == "gguf"
+    assert "tags" not in captured_kwargs
+    assert "direction" not in captured_kwargs
+    assert captured_kwargs.get("search") == "test-query"
+    assert len(res["items"]) == 1
+    assert res["items"][0]["id"] == "synthetic/test-model-gguf"
+
+
 def test_admin_doc_guides_catalog_has_expected_ids_and_no_autoyou_me_links():
     guides = admin_doc_guides()
     ids = [guide["id"] for guide in guides]

@@ -377,7 +377,8 @@ def test_turns_from_events_reads_specialist_results_and_drops_the_roots_verbatim
     assert turns[1].request == "search the web about CLOs" and turns[1].timestamp == 1019.0
 
 
-def test_page_add_this_after_research_carries_the_research_to_be_saved():
+def test_page_add_this_after_research_carries_the_research_to_be_saved(monkeypatch):
+    monkeypatch.setattr(root_agent_module, "_SPECIALIST_AGENT_TOOLS", {"autoyou_page_agent": object()})
     context = _tool_context(_research_session("@page add this"))
     args = {"agent": "autoyou_page_agent", "request": "add this"}
 
