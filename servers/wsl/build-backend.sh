@@ -660,7 +660,34 @@ fi
 
 scrub_build_path_markers() {
     local runtime_path_marker="${AUTOYOU_BUILD_RUNTIME_PATH_MARKER:-}"
-    [[ -n "$runtime_path_marker" ]] || return 0
+    if [[ -z "$runtime_path_marker" ]]; then
+        # Bytecode cleanup also changes the manifest when no path scrub is requested.
+        "$PYTHON_CMD" - "${FINAL_BACKEND_ROOT}" <<'PY_INTEGRITY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+bundle = Path(sys.argv[1]).resolve()
+manifest_path = bundle / "runtime_integrity.json"
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+retained = {}
+for name, expected in manifest["files"].items():
+    path = (bundle / name).resolve()
+    if not path.is_relative_to(bundle):
+        raise SystemExit(f"Runtime integrity path escapes bundle: {name}")
+    if (not path.is_file() and name.startswith("runtime_modules/")
+            and path.suffix in {".pyc", ".pyo"}
+            and name != "runtime_modules/autoyou_agents/__init__.pyc"):
+        continue
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        raise SystemExit(f"Runtime integrity failed after bytecode cleanup: {name}")
+    retained[name] = expected
+manifest["files"] = retained
+manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY_INTEGRITY
+        return 0
+    fi
 
     echo "Scrubbing builder source path markers from the release bundle..."
     "$PYTHON_CMD" - "${FINAL_BACKEND_ROOT}" "${PROJECT_ROOT}" "${runtime_path_marker}" <<'PY'

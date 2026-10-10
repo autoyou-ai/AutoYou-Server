@@ -3,6 +3,8 @@
 # See LICENSE in the project root for license information.
 
 import os
+import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -91,6 +93,50 @@ def test_packaged_launcher_does_not_steal_server_auth_arg():
     launcher = (REPO_ROOT / "autoyou_app.py").read_text(encoding="utf-8")
 
     assert "ArgumentParser(add_help=False, allow_abbrev=False)" in launcher
+
+
+@pytest.mark.parametrize("damage", [None, "missing-module", "missing-agent-bridge", "modified-module", "escaping-path"])
+def test_wsl_cleanup_without_path_marker_preserves_runtime_integrity(tmp_path, damage):
+    bundle = tmp_path / "bundle"
+    files = {
+        "runtime_modules/server.so": b"synthetic compiled module",
+        "runtime_modules/autoyou_agents/__init__.pyc": b"synthetic required bridge",
+        "transport/release.json": b"synthetic public config",
+    }
+    hashes = {}
+    for name, data in files.items():
+        path = bundle / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        hashes[name] = hashlib.sha256(data).hexdigest()
+    hashes["runtime_modules/shared/__init__.pyc"] = "0" * 64
+    manifest = {"version": 1, "files": hashes, "allowed_python_files": ["transport/bindings.py"]}
+    if damage == "missing-module":
+        (bundle / "runtime_modules/server.so").unlink()
+    elif damage == "missing-agent-bridge":
+        (bundle / "runtime_modules/autoyou_agents/__init__.pyc").unlink()
+    elif damage == "modified-module":
+        (bundle / "runtime_modules/server.so").write_bytes(b"modified synthetic module")
+    elif damage == "escaping-path":
+        hashes["../outside.pyc"] = "0" * 64
+    manifest_path = bundle / "runtime_integrity.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    before = manifest_path.read_bytes()
+    # Execute the build's actual Python step without invoking a build or a live app.
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    code = text.split("<<'PY_INTEGRITY'\n", 1)[1].split("\nPY_INTEGRITY", 1)[0]
+    result = subprocess.run([sys.executable, "-", str(bundle)], input=code, text=True,
+                            capture_output=True, env={**os.environ, "AUTOYOU_TEST_ROOT": str(tmp_path)})
+    if damage:
+        assert result.returncode != 0
+        assert manifest_path.read_bytes() == before
+    else:
+        assert result.returncode == 0, result.stderr
+        refreshed = json.loads(manifest_path.read_text())
+        assert refreshed["files"] == {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+        assert refreshed["allowed_python_files"] == manifest["allowed_python_files"]
+        for name, data in files.items():
+            assert (bundle / name).read_bytes() == data
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Exercises the Linux build shell")
