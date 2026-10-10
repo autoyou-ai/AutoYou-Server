@@ -194,6 +194,7 @@
     "mediapicker": "MIT",
     "mss": "MIT",
     "modelscope": "Apache-2.0",
+    "multidict": "Apache-2.0",
     "modelscope-hub": "Apache-2.0",
     "nltk": "Apache-2.0",
     "numba": "BSD-3-Clause",

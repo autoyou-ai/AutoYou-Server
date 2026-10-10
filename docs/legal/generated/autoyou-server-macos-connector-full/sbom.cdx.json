@@ -1895,6 +1895,13 @@
       "type": "library"
     },
     {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
       "name": "multidict",
       "properties": [
         {
@@ -3823,7 +3830,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-10T10:17:18+00:00",
+    "timestamp": "2026-10-10T10:30:43+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3832,7 +3839,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:4457b508-0e28-4ce6-b53c-114840778452",
+  "serialNumber": "urn:uuid:a5c0e21b-2054-4a96-98ab-6522245702dc",
   "specVersion": "1.5",
   "version": 1
 }
