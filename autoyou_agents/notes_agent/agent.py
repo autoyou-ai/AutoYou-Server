@@ -71,6 +71,11 @@ _NON_NOTES_FILE_OPERATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _NOTES_LAST_MUTATION_STATE_KEY = "_autoyou_notes_last_mutation"
+# A save-style verb; "summarize the above" points at the answer but is not a save.
+_CARRIED_ANSWER_SAVE_VERB = re.compile(
+    r"\b(?:save|add|store|put|keep|write|record|copy|append|jot|note)\b",
+    re.IGNORECASE,
+)
 _NOTES_DISPATCH_INVOCATION_STATE_KEY = "_autoyou_notes_dispatch_invocation"
 _NOTES_DISPATCH_RESULT_STATE_KEY = "_autoyou_notes_dispatch_result"
 _NOTES_DISPATCH_SUCCESS_STATE_KEY = "_autoyou_notes_dispatch_success"
@@ -265,9 +270,18 @@ def _build_deterministic_note_mutation(
     """
     text = str(user_text or "").strip()
     _own, instruction, explicit_content = _split_note_request(text)
-    if not text or not (_NOTES_MUTATION_PATTERN.search(instruction) or (
-        explicit_content and _extract_note_title(instruction)
-    )):
+    # "@notes save this" reaches Notes as "save this": the routing tag that named
+    # notes is gone, but the root attached the answer because the words point at it.
+    saves_carried_answer = bool(
+        _NOTES_PREVIOUS_ANSWER_MARKER in text
+        and _CARRIED_ANSWER_SAVE_VERB.search(instruction)
+        and references_previous_answer(_own)
+    )
+    if not text or not (
+        _NOTES_MUTATION_PATTERN.search(instruction)
+        or (explicit_content and _extract_note_title(instruction))
+        or saves_carried_answer
+    ):
         return None
 
     previous_users = _request_history_texts(llm_request, "user")[:-1]
@@ -303,6 +317,7 @@ def _build_deterministic_note_mutation(
         re.search(r"\b(?:create|make|new|save|store)\b", instruction, re.IGNORECASE)
         or (explicit_title and content and note_id is None)
         or re.search(r"\badd\b.*\b(?:to|in)\s+(?:my\s+)?notes?\b", instruction, re.IGNORECASE)
+        or (saves_carried_answer and note_id is None)
     )
     if not is_create or not content:
         return None
@@ -508,7 +523,6 @@ def _is_non_notes_file_operation_request(user_text: str) -> bool:
     return bool(_NON_NOTES_FILE_OPERATION_PATTERN.search(lowered))
 
 async def _notes_before_model_callback(callback_context: Any, llm_request: Any) -> Any:
-    del callback_context
     inject_realtime_datetime_into_request(llm_request)
     user_text = _extract_text_from_llm_request(llm_request)
     if not user_text:
@@ -519,6 +533,16 @@ async def _notes_before_model_callback(callback_context: Any, llm_request: Any) 
             "I can save files into notes, but I cannot rename, move, copy, delete, or inspect arbitrary local files. Use autoyou_files_agent for authenticated local filesystem operations.",
             custom_metadata={"response_author": AGENT_NAME, "notes_query_kind": "scope_guard"},
         )
+
+    # The compact profile leaves writes to the model, except one: the root has
+    # already attached the answer the user said to save ("save this" after web
+    # research). Retyping kilobytes of markdown into a tool call is exactly what
+    # a small model gets wrong - ministral-3:8b emitted invalid JSON and Ollama
+    # rejected the turn ("invalid character '*' looking for beginning of value").
+    if _NOTES_PREVIOUS_ANSWER_MARKER in user_text:
+        dispatched = _dispatch_resolved_note_mutation(callback_context, llm_request, user_text)
+        if dispatched is not None:
+            return dispatched
 
     filters = _extract_list_filters(user_text)
 
@@ -594,16 +618,61 @@ async def _notes_expanded_before_model_callback(callback_context: Any, llm_reque
             custom_metadata={"response_author": AGENT_NAME, "notes_query_kind": "scope_guard"},
         )
 
+    dispatched = _dispatch_resolved_note_mutation(callback_context, llm_request, user_text)
+    if dispatched is not None:
+        return dispatched
+
+    return await _notes_before_model_callback(callback_context, llm_request)
+
+
+def _latest_note_write_result(llm_request: Any) -> tuple[str, bool]:
+    """Message and success of the most recent create/update/delete result in the request."""
+    for content in reversed(getattr(llm_request, "contents", []) or []):
+        for part in reversed(getattr(content, "parts", []) or []):
+            function_response = getattr(part, "function_response", None)
+            if function_response is None:
+                continue
+            if str(getattr(function_response, "name", "") or "") not in {"create_note", "update_note", "delete_note"}:
+                continue
+            response = getattr(function_response, "response", None)
+            if not isinstance(response, dict):
+                return "", False
+            succeeded = str(response.get("status") or "").strip().lower() == "success"
+            message = str(response.get("message") or response.get("error") or "").strip()
+            if not message:
+                message = (
+                    "The note operation completed without a result message."
+                    if succeeded
+                    else "The note operation failed and nothing was saved."
+                )
+            return message, succeeded
+    return "", False
+
+
+def _dispatch_resolved_note_mutation(callback_context: Any, llm_request: Any, user_text: str) -> Any:
+    """Replay this invocation's verified note result, or dispatch a resolved write once.
+
+    Returns None when the request does not resolve to an explicit write, so the
+    model handles it with the whole conversation in view.
+    """
+    state = _notes_state(callback_context)
+    invocation_id = str(getattr(callback_context, "invocation_id", "") or "") or "__no_invocation__"
     if state is not None and state.get(_NOTES_DISPATCH_INVOCATION_STATE_KEY) == invocation_id:
         result_message = str(state.get(_NOTES_DISPATCH_RESULT_STATE_KEY) or "").strip()
+        verified = bool(state.get(_NOTES_DISPATCH_SUCCESS_STATE_KEY))
+        if not result_message:
+            # The compact profile has no after-tool recorder; read the result
+            # the write itself returned, which follows it in this request.
+            result_message, verified = _latest_note_write_result(llm_request)
         if result_message:
             return create_text_llm_response(
                 result_message,
                 custom_metadata={
                     "response_author": AGENT_NAME,
-                    "notes_mutation_verified": bool(state.get(_NOTES_DISPATCH_SUCCESS_STATE_KEY)),
+                    "notes_mutation_verified": verified,
                 },
             )
+        return None  # already dispatched in this invocation: never write twice
 
     mutation = _build_deterministic_note_mutation(user_text, llm_request, state)
     if mutation and state is not None:
@@ -618,8 +687,7 @@ async def _notes_expanded_before_model_callback(callback_context: Any, llm_reque
                 "notes_mutation_dispatch": "before_model",
             },
         )
-
-    return await _notes_before_model_callback(callback_context, llm_request)
+    return None
 
 def ingest_attachments(
     attachments: List[Dict[str, Any]],

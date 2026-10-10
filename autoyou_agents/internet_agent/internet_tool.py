@@ -90,6 +90,120 @@ def _invalid_search_query_reason(query: str) -> Optional[str]:
         )
     return None
 
+# ── Result relevance and safety ───────────────────────────────────────────────
+# DuckDuckGo Lite answers automated requests from some hosts with a bot
+# challenge every time, so searches fall through to Bing's RSS endpoint - which
+# was measured on 2026-10-10 returning pages unrelated to the query (NHL scores,
+# FedEx locations, a Chinese dictionary entry for "latest", once an adult site
+# for "what a collateralized loan obligation is") while reporting success, and
+# not the same pages twice. Results are therefore vetted once, for every
+# provider, before anything reaches an agent: a result has to share the query's
+# distinctive words, and explicit sites are dropped.
+_SEARCH_WORD_PATTERN = re.compile(r"[a-z0-9][a-z0-9'\-]*", re.IGNORECASE)
+_SEARCH_STOPWORDS = frozenset(
+    """
+    a about above after again all also am an and any are as at be because been before being below between
+    both but by can could did do does doing down during each few for from further had has have having he her
+    here hers him his how i if in into is it its just me more most my no nor not now of off on once only or
+    other our out over own same she should so some such than that the their them then there these they this
+    those through to too under until up very was we were what when where which while who whom why will with
+    would you your tell please find show give get search look lookup google web internet online site info
+    information define definition meaning explain
+    """.split()
+)
+# Words that ride along with a query but say nothing about its subject;
+# a result matching only these (a dictionary page for "latest") is off-topic.
+_GENERIC_SEARCH_WORDS = frozenset(
+    """
+    latest newest new current recent recently today tonight yesterday tomorrow now best top news update
+    updates official free guide guides near nearby week month year time
+    """.split()
+)
+_EXPLICIT_RESULT_PATTERN = re.compile(
+    r"\b(?:porn\w*|xxx|xnxx|xvideos?|xhamster|pornhub|redtube|youporn|onlyfans|hentai|nsfw|camgirls?|sexcams?)\b",
+    re.IGNORECASE,
+)
+_WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+# Wikipedia asks API clients for a descriptive User-Agent with a contact URL.
+_WIKIPEDIA_USER_AGENT = "AutoYou/1.0 (https://autoyou.me; personal assistant web lookup)"
+
+
+def _stem_search_word(word: str) -> str:
+    if len(word) >= 5 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) >= 4 and word.endswith("s") and not word.endswith(("ss", "us", "is")):
+        return word[:-1]
+    return word
+
+
+def _search_words(text: Any) -> set:
+    words = set()
+    for match in _SEARCH_WORD_PATTERN.finditer(str(text or "")):
+        word = match.group(0).lower().strip("'-")
+        if len(word) >= 2 and word not in _SEARCH_STOPWORDS:
+            words.add(_stem_search_word(word))
+    return words
+
+
+def _query_subject_words(query: str) -> set:
+    """Distinctive words of a query: no operators, stopwords, or generic qualifiers."""
+    text = _SITE_OPERATOR_PATTERN.sub(" ", str(query or ""))
+    return {word for word in _search_words(text) if word not in _GENERIC_SEARCH_WORDS}
+
+
+def _word_is_present(word: str, words: set) -> bool:
+    if word in words:
+        return True
+    # Spelling variants of long words ("collateralised"/"collateralized").
+    return len(word) >= 7 and any(len(other) >= 7 and other[:6] == word[:6] for other in words)
+
+
+def _search_result_text(result: Dict[str, Any]) -> str:
+    url = str(result.get("url") or "")
+    return " ".join(
+        [
+            str(result.get("title") or ""),
+            str(result.get("snippet") or result.get("description") or ""),
+            re.sub(r"[^A-Za-z0-9]+", " ", url),
+        ]
+    )
+
+
+def search_result_is_relevant(query: str, result: Dict[str, Any]) -> bool:
+    """True when ``result`` shares enough of the query's distinctive words.
+
+    A query with up to three distinctive words needs one of them; a longer one
+    needs two. Queries with no judgeable words (non-Latin scripts, a bare
+    operator) are not filtered.
+    """
+    subject = _query_subject_words(query)
+    if not subject:
+        return True
+    words = _search_words(_search_result_text(result))
+    matches = sum(1 for word in subject if _word_is_present(word, words))
+    return matches >= (1 if len(subject) <= 3 else 2)
+
+
+def search_result_is_explicit(result: Dict[str, Any]) -> bool:
+    return bool(_EXPLICIT_RESULT_PATTERN.search(_search_result_text(result)))
+
+
+def vet_search_results(query: str, results: List[Dict[str, Any]]) -> tuple:
+    """Return (kept results, number off-topic, number explicit)."""
+    kept: List[Dict[str, Any]] = []
+    off_topic = explicit = 0
+    for result in results or []:
+        if not isinstance(result, dict):
+            continue
+        if search_result_is_explicit(result):
+            explicit += 1
+        elif not search_result_is_relevant(query, result):
+            off_topic += 1
+        else:
+            kept.append(result)
+    return kept, off_topic, explicit
+
+
 def _running_in_container() -> bool:
     """Best-effort container detection for the headless default."""
     try:
@@ -1230,7 +1344,7 @@ class InternetTool:
         try:
             logger.info(f"Performing Internet search with Bing RSS for: {query}")
             provider_query = self._normalize_bing_site_query(query)
-            url = f"https://www.bing.com/search?format=rss&q={quote_plus(provider_query)}"
+            url = f"https://www.bing.com/search?format=rss&adlt=strict&q={quote_plus(provider_query)}"
             response = self.session.get(
                 url,
                 headers={
@@ -1272,6 +1386,66 @@ class InternetTool:
         except Exception as e:
             logger.warning(f"Bing RSS Internet search failed: {describe_exception(e)}")
             return self._build_search_error(query, describe_exception(e), 'bing_rss')
+
+    def internet_search_with_wikipedia(self, query: str, max_results: int = 10) -> Dict[str, Any]:
+        """Search English Wikipedia through its official API.
+
+        Used only when the web providers return nothing relevant. It is a
+        sanctioned API rather than a scrape, so falling back to it is not a way
+        around a provider's bot challenge - and its results are labelled as
+        Wikipedia articles, not live web results.
+        """
+        if not is_internet_access_enabled():
+            logger.info("Wikipedia search blocked: internet access disabled")
+            return {
+                'status': 'disabled',
+                'enabled': False,
+                'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+                'transfer_to': 'autoyou_agent',
+                'results': [],
+                'results_count': 0,
+                'query': query,
+            }
+        domain = self._site_filter_domain(query)
+        if domain and domain != 'wikipedia.org' and not domain.endswith('.wikipedia.org'):
+            return self._build_search_error(query, f'Wikipedia cannot satisfy a site:{domain} query', 'wikipedia')
+        search_text = _SITE_OPERATOR_PATTERN.sub(' ', query).strip() or query
+        try:
+            logger.info("Performing Wikipedia search for: %s", search_text)
+            response = self.session.get(
+                _WIKIPEDIA_API_URL,
+                params={
+                    'action': 'query',
+                    'list': 'search',
+                    'srsearch': search_text,
+                    'srlimit': max(1, min(int(max_results), 20)),
+                    'srprop': 'snippet',
+                    'format': 'json',
+                },
+                headers={'User-Agent': _WIKIPEDIA_USER_AGENT, 'Accept': 'application/json'},
+                timeout=10,
+            )
+            response.raise_for_status()
+            hits = ((response.json() or {}).get('query') or {}).get('search') or []
+            results: List[Dict[str, Any]] = []
+            for hit in hits[:max_results]:
+                title = str(hit.get('title') or '').strip()
+                if not title:
+                    continue
+                snippet = BeautifulSoup(str(hit.get('snippet') or ''), 'html.parser').get_text(' ', strip=True)
+                snippet = snippet or 'No description available'
+                results.append({
+                    'title': title,
+                    'url': f"https://en.wikipedia.org/wiki/{quote_plus(title.replace(' ', '_'), safe='_(),.-')}",
+                    'snippet': snippet,
+                    'description': snippet,
+                })
+            if not results:
+                return self._build_search_error(query, 'Wikipedia returned no articles', 'wikipedia')
+            return self._build_search_success(query, results, 'wikipedia')
+        except Exception as e:
+            logger.warning("Wikipedia search failed: %s", describe_exception(e))
+            return self._build_search_error(query, describe_exception(e), 'wikipedia')
     
     def internet_search_with_requests(self, query: str, max_results: int = 10) -> Dict[str, Any]:
         """Perform Internet search using requests only (no fallback)."""
@@ -1294,7 +1468,7 @@ class InternetTool:
             
             # Prepare search URL - use DuckDuckGo Lite endpoint for static HTML
             encoded_query = urllib.parse.quote_plus(query)
-            url = f"https://lite.duckduckgo.com/lite/?q={encoded_query}"
+            url = f"https://lite.duckduckgo.com/lite/?kp=1&q={encoded_query}"
             
             # Headers to mimic a real browser
             headers = {
@@ -1412,6 +1586,71 @@ class InternetTool:
                 'results_count': 0,
                 'query': query,
             }
+        web_results = await self._search_web_providers(query, max_results)
+        return await self._vetted_search_results(query, web_results, max_results)
+
+    async def _vetted_search_results(
+        self,
+        query: str,
+        web_results: Dict[str, Any],
+        max_results: int,
+    ) -> Dict[str, Any]:
+        """Keep only on-topic, non-explicit results; fall back to Wikipedia when none survive.
+
+        Never reports success for results that do not match the query - an
+        honest "nothing relevant found" beats a confident answer built on an
+        unrelated page.
+        """
+        kept, off_topic, explicit = vet_search_results(query, list(web_results.get('results') or []))
+        if kept:
+            vetted = dict(web_results)
+            vetted['results'] = kept[:max_results]
+            vetted['results_count'] = len(vetted['results'])
+            if off_topic or explicit:
+                vetted['filtered_out'] = {'off_topic': off_topic, 'explicit': explicit}
+                logger.info(
+                    "Search for %r: kept %s result(s) from %s, dropped %s off-topic and %s explicit",
+                    query, len(kept), web_results.get('provider'), off_topic, explicit,
+                )
+            return vetted
+
+        web_problem = (
+            f"{web_results.get('provider') or 'the web search provider'} returned only results unrelated to the query"
+            if off_topic or explicit
+            else str(web_results.get('error') or 'web search returned no results')
+        )
+        if off_topic or explicit:
+            logger.warning(
+                "Search for %r: all %s result(s) from %s were off-topic or explicit; trying Wikipedia",
+                query, off_topic + explicit, web_results.get('provider'),
+            )
+        wikipedia = await asyncio.to_thread(self.internet_search_with_wikipedia, query, max(max_results, 10))
+        wiki_kept, _wiki_off_topic, _wiki_explicit = vet_search_results(query, list(wikipedia.get('results') or []))
+        if wiki_kept:
+            fallback = dict(wikipedia)
+            fallback['results'] = wiki_kept[:max_results]
+            fallback['results_count'] = len(fallback['results'])
+            fallback['web_search_error'] = web_problem
+            fallback['notice'] = (
+                f"Live web search was unavailable ({web_problem}). These are Wikipedia articles, "
+                "which may not reflect the latest news or prices."
+            )
+            return fallback
+
+        failed = dict(web_results) if web_results.get('status') == 'error' else self._build_search_error(
+            query,
+            f"No results related to the query were found: {web_problem}.",
+            str(web_results.get('provider') or 'web'),
+        )
+        failed['results'] = []
+        failed['results_count'] = 0
+        failed['fallback_error'] = str(wikipedia.get('error') or 'Wikipedia returned nothing relevant')
+        if off_topic or explicit:
+            failed['filtered_out'] = {'off_topic': off_topic, 'explicit': explicit}
+        return failed
+
+    async def _search_web_providers(self, query: str, max_results: int) -> Dict[str, Any]:
+        """Run the web providers in order and return the first answer (unvetted)."""
         request_results = await asyncio.to_thread(self.internet_search_with_requests, query, max_results)
         if request_results.get('results_count', 0) > 0:
             return request_results
@@ -1429,7 +1668,7 @@ class InternetTool:
             
             async with get_playwright_browser() as page:
                 # Prefer DuckDuckGo Lite endpoint for stable markup
-                ddg_url = f"https://lite.duckduckgo.com/lite/?q={quote_plus(query)}"
+                ddg_url = f"https://lite.duckduckgo.com/lite/?kp=1&q={quote_plus(query)}"
                 await page.goto(ddg_url, wait_until="domcontentloaded")
                 # Early static HTML parse to avoid brittle selector waits/timeouts
                 try:

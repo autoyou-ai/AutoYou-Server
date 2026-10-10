@@ -10,6 +10,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
+import base64
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -20,7 +21,7 @@ from google.adk.agents import Agent
 
 from .page_tool import PageTool
 from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
-from autoyou_agents.shared_tools.conversation_refs import extract_url
+from autoyou_agents.shared_tools.conversation_refs import extract_url, title_from_content
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from shared.session_execution import create_text_llm_response
 from shared.remote_access_policy import normalize_remote_access_role
@@ -52,6 +53,22 @@ _PAGE_FEED_READ_RE = re.compile(
     re.IGNORECASE,
 )
 _PAGE_FEED_COUNT_RE = re.compile(r"\b(?:count|how many|number of)\b", re.IGNORECASE)
+# The root attaches an earlier answer the user asked to keep ("@page add this"
+# after research) under this marker; see _build_page_agent_request in the root.
+_PAGE_PREVIOUS_ANSWER_MARKER = "[AutoYou previous answer to save on the page feed"
+_PAGE_PREVIOUS_ANSWER_RE = re.compile(
+    re.escape(_PAGE_PREVIOUS_ANSWER_MARKER) + r"(?:;\s*title:\s*(?P<title>[^\]\n]*))?\]\s*\n?(?P<body>.*)\Z",
+    re.DOTALL,
+)
+
+
+def _split_previous_answer(user_text: str) -> tuple[str, str, str]:
+    """Return (request, title, carried answer); the last two are "" when none is attached."""
+    text = str(user_text or "")
+    match = _PAGE_PREVIOUS_ANSWER_RE.search(text)
+    if not match:
+        return text, "", ""
+    return text[: match.start()].strip(), str(match.group("title") or "").strip(), match.group("body").strip()
 
 def _extract_text_from_llm_request(llm_request: Any) -> str:
     chunks: List[str] = []
@@ -126,7 +143,20 @@ async def _page_agent_before_model_callback(callback_context: Any, llm_request: 
     asks naturally and cannot claim an add the tool never made.
     """
     del callback_context
-    user_text = _extract_text_from_llm_request(llm_request)
+    user_text, carried_title, carried_answer = _split_previous_answer(
+        _extract_text_from_llm_request(llm_request)
+    )
+    if carried_answer:
+        # Checked before the link fast path: research carries its source links,
+        # and adding the first of them would drop the research the user meant.
+        result = save_text_item(title=carried_title, text=carried_answer)
+        return create_text_llm_response(
+            str(result.get("message") or "").strip() or "Could not save that answer to the page feed.",
+            custom_metadata={
+                "response_author": AGENT_NAME,
+                "route_reason": "deterministic_page_feed_save_text",
+            },
+        )
     url = _extract_page_feed_add_url(user_text)
     if not url:
         if _looks_like_page_feed_query(user_text):
@@ -168,6 +198,36 @@ def add_link(url: str, title: Optional[str] = None, source: Optional[str] = None
         return {"status": "error", "message": res.get("error", "Failed to add link")}
     except Exception as e:
         return {"status": "error", "message": f"Exception adding link: {e}"}
+
+def _text_item_filename(title: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(title or "")).strip("-").lower()[:60]
+    return f"{slug or 'saved-text'}.md"
+
+
+def save_text_item(title: str, text: str) -> dict:
+    """Save text - an answer, research summary, or other writing - to the page feed as a Markdown file.
+
+    Use this when the user asks to add content (not a link) to their page.
+
+    Args:
+        title: Short title for the feed item. Derived from the text when empty.
+        text: The full text to keep.
+    """
+    body = str(text or "").strip()
+    if not body:
+        return {"status": "error", "message": "There was no text to save to the page feed."}
+    clean_title = " ".join(str(title or "").split())[:120] or title_from_content(body) or "Saved text"
+    document = f"# {clean_title}\n\n{body}\n"
+    result = save_blob(
+        filename=_text_item_filename(clean_title),
+        data_base64=base64.b64encode(document.encode("utf-8")).decode("ascii"),
+        mimetype="text/markdown",
+        title=clean_title,
+    )
+    if result.get("status") == "success" and not str(result.get("message") or "").strip():
+        result["message"] = f"Saved “{clean_title}” to your AutoYou page feed."
+    return result
+
 
 def save_blob(
     filename: str,
@@ -443,6 +503,7 @@ def create_page_agent(model_config, base_url: Optional[str] = None, db_path: Opt
 
     tools = [
         add_link,
+        save_text_item,
         save_blob,
         save_blob_from_path,
         ingest_attachments,

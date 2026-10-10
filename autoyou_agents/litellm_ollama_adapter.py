@@ -14,10 +14,21 @@ import copy
 import ast
 import json
 import logging
+import math
 import os
 import re
 import uuid
 from typing import Any, Dict, List, Optional
+
+from autoyou_agents.shared_tools.conversation_context import (
+    calibration_factor,
+    content_words,
+    estimate_message_tokens,
+    estimate_text_tokens,
+    estimate_tools_tokens,
+    excerpt_text,
+    topical_overlap,
+)
 
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-52f73dedea5d09edfe88fdf8"
 
@@ -1149,6 +1160,317 @@ def prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[str
         _normalize_tool_calls_in_mapping(message)
 
     return normalized_messages
+
+
+# ── Context-window fitting ─────────────────────────────────────────────────────
+# Ollama refuses a prompt larger than num_ctx ("request (8345 tokens) exceeds
+# the available context size (8192 tokens)") - older builds silently truncated
+# it from the front instead, dropping the user's question. ADK's compaction only
+# reacts after an oversized turn has already been recorded, so every request is
+# fitted here, at the one place all agents' model calls pass through.
+#
+# The current turn (the latest user query and the tool calls and results that
+# follow it) is never dropped. Older turns are shortened first, then kept by a
+# recency-and-relevance score until the budget is met, so a follow-up keeps the
+# turns it refers to while unrelated bulk (an old feed listing, a long search
+# result) goes first.
+_CONTEXT_OVERFLOW_RE = re.compile(
+    r"exceeds the available context size|exceed_context_size_error|context (?:length|window) (?:exceeded|is too)"
+    r"|maximum context length|prompt is too long|input length .{0,40}exceeds",
+    re.IGNORECASE,
+)
+_CONTEXT_OVERFLOW_SIZES_RE = re.compile(
+    r"request \((\d+) tokens\) exceeds the available context size \((\d+) tokens\)",
+    re.IGNORECASE,
+)
+_N_PROMPT_TOKENS_RE = re.compile(r"n_prompt_tokens\W{1,6}(\d+)", re.IGNORECASE)
+_N_CTX_RE = re.compile(r"\bn_ctx\W{1,6}(\d+)", re.IGNORECASE)
+CONTEXT_TRIM_NOTE_MARKER = "[Context note:"
+_CONTEXT_TRIM_NOTE_RESERVE_TOKENS = 72
+# Below this recency+relevance score an older turn is kept only if it fits whole.
+_CONTEXT_SQUEEZE_MIN_SCORE = 0.45
+
+
+def is_context_overflow_error(exc: Any) -> bool:
+    """True when a provider rejected a prompt for exceeding its context window."""
+    return bool(_CONTEXT_OVERFLOW_RE.search(str(exc or "")))
+
+
+def parse_context_overflow_error(exc: Any) -> Dict[str, Optional[int]]:
+    """Return the prompt size and window an overflow error reports, when present."""
+    text = str(exc or "")
+    prompt_tokens: Optional[int] = None
+    context_tokens: Optional[int] = None
+    sizes = _CONTEXT_OVERFLOW_SIZES_RE.search(text)
+    if sizes:
+        prompt_tokens, context_tokens = int(sizes.group(1)), int(sizes.group(2))
+    if prompt_tokens is None:
+        match = _N_PROMPT_TOKENS_RE.search(text)
+        prompt_tokens = int(match.group(1)) if match else None
+    if context_tokens is None:
+        match = _N_CTX_RE.search(text)
+        context_tokens = int(match.group(1)) if match else None
+    return {"prompt_tokens": prompt_tokens, "context_tokens": context_tokens}
+
+
+def _positive_int(value: Any) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def context_window_budget(num_ctx: Any, num_predict: Any = None) -> int:
+    """Prompt tokens that leave room for the reply and a safety margin."""
+    window = _positive_int(num_ctx) or 0
+    if window <= 0:
+        return 0
+    reserve = _positive_int(num_predict) or max(256, window // 8)
+    reserve = max(256, min(reserve, window // 4))
+    margin = max(64, window // 32)
+    return max(256, window - reserve - margin)
+
+
+def _message_role(message: Any) -> str:
+    return str(_get_obj_field(message, "role", "") or "").strip().lower()
+
+
+def _message_plain_text(message: Any) -> str:
+    content = _get_obj_field(message, "content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(part.get("text") or "")
+            for part in content
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
+    return ""
+
+
+def message_is_user_query(message: Any) -> bool:
+    """A user message carrying text or an image - not a wrapped tool result."""
+    if _message_role(message) != "user":
+        return False
+    content = _get_obj_field(message, "content")
+    if isinstance(content, list) and any(
+        isinstance(part, dict) and (part.get("image_url") or part.get("inline_data")) for part in content
+    ):
+        return True
+    text = _message_plain_text(message).strip()
+    return bool(text) and not (text.startswith("<tool_response>") and text.endswith("</tool_response>"))
+
+
+def _shorten_message_content(message: Any, max_tokens: int, *, drop_images: bool = False) -> tuple[Any, bool]:
+    """Copy of ``message`` with long text excerpted (and images optionally dropped)."""
+    content = _get_obj_field(message, "content")
+    if isinstance(content, str):
+        if estimate_text_tokens(content) <= max_tokens:
+            return message, False
+        updated = dict(message)
+        updated["content"] = excerpt_text(content, max_tokens)
+        return updated, True
+    if not isinstance(content, list):
+        return message, False
+    changed = False
+    parts: List[Any] = []
+    for part in content:
+        if isinstance(part, dict) and (part.get("image_url") or part.get("inline_data") or part.get("type") == "image_url"):
+            if drop_images:
+                parts.append({"type": "text", "text": "[image left out to fit the context window]"})
+                changed = True
+            else:
+                parts.append(part)
+            continue
+        if isinstance(part, dict) and isinstance(part.get("text"), str) and estimate_text_tokens(part["text"]) > max_tokens:
+            parts.append({**part, "text": excerpt_text(part["text"], max_tokens)})
+            changed = True
+            continue
+        parts.append(part)
+    if not changed:
+        return message, False
+    updated = dict(message)
+    if all(isinstance(part, dict) and part.get("type", "text") == "text" for part in parts):
+        updated["content"] = " ".join(str(part.get("text") or "") for part in parts).strip()
+    else:
+        updated["content"] = parts
+    return updated, True
+
+
+def _attach_context_trim_note(messages: List[Any], note: str) -> List[Any]:
+    """Append the trim note to the first system message (keeps its prefix cacheable)."""
+    for index, message in enumerate(messages):
+        if _message_role(message) != "system":
+            continue
+        content = _get_obj_field(message, "content")
+        updated = dict(message)
+        if isinstance(content, str):
+            if CONTEXT_TRIM_NOTE_MARKER in content:
+                return messages
+            updated["content"] = f"{content.rstrip()}\n\n{note}" if content.strip() else note
+        elif isinstance(content, list):
+            updated["content"] = [*content, {"type": "text", "text": note}]
+        else:
+            updated["content"] = note
+        return [*messages[:index], updated, *messages[index + 1:]]
+    return [{"role": "system", "content": note}, *messages]
+
+
+def fit_messages_to_context_window(
+    messages: List[Any],
+    *,
+    tools: Any = None,
+    num_ctx: Any = None,
+    num_predict: Any = None,
+    model: Any = "",
+    safety_ratio: float = 1.0,
+) -> tuple[List[Any], Dict[str, Any]]:
+    """Return ``messages`` fitted to ``num_ctx`` and a report of what changed.
+
+    Inputs are never mutated; unchanged messages are returned as the same
+    objects. When the request already fits, the list is returned as-is so the
+    provider's prompt cache keeps matching.
+    """
+    window = _positive_int(num_ctx)
+    source = list(messages or [])
+    report: Dict[str, Any] = {"fitted": False, "num_ctx": window or 0}
+    if not window or not source:
+        return source, report
+
+    factor = max(0.5, calibration_factor(model) * max(1.0, float(safety_ratio or 1.0)))
+
+    def estimate(message: Any) -> int:
+        return int(math.ceil(estimate_message_tokens(message) * factor))
+
+    target = context_window_budget(window, num_predict)
+    tools_tokens = int(math.ceil(estimate_tools_tokens(tools) * factor))
+    sizes = [estimate(message) for message in source]
+    total = tools_tokens + sum(sizes)
+    report.update(budget=target, estimated_before=total, factor=round(factor, 3))
+    if total <= target:
+        report["estimated_after"] = total
+        return source, report
+
+    budget = target - _CONTEXT_TRIM_NOTE_RESERVE_TOKENS
+    working = list(source)
+    system_positions = [index for index, message in enumerate(source) if _message_role(message) == "system"]
+    system_set = set(system_positions)
+    other_positions = [index for index in range(len(source)) if index not in system_set]
+    query_positions = [index for index in other_positions if message_is_user_query(source[index])]
+    active_start = query_positions[-1] if query_positions else (other_positions[0] if other_positions else len(source))
+
+    groups: List[List[int]] = []
+    current: List[int] = []
+    for index in other_positions:
+        if index >= active_start:
+            break
+        if message_is_user_query(source[index]) and current:
+            groups.append(current)
+            current = []
+        current.append(index)
+    if current:
+        groups.append(current)
+    active = [index for index in other_positions if index >= active_start]
+    fixed = tools_tokens + sum(sizes[index] for index in system_positions)
+    shortened: set[int] = set()
+
+    def replace(index: int, max_tokens: int, *, drop_images: bool = False) -> None:
+        updated, changed = _shorten_message_content(working[index], max_tokens, drop_images=drop_images)
+        if changed:
+            working[index] = updated
+            sizes[index] = estimate(updated)
+            shortened.add(index)
+
+    # Value of each older turn: recency (the turn just before is what "this"
+    # usually means) plus topical overlap with the current query.
+    query_words = content_words(_message_plain_text(source[active_start])) if active_start < len(source) else set()
+    ranked: List[tuple[float, int]] = []
+    for group_index, group in enumerate(groups):
+        distance = len(groups) - 1 - group_index
+        relevance = topical_overlap(query_words, " ".join(_message_plain_text(working[index]) for index in group))
+        ranked.append((0.6 * (0.7 ** distance) + 0.4 * relevance, group_index))
+
+    def total_tokens() -> int:
+        return fixed + sum(sizes[index] for index in other_positions)
+
+    # 1. Bound the current turn's own tool results, so one huge fetch cannot
+    # push out the earlier turn the question depends on.
+    followers = [index for index in active if index != active_start]
+    history_room = max(0, budget - fixed)
+    if followers and sum(sizes[index] for index in active) > history_room * 0.6:
+        per_follower = max(96, int(history_room * 0.6) // len(followers))
+        for index in followers:
+            if sizes[index] > per_follower:
+                replace(index, per_follower)
+
+    # 2. Shorten long older messages, least valuable turns first, until it fits.
+    older_cap = max(160, budget // 10)
+    for _score, group_index in sorted(ranked, key=lambda item: (item[0], item[1])):
+        if total_tokens() <= budget:
+            break
+        for index in groups[group_index]:
+            if sizes[index] > older_cap + 8:
+                replace(index, older_cap)
+
+    # 3. Spend what is left on older turns, most valuable first. A valuable turn
+    # that does not fit whole is shortened to fit; a low-value one is only kept
+    # whole - an unrelated listing is not worth mangling to squeeze in.
+    remaining = budget - fixed - sum(sizes[index] for index in active)
+    kept_groups: set[int] = set()
+    for score, group_index in sorted(ranked, key=lambda item: (-item[0], -item[1])):
+        group = groups[group_index]
+        group_tokens = sum(sizes[index] for index in group)
+        if group_tokens <= remaining:
+            kept_groups.add(group_index)
+            remaining -= group_tokens
+            continue
+        if score < _CONTEXT_SQUEEZE_MIN_SCORE or remaining < 64 * len(group):
+            continue
+        scale = remaining / max(1, group_tokens)
+        for index in group:
+            replace(index, max(48, int(sizes[index] * scale) - 8), drop_images=True)
+        squeezed = sum(sizes[index] for index in group)
+        if squeezed <= remaining:
+            kept_groups.add(group_index)
+            remaining -= squeezed
+    dropped = {index for group_index, group in enumerate(groups) if group_index not in kept_groups for index in group}
+    shortened -= dropped
+
+    # 4. The current turn alone is still too big: shorten its tool results
+    # further, then - only as a last resort - the query itself.
+    def kept_total() -> int:
+        return fixed + sum(sizes[index] for index in other_positions if index not in dropped)
+
+    if kept_total() > budget and followers:
+        room = budget - fixed - sizes[active_start] - sum(
+            sizes[index] for index in other_positions if index < active_start and index not in dropped
+        )
+        per_message = max(96, room // len(followers))
+        for index in followers:
+            if sizes[index] > per_message:
+                replace(index, per_message)
+    if kept_total() > budget and active_start < len(source):
+        room = budget - (kept_total() - sizes[active_start])
+        replace(active_start, max(128, room), drop_images=False)
+
+    result = [working[index] for index in range(len(source)) if index not in dropped]
+    after = kept_total()
+    note = (
+        f"{CONTEXT_TRIM_NOTE_MARKER} {len(dropped)} earlier message(s) were left out and {len(shortened)} shortened "
+        f"so this request fits the model's {window}-token context window. If the user refers to something that "
+        "is not shown here, say so briefly and ask, instead of guessing.]"
+    )
+    result = _attach_context_trim_note(result, note)
+    report.update(
+        fitted=True,
+        estimated_after=after + estimate_text_tokens(note),
+        dropped_messages=len(dropped),
+        shortened_messages=len(shortened),
+        over_budget=after > budget,
+    )
+    return result, report
+
 
 def normalize_ollama_response(
     response: Any,

@@ -27,6 +27,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -37,7 +38,10 @@ import litellm
 
 from autoyou_agents import prompt as root_prompt
 from autoyou_agents.litellm_ollama_adapter import (
+    fit_messages_to_context_window,
+    is_context_overflow_error,
     is_ollama_chat_model,
+    parse_context_overflow_error,
     normalize_ollama_response,
     normalize_ollama_stream_response,
     prepare_messages_for_ollama,
@@ -66,7 +70,12 @@ from autoyou_agents.shared_tools.agent_install_registry import (
     load_agent_install_registry,
     normalize_agent_package_name,
 )
-from autoyou_agents.shared_tools.conversation_refs import extract_url, references_previous_answer
+from autoyou_agents.shared_tools import conversation_context
+from autoyou_agents.shared_tools.conversation_refs import (
+    extract_url,
+    references_previous_answer,
+    title_from_content,
+)
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
 from autoyou_agents.shared_tools.memory_tool import (
     fetch_long_term_memory,
@@ -289,6 +298,114 @@ def _should_retry_ollama_without_tools(
         return False
     return response_degenerated_into_tool_schema_echo(response, tools=tools)
 
+
+# A request is fitted to num_ctx before it is sent (see
+# fit_messages_to_context_window). Estimates are calibrated from the counts
+# Ollama reports, so an overflow is rare - when one still happens, the reported
+# size teaches the calibration and the request is refitted, at most twice.
+_OLLAMA_CONTEXT_OVERFLOW_RETRIES = 2
+_OLLAMA_CONTEXT_OVERFLOW_HANDLED_MARKER = "_autoyou_context_overflow_handled"
+
+
+def _fit_ollama_request(
+    model: Any,
+    messages: Any,
+    tools: Any,
+    request_kwargs: Dict[str, Any],
+    *,
+    num_ctx: Any = None,
+    safety_ratio: float = 1.0,
+) -> List[Any]:
+    """Fit an Ollama request to its context window, logging any trimming."""
+    if not isinstance(messages, list):
+        return messages
+    window = num_ctx if num_ctx is not None else (request_kwargs or {}).get("num_ctx")
+    fitted, report = fit_messages_to_context_window(
+        messages,
+        tools=tools,
+        num_ctx=window,
+        num_predict=(request_kwargs or {}).get("num_predict"),
+        model=model,
+        safety_ratio=safety_ratio,
+    )
+    if report.get("fitted"):
+        log = logger.warning if report.get("over_budget") else logger.info
+        log(
+            "Fitted Ollama request to num_ctx=%s model=%s: ~%s -> ~%s tokens (budget %s), "
+            "%s earlier message(s) left out, %s shortened%s",
+            report.get("num_ctx"),
+            model,
+            report.get("estimated_before"),
+            report.get("estimated_after"),
+            report.get("budget"),
+            report.get("dropped_messages"),
+            report.get("shortened_messages"),
+            "; the instruction and tool schemas alone exceed the window" if report.get("over_budget") else "",
+        )
+    return fitted
+
+
+def _learn_from_context_overflow(model: Any, messages: Any, tools: Any, exc: Any) -> Optional[int]:
+    """Calibrate from an overflow error; return the window it reports."""
+    info = parse_context_overflow_error(exc)
+    actual = info.get("prompt_tokens")
+    if actual:
+        conversation_context.observe_prompt_tokens(
+            model,
+            conversation_context.estimate_request_tokens(messages or [], tools),
+            actual,
+            overflow=True,
+        )
+    return info.get("context_tokens")
+
+
+def _learn_from_response_usage(
+    model: Any,
+    messages: Any,
+    tools: Any,
+    response: Any,
+    stream: Any,
+    num_ctx: Any = None,
+) -> None:
+    """Calibrate estimates from the prompt size a successful response reports.
+
+    Ollama can silently drop the oldest messages of a prompt that outgrows
+    num_ctx and then reports the truncated count, which would teach a ratio far
+    too low (measured 0.58 for a 13k-token estimate). A count near the window is
+    therefore not evidence and is skipped.
+    """
+    if stream:
+        return
+    try:
+        window = int(num_ctx or 0)
+    except (TypeError, ValueError):
+        window = 0
+    usage = getattr(response, "usage", None)
+    prompt_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
+    if prompt_tokens is None and isinstance(usage, dict):
+        prompt_tokens = usage.get("prompt_tokens")
+    try:
+        prompt_tokens = int(prompt_tokens or 0)
+    except (TypeError, ValueError):
+        return
+    if window and prompt_tokens >= window * 0.9:
+        return
+    estimated = conversation_context.estimate_request_tokens(messages or [], tools)
+    if prompt_tokens > 0 and estimated >= 200:
+        conversation_context.observe_prompt_tokens(model, estimated, prompt_tokens)
+
+
+def _context_overflow_already_handled(exc: Any) -> bool:
+    return bool(getattr(exc, _OLLAMA_CONTEXT_OVERFLOW_HANDLED_MARKER, False))
+
+
+def _mark_context_overflow_handled(exc: Any) -> None:
+    try:
+        setattr(exc, _OLLAMA_CONTEXT_OVERFLOW_HANDLED_MARKER, True)
+    except Exception:
+        pass
+
+
 async def _patched_acompletion(*args, **kwargs):
     """
     Patched version of litellm.acompletion that flattens message content
@@ -299,19 +416,39 @@ async def _patched_acompletion(*args, **kwargs):
         model_name = args[0]
 
     is_ollama = is_ollama_chat_model(model_name)
+    # Unfitted (but prepared) messages: a refit after an overflow re-selects
+    # from the whole history rather than from an already-trimmed copy.
+    original_messages = None
     if is_ollama and ("messages" in kwargs or "tools" in kwargs or len(args) > 1):
         kwargs = dict(kwargs)
-        if "messages" in kwargs:
-            kwargs["messages"] = prepare_messages_for_ollama(kwargs["messages"])
-        elif len(args) > 1:
-            call_args = list(args)
-            call_args[1] = prepare_messages_for_ollama(call_args[1])
-            args = tuple(call_args)
         if "tools" in kwargs:
             kwargs["tools"] = prepare_tools_for_ollama(kwargs["tools"])
+        if "messages" in kwargs:
+            original_messages = prepare_messages_for_ollama(kwargs["messages"])
+            kwargs["messages"] = _fit_ollama_request(model_name, original_messages, kwargs.get("tools"), kwargs)
+        elif len(args) > 1:
+            call_args = list(args)
+            original_messages = prepare_messages_for_ollama(call_args[1])
+            call_args[1] = _fit_ollama_request(model_name, original_messages, kwargs.get("tools"), kwargs)
+            args = tuple(call_args)
 
+    def _set_request_messages(new_messages: Any) -> None:
+        nonlocal args, kwargs
+        if "messages" in kwargs or len(args) <= 1:
+            kwargs = dict(kwargs)
+            kwargs["messages"] = new_messages
+        else:
+            call_args = list(args)
+            call_args[1] = new_messages
+            args = tuple(call_args)
+
+    if original_messages is None:
+        original_messages = kwargs.get("messages")
+        if original_messages is None and len(args) > 1:
+            original_messages = args[1]
     retried_without_tools = False
     raised_num_predict = False
+    overflow_retries = 0
     while True:
         request_messages = kwargs.get("messages")
         if request_messages is None and len(args) > 1:
@@ -320,6 +457,36 @@ async def _patched_acompletion(*args, **kwargs):
             response = await _original_acompletion(*args, **kwargs)
         except Exception as exc:
             if is_ollama:
+                if (
+                    is_context_overflow_error(exc)
+                    and not _context_overflow_already_handled(exc)
+                    and overflow_retries < _OLLAMA_CONTEXT_OVERFLOW_RETRIES
+                ):
+                    overflow_retries += 1
+                    reported_window = _learn_from_context_overflow(
+                        model_name, request_messages, kwargs.get("tools"), exc
+                    )
+                    logging.getLogger(__name__).warning(
+                        "Ollama rejected an oversized prompt (%s); refitting to num_ctx=%s and retrying (%s/%s) model=%s",
+                        parse_context_overflow_error(exc),
+                        reported_window or kwargs.get("num_ctx"),
+                        overflow_retries,
+                        _OLLAMA_CONTEXT_OVERFLOW_RETRIES,
+                        model_name,
+                    )
+                    _set_request_messages(
+                        _fit_ollama_request(
+                            model_name,
+                            original_messages,
+                            kwargs.get("tools"),
+                            kwargs,
+                            num_ctx=reported_window or kwargs.get("num_ctx"),
+                            safety_ratio=1.0 + 0.1 * overflow_retries,
+                        )
+                    )
+                    continue
+                if is_context_overflow_error(exc):
+                    _mark_context_overflow_handled(exc)
                 if _OLLAMA_MEMORY_ERROR_FRAGMENT in str(exc):
                     raw_ctx = kwargs.get("num_ctx")
                     current_num_ctx = int(raw_ctx) if raw_ctx is not None else 0
@@ -331,6 +498,11 @@ async def _patched_acompletion(*args, **kwargs):
                         )
                         kwargs = dict(kwargs)
                         kwargs["num_ctx"] = new_num_ctx
+                        # A smaller window needs a smaller prompt, or the retry
+                        # trades a memory error for an overflow.
+                        _set_request_messages(
+                            _fit_ollama_request(model_name, original_messages, kwargs.get("tools"), kwargs)
+                        )
                         continue
                 if _is_ollama_truncated_tool_call_error(exc):
                     new_num_predict = (
@@ -405,6 +577,15 @@ async def _patched_acompletion(*args, **kwargs):
             kwargs = dict(kwargs)
             kwargs["tools"] = None
             continue
+        if is_ollama:
+            _learn_from_response_usage(
+                model_name,
+                request_messages,
+                kwargs.get("tools"),
+                response,
+                kwargs.get("stream"),
+                kwargs.get("num_ctx"),
+            )
         break
 
     if is_ollama:
@@ -477,11 +658,15 @@ try:
                     sorted(kwargs.keys()),
                 )
             if is_ollama:
-                messages = prepare_messages_for_ollama(list(messages) if messages else [])
                 tools = prepare_tools_for_ollama(tools)
+                prepared_messages = prepare_messages_for_ollama(list(messages) if messages else [])
+                messages = _fit_ollama_request(model, prepared_messages, tools, kwargs)
+            else:
+                prepared_messages = messages
             current_kwargs = kwargs
             retried_without_tools = False
             raised_num_predict = False
+            overflow_retries = 0
             while True:
                 try:
                     response = await _original_litellm_client_acompletion(
@@ -489,6 +674,33 @@ try:
                     )
                 except Exception as exc:
                     if is_ollama:
+                        if (
+                            is_context_overflow_error(exc)
+                            and not _context_overflow_already_handled(exc)
+                            and overflow_retries < _OLLAMA_CONTEXT_OVERFLOW_RETRIES
+                        ):
+                            overflow_retries += 1
+                            reported_window = _learn_from_context_overflow(model, messages, tools, exc)
+                            logger.warning(
+                                "Ollama rejected an oversized prompt (%s); refitting to num_ctx=%s and retrying "
+                                "(%s/%s) model=%s",
+                                parse_context_overflow_error(exc),
+                                reported_window or current_kwargs.get("num_ctx"),
+                                overflow_retries,
+                                _OLLAMA_CONTEXT_OVERFLOW_RETRIES,
+                                model,
+                            )
+                            messages = _fit_ollama_request(
+                                model,
+                                prepared_messages,
+                                tools,
+                                current_kwargs,
+                                num_ctx=reported_window or current_kwargs.get("num_ctx"),
+                                safety_ratio=1.0 + 0.1 * overflow_retries,
+                            )
+                            continue
+                        if is_context_overflow_error(exc):
+                            _mark_context_overflow_handled(exc)
                         if _OLLAMA_MEMORY_ERROR_FRAGMENT in str(exc):
                             raw_ctx = current_kwargs.get("num_ctx")
                             current_num_ctx = int(raw_ctx) if raw_ctx is not None else 0
@@ -500,6 +712,7 @@ try:
                                 )
                                 current_kwargs = dict(current_kwargs)
                                 current_kwargs["num_ctx"] = new_num_ctx
+                                messages = _fit_ollama_request(model, prepared_messages, tools, current_kwargs)
                                 continue
                         if _is_ollama_truncated_tool_call_error(exc):
                             new_num_predict = (
@@ -2677,20 +2890,42 @@ def _awaiting_user_answer(llm_request: Any) -> bool:
 
 
 _PAGE_ADD_REFERENCE_RE = re.compile(
-    r"\b(?:add|save|put|post|send|submit)\s+(?:all\s+of\s+)?"
-    r"(?:it|this|that|these|those|the\s+(?:link|url|site|website))\b",
+    r"\b(?:add|save|put|post|send|submit|store|keep|bookmark)\s+(?:all\s+of\s+)?"
+    r"(?:it|this|that|these|those|the\s+(?:link|url|site|website|answer|research|results?|summary))\b",
     re.IGNORECASE,
 )
+# Must match _PAGE_PREVIOUS_ANSWER_MARKER in page_agent/agent.py.
+_PAGE_PREVIOUS_ANSWER_MARKER = "[AutoYou previous answer to save on the page feed"
+_PAGE_SAVEABLE_ANSWER_MIN_CHARS = 280
+# "add that link", "bookmark it": the user means the link, however long the answer around it.
+_PAGE_LINK_INTENT_RE = re.compile(r"\b(?:link|links|url|urls|site|website|bookmark)\b", re.IGNORECASE)
+
+
+def _is_saveable_page_answer(text: str) -> bool:
+    """True for an answer with real content (research, a summary), not a one-line link pointer."""
+    value = str(text or "").strip()
+    if len(value) < _PAGE_SAVEABLE_ANSWER_MIN_CHARS:
+        return False
+    without_links = re.sub(r"\b(?:https?://|www\.)\S+", "", value)
+    return len(without_links.strip()) >= _PAGE_SAVEABLE_ANSWER_MIN_CHARS * 0.7
 
 
 def _build_page_agent_request(user_text: str, llm_request: Any, *, reference_text: str = "") -> str:
-    """Carry the URL a request points back at ("add that to my page") into the child session.
+    """Carry what "add that to my page" points at into the Page agent's child session.
 
     The Page agent runs in a fresh child session that only sees this string, so
-    without the URL it could only ask the user to repeat what they just saw.
+    without it the agent could only ask the user to repeat what they just saw.
+    A short answer pointing at a link carries that link. A substantial answer -
+    research the Internet agent just returned, say - is itself what the user
+    wants kept, so it is carried whole to be saved as a text item; reducing it
+    to the first source URL inside it would lose the research.
     """
     text = str(user_text or "").strip()
-    if extract_url(text) or not _PAGE_ADD_REFERENCE_RE.search(f"{reference_text}\n{text}"):
+    if (
+        _PAGE_PREVIOUS_ANSWER_MARKER in text
+        or extract_url(text)
+        or not _PAGE_ADD_REFERENCE_RE.search(f"{reference_text}\n{text}")
+    ):
         return text
 
     visible_turns: list[tuple[str, str]] = []
@@ -2707,6 +2942,27 @@ def _build_page_agent_request(user_text: str, llm_request: Any, *, reference_tex
             visible_turns.append((role, turn_text))
     if visible_turns and visible_turns[-1][0] == "user":
         visible_turns.pop()  # the current request itself
+
+    last_answer_index = next(
+        (index for index in range(len(visible_turns) - 1, -1, -1) if visible_turns[index][0] != "user"),
+        None,
+    )
+    wants_link = bool(_PAGE_LINK_INTENT_RE.search(f"{reference_text}\n{text}"))
+    if (
+        not wants_link
+        and last_answer_index is not None
+        and _is_saveable_page_answer(visible_turns[last_answer_index][1])
+    ):
+        answer = visible_turns[last_answer_index][1]
+        asked = next(
+            (turn for role, turn in reversed(visible_turns[:last_answer_index]) if role == "user"),
+            "",
+        )
+        title = title_from_content(" ".join(asked.split()), max_chars=80) or title_from_content(answer) or ""
+        return (
+            f"{text}\n\n{_PAGE_PREVIOUS_ANSWER_MARKER}; title: {title or 'Saved answer'}]\n"
+            f"{answer[:16000]}"
+        )
 
     for _role, turn_text in reversed(visible_turns):
         url = extract_url(turn_text)
@@ -2737,31 +2993,236 @@ def _conversation_from_tool_context(tool_context: Any) -> Any:
     return SimpleNamespace(contents=contents) if contents else None
 
 
-def _root_before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any) -> Any:
-    """Give Notes/Page the conversation their child session cannot see.
+_CONVERSATION_EVENT_WINDOW = 160
 
-    The root *model* picks these dispatches too, and it does not always copy what
-    "that" or "it" points at into the request, so context is attached here, at
-    the one place every dispatch passes through. Builders are idempotent, so a
-    deterministic route that already attached context is left alone.
+
+def _resolve_specialist_for_turns(tool_name: str, args: Optional[Dict[str, Any]]) -> str:
+    """The specialist a recorded tool call ran, or "" for an ordinary tool."""
+    name = str(tool_name or "").strip()
+    if name == _ROUTER_TOOL_NAME:
+        requested = str((args or {}).get("agent") or "").strip()
+        resolved, specialist_tool = _resolve_specialist_tool(requested)
+        return resolved if specialist_tool is not None else requested
+    if name and name != root_prompt.AGENT_NAME and (name.endswith("_agent") or _is_runtime_agent_tool_name(name)):
+        return name
+    return ""
+
+
+def _session_conversation_turns(context: Any) -> list:
+    """Visible turns of the session behind a callback or tool context, with timestamps."""
+    session = getattr(context, "session", None)
+    if session is None:
+        invocation_context = getattr(context, "_invocation_context", None)
+        session = getattr(invocation_context, "session", None)
+    events = getattr(session, "events", None)
+    if not events:
+        return []
+    try:
+        return conversation_context.turns_from_events(
+            # Continuity needs the recent conversation, not the whole session log.
+            list(events)[-_CONVERSATION_EVENT_WINDOW:],
+            resolve_specialist=_resolve_specialist_for_turns,
+        )
+    except Exception:
+        logger.debug("Could not read conversation turns from the session", exc_info=True)
+        return []
+
+
+def _active_num_ctx() -> int:
+    """The context window the configured model runs with (8192 when unknown)."""
+    model = getattr(globals().get("root_agent"), "model", None)
+    for attribute in ("_additional_args", "additional_args"):
+        extra = getattr(model, attribute, None)
+        if isinstance(extra, dict):
+            try:
+                value = int(extra.get("num_ctx") or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value > 0:
+                return value
+    return 8192
+
+
+def _specialist_context_block(runtime_name: str, request: str, turns: list) -> str:
+    """Select and render the earlier turns a specialist's request depends on.
+
+    The decision uses what the user actually typed (the root model may have
+    paraphrased it into something self-contained) and the request as sent, and
+    only attaches context when one of them is a follow-up. A fresh,
+    self-contained request goes out alone, so unrelated history never leaks in.
+    """
+    current, history = conversation_context.split_current_turn(turns)
+    if not history:
+        return ""
+    now = current.timestamp if current is not None and current.timestamp is not None else time.time()
+    user_text = current.text if current is not None else ""
+    signal = conversation_context.classify_follow_up(user_text or request, history, now=now)
+    if user_text and request and user_text.strip() != request.strip():
+        request_signal = conversation_context.classify_follow_up(request, history, now=now)
+        if request_signal.is_follow_up and request_signal.score > signal.score:
+            signal = request_signal
+    if not signal.is_follow_up:
+        return ""
+    selected = conversation_context.select_context_turns(
+        f"{user_text}\n{request}",
+        history,
+        signal=signal,
+        now=now,
+        budget_tokens=conversation_context.context_budget_for_window(_active_num_ctx()),
+    )
+    normalized_request = " ".join(str(request or "").split())
+    selected = [
+        item
+        for item in selected
+        if " ".join(item.turn.text.split())[:200] not in normalized_request
+    ]
+    return conversation_context.render_context_block(
+        selected,
+        signal=signal,
+        now=now,
+        label_author=lambda author: _format_runtime_agent_label(author) if author.endswith("_agent") else "Assistant",
+    )
+
+
+def _root_before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any) -> Any:
+    """Give every specialist the conversation its child session cannot see.
+
+    A specialist runs in a fresh child session that receives only ``request``.
+    The root *model* picks most dispatches and does not reliably copy what
+    "that" or "it" points at, so context is attached here, at the one place every
+    dispatch - deterministic or model-chosen - passes through.
+
+    * Notes and Page keep their explicit text markers, which their own fast
+      paths act on ("save it" -> the previous answer becomes the note body).
+    * Every specialist, Notes and Page included, also gets the earlier turns
+      the follow-up classifier selects. Those travel by reference through the
+      child's copied session state and reach only the specialist's model, via
+      its instruction - never its regex fast paths, which keep reading the
+      plain request.
+
+    Builders are idempotent, so a route that already attached context is left alone.
     """
     raw_name = str(getattr(tool, "name", "") or "").strip()
     request = args.get("request") if isinstance(args, dict) else None
     if not raw_name or not isinstance(request, str) or not request.strip():
         return None
     runtime_name = _resolve_routed_agent_name(raw_name, args)
-    if runtime_name not in {resolve_runtime_agent_name("notes_agent"), _PAGE_RUNTIME_AGENT_NAME}:
+    if (
+        not runtime_name
+        or runtime_name == root_prompt.AGENT_NAME
+        or not (runtime_name.endswith("_agent") or _is_runtime_agent_tool_name(runtime_name))
+    ):
         return None
-    conversation = _conversation_from_tool_context(tool_context)
-    if conversation is None:
+    turns = _session_conversation_turns(tool_context)
+    if runtime_name in {resolve_runtime_agent_name("notes_agent"), _PAGE_RUNTIME_AGENT_NAME}:
+        conversation = _conversation_from_tool_context(tool_context)
+        if conversation is not None:
+            args["request"] = _build_specialist_request(
+                runtime_name,
+                request,
+                conversation,
+                reference_text=_extract_text_from_llm_request(conversation),
+            )
+
+    state = getattr(tool_context, "state", None)
+    if state is None:
         return None
-    args["request"] = _build_specialist_request(
-        runtime_name,
-        request,
-        conversation,
-        reference_text=_extract_text_from_llm_request(conversation),
+    block = ""
+    if turns:
+        try:
+            block = _specialist_context_block(runtime_name, args["request"], turns)
+        except Exception:
+            logger.debug("Could not build conversation context for %s", runtime_name, exc_info=True)
+    # Always written, so a stale reference never leaks into a later, unrelated dispatch.
+    _state_set(
+        state,
+        conversation_context.context_ref_state_key(runtime_name),
+        conversation_context.stash_context_block(block) if block else "",
     )
+    if block:
+        logger.info(
+            "Attached conversation context for %s (~%s tokens)",
+            runtime_name,
+            conversation_context.estimate_text_tokens(block),
+        )
     return None
+
+
+def _make_specialist_conversation_context_callback(agent_name: str):
+    """Before-model callback that hands a specialist's model its conversation context.
+
+    Installed last, so it only runs when no fast path answered the request.
+    """
+
+    async def _specialist_conversation_context_callback(callback_context: Any, llm_request: Any) -> Any:
+        ref = _state_get(
+            getattr(callback_context, "state", {}),
+            conversation_context.context_ref_state_key(agent_name),
+            "",
+        )
+        block = conversation_context.fetch_context_block(ref)
+        if block:
+            conversation_context.append_block_to_system_instruction(llm_request, block)
+        return None
+
+    _specialist_conversation_context_callback._autoyou_callback_marker = f"conversation_context:{agent_name}"
+    return _specialist_conversation_context_callback
+
+
+def _make_context_overflow_error_callback(agent_name: str):
+    """Turn an overflow that survived refitting into a reply, not a crashed turn.
+
+    Requests are fitted to the window before they are sent, so this only fires
+    when the instruction and tool schemas alone outgrow it - a configuration
+    problem the user can act on, unlike "an internal error".
+    """
+
+    async def _context_overflow_error_callback(callback_context: Any, llm_request: Any, error: Exception) -> Any:
+        del callback_context, llm_request
+        if not is_context_overflow_error(error):
+            return None
+        info = parse_context_overflow_error(error)
+        window = info.get("context_tokens")
+        window_text = f"{window}-token " if window else ""
+        logger.error("Context overflow survived refitting for %s: %s", agent_name, info)
+        return create_text_llm_response(
+            f"This request is larger than the local model's {window_text}context window, even after older "
+            "messages were trimmed, so it could not run. Try a shorter message or a new chat. To give the "
+            "model more room, raise Context override under Model behavior on this computer's Admin Page.",
+            custom_metadata={
+                "response_author": agent_name,
+                "agent_name": agent_name,
+                "context_overflow": info,
+            },
+        )
+
+    _context_overflow_error_callback._autoyou_callback_marker = f"context_overflow:{agent_name}"
+    return _context_overflow_error_callback
+
+
+def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
+    """Give one specialist its conversation context and overflow handling.
+
+    Applied to every specialist - built-in, overlay, or user-built - when the
+    root graph is assembled, so a new agent gets continuity without code of its own.
+    """
+    agent_name = str(getattr(agent_instance, "name", "") or "").strip()
+    if agent_instance is None or not agent_name:
+        return agent_instance
+    try:
+        agent_instance.before_model_callback = _callback_list_with_guard(
+            getattr(agent_instance, "before_model_callback", None),
+            _make_specialist_conversation_context_callback(agent_name),
+            prepend=False,
+        )
+        agent_instance.on_model_error_callback = _callback_list_with_guard(
+            getattr(agent_instance, "on_model_error_callback", None),
+            _make_context_overflow_error_callback(agent_name),
+            prepend=False,
+        )
+    except Exception as exc:
+        logger.warning("Failed to install conversation continuity callbacks for %s: %s", agent_name, exc)
+    return agent_instance
 
 
 def _persona_tool_request(llm_request: Any) -> Optional[tuple[str, Dict[str, Any]]]:
@@ -3908,6 +4369,129 @@ def _start_media_generation_request(user_text: str, callback_context: Any) -> Di
         logger.warning("Deterministic media generation start failed: %s", exc)
         return {"status": "error", "message": f"Could not start media generation: {exc}"}
 
+_ROOT_CONVERSATION_NOTE_PREFIX = "[Conversation state]"
+# A message left unanswered (its turn failed) stays worth re-running for this long.
+_PENDING_REQUEST_WINDOW_SECONDS = 600.0
+# Corrections are re-sent to the previous specialist only for read-only lookups;
+# re-running an agent with side effects (Notes, Page, Notify...) could repeat them.
+_CORRECTION_REDISPATCH_INSTALL_NAMES = frozenset({"internet_agent", "browser_agent"})
+_CORRECTION_REDISPATCH_WINDOW_SECONDS = 300.0
+
+
+def _append_root_instruction(llm_request: Any, text: str) -> None:
+    config = getattr(llm_request, "config", None)
+    if config is None or not text:
+        return
+    existing = getattr(config, "system_instruction", None)
+    if isinstance(existing, str) and text in existing:
+        return
+    if isinstance(existing, str) and existing.strip():
+        config.system_instruction = f"{existing.rstrip()}\n\n{text}"
+    elif existing is None or isinstance(existing, str):
+        config.system_instruction = text
+
+
+def _pending_request_for_bare_switch(callback_context: Any) -> str:
+    """The user's last unanswered message, when a bare "@agent" follows it closely.
+
+    A turn that failed leaves its user message with no answer. A bare switch
+    right after it ("@main.", "@notes") means "do that, there" - not "change
+    agents and wait" - so the unanswered message is what gets processed.
+    """
+    turns = _session_conversation_turns(callback_context)
+    current, history = conversation_context.split_current_turn(turns)
+    pending = conversation_context.pending_user_turn(history)
+    if pending is None or current is None:
+        return ""
+    if current.timestamp is not None and pending.timestamp is not None:
+        if current.timestamp - pending.timestamp > _PENDING_REQUEST_WINDOW_SECONDS:
+            return ""
+    stripped = _extract_explicit_route_request(pending.text)
+    if stripped and stripped.get("request"):
+        return str(stripped["request"]).strip()
+    return pending.text.strip()
+
+
+def _correction_redispatch(callback_context: Any, user_text: str) -> Optional[Dict[str, str]]:
+    """Send a correction back to the read-only specialist whose answer it corrects."""
+    turns = _session_conversation_turns(callback_context)
+    current, history = conversation_context.split_current_turn(turns)
+    if current is None or not history:
+        return None
+    signal = conversation_context.classify_follow_up(user_text, history, now=current.timestamp)
+    if signal.kind != "correction" or signal.score < 0.4:
+        return None
+    if signal.gap_seconds is not None and signal.gap_seconds > _CORRECTION_REDISPATCH_WINDOW_SECONDS:
+        return None
+    last = conversation_context.last_exchange_specialist_turn(history, root_author=root_prompt.AGENT_NAME)
+    if last is None:
+        return None
+    install_name = _RUNTIME_TO_INSTALL_NAME.get(last.author) or normalize_agent_package_name(last.author)
+    if install_name not in _CORRECTION_REDISPATCH_INSTALL_NAMES or not _is_runtime_agent_enabled(last.author):
+        return None
+    previous_request = last.request or next(
+        (turn.text for turn in reversed(history) if turn.role == "user"),
+        "",
+    )
+    if not previous_request:
+        return None
+    return {
+        "agent": last.author,
+        "request": f"{user_text}\n\n(This corrects or refines the previous request: {previous_request[:600]})",
+    }
+
+
+def _root_conversation_note(callback_context: Any) -> str:
+    """One short instruction line telling the root model how this message relates to the chat.
+
+    The model sees the history, but a small local model often answers the
+    latest message in isolation. Naming the follow-up, what it most likely
+    refers to, and who answered it costs ~60 tokens and only appears when the
+    classifier finds a follow-up.
+    """
+    turns = _session_conversation_turns(callback_context)
+    current, history = conversation_context.split_current_turn(turns)
+    if current is None or not history:
+        return ""
+    signal = conversation_context.classify_follow_up(current.text, history, now=current.timestamp)
+    pending = conversation_context.pending_user_turn(history)
+    if pending is not None and signal.kind in {"nudge", "repeat", "reference", "continuation"}:
+        return (
+            f"{_ROOT_CONVERSATION_NOTE_PREFIX} The user's previous message got no answer because that turn "
+            f"failed: \"{conversation_context.excerpt_text(pending.text, 60)}\". The current message "
+            f"{conversation_context.describe_signal(signal)}; answer that earlier request now."
+        )
+    if not signal.is_follow_up:
+        return ""
+    answer_index = next(
+        (index for index in range(len(history) - 1, -1, -1) if history[index].role == "assistant"),
+        None,
+    )
+    if answer_index is None:
+        return ""
+    specialist_turn = conversation_context.last_exchange_specialist_turn(history, root_author=root_prompt.AGENT_NAME)
+    by_specialist = specialist_turn is not None
+    who = _format_runtime_agent_label(specialist_turn.author) if by_specialist else "you"
+    asked = (specialist_turn.request if by_specialist else "") or next(
+        (turn.text for turn in reversed(history[:answer_index]) if turn.role == "user"),
+        "",
+    )
+    parts = [
+        f"{_ROOT_CONVERSATION_NOTE_PREFIX} The current message {conversation_context.describe_signal(signal)}.",
+        f"The latest answer came from {who}"
+        + (f", for: \"{conversation_context.excerpt_text(asked, 40)}\"" if asked else "")
+        + ". Resolve this/that/it against it.",
+    ]
+    if signal.kind == "correction":
+        parts.append("Treat the message as a correction: redo that request with the change rather than starting over.")
+    if by_specialist:
+        parts.append(
+            f"If the follow-up needs {who} again, route to it with the full refined request; "
+            "the earlier turns are passed to it automatically."
+        )
+    return " ".join(parts)
+
+
 async def _root_router_before_model_callback(callback_context: Any, llm_request: Any) -> Any:
     """Deterministic routing shortcuts that fire before the LLM.
 
@@ -4008,6 +4592,20 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
     if explicit_route:
         runtime_agent_name = explicit_route["runtime_agent_name"]
         residual_request = explicit_route["request"]
+        if not residual_request:
+            pending_request = _pending_request_for_bare_switch(callback_context)
+            if pending_request:
+                logger.info(
+                    "Bare switch to %s follows an unanswered message; processing that message there",
+                    runtime_agent_name,
+                )
+                residual_request = pending_request
+                if runtime_agent_name == root_prompt.AGENT_NAME:
+                    _append_root_instruction(
+                        llm_request,
+                        f"{_ROOT_CONVERSATION_NOTE_PREFIX} The user switched back to you because their previous "
+                        f"message got no answer (that turn failed). Answer it now: \"{pending_request[:600]}\"",
+                    )
 
         if runtime_agent_name == root_prompt.AGENT_NAME:
             _set_root_preferred_agent(callback_context.state, runtime_agent_name)
@@ -4314,8 +4912,24 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
                 },
             )
 
-    live_routing_text = routing_user_text
     awaiting_answer = _awaiting_user_answer(llm_request)
+    if _provider_requires_explicit_agent_tools() and not awaiting_answer and not explicit_route:
+        correction = _correction_redispatch(callback_context, user_text)
+        if correction:
+            _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
+            _set_root_preferred_agent(callback_context.state, correction["agent"])
+            _set_root_last_routed_agent(callback_context.state, correction["agent"])
+            return _dispatch_specialist_tool_call(
+                correction["agent"],
+                {"request": correction["request"]},
+                custom_metadata={
+                    "response_author": root_prompt.AGENT_NAME,
+                    "route_target": correction["agent"],
+                    "route_reason": "conversation_correction_follow_up",
+                },
+            )
+
+    live_routing_text = routing_user_text
     audio_play_command = _AUDIO_PLAY_QUEUE_PATTERN.match(
         _normalize_audio_request_text(live_routing_text)
     )
@@ -4403,6 +5017,16 @@ async def _root_before_model_callback(callback_context: Any, llm_request: Any) -
     the intended order.
     """
     await _root_datetime_injection_callback(callback_context, llm_request)
+    response = await _root_preprocess_before_model(callback_context, llm_request)
+    if response is None:
+        try:
+            _append_root_instruction(llm_request, _root_conversation_note(callback_context))
+        except Exception:
+            logger.debug("Could not add the conversation note to the root request", exc_info=True)
+    return response
+
+
+async def _root_preprocess_before_model(callback_context: Any, llm_request: Any) -> Any:
     # An explicitly selected external assistant owns its own memory and tools.
     # Local Persona/session recall must not intercept questions addressed to it.
     user_text = _extract_text_from_llm_request(llm_request)
@@ -4876,7 +5500,9 @@ def initialize_root_agent():
                 if factory is None:
                     logger.warning("Skipping %s: factory unavailable", agent_name)
                     return None
-                return _install_dynamic_agent_tool_loop_guard(agent_name, factory(model_config))
+                return _install_conversation_continuity_callbacks(
+                    _install_dynamic_agent_tool_loop_guard(agent_name, factory(model_config))
+                )
             except Exception as exc:
                 logger.error("Failed to initialize %s: %s", agent_name, exc)
                 return None
@@ -5010,6 +5636,7 @@ def initialize_root_agent():
             "before_model_callback": _root_before_model_callback,
             "before_tool_callback": [_root_before_tool_callback],
             "after_tool_callback": [_root_after_tool_callback],
+            "on_model_error_callback": _make_context_overflow_error_callback(root_prompt.AGENT_NAME),
             "sub_agents": sub_agents,
             "tools": tools
         }

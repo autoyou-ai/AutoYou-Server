@@ -17,7 +17,9 @@ from types import SimpleNamespace
 
 from autoyou_agents.internet_agent.agent import (
     _extract_search_query,
+    _format_verified_internet_tool_result,
     _internet_after_tool_callback,
+    _internet_before_model_callback,
     _internet_expanded_before_model_callback,
     _looks_like_live_internet_request,
     _normalize_live_search_query,
@@ -104,4 +106,90 @@ async def test_expanded_internet_replays_verified_scrape_result_without_model_ro
     assert response.content.parts[0].function_call is None
     assert "Example Domain" in response.content.parts[0].text
     assert "https://example.com/" in response.content.parts[0].text
+    assert response.custom_metadata["internet_verified_tool_result"] is True
+
+
+def test_format_verified_internet_tool_result_live_search():
+    res = {
+        "status": "success",
+        "provider": "bing_rss",
+        "results_count": 2,
+        "query": "seattle weather",
+        "results": [
+            {
+                "title": "Weather in Seattle",
+                "url": "https://weather.example/seattle",
+                "snippet": "Current forecast for Seattle",
+            }
+        ],
+    }
+    formatted = _format_verified_internet_tool_result(
+        "internet_search",
+        {"query": "seattle weather"},
+        res,
+    )
+    assert "Retrieved 2 live internet search results for 'seattle weather'." in formatted
+    assert "Weather in Seattle" in formatted
+    assert "https://weather.example/seattle" in formatted
+
+
+def test_format_verified_internet_tool_result_wikipedia_fallback():
+    res = {
+        "status": "success",
+        "provider": "wikipedia",
+        "results_count": 1,
+        "query": "collateralized loan obligation",
+        "results": [
+            {
+                "title": "Collateralized loan obligation",
+                "url": "https://en.wikipedia.org/wiki/Collateralized_loan_obligation",
+                "snippet": "A structured asset-backed security.",
+            }
+        ],
+    }
+    formatted = _format_verified_internet_tool_result(
+        "internet_search",
+        {"query": "collateralized loan obligation"},
+        res,
+    )
+    assert (
+        "Live web search returned nothing relevant for 'collateralized loan obligation', "
+        "so here are 1 Wikipedia article instead (not live news)."
+    ) in formatted
+    assert "Collateralized loan obligation" in formatted
+    assert "https://en.wikipedia.org/wiki/Collateralized_loan_obligation" in formatted
+
+
+async def test_compact_internet_replays_verified_wikipedia_fallback_search():
+    state = {}
+    callback_context = SimpleNamespace(state=state, invocation_id="search-clo")
+    request = _llm_request("Search results for collateralized loan obligation")
+
+    dispatch = await _internet_before_model_callback(callback_context, request)
+    function_call = dispatch.content.parts[0].function_call
+    assert function_call.name == "internet_search"
+
+    await _internet_after_tool_callback(
+        SimpleNamespace(name="internet_search"),
+        {"query": "collateralized loan obligation"},
+        callback_context,
+        {
+            "status": "success",
+            "provider": "wikipedia",
+            "results_count": 1,
+            "query": "collateralized loan obligation",
+            "results": [
+                {
+                    "title": "Collateralized loan obligation",
+                    "url": "https://en.wikipedia.org/wiki/Collateralized_loan_obligation",
+                    "snippet": "A structured asset-backed security.",
+                }
+            ],
+        },
+    )
+
+    response = await _internet_before_model_callback(callback_context, request)
+    assert response.content.parts[0].function_call is None
+    assert "Wikipedia article instead" in response.content.parts[0].text
+    assert "Collateralized loan obligation" in response.content.parts[0].text
     assert response.custom_metadata["internet_verified_tool_result"] is True
