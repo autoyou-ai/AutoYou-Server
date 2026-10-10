@@ -1131,6 +1131,11 @@ PAGE_AGENT = "autoyou_page_agent"
 INTERNET_AGENT = "autoyou_internet_agent"
 ROOT_AGENT = "autoyou_agent"
 _CREATED = r"(?i)\b(?:created|saved|added)\b"
+# ~1k tokens of synthetic reference text per turn; six turns outgrow an 8k window.
+_HISTORY_FILLER = " ".join(
+    f"Line {line}: the example ledger lists widget batch {line} as packed and shipped." for line in range(55)
+)
+_RESEARCH_PROMPT = "search the web for what a collateralized loan obligation is"
 
 
 def continuity_scenarios() -> list[Scenario]:
@@ -1267,6 +1272,61 @@ def continuity_scenarios() -> list[Scenario]:
                 ScenarioTurn("Say hello in exactly five words.", ROOT_AGENT),
                 ScenarioTurn("Now say that same greeting in French.", ROOT_AGENT, must_match=(r"[A-Za-z]{3}",)),
             ),
+        ),
+        Scenario(
+            name="long_history_stays_inside_the_context_window",
+            description=(
+                "A history larger than num_ctx is trimmed before it is sent, not rejected "
+                "(2026-10-09: 'request (8345 tokens) exceeds the available context size (8192 tokens)')."
+            ),
+            turns=(
+                *(
+                    ScenarioTurn(
+                        f"Reply with exactly this word and nothing else: OK. Reference text {index} GL-{{tok}}: "
+                        + _HISTORY_FILLER,
+                        must_match=(r"(?i)\bok\b",),
+                    )
+                    for index in range(6)
+                ),
+                ScenarioTurn(
+                    "In one sentence, what is a collateralized loan obligation?",
+                    must_match=(r"(?i)\bloans?\b",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="follow_up_reuses_the_previous_answer",
+            description="A pronoun follow-up seconds later builds on the previous answer instead of starting over.",
+            turns=(
+                ScenarioTurn(
+                    "In one sentence, what is a collateralized loan obligation?",
+                    must_match=(r"(?i)\bloans?\b",),
+                ),
+                ScenarioTurn(
+                    "Explain it to a ten-year-old in one sentence.",
+                    must_match=(r"(?i)\b(?:loans?|money|borrow\w*|lend\w*|debt)\b",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="research_then_page_add_this",
+            description="'@page add this' after web research saves the research to the page feed, not one of its links.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(_RESEARCH_PROMPT, INTERNET_AGENT),
+                ScenarioTurn("@page add this", PAGE_AGENT, must_match=(r"(?i)\b(?:saved|added)\b",)),
+            ),
+            probes=(Probe("feed_total", delta=1),),
+        ),
+        Scenario(
+            name="research_then_notes_save_this",
+            description="'@notes save this' after web research saves the research as a note.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(_RESEARCH_PROMPT, INTERNET_AGENT),
+                ScenarioTurn("@notes save this", NOTES_AGENT, must_match=(_CREATED,)),
+            ),
+            probes=(Probe("notes_total", delta=1),),
         ),
     ]
 

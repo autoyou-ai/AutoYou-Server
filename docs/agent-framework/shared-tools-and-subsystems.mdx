@@ -119,6 +119,42 @@ Shared coding handoff helpers for builder -&gt; coding-agent workflows.
 | `normalize_frontend_requirement` | function | &nbsp; |
 | `build_coding_handoff_payload` | function | Create a structured handoff payload for coding_agent. |
 
+## `conversation_context.py`
+
+Conversation continuity for every AutoYou agent.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `estimate_text_tokens` | function | Estimate tokens for ``text`` (UTF-8 bytes / 3.5, rounded up). |
+| `estimate_message_tokens` | function | Estimate one LiteLLM chat message, including tool calls and images. |
+| `estimate_tools_tokens` | function | Estimate the tool-schema payload, which the provider renders into the prompt. |
+| `estimate_request_tokens` | function | Uncalibrated estimate for a whole request (messages plus tool schemas). |
+| `calibration_factor` | function | Multiplier from estimated to real tokens for ``model`` (1.0 until observed). |
+| `observe_prompt_tokens` | function | Fold a provider-reported prompt size into the model's calibration. |
+| `reset_calibration` | function | Forget learned factors (tests and model switches). |
+| `excerpt_text` | function | Shorten ``text`` to about ``max_tokens``, keeping its start and its end. |
+| `content_words` | function | Lower-cased, plural-folded content words of ``text`` (3+ characters, no stopwords). |
+| `topical_overlap` | function | Share of the query's content words that ``text`` also uses (0..1). |
+| `ConversationTurn` | class | One visible turn: what the user said, or what an agent answered. |
+| `turns_from_events` | function | Build the visible conversation from ADK session events. |
+| `turns_from_contents` | function | Visible turns from ``LlmRequest.contents`` (no timestamps available). |
+| `split_current_turn` | function | Return (the current user message, everything before it). |
+| `pending_user_turn` | function | The last user message that never got an answer (its turn failed), if any. |
+| `last_exchange_specialist_turn` | function | The specialist answer in the latest exchange, even when the root reworded it. |
+| `FollowUpSignal` | class | How the current message relates to the conversation so far. |
+| `recency_weight` | function | 1.0 for an immediate reply, 0.5 after one half-life; 0.6 when unknown. |
+| `classify_follow_up` | function | Decide whether ``text`` continues the conversation, and how. |
+| `SelectedTurn` | class | An earlier turn chosen for context, with its (possibly shortened) text and score. |
+| `select_context_turns` | function | Pick the earlier turns worth carrying, scored by recency and relevance. |
+| `describe_signal` | function | Plain-language description of how a message relates to the chat, for prompts. |
+| `render_context_block` | function | Render selected turns as a labelled, clearly delimited reference block. |
+| `strip_context_block` | function | Remove a rendered context block, leaving only the request around it. |
+| `context_ref_state_key` | function | Session-state key that carries a specialist's context reference into its child session. |
+| `stash_context_block` | function | Keep ``block`` in the bounded cache and return its reference id. |
+| `fetch_context_block` | function | The cached block for ``ref`` ("" when unknown or evicted). |
+| `append_block_to_system_instruction` | function | Append ``block`` to the request's system instruction once. |
+| `context_budget_for_window` | function | Tokens a specialist's context block may use for a given ``num_ctx``. |
+
 ## `conversation_refs.py`
 
 Small, dependency-free helpers for resolving "it / that / the above" in chat.

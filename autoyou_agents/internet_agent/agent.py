@@ -403,11 +403,21 @@ def _format_verified_internet_tool_result(tool_name: str, args: Dict[str, Any], 
             if isinstance(result, dict)
         ]
         count = int(tool_response.get("results_count") or len(results))
-        noun = "result" if count == 1 else "results"
-        prefix = f"Retrieved {count} live internet search {noun}"
-        if query:
-            prefix += f" for '{query}'"
-        prefix += "."
+        if str(tool_response.get("provider") or "") == "wikipedia":
+            # The web providers returned nothing relevant; say what these are
+            # rather than presenting encyclopedia articles as live results.
+            noun = "article" if count == 1 else "articles"
+            prefix = (
+                "Live web search returned nothing relevant"
+                + (f" for '{query}'" if query else "")
+                + f", so here are {count} Wikipedia {noun} instead (not live news)."
+            )
+        else:
+            noun = "result" if count == 1 else "results"
+            prefix = f"Retrieved {count} live internet search {noun}"
+            if query:
+                prefix += f" for '{query}'"
+            prefix += "."
         if not results:
             return prefix
         preview_lines = "\n".join(_format_search_result_preview(result) for result in results[:5])

@@ -37,8 +37,20 @@ __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-f61a706e9f8b9460f4787913"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import internet_tool
-from internet_tool import InternetTool, internet_search, scrape_website, take_screenshot, navigate_page
-from internet_tool import PlaywrightDriverManager, _goto_page_ready, _page_metrics_are_stable, _resolve_headless_override
+from internet_tool import (
+    InternetTool,
+    PlaywrightDriverManager,
+    _goto_page_ready,
+    _page_metrics_are_stable,
+    _resolve_headless_override,
+    internet_search,
+    navigate_page,
+    scrape_website,
+    search_result_is_explicit,
+    search_result_is_relevant,
+    take_screenshot,
+    vet_search_results,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -394,7 +406,143 @@ class TestInternetTool(unittest.TestCase):
              patch("internet_tool.get_playwright_browser", new=_unexpected_browser):
             result = asyncio.run(self.tool.internet_search("source-a public updates", max_results=5))
 
-        assert result == request_error
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["provider"], "duckduckgo_lite")
+        self.assertEqual(result["results"], [])
+        self.assertEqual(result["results_count"], 0)
+        self.assertIn("anti-bot challenge", result["error"])
+        self.assertIn("fallback_error", result)
+
+    def test_internet_search_falls_back_to_wikipedia_when_web_providers_empty(self):
+        """When web providers return no relevant results, vetted Wikipedia articles are returned."""
+        challenge_response = type("FakeResponse", (), {})()
+        challenge_response.text = "<html>Bots use DuckDuckGo too</html>"
+        challenge_response.content = challenge_response.text.encode()
+        challenge_response.raise_for_status = lambda: None
+
+        request_error = {
+            "status": "error",
+            "error": "DuckDuckGo Lite returned an anti-bot challenge and Bing RSS fallback did not return results",
+            "results": [],
+            "results_count": 0,
+            "query": "collateralized loan obligation",
+            "provider": "duckduckgo_lite",
+        }
+
+        wiki_payload = {
+            "status": "success",
+            "results": [
+                {
+                    "title": "Collateralized loan obligation",
+                    "url": "https://en.wikipedia.org/wiki/Collateralized_loan_obligation",
+                    "snippet": "A structured asset-backed security.",
+                    "description": "A structured asset-backed security.",
+                }
+            ],
+            "results_count": 1,
+            "query": "collateralized loan obligation",
+            "provider": "wikipedia",
+        }
+
+        async def _unexpected_browser(*args, **kwargs):
+            raise AssertionError("Playwright must not be invoked when lightweight providers handle the query")
+
+        with patch.object(self.tool.session, "get", return_value=challenge_response), \
+             patch.object(self.tool, "internet_search_with_bing_rss", return_value=request_error), \
+             patch.object(self.tool, "internet_search_with_wikipedia", return_value=wiki_payload), \
+             patch("internet_tool.get_playwright_browser", new=_unexpected_browser):
+            result = asyncio.run(self.tool.internet_search("collateralized loan obligation", max_results=5))
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["provider"], "wikipedia")
+        self.assertEqual(result["results_count"], 1)
+        self.assertIn("Wikipedia articles", result["notice"])
+        self.assertIn("DuckDuckGo Lite returned an anti-bot challenge", result["web_search_error"])
+
+    def test_internet_search_drops_off_topic_results_and_falls_back_to_wikipedia(self):
+        """Web results unrelated to the query are rejected by the relevance gate."""
+        off_topic_bing = {
+            "status": "success",
+            "results": [
+                {
+                    "title": "NHL Scores and Standings",
+                    "url": "https://example.com/nhl",
+                    "snippet": "Latest hockey scores.",
+                    "description": "Latest hockey scores.",
+                },
+                {
+                    "title": "FedEx Drop-Off Locations",
+                    "url": "https://example.com/fedex",
+                    "snippet": "Find shipping locations near you.",
+                    "description": "Find shipping locations near you.",
+                },
+            ],
+            "results_count": 2,
+            "query": "collateralized loan obligation",
+            "provider": "bing_rss",
+        }
+
+        wiki_payload = {
+            "status": "success",
+            "results": [
+                {
+                    "title": "Collateralized loan obligation",
+                    "url": "https://en.wikipedia.org/wiki/Collateralized_loan_obligation",
+                    "snippet": "A type of structured asset-backed security.",
+                    "description": "A type of structured asset-backed security.",
+                }
+            ],
+            "results_count": 1,
+            "query": "collateralized loan obligation",
+            "provider": "wikipedia",
+        }
+
+        with patch.object(self.tool, "internet_search_with_requests", return_value=off_topic_bing), \
+             patch.object(self.tool, "internet_search_with_wikipedia", return_value=wiki_payload):
+            result = asyncio.run(self.tool.internet_search("collateralized loan obligation", max_results=5))
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["provider"], "wikipedia")
+        self.assertEqual(result["results_count"], 1)
+        self.assertIn("unrelated to the query", result["web_search_error"])
+        self.assertIn("Wikipedia articles", result["notice"])
+        self.assertEqual(result["results"][0]["title"], "Collateralized loan obligation")
+
+    def test_vet_search_results_filtering(self):
+        results = [
+            {"title": "Collateralized Loan Obligation Guide", "url": "https://finance.example/clo", "snippet": "Explaining CLO securities"},
+            {"title": "NHL Scores", "url": "https://sports.example/nhl", "snippet": "Hockey updates"},
+            {"title": "Explicit Content", "url": "https://xxx.example/video", "snippet": "Adult site"},
+        ]
+        kept, off_topic, explicit = vet_search_results("collateralized loan obligation", results)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["title"], "Collateralized Loan Obligation Guide")
+        self.assertEqual(off_topic, 1)
+        self.assertEqual(explicit, 1)
+
+    def test_search_result_is_relevant_matching(self):
+        query = "collateralized loan obligation"
+        matching_result = {"title": "What is a CLO?", "url": "https://example.com/clo", "snippet": "A collateralized loan obligation is..."}
+        unrelated_result = {"title": "FedEx Dropoff Locator", "url": "https://example.com/fedex", "snippet": "Find a shipping location"}
+        self.assertTrue(search_result_is_relevant(query, matching_result))
+        self.assertFalse(search_result_is_relevant(query, unrelated_result))
+
+    def test_search_result_is_explicit_detection(self):
+        clean_result = {"title": "AutoYou Assistant", "url": "https://autoyou.me", "snippet": "Personal assistant"}
+        explicit_result = {"title": "Adult Video Site", "url": "https://pornhub.example/video", "snippet": "Adult videos"}
+        self.assertFalse(search_result_is_explicit(clean_result))
+        self.assertTrue(search_result_is_explicit(explicit_result))
+
+    def test_internet_search_with_wikipedia_site_filter(self):
+        result = self.tool.internet_search_with_wikipedia("site:example.com test", max_results=5)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("site:example.com", result["error"])
+
+    def test_internet_search_with_wikipedia_disabled(self):
+        with patch("internet_tool.is_internet_access_enabled", return_value=False):
+            result = self.tool.internet_search_with_wikipedia("Python", max_results=5)
+        self.assertEqual(result["status"], "disabled")
+        self.assertFalse(result["enabled"])
 
     @staticmethod
     def _bing_rss(*urls: str) -> str:

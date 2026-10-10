@@ -10,10 +10,16 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 import atexit
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+_SERVER_ROOT = Path(__file__).resolve().parent
+_server_root_text = str(_SERVER_ROOT)
+if _server_root_text not in sys.path:
+    sys.path.insert(0, _server_root_text)
 
 from shared.platform_runtime import clear_test_runtime_state_overrides
 
