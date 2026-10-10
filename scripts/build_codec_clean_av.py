@@ -38,7 +38,7 @@ FFMPEG_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-08-13-05/"
     "ffmpeg-n8.1.3-14-g330caae0c1-win64-lgpl-shared-8.1.zip"
 )
-FFMPEG_SHA256 = "fab88c806009745666a4b0f4e0ff3b8cdbc91f8f5ae72cc67113dc6b5c67de46"
+FFMPEG_SHA256 = "1af9562d002b8e2ab66817616e8a9211e77ab4b0fef58c5c345f467dc0213729"
 BUILD_TOOLS = ("setuptools==84.0.0", "cython==3.3.0", "wheel==0.48.0", "delvewheel==1.13.1")
 # AutoYou's calls need these in FFmpeg: aiortc's VP8 and Opus, and H.264
 # encoders that are not x264.
