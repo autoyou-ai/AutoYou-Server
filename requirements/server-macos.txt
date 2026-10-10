@@ -31,6 +31,7 @@ httpx[http2]>=0.27.0
 # Floor raised past CVE-2026-71554 in h2<=4.4.0.
 h2>=4.4.1
 aiohttp>=3.14.3
+multidict>=6.9.1,<7
 aiosqlite>=0.21.0
 SQLAlchemy==2.0.50
 websockets>=15.0.1
@@ -54,9 +55,8 @@ yt-dlp>=2026.7.4
 # Local LLM integrations
 ollama==0.6.0
 huggingface_hub>=0.34.0,<2.0.0
-# datasets 5.0.0 caps fsspec at <=2026.4.0; keep this profile compatible
-# with optional tuning installs in reused build venvs.
-fsspec[http]>=2025.9.0,<=2026.4.0
+# Keep the shared patched filesystem version compatible with Datasets 5.0.1.
+fsspec[http]==2026.6.0
 
 # Messaging transports
 python-telegram-bot>=21.0.0,<22.0.0

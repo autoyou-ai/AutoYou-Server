@@ -29,6 +29,8 @@ httpx[http2]>=0.27.0
 # Floor raised past CVE-2026-71554 in h2<=4.4.0.
 h2>=4.4.1
 aiohttp>=3.14.3
+# GHSA-54p9-h82j-f925: fixed items-view reference ownership.
+multidict>=6.9.1,<7
 aiosqlite>=0.21.0
 # Exact pin: the packaged-binary builds verify this version at build time
 # (scripts/read_backend_runtime_pins.py via servers/*/build-backend).

@@ -69,7 +69,7 @@ RELEASE_ONLY_PACKAGES = (
 )
 
 COMPAT_IF_INSTALLED = {
-    "datasets": "datasets==5.0.0",
+    "datasets": "datasets==5.0.1",
     "instructor": "instructor==1.15.1",
 }
 
