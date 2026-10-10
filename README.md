@@ -52,17 +52,17 @@ cd AutoYou-Server
 Windows:
 
 ```powershell
-$ .\run_autoyou.bat --profile base
-(OR)
-$ .\run_autoyou.bat --profile full --host 0.0.0.0
+.\run_autoyou.bat --profile base
+# Or install the full runtime and listen on the local network:
+.\run_autoyou.bat --profile full --host 0.0.0.0
 ```
 
 macOS or Linux:
 
 ```bash
-$ ./run_autoyou.sh --profile base
-(OR)
-$ .\run_autoyou.bat --profile full --host 0.0.0.0
+./run_autoyou.sh --profile base
+# Or install the full runtime and listen on the local network:
+./run_autoyou.sh --profile full --host 0.0.0.0
 ```
 
 The launcher bootstraps a Python environment, installs dependencies from
