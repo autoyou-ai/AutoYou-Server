@@ -1,40 +1,40 @@
 {
   "artifacts": [
     {
-      "componentCount": 130,
+      "componentCount": 131,
       "displayName": "AutoYou Server source/full profile",
       "id": "autoyou-server-source-full",
       "notice": "docs/legal/generated/autoyou-server-source-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-source-full/sbom.cdx.json"
     },
     {
-      "componentCount": 95,
+      "componentCount": 96,
       "displayName": "AutoYou Server Windows binary-default build",
       "id": "autoyou-server-windows-default",
       "notice": "docs/legal/generated/autoyou-server-windows-default/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json"
     },
     {
-      "componentCount": 95,
+      "componentCount": 96,
       "displayName": "AutoYou Server macOS binary-default build",
       "id": "autoyou-server-macos-default",
       "notice": "docs/legal/generated/autoyou-server-macos-default/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json"
     },
     {
-      "componentCount": 131,
+      "componentCount": 132,
       "displayName": "AutoYou Server Windows connector-full build",
       "id": "autoyou-server-windows-connector-full",
       "notice": "docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json"
     },
     {
-      "componentCount": 131,
+      "componentCount": 132,
       "displayName": "AutoYou Server macOS connector-full build",
       "id": "autoyou-server-macos-connector-full",
       "notice": "docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt",
       "sbom": "docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json"
     }
   ],
-  "generatedAt": "2026-10-10T06:01:48+00:00"
+  "generatedAt": "2026-10-10T10:17:18+00:00"
 }

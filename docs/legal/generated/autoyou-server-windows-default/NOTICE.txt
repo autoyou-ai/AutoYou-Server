@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows binary-default build (autoyou-server-windows-default)
 Release profile: binary-default
 Dependency profile: binary-default
-Generated: 2026-10-10T06:01:48+00:00
+Generated: 2026-10-10T10:17:18+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -52,7 +52,7 @@ Third-Party Components
 - docker [pypi] - Apache-2.0 - requirements/base.txt
 - fastapi 0.136.3 [pypi] - MIT - requirements/base.txt
 - filelock [pypi] - MIT - requirements/base.txt
-- fsspec [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
 - google-adk 2.9.2 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
@@ -65,6 +65,7 @@ Third-Party Components
 - litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
+- multidict [pypi] - UNKNOWN - review before release - requirements/base.txt
 - ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
 - onnxruntime [pypi] - MIT - requirements/local-llm.txt
 - opencv-python [pypi] - Apache-2.0 - requirements/binary-default.txt

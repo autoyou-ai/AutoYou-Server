@@ -1384,11 +1384,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "fsspec[http]>=2025.9.0,<=2026.4.0"
-        },
-        {
-          "name": "specifier",
-          "value": ">=2025.9.0,<=2026.4.0"
+          "value": "fsspec[http]==2026.6.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1399,8 +1395,9 @@
           "value": "requirements/local-llm.txt"
         }
       ],
-      "purl": "pkg:pypi/fsspec",
-      "type": "library"
+      "purl": "pkg:pypi/fsspec@2026.6.0",
+      "type": "library",
+      "version": "2026.6.0"
     },
     {
       "licenses": [
@@ -1895,6 +1892,29 @@
         }
       ],
       "purl": "pkg:pypi/mss",
+      "type": "library"
+    },
+    {
+      "name": "multidict",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "multidict>=6.9.1,<7"
+        },
+        {
+          "name": "specifier",
+          "value": ">=6.9.1,<7"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/multidict",
       "type": "library"
     },
     {
@@ -3803,7 +3823,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-10T06:01:48+00:00",
+    "timestamp": "2026-10-10T10:17:18+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3812,7 +3832,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:851cddf2-14d8-44a1-a8fa-8baaa60373e0",
+  "serialNumber": "urn:uuid:038dfb09-2657-486b-9e16-44886c49cb72",
   "specVersion": "1.5",
   "version": 1
 }

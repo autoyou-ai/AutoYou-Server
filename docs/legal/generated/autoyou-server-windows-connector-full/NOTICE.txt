@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-10T06:01:48+00:00
+Generated: 2026-10-10T10:17:18+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -66,7 +66,7 @@ Third-Party Components
 - faster-whisper 1.2.1 [pypi] - MIT - requirements/voice.txt
 - filelock [pypi] - MIT - requirements/base.txt
 - flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
-- fsspec [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
 - g2p-en [pypi] - Apache-2.0 - requirements/voice.txt
 - google-adk 2.9.2 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
@@ -84,6 +84,7 @@ Third-Party Components
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - modelscope [pypi] - Apache-2.0 - requirements/voice.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
+- multidict [pypi] - UNKNOWN - review before release - requirements/base.txt
 - nltk [pypi] - Apache-2.0 - requirements/voice.txt
 - numba [pypi] - BSD-3-Clause - requirements/voice.txt
 - numpy [pypi] - BSD-3-Clause - requirements/voice.txt
