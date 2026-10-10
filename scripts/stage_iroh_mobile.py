@@ -48,7 +48,7 @@ def stage_android(sdk_root: Path, config: Path, output: Path, *, workspace: Path
         expected_files[f"jniLibs/{target.removeprefix('android-')}/{native}"] = metadata[target]["files"][native]
     for name, value in (("iroh-policy.json", release["policy"]), ("iroh-core.json", release["core"]), ("iroh-release.json", release)):
         expected_files["assets/" + name] = hashlib.sha256((json.dumps(value, indent=2, sort_keys=True) + "\n").encode()).hexdigest()
-    if output.exists():
+    if output.exists() and any(output.iterdir()):
         # A repeat build may reuse a complete identical set; never replace an unknown SDK.
         inventory = read_json(output / "mobile-inputs.json", 1024 * 1024)
         if inventory["sdk_manifests"] != {t: digest(sdk_root / t / "sdk-manifest.json") for t in targets} or inventory["config_sha256"] != digest(config):
@@ -59,7 +59,8 @@ def stage_android(sdk_root: Path, config: Path, output: Path, *, workspace: Path
             if digest(output / name) != expected:
                 raise ValueError("staged mobile input was modified")
         return
-    output.mkdir(parents=True)
+    # Gradle creates declared output directories before running an Exec task.
+    output.mkdir(parents=True, exist_ok=True)
     first = sdk_root / targets[0]
     shutil.copytree(first / "generated/uniffi", output / "generated/kotlin/uniffi")
     assets(output / "assets", release, first)
