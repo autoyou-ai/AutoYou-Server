@@ -46,6 +46,7 @@ INCLUDE_TUNING=false
 SKIP_VERIFY=false
 UNOFFICIAL=false
 ACCEPT_TERMS=false
+SKIP_LOCAL_BUILD_ACKNOWLEDGEMENT=false
 
 include_cognee_enabled() {
     local env_value
@@ -115,6 +116,7 @@ Options:
   --skip-verify           Skip packaged import and hardening verification.
   --unofficial            Build a local development artifact without official release gates.
   --accept-terms          Record local license acknowledgment without an interactive prompt.
+  --skip-local-build-acknowledgement  Build an unofficial validation artifact without recording acceptance.
   --help                  Show this help.
 EOF
 }
@@ -161,6 +163,10 @@ while [[ $# -gt 0 ]]; do
             ACCEPT_TERMS=true
             shift
             ;;
+        --skip-local-build-acknowledgement)
+            SKIP_LOCAL_BUILD_ACKNOWLEDGEMENT=true
+            shift
+            ;;
         --help|-h)
             usage
             exit 0
@@ -172,6 +178,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ "$SKIP_LOCAL_BUILD_ACKNOWLEDGEMENT" == true && "$UNOFFICIAL" == false ]]; then
+    echo "Skipping local acknowledgment requires --unofficial; official release gates remain required." >&2
+    exit 2
+fi
+if [[ "$SKIP_LOCAL_BUILD_ACKNOWLEDGEMENT" == true && "$ACCEPT_TERMS" == true ]]; then
+    echo "Cannot both skip and record local acknowledgment." >&2
+    exit 2
+fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
     echo "The WSL backend build must run on Linux/WSL." >&2
@@ -210,7 +225,9 @@ if [[ "$UNOFFICIAL" == false ]]; then
     }
 else
     echo "Building an unofficial local WSL backend; release authorization is required for official packaging."
-    if [[ "$ACCEPT_TERMS" == true ]]; then
+    if [[ "$SKIP_LOCAL_BUILD_ACKNOWLEDGEMENT" == true ]]; then
+        echo "No local license acknowledgment recorded for this validation build."
+    elif [[ "$ACCEPT_TERMS" == true ]]; then
         "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/acknowledge_local_build.py" --accept-terms
     else
         "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/acknowledge_local_build.py"

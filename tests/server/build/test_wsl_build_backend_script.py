@@ -2,6 +2,13 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 
+import os
+import shutil
+import subprocess
+import sys
+
+import pytest
+
 from tests.support.paths import REPO_ROOT
 
 
@@ -84,3 +91,42 @@ def test_packaged_launcher_does_not_steal_server_auth_arg():
     launcher = (REPO_ROOT / "autoyou_app.py").read_text(encoding="utf-8")
 
     assert "ArgumentParser(add_help=False, allow_abbrev=False)" in launcher
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Exercises the Linux build shell")
+@pytest.mark.parametrize("extra, message", [
+    ([], "requires --unofficial"),
+    (["--unofficial", "--accept-terms"], "Cannot both skip and record"),
+])
+def test_wsl_validation_acknowledgment_option_rejects_conflicting_modes(tmp_path, extra, message):
+    script = tmp_path / "build-backend.sh"
+    shutil.copyfile(BUILD_SCRIPT, script)
+    result = subprocess.run(
+        ["bash", str(script), "--skip-local-build-acknowledgement", *extra],
+        text=True, capture_output=True, check=False,
+        env={**os.environ, "AUTOYOU_TEST_ROOT": str(tmp_path / "state")},
+    )
+    assert result.returncode == 2
+    assert message in result.stderr
+    assert not (tmp_path / "state").exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Exercises the Linux build shell")
+def test_wsl_validation_build_does_not_forge_or_call_license_acceptance(tmp_path):
+    script = tmp_path / "repo/servers/wsl/build-backend.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copyfile(BUILD_SCRIPT, script)
+    calls = tmp_path / "python-calls"
+    python = tmp_path / "python"
+    python.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$AUTOYOU_TEST_CALLS"\nexit 0\n')
+    python.chmod(0o700)
+    result = subprocess.run(
+        ["bash", str(script), "--unofficial", "--skip-local-build-acknowledgement", "--python", str(python)],
+        text=True, capture_output=True, check=False,
+        env={**os.environ, "AUTOYOU_TEST_ROOT": str(tmp_path / "state"), "AUTOYOU_TEST_CALLS": str(calls)},
+    )
+    assert result.returncode == 1
+    assert "No local license acknowledgment recorded" in result.stdout
+    assert "Missing packaged guide staging helper" in result.stderr
+    assert "acknowledge_local_build.py" not in calls.read_text()
+    assert not (tmp_path / "state").exists()

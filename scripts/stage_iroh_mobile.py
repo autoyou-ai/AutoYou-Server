@@ -69,8 +69,9 @@ def stage_android(sdk_root: Path, config: Path, output: Path, *, workspace: Path
         dest = output / "jniLibs" / target.removeprefix("android-") / source.name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest)
-        if digest(dest) != metadata[target]["files"][source.name]:
-            raise ValueError("Android native library changed during staging")
+    for name, expected in expected_files.items():
+        if digest(output / name) != expected:
+            raise ValueError("Android input changed during staging")
     (output / "mobile-inputs.json").write_text(json.dumps(dict(schema_version=1,
         sdk_manifests={t: digest(sdk_root / t / "sdk-manifest.json") for t in targets}, config_sha256=digest(config),
         files=expected_files), indent=2, sort_keys=True) + "\n", encoding="utf-8")

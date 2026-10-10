@@ -26,6 +26,11 @@ Review the license and notices when prompted. Add `--accept-terms` only after
 reviewing them for an unattended build. A local unofficial build does not need
 official release authorization.
 
+For an automated validation build that must not record acceptance, combine
+`--unofficial --skip-local-build-acknowledgement`. This option cannot be used
+with `--accept-terms` or an official build. It retains the unofficial marker
+and does not grant publication rights.
+
 Optional tuning dependencies require `--include-tuning`. They have a separate
 advisory and compatibility scope; see [dependency guidance](../../requirements/README.md).
 The default compiler concurrency is `min(nproc, 16)`. Use `--jobs N` to choose
