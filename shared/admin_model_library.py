@@ -377,14 +377,17 @@ class ModelLibraryService:
                 if not item.get("has_cloud_badge"):
                     filtered_items.append(item)
                     continue
-                details = self.get_ollama_model_details(item["id"])
-                local_variants = [variant for variant in details.get("variants", []) if not variant.get("is_cloud")]
-                if local_variants:
-                    item = dict(item)
-                    item["local_variant_count"] = len(local_variants)
-                    # Remove 'Cloud' capability since we're showing this with local variants available
-                    item["capabilities"] = [cap for cap in item.get("capabilities", []) if cap.lower() != "cloud"]
-                    filtered_items.append(item)
+                try:
+                    details = self.get_ollama_model_details(item["id"])
+                    local_variants = [variant for variant in details.get("variants", []) if not variant.get("is_cloud")]
+                    if local_variants:
+                        item = dict(item)
+                        item["local_variant_count"] = len(local_variants)
+                        # Remove 'Cloud' capability since we're showing this with local variants available
+                        item["capabilities"] = [cap for cap in item.get("capabilities", []) if cap.lower() != "cloud"]
+                        filtered_items.append(item)
+                except Exception as exc:
+                    LOGGER.debug("Failed to inspect Ollama variants for %s: %s", item.get("id"), exc)
             items = filtered_items
 
         payload = {
@@ -399,31 +402,81 @@ class ModelLibraryService:
     def _parse_ollama_search_results(self, html_text: str, page: int) -> Tuple[List[Dict[str, Any]], bool]:
         soup = BeautifulSoup(html_text, "html.parser")
         items: List[Dict[str, Any]] = []
-        for li in soup.select("li[x-test-model], li.flex.items-baseline"):
-            link = li.find("a", href=re.compile(r"^/library/[^/]+$"))
-            if link is None:
-                continue
+        seen_slugs: set = set()
 
+        for link in soup.find_all("a", href=re.compile(r"^/library/[^/]+$")):
             href = link.get("href", "")
             slug = href.split("/library/", 1)[-1].strip("/")
-            if not slug:
+            if not slug or ":" in slug or slug in {"tags", "models"}:
                 continue
+            if slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
 
-            title_el = link.find(attrs={"x-test-search-response-title": True}) or link.find("h2")
+            title_el = (
+                link.find(attrs={"x-test-search-response-title": True})
+                or link.find("h2")
+            )
             title = " ".join(title_el.get_text(" ", strip=True).split()) if title_el else slug
-            summary_el = link.find("p", class_=re.compile(r"text-neutral-800"))
+
+            summary_el = (
+                link.find(attrs={"x-test-summary": True})
+                or link.find("p", class_=re.compile(r"text-neutral-800"))
+                or link.find("p")
+            )
             summary = " ".join(summary_el.get_text(" ", strip=True).split()) if summary_el else ""
-            capabilities = [
+
+            capabilities: List[str] = []
+            sizes: List[str] = []
+            has_cloud_badge = False
+
+            legacy_caps = [
                 " ".join(el.get_text(" ", strip=True).split())
                 for el in link.find_all(attrs={"x-test-capability": True})
             ]
-            sizes = [
+            legacy_sizes = [
                 " ".join(el.get_text(" ", strip=True).split())
                 for el in link.find_all(attrs={"x-test-size": True})
             ]
-            pulls_el = link.find(attrs={"x-test-pull-count": True})
+
+            if legacy_caps or legacy_sizes:
+                capabilities = legacy_caps
+                sizes = legacy_sizes
+                has_cloud_badge = any(cap.lower() == "cloud" for cap in capabilities)
+            else:
+                meta_div = link.find("div", class_=re.compile(r"mt-3|gap-2"))
+                if meta_div:
+                    for span in meta_div.find_all("span"):
+                        if span.find("span"):
+                            continue
+                        text = " ".join(span.get_text(" ", strip=True).split())
+                        if not text or text in {"|", "$"} or "$" in text or "token" in text.lower() or "usage" in text.lower():
+                            continue
+                        if re.match(r"^\d+(\.\d+)?[bmkBMK]$", text):
+                            sizes.append(text)
+                        elif "context" in text.lower():
+                            continue
+                        else:
+                            capabilities.append(text)
+                            if text.lower() == "cloud":
+                                has_cloud_badge = True
+
+            pulls_el = (
+                link.find(attrs={"x-test-pull-count": True})
+                or link.find(attrs={"title": re.compile(r"downloads|pulls", re.I)})
+                or link.find("span", class_=re.compile(r"tabular-nums"))
+            )
+            pull_count = ""
+            if pulls_el:
+                title_attr = pulls_el.get("title", "")
+                if "download" in title_attr.lower() or "pull" in title_attr.lower():
+                    pull_count = title_attr.split()[0]
+                else:
+                    pull_count = pulls_el.get_text(" ", strip=True)
+
             tag_count_el = link.find(attrs={"x-test-tag-count": True})
             updated_el = link.find(attrs={"x-test-updated": True})
+
             items.append(
                 {
                     "id": slug,
@@ -431,15 +484,19 @@ class ModelLibraryService:
                     "summary": summary,
                     "capabilities": capabilities,
                     "sizes": sizes,
-                    "pull_count": pulls_el.get_text(" ", strip=True) if pulls_el else "",
+                    "pull_count": pull_count,
                     "tag_count": tag_count_el.get_text(" ", strip=True) if tag_count_el else "",
                     "updated": updated_el.get_text(" ", strip=True) if updated_el else "",
                     "url": f"https://ollama.com{href}",
-                    "has_cloud_badge": any(cap.lower() == "cloud" for cap in capabilities),
+                    "has_cloud_badge": has_cloud_badge,
                 }
             )
 
-        has_more = f'hx-get="/search?page={page + 1}"' in html_text
+        has_more = (
+            f'hx-get="/search?page={page + 1}"' in html_text
+            or f'/search?page={page + 1}' in html_text
+            or f'page={page + 1}' in html_text
+        )
         return items, has_more
 
     def get_ollama_model_details(self, slug: str) -> Dict[str, Any]:
@@ -475,13 +532,12 @@ class ModelLibraryService:
                 continue
 
             classes = link.get("class") or []
-            if "sm:hidden" not in classes:
+            paragraphs = link.find_all("p")
+            if "sm:hidden" not in classes and not paragraphs:
                 continue
 
             if model_name in variants_by_name:
                 continue
-
-            paragraphs = link.find_all("p")
             tag_name = " ".join(paragraphs[0].get_text(" ", strip=True).split()) if paragraphs else model_name
             metadata_text = " ".join(paragraphs[1].get_text(" ", strip=True).split()) if len(paragraphs) > 1 else ""
             metadata_bits = [bit.strip() for bit in metadata_text.split("·") if bit.strip()]
@@ -531,17 +587,28 @@ class ModelLibraryService:
             return cached
 
         limit = safe_page * safe_page_size + 1
-        models = list(
-            self._hf_api.list_models(
-                search=normalized_query or None,
-                tags="gguf",
-                gated=False,
-                sort="downloads",
-                direction=-1,
-                limit=limit,
-                token=_read_env_token(),
+        try:
+            models = list(
+                self._hf_api.list_models(
+                    search=normalized_query or None,
+                    filter="gguf",
+                    gated=False,
+                    sort="downloads",
+                    limit=limit,
+                    token=_read_env_token(),
+                )
             )
-        )
+        except TypeError:
+            models = list(
+                self._hf_api.list_models(
+                    search=normalized_query or None,
+                    tags="gguf",
+                    gated=False,
+                    sort="downloads",
+                    limit=limit,
+                    token=_read_env_token(),
+                )
+            )
         has_more = len(models) > (safe_page * safe_page_size)
         start_index = (safe_page - 1) * safe_page_size
         page_items = models[start_index : start_index + safe_page_size]
