@@ -71,6 +71,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
                 "packaging==24.2",
                 "rich==14.3.4",
                 "h2==4.4.1",
+                "multidict==6.9.1",
             ]
         ),
         encoding="utf-8",
@@ -90,6 +91,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "mcp": "1.26.0",
         "nltk": "3.10.3",
         "h2": "4.3.0",
+        "multidict": "6.7.1",
         "cognee": "1.2.2",
     }
     calls: list[list[str]] = []
@@ -127,6 +129,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
     assert installed["nltk"] == "3.10.3"
     assert installed["opencv-python"] == "4.12.0.88"
     assert ["install", "--upgrade", "h2==4.4.1", "-c", str(constraints)] in calls
+    assert ["install", "--upgrade", "multidict==6.9.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "instructor==1.15.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "datasets==5.0.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "packaging==24.2", "-c", str(constraints)] in calls

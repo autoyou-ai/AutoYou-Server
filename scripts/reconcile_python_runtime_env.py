@@ -78,6 +78,7 @@ SYNC_LOCKED_IF_INSTALLED = (
     "h2",
     "huggingface-hub",
     "jiter",
+    "multidict",
     "numpy",
     "openai",
     "packaging",
