@@ -25,13 +25,21 @@ scopes searches by application and user.
 | `AUTOYOU_AI_MEMORY_SERVICE_URI` | Optional ADK memory-service URI, such as an absolute `sqlite:///` URI. |
 | `AUTOYOU_ADK_MEMORY_PERSISTENT=0` | Use ephemeral ADK memory. |
 | `ai_agent.record_messages_in_database=false` | Disable persistent native memory for the worker. |
-| Secure storage enabled | Use ephemeral native ADK memory because the upstream SQLite implementation stores plaintext. |
+| Secure Professional Maximus storage enabled | Use ephemeral native ADK memory. Existing AutoYou session/history and legacy memory stores keep their encrypted SQLite storage boundary. |
 | `AUTOYOU_TEST_ROOT` | Redirect native SQLite memory into the isolated test root, overriding inherited production URIs. |
 
 This service is available to ADK's memory APIs and custom agents. It does not
 automatically ingest every chat or migrate AutoYou's existing `memory_search`
 index. Existing session history, Persona, and optional Cognee retrieval keep
 their established storage contracts. See [Memory](/technical/memory-system).
+
+Normal, Secure, and Secure Professional authentication modes can use persistent
+native SQLite memory when recording is enabled. Maximus also protects stored
+data: its native ADK memory stays in RAM, while durable AutoYou history remains
+encrypted. Explicit ingestion and application/user search isolation still work
+in this mode. Cognee remains unsupported under Maximus. Disabling recording or
+setting `AUTOYOU_ADK_MEMORY_PERSISTENT=0` remains effective in the child worker;
+recording being disabled takes precedence over an environment opt-in.
 
 ## MCP SDK 2.x
 
@@ -56,8 +64,17 @@ documented private tunnel setup; a loopback URL alone is insufficient.
 ADK 2.11 cancels an SSE run when the caller disconnects. The MCP REST bridge
 cancels its upstream chat task on disconnect or caller cancellation. The
 LiteLLM/Ollama stream normalizer closes the underlying iterator or HTTP stream
-in its cleanup path. Work is not retried after cancellation. ADK records its
-native aborted-invocation event in the session history.
+in its cleanup path. Work is not retried after cancellation. ADK's native abort
+signal records an aborted-invocation event. Cancellation preserves existing
+session state and does not record an unfinished generation as a completed reply.
+
+Core shutdown stops WebRTC work and cancels session turns while the ADK worker
+is still alive. The session manager refuses new turns once shutdown starts.
+The parent then sends a loopback-only request with its private internal token
+to stop both worker listeners. Uvicorn has a bounded request cleanup period;
+the worker flushes protected storage on exit. Unresponsive or older workers
+retain a bounded process-termination fallback. Forced termination cannot
+guarantee that an uncommitted operation finishes.
 
 Cancellation stops ongoing generation. A tool side effect already completed
 before cancellation is not rolled back.

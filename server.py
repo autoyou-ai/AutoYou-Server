@@ -1968,9 +1968,10 @@ def _prepare_ai_agent_process_env(env_vars: Dict[str, str]) -> Dict[str, str]:
         if totp_secret:
             prepared_env[AI_AGENT_TOTP_SECRET_ENV] = totp_secret
 
-    prepared_env[ADK_MEMORY_PERSISTENT_ENV] = (
-        "1" if bool(ai_agent_cfg.get("record_messages_in_database", True)) else "0"
-    )
+    if not bool(ai_agent_cfg.get("record_messages_in_database", True)):
+        prepared_env[ADK_MEMORY_PERSISTENT_ENV] = "0"
+    else:
+        prepared_env.setdefault(ADK_MEMORY_PERSISTENT_ENV, "1")
     prepared_env.setdefault("ADK_ENABLE_MCP_MODERN_PROTOCOL", "1")
     storage_uris = _resolve_ai_agent_storage_uris(prepared_env)
     prepared_env[AI_AGENT_SESSION_SERVICE_URI_ENV] = storage_uris["session_service_uri"]

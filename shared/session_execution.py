@@ -471,6 +471,7 @@ class SessionExecutionManager:
         self._owner_aliases: Dict[str, str] = {}
         self._owner_pairing_modes: Dict[str, str] = {}
         self._contexts: Dict[str, _RuntimeContext] = {}
+        self._shutting_down = False
 
     def bind_transport_owner(
         self,
@@ -600,6 +601,14 @@ class SessionExecutionManager:
         timeout_seconds: Optional[float] = None,
         label: str = "chat",
     ) -> Any:
+        if self._shutting_down:
+            raise SessionTurnCancelledError(SessionExecutionStatus(
+                status=STATUS_CANCELLED,
+                message="The server is shutting down.",
+                canonical_user_id=identity.canonical_user_id,
+                canonical_session_id=identity.canonical_session_id,
+                metadata={"reason": "server_shutdown"},
+            ))
         ctx = self._contexts.get(identity.canonical_session_id)
         if ctx is None:
             ctx = _RuntimeContext(identity=identity)
@@ -877,7 +886,7 @@ class SessionExecutionManager:
                 if not turn.future.done():
                     turn.future.set_exception(SessionTurnTimeoutError(timeout_status))
             except asyncio.CancelledError:
-                if handler_task is not None and handler_task.cancelled():
+                if handler_task is not None and handler_task.cancelled() and not self._shutting_down:
                     cancelled_status = SessionExecutionStatus(
                         status=STATUS_CANCELLED,
                         message="This request was stopped by the user.",
@@ -919,6 +928,7 @@ class SessionExecutionManager:
                 runtime.worker_task = None
 
     async def shutdown(self) -> None:
+        self._shutting_down = True
         for ctx in list(self._contexts.values()):
             worker = ctx.worker_task
             if worker and not worker.done():

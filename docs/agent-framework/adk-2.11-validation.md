@@ -34,3 +34,27 @@ Native memory ingests sessions explicitly. Existing history is not automatically
 migrated. Real cloud-client accounts, private tunnels, macOS signing, and final
 release binaries were not certified by these local checks. Client setup and
 later upgrades retain their documented prerequisites.
+
+## Secure Professional Maximus compatibility follow-up
+
+- 167 focused server tests passed, including 31 new mode/lifecycle cases.
+  These cover source and packaged worker memory policy across all four security
+  modes, recording opt-out, and native abort, user cancellation, and runtime
+  shutdown after a partial provider reply.
+- The real ADK runner preserves existing state in the protected SQLite session
+  store. History remains encrypted after cancellation and after reopening the
+  existing key boundary. Native ADK memory remains usable and scoped in RAM;
+  no native memory database or SQLite journal/WAL sidecar is created by Maximus.
+- 150 repository compatibility tests passed. The parent launch fixtures now
+  include the native memory URI and a valid synthetic frontend bundle.
+- The tracked changed regression gate passed: 195 v2 tests (14 skips),
+  5 knowledge-governance tests, and 4 registry tests (1 skip).
+- Worker shutdown accepts only a loopback request with the private internal
+  token, stops both listeners, and flushes protected storage. Lifecycle tests
+  use synthetic servers and verify bounded termination fallback. Ordinary
+  pytest runs are blocked from sending shutdown to the live worker.
+- All new cases use isolated test roots and synthetic credentials. During the
+  broader checks, the active local runtime logged chat requests and its server
+  configuration and two registries changed. The compatibility checks do not
+  assert that this concurrently used runtime remained frozen, and do not switch
+  the operator's saved security mode.
