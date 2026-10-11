@@ -1484,6 +1484,11 @@
         } else if (provider === "google") {
             providerFields.push(field("Gemini model", input("aiProvider.google_model", { placeholder: "gemini-2.5-flash" }), "AutoYou uses the official Google API path while keeping its own agents active."));
             providerFields.push(field("Google API key", input("aiProvider.google_api_key", { placeholder: "Leave blank to keep saved key", type: "password" }), "Only enter a value when rotating or adding the saved key."));
+        } else if (provider === "openrouter") {
+            var openrouterKeyConfigured = getByPath(state.bootstrap, "status.openrouter.api_key_configured", false);
+            providerFields.push(field("OpenRouter model ID", input("aiProvider.openrouter_model", { placeholder: "provider/model" }), "Enter a model ID from OpenRouter that supports tool calling. AutoYou uses this model for its root agent and installed specialists."));
+            providerFields.push(field("OpenRouter API key", input("aiProvider.openrouter_api_key", { placeholder: openrouterKeyConfigured ? "Leave blank to keep saved key" : "Enter your OpenRouter API key", type: "password" }), openrouterKeyConfigured ? "A key is configured. Leave blank to keep it, or enter a replacement." : "Required to use OpenRouter. The key is saved on this server and is never returned to the browser."));
+            providerFields.push("<div class=\"ayu-note\">AutoYou manages agent routing, tools, and conversation state. Model requests go to OpenRouter. <a href=\"https://openrouter.ai/models?supported_parameters=tools\" target=\"_blank\" rel=\"noopener noreferrer\">Find models with tool support</a> or <a href=\"https://openrouter.ai/settings/keys\" target=\"_blank\" rel=\"noopener noreferrer\">manage OpenRouter API keys</a>.</div>");
         } else if (provider === "litellm") {
             providerFields.push(field("Provider/model string", input("aiProvider.litellm_model", { placeholder: "anthropic/claude-sonnet-4-5" }), "Examples: anthropic/..., openai/..., mistral/..."));
             providerFields.push(field("API base override", input("aiProvider.litellm_api_base", { placeholder: "Optional custom LiteLLM endpoint" }), "Leave empty for the provider's standard API base."));
@@ -2604,6 +2609,14 @@
             badgeTone: "blue"
         },
         {
+            id: "openrouter",
+            eyebrow: "One API key",
+            label: "OpenRouter + Agents",
+            description: "Use OpenRouter models with AutoYou agent routing, installed specialists, and tools.",
+            badgeLabel: "Cloud",
+            badgeTone: "blue"
+        },
+        {
             id: "openclaw",
             eyebrow: "Gateway-first mode",
             label: "OpenClaw",
@@ -2997,6 +3010,8 @@
                 litellm_model: getByPath(cfg, "ai_provider.litellm_model", ""),
                 litellm_api_key: "",
                 litellm_api_base: getByPath(cfg, "ai_provider.litellm_api_base", ""),
+                openrouter_model: getByPath(cfg, "ai_provider.openrouter_model", ""),
+                openrouter_api_key: "",
                 odysseus_api_base: getByPath(cfg, "ai_provider.odysseus_api_base", "http://127.0.0.1:7000"),
                 odysseus_model: getByPath(cfg, "ai_provider.odysseus_model", ""),
                 odysseus_token: "",
@@ -8757,6 +8772,7 @@
                 hermes_model: source.hermes_model,
                 litellm_model: source.litellm_model,
                 litellm_api_base: source.litellm_api_base,
+                openrouter_model: source.openrouter_model,
                 odysseus_api_base: source.odysseus_api_base,
                 odysseus_model: source.odysseus_model
             },
@@ -8779,6 +8795,9 @@
         }
         if (hasValue(source.litellm_api_key)) {
             payload.ai_provider.litellm_api_key = source.litellm_api_key;
+        }
+        if (hasValue(source.openrouter_api_key)) {
+            payload.ai_provider.openrouter_api_key = source.openrouter_api_key;
         }
         if (hasValue(source.odysseus_token)) {
             payload.ai_provider.odysseus_token = source.odysseus_token;

@@ -303,7 +303,7 @@ def test_admin_bootstrap_returns_live_snapshot(monkeypatch):
             },
             "cloud": {"server_token": "tok", "server_id": "srv_123", "email": "owner@example.com"},
             "security": {"mode": "secure_professional", "totp_secret": ""},
-            "ai_provider": {"provider": "ollama"},
+            "ai_provider": {"provider": "openrouter", "openrouter_model": "synthetic/tool-model", "openrouter_api_key": "synthetic-bootstrap-key"},
             "ai_agent": {"enabled": True, "port": 8081, "auto_start": True, "record_messages_in_database": True},
             "telegram": {},
             "signal": {},
@@ -355,6 +355,10 @@ def test_admin_bootstrap_returns_live_snapshot(monkeypatch):
         assert body["admin"]["server_identity_key"] == "cloud:srv_123"
         assert body["admin"]["theme"] == "dark"
         assert body["status"]["ai_agent"]["status"] == "Running"
+        assert body["status"]["openrouter"]["api_key_configured"] is True
+        assert body["config"]["ai_provider"]["openrouter_api_key"] == ""
+        assert "synthetic-bootstrap-key" not in response.text
+        assert server.STATE.config["ai_provider"]["openrouter_api_key"] == "synthetic-bootstrap-key"
         assert body["status"]["browser"]["advertised_websites"][0]["label"] == "Docs"
         assert body["metadata"]["tunnelmole"]["pair_code_mode"] == "authenticator"
         assert body["metadata"]["tunnelmole"]["connection_mode"] == "unmanaged"

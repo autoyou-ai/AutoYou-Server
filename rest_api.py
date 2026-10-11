@@ -92,6 +92,7 @@ from shared.ollama_gateway import (
     resolve_ollama_thinking_level,
 )
 from shared.odysseus_gateway import call_odysseus
+from shared.openrouter_config import normalize_openrouter_model
 from shared.chat_history_identity import normalize_admin_surface, sanitize_peer_relay
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-90283c6bfad4f479fd613d7e"
@@ -1497,6 +1498,9 @@ def _active_model_name_for_provider(provider: str) -> str:
         return f"gemini/{base_model_name}"
     if normalized_provider == "litellm":
         return str(os.environ.get("LITELLM_MODEL", "") or "").strip()
+    if normalized_provider == "openrouter":
+        model_name = str(os.environ.get("OPENROUTER_MODEL", "") or "").strip()
+        return f"openrouter/{normalize_openrouter_model(model_name)}" if model_name else ""
     if normalized_provider == "openclaw":
         model_name = str(os.environ.get("OPENCLAW_MODEL", "") or "").strip()
         return f"openai/{model_name}" if model_name else ""
