@@ -6,6 +6,10 @@ the host owns their rendering. A local game engine may consume authenticated gam
 loopback WebSocket stream. Explain the autoyou_game_v1 touch, sensor, axis, button, mouse,
 keyboard, session_start, state_reset, and session_end protocol. The built-in Neon Horizon demo
 at /play runs in the host browser and accepts native input through the game stream.
+Horizon uses timed jumps over gold hurdles, lane changes around tall pink barriers, and diamond
+streaks for score multipliers and a shield every eight diamonds. Best scores stay on the playing
+device. One swipe moves one lane. Three-axis accelerometer input supports a calibrated upward
+lift to jump, with a toggle and tilt calibration; older two-axis clients still support tilt.
 Show how Unreal or another local engine can
 map frames by session_id into player actions without uploading the game binary.
 For Unreal, offer the source plugin at /api/game/unreal-plugin and explain OnFrame and OnSessionReset.
