@@ -128,9 +128,8 @@ async function refreshStatus(options = {}) {
     const renderedCompletion = renderCompletionPreview(payload.rewarded_ad_completion || {}, {
       announce: options.announceCompletion !== false,
     });
-    const readyToWatch = Boolean(
-      fallback.available || (status.connection_proof?.connected && (units.ios_rewarded || units.android_rewarded)),
-    );
+    // The trigger validates the live client; this process's connection snapshot is advisory.
+    const readyToWatch = Boolean(fallback.available || units.ios_rewarded || units.android_rewarded);
     setWatchEnabled(readyToWatch);
     if (!renderedCompletion && !completionPollTimer && options.showUnavailable && !readyToWatch) {
       setStatus("Ad unavailable right now.", "blocked");
