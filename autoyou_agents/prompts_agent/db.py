@@ -19,7 +19,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from shared.secure_storage import enable_secure_storage_from_environment
+from shared.secure_storage import (
+    enable_secure_storage_from_environment,
+    ensure_secure_storage_for_path,
+    sealed_envelope_kind,
+    secure_storage_enabled,
+)
 
 from .config import (
     DATA_DIR,
@@ -47,26 +52,46 @@ def hash_pin(pin: str) -> str:
 
 
 class PromptsDatabase:
-    """Thread-safe SQLite storage for harvested prompts, sessions, projects, and hooks."""
+    """Thread-safe SQLite storage for harvested prompts, sessions, projects, and hooks.
+
+    Fully compatible with Secure Professional Maximus at-rest encryption and
+    event-driven key rotations via shared.secure_storage.
+    """
 
     def __init__(self, db_path: Optional[Path] = None):
         enable_secure_storage_from_environment()
         self.db_path = Path(db_path or get_prompts_db_path()).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_secure_storage_for_path(self.db_path)
         self._init_schema()
+
+    def is_encrypted(self) -> bool:
+        """Return True if the database file on disk is sealed under Secure Professional Maximus."""
+        if not self.db_path.is_file():
+            return secure_storage_enabled()
+        return sealed_envelope_kind(self.db_path) == "sqlite"
+
+    def is_maximus_active(self) -> bool:
+        """Return True if the Secure Professional Maximus storage boundary is actively running."""
+        return secure_storage_enabled()
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
         with _DB_LOCK:
+            ensure_secure_storage_for_path(self.db_path)
             conn = sqlite3.connect(
                 str(self.db_path),
                 timeout=30.0,
                 check_same_thread=False,
             )
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode = WAL")
-            conn.execute("PRAGMA synchronous = NORMAL")
-            conn.execute("PRAGMA foreign_keys = ON")
+            try:
+                conn.execute("PRAGMA foreign_keys = ON")
+                if not secure_storage_enabled():
+                    conn.execute("PRAGMA journal_mode = WAL")
+                    conn.execute("PRAGMA synchronous = NORMAL")
+            except Exception:
+                pass
             try:
                 yield conn
                 conn.commit()

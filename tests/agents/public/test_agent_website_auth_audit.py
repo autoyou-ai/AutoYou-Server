@@ -69,6 +69,7 @@ def test_every_agent_frontend_declares_a_mobile_viewport():
     ("module_name", "private_path"),
     (
         ("autoyou_agents.audio_agent.website.backend.app", "/api/library"),
+        ("autoyou_agents.prompts_agent.website.backend.app", "/api/prompts"),
     ),
 )
 def test_bespoke_sites_with_gated_defaults_fail_closed(monkeypatch, module_name, private_path):

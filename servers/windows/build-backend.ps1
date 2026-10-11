@@ -355,7 +355,13 @@ $mutableRuntimeDataPatterns = @(
     "autoyou_agents/notes_agent/media/*",
     "autoyou_agents/notes_agent/media/**/*",
     "autoyou_agents/notes_agent/autoyou_notes_agent/*",
-    "autoyou_agents/notes_agent/autoyou_notes_agent/**/*"
+    "autoyou_agents/notes_agent/autoyou_notes_agent/**/*",
+    "autoyou_agents/prompts_agent/*.db",
+    "autoyou_agents/prompts_agent/*.db.bak",
+    "autoyou_agents/prompts_agent/data/*",
+    "autoyou_agents/prompts_agent/data/**/*",
+    "prompts_agent/*.db",
+    "prompts_agent/*.db.bak"
 )
 
 if ($Clean) {
@@ -1456,7 +1462,9 @@ function Assert-PackagedBackendServerImports {
         "--verify-runtime-import", "autoyou_agents.data_collector_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.data_collector_agent.agent",
-        "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.agent"
+        "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.agent",
+        "--verify-runtime-import", "autoyou_agents.prompts_agent.website.backend.app",
+        "--verify-runtime-import", "autoyou_agents.prompts_agent.agent"
     )
     if ($Requirements -ne "base") {
         $verifyArguments += @(

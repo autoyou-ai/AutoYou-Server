@@ -20,8 +20,6 @@
     projects: [],
     activeSessionId: null,
     isSyncing: false,
-    otpToken: localStorage.getItem('ay_prompts_otp_token') || '',
-    isUnlocked: false,
     settings: {},
     graphData: null,
   };
@@ -79,12 +77,7 @@
     // Settings Modal
     settingsModal: document.getElementById('settings-modal'),
     btnCloseSettings: document.getElementById('btn-close-settings'),
-    settingsLockedView: document.getElementById('settings-locked-view'),
     settingsUnlockedView: document.getElementById('settings-unlocked-view'),
-    inputPin: document.getElementById('input-pin'),
-    btnSubmitPin: document.getElementById('btn-submit-pin'),
-    otpErrorMsg: document.getElementById('otp-error-msg'),
-    btnRelock: document.getElementById('btn-relock'),
     settingCaptureOutputs: document.getElementById('setting-capture-outputs'),
     settingCaptureAttachments: document.getElementById('setting-capture-attachments'),
     settingSyncInterval: document.getElementById('setting-sync-interval'),
@@ -95,8 +88,6 @@
     newHookBox: document.getElementById('new-hook-box'),
     hookTokenVal: document.getElementById('hook-token-val'),
     btnCopyHookToken: document.getElementById('btn-copy-hook-token'),
-    inputNewPin: document.getElementById('input-new-pin'),
-    btnSavePin: document.getElementById('btn-save-pin'),
 
     // Toasts
     toastContainer: document.getElementById('toast-container'),
@@ -117,13 +108,12 @@
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     };
-    if (state.otpToken) {
-      headers['X-OTP-Token'] = state.otpToken;
-    }
-
     try {
-      const resp = await fetch(url, { ...options, headers });
+      const resp = await fetch(url, { ...options, credentials: 'same-origin', headers });
       const data = await resp.json().catch(() => ({}));
+      if (resp.status === 401) {
+        window.location.reload();
+      }
       if (!resp.ok) {
         throw new Error(data.detail || data.message || `HTTP ${resp.status}`);
       }
@@ -811,62 +801,23 @@
   // ─── Settings Modal & OTP Security ─────────────────────────────────────────
   async function openSettingsModal() {
     dom.settingsModal.style.display = 'flex';
-    dom.otpErrorMsg.style.display = 'none';
-    dom.inputPin.value = '';
-
-    // Check if current session token is valid
     try {
       const res = await apiCall('/api/settings');
-      state.isUnlocked = res.is_unlocked;
       state.settings = res.settings || {};
-
-      if (state.isUnlocked) {
-        showUnlockedSettings();
-      } else {
-        showLockedPinPrompt();
-      }
-    } catch {
-      showLockedPinPrompt();
+      showCollectionSettings();
+    } catch (err) {
+      dom.settingsModal.style.display = 'none';
+      showToast(err.message, 'error');
     }
   }
 
-  function showLockedPinPrompt() {
-    dom.settingsLockedView.style.display = 'block';
-    dom.settingsUnlockedView.style.display = 'none';
-    dom.inputPin.focus();
-  }
-
-  function showUnlockedSettings() {
-    dom.settingsLockedView.style.display = 'none';
+  function showCollectionSettings() {
     dom.settingsUnlockedView.style.display = 'block';
 
     dom.settingCaptureOutputs.checked = Boolean(state.settings.capture_outputs);
     dom.settingCaptureAttachments.checked = Boolean(state.settings.capture_attachments);
     dom.settingEncryptedStorage.checked = Boolean(state.settings.encrypted_storage);
     dom.settingSyncInterval.value = state.settings.sync_interval || 'hourly';
-  }
-
-  async function submitOtpPin() {
-    const pin = dom.inputPin.value.trim();
-    if (!pin) return;
-
-    try {
-      const res = await apiCall('/api/settings/verify-otp', {
-        method: 'POST',
-        body: JSON.stringify({ pin }),
-      });
-      state.otpToken = res.token;
-      localStorage.setItem('ay_prompts_otp_token', res.token);
-      state.isUnlocked = true;
-      showToast('Passcode verified! Settings unlocked 🔓', 'success');
-      // Refresh settings
-      const settingsRes = await apiCall('/api/settings');
-      state.settings = settingsRes.settings || {};
-      showUnlockedSettings();
-    } catch (err) {
-      dom.otpErrorMsg.style.display = 'block';
-      dom.otpErrorMsg.textContent = 'Invalid security PIN. Please try again.';
-    }
   }
 
   async function saveSettings() {
@@ -897,25 +848,6 @@
       dom.newHookBox.style.display = 'block';
       dom.hookTokenVal.textContent = res.token;
       showToast('Push token generated! Copy it now.', 'success');
-    } catch (err) {
-      showToast(err.message, 'error');
-    }
-  }
-
-  async function saveNewPin() {
-    const newPin = dom.inputNewPin.value.trim();
-    if (!newPin || newPin.length < 4) {
-      showToast('Passcode must be at least 4 digits', 'warning');
-      return;
-    }
-
-    try {
-      await apiCall('/api/settings', {
-        method: 'POST',
-        body: JSON.stringify({ new_pin: newPin }),
-      });
-      dom.inputNewPin.value = '';
-      showToast('Security PIN updated successfully! 🔒', 'success');
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -1078,20 +1010,6 @@
       }
     });
 
-    // OTP submit
-    dom.btnSubmitPin.addEventListener('click', submitOtpPin);
-    dom.inputPin.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') submitOtpPin();
-    });
-
-    dom.btnRelock.addEventListener('click', () => {
-      state.otpToken = '';
-      state.isUnlocked = false;
-      localStorage.removeItem('ay_prompts_otp_token');
-      showLockedPinPrompt();
-      showToast('Settings relocked 🔒', 'success');
-    });
-
     dom.btnSaveSettings.addEventListener('click', saveSettings);
     dom.btnForceFullResync.addEventListener('click', () => {
       if (confirm('Run full historical resync? This sweeps all historical logs across all worktrees and tools.')) {
@@ -1104,7 +1022,6 @@
     dom.btnCopyHookToken.addEventListener('click', () => {
       copyToClipboard(dom.hookTokenVal.textContent, 'push hook token');
     });
-    dom.btnSavePin.addEventListener('click', saveNewPin);
   }
 
   // ─── Initialization ────────────────────────────────────────────────────────

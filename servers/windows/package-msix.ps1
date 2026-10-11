@@ -214,7 +214,9 @@ function Remove-MutableRuntimeState {
         "login_ui_state.db",
         "page_feed.db",
         "sessions.db",
-        "sessions.db.bak"
+        "sessions.db.bak",
+        "prompts.db",
+        "prompts.db.bak"
     )) {
         Get-ChildItem -LiteralPath $Root -Recurse -File -Filter $fileName -Force -ErrorAction SilentlyContinue |
             Remove-Item -Force -ErrorAction SilentlyContinue

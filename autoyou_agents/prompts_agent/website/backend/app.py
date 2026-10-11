@@ -7,32 +7,25 @@
 
 from __future__ import annotations
 
-import hmac
-import json
 import logging
-import os
-import secrets
 import threading
-import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
 from shared.secure_storage import secure_storage_enabled
 
 from autoyou_agents.prompts_agent.collector import get_global_collector
 from autoyou_agents.prompts_agent.config import (
     AGENT_NAME,
     APP_DISPLAY_NAME,
-    DATA_DIR,
     SOFTWARE_COLORS,
     SOFTWARE_LABELS,
     SUPPORTED_SOFTWARES,
 )
 from autoyou_agents.prompts_agent.db import PromptsDatabase, utc_now
+from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 
 logger = logging.getLogger(__name__)
 
@@ -40,55 +33,38 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = APP_ROOT / "frontend"
 INDEX_HTML = FRONTEND_DIR / "index.html"
 
-# Active OTP session tokens: {token: expire_timestamp}
-_OTP_SESSIONS: Dict[str, float] = {}
-_OTP_LOCK = threading.Lock()
-_OTP_TTL_SECONDS = 3600  # 1 hour validity
-
-
-def _create_otp_session() -> str:
-    token = secrets.token_hex(24)
-    with _OTP_LOCK:
-        _OTP_SESSIONS[token] = time.time() + _OTP_TTL_SECONDS
-    return token
-
-
-def _is_otp_authenticated(token: Optional[str]) -> bool:
-    if not token:
-        return False
-    with _OTP_LOCK:
-        exp = _OTP_SESSIONS.get(token)
-        if exp and exp > time.time():
-            return True
-        elif exp:
-            del _OTP_SESSIONS[token]
-    return False
-
-
-def _extract_auth_token(request: Request) -> Optional[str]:
-    # Check X-OTP-Token header
-    h = request.headers.get("X-OTP-Token")
-    if h:
-        return h.strip()
-    # Check Bearer token
-    auth_h = request.headers.get("Authorization", "")
-    if auth_h.startswith("Bearer "):
-        return auth_h[7:].strip()
-    # Check cookie
-    cookie = request.cookies.get("autoyou_prompts_otp")
-    if cookie:
-        return cookie.strip()
-    return None
-
 
 def get_db() -> PromptsDatabase:
     return get_global_collector().db
+
+
+def _hook_token(request: Request) -> str:
+    token = request.headers.get("X-Prompt-Token", "").strip()
+    if token:
+        return token
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def _hook_ingestion_authenticated(request: Request) -> bool:
+    # Hook credentials permit ingestion only, never history or management access.
+    if request.method != "POST" or request.url.path != "/api/push":
+        return False
+    token = _hook_token(request)
+    return bool(token and get_db().validate_hook_token(token))
 
 
 app = FastAPI(
     title=APP_DISPLAY_NAME,
     description="Universal prompt harvester and Obsidian-style mind map visualizer",
     version="1.0.0",
+)
+install_agent_website_auth(
+    app,
+    agent_name=AGENT_NAME,
+    title=APP_DISPLAY_NAME,
+    register_auth_routes=True,
+    is_authenticated=_hook_ingestion_authenticated,
 )
 
 # The frontend uses relative same-origin requests, including through the
@@ -99,10 +75,21 @@ app = FastAPI(
 # ─── Public Endpoints ────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
 async def serve_index():
     if INDEX_HTML.is_file():
         return HTMLResponse(INDEX_HTML.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>My Prompt</h1><p>Frontend assets not found.</p>")
+
+
+@app.get("/app.js")
+async def serve_script():
+    return FileResponse(FRONTEND_DIR / "app.js", media_type="text/javascript")
+
+
+@app.get("/styles.css")
+async def serve_styles():
+    return FileResponse(FRONTEND_DIR / "styles.css", media_type="text/css")
 
 
 @app.get("/api/status")
@@ -276,16 +263,8 @@ async def ingest_hook_prompt(
     """Receive a prompt pushed from an external tool, IDE hook, or CLI script."""
     db = get_db()
 
-    # Authenticate token if hooks are registered
-    hooks = db.list_hooks()
-    if hooks:
-        raw_token = request.headers.get("X-Prompt-Token") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-        validated = db.validate_hook_token(raw_token)
-        if not validated:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid or missing X-Prompt-Token header for software hook.",
-            )
+    if not db.validate_hook_token(_hook_token(request)):
+        raise HTTPException(status_code=401, detail="A valid X-Prompt-Token is required.")
 
     collector = get_global_collector()
     try:
@@ -298,70 +277,32 @@ async def ingest_hook_prompt(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# ─── OTP-Gated Settings & Management Endpoints ──────────────────────────────
+# Settings and management use the same authenticated session as the website.
 
 @app.get("/api/settings")
-async def get_public_settings(request: Request):
-    """Return settings state and whether the current session is unlocked via OTP."""
+async def get_settings():
+    """Return collection settings after the shared website authentication gate."""
     db = get_db()
-    token = _extract_auth_token(request)
-    is_unlocked = _is_otp_authenticated(token)
 
     settings = db.get_all_settings()
     # Mask private hash
     settings.pop("otp_pin_hash", None)
     settings.pop("default_otp_pin", None)
+    settings.pop("otp_enabled", None)
     settings["encrypted_storage"] = secure_storage_enabled()
 
     return {
         "status": "success",
-        "is_unlocked": is_unlocked,
         "settings": settings,
         "supported_softwares": SUPPORTED_SOFTWARES,
     }
 
 
-@app.post("/api/settings/verify-otp")
-async def verify_otp(payload: Dict[str, Any]):
-    """Verify numeric OTP / Passcode and issue session token."""
-    pin = str(payload.get("pin") or "").strip()
-    if not pin:
-        raise HTTPException(status_code=400, detail="PIN is required")
-
-    db = get_db()
-    if not db.verify_otp_pin(pin):
-        raise HTTPException(status_code=401, detail="Invalid OTP PIN / passcode")
-
-    session_token = _create_otp_session()
-    response = JSONResponse({
-        "status": "success",
-        "message": "OTP verified successfully. Settings unlocked.",
-        "token": session_token,
-        "expires_in_seconds": _OTP_TTL_SECONDS,
-    })
-    response.set_cookie(
-        key="autoyou_prompts_otp",
-        value=session_token,
-        max_age=_OTP_TTL_SECONDS,
-        httponly=True,
-        samesite="lax",
-    )
-    return response
-
-
 @app.post("/api/settings")
 async def update_settings(
-    request: Request,
     payload: Dict[str, Any],
 ):
-    """Save configuration changes (Requires verified OTP session)."""
-    token = _extract_auth_token(request)
-    if not _is_otp_authenticated(token):
-        raise HTTPException(
-            status_code=401,
-            detail="OTP verification required to modify settings.",
-        )
-
+    """Save collection settings using the authenticated website session."""
     db = get_db()
     allowed_keys = {
         "sync_interval",
@@ -369,8 +310,10 @@ async def update_settings(
         "capture_outputs",
     }
 
-    if payload.get("encrypted_storage"):
-        raise HTTPException(status_code=422, detail="Encrypted prompt storage is not implemented.")
+    if "encrypted_storage" in payload:
+        raise HTTPException(status_code=422, detail="Storage encryption is controlled by server security settings.")
+    if any(key in payload for key in ("new_pin", "otp_enabled", "default_otp_pin", "otp_pin_hash")):
+        raise HTTPException(status_code=422, detail="Authentication is controlled by the shared website gate.")
 
     updated = {}
     if "sync_interval" in payload:
@@ -382,10 +325,6 @@ async def update_settings(
             db.set_setting(k, v)
             updated[k] = v
 
-    if "new_pin" in payload and str(payload["new_pin"]).strip():
-        db.update_otp_pin(str(payload["new_pin"]).strip())
-        updated["pin_updated"] = True
-
     return {
         "status": "success",
         "message": "Settings updated successfully.",
@@ -394,15 +333,8 @@ async def update_settings(
 
 
 @app.get("/api/hooks")
-async def list_hooks(request: Request):
-    """List registered hook tokens (Requires verified OTP session)."""
-    token = _extract_auth_token(request)
-    if not _is_otp_authenticated(token):
-        raise HTTPException(
-            status_code=401,
-            detail="OTP verification required to manage hooks.",
-        )
-
+async def list_hooks():
+    """List registered hook metadata using the authenticated website session."""
     db = get_db()
     hooks = db.list_hooks()
     return {"status": "success", "hooks": hooks}
@@ -410,17 +342,9 @@ async def list_hooks(request: Request):
 
 @app.post("/api/hooks/generate")
 async def generate_hook(
-    request: Request,
     payload: Dict[str, Any],
 ):
-    """Generate a new hook token for a software installation (Requires OTP)."""
-    token = _extract_auth_token(request)
-    if not _is_otp_authenticated(token):
-        raise HTTPException(
-            status_code=401,
-            detail="OTP verification required to generate hook tokens.",
-        )
-
+    """Generate an ingestion-only hook token after website authentication."""
     client_name = str(payload.get("client_name") or "New Client Hook").strip()
     db = get_db()
     token_id, raw_token = db.create_hook_token(client_name)
@@ -440,13 +364,8 @@ async def generate_hook(
 @app.post("/api/hooks/{token_id}/revoke")
 async def revoke_hook(
     token_id: str,
-    request: Request,
 ):
-    """Revoke a hook token (Requires OTP)."""
-    token = _extract_auth_token(request)
-    if not _is_otp_authenticated(token):
-        raise HTTPException(status_code=401, detail="OTP verification required.")
-
+    """Revoke a hook token using the authenticated website session."""
     db = get_db()
     db.revoke_hook(token_id)
     return {"status": "success", "message": f"Hook token '{token_id}' revoked."}
@@ -484,5 +403,5 @@ async def export_prompts(
 
 # ─── Mount Static Frontend Assets ───────────────────────────────────────────
 
-if FRONTEND_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+# Frontend files have explicit routes so static dot-segment normalization cannot
+# turn a public authentication/asset path into a protected frontend file.

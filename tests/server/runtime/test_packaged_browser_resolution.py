@@ -41,6 +41,7 @@ def test_macos_packaged_tls_uses_shipped_roots_and_preserves_explicit_override(m
     pem.parent.mkdir(parents=True)
     pem.write_text("synthetic test roots")
     monkeypatch.setenv(macos_runtime_support.PACKAGED_RESOURCES_ROOT_ENV, str(tmp_path))
+    monkeypatch.setenv("SSL_CERT_FILE", "synthetic-original-ca-path")
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     macos_runtime_support.configure_packaged_runtime_environment("server.py")
     assert os.environ["SSL_CERT_FILE"] == str(pem)
@@ -53,6 +54,7 @@ def test_macos_packaged_tls_uses_shipped_roots_and_preserves_explicit_override(m
 
 def test_macos_source_runtime_uses_system_roots_when_bundle_is_absent(monkeypatch, tmp_path):
     monkeypatch.setenv(macos_runtime_support.PACKAGED_RESOURCES_ROOT_ENV, str(tmp_path))
+    monkeypatch.setenv("SSL_CERT_FILE", "synthetic-original-ca-path")
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     original_is_file = Path.is_file
     monkeypatch.setattr(Path, "is_file", lambda path: path == Path("/etc/ssl/cert.pem") or original_is_file(path))

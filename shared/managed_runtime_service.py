@@ -357,7 +357,14 @@ def _stop_process(handle: ManagedRuntimeHandle, logger: logging.Logger) -> bool:
 
         root_alive = process.poll() is None
         if os.name == "nt" and handle.process_job is not None:
-            remaining = handle.process_job.terminate_remaining(grace_seconds=0.0)
+            # terminate_remaining returns how many members needed termination,
+            # not how many remain alive after the job termination completes.
+            handle.process_job.terminate_remaining(grace_seconds=0.0)
+            cleanup_deadline = time.monotonic() + 2.0
+            remaining = handle.process_job.active_processes()
+            while remaining and time.monotonic() < cleanup_deadline:
+                time.sleep(0.05)
+                remaining = handle.process_job.active_processes()
             handle.process_job.close()
             handle.process_job = None
             if root_alive:

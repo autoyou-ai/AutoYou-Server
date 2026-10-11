@@ -118,6 +118,10 @@ autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 autoyou_agents/data_collector_agent/data_collector_agent/
 autoyou_agents/persona_agent/persona_agent/*.md
 autoyou_agents/media_generation_agent/config/video.json
+autoyou_agents/prompts_agent/prompts.db
+autoyou_agents/prompts_agent/prompts.db*
+autoyou_agents/prompts_agent/data/
+/prompts_agent/
 
 # Your own agents that stay out of this repository: copy (or link) agent
 # packages into autoyou_agents/private/ and the server loads them like any other.

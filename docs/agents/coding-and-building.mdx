@@ -232,3 +232,19 @@ Builds one exact, unsent prompt from Telegram Saved Messages or the website, att
 | `execute_prompt` | &nbsp; |
 | `stop_prompt` | &nbsp; |
 | `configure_prompt` | Apply only native desktop-agent settings requested by the caller. |
+
+## `prompts_agent`
+
+Universal prompt harvester and Obsidian-style mind map visualizer across Codex, Claude, Cursor, Antigravity, and VS Code.
+
+- **Location:** `autoyou_agents/prompts_agent/`
+- **Website:** `/agent/prompts_agent/`
+
+| Declared tool | Summary |
+| :--- | :--- |
+| `search_prompts` | Search collected prompts across Codex, Claude, Cursor, Antigravity, and VS Code. |
+| `get_prompt_details` | Retrieve full prompt text, assistant output, attachments, and turn metadata. |
+| `list_prompt_projects` | List all detected projects and worktrees with prompt and session counts. |
+| `trigger_sync` | Trigger an immediate harvest across all detected AI tools. |
+| `get_sync_status` | Check whether a background collection sync is actively running and review the last run. |
+| `get_prompt_stats` | Return platform-wide prompt collection statistics and software breakdown. |

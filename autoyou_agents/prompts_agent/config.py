@@ -22,15 +22,25 @@ def get_prompts_data_dir() -> Path:
     """Return the writable per-service state directory, scoped under AUTOYOU_TEST_ROOT if set."""
     module_dir = Path(__file__).resolve().parent
     runtime_anchor = module_dir
-    for parent in module_dir.parents:
-        if (parent / "server.py").is_file() and (parent / "autoyou_agents").is_dir():
+    for parent in [module_dir, *module_dir.parents]:
+        if (
+            (parent / "server.py").is_file()
+            or (parent / "AutoYou.exe").is_file()
+            or (parent / "autoyou-lite.exe").is_file()
+            or (parent / "runtime_modules").is_dir()
+            or (parent / "servers").is_dir()
+            or (parent / "core_server").is_dir()
+        ):
             runtime_anchor = parent
             break
     return get_service_data_dir(AGENT_NAME, anchor=runtime_anchor)
 
 
 def get_prompts_db_path() -> Path:
-    """Return the database path for prompts_agent."""
+    """Return the database path for prompts_agent, respecting AUTOYOU_PROMPTS_DB_PATH if set."""
+    env_override = str(os.getenv("AUTOYOU_PROMPTS_DB_PATH", "")).strip()
+    if env_override:
+        return Path(env_override).expanduser().resolve()
     return get_prompts_data_dir() / "prompts.db"
 
 
@@ -58,8 +68,6 @@ DEFAULT_SETTINGS = {
     "capture_attachments": False,
     "capture_outputs": True,
     "encrypted_storage": False,
-    "otp_enabled": True,
-    "default_otp_pin": "123456",  # Default passcode; user can change in settings
     "max_prompt_chars": 32000,
     "max_output_chars": 32000,
 }

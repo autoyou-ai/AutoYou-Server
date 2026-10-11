@@ -27,6 +27,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 # build, different cwd) silently disabled the game inside a blanket except.
 # `shared` is a real package and carries no project-internal imports.
 from shared import game_ping_pong
+from shared.chat_stop_control import stop_acknowledgment, stop_target_error
 from shared.game_input import GameInputHub, normalize_game_input
 from shared.datachannel_manager import (
     DataChannelMessage as SharedDataChannelMessage,
@@ -7986,13 +7987,17 @@ class WebRTCManager:
                 identity = _runtime._resolve_conversation_identity(base_identity)
                 execution_manager = _runtime.get_session_execution_manager()
                 if conversation_action in {"cancel", "stop", "interrupt"}:
-                    control_result = await execution_manager.cancel_turn(identity)
-                    control_name = "prompt_cancelled"
-                    response_text = (
-                        "Stop requested. The active AutoYou request has been cancelled."
-                        if control_result.get("cancelled")
-                        else "There is no active AutoYou request to stop."
+                    target_error = stop_target_error(
+                        identity, metadata, server_identity_key=_runtime._get_server_identity_key(),
                     )
+                    active_task = execution_manager.get_active_task(identity)
+                    if target_error:
+                        control_result = {"cancelled": False, "active_stopped": False, "reason": target_error}
+                        control_name = "prompt_cancel_failed"
+                        response_text = "The conversation changed. Return to its live chat before stopping a response."
+                    else:
+                        control_result = await execution_manager.cancel_turn(identity)
+                        control_name, response_text = stop_acknowledgment(control_result)
                 else:
                     control_result = await _runtime._delete_server_conversation_history(identity)
                     control_name = "server_history_deleted" if control_result.get("deleted") else "server_history_delete_failed"
@@ -8002,11 +8007,15 @@ class WebRTCManager:
                         else "AutoYou could not delete the server conversation history."
                     )
 
-                current_task = _runtime.asyncio.current_task()
-                for task_set in (self.session_reconnect_survivable_tasks, self.session_message_tasks):
-                    for tracked_task in list(task_set.get(str(session_id or ""), set())):
-                        if tracked_task is not current_task and not tracked_task.done():
-                            tracked_task.cancel()
+                # The execution manager cancels this conversation's turns.
+                # Cancelling every task on the transport also kills unrelated
+                # browser requests and new turns submitted while Stop unwinds.
+                if conversation_action == "delete_server_history":
+                    current_task = _runtime.asyncio.current_task()
+                    for task_set in (self.session_reconnect_survivable_tasks, self.session_message_tasks):
+                        for tracked_task in list(task_set.get(str(session_id or ""), set())):
+                            if tracked_task is not current_task and not tracked_task.done():
+                                tracked_task.cancel()
 
                 response_message = _runtime.create_chat_message(
                     message=response_text,
@@ -8020,6 +8029,9 @@ class WebRTCManager:
                         "control_result": dict(control_result or {}),
                         "original_message_id": message_id,
                         **_runtime._build_conversation_metadata(identity),
+                        "conversation_force_target": True,
+                        "client_control_id": str(metadata.get("client_control_id") or "")[:128],
+                        "requested_conversation_session_id": metadata.get("conversation_session_id", ""),
                     },
                 )
                 datachannel_manager = self._datachannel_manager_for_session(
@@ -8028,6 +8040,28 @@ class WebRTCManager:
                 )
                 if datachannel_manager:
                     await datachannel_manager.send_message(response_message)
+                if control_name == "prompt_stopping" and active_task is not None:
+                    async def confirm_stopped():
+                        try:
+                            await _runtime.asyncio.shield(active_task)
+                        except _runtime.asyncio.CancelledError:
+                            if not active_task.done():
+                                raise
+                        except Exception:
+                            pass
+                        finished = dict(control_result, active_stopped=True)
+                        name, text = stop_acknowledgment(finished)
+                        confirmation = _runtime.create_chat_message(
+                            message=text, session_id=session_id,
+                            user_id=_runtime.get_configured_server_name(), context=[],
+                            metadata={**response_message.payload["metadata"],
+                                      "conversation_control": name, "control_result": finished},
+                        )
+                        manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
+                        if manager:
+                            await manager.send_message(confirmation)
+                    self._track_session_task(str(session_id or ""), confirm_stopped(),
+                                             "chat_stop_confirmation", survive_disconnect=True)
                 return
             if conversation_action in {"rename", "rename_conversation"}:
                 # Client -> server only. The name is kept for Chat & History and
@@ -8218,6 +8252,8 @@ class WebRTCManager:
             execution_manager = _runtime.get_session_execution_manager()
 
             async def stream_chunk(chunk: dict):
+                if execution_manager.cancellation_requested(identity):
+                    return
                 if chunk.get("_autoyou_progress"):
                     now = _runtime.time.monotonic()
                     if now - progress_state["last_sent_at"] < 12.0:
@@ -8316,6 +8352,7 @@ class WebRTCManager:
                 _execute_chat_request,
                 on_status=_on_execution_status,
                 label="webrtc-chat",
+                request_id=message_id,
             )
             reply = chat_resp.response or "(no response)"
             response_metadata = dict(getattr(chat_resp, "metadata", {}) or {})

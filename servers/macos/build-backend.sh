@@ -1562,6 +1562,8 @@ verify_packaged_backend_imports() {
         --verify-runtime-import "autoyou_agents.fine_tuning_agent.website.backend.app"
         --verify-runtime-import "autoyou_agents.data_collector_agent.agent"
         --verify-runtime-import "autoyou_agents.fine_tuning_agent.agent"
+        --verify-runtime-import "autoyou_agents.prompts_agent.website.backend.app"
+        --verify-runtime-import "autoyou_agents.prompts_agent.agent"
     )
     if requirements_has_tuning; then
         runtime_verify_args+=(
@@ -3487,6 +3489,12 @@ compile_python_backend() {
         "--noinclude-data-files=autoyou_agents/notes_agent/media/**/*"
         "--noinclude-data-files=autoyou_agents/notes_agent/autoyou_notes_agent/*"
         "--noinclude-data-files=autoyou_agents/notes_agent/autoyou_notes_agent/**/*"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/*.db"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/*.db.bak"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/data/*"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/data/**/*"
+        "--noinclude-data-files=prompts_agent/*.db"
+        "--noinclude-data-files=prompts_agent/*.db.bak"
         "--enable-plugin=dill-compat"
         "--enable-plugin=multiprocessing"
         # The compiled AI agent worker re-enters this binary via

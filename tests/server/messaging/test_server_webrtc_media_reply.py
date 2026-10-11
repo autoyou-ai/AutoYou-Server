@@ -42,7 +42,8 @@ async def test_webrtc_media_reply_is_sent_separately_before_text_reply(monkeypat
             return True
 
     class DummyExecutionManager:
-        async def submit_turn(self, identity_arg, factory, on_status=None, label="chat"):
+        async def submit_turn(self, identity_arg, factory, on_status=None, label="chat", request_id=None):
+            assert request_id == "user-msg-1"
             return await factory()
 
     async def fake_process_chat_message(chat_request, ai_agent_url=None, on_chunk=None, on_media_reply=None):

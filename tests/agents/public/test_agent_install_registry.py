@@ -105,6 +105,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "notify_agent",
         "page_agent",
         "persona_agent",
+        "prompts_agent",
         "tasks_agent",
     }
     opt_in = {

@@ -426,6 +426,8 @@ class _QueuedTurn:
     handler: Callable[[], Awaitable[Any]]
     on_status: Optional[Callable[[SessionExecutionStatus], Any]]
     timeout_seconds: float
+    cancel_requested: bool = False
+    request_id: str = ""
 
 
 @dataclass
@@ -592,6 +594,14 @@ class SessionExecutionManager:
             "last_error_message": ctx.last_error_message,
         }
 
+    def get_active_task(self, identity: UnifiedSessionIdentity) -> Optional[asyncio.Task]:
+        ctx = self._contexts.get(identity.canonical_session_id)
+        return ctx.active_task if ctx is not None else None
+
+    def cancellation_requested(self, identity: UnifiedSessionIdentity) -> bool:
+        ctx = self._contexts.get(identity.canonical_session_id)
+        return bool(ctx and ctx.active_turn and ctx.active_turn.cancel_requested)
+
     async def submit_turn(
         self,
         identity: UnifiedSessionIdentity,
@@ -600,6 +610,7 @@ class SessionExecutionManager:
         on_status: Optional[Callable[[SessionExecutionStatus], Any]] = None,
         timeout_seconds: Optional[float] = None,
         label: str = "chat",
+        request_id: Optional[str] = None,
     ) -> Any:
         if self._shutting_down:
             raise SessionTurnCancelledError(SessionExecutionStatus(
@@ -636,6 +647,7 @@ class SessionExecutionManager:
             handler=handler,
             on_status=on_status,
             timeout_seconds=float(timeout_seconds or self.default_turn_timeout_seconds),
+            request_id=str(request_id or "")[:128],
         )
         # from __debug_provenance_j__ import fifteenpercent
         ctx.queued_turns += 1
@@ -680,6 +692,11 @@ class SessionExecutionManager:
         ctx.queued_turns = max(0, ctx.queued_turns - len(queued_turns))
 
         active_task = ctx.active_task if ctx.active_task and not ctx.active_task.done() else None
+        cancelled_request_ids = [turn.request_id for turn in queued_turns if turn.request_id]
+        if ctx.active_turn is not None:
+            ctx.active_turn.cancel_requested = True
+            if ctx.active_turn.request_id:
+                cancelled_request_ids.append(ctx.active_turn.request_id)
         prestart_turn = ctx.active_turn if active_task is None else None
         active = active_task is not None or prestart_turn is not None
         active_stopped = not active or prestart_turn is not None
@@ -727,6 +744,7 @@ class SessionExecutionManager:
             "active": active,
             "active_stopped": active_stopped,
             "queued": len(queued_turns),
+            "cancelled_request_ids": cancelled_request_ids,
             "canonical_session_id": canonical_session_id,
         }
 
@@ -850,6 +868,20 @@ class SessionExecutionManager:
                     asyncio.shield(handler_task),
                     timeout=turn.timeout_seconds,
                 )
+                if turn.cancel_requested:
+                    # A provider/tool can finish cleanup by returning normally.
+                    # Its late output must not become a completed chat reply.
+                    cancelled_status = SessionExecutionStatus(
+                        status=STATUS_CANCELLED,
+                        message="This request was stopped by the user.",
+                        canonical_user_id=ctx.identity.canonical_user_id,
+                        canonical_session_id=ctx.identity.canonical_session_id,
+                        metadata={"reason": "user_cancelled"},
+                    )
+                    await _maybe_await(turn.on_status(cancelled_status) if turn.on_status else None)
+                    if not turn.future.done():
+                        turn.future.set_exception(SessionTurnCancelledError(cancelled_status))
+                    continue
                 ctx.consecutive_timeouts = 0
                 ctx.last_error_message = ""
                 self._sync_from_response_metadata(ctx, result)
