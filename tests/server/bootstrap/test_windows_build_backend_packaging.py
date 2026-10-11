@@ -34,6 +34,9 @@ def test_windows_runtime_site_packages_are_pruned_to_active_requirements():
     remove_build_tools = text.index("Remove-PatternsIfPresent -Root $runtimeSitePackagesRoot")
 
     assert copy_site_packages < prune_call < remove_build_tools
+    runtime_tool_removal = text[remove_build_tools:text.index(")", remove_build_tools)]
+    assert '"setuptools"' not in runtime_tool_removal
+    assert '"setuptools-*.dist-info"' not in runtime_tool_removal
 
 
 def test_windows_runtime_pruner_includes_optional_cognee_requirements_when_enabled():

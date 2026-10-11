@@ -1976,8 +1976,6 @@ Remove-FilePatternsRecursively -Root $runtimeStdlibRoot -Patterns @("*.pyc", "*.
 Remove-PatternsIfPresent -Root $runtimeSitePackagesRoot -Patterns @(
     "pip",
     "pip-*.dist-info",
-    "setuptools",
-    "setuptools-*.dist-info",
     "wheel",
     "wheel-*.dist-info",
     "nuitka",
