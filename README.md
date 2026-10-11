@@ -4,7 +4,15 @@
 
 <h1 align="center">AutoYou Server</h1>
 
-<p align="center"><strong>You are not the product. You are the owner.</strong><br>A self-hosted AI server for the computer you already own.<br>Use it locally or on your Home Wi-Fi, or access from anywhere securely via Internet.<br>Only you and your trusted contacts can access your AutoYou Server. AutoYou is entirely P2P and E2E (peer-to-peer and end-to-end encrypted).<br>Build your own App Store, runs serverless Web Applications just like ANY cloud SaaS applications without Usage limits or API costs.<br>Build and host your own games and share them with your friends using Game Mode.<br>Unlimited AI chat, voice calls with AI, Lobby chat, Peer voice & video calls across all devices, video-conference meetings and remote-desktop control - everything on-device with no telemetry/diagnostics/usage metrics captured by default.<br> Works without VPN, Supports Tailscale VPN providers, build your own support, deploy on your own Cloud.<br>Own your data. Set your rules. Train your models. Lower your cloud token usage.</p>
+<p align="center"><strong>You are not the product. You are the owner.</strong><br>
+A self-hosted AI server for the computer you already own.<br>
+Use it locally, on your home Wi-Fi, or from remote paired devices when your network setup allows it.<br>
+Paired sessions use encrypted WebRTC transport. Control access through the server's authentication and pairing settings.<br>
+Build and host web applications and games on your computer, and share supported Game Mode experiences with friends.<br>
+Use AI chat, voice, lobbies, peer calls, and remote desktop across supported paired devices.<br>
+Local models can reduce cloud token usage; configured cloud AI and hosted services can have API or subscription costs and their own data policies.<br>
+Connect without a VPN where your network supports it, or use a configured VPN such as Tailscale.<br>
+Own your data. Set your rules. Prepare your training workflows.</p>
 
 <p align="center">
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml/badge.svg?branch=main" alt="Public checks"></a>
@@ -53,17 +61,17 @@ cd AutoYou-Server
 Windows:
 
 ```powershell
-$ .\run_autoyou.bat --profile base
-(OR)
-$ .\run_autoyou.bat --profile full --host 0.0.0.0
+.\run_autoyou.bat --profile base
+# Or select the Full profile with LAN access:
+.\run_autoyou.bat --profile full --host 0.0.0.0
 ```
 
 macOS or Linux:
 
 ```bash
-$ ./run_autoyou.sh --profile base
-(OR)
-$ .\run_autoyou.bat --profile full --host 0.0.0.0
+./run_autoyou.sh --profile base
+# Or select the Full profile with LAN access:
+./run_autoyou.sh --profile full --host 0.0.0.0
 ```
 
 The launcher bootstraps a Python environment, installs dependencies from
