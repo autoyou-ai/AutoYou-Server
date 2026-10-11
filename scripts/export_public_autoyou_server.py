@@ -121,6 +121,7 @@ PUBLIC_GENERATED_LEGAL_PATHS = {
 
 PUBLIC_DOC_PREFIXES = (
     "docs/images/",
+    "docs/legal/licenses/",
     "docs/security/",
     "docs/technical/",
 )
@@ -135,6 +136,8 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/admin-ui/overview-and-status.mdx',
     'docs/admin-ui/security-console.mdx',
     'docs/admin-ui/setup-and-recipes.mdx',
+    'docs/agent-framework/adk-2.11-validation.md',
+    'docs/agent-framework/adk-runtime-upgrade.mdx',
     'docs/agent-framework/agent-web-frontends.mdx',
     'docs/agent-framework/agent-workbench.mdx',
     'docs/agent-framework/architecture.mdx',
@@ -187,6 +190,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     "docs/index.md",
     "docs/releases/81.0.1.md",
     "docs/releases/81.0.2.md",
+    "docs/legal/adk-runtime-license-review.md",
     "docs/legal/release-artifacts.json",
     "docs/legal/release-model.md",
     "docs/legal/security-contact.md",
