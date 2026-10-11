@@ -716,7 +716,10 @@ class PromptsCollector:
                     # Check cache for incremental sync
                     cached = self.db.get_cached_file(str(file_path))
                     if not full_resync and cached:
-                        if cached["mtime"] >= mtime and cached["file_size"] == fsize:
+                        # Only skip if the file was previously parsed and yielded sessions.
+                        # Files cached with 0 sessions are re-evaluated so updated parsers
+                        # (such as Copilot drafts, deltas, and state.vscdb) can extract them.
+                        if cached["mtime"] >= mtime and cached["file_size"] == fsize and cached.get("session_count", 0) > 0:
                             continue  # File unchanged since last sync
 
                     # Parse according to software

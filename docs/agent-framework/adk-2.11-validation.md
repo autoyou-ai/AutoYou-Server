@@ -7,11 +7,12 @@ Local Windows validation on 2026-10-10:
 - 205 focused server tests passed: native SQLite persistence and user/app
   isolation, factory URI paths, native abort/history sealing, provider cleanup,
   worker launch, MCP REST cancellation, staged frontend copies, and build contracts.
-- 160 repository focused tests passed, with 11 platform skips and 10 subtests:
+- 161 repository focused tests passed, with 11 platform skips and 10 subtests:
   MCP modern/legacy clients, real ADK-to-adapter stdio, legal inventory,
   v2 packaging, and the existing Prompts Agent changes.
 - The tracked `python scripts/e2e_validate.py changed` regression gate passed:
-  195 v2 checks (14 skips), 5 website checks, and 4 registry checks (1 skip).
+  195 v2 tests (14 skips), the public website audit, 5 knowledge-governance
+  tests, and 4 registry tests (1 skip).
 - The `.llm` governance validator passed for 117 files.
 - A fresh staged ADK 2.11 frontend passed sanitization and verification;
   all 108 JavaScript chunks and injected inline script passed Node syntax checks.
