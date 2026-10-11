@@ -53,7 +53,6 @@ __debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-7f353a72ebd3bb0a95003323"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_GENERATION_LOCK = threading.Lock()
 
 _GENERATION_ACTION_RE = re.compile(
     r"\b(?:generate|create|make|render|produce|draw|animate)\b",
@@ -378,17 +377,18 @@ def _run_generation_job(
     reply_target: Optional[Dict[str, Any]],
 ) -> None:
     try:
-        with _GENERATION_LOCK:
-            result = generate_media_sync(
-                prompt=prompt,
-                media_type=media_type,
-                model_type=model_type,
-                resolution=resolution,
-                steps=steps,
-                frames=frames,
-                seed=seed,
-                history_item_id=item_id,
-            )
+        result = generate_media_sync(
+            prompt=prompt,
+            media_type=media_type,
+            model_type=model_type,
+            resolution=resolution,
+            steps=steps,
+            frames=frames,
+            seed=seed,
+            history_item_id=item_id,
+        )
+        if result.get("status") != "success":
+            update_history_status(item_id, "failed", result.get("message") or "Generation failed.")
     except Exception as exc:
         message = f"Background media generation job crashed: {exc}"
         update_history_status(item_id, "failed", message)
@@ -510,6 +510,7 @@ def generate_media(
     Returns:
         dict: Job-start summary. The finished file is sent back to the saved reply target.
     """
+    item_id = None
     try:
         normalized_prompt = str(prompt or "").strip()
         if not normalized_prompt:
@@ -531,7 +532,7 @@ def generate_media(
             file_path="",
             file_name="",
             settings=settings,
-            status="generating"
+            status="queued"
         )
 
         creator_user_id, _creator_ai_session_id = _extract_runtime_identifiers(tool_context)
@@ -576,6 +577,8 @@ def generate_media(
     except ValueError as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:
+        if item_id is not None:
+            update_history_status(item_id, "failed", f"Could not start generation: {e}")
         return {"status": "error", "message": f"Failed to execute generation: {str(e)}"}
 
 def get_media_history(limit: Optional[int] = 10, media_type: Optional[str] = None) -> dict:

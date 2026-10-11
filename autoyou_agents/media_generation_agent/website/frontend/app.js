@@ -86,6 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let activeJobs = {}; // ID -> Job element
   let galleryFilter = "all";
   let configData = {};
+  let engineReady = false;
   let pollingInterval = null;
   let currentOptimizedPrompt = "";
 
@@ -349,8 +350,12 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (data.success) {
         configData = data.config;
+        engineReady = data.connected === true;
         applyGenerationDefaultsForMediaType();
         const engineName = configData.engine === "draw_things" ? "Draw Things" : "Wan2GP";
+        const generateButton = document.getElementById("generate-submit-btn");
+        generateButton.disabled = !data.connected;
+        generateButton.title = data.connected ? "" : "Complete the local GPU setup in Configuration.";
         if (data.connected) {
           statusDot.className = "status-dot green";
           statusLabel.textContent = `${engineName}: Ready`;
@@ -370,14 +375,18 @@ document.addEventListener("DOMContentLoaded", () => {
             failReason = "Wan2GP Root folder does not exist.";
           } else if (!data.diagnostic.python_exists) {
             failReason = "Wan2GP Python path is invalid.";
+          } else if (data.diagnostic.runtime && data.diagnostic.runtime.error) {
+            failReason = data.diagnostic.runtime.error;
           }
           statusDetail.textContent = `${failReason} Check Configuration settings page.`;
         }
       }
     } catch (e) {
+      engineReady = false;
       statusDot.className = "status-dot red";
       statusLabel.textContent = "Local engine: Error";
       statusDetail.textContent = "Could not check local setup.";
+      document.getElementById("generate-submit-btn").disabled = true;
     }
   }
 
@@ -460,7 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       alert("Unexpected connection error: Could not reach the local generator.");
     } finally {
-      submitBtn.disabled = false;
+      submitBtn.disabled = !engineReady;
       submitBtn.innerHTML = "<span>🚀</span> Kick off Generation";
     }
   });
@@ -473,7 +482,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (!data.success) return;
       
-      const runningJobs = data.history.filter(item => item.status === "generating");
+      const runningJobs = data.history.filter(item => ["queued", "generating"].includes(item.status));
       
       if (runningJobs.length > 0) {
         // Render running jobs
@@ -484,8 +493,8 @@ document.addEventListener("DOMContentLoaded", () => {
           card.innerHTML = `
             <div class="job-loader"></div>
             <div class="job-details">
-              <div class="job-title">[${escapeHtml(job.media_type.toUpperCase())}] Generating Media #${escapeHtml(job.id)}</div>
-              <p class="job-status">Please wait while your local generator works...</p>
+              <div class="job-title">[${escapeHtml(job.media_type.toUpperCase())}] ${job.status === "queued" ? "Queued" : "Generating"} Media #${escapeHtml(job.id)}</div>
+              <p class="job-status">${escapeHtml(job.progress_message || (job.status === "queued" ? "Waiting for the local generation engine." : "Loading the model and generating media."))}</p>
               <div class="prompt-text" style="font-size: 11px; margin-top: 6px; opacity: 0.8;">"${escapeHtml(job.original_prompt.substring(0, 80))}..."</div>
             </div>
           `;
@@ -504,6 +513,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <div class="job-details">
                 <div class="job-title">Last generation failed: #${escapeHtml(latest.id)}</div>
                 <p class="job-status">${escapeHtml((latest.error_message || "Wan2GP did not produce an output file.").substring(0, 220))}</p>
+                <details><summary>Failure details</summary><pre style="white-space: pre-wrap; overflow-wrap: anywhere;">${escapeHtml(latest.error_message || "The generator did not produce an output file.")}</pre></details>
                 <div class="prompt-text" style="font-size: 11px; margin-top: 6px; opacity: 0.8;">"${escapeHtml((latest.original_prompt || "").substring(0, 80))}..."</div>
               </div>
             </div>
@@ -564,7 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (!data.success) return;
       
-      const completedItems = data.history.filter(item => item.status !== "generating");
+      const completedItems = data.history.filter(item => !["queued", "generating"].includes(item.status));
       
       if (completedItems.length === 0) {
         galleryEmpty.classList.remove("hidden");
@@ -762,15 +772,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     envDetectBtn.classList.remove("hidden");
-    const ready = configured.app_dir_exists && configured.python_exists;
+    const runtime = env.runtime || {};
+    const ready = runtime.ready === true;
     const osLabel = platform.system === "Darwin" ? "macOS" : (platform.system || "Unknown OS");
-    const gpuLabel = platform.has_nvidia ? "NVIDIA GPU" : (platform.machine || "");
+    const gpuLabel = runtime.device || (platform.has_nvidia ? "NVIDIA GPU" : (platform.amd_targets || []).join(", ") || platform.machine || "");
     envPlatformLine.textContent = ready
       ? `${osLabel} (${gpuLabel}) — Wan2GP is set up and ready at ${configured.app_dir}.`
       : `${osLabel} (${gpuLabel}) — Wan2GP is not set up yet on this computer.`;
     if (ready) {
       envGuidanceLine.textContent = "";
       envInstallBtn.classList.add("hidden");
+    } else if (configured.app_dir_exists && configured.python_exists) {
+      envGuidanceLine.textContent = runtime.error || "The GPU environment could not be verified.";
+      envInstallBtn.classList.toggle("hidden", !env.install_supported);
     } else if (env.discovered && env.discovered.python) {
       envGuidanceLine.textContent = `Found an existing install at ${env.discovered.app_dir}. Use "Detect installation" to start using it.`;
       envInstallBtn.classList.toggle("hidden", !env.install_supported);
@@ -909,6 +923,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveBtn.textContent = "Saving Configuration Override...";
     
     const payload = {
+      ...configData,
       engine: settingsEngine.value,
       root: settingsRoot.value.trim(),
       app_dir: settingsApp.value.trim(),

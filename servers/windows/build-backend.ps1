@@ -360,6 +360,10 @@ $mutableRuntimeDataPatterns = @(
     "autoyou_agents/prompts_agent/*.db.bak",
     "autoyou_agents/prompts_agent/data/*",
     "autoyou_agents/prompts_agent/data/**/*",
+    "autoyou_agents/media_generation_agent/media_generation_agent/*",
+    "autoyou_agents/media_generation_agent/media_generation_agent/**/*",
+    "media_generation_agent/*",
+    "media_generation_agent/**/*",
     "prompts_agent/*.db",
     "prompts_agent/*.db.bak"
 )

@@ -38,11 +38,14 @@ from autoyou_agents.media_generation_agent.media_generation_tool import (
     detect_and_apply_wan2gp_paths,
     start_wan2gp_install,
     get_wan2gp_install_status,
+    update_history_status,
+    _external_python_subprocess_env,
     OUTPUT_DIR
 )
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.secure_storage import read_secure_file
+from shared.media_generation_runtime import probe_wan_runtime
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-e9678340342c3c9482dc7803"
 
@@ -81,8 +84,6 @@ NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, max-age=0",
     "Pragma": "no-cache",
 }
-
-_GENERATION_LOCK = threading.Lock()
 
 def _json_response(payload: Dict[str, Any], status_code: int = 200) -> JSONResponse:
     response = JSONResponse(payload, status_code=status_code)
@@ -351,11 +352,13 @@ def api_get_config(request: Request) -> JSONResponse:
         else:
             root_path = Path(config.get("root", ""))
             python_path = Path(config.get("python", ""))
-            connected = root_path.exists() and python_path.exists()
+            runtime = probe_wan_runtime(config, _external_python_subprocess_env())
+            connected = bool(runtime.get("ready"))
             diagnostic = {
                 "root_exists": root_path.exists(),
                 "python_exists": python_path.exists(),
                 "app_dir_exists": Path(config.get("app_dir", "")).exists(),
+                "runtime": runtime,
             }
         
         return _json_response({
@@ -456,20 +459,20 @@ def run_background_generation(
 ):
     """Run generation in background thread."""
     try:
-        with _GENERATION_LOCK:
-            generate_media_sync(
-                prompt=prompt,
-                media_type=media_type,
-                model_type=model_type,
-                resolution=resolution,
-                steps=steps,
-                frames=frames,
-                seed=seed,
-                history_item_id=item_id,
-                optimized_prompt=optimized_prompt,
-            )
+        result = generate_media_sync(
+            prompt=prompt,
+            media_type=media_type,
+            model_type=model_type,
+            resolution=resolution,
+            steps=steps,
+            frames=frames,
+            seed=seed,
+            history_item_id=item_id,
+            optimized_prompt=optimized_prompt,
+        )
+        if result.get("status") != "success":
+            update_history_status(item_id, "failed", result.get("message") or "Generation failed.")
     except Exception as e:
-        from autoyou_agents.media_generation_agent.media_generation_tool import update_history_status
         update_history_status(item_id, "failed", f"Background thread crash: {str(e)}")
 
 @app.post("/api/generate")
@@ -477,6 +480,7 @@ async def api_generate(request: Request) -> JSONResponse:
     """Launch asynchronous generation job."""
     if not _check_auth(request):
         return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    item_id = None
     try:
         payload = await request.json()
         prompt = payload.get("prompt", "").strip()
@@ -502,11 +506,11 @@ async def api_generate(request: Request) -> JSONResponse:
         item_id = save_history_item(
             media_type=media_type,
             original_prompt=prompt,
-            optimized_prompt="Enhancing prompt...",
+            optimized_prompt=optimized_prompt or "Queued for generation.",
             file_path="",
             file_name="",
             settings=settings,
-            status="generating"
+            status="queued"
         )
         
         # 2. Detach long GPU/CPU work from the request lifecycle.
@@ -531,12 +535,14 @@ async def api_generate(request: Request) -> JSONResponse:
         return _json_response({
             "success": True,
             "item_id": item_id,
-            "status": "generating",
+            "status": "queued",
             "message": "Generation job launched successfully in background."
         })
     except ValueError as e:
         return _json_response({"success": False, "error": str(e)}, status_code=400)
     except Exception as e:
+        if item_id is not None:
+            update_history_status(item_id, "failed", f"Could not start generation: {e}")
         return _json_response({"success": False, "error": str(e)}, status_code=500)
 
 @app.get("/media/{media_type}/{filename}")
