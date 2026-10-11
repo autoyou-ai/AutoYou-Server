@@ -1872,6 +1872,12 @@ except Exception as _import_err:
     logger.warning("mac_security_agent static import failed: %s", _import_err)
     _create_mac_security_agent = None  # type: ignore[assignment]
 
+try:
+    from autoyou_agents.prompts_agent.agent import create_prompts_agent as _create_prompts_agent
+except Exception as _import_err:
+    logger.warning("prompts_agent static import failed: %s", _import_err)
+    _create_prompts_agent = None  # type: ignore[assignment]
+
 _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "admin_agent": _create_admin_agent,
     "ads_watching_agent": _create_ads_watching_agent,
@@ -1902,6 +1908,7 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "openclaw_agent": _create_openclaw_agent,
     "hermes_agent": _create_hermes_agent,
     "page_agent": _create_page_agent,
+    "prompts_agent": _create_prompts_agent,
     "proxy_agent": _create_proxy_agent,
     "persona_agent": _create_persona_agent,
     "skills_agent": _create_skills_agent,

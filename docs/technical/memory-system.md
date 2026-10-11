@@ -16,6 +16,12 @@ directory is retained. A model saying "saved" is not evidence of a storage write
 | Personal facts and preferences the user asks to retain | `persona_agent/persona.md` under the server's mutable data directory | Canonical personal profile, shared by chat tools and the Persona website. |
 | Conversation events and explicit conversation memories | SQLite session storage and its `memory_search` index | Searchable history, normally scoped to the current conversation. |
 | Optional richer retrieval | Cognee, with the SQLite fallback retained | Opt-in backend; unnecessary for basic personal recall. |
+| Sessions explicitly ingested through ADK's native memory API | ADK 2.11 SQLite memory service | Persistent application/user-scoped ADK retrieval; ephemeral when recording is disabled or secure storage is enabled. |
+
+The AI worker's native ADK service is configured separately from the existing
+conversation index. It does not automatically copy historical chats or Persona.
+See [ADK runtime and MCP compatibility](../agent-framework/adk-runtime-upgrade.mdx)
+for URI overrides, secure-storage behavior, and test isolation.
 
 Keep this split. Do not create another Markdown transcript, vector database, or
 profile copy per client. Session persistence alone does not give new chats access

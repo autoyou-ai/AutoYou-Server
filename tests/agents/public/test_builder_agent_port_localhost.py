@@ -690,6 +690,8 @@ class BuilderAgentPortLocalhostTest(unittest.TestCase):
         original_require_login = server._require_api_login
         original_is_compiled = server.is_compiled
         original_builder_payload = server._build_agent_builder_listing_payload
+        original_sync_frontends = server.sync_managed_frontend_backends
+        server.sync_managed_frontend_backends = lambda: _async_value({})
         server._require_api_login = lambda request: None
         server.is_compiled = lambda: True
         server._build_agent_builder_listing_payload = lambda: {
@@ -714,6 +716,7 @@ class BuilderAgentPortLocalhostTest(unittest.TestCase):
             server._require_api_login = original_require_login
             server.is_compiled = original_is_compiled
             server._build_agent_builder_listing_payload = original_builder_payload
+            server.sync_managed_frontend_backends = original_sync_frontends
 
     def test_admin_agent_workbench_detail_returns_selected_detail(self):
         original_require_login = server._require_api_login

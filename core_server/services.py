@@ -568,13 +568,24 @@ def run_agent_server(host: str, port: int, agent_dir: str, env_vars: dict):
         lan_access_enabled = os.getenv("AUTOYOU_AI_AGENT_LAN_ACCESS") == "1"
 
         async def _serve() -> None:
-            config = uvicorn.Config(agent_app, host=host, port=port, log_level="info", access_log=False)
+            config = uvicorn.Config(
+                agent_app, host=host, port=port, log_level="info", access_log=False,
+                timeout_graceful_shutdown=5.0,
+            )
             server = uvicorn.Server(config)
 
             # Opt-in additive HTTPS+OTP listener, run in PARALLEL with the plain
             # listener above -- enabling it only ADDS a LAN-reachable surface and
             # never changes the existing loopback-only 8081 behavior.
             https_task = None
+            https_server = None
+
+            def _request_worker_exit() -> None:
+                server.should_exit = True
+                if https_server is not None:
+                    https_server.should_exit = True
+
+            agent_app.state.autoyou_request_shutdown = _request_worker_exit
             if lan_access_enabled:
                 try:
                     from shared import local_tls
@@ -587,6 +598,7 @@ def run_agent_server(host: str, port: int, agent_dir: str, env_vars: dict):
                         port=lan_https_port,
                         log_level="warning",
                         access_log=False,
+                        timeout_graceful_shutdown=5.0,
                         ssl_certfile=str(tls_material.server_cert_path),
                         ssl_keyfile=str(tls_material.server_key_path),
                     )
@@ -617,6 +629,9 @@ def run_agent_server(host: str, port: int, agent_dir: str, env_vars: dict):
 
     except Exception as e:
         agent_logger.error(f"An error occurred in the AI Agent server process: {e}", exc_info=True)
+    finally:
+        if runtime.secure_storage_enabled():
+            runtime.disable_secure_storage()
 
 
 def _force_kill_process_tree(process_pid: Optional[int], extra_pids: Optional[List[int]] = None) -> None:
@@ -2831,6 +2846,37 @@ async def start_auth_server_background():
     return runtime.auth_server_thread
 
 
+def _post_ai_agent_shutdown_request(url: str, token: str) -> bool:
+    """Ask the owned worker to drain requests before its process is terminated."""
+    import json
+    from urllib.request import Request, urlopen
+
+    request = Request(
+        url, data=b"{}", method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    with urlopen(request, timeout=1.5) as response:
+        return response.status == 200 and json.loads(response.read(16_384)).get("success") is True
+
+
+def _request_ai_agent_graceful_shutdown() -> bool:
+    runtime = _runtime()
+    # Ordinary pytest runs must never send shutdown to the operator's worker.
+    # Transport and lifecycle tests inject a synthetic request function instead.
+    if os.environ.get("AUTOYOU_TEST_ROOT"):
+        return False
+    token = str(os.environ.get(runtime.AI_AGENT_INTERNAL_API_TOKEN_ENV) or "").strip()
+    if not token:
+        return False
+    try:
+        return _post_ai_agent_shutdown_request(
+            f"http://127.0.0.1:{runtime.AI_AGENT_SERVER_PORT}/api/internal/shutdown", token,
+        )
+    except Exception as exc:
+        runtime.LOGGER.debug("AI worker graceful shutdown unavailable: %s", type(exc).__name__)
+        return False
+
+
 async def stop_ai_agent_server():
     """Stop AI Agent Server process."""
     runtime = _runtime()
@@ -2856,13 +2902,21 @@ async def stop_ai_agent_server():
             proc = runtime.STATE.agent_process  # capture ref before finally clears it
             process_pid = runtime._get_agent_process_pid(proc)
             tracked_pids = runtime._collect_process_tree_pids(process_pid)
-            proc.terminate()
-            runtime.LOGGER.info("Waiting for AI Agent Server process to terminate...")
-            await runtime.asyncio.to_thread(runtime._wait_for_agent_process_exit, proc, 10)
+            if runtime._is_agent_process_running(proc):
+                requested = await runtime.asyncio.to_thread(_request_ai_agent_graceful_shutdown)
+                if requested:
+                    runtime.LOGGER.info("Waiting for AI Agent Server request cleanup...")
+                    with suppress(runtime.subprocess.TimeoutExpired):
+                        await runtime.asyncio.to_thread(runtime._wait_for_agent_process_exit, proc, 7)
+                if runtime._is_agent_process_running(proc):
+                    proc.terminate()
+                    runtime.LOGGER.info("Waiting for AI Agent Server process to terminate...")
+                    with suppress(runtime.subprocess.TimeoutExpired):
+                        await runtime.asyncio.to_thread(runtime._wait_for_agent_process_exit, proc, 3)
             if runtime._is_agent_process_running(proc):
                 runtime.LOGGER.warning("AI Agent Server process did not stop gracefully, forcing kill...")
                 runtime._kill_agent_process(proc)
-                await runtime.asyncio.to_thread(runtime._wait_for_agent_process_exit, proc, 5)
+                await runtime.asyncio.to_thread(runtime._wait_for_agent_process_exit, proc, 2)
             if runtime.live_pids(tracked_pids):
                 runtime.LOGGER.warning("AI Agent Server process still appears alive, forcing process tree cleanup...")
                 await runtime.asyncio.to_thread(runtime._force_kill_process_tree, process_pid, tracked_pids)
@@ -3750,7 +3804,6 @@ async def _stop_runtime_services_for_shutdown() -> None:
     from core_server.iroh_service import stop_server_transport
     all_clean &= await runtime._run_shutdown_step("Iroh session service", stop_server_transport(runtime), 15.0)
     all_clean &= await runtime._run_shutdown_step("Auth Server", runtime.stop_auth_server(), 10.0)
-    all_clean &= await runtime._run_shutdown_step("AI Agent Server", runtime.stop_ai_agent_server(), 15.0)
     all_clean &= await runtime._run_shutdown_step(
         "Managed frontend backends",
         runtime.stop_managed_frontend_backends(),
@@ -3773,6 +3826,10 @@ async def _stop_runtime_services_for_shutdown() -> None:
         runtime.get_session_execution_manager().shutdown(),
         10.0,
     )
+    # Keep ADK alive while chat handlers close their HTTP/SSE streams. This
+    # allows native abort/provider cleanup and encrypted history commits to
+    # finish before stopping the worker, including on Windows.
+    all_clean &= await runtime._run_shutdown_step("AI Agent Server", runtime.stop_ai_agent_server(), 15.0)
     all_clean &= await runtime._run_shutdown_step("AutoYou Cloud SSE listener", runtime._stop_cloud_sse_listener(), 6.0)
     all_clean &= await runtime._run_shutdown_step("Scheduler Service", runtime._stop_scheduler_service(), 6.0)
     all_clean &= await runtime._run_shutdown_step("Tracked background tasks", runtime._cancel_tracked_background_tasks(), 6.0)

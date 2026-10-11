@@ -469,7 +469,11 @@ def _ensure_runtime_package_chain(module_name: str, runtime_modules_root: Path) 
         sys.modules[package_name] = package_module
 
 
-def _hash_file(path: Path) -> str:
+def _hash_file(path: Path, *, algorithm: str = "sha256") -> str:
+    if algorithm == "sha256-macho-code-v1":
+        from shared.macos_runtime_integrity import hash_macos_runtime_file
+
+        return hash_macos_runtime_file(path)
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -498,7 +502,7 @@ def _verify_packaged_runtime_integrity(app_root: Path) -> None:
         raise RuntimeError("Packaged runtime integrity manifest must be a JSON object")
 
     algorithm = str(manifest.get("algorithm", "")).strip().lower()
-    if algorithm != "sha256":
+    if algorithm not in ("sha256", "sha256-macho-code-v1"):
         raise RuntimeError(f"Unsupported packaged runtime integrity algorithm: {algorithm or 'missing'}")
 
     tracked_files = manifest.get("files")
@@ -541,7 +545,7 @@ def _verify_packaged_runtime_integrity(app_root: Path) -> None:
         if not candidate_path.is_file():
             missing_files.append(relative_path)
             continue
-        actual_hash = _hash_file(candidate_path)
+        actual_hash = _hash_file(candidate_path, algorithm=algorithm)
         if actual_hash != expected_hash:
             mismatched_files.append(relative_path)
 

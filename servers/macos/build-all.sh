@@ -492,7 +492,7 @@ copy_release_legal_bundle() {
 
     local legal_dir="${app_bundle}/Contents/Resources/Legal"
     local required_legal_file
-    for required_legal_file in LICENSE THIRD-PARTY-NOTICES.md NOTICE.txt sbom.cdx.json; do
+    for required_legal_file in LICENSE THIRD-PARTY-NOTICES.md NOTICE.txt sbom.cdx.json google-adk-APACHE-2.0.txt google-adk-web-THIRD-PARTY-NOTICES.txt mcp-MIT.txt mcp-types-MIT.txt httpx2-BSD-3-Clause.txt httpcore2-BSD-3-Clause.txt; do
         if [[ ! -f "${legal_dir}/${required_legal_file}" ]]; then
             log_error "Missing release legal file: ${legal_dir}/${required_legal_file}"
             exit 1

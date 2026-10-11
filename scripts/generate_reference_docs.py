@@ -65,7 +65,7 @@ AGENT_DOMAINS = (
      "Agents for skills, files, code, and building new agents and websites.",
      "Agents that manage skills and files, edit code, build new agents and websites, and hand work to command-line and desktop coding tools.",
      ("skills_agent", "files_agent", "coding_agent", "agent_builder_agent", "website_agent", "cli_agent",
-      "claude_cli_agent", "claude_desktop_agent", "codex_desktop_agent", "build_prompt_agent")),
+      "claude_cli_agent", "claude_desktop_agent", "codex_desktop_agent", "build_prompt_agent", "prompts_agent")),
     ("intelligence-and-models.mdx", "Intelligence & Model Agents",
      "Memory, persona, model selection, and bridged agent harnesses.",
      "Agents that keep memory and a persona, pick models, and bridge to other agent harnesses.",

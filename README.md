@@ -4,7 +4,15 @@
 
 <h1 align="center">AutoYou Server</h1>
 
-<p align="center"><strong>You are not the product. You are the owner.</strong><br>A self-hosted AI server for the computer you already own.<br>Use it locally or on your Home Wi-Fi, or access from anywhere securely via Internet.<br>Only you and your trusted contacts can access your AutoYou Server. AutoYou is entirely P2P and E2E (peer-to-peer and end-to-end encrypted).<br>Build your own App Store, runs serverless Web Applications just like ANY cloud SaaS applications without Usage limits or API costs.<br>Build and host your own games and share them with your friends using Game Mode.<br>Unlimited AI chat, voice calls with AI, Lobby chat, Peer voice & video calls across all devices, video-conference meetings and remote-desktop control - everything on-device with no telemetry/diagnostics/usage metrics captured by default.<br> Works without VPN, Supports Tailscale VPN providers, build your own support, deploy on your own Cloud.<br>Own your data. Set your rules. Train your models. Lower your cloud token usage.</p>
+<p align="center"><strong>You are not the product. You are the owner.</strong><br>
+A self-hosted AI server for the computer you already own.<br>
+Use it locally, on your home Wi-Fi, or from remote paired devices when your network setup allows it.<br>
+Paired sessions use encrypted WebRTC transport. Control access through the server's authentication and pairing settings.<br>
+Build and host web applications and games on your computer, and share supported Game Mode experiences with friends.<br>
+Use AI chat, voice, lobbies, peer calls, and remote desktop across supported paired devices.<br>
+Local models can reduce cloud token usage; configured cloud AI and hosted services can have API or subscription costs and their own data policies.<br>
+Connect without a VPN where your network supports it, or use a configured VPN such as Tailscale.<br>
+Own your data. Set your rules. Prepare your training workflows.</p>
 
 <p align="center">
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml/badge.svg?branch=main" alt="Public checks"></a>
@@ -17,6 +25,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-autoyou-works">How it works</a> ·
+  <a href="#ai-development-workspace">AI workspace</a> ·
   <a href="#capabilities">Capabilities</a> ·
   <a href="#client-apps">Apps</a> ·
   <a href="#architecture">Architecture</a> ·
@@ -53,7 +62,7 @@ Windows:
 
 ```powershell
 .\run_autoyou.bat --profile base
-# Or install the full runtime and listen on the local network:
+# Or select the Full profile with LAN access:
 .\run_autoyou.bat --profile full --host 0.0.0.0
 ```
 
@@ -61,7 +70,7 @@ macOS or Linux:
 
 ```bash
 ./run_autoyou.sh --profile base
-# Or install the full runtime and listen on the local network:
+# Or select the Full profile with LAN access:
 ./run_autoyou.sh --profile full --host 0.0.0.0
 ```
 
@@ -232,6 +241,150 @@ Encryption protects the connection. It does not protect everything around it:
 
 Report suspected vulnerabilities privately through [SECURITY.md](SECURITY.md).
 
+## Your AI development workspace
+
+Record your content directly onto the computer running AutoYou from wherever
+your paired devices can reach it. Save voice recordings and chats, prepare
+training data, and run supported model-training workflows in your configured
+AI development workspace.
+
+Capture voice and other content from paired devices on the computer running
+AutoYou, wherever those devices can reach the server. Keep server-side
+conversations and files in that computer's configured storage, prepare data for
+supported voice and model-training workflows, and build a personal workspace
+with agents, local or configured cloud models, memory, and tools. Recording and
+training features depend on the selected profile, hardware, permissions, and
+provider setup. Capturing content does not automatically train a model.
+
+Connect MCP-compatible features in ChatGPT, Codex, Claude Code or Claude Desktop,
+Google Antigravity, Cursor, and VS Code to supported AutoYou tools. The local
+MCP adapter is a separate process; the server does not install it into those
+clients. MCP calls expose the adapter's supported tools, not arbitrary access to
+local files or every AutoYou feature. When a configured cloud model or hosted AI
+client processes content, its provider terms and settings apply.
+
+### Set up the local MCP adapter
+
+The full runtime uses Google ADK 2.11.0 and MCP SDK 2.3.0. Native ADK SQLite
+memory and execution cancellation are wired into the AI worker. See
+[Google ADK runtime and MCP compatibility](docs/agent-framework/adk-runtime-upgrade.mdx)
+for storage policies, client compatibility, and the checklist for later upgrades.
+
+1. Start AutoYou Server and open **http://127.0.0.1:8001/**.
+2. In **Admin UI > Messaging > AutoYou MCP**, enable MCP, generate the private
+   adapter token, and download `autoyou-mcp.env`. Keep this file private.
+3. Clone the AutoYou project, which contains the separately maintained adapter,
+   and install it in a dedicated Python environment:
+
+   ```powershell
+   git clone https://github.com/autoyou-ai/AutoYou.git
+   cd AutoYou
+   py -3 -m venv .venv-mcp
+   .\.venv-mcp\Scripts\python.exe -m pip install -e .\plugins\autoyou-mcp
+   ```
+
+   On macOS or Linux, use `python3 -m venv .venv-mcp` and
+   `.venv-mcp/bin/python -m pip install -e ./plugins/autoyou-mcp`.
+
+For clients that launch a local MCP process, use this command shape and replace
+both placeholders with absolute paths:
+
+```text
+<path-to-.venv-mcp-python> -m autoyou_mcp --env-file <path-to-autoyou-mcp.env> --transport stdio
+```
+
+On Windows, the Python executable is `.venv-mcp/Scripts/python.exe`; on macOS
+or Linux it is `.venv-mcp/bin/python`. Use the absolute path in each client so
+it can start the adapter regardless of its working directory.
+
+For clients whose local configuration uses the `mcpServers` JSON format, the
+server entry looks like this. Replace both example paths, escaping Windows
+backslashes if you use them in JSON:
+
+```json
+{
+  "mcpServers": {
+    "autoyou": {
+      "command": "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe",
+      "args": [
+        "-m", "autoyou_mcp",
+        "--env-file", "C:/path/to/autoyou-mcp.env",
+        "--transport", "stdio"
+      ]
+    }
+  }
+}
+```
+
+### Add AutoYou to each client
+
+**ChatGPT web** uses a remote MCP connection, not a local `stdio` process.
+Start the adapter with `--transport streamable-http`, then connect its local
+`http://127.0.0.1:8071/mcp` endpoint through OpenAI Secure MCP Tunnel. ChatGPT
+requires Developer Mode and the relevant workspace/admin access. OpenAI
+currently limits full MCP actions by plan; Pro is read/fetch only, while full
+MCP is available to Business and Enterprise/Edu workspaces. Follow the
+[AutoYou MCP ChatGPT setup](https://github.com/autoyou-ai/AutoYou/blob/main/plugins/autoyou-mcp/README.md#connect-chatgpt-web)
+for tunnel setup and the [OpenAI MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt).
+
+**Codex CLI, desktop app, and IDE extension** share the Codex host's MCP
+configuration. Add the local process with:
+
+```powershell
+codex mcp add autoyou -- "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe" -m autoyou_mcp --env-file "C:/path/to/autoyou-mcp.env" --transport stdio
+codex mcp list
+```
+
+Use `.venv-mcp/bin/python` on macOS or Linux. Or add the equivalent
+`[mcp_servers.autoyou]` `command` and `args` to `~/.codex/config.toml`. Check
+the connected server with `/mcp`. See the [Codex MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+**Claude Code** adds the same local command using:
+
+```powershell
+claude mcp add --transport stdio autoyou -- "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe" -m autoyou_mcp --env-file "C:/path/to/autoyou-mcp.env" --transport stdio
+claude mcp list
+```
+
+Use `.venv-mcp/bin/python` on macOS or Linux, then run `/mcp` in Claude Code.
+See the [Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
+
+**Claude Desktop** can launch the adapter as a local stdio server. Add an
+`mcpServers.autoyou` entry with the local Python executable as `command` and
+these `args`: `-m`, `autoyou_mcp`, `--env-file`, the absolute env-file path,
+`--transport`, `stdio`. Its config file is
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows. Save the file, fully
+quit and restart Claude Desktop, then check the connected tools. Claude Desktop
+also supports `.mcpb` desktop extensions, but AutoYou does not currently ship
+that package. See the
+[Claude Desktop MCP guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+
+**Google Antigravity** uses `~/.gemini/config/mcp_config.json` for a global
+entry or `.agents/mcp_config.json` inside a workspace. Add an `mcpServers`
+object containing the same `autoyou` command and `args`. In Antigravity IDE,
+open the agent panel menu, select **MCP Servers > Manage MCP Servers > View raw
+config**, then restart or reload the server. See the
+[Antigravity MCP guide](https://antigravity.google/docs/mcp).
+
+**Cursor** uses `~/.cursor/mcp.json` for user-level setup or `.cursor/mcp.json`
+for a project. Add the same `autoyou` command under the top-level `mcpServers`
+object, save, and restart Cursor. See the [Cursor MCP guide](https://prod.cursor.com/help/customization/mcp).
+
+**VS Code** can use the portable `.mcp.json` file at the workspace root with
+the JSON `mcpServers` entry above. VS Code-specific `.vscode/mcp.json` uses a
+top-level `servers` object instead; add an `autoyou` entry with `"type":
+"stdio"`, the Python executable as `command`, and the same `args`. Start the
+server from the MCP server list in GitHub Copilot Agent mode. See the
+[VS Code MCP guide](https://code.visualstudio.com/docs/agent-customization/mcp-servers).
+
+These setup steps are for the clients' documented MCP interfaces. Client
+versions, settings, organization policies, and tool approvals can affect
+availability. After connecting, verify that `get_autoyou_status` is listed and
+returns the expected server status before using any write-capable tool. See the
+[AutoYou MCP integration guide](docs/guides/mcp-integration.mdx) for its scope,
+security model, and current limitations.
+
 ## Capabilities
 
 | Area | What is included |
@@ -241,7 +394,7 @@ Report suspected vulnerabilities privately through [SECURITY.md](SECURITY.md).
 | Intent routing | An on-device classifier that routes requests to the right agent or tool locally ([details](docs/local-intent-routing.md)) |
 | Voice and video | WebRTC media engine, faster-whisper speech recognition, system text-to-speech, and call presence |
 | Browser and desktop | Playwright browser automation, file tools, and remote desktop viewing and control |
-| Model Context Protocol | An MCP bridge that lets Cursor, Claude, Codex, and Antigravity use server agents ([guide](docs/guides/mcp-integration.mdx)) |
+| Model Context Protocol | An MCP bridge for supported tools in ChatGPT, Codex, Claude, Antigravity, Cursor, and VS Code ([guide](docs/guides/mcp-integration.mdx)) |
 | Messaging | Owner-controlled Telegram, Signal, and WhatsApp connectors |
 | Website Apps | Share a local web app with paired devices over the peer link |
 | Memory | SQLite-backed memory, with Cognee as an optional add-on |

@@ -20,6 +20,7 @@ from types import ModuleType
 from typing import Optional
 
 from fastapi import FastAPI, Request
+from starlette.background import BackgroundTask
 from shared.http_request_monitor import install_http_request_capture
 
 from rest_api import APIStatus, ChatRequest, ChatResponse, SessionInfo
@@ -261,6 +262,23 @@ def attach_ai_agent_endpoints(app_instance: FastAPI):
                 status_code=500,
                 content={"success": False, "error": "Runtime-setting update failed."},
             )
+
+    @app_instance.post("/api/internal/shutdown", include_in_schema=False)
+    async def shutdown_worker(request: Request):
+        if not server._request_uses_ai_agent_internal_token(request):
+            return server.JSONResponse(
+                status_code=403,
+                content={"success": False, "error": "Invalid internal AI worker token."},
+            )
+        callback = getattr(app_instance.state, "autoyou_request_shutdown", None)
+        if not callable(callback):
+            return server.JSONResponse(
+                status_code=503,
+                content={"success": False, "error": "Worker shutdown is unavailable."},
+            )
+        return server.JSONResponse(
+            content={"success": True}, background=BackgroundTask(callback),
+        )
 
     # REST API Endpoints for external chat applications
     @app_instance.post("/api/chat", response_model=ChatResponse)

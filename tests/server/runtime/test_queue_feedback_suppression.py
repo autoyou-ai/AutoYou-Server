@@ -43,7 +43,7 @@ class _DummyExecutionManager:
     def resolve_webrtc_identity(self, session_id: str):
         return self.identity
 
-    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat"):
+    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat", request_id=None):
         if on_status:
             await on_status(SimpleNamespace(status="queued", queue_position=2))
         return SimpleNamespace(
@@ -56,7 +56,7 @@ class _DummyExecutionManager:
 
 
 class _ExecutingDummyExecutionManager(_DummyExecutionManager):
-    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat"):
+    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat", request_id=None):
         if on_status:
             await on_status(SimpleNamespace(status="queued", queue_position=1))
         return await handler()
@@ -79,7 +79,7 @@ class _SessionAwareExecutingExecutionManager:
             owner_key=f"guest:{normalized_session_id}",
         )
 
-    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat"):
+    async def submit_turn(self, identity, handler, *, on_status=None, timeout_seconds=None, label="chat", request_id=None):
         if on_status:
             await on_status(SimpleNamespace(status="queued", queue_position=1))
         return await handler()

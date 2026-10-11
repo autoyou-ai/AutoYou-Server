@@ -355,7 +355,13 @@ $mutableRuntimeDataPatterns = @(
     "autoyou_agents/notes_agent/media/*",
     "autoyou_agents/notes_agent/media/**/*",
     "autoyou_agents/notes_agent/autoyou_notes_agent/*",
-    "autoyou_agents/notes_agent/autoyou_notes_agent/**/*"
+    "autoyou_agents/notes_agent/autoyou_notes_agent/**/*",
+    "autoyou_agents/prompts_agent/*.db",
+    "autoyou_agents/prompts_agent/*.db.bak",
+    "autoyou_agents/prompts_agent/data/*",
+    "autoyou_agents/prompts_agent/data/**/*",
+    "prompts_agent/*.db",
+    "prompts_agent/*.db.bak"
 )
 
 if ($Clean) {
@@ -857,6 +863,34 @@ function Vendor-AdkBrowserFonts {
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($indexPath, $html, $utf8NoBom)
+}
+
+function Patch-AdkBrowserUi {
+    param(
+        [string]$BackendRoot,
+        [string]$PythonExe
+    )
+
+    $patchScript = Join-Path $repoRoot "scripts\patch_adk_web_ui.py"
+    if (-not (Test-Path -LiteralPath $patchScript -PathType Leaf)) {
+        throw "ADK Web UI patch script is missing: '$patchScript'."
+    }
+
+    $browserRoots = @(
+        (Join-Path $BackendRoot "runtime_site_packages\google\adk\cli\browser"),
+        (Join-Path $BackendRoot "google\adk\cli\browser")
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+
+    if (-not $browserRoots) {
+        throw "No packaged ADK browser directory found under '$BackendRoot'."
+    }
+
+    foreach ($browserRoot in $browserRoots) {
+        & $PythonExe $patchScript --browser-dir $browserRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "ADK Web UI sanitization failed for '$browserRoot'."
+        }
+    }
 }
 
 function Copy-VoiceProcessingDlls {
@@ -1428,7 +1462,9 @@ function Assert-PackagedBackendServerImports {
         "--verify-runtime-import", "autoyou_agents.data_collector_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.data_collector_agent.agent",
-        "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.agent"
+        "--verify-runtime-import", "autoyou_agents.fine_tuning_agent.agent",
+        "--verify-runtime-import", "autoyou_agents.prompts_agent.website.backend.app",
+        "--verify-runtime-import", "autoyou_agents.prompts_agent.agent"
     )
     if ($Requirements -ne "base") {
         $verifyArguments += @(
@@ -1964,6 +2000,7 @@ Invoke-CheckedCommand -FilePath $pythonExe -Arguments @(
 
 Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
 Vendor-AdkBrowserFonts -BackendRoot $finalBackendRoot -CacheRoot $downloadRoot
+Patch-AdkBrowserUi -BackendRoot $finalBackendRoot -PythonExe $pythonExe
 Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
 
 Copy-VoiceProcessingDlls -BackendRoot $finalBackendRoot -PythonExe $pythonExe -RequireFastTranscription:$requirementsIncludesVoice

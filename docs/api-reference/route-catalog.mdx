@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 300, Admin and auth apps: 3, AI Agent worker: 8, Auth app: 23).
+Routes counted (Admin app: 300, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -428,6 +428,7 @@ Routes served by the separate AI Agent worker process. Source: `routers/ai_agent
 | AI Agent worker | `POST` | `/api/chat` | Main chat endpoint for external applications. |
 | AI Agent worker | `GET` | `/api/docs` | API documentation endpoint with usage examples. |
 | AI Agent worker | `POST` | `/api/internal/runtime-settings` | Apply parent-authorized settings without restarting the AI worker. |
+| AI Agent worker | `POST` | `/api/internal/shutdown` | Shutdown worker |
 | AI Agent worker | `GET` | `/api/sessions/&#123;user_id&#125;/&#123;session_id&#125;` | Get information about a specific session. |
 | AI Agent worker | `GET` | `/api/status` | Get the current API status and agent information. |
 | AI Agent worker | `GET` | `/dev/build_graph/&#123;app_name&#125;` | Autoyou build graph info |

@@ -720,6 +720,26 @@ def test_verify_packaged_runtime_integrity_rejects_forbidden_runtime_source(tmp_
         assert "Forbidden packaged runtime path present" in str(exc)
 
 
+def test_verify_packaged_runtime_integrity_accepts_store_format_and_rejects_changed_assets(tmp_path):
+    runtime = tmp_path / "runtime_modules"
+    runtime.mkdir()
+    asset = runtime / "synthetic.dat"
+    asset.write_bytes(b"synthetic content")
+    manifest = {"algorithm": "sha256-macho-code-v1", "files": {
+        "runtime_modules/synthetic.dat": autoyou_app._hash_file(asset, algorithm="sha256-macho-code-v1")}}
+    (tmp_path / "runtime_integrity.json").write_text(json.dumps(manifest))
+    autoyou_app._RUNTIME_INTEGRITY_VERIFIED = False
+    autoyou_app._verify_packaged_runtime_integrity(tmp_path)
+    asset.write_bytes(b"changed content")
+    autoyou_app._RUNTIME_INTEGRITY_VERIFIED = False
+    try:
+        autoyou_app._verify_packaged_runtime_integrity(tmp_path)
+    except RuntimeError as exc:
+        assert "mismatched=runtime_modules/synthetic.dat" in str(exc)
+    else:
+        raise AssertionError("Expected changed runtime content to fail integrity verification")
+
+
 def test_configure_runtime_modules_path_extends_loaded_package_path(tmp_path):
     runtime_modules_root = tmp_path / "runtime_modules"
     module_dir = runtime_modules_root / "autoyou_agents" / "fake_agent" / "website" / "backend"

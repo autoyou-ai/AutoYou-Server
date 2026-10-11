@@ -144,6 +144,25 @@ def test_emotivoice_vendor_is_included_only_in_voice_release_profiles() -> None:
         assert not any(item["name"] == "EmotiVoice inference code" for item in profiles[profile_id]["manualComponents"])
 
 
+def test_upstream_license_notices_are_preserved_but_autoyou_claims_are_checked(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(legal_gates, "REPO_ROOT", tmp_path)
+    notices = tmp_path / "docs" / "legal" / "licenses" / legal_gates.ADK_WEB_NOTICE_FILE
+    notices.parent.mkdir(parents=True)
+    wording = "Licensed under the MIT License"
+    notices.write_text(wording, encoding="utf-8")
+    (tmp_path / "README.md").write_text(wording, encoding="utf-8")
+    own_claim = notices.parent / "autoyou-claims.txt"
+    own_claim.write_text(wording, encoding="utf-8")
+    report = legal_gates.GateReport()
+
+    legal_gates.check_legacy_legal_wording(report)
+
+    assert len(report.failures) == 2
+    assert any("README.md" in failure for failure in report.failures)
+    assert any("autoyou-claims.txt" in failure for failure in report.failures)
+    assert not any(legal_gates.ADK_WEB_NOTICE_FILE in failure for failure in report.failures)
+
+
 def test_generated_bundles_detect_profile_drift() -> None:
     config = copy.deepcopy(load_config())
     config["artifactProfiles"][0]["displayName"] = "Synthetic stale profile"

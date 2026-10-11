@@ -603,6 +603,9 @@ def test_get_ai_agent_fastapi_storage_kwargs_uses_compiled_appdata(monkeypatch, 
             user_data_dir / "autoyou_agents" / ".adk" / "session.db"
         ),
         "artifact_service_uri": server._build_file_service_uri(user_data_dir / ".adk" / "artifacts"),
+        "memory_service_uri": server.resolve_adk_memory_uri(
+            os.environ, user_data_dir / "autoyou_agents" / ".adk" / "memory.db"
+        ),
     }
 
 
@@ -618,6 +621,7 @@ def test_get_ai_agent_fastapi_storage_kwargs_uses_dev_config_dir(monkeypatch, tm
     assert kwargs == {
         "session_service_uri": server._build_sqlite_service_uri(config_dir / "sessions.db"),
         "artifact_service_uri": server._build_file_service_uri(config_dir / ".adk" / "artifacts"),
+        "memory_service_uri": server.resolve_adk_memory_uri(os.environ, config_dir / ".adk" / "memory.db"),
     }
 
 
@@ -630,6 +634,8 @@ def test_prepare_ai_agent_process_env_sets_dev_storage_uris(monkeypatch, tmp_pat
     env = server._prepare_ai_agent_process_env({"EXISTING": "1"})
 
     assert env["EXISTING"] == "1"
+    assert env["ADK_ENABLE_MCP_MODERN_PROTOCOL"] == "1"
+    assert env[server.AI_AGENT_MEMORY_SERVICE_URI_ENV].startswith("sqlite:///")
     assert env[server.AI_AGENT_INTERNAL_API_TOKEN_ENV] == "internal-ai-token"
     assert env[server.AI_AGENT_SESSION_SERVICE_URI_ENV] == server._build_sqlite_service_uri(
         config_dir / "sessions.db"
@@ -926,7 +932,19 @@ def test_create_ai_agent_fastapi_app_redirects_adk_web_assets_out_of_bundle(monk
 
     browser = tmp_path / "AutoYou.app" / "Contents" / "Resources" / "browser"
     (browser / "assets" / "config").mkdir(parents=True)
-    (browser / "main.js").write_text("console.log(1)\n", encoding="utf-8")
+    from shared.adk_web_customization import ADK_WEB_ROW_SENTINEL
+
+    main = r'''y(36,"Usage Metrics")
+disclosureTooltip:"ADK Web is for development purposes. It has access to all the data and should not be used in production."
+getMergedTooltip(){let A=this.sidePanelI18n.disclosureTooltip||"",e=this.getVersionTooltip();return e?`${A} | ${e}`:A}
+checkTelemetryConsent(){return eA(this,null,function*(){(yield this.telemetryService.fetchTelemetryStatus())===null&&this.dialog.open(zD,{disableClose:!0,panelClass:"telemetry-consent-dialog-panel"})})}
+onTelemetryToggle(A){return eA(this,null,function*(){yield this.telemetryService.setTelemetry(A)})}
+var OC=class t{constructor(){}static \u0275fac=function(e){return new(e||t)};static \u0275prov=He({token:t,factory:t.\u0275fac,providedIn:"root"})};'''
+    (browser / "main-TEST.js").write_text(main, encoding="utf-8")
+    (browser / "index.html").write_text(
+        f"<html><head></head><body>{ADK_WEB_ROW_SENTINEL}</body></html>",
+        encoding="utf-8",
+    )
     pristine = '{\n  "backendUrl": ""\n}\n'
     (browser / "assets" / "config" / "runtime-config.json").write_text(pristine, encoding="utf-8")
 
@@ -968,6 +986,21 @@ def test_create_ai_agent_fastapi_app_redirects_adk_web_assets_out_of_bundle(monk
     ).resolve()
     assert (browser / "assets" / "config" / "runtime-config.json").read_text(encoding="utf-8") == pristine
     assert ApiServer.get_fast_api_app is baseline
+
+
+def test_adk_web_assets_redirect_fails_closed_on_mirror_errors(monkeypatch):
+    from google.adk.cli.api_server import ApiServer
+    from shared.adk_web_customization import AdkWebUiPatchError
+
+    monkeypatch.setattr(ApiServer, "get_fast_api_app", lambda self, **kwargs: "upstream")
+
+    def fail_mirror(_source):
+        raise OSError("synthetic mirror failure")
+
+    monkeypatch.setattr(server, "resolve_adk_web_assets_dir", fail_mirror)
+    with server._adk_web_assets_redirect(logging.getLogger("test.ai_agent")):
+        with pytest.raises(AdkWebUiPatchError, match="Could not prepare patched ADK Web assets"):
+            ApiServer.get_fast_api_app(object(), web_assets_dir="/synthetic/adk-browser")
 
 
 def test_adk_dev_server_delegates_web_assets_dir_to_api_server(monkeypatch):

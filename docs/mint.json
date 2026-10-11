@@ -110,6 +110,7 @@
         "agent-framework/shared-tools-and-subsystems",
         "agent-framework/self-improvement-and-harness-testing",
         "agent-framework/vendor-and-memory",
+              "agent-framework/adk-runtime-upgrade",
         "agent-framework/building-agents",
         "agent-framework/agent-web-frontends",
         "agent-framework/security-and-permissions",

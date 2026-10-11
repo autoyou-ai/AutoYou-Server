@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-10T10:30:43+00:00
+Generated: 2026-10-11T08:41:37+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -68,12 +68,14 @@ Third-Party Components
 - flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
 - fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
 - g2p-en [pypi] - Apache-2.0 - requirements/voice.txt
-- google-adk 2.9.2 [pypi] - Apache-2.0 - requirements/base.txt
+- google-adk 2.11.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
 - h2 [pypi] - MIT - requirements/base.txt
 - halo 0.0.31 [pypi] - MIT - requirements/voice.txt
+- httpcore2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
 - httpx [pypi] - BSD-3-Clause - requirements/base.txt
+- httpx2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
 - huggingface_hub [pypi] - Apache-2.0 - requirements/local-llm.txt
 - idna [pypi] - BSD-3-Clause - requirements/base.txt
 - jieba [pypi] - MIT - requirements/voice.txt
@@ -82,6 +84,8 @@ Third-Party Components
 - litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
+- mcp 2.3.0 [pypi] - MIT - requirements/base.txt
+- mcp-types 2.3.0 [pypi] - MIT - requirements/base.txt
 - modelscope [pypi] - Apache-2.0 - requirements/voice.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
 - multidict [pypi] - Apache-2.0 - requirements/base.txt

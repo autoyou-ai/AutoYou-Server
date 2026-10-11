@@ -117,3 +117,41 @@ def test_compose_runtime_uses_a_private_project_and_removes_only_its_containers(
     assert handle.compose_project == managed_runtime._project_name("rust_web_agent", tmp_path)
     assert "--volumes" not in down
     assert "--rmi" not in down
+
+
+def test_windows_cleanup_ack_checks_processes_after_job_termination(monkeypatch):
+    state = {"terminated": False, "closed": False, "checks": 0}
+
+    def terminate_remaining(**kwargs):
+        state["terminated"] = True
+        return 1  # This is the number terminated, not the number left alive.
+
+    def active_processes():
+        state["checks"] += 1
+        return 1 if state["checks"] == 1 else 0
+
+    process = SimpleNamespace(
+        pid=123456,
+        poll=lambda: 0 if state["terminated"] else None,
+        send_signal=lambda value: None,
+        wait=lambda timeout: 0,
+    )
+    job = SimpleNamespace(
+        terminate_remaining=terminate_remaining,
+        active_processes=active_processes,
+        close=lambda: state.update(closed=True),
+    )
+    handle = managed_runtime.ManagedRuntimeHandle(
+        kind="process", agent_name="synthetic_agent", port=8123,
+        shutdown_timeout_seconds=0, environment={}, process=process, process_job=job,
+    )
+    monkeypatch.setattr(managed_runtime, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(managed_runtime, "signal", SimpleNamespace(CTRL_BREAK_EVENT=1))
+    monkeypatch.setattr(managed_runtime, "process_tree_pids", lambda pid: [])
+    monkeypatch.setattr(managed_runtime, "_process_group_alive", lambda pid: False)
+    monkeypatch.setattr(managed_runtime.time, "sleep", lambda seconds: None)
+
+    assert managed_runtime.stop_managed_runtime_service(handle) is True
+    assert state["terminated"] and state["closed"]
+    assert state["checks"] == 2
+    assert handle.process_job is None

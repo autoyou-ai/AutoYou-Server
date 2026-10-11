@@ -34,6 +34,8 @@ __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-b18b28fe096d5ca438862d61"
 try:
     from scripts.generate_release_legal_artifacts import (
         REPO_ROOT,
+        ADK_WEB_NOTICE_FILE,
+        THIRD_PARTY_LICENSE_FILES,
         build_notice,
         build_sbom,
         collect_components_for_artifact,
@@ -45,6 +47,8 @@ try:
 except ModuleNotFoundError:
     from generate_release_legal_artifacts import (
         REPO_ROOT,
+        ADK_WEB_NOTICE_FILE,
+        THIRD_PARTY_LICENSE_FILES,
         build_notice,
         build_sbom,
         collect_components_for_artifact,
@@ -277,7 +281,18 @@ PACKAGED_LEGAL_BUNDLES = (('Windows Server dist legal bundle',
  ('macOS Server app legal bundle',
   'servers/macos/build/AutoYou.app/Contents/Resources/Legal',
   ('binary-default', 'connector-full')))
-LEGAL_BUNDLE_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")
+LEGAL_BUNDLE_FILES = (
+    "LICENSE",
+    "NOTICE.txt",
+    "sbom.cdx.json",
+    "THIRD-PARTY-NOTICES.md",
+    "google-adk-APACHE-2.0.txt",
+    "google-adk-web-THIRD-PARTY-NOTICES.txt",
+    "mcp-MIT.txt",
+    "mcp-types-MIT.txt",
+    "httpx2-BSD-3-Clause.txt",
+    "httpcore2-BSD-3-Clause.txt",
+)
 HOSTED_LEGAL_PAGES = (
     ("privacy", "/privacy/", ("OpenStorey LLC", "Data Controller:", "CCPA", "not sell or share")),
     ("terms", "/terms/", ("OpenStorey LLC", "AutoYou Source-Available Personal-Use License", "Class action waiver")),
@@ -351,7 +366,14 @@ def _display_report_path(path: Path) -> str:
 def _should_scan_legal_wording(path: Path) -> bool:
     if path.name not in LEGAL_WORDING_FILENAMES and path.suffix not in LEGAL_WORDING_SUFFIXES:
         return False
-    relative_parts = set(path.relative_to(REPO_ROOT).parts)
+    relative = path.relative_to(REPO_ROOT)
+    # Upstream license texts describe their own components, not AutoYou's license.
+    # Preserve their required wording; continue checking AutoYou-authored claims.
+    if relative.parts[:3] == ("docs", "legal", "licenses") and relative.name in {
+        ADK_WEB_NOTICE_FILE, *THIRD_PARTY_LICENSE_FILES.values(),
+    }:
+        return False
+    relative_parts = set(relative.parts)
     return not (relative_parts & LEGAL_WORDING_SKIP_PARTS)
 
 

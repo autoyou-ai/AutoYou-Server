@@ -29,7 +29,7 @@ function Assert-PathExists {
 
 function Assert-LegalBundle {
     param([string]$LegalRoot, [string]$Description)
-    foreach ($fileName in @("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")) {
+    foreach ($fileName in @("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md", "google-adk-APACHE-2.0.txt", "google-adk-web-THIRD-PARTY-NOTICES.txt", "mcp-MIT.txt", "mcp-types-MIT.txt", "httpx2-BSD-3-Clause.txt", "httpcore2-BSD-3-Clause.txt")) {
         Assert-PathExists -Path (Join-Path $LegalRoot $fileName) -Description "$Description $fileName"
     }
 }
@@ -214,7 +214,9 @@ function Remove-MutableRuntimeState {
         "login_ui_state.db",
         "page_feed.db",
         "sessions.db",
-        "sessions.db.bak"
+        "sessions.db.bak",
+        "prompts.db",
+        "prompts.db.bak"
     )) {
         Get-ChildItem -LiteralPath $Root -Recurse -File -Filter $fileName -Force -ErrorAction SilentlyContinue |
             Remove-Item -Force -ErrorAction SilentlyContinue

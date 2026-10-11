@@ -1562,6 +1562,8 @@ verify_packaged_backend_imports() {
         --verify-runtime-import "autoyou_agents.fine_tuning_agent.website.backend.app"
         --verify-runtime-import "autoyou_agents.data_collector_agent.agent"
         --verify-runtime-import "autoyou_agents.fine_tuning_agent.agent"
+        --verify-runtime-import "autoyou_agents.prompts_agent.website.backend.app"
+        --verify-runtime-import "autoyou_agents.prompts_agent.agent"
     )
     if requirements_has_tuning; then
         runtime_verify_args+=(
@@ -1745,6 +1747,27 @@ verify_adk_browser_bundle() {
     fi
     
     log_success "ADK browser bundle verified"
+}
+
+patch_adk_browser_ui() {
+    local resources_root="$1"
+    local browser_root="${resources_root}/google/adk/cli/browser"
+    local runtime_browser_root="${resources_root}/runtime_site_packages/google/adk/cli/browser"
+    local patch_script="${PROJECT_ROOT}/scripts/patch_adk_web_ui.py"
+    local candidate
+    local found=false
+
+    for candidate in "$browser_root" "$runtime_browser_root"; do
+        [[ -d "$candidate" ]] || continue
+        found=true
+        log "Removing ADK Web telemetry UI from $candidate..."
+        "$PYTHON_CMD" "$patch_script" --browser-dir "$candidate"
+    done
+
+    if [[ "$found" != true ]]; then
+        log_error "No packaged ADK browser directory found to sanitize under $resources_root"
+        return 1
+    fi
 }
 
 # Verify node_modules for bundled services (Windows parity)
@@ -3249,6 +3272,8 @@ compile_python_backend() {
         "--output-filename=AutoYouServer"
         # Keep compiled file references runtime-relative instead of embedding checkout paths.
         "--file-reference-choice=runtime"
+        # The verifier runs before runtime_modules is added to the import path.
+        "--include-module=shared.macos_runtime_integrity"
         "--assume-yes-for-downloads"
         # Preserve docstrings: upstream runtime libraries like SQLAlchemy and NumPy
         # still inspect their own docs during packaged bootstrap on macOS.
@@ -3464,6 +3489,12 @@ compile_python_backend() {
         "--noinclude-data-files=autoyou_agents/notes_agent/media/**/*"
         "--noinclude-data-files=autoyou_agents/notes_agent/autoyou_notes_agent/*"
         "--noinclude-data-files=autoyou_agents/notes_agent/autoyou_notes_agent/**/*"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/*.db"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/*.db.bak"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/data/*"
+        "--noinclude-data-files=autoyou_agents/prompts_agent/data/**/*"
+        "--noinclude-data-files=prompts_agent/*.db"
+        "--noinclude-data-files=prompts_agent/*.db.bak"
         "--enable-plugin=dill-compat"
         "--enable-plugin=multiprocessing"
         # The compiled AI agent worker re-enters this binary via
@@ -3697,6 +3728,7 @@ compile_python_backend() {
     # ── Verify and vendor ADK browser assets ──────────────────────────────────
     verify_adk_browser_bundle "$resources_root"
     vendor_adk_browser_fonts "$resources_root"
+    patch_adk_browser_ui "$resources_root"
     
     # ── Verify node services have modules ────────────────────────────────────
     verify_node_service_modules "$node_data_dir"

@@ -103,6 +103,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "openclaw_agent": False,         # Opt-in: install manually when OpenClaw Gateway is running locally
     "page_agent": True,
     "persona_agent": True,
+    "prompts_agent": True,
     "proxy_agent": False,           # Opt-in: authenticated internet relay
     "remote_desktop_agent": False,   # Opt-in: desktop control capability
     "skills_agent": False,           # Opt-in: reusable skill scripts
