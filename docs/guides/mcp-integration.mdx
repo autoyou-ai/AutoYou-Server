@@ -5,7 +5,12 @@ description: "How AutoYou Server's MCP bridge works, how it is authenticated, an
 
 # Model Context Protocol (MCP) Integration
 
-AutoYou Server exposes a narrow, authenticated REST bridge under `/api/v1/mcp/` on the admin app (port `8001`). An **MCP adapter** is a separate process that speaks the Model Context Protocol to MCP clients such as Claude, Cursor, Codex, and Antigravity, and calls this bridge to reach your server. The adapter is not part of this repository.
+The AutoYou adapter pins MCP SDK 2.3.0 and uses its native modern and legacy
+protocol negotiation. The full AI worker pins Google ADK 2.11.0 with its modern
+MCP path enabled. Disconnecting a running chat cancels the upstream task and
+closes the provider stream. See [runtime compatibility](/agent-framework/adk-runtime-upgrade).
+
+AutoYou Server exposes a narrow, authenticated REST bridge under `/api/v1/mcp/` on the admin app (port `8001`). An **MCP adapter** is a separate process that speaks the Model Context Protocol to compatible clients such as ChatGPT, Codex, Claude, Cursor, Antigravity, and VS Code, and calls this bridge to reach your server. The adapter is not part of this repository.
 
 ```mermaid
 graph LR
@@ -54,6 +59,10 @@ AUTOYOU_MCP_FULL_API_TOKEN=<your token>
 ```
 
 The console refuses to produce the file unless both the server and the adapter use loopback addresses. Start the adapter with these settings, then point your MCP client at the adapter by following the adapter's own instructions.
+
+For the adapter install steps and client-specific setup, including ChatGPT's
+Secure MCP Tunnel requirement and local `stdio` configurations, see the
+[AutoYou MCP integration instructions](https://github.com/autoyou-ai/AutoYou/tree/main/plugins/autoyou-mcp).
 
 ---
 

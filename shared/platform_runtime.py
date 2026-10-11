@@ -409,26 +409,9 @@ def resolve_adk_agents_base_dir(
 ADK_WEB_ASSETS_DIRNAME = "adk-web-assets"
 
 # ADK's ApiServer._setup_runtime_config() rewrites this one file on every server
-# start (it injects the current telemetry consent). Everything else under the
-# packaged ``browser/`` tree is read-only, so the writable mirror only has to
-# materialize the branch leading to this leaf.
+# start. Everything else under the packaged ``browser/`` tree is read-only, so
+# the writable mirror only has to materialize the branch leading to this leaf.
 _ADK_MUTABLE_ASSET_RELPATH = ("assets", "config", "runtime-config.json")
-
-
-def _is_inside_macos_app_bundle(path: Path) -> bool:
-    """Return True when path lives inside a ``.app`` bundle's sealed resources."""
-    return any(parent.suffix == ".app" for parent in (path, *path.parents))
-
-
-def _adk_web_assets_are_writable(source_dir: Path) -> bool:
-    """Return True when ADK may rewrite runtime-config.json where it ships."""
-    if is_compiled() or _is_inside_macos_app_bundle(source_dir):
-        return False
-
-    probe = source_dir.joinpath(*_ADK_MUTABLE_ASSET_RELPATH)
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    return os.access(probe, os.W_OK)
 
 
 def _remove_adk_web_assets_mirror(mirror_dir: Path) -> None:
@@ -443,6 +426,19 @@ def _remove_adk_web_assets_mirror(mirror_dir: Path) -> None:
 
 def _link_or_copy(source: Path, destination: Path) -> None:
     """Symlink source into the mirror, copying where symlinks are unavailable."""
+    if source.is_dir():
+        # Materialize every directory so renamed or split frontend chunks
+        # remain visible to the version-independent patcher.
+        destination.mkdir(parents=True, exist_ok=True)
+        for child in sorted(source.iterdir()):
+            _link_or_copy(child, destination / child.name)
+        return
+    if source.suffix.lower() in {".js", ".html", ".json"}:
+        # Any chunk can contain these controls after an upstream refactor.
+        # Never let a write through the mirror change third-party resources.
+        shutil.copy2(source, destination)
+        return
+
     try:
         destination.symlink_to(source, target_is_directory=source.is_dir())
         return
@@ -450,19 +446,15 @@ def _link_or_copy(source: Path, destination: Path) -> None:
         # Windows refuses symlinks without developer mode or elevation.
         pass
 
-    if source.is_dir():
-        shutil.copytree(source, destination, symlinks=True, dirs_exist_ok=True)
-    else:
-        shutil.copy2(source, destination)
+    shutil.copy2(source, destination)
 
 
 def _build_adk_web_assets_mirror(source_dir: Path, mirror_dir: Path) -> Path:
     """Build a writable shadow of source_dir that shares its read-only files.
 
-    Every sibling at each level is symlinked, so the ~8MB Angular bundle is
-    never duplicated; only the directories on the way to
-    ``assets/config/runtime-config.json`` are real, plus a real copy of that
-    file for ADK to overwrite.
+    Read-only media/fonts/styles may be shared. All directories and every
+    JavaScript, HTML, and JSON asset are private copies so a future split or
+    renamed bundle can be patched without modifying third-party resources.
     """
     _remove_adk_web_assets_mirror(mirror_dir)
     mirror_dir.mkdir(parents=True, exist_ok=True)
@@ -495,6 +487,9 @@ def _build_adk_web_assets_mirror(source_dir: Path, mirror_dir: Path) -> Path:
         source_level = source_child
         mirror_level = mirror_child
 
+    from shared.adk_web_customization import patch_adk_web_ui_assets
+
+    patch_adk_web_ui_assets(mirror_dir)
     return mirror_dir
 
 
@@ -510,9 +505,10 @@ def resolve_adk_web_assets_dir(
     ``codesign --verify --strict`` then reports a modified sealed resource and
     Gatekeeper rejects the bundle (the notarization ticket itself stays valid).
 
-    When the packaged assets are not safely writable, mirror them into the
-    per-user data directory and hand ADK the mirror. Source runs against a
-    writable site-packages keep serving assets in place.
+    Mirror the assets into AutoYou's per-user data directory for both source and
+    packaged runs. This keeps third-party site-packages and signed app resources
+    untouched while the AutoYou-specific browser patch and ADK's runtime config
+    stay in writable storage.
     """
     source = Path(source_dir).expanduser()
     try:
@@ -520,8 +516,10 @@ def resolve_adk_web_assets_dir(
     except OSError:
         pass
 
-    if not source.is_dir() or _adk_web_assets_are_writable(source):
-        return source
+    if not source.is_dir():
+        from shared.adk_web_customization import AdkWebUiPatchError
+
+        raise AdkWebUiPatchError(f"ADK Web browser directory is missing: {source}")
 
     mirror_dir = get_user_data_dir(app_name) / ADK_WEB_ASSETS_DIRNAME
     return _build_adk_web_assets_mirror(source, mirror_dir).resolve()

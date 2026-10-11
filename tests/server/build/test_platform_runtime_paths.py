@@ -567,8 +567,16 @@ def _make_adk_browser_tree(root: Path) -> Path:
     """Build a miniature copy of google/adk/cli/browser/."""
     browser = root / "browser"
     (browser / "assets" / "config").mkdir(parents=True)
-    (browser / "main.js").write_text("console.log(1)\n", encoding="utf-8")
-    (browser / "index.html").write_text("<html></html>\n", encoding="utf-8")
+    main = r'''y(36,"Usage Metrics")
+disclosureTooltip:"ADK Web is for development purposes. It has access to all the data and should not be used in production."
+getMergedTooltip(){let A=this.sidePanelI18n.disclosureTooltip||"",e=this.getVersionTooltip();return e?`${A} | ${e}`:A}
+checkTelemetryConsent(){return eA(this,null,function*(){(yield this.telemetryService.fetchTelemetryStatus())===null&&this.dialog.open(zD,{disableClose:!0,panelClass:"telemetry-consent-dialog-panel"})})}
+onTelemetryToggle(A){return eA(this,null,function*(){yield this.telemetryService.setTelemetry(A)})}
+var OC=class t{http=f(ur);telemetryStatus=Qe(void 0);telemetryEnabled=fA(()=>this.telemetryStatus()===!0);constructor(){this.init()}init(){}fetchTelemetryStatus(){return eA(this,null,function*(){let A=Xa.getApiServerBaseUrl();try{let e=yield dI(this.http.get(`${A}/config/telemetry`));if(e&&e.telemetry!==void 0)return this.telemetryStatus.set(e.telemetry),e.telemetry}catch(e){}return this.telemetryStatus()??null})}setTelemetry(A){return eA(this,null,function*(){yield dI(this.http.post("/config/telemetry",{telemetry:A},{headers:{"X-ADK-Telemetry-Request":"true"}}))})}static \u0275fac=function(e){return new(e||t)};static \u0275prov=He({token:t,factory:t.\u0275fac,providedIn:"root"})};'''
+    (browser / "main-TEST.js").write_text(main, encoding="utf-8")
+    (browser / "index.html").write_text(
+        "<html><head></head><body></body></html>\n", encoding="utf-8"
+    )
     (browser / "assets" / "audio-processor.js").write_text("// worklet\n", encoding="utf-8")
     (browser / "assets" / "config" / "runtime-config.json").write_text(
         '{\n  "backendUrl": ""\n}\n', encoding="utf-8"
@@ -591,11 +599,96 @@ def _simulate_adk_runtime_config_write(web_assets_dir: Path) -> None:
         handle.write("\n")
 
 
-def test_resolve_adk_web_assets_dir_keeps_writable_source_in_place(monkeypatch, tmp_path):
+def test_resolve_adk_web_assets_dir_patches_a_copy_of_writable_source(monkeypatch, tmp_path):
     browser = _make_adk_browser_tree(tmp_path)
     monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    user_data = (tmp_path / "appdata" / "AutoYou").resolve()
+    user_data.mkdir(parents=True)
+    monkeypatch.setattr(platform_runtime, "get_user_data_dir", lambda app_name="AutoYou": user_data)
 
-    assert platform_runtime.resolve_adk_web_assets_dir(browser) == browser.resolve()
+    mirror = platform_runtime.resolve_adk_web_assets_dir(browser)
+
+    assert mirror == (user_data / platform_runtime.ADK_WEB_ASSETS_DIRNAME).resolve()
+    patched_main = (mirror / "main-TEST.js").read_text(encoding="utf-8")
+    for removed_text in (
+        "Usage Metrics",
+        'dialog.open(zD,{disableClose:!0,panelClass:"telemetry-consent-dialog-panel"})',
+        "/config/telemetry",
+        'X-ADK-Telemetry-Request',
+    ):
+        assert removed_text not in patched_main
+    assert "ADK Web is for development purposes" in patched_main
+    assert "AUTOYOU_ADK_WEB_UI_PATCH_V2" in patched_main
+    assert "Modified by AutoYou" in patched_main
+    assert 'y(36,"AUTOYOU_ADK_HIDE_USAGE_METRICS_ROW")' in patched_main
+    patched_index = (mirror / "index.html").read_text(encoding="utf-8")
+    assert "AUTOYOU_ADK_HIDE_USAGE_METRICS_ROW" in patched_index
+    assert "Modified by AutoYou" in patched_index
+    assert "ADK Web is for development purposes" in (browser / "main-TEST.js").read_text(encoding="utf-8")
+    assert "Usage Metrics" in (browser / "main-TEST.js").read_text(encoding="utf-8")
+    assert not (mirror / "main-TEST.js").is_symlink()
+    assert not (mirror / "index.html").is_symlink()
+
+
+def test_adk_web_mirror_patches_nested_chunks_without_changing_source(monkeypatch, tmp_path):
+    browser = _make_adk_browser_tree(tmp_path)
+    chunks = browser / "chunks"
+    chunks.mkdir()
+    original = chunks / "settings-release.js"
+    (browser / "main-TEST.js").rename(original)
+    upstream = original.read_bytes()
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    user_data = tmp_path / "appdata" / "AutoYou"
+    user_data.mkdir(parents=True)
+    monkeypatch.setattr(platform_runtime, "get_user_data_dir", lambda app_name="AutoYou": user_data)
+
+    mirror = platform_runtime.resolve_adk_web_assets_dir(browser)
+
+    patched = mirror / "chunks" / "settings-release.js"
+    assert not patched.is_symlink()
+    assert not patched.parent.is_symlink()
+    assert "Usage Metrics" not in patched.read_text(encoding="utf-8")
+    assert original.read_bytes() == upstream
+
+
+def test_adk_web_customization_matches_semantics_across_minifier_changes(tmp_path):
+    from shared.adk_web_customization import (
+        ADK_WEB_PATCH_SENTINEL,
+        patch_adk_web_ui_assets,
+        verify_adk_web_ui_assets,
+    )
+
+    browser = tmp_path / "browser"
+    browser.mkdir()
+    (browser / "chunk-changed-hash.js").write_text(
+        r'''x(17,"Usage Metrics");
+const disclosure="ADK Web is for development purposes.";
+class Consent { checkTelemetryConsent(){if(this.service.fetchTelemetryStatus()===null){this.dialog.open({panelClass:"telemetry-consent-dialog-panel"});}} onTelemetryToggle(value){return this.service.setTelemetry(value);} }
+class Telemetry { fetchTelemetryStatus(){const endpoint="/config/telemetry";const brace="}";return fetch(endpoint);} setTelemetry(value){return fetch("/config/telemetry",{headers:{"X-ADK-Telemetry-Request":"true"}});} }''',
+        encoding="utf-8",
+    )
+    (browser / "index.html").write_text(
+        "<!doctype html><html><head></head><body></body></html>",
+        encoding="utf-8",
+    )
+
+    assert patch_adk_web_ui_assets(browser) is True
+    verify_adk_web_ui_assets(browser)
+    patched = (browser / "chunk-changed-hash.js").read_text(encoding="utf-8")
+    assert ADK_WEB_PATCH_SENTINEL in patched
+    assert "Usage Metrics" not in patched
+    assert "telemetry-consent-dialog-panel" not in patched
+    assert "/config/telemetry" not in patched
+    assert "X-ADK-Telemetry-Request" not in patched
+    assert "ADK Web is for development purposes." in patched
+    assert patch_adk_web_ui_assets(browser) is False
+
+
+def test_resolve_adk_web_assets_dir_refuses_missing_upstream_bundle(tmp_path):
+    from shared.adk_web_customization import AdkWebUiPatchError
+
+    with pytest.raises(AdkWebUiPatchError, match="browser directory is missing"):
+        platform_runtime.resolve_adk_web_assets_dir(tmp_path / "missing-browser")
 
 
 def test_resolve_adk_web_assets_dir_redirects_out_of_app_bundle(monkeypatch, tmp_path):
@@ -656,9 +749,9 @@ def test_adk_web_assets_mirror_serves_every_packaged_file(monkeypatch, tmp_path)
     # deliberately falls back to copying there - see
     # test_adk_web_assets_mirror_falls_back_to_copy_without_symlinks.
     if _symlinks_supported(tmp_path):
-        assert (mirror / "main.js").is_symlink()
+        assert (mirror / "main-TEST.js").is_symlink() is False
     else:
-        assert (mirror / "main.js").read_bytes() == (browser / "main.js").read_bytes()
+        assert (mirror / "main-TEST.js").read_bytes() != (browser / "main-TEST.js").read_bytes()
 
     # The mutable config must always be a real, writable copy so ADK's rewrite
     # can never reach back into the sealed bundle.
@@ -705,7 +798,7 @@ def test_adk_web_assets_mirror_falls_back_to_copy_without_symlinks(monkeypatch, 
 
     packaged = {p.relative_to(browser).as_posix() for p in browser.rglob("*") if p.is_file()}
     assert {p.relative_to(mirror).as_posix() for p in mirror.rglob("*") if p.is_file()} == packaged
-    assert not (mirror / "main.js").is_symlink()
+    assert not (mirror / "main-TEST.js").is_symlink()
     assert (browser / "assets" / "config" / "runtime-config.json").read_text(
         encoding="utf-8"
     ) == '{\n  "backendUrl": ""\n}\n'

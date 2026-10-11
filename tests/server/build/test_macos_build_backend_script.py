@@ -33,6 +33,11 @@ def test_macos_server_builds_use_public_logo_asset_not_client_icons():
         assert "clients/ios/AutoYouApp/Resources" not in text
 
 
+def test_macos_server_release_requires_google_adk_license_text():
+    text = BUILD_ALL_SCRIPT.read_text(encoding="utf-8")
+    assert "google-adk-APACHE-2.0.txt" in text
+
+
 def test_macos_build_backend_bundles_whisper_runtime_and_skips_it_in_hardening():
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
 
@@ -79,6 +84,8 @@ def test_macos_intel_server_uses_runtime_nuitka_include_mode():
     assert '--allow-source-dir "runtime_stdlib"' in build_backend
     assert "Installing runtime distribution overlay closure for Intel runtime-only launcher" in build_backend
     assert "sync_runtime_adk_browser_bundle" in build_backend
+    assert "patch_adk_browser_ui \"$resources_root\"" in build_backend
+    assert "scripts/patch_adk_web_ui.py" in build_backend
     assert "Using runtime-only AI provider overlay" in build_backend
     assert "--nofollow-import-to=google" in build_backend
     assert "--nofollow-import-to=litellm" in build_backend

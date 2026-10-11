@@ -5,6 +5,10 @@ description: "Architectural guide to AutoYou's vendored dependency isolation, Co
 
 # Vendor Integrations & Memory Subsystems
 
+The full runtime also configures ADK 2.11's native SQLite memory service for
+explicit ADK session ingestion. It is a core dependency and follows recording,
+secure-storage, and test-isolation policies. See [ADK runtime and MCP compatibility](/agent-framework/adk-runtime-upgrade).
+
 AutoYou Server maintains a strict architectural separation between core server code and heavy external AI subsystems located in [`AutoYou-Server/vendor/`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/vendor).
 
 Rather than bloating core runtime dependencies with multi-gigabyte vector databases or neural speech packages, external capabilities are decoupled through **vendored dependency boundaries**, pinned commit hashes, and isolated requirements bundles.

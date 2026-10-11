@@ -859,6 +859,34 @@ function Vendor-AdkBrowserFonts {
     [System.IO.File]::WriteAllText($indexPath, $html, $utf8NoBom)
 }
 
+function Patch-AdkBrowserUi {
+    param(
+        [string]$BackendRoot,
+        [string]$PythonExe
+    )
+
+    $patchScript = Join-Path $repoRoot "scripts\patch_adk_web_ui.py"
+    if (-not (Test-Path -LiteralPath $patchScript -PathType Leaf)) {
+        throw "ADK Web UI patch script is missing: '$patchScript'."
+    }
+
+    $browserRoots = @(
+        (Join-Path $BackendRoot "runtime_site_packages\google\adk\cli\browser"),
+        (Join-Path $BackendRoot "google\adk\cli\browser")
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+
+    if (-not $browserRoots) {
+        throw "No packaged ADK browser directory found under '$BackendRoot'."
+    }
+
+    foreach ($browserRoot in $browserRoots) {
+        & $PythonExe $patchScript --browser-dir $browserRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "ADK Web UI sanitization failed for '$browserRoot'."
+        }
+    }
+}
+
 function Copy-VoiceProcessingDlls {
     param(
         [string]$BackendRoot,
@@ -1964,6 +1992,7 @@ Invoke-CheckedCommand -FilePath $pythonExe -Arguments @(
 
 Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
 Vendor-AdkBrowserFonts -BackendRoot $finalBackendRoot -CacheRoot $downloadRoot
+Patch-AdkBrowserUi -BackendRoot $finalBackendRoot -PythonExe $pythonExe
 Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
 
 Copy-VoiceProcessingDlls -BackendRoot $finalBackendRoot -PythonExe $pythonExe -RequireFastTranscription:$requirementsIncludesVoice

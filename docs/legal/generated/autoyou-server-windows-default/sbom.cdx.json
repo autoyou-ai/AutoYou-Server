@@ -1023,7 +1023,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-adk==2.9.2"
+          "value": "google-adk==2.11.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1034,9 +1034,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-adk@2.9.2",
+      "purl": "pkg:pypi/google-adk@2.11.0",
       "type": "library",
-      "version": "2.9.2"
+      "version": "2.11.0"
     },
     {
       "licenses": [
@@ -1130,6 +1130,33 @@
           }
         }
       ],
+      "name": "httpcore2",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "httpcore2==2.13.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/httpcore2@2.13.1",
+      "type": "library",
+      "version": "2.13.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
       "name": "httpx",
       "properties": [
         {
@@ -1151,6 +1178,33 @@
       ],
       "purl": "pkg:pypi/httpx",
       "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "httpx2",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "httpx2==2.13.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/httpx2@2.13.1",
+      "type": "library",
+      "version": "2.13.1"
     },
     {
       "licenses": [
@@ -1328,6 +1382,60 @@
       ],
       "purl": "pkg:pypi/lxml",
       "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mcp",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "mcp==2.3.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/mcp@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mcp-types",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "mcp-types==2.3.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/mcp-types@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
     },
     {
       "licenses": [
@@ -2773,7 +2881,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-09T09:16:15+00:00",
+    "timestamp": "2026-10-11T00:21:14+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -2782,7 +2890,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:af05ed6b-982d-4242-9ae7-1c38d23db3e6",
+  "serialNumber": "urn:uuid:fa855816-4044-4fe3-9581-6af41a529c6b",
   "specVersion": "1.5",
   "version": 1
 }

@@ -270,6 +270,12 @@ _bind_ai_agent_routes_runtime(sys.modules[__name__])
 
 from dotenv import load_dotenv
 
+from shared.adk_web_customization import AdkWebUiPatchError
+from shared.adk_memory import (
+    ADK_MEMORY_PERSISTENT_ENV,
+    AI_AGENT_MEMORY_SERVICE_URI_ENV,
+    resolve_adk_memory_uri,
+)
 from shared.platform_runtime import (
   configure_runtime,
   configure_whisper_cache_environment,
@@ -1800,6 +1806,15 @@ def _resolve_ai_agent_storage_uris(env_source: Optional[Dict[str, str]] = None) 
     return {
         "session_service_uri": session_uri,
         "artifact_service_uri": artifact_uri,
+        "memory_service_uri": resolve_adk_memory_uri(
+            source,
+            (
+                get_user_data_dir("AutoYou") / "autoyou_agents" / ".adk" / "memory.db"
+                if is_compiled()
+                else get_config_dir("AutoYou", anchor=__file__) / ".adk" / "memory.db"
+            ),
+            allow_persistence=not secure_storage_enabled(),
+        ),
     }
 
 def _resolve_ai_agent_memory_db_path(env_source: Optional[Dict[str, str]] = None) -> Path:
@@ -1834,15 +1849,8 @@ def _adk_web_assets_redirect(agent_logger: logging.Logger):
     try:
         from google.adk.cli.api_server import ApiServer
     except Exception as exc:
-        # Never fail open quietly: without this patch the packaged app rewrites a
-        # sealed resource and breaks its own signature on first launch.
-        agent_logger.warning(
-            "ADK web-assets redirect unavailable (%s); runtime-config may be "
-            "written into the packaged bundle",
-            exc,
-        )
-        yield
-        return
+        agent_logger.error("ADK Web customization is unavailable: %s", exc)
+        raise AdkWebUiPatchError("Cannot safely initialize the ADK Web UI") from exc
 
     original_get_fast_api_app = ApiServer.get_fast_api_app
 
@@ -1853,10 +1861,19 @@ def _adk_web_assets_redirect(agent_logger: logging.Logger):
             try:
                 resolved = resolve_adk_web_assets_dir(source_dir)
                 relocated = Path(resolved) != Path(source_dir).resolve()
+            except AdkWebUiPatchError:
+                # Do not fall back to the upstream UI if ADK changes. That
+                # would silently restore the telemetry control or consent UI.
+                raise
             except Exception as exc:
-                agent_logger.warning(
-                    "Could not relocate ADK web assets out of %s: %s", source_dir, exc
+                agent_logger.error(
+                    "Could not prepare patched ADK web assets from %s: %s; refusing to serve the upstream bundle",
+                    source_dir,
+                    exc,
                 )
+                raise AdkWebUiPatchError(
+                    f"Could not prepare patched ADK Web assets from {source_dir}"
+                ) from exc
             else:
                 if relocated:
                     agent_logger.info(
@@ -1912,9 +1929,10 @@ def _create_ai_agent_fastapi_app(
     register_secure_artifact_service()
   if fastapi_storage_kwargs:
     agent_logger.info(
-      "Using packaged AI agent storage session=%s artifacts=%s",
+      "Using AI agent storage session=%s artifacts=%s memory=%s",
       fastapi_storage_kwargs.get("session_service_uri"),
       fastapi_storage_kwargs.get("artifact_service_uri"),
+      fastapi_storage_kwargs.get("memory_service_uri"),
     )
 
   with _adk_web_assets_redirect(agent_logger):
@@ -1950,9 +1968,14 @@ def _prepare_ai_agent_process_env(env_vars: Dict[str, str]) -> Dict[str, str]:
         if totp_secret:
             prepared_env[AI_AGENT_TOTP_SECRET_ENV] = totp_secret
 
-    storage_uris = _resolve_ai_agent_storage_uris(env_vars)
+    prepared_env[ADK_MEMORY_PERSISTENT_ENV] = (
+        "1" if bool(ai_agent_cfg.get("record_messages_in_database", True)) else "0"
+    )
+    prepared_env.setdefault("ADK_ENABLE_MCP_MODERN_PROTOCOL", "1")
+    storage_uris = _resolve_ai_agent_storage_uris(prepared_env)
     prepared_env[AI_AGENT_SESSION_SERVICE_URI_ENV] = storage_uris["session_service_uri"]
     prepared_env[AI_AGENT_ARTIFACT_SERVICE_URI_ENV] = storage_uris["artifact_service_uri"]
+    prepared_env[AI_AGENT_MEMORY_SERVICE_URI_ENV] = storage_uris["memory_service_uri"]
     prepared_env[AUTOYOU_SESSION_DB_PATH_ENV] = str(_resolve_ai_agent_memory_db_path(prepared_env))
     memory_backend = str(
         ai_agent_cfg.get("memory_backend")
@@ -3235,6 +3258,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.build_prompt_agent.website.backend.app:app",
         "default_port": 8074,
     },
+    "prompts_agent": {
+        "app_import": "autoyou_agents.prompts_agent.website.backend.app:app",
+        "default_port": 8078,
+    },
     "notes_agent": {
         "app_import": "autoyou_agents.notes_agent.website.backend.app:app",
         "default_port": 8094,
@@ -3362,6 +3389,7 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "backup_agent": "Backup Agent",
     "audio_agent": "Audio Player App",
     "build_prompt_agent": "Prompt Builder",
+    "prompts_agent": "My Prompt",
     "notes_agent": "Notes Manager App",
     "tasks_agent": "Tasks App",
     "notify_agent": "Notify App",

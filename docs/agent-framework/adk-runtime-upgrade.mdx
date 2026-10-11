@@ -1,0 +1,107 @@
+---
+title: "Google ADK runtime and MCP compatibility"
+description: "Pinned ADK 2.11, native SQLite memory, MCP SDK 2.x, execution cancellation, and the customized development UI."
+---
+
+# Google ADK runtime and MCP compatibility
+
+The full server pins `google-adk==2.11.0`, `mcp==2.3.0`,
+`mcp-types==2.3.0`, `httpx2==2.13.1`, and `httpcore2==2.13.1`.
+The dedicated AutoYou MCP adapter uses the same MCP stack. These versions are
+recorded in the source requirements, hashed lock file, and release inventories.
+See the [ADK 2.11 release](https://github.com/google/adk-python/releases/tag/v2.11.0)
+and the [MCP Python SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
+
+## Native SQLite memory
+
+The AI worker now receives a native ADK memory-service URI. In source runs its
+default is `.adk/memory.db` under the server's configuration directory. Packaged
+Full builds use `autoyou_agents/.adk/memory.db` under the writable AutoYou data
+directory. The SQLite memory API persists explicitly ingested sessions and
+scopes searches by application and user.
+
+| Setting | Behavior |
+| --- | --- |
+| `AUTOYOU_AI_MEMORY_SERVICE_URI` | Optional ADK memory-service URI, such as an absolute `sqlite:///` URI. |
+| `AUTOYOU_ADK_MEMORY_PERSISTENT=0` | Use ephemeral ADK memory. |
+| `ai_agent.record_messages_in_database=false` | Disable persistent native memory for the worker. |
+| Secure storage enabled | Use ephemeral native ADK memory because the upstream SQLite implementation stores plaintext. |
+| `AUTOYOU_TEST_ROOT` | Redirect native SQLite memory into the isolated test root, overriding inherited production URIs. |
+
+This service is available to ADK's memory APIs and custom agents. It does not
+automatically ingest every chat or migrate AutoYou's existing `memory_search`
+index. Existing session history, Persona, and optional Cognee retrieval keep
+their established storage contracts. See [Memory](/technical/memory-system).
+
+## MCP SDK 2.x
+
+The adapter uses the public `MCPServer` API. Native SDK negotiation supports
+both the modern protocol and legacy MCP clients; the old discovery shim is
+removed. The AI worker enables ADK's SDK 2.x path with
+`ADK_ENABLE_MCP_MODERN_PROTOCOL=1` by default. An explicit caller setting is
+preserved, but SDK 2.x is the supported configuration for this pinned environment.
+
+Stdio and Streamable HTTP share the adapter lifecycle. Shutdown closes its
+backend client and optional connector. HTTP keeps the existing loopback/auth
+boundary and attachment limits. Chat replies remain readable text; opaque
+conversation handles are retained in structured results.
+
+Client configuration instructions are in the [README](https://github.com/autoyou-ai/AutoYou-Server#your-ai-development-workspace)
+and [MCP integration](/guides/mcp-integration). Availability depends on each
+client's MCP support, account settings, and transport. ChatGPT web requires the
+documented private tunnel setup; a loopback URL alone is insufficient.
+
+## Execution cancellation
+
+ADK 2.11 cancels an SSE run when the caller disconnects. The MCP REST bridge
+cancels its upstream chat task on disconnect or caller cancellation. The
+LiteLLM/Ollama stream normalizer closes the underlying iterator or HTTP stream
+in its cleanup path. Work is not retried after cancellation. ADK records its
+native aborted-invocation event in the session history.
+
+Cancellation stops ongoing generation. A tool side effect already completed
+before cancellation is not rolled back.
+
+## Customized ADK Web
+
+AutoYou removes ADK Web's Usage Metrics setting, enable control, and first-run
+telemetry consent modal from a private writable copy or staged build assets.
+The Google development-use disclosure remains visible. Modified JavaScript
+and HTML carry change notices, and the upstream installed package is retained.
+This change applies to the frontend's telemetry requests; separately configured
+CLI telemetry, exporters, and provider logging have their own settings.
+
+The patch scans all JavaScript chunks using semantic anchors. Unsupported
+recognized layouts fail verification before packaging. A future upstream
+release that removes every recognition marker still needs manual UI review.
+This is not a guarantee of compatibility with every future ADK version.
+
+Google ADK remains under Apache-2.0, MCP and mcp-types under MIT, and httpx2 and
+httpcore2 under BSD-3-Clause. Exact license texts accompany release bundles.
+AutoYou's license applies to AutoYou code and does not replace these third-party
+licenses. Google Cloud services and preview offerings may have additional
+terms; see [THIRD-PARTY-NOTICES](https://github.com/autoyou-ai/AutoYou-Server/blob/main/THIRD-PARTY-NOTICES.md).
+Product names describe compatibility and do not imply endorsement.
+
+The release bundles also include `google-adk-web-THIRD-PARTY-NOTICES.txt`.
+It collects the matched ADK Web v1.0.7 lockfile's runtime dependency notices,
+including Angular, plus embedded Graphviz, Expat, Emscripten, and musl notices.
+Graphviz EPL-2.0 source availability links are retained. The conservative
+lockfile notice inventory may include unused packages and is separate from
+a resolved binary SBOM. Provenance is recorded beside the source license texts.
+
+## Updating ADK later
+
+1. Review upstream release notes, API changes, license texts, and notices.
+   Match the embedded ADK Web release and refresh frontend dependency and
+   embedded WASM notices with `scripts/generate_adk_web_notices.py`, including
+   its reviewed release/commit constants and source availability statements.
+2. Update the base and macOS requirements and regenerate the hashed lock file
+   and its generated constraints.
+3. Patch a fresh staged browser copy and verify it with
+   `python scripts/patch_adk_web_ui.py --verify-only --browser-dir <browser-directory>`.
+4. Run the native memory, cancellation, adapter, frontend-copy, and build-contract
+   checks, then `python scripts/e2e_validate.py changed`.
+5. Restart Full, unlock the admin UI, and verify the agent UI and services.
+   Refresh source inventories and produce a new resolved SBOM for actual new
+   release binaries. Historical package SBOMs retain their original versions.

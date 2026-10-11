@@ -24,6 +24,24 @@ def test_windows_build_backend_verifies_managed_frontend_runtime_imports():
     assert "autoyou_agents.website_agent.website.backend.app" in text
 
 
+def test_windows_build_backend_sanitizes_adk_web_assets_before_packaging():
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+
+    assert "function Patch-AdkBrowserUi" in text
+    assert "scripts\\patch_adk_web_ui.py" in text
+    assert text.index("Patch-AdkBrowserUi -BackendRoot $finalBackendRoot") < text.index(
+        "Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot",
+        text.index("Patch-AdkBrowserUi -BackendRoot $finalBackendRoot"),
+    )
+
+
+def test_windows_server_msix_requires_google_adk_license_text():
+    package_script = (REPO_ROOT / "servers" / "windows" / "package-msix.ps1").read_text(encoding="utf-8")
+    msix_verifier = (REPO_ROOT / "scripts" / "verify_windows_server_msix.py").read_text(encoding="utf-8")
+    assert "google-adk-APACHE-2.0.txt" in package_script
+    assert "google-adk-APACHE-2.0.txt" in msix_verifier
+
+
 def test_windows_release_profiles_support_the_training_stack():
     build_all = (REPO_ROOT / "servers" / "windows" / "build-all.ps1").read_text(encoding="utf-8")
     publish = (REPO_ROOT / "servers" / "windows" / "publish-desktop.ps1").read_text(encoding="utf-8")

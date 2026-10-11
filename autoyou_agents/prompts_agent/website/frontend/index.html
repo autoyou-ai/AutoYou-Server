@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>My Prompt | Universal AI Prompt Harvester & Mind Map</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Toast Notification System -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- App Wrapper -->
+  <div class="app-layout">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand">
+          <span class="brand-icon">✨</span>
+          <div class="brand-text">
+            <h1>My Prompt</h1>
+            <span class="brand-sub">Universal AI Harvester</span>
+          </div>
+        </div>
+        <div id="sync-status-badge" class="sync-badge" title="Auto-sync active">
+          <span class="pulse-dot"></span>
+          <span id="sync-status-text">Checking sync...</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <!-- Navigation Tabs -->
+        <nav class="view-tabs">
+          <button id="tab-stream" class="tab-btn active" data-view="stream">
+            <span class="tab-icon">📝</span>
+            <span class="tab-label">Prompts</span>
+          </button>
+          <button id="tab-graph" class="tab-btn" data-view="graph">
+            <span class="tab-icon">🕸️</span>
+            <span class="tab-label">Mind Map</span>
+          </button>
+          <button id="tab-projects" class="tab-btn" data-view="projects">
+            <span class="tab-icon">📁</span>
+            <span class="tab-label">Projects</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="header-right">
+        <button id="btn-sync-now" class="btn btn-secondary btn-icon" title="Trigger instant sync">
+          <span class="btn-glyph">⚡</span>
+          <span class="btn-text">Sync Now</span>
+        </button>
+        <button id="btn-open-settings" class="btn btn-secondary btn-icon" title="Open Settings (OTP Protected)">
+          <span class="btn-glyph">🔒</span>
+          <span class="btn-text">Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Sub-header / Filter Toolbar -->
+    <div class="filter-toolbar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="input-search" placeholder="Search prompts, outputs, projects, keywords... (Press / to focus)" autocomplete="off">
+        <button id="btn-clear-search" class="btn-clear" style="display: none;">✕</button>
+      </div>
+
+      <div class="filter-group software-filters" id="software-filters">
+        <button class="pill-btn active" data-software="all">All</button>
+        <button class="pill-btn" data-software="codex">Codex</button>
+        <button class="pill-btn" data-software="claude">Claude</button>
+        <button class="pill-btn" data-software="vscode">VS Code</button>
+        <button class="pill-btn" data-software="cursor">Cursor</button>
+        <button class="pill-btn" data-software="antigravity">Antigravity</button>
+        <button class="pill-btn" data-software="custom_hook">Hooks</button>
+      </div>
+
+      <div class="filter-group secondary-filters">
+        <select id="select-date-filter" class="select-dropdown">
+          <option value="all">All Dates</option>
+          <option value="today">Today</option>
+          <option value="week">Past 7 Days</option>
+          <option value="month">Past 30 Days</option>
+        </select>
+        <select id="select-sort" class="select-dropdown">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+        </select>
+        <label class="toggle-checkbox">
+          <input type="checkbox" id="check-has-output">
+          <span>Has Output</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- 1. STREAM VIEW -->
+      <section id="view-stream" class="view-panel active">
+        <div class="stream-stats-bar">
+          <span id="stat-showing-count">Loading prompts...</span>
+          <div class="stats-pills" id="stats-pills"></div>
+        </div>
+
+        <div id="prompts-list" class="prompts-grid">
+          <!-- Dynamically populated prompt cards -->
+        </div>
+
+        <div id="stream-pagination" class="pagination-bar" style="display: none;">
+          <button id="btn-prev-page" class="btn btn-secondary">Previous</button>
+          <span id="page-indicator">Page 1</span>
+          <button id="btn-next-page" class="btn btn-secondary">Next</button>
+        </div>
+      </section>
+
+      <!-- 2. MIND MAP / OBSIDIAN GRAPH VIEW -->
+      <section id="view-graph" class="view-panel">
+        <div class="graph-container">
+          <div class="graph-toolbar">
+            <span class="graph-title">Obsidian-Style Interactive Mind Map</span>
+            <div class="graph-controls">
+              <button id="btn-graph-zoom-in" class="btn btn-xs" title="Zoom In">+</button>
+              <button id="btn-graph-zoom-out" class="btn btn-xs" title="Zoom Out">−</button>
+              <button id="btn-graph-reset" class="btn btn-xs" title="Reset View">⟲ Reset</button>
+            </div>
+          </div>
+          <canvas id="mindmap-canvas"></canvas>
+          <div id="graph-tooltip" class="graph-tooltip" style="display: none;"></div>
+          <div class="graph-legend" id="graph-legend"></div>
+        </div>
+      </section>
+
+      <!-- 3. PROJECTS & WORKTREES VIEW -->
+      <section id="view-projects" class="view-panel">
+        <div class="projects-header">
+          <h2>Discovered Projects & Worktrees</h2>
+          <p>Projects automatically indexed from your workspace directories and AI sessions.</p>
+        </div>
+        <div id="projects-grid" class="projects-grid">
+          <!-- Dynamically populated project cards -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <div class="mobile-nav-bar">
+      <button class="mobile-tab-btn active" data-view="stream">
+        <span class="nav-icon">📝</span>
+        <span>Prompts</span>
+      </button>
+      <button class="mobile-tab-btn" data-view="graph">
+        <span class="nav-icon">🕸️</span>
+        <span>Mind Map</span>
+      </button>
+      <button class="mobile-tab-btn" data-view="projects">
+        <span class="nav-icon">📁</span>
+        <span>Projects</span>
+      </button>
+      <button id="btn-mobile-settings" class="mobile-tab-btn">
+        <span class="nav-icon">🔒</span>
+        <span>Settings</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SLIDE-OVER DRAWER: Linked History Chain -->
+  <div id="chain-drawer" class="drawer-overlay" style="display: none;">
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <div class="drawer-title-box">
+          <span class="drawer-badge" id="drawer-sw-badge">CODEX</span>
+          <h3 id="drawer-session-title">Session History</h3>
+          <span class="drawer-meta" id="drawer-session-meta">Project: General</span>
+        </div>
+        <button id="btn-close-drawer" class="btn-close">✕</button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="chain-timeline" id="chain-timeline">
+          <!-- Chronological conversation turns -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: OTP-Gated Settings & Hook Installation -->
+  <div id="settings-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-box">
+          <span class="modal-icon" id="modal-lock-icon">🔒</span>
+          <div>
+            <h3 id="modal-title">Settings & Controls</h3>
+            <span class="modal-subtitle">Protected configuration for My Prompt</span>
+          </div>
+        </div>
+        <button id="btn-close-settings" class="btn-close">✕</button>
+      </div>
+
+      <!-- State A: Locked OTP Challenge Screen -->
+      <div id="settings-locked-view" class="modal-body">
+        <div class="otp-prompt">
+          <p>Please enter your 6-digit security PIN to unlock harvester controls and hook management.</p>
+          <div class="pin-input-wrap">
+            <input type="password" id="input-pin" maxlength="12" placeholder="••••••" autofocus autocomplete="off">
+            <button id="btn-submit-pin" class="btn btn-primary">Unlock</button>
+          </div>
+          <span class="otp-hint">Default PIN: <code>123456</code> (Customizable in settings)</span>
+          <div id="otp-error-msg" class="error-banner" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- State B: Unlocked Settings Panel -->
+      <div id="settings-unlocked-view" class="modal-body" style="display: none;">
+        <div class="unlocked-banner">
+          <span>🔓 Security Verified — Settings Active</span>
+          <button id="btn-relock" class="btn btn-xs btn-outline">Lock Again</button>
+        </div>
+
+        <div class="settings-section">
+          <h4>Collection Controls</h4>
+          <div class="setting-row">
+            <div class="setting-label">
+              <strong>Capture Final Outputs</strong>
+              <span>Record model task completion answers and summaries.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-capture-outputs">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <strong>Capture Attachments</strong>
+              <span>Save attached images, diagrams, and files locally.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-capture-attachments">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <strong>Sync Frequency (Cron)</strong>
+              <span>Automated background collection interval.</span>
+            </div>
+            <select id="setting-sync-interval" class="select-dropdown">
+              <option value="10m">Every 10 Minutes</option>
+              <option value="hourly">Hourly (Default)</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="manual">Manual Only</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <strong>Storage Encryption</strong>
+              <span>At-rest protection for stored prompts and sessions.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="setting-encrypted-storage" disabled title="Encrypted prompt storage is not implemented">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>Full Resync & Historical Harvest</h4>
+          <p class="section-desc">One-time sweep through all historical logs, projects, and worktrees to sync everything to the present.</p>
+          <button id="btn-force-full-resync" class="btn btn-warning">
+            <span>🚀 Run First-Time Full Resync</span>
+          </button>
+        </div>
+
+        <div class="settings-section">
+          <h4>Software Hooks & Push Integration</h4>
+          <p class="section-desc">Push prompts directly from terminal CLIs (Claude Code, Codex CLI) or IDE hooks into AutoYou:</p>
+          <div class="hook-actions">
+            <button id="btn-create-hook" class="btn btn-secondary">Generate Push Token</button>
+          </div>
+          <div id="new-hook-box" class="code-box" style="display: none;">
+            <div class="code-header">
+              <span>Push Token (Copy now)</span>
+              <button id="btn-copy-hook-token" class="btn btn-xs">Copy</button>
+            </div>
+            <pre><code id="hook-token-val"></code></pre>
+          </div>
+
+          <div class="curl-example-box">
+            <span class="example-label">One-Line Push Example (Bash / PowerShell):</span>
+            <pre><code>curl -X POST http://127.0.0.1:8078/api/push \
+  -H "Content-Type: application/json" \
+  -H "X-Prompt-Token: &lt;YOUR_TOKEN&gt;" \
+  -d '{"prompt_text": "Refactor authentication module", "software": "claude", "project": "AutoYou"}'</code></pre>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h4>Security PIN</h4>
+          <div class="setting-row">
+            <div class="setting-label">
+              <strong>Change Passcode</strong>
+              <span>Set a new 4-12 digit passcode to gate settings.</span>
+            </div>
+            <div class="pin-change-row">
+              <input type="password" id="input-new-pin" placeholder="New PIN" class="input-sm">
+              <button id="btn-save-pin" class="btn btn-secondary btn-sm">Save PIN</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-footer">
+          <button id="btn-save-settings" class="btn btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

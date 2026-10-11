@@ -22,6 +22,7 @@ import copy
 import datetime as dt
 import json
 import re
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,9 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback.
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "docs" / "legal" / "release-artifacts.json"
+
+THIRD_PARTY_LICENSE_FILES = {'google-adk': 'google-adk-APACHE-2.0.txt', 'mcp': 'mcp-MIT.txt', 'mcp-types': 'mcp-types-MIT.txt', 'httpx2': 'httpx2-BSD-3-Clause.txt', 'httpcore2': 'httpcore2-BSD-3-Clause.txt'}
+ADK_WEB_NOTICE_FILE = "google-adk-web-THIRD-PARTY-NOTICES.txt"
 
 REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*(.*)$")
 REQ_EXACT_RE = re.compile(r"==\s*([^,;\s]+)")
@@ -511,6 +515,27 @@ def generate_artifacts(config: dict[str, Any], *, only_artifact: str | None = No
             build_notice(profile, components, timestamp=timestamp),
             encoding="utf-8",
         )
+        shipped_names = {normalize_name(component.get("name", "")) for component in components}
+        license_files = []
+        for name, filename in THIRD_PARTY_LICENSE_FILES.items():
+            license_target = artifact_dir / filename
+            if name not in shipped_names:
+                license_target.unlink(missing_ok=True)
+                continue
+            license_source = REPO_ROOT / "docs/legal/licenses" / filename
+            if not license_source.is_file():
+                raise FileNotFoundError(f"Required {name} license text is missing: {license_source}")
+            shutil.copy2(license_source, license_target)
+            license_files.append(repo_relative(license_target))
+        frontend_notice_target = artifact_dir / ADK_WEB_NOTICE_FILE
+        if "google-adk" in shipped_names:
+            frontend_notice_source = REPO_ROOT / "docs/legal/licenses" / ADK_WEB_NOTICE_FILE
+            if not frontend_notice_source.is_file():
+                raise FileNotFoundError(f"Required ADK Web dependency notices are missing: {frontend_notice_source}")
+            shutil.copy2(frontend_notice_source, frontend_notice_target)
+            license_files.append(repo_relative(frontend_notice_target))
+        else:
+            frontend_notice_target.unlink(missing_ok=True)
         summary["artifacts"].append(
             {
                 "id": profile["id"],
@@ -518,6 +543,7 @@ def generate_artifacts(config: dict[str, Any], *, only_artifact: str | None = No
                 "componentCount": len(components),
                 "notice": repo_relative(artifact_dir / "NOTICE.txt"),
                 "sbom": repo_relative(artifact_dir / "sbom.cdx.json"),
+                "thirdPartyLicenseFiles": license_files,
             }
         )
     # A scoped release refresh owns only its artifact directory. Rewriting the

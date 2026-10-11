@@ -277,7 +277,18 @@ PACKAGED_LEGAL_BUNDLES = (('Windows Server dist legal bundle',
  ('macOS Server app legal bundle',
   'servers/macos/build/AutoYou.app/Contents/Resources/Legal',
   ('binary-default', 'connector-full')))
-LEGAL_BUNDLE_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")
+LEGAL_BUNDLE_FILES = (
+    "LICENSE",
+    "NOTICE.txt",
+    "sbom.cdx.json",
+    "THIRD-PARTY-NOTICES.md",
+    "google-adk-APACHE-2.0.txt",
+    "google-adk-web-THIRD-PARTY-NOTICES.txt",
+    "mcp-MIT.txt",
+    "mcp-types-MIT.txt",
+    "httpx2-BSD-3-Clause.txt",
+    "httpcore2-BSD-3-Clause.txt",
+)
 HOSTED_LEGAL_PAGES = (
     ("privacy", "/privacy/", ("OpenStorey LLC", "Data Controller:", "CCPA", "not sell or share")),
     ("terms", "/terms/", ("OpenStorey LLC", "AutoYou Source-Available Personal-Use License", "Class action waiver")),

@@ -26,7 +26,18 @@ from zipfile import BadZipFile, ZipFile
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-e3cdc68b68d6f158f4534d6b"
 
 
-LEGAL_FILES = ("LICENSE", "NOTICE.txt", "sbom.cdx.json", "THIRD-PARTY-NOTICES.md")
+LEGAL_FILES = (
+    "LICENSE",
+    "NOTICE.txt",
+    "sbom.cdx.json",
+    "THIRD-PARTY-NOTICES.md",
+    "google-adk-APACHE-2.0.txt",
+    "google-adk-web-THIRD-PARTY-NOTICES.txt",
+    "mcp-MIT.txt",
+    "mcp-types-MIT.txt",
+    "httpx2-BSD-3-Clause.txt",
+    "httpcore2-BSD-3-Clause.txt",
+)
 REQUIRED_PAYLOAD_PATHS = (
     "AutoYou.exe",
     "AutoYou.dll",

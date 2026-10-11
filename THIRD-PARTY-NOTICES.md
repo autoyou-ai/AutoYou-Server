@@ -1,6 +1,6 @@
 # AutoYou Third-Party Notices
 
-Last updated: 2026-09-29
+Last updated: 2026-10-10
 
 This file is the repository-level notice index for AutoYou. It does not replace the exact license texts that must be included with final release artifacts.
 
@@ -30,6 +30,70 @@ The notice bundle should include:
 - LGPLv3 / LGPL-2.1-or-later notices and relinking/reverse-engineering rights where LGPL components are bundled.
 - GPLv3 and AGPL-3.0 source/offer notices only for optional separate GPL/AGPL services or research tools that are actually distributed.
 - Vendor SDK terms notices for Apple, Google, Microsoft, Azure, GIPHY, WebRTC binaries, and similar platform SDKs.
+
+## Google ADK Web
+
+Google's Agent Development Kit Web frontend and Python distribution are
+distributed under Apache-2.0 ([ADK Web license](https://github.com/google/adk-web/blob/main/LICENSE);
+[ADK Python license](https://github.com/google/adk-python/blob/main/LICENSE)).
+AutoYou modifies
+only staged or AutoYou-owned writable copies of the frontend, removing the
+Usage Metrics control and first-run telemetry consent UI. The upstream
+development-use disclosure remains visible. Modified JavaScript and HTML
+files carry notices describing the changes; release Legal folders include
+the full Apache-2.0 text as google-adk-APACHE-2.0.txt. This descriptive
+reference does not imply Google approval or endorsement.
+
+This frontend-only change stops the ADK Web UI consent and settings requests;
+it does not disable separate ADK CLI telemetry, explicitly configured
+OpenTelemetry exporters, or provider-side logging.
+
+Google's upstream ADK Web README also labels the feature Preview and points to
+the [Google Cloud Pre-GA Offerings Terms](https://cloud.google.com/terms/service-terms).
+The upstream development-use disclosure remains visible in the UI. The Apache
+license for the frontend does not override any separate service terms; review
+the terms applicable to the Google services and account used with a deployment.
+
+The patch uses semantic anchors without a hard-coded ADK version. A recognized
+control that moves into an unsupported structure causes packaging to fail. A
+future release that renames or removes all recognition markers still requires
+manual UI review before changing the Google ADK dependency pin. Review the new
+frontend behavior, license files, and upstream notices; update the sanitizer
+only after that review. This does not promise compatibility with every future
+ADK release.
+
+## MCP SDK 2.x runtime dependencies
+
+The current source pins Google ADK 2.11.0, MCP SDK and mcp-types 2.3.0,
+and httpx2/httpcore2 2.13.1. MCP and mcp-types retain the MIT license and
+Anthropic copyright notices. httpx2 and httpcore2 retain BSD-3-Clause license
+texts and upstream copyright notices for Pydantic Services, Encode, and
+contributors. These licenses apply to their respective third-party code;
+AutoYou's source-available license does not replace them.
+
+The exact texts are retained in `docs/legal/licenses`/ and copied into release bundles
+whose source inventory includes these components:
+
+| Component | License file |
+| --- | --- |
+| Google ADK | `google-adk-APACHE-2.0.txt` |
+| MCP SDK | `mcp-MIT.txt` |
+| mcp-types | `mcp-types-MIT.txt` |
+| httpx2 | `httpx2-BSD-3-Clause.txt` |
+| httpcore2 | `httpcore2-BSD-3-Clause.txt` |
+| ADK Web runtime and embedded dependencies | `google-adk-web-THIRD-PARTY-NOTICES.txt` |
+
+The ADK 2.11 frontend matches ADK Web v1.0.7. Its conservative lockfile notice
+collection includes Angular and other frontend dependencies, plus embedded
+Graphviz 15.1.1 under EPL-2.0 with source availability links, Expat, Emscripten,
+and musl. Original notices and available author attributions are retained;
+standard MIT/ISC text is explicitly identified where upstream supplies a license
+declaration but no standalone license file. This notice inventory can include
+unused packages and is not a complete binary SBOM.
+
+Names describe the components used and do not imply vendor endorsement.
+Source inventories describe dependency manifests. Existing published package
+SBOMs retain the versions recorded from those packages until a new release is built.
 
 ## Current Known Special Cases
 

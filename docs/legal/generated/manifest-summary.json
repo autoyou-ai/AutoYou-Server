@@ -1,40 +1,80 @@
 {
   "artifacts": [
     {
-      "componentCount": 130,
+      "componentCount": 134,
       "displayName": "AutoYou Server source/full profile",
       "id": "autoyou-server-source-full",
       "notice": "docs/legal/generated/autoyou-server-source-full/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-server-source-full/sbom.cdx.json"
+      "sbom": "docs/legal/generated/autoyou-server-source-full/sbom.cdx.json",
+      "thirdPartyLicenseFiles": [
+        "docs/legal/generated/autoyou-server-source-full/google-adk-APACHE-2.0.txt",
+        "docs/legal/generated/autoyou-server-source-full/mcp-MIT.txt",
+        "docs/legal/generated/autoyou-server-source-full/mcp-types-MIT.txt",
+        "docs/legal/generated/autoyou-server-source-full/httpx2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-source-full/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-source-full/google-adk-web-THIRD-PARTY-NOTICES.txt"
+      ]
     },
     {
-      "componentCount": 95,
+      "componentCount": 99,
       "displayName": "AutoYou Server Windows binary-default build",
       "id": "autoyou-server-windows-default",
       "notice": "docs/legal/generated/autoyou-server-windows-default/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json"
+      "sbom": "docs/legal/generated/autoyou-server-windows-default/sbom.cdx.json",
+      "thirdPartyLicenseFiles": [
+        "docs/legal/generated/autoyou-server-windows-default/google-adk-APACHE-2.0.txt",
+        "docs/legal/generated/autoyou-server-windows-default/mcp-MIT.txt",
+        "docs/legal/generated/autoyou-server-windows-default/mcp-types-MIT.txt",
+        "docs/legal/generated/autoyou-server-windows-default/httpx2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-default/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-default/google-adk-web-THIRD-PARTY-NOTICES.txt"
+      ]
     },
     {
-      "componentCount": 95,
+      "componentCount": 99,
       "displayName": "AutoYou Server macOS binary-default build",
       "id": "autoyou-server-macos-default",
       "notice": "docs/legal/generated/autoyou-server-macos-default/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json"
+      "sbom": "docs/legal/generated/autoyou-server-macos-default/sbom.cdx.json",
+      "thirdPartyLicenseFiles": [
+        "docs/legal/generated/autoyou-server-macos-default/google-adk-APACHE-2.0.txt",
+        "docs/legal/generated/autoyou-server-macos-default/mcp-MIT.txt",
+        "docs/legal/generated/autoyou-server-macos-default/mcp-types-MIT.txt",
+        "docs/legal/generated/autoyou-server-macos-default/httpx2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-macos-default/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-macos-default/google-adk-web-THIRD-PARTY-NOTICES.txt"
+      ]
     },
     {
-      "componentCount": 131,
+      "componentCount": 135,
       "displayName": "AutoYou Server Windows connector-full build",
       "id": "autoyou-server-windows-connector-full",
       "notice": "docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json"
+      "sbom": "docs/legal/generated/autoyou-server-windows-connector-full/sbom.cdx.json",
+      "thirdPartyLicenseFiles": [
+        "docs/legal/generated/autoyou-server-windows-connector-full/google-adk-APACHE-2.0.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/mcp-MIT.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/mcp-types-MIT.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/httpx2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/google-adk-web-THIRD-PARTY-NOTICES.txt"
+      ]
     },
     {
-      "componentCount": 131,
+      "componentCount": 135,
       "displayName": "AutoYou Server macOS connector-full build",
       "id": "autoyou-server-macos-connector-full",
       "notice": "docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt",
-      "sbom": "docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json"
+      "sbom": "docs/legal/generated/autoyou-server-macos-connector-full/sbom.cdx.json",
+      "thirdPartyLicenseFiles": [
+        "docs/legal/generated/autoyou-server-macos-connector-full/google-adk-APACHE-2.0.txt",
+        "docs/legal/generated/autoyou-server-macos-connector-full/mcp-MIT.txt",
+        "docs/legal/generated/autoyou-server-macos-connector-full/mcp-types-MIT.txt",
+        "docs/legal/generated/autoyou-server-macos-connector-full/httpx2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-macos-connector-full/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-macos-connector-full/google-adk-web-THIRD-PARTY-NOTICES.txt"
+      ]
     }
   ],
-  "generatedAt": "2026-10-09T09:16:15+00:00"
+  "generatedAt": "2026-10-11T00:21:14+00:00"
 }

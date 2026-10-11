@@ -1,0 +1,10 @@
+{
+  "agent_name": "prompts_agent",
+  "title": "My Prompt",
+  "description": "Universal prompt harvester and Obsidian-style mind map visualizer across Codex, Claude, Cursor, Antigravity, and VS Code.",
+  "entry_path": "/",
+  "recommended_port": 8078,
+  "requires_proxy_registration": true,
+  "auth_default": "open",
+  "bypass_global_otp": true
+}

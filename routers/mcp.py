@@ -20,6 +20,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 
 import re
+import asyncio
 import time
 import uuid
 from typing import Any, Callable, Dict, List, Mapping, Optional
@@ -42,6 +43,33 @@ _PAIRING_COMMANDS = {
     "/autopair_candidates",
 }
 _SENDER_ID_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,256}$")
+
+
+async def _chat_until_disconnect(request: Request, chat):
+    """Propagate MCP cancellation through the REST bridge to ADK's SSE run."""
+    worker = asyncio.create_task(chat)
+
+    async def watch_disconnect():
+        # FastAPI has already consumed the JSON body. Await the ASGI disconnect
+        # directly; is_disconnected() uses an AnyIO cancel scope which can
+        # swallow asyncio task cancellation and leave this watcher running.
+        while True:
+            message = await request.receive()
+            if message["type"] == "http.disconnect":
+                return
+
+    watcher = asyncio.create_task(watch_disconnect())
+    try:
+        done, _ = await asyncio.wait({worker, watcher}, return_when=asyncio.FIRST_COMPLETED)
+        if worker in done:
+            return await worker
+        await watcher
+        raise asyncio.CancelledError("MCP client disconnected")
+    finally:
+        for task in (worker, watcher):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(worker, watcher, return_exceptions=True)
 
 
 class SendMessageRequest(BaseModel):
@@ -359,7 +387,7 @@ def register_routes(
             )
             ai_port = int(getattr(server, "AI_AGENT_SERVER_PORT", 8081) or 8081)
             ai_agent_url = f"http://localhost:{ai_port}"
-            response = await process_chat(chat_request, ai_agent_url)
+            response = await _chat_until_disconnect(request, process_chat(chat_request, ai_agent_url))
         except Exception as exc:
             server.LOGGER.warning("Full-server MCP chat failed: %s", exc)
             return JSONResponse(status_code=502, content={"error": "ai_backend_unavailable"})

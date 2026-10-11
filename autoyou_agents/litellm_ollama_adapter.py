@@ -12,6 +12,7 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 import copy
 import ast
+import inspect
 import json
 import logging
 import math
@@ -1495,18 +1496,33 @@ async def normalize_ollama_stream_response(
 ) -> Any:
     """Yield normalized LiteLLM stream chunks for Ollama models."""
     reasoning_buffer = ""
-    async for chunk in response:
-        reasoning_piece = _extract_response_reasoning_text(chunk)
-        if reasoning_piece:
-            reasoning_buffer = f"{reasoning_buffer}\n{reasoning_piece}".strip()
-            if len(reasoning_buffer) > 12000:
-                reasoning_buffer = reasoning_buffer[-12000:]
-        yield normalize_ollama_response(
-            chunk,
-            messages=messages,
-            tools=tools,
-            reasoning_fallback=reasoning_buffer or None,
-        )
+    iterator = response.__aiter__()
+    try:
+        async for chunk in iterator:
+            reasoning_piece = _extract_response_reasoning_text(chunk)
+            if reasoning_piece:
+                reasoning_buffer = f"{reasoning_buffer}\n{reasoning_piece}".strip()
+                if len(reasoning_buffer) > 12000:
+                    reasoning_buffer = reasoning_buffer[-12000:]
+            yield normalize_ollama_response(
+                chunk,
+                messages=messages,
+                tools=tools,
+                reasoning_fallback=reasoning_buffer or None,
+            )
+    finally:
+        # ADK 2.11 aborts an in-flight model iterator on cancellation. Closing
+        # both wrappers releases the Ollama HTTP stream on abort, disconnect,
+        # early generator close, and normal completion. Cancellation propagates.
+        for stream in (iterator, response) if iterator is not response else (response,):
+            close = getattr(stream, "aclose", None) or getattr(stream, "close", None)
+            if callable(close):
+                try:
+                    closed = close()
+                    if inspect.isawaitable(closed):
+                        await closed
+                except Exception as exc:
+                    LOGGER.debug("Ollama stream cleanup failed: %s", exc)
 
 def _extract_response_reasoning_text(response: Any) -> Optional[str]:
     chunks: list[str] = []
