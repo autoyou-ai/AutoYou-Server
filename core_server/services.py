@@ -1094,6 +1094,9 @@ async def _initialize_services_on_startup() -> None:
                 runtime.LOGGER.info("Pairing router configured.")
             except Exception as e:
                 runtime.LOGGER.warning(f"Failed to configure pairing router: {e}")
+            # Native transport remains required when optional services are deferred.
+            from core_server.iroh_service import start_server_transport
+            await start_server_transport(runtime)
             runtime.STATE.initialized_services_on_startup = True
             runtime._update_startup_status(
                 status="complete",
