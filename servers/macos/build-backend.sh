@@ -3270,6 +3270,8 @@ compile_python_backend() {
         "--output-filename=AutoYouServer"
         # Keep compiled file references runtime-relative instead of embedding checkout paths.
         "--file-reference-choice=runtime"
+        # The verifier runs before runtime_modules is added to the import path.
+        "--include-module=shared.macos_runtime_integrity"
         "--assume-yes-for-downloads"
         # Preserve docstrings: upstream runtime libraries like SQLAlchemy and NumPy
         # still inspect their own docs during packaged bootstrap on macOS.
