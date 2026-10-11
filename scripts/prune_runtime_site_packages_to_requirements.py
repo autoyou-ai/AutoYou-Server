@@ -226,6 +226,8 @@ def prune_runtime_site_packages(
     requirements = parse_requirement_files(requirements_files)
     distributions = collect_distributions(root)
     required, missing = resolve_required_distributions(requirements, distributions)
+    if missing:
+        raise SystemExit("Required distributions missing from copied runtime: " + ", ".join(sorted(missing)))
 
     owners: dict[Path, set[str]] = defaultdict(set)
     for normalized, dist in distributions.items():

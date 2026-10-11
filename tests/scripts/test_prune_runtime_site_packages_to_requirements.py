@@ -12,6 +12,8 @@ __license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
 
 from pathlib import Path
 
+import pytest
+
 from scripts.prune_runtime_site_packages_to_requirements import prune_runtime_site_packages
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-cd1079d8656bc5ff3d6d4525"
@@ -104,3 +106,21 @@ def test_prune_parses_nested_requirements_and_git_egg(tmp_path):
     assert (site_packages / "diskcache").is_dir()
     assert not (site_packages / "dev_only").exists()
     assert result["removed_distributions"] == ["dev-only"]
+
+
+@pytest.mark.parametrize("transitive", [False, True])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_missing_required_distribution_fails_before_any_removal(tmp_path, transitive, dry_run):
+    site_packages = tmp_path / "site-packages"
+    site_packages.mkdir()
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("parent==1.0.0\n" if transitive else "missing-required==1.0.0\n", encoding="utf-8")
+    if transitive:
+        _write_dist(site_packages, "parent", requires=("missing-required>=1",))
+    _write_dist(site_packages, "unused-child")
+    before = {p.relative_to(site_packages): p.read_bytes() for p in site_packages.rglob("*") if p.is_file()}
+
+    with pytest.raises(SystemExit, match="Required distributions missing from copied runtime: missing-required"):
+        prune_runtime_site_packages(site_packages, [requirements], dry_run=dry_run)
+
+    assert {p.relative_to(site_packages): p.read_bytes() for p in site_packages.rglob("*") if p.is_file()} == before

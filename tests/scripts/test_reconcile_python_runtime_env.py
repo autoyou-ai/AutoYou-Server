@@ -120,13 +120,13 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
         "hermes-agent",
         "browser-use",
         "langchain-openai",
-        "mcp",
         "stream2sentence",
         "twine",
     ]
     assert installed["cognee"] == "1.2.2"
     # NLTK is a voice dependency now (requirements/voice.txt), so it is kept, not retired.
     assert installed["nltk"] == "3.10.3"
+    assert installed["mcp"] == "1.26.0"
     assert installed["opencv-python"] == "4.12.0.88"
     assert ["install", "--upgrade", "h2==4.4.1", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "multidict==6.9.1", "-c", str(constraints)] in calls
@@ -173,3 +173,14 @@ def test_reconcile_removes_legacy_realtimestt(monkeypatch):
     reconcile.reconcile(None)
 
     assert calls == [["uninstall", "-y", "realtimestt"]]
+
+
+def test_reconcile_keeps_required_mcp_and_voice_dependencies(monkeypatch):
+    installed = {"mcp": "2.3.0", "nltk": "3.10.3", "claude-agent-sdk": "0.1.0"}
+    calls = []
+    monkeypatch.setattr(reconcile, "installed_version", installed.get)
+    monkeypatch.setattr(reconcile, "run_pip", calls.append)
+
+    reconcile.reconcile(None)
+
+    assert calls == [["uninstall", "-y", "claude-agent-sdk"]]

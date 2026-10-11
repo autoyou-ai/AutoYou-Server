@@ -49,7 +49,6 @@ RETIRED_PACKAGES = (
     # Older full/dev venvs may carry optional packages that are not part of the
     # server runtime profile and now conflict with locked runtime dependencies.
     "claude-agent-sdk",
-    "mcp",
     "google-api-python-client",
     "google-auth-httplib2",
     "httplib2",
