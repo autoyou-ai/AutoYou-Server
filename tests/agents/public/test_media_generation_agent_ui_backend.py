@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from PIL import Image
 
 import pytest
 from fastapi.testclient import TestClient
@@ -445,6 +446,7 @@ def test_media_generation_sync_retries_image_after_wan_memory_failure(monkeypatc
     subprocess_calls = []
 
     monkeypatch.setattr(media_generation_tool, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(media_generation_tool, "probe_wan_runtime", lambda *args, **kwargs: {"ready": True, "backend": "nvidia"})
     monkeypatch.setattr(
         media_generation_tool,
         "get_wan2gp_config",
@@ -474,10 +476,10 @@ def test_media_generation_sync_retries_image_after_wan_memory_failure(monkeypatc
                 stderr="fatal   : Memory allocation failure",
             )
         output_path.mkdir(parents=True, exist_ok=True)
-        (output_path / "synthetic-low-memory.png").write_bytes(b"\x89PNG\r\n\x1a\nsynthetic")
+        Image.new("RGB", (32, 32), "navy").save(output_path / "synthetic-low-memory.png")
         return media_generation_tool.subprocess.CompletedProcess(command, 0, stdout="done", stderr="")
 
-    monkeypatch.setattr(media_generation_tool.subprocess, "run", fake_run)
+    monkeypatch.setattr(media_generation_tool, "run_owned_media_process", fake_run)
 
     result = media_generation_tool.generate_media_sync(
         "Generate an image of a baby driving a scooter in space",
@@ -725,6 +727,8 @@ def test_wan2gp_environment_endpoints_require_auth() -> None:
 
 
 def test_wan2gp_environment_status_shape(monkeypatch) -> None:
+    monkeypatch.setattr(media_generation_tool, "_machine_profile", lambda: {"system": "Windows", "machine": "x86_64", "has_nvidia": True})
+    monkeypatch.setattr(media_generation_tool, "probe_wan_runtime", lambda *args: {"ready": True, "backend": "nvidia"})
     status = media_generation_tool.wan2gp_environment_status()
     assert "platform" in status and "configured" in status and "install" in status
     assert "draw_things" in status
@@ -808,10 +812,10 @@ def test_media_generation_sync_runs_draw_things_locally(monkeypatch, tmp_path) -
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
         image_path = Path(command[command.index("--output") + 1])
-        image_path.write_bytes(b"\x89PNG\r\n\x1a\nsynthetic")
+        Image.new("RGB", (32, 32), "navy").save(image_path)
         return media_generation_tool.subprocess.CompletedProcess(command, 0, stdout="done", stderr="")
 
-    monkeypatch.setattr(media_generation_tool.subprocess, "run", fake_run)
+    monkeypatch.setattr(media_generation_tool, "run_owned_media_process", fake_run)
 
     result = media_generation_tool.generate_media_sync(
         "synthetic image prompt",

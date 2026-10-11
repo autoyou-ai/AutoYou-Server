@@ -19,12 +19,18 @@ import subprocess
 import shutil
 import threading
 import platform
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 
 from shared.platform_runtime import get_config_dir, get_service_data_dir, is_compiled
 from shared.secure_storage import SecureStorageError, append_secure_file, read_secure_file, write_secure_file
+from shared.media_generation_runtime import (
+    clear_wan_runtime_cache, probe_wan_runtime, run_owned_media_process,
+    wan_generation_command,
+)
 
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7042fe33e640c65dd9fd49d9"
 
@@ -83,7 +89,7 @@ def sanitize_media_history_item_for_api(item: Dict[str, Any]) -> Dict[str, Any]:
         file_name = str(public_item.get("file_name") or "").strip() or Path(file_path).name
         public_item["file_path"] = f"[local media file]/{file_name}" if file_name else "[local media file]"
         redacted = True
-    for key in ("error_message",):
+    for key in ("error_message", "progress_message"):
         original = public_item.get(key)
         sanitized = redact_local_paths_for_display(original)
         if sanitized != original:
@@ -128,6 +134,14 @@ def init_db() -> None:
                 error_message TEXT
             )
         """)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(media_history)")}
+        for name, kind in (
+            ("progress_message", "TEXT"), ("updated_at", "TEXT"),
+            ("owner_pid", "INTEGER"), ("owner_started_at", "REAL"),
+            ("worker_pid", "INTEGER"),
+        ):
+            if name not in columns:
+                conn.execute(f"ALTER TABLE media_history ADD COLUMN {name} {kind}")
         conn.commit()
     finally:
         conn.close()
@@ -143,11 +157,12 @@ def _wan2gp_python_relpaths() -> Tuple[str, ...]:
     """Relative virtualenv python locations inside a Wan2GP app folder."""
     if os.name == "nt":
         return (
+            "env-rocm/Scripts/python.exe",
             "env/Scripts/python.exe",
             "venv/Scripts/python.exe",
             ".venv/Scripts/python.exe",
         )
-    return ("env/bin/python", "venv/bin/python", ".venv/bin/python")
+    return ("env-rocm/bin/python", "env/bin/python", "venv/bin/python", ".venv/bin/python")
 
 def _candidate_pinokio_homes() -> List[Path]:
     """Likely Pinokio home folders for the current machine."""
@@ -402,6 +417,7 @@ def save_wan2gp_config(wan_cfg: Dict[str, Any]) -> None:
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     write_secure_file(config_path, json.dumps(current_data, indent=2).encode("utf-8"))
+    clear_wan_runtime_cache()
 
 # ── Wan2GP environment detection + machine-dependent install ──────────────────
 
@@ -421,7 +437,19 @@ def _machine_profile() -> Dict[str, Any]:
     system = _platform.system()
     machine = _platform.machine().lower()
     has_nvidia = bool(shutil.which("nvidia-smi"))
-    return {"system": system, "machine": machine, "has_nvidia": has_nvidia}
+    amd_targets = []
+    clinfo = shutil.which("clinfo")
+    if clinfo:
+        try:
+            from shared.process_lifecycle import process_spawn_kwargs
+            result = subprocess.run(
+                [clinfo], capture_output=True, text=True, errors="replace",
+                timeout=10, **process_spawn_kwargs(hide_window=True),
+            )
+            amd_targets = sorted(set(re.findall(r"\bgfx[0-9a-f]+\b", result.stdout)))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return {"system": system, "machine": machine, "has_nvidia": has_nvidia, "amd_targets": amd_targets}
 
 def _install_support_for_machine(profile: Dict[str, Any]) -> Tuple[bool, str]:
     """Whether AutoYou's managed Wan2GP install can work here, plus guidance."""
@@ -442,10 +470,14 @@ def _install_support_for_machine(profile: Dict[str, Any]) -> Tuple[bool, str]:
     if system in {"Windows", "Linux"}:
         if profile.get("has_nvidia"):
             return True, "NVIDIA GPU detected - Wan2GP's primary supported configuration."
+        if profile.get("amd_targets"):
+            return True, (
+                "AMD GPU detected (" + ", ".join(profile["amd_targets"]) + "). "
+                "Install matching ROCm device packages in a Python 3.12 environment."
+            )
         return False, (
-            "No NVIDIA GPU detected (nvidia-smi not found). Wan2GP needs an NVIDIA GPU "
-            "on this OS; for AMD GPUs use the community 'wan2gp-amd' script inside the "
-            "Pinokio app instead."
+            "No supported GPU runtime was detected. For AMD, install its driver and "
+            "clinfo, or configure an existing Wan2GP ROCm environment manually."
         )
     return False, f"Unrecognized platform '{system}'."
 
@@ -457,6 +489,7 @@ def wan2gp_environment_status() -> Dict[str, Any]:
     app_dir = Path(str(config.get("app_dir") or ""))
     python_path = Path(str(config.get("python") or ""))
     discovered = discover_wan2gp_installation()
+    runtime = probe_wan_runtime(config, _external_python_subprocess_env()) if config.get("engine", "wan2gp") == "wan2gp" else {}
     # from __debug_provenance_n__ import license
     with _INSTALL_LOCK:
         install_state = dict(_INSTALL_STATE)
@@ -471,6 +504,7 @@ def wan2gp_environment_status() -> Dict[str, Any]:
             "python_exists": python_path.exists() if str(python_path) else False,
         },
         "discovered": discovered,
+        "runtime": runtime,
         "draw_things": draw_things_environment_status(config),
         "managed_install_dir": str(MANAGED_WAN2GP_ROOT),
         "install_supported": install_supported,
@@ -539,8 +573,18 @@ def _set_install_state(**updates: Any) -> None:
         _INSTALL_STATE.update(updates)
 
 def _find_system_python_for_install() -> Optional[str]:
-    """Locate a system Python 3.10-3.12 for the Wan2GP virtualenv."""
-    candidates = ["python3.11", "python3.10", "python3.12", "python3", "python"]
+    """Prefer Python 3.12, including the Windows Python launcher."""
+    if os.name == "nt" and shutil.which("py"):
+        try:
+            result = subprocess.run(
+                [shutil.which("py"), "-3.12", "-c", "import sys; print(sys.executable)"],
+                env=_external_python_subprocess_env(), capture_output=True, text=True, timeout=20,
+            )
+            if result.returncode == 0 and Path(result.stdout.strip()).is_file():
+                return result.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    candidates = ["python3.12", "python3.11", "python3.10", "python3", "python"]
     for name in candidates:
         executable = shutil.which(name)
         if not executable:
@@ -565,15 +609,10 @@ def _find_system_python_for_install() -> Optional[str]:
 def _run_install_step(step: str, command: List[str], cwd: Optional[Path] = None) -> None:
     _set_install_state(step=step)
     _install_log(f"{step}: {' '.join(command)}")
-    completed = subprocess.run(
-        command,
-        cwd=str(cwd) if cwd else None,
-        env=_external_python_subprocess_env(),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+    completed = run_owned_media_process(
+        command, cwd=cwd or PROJECT_ROOT,
+        env=_external_python_subprocess_env(), timeout=7200,
+        on_output=lambda stream, text: _install_log(text.rstrip()),
     )
     if completed.stdout:
         _install_log(completed.stdout[-2000:])
@@ -593,8 +632,13 @@ def _run_wan2gp_install_job() -> None:
         system_python = _find_system_python_for_install()
         if not system_python:
             raise RuntimeError(
-                "No system Python 3.10-3.12 found on PATH. Install Python 3.11 "
-                "(python.org or 'brew install python@3.11') and retry."
+                "No system Python 3.10-3.12 found. Install Python 3.12 and retry."
+            )
+        amd_install = bool(profile.get("amd_targets")) and not profile.get("has_nvidia")
+        if amd_install:
+            _run_install_step(
+                "Checking AMD environment Python version",
+                [system_python, "-c", "import sys; assert sys.version_info[:2] == (3,12), 'AMD Wan2GP setup requires Python 3.12'"],
             )
 
         app_dir = MANAGED_WAN2GP_APP_DIR
@@ -607,8 +651,9 @@ def _run_wan2gp_install_job() -> None:
                 [git_executable, "clone", "--depth", "1", WAN2GP_GIT_URL, str(app_dir)],
             )
 
-        env_dir = app_dir / "env"
-        venv_python = app_dir / ("env/Scripts/python.exe" if os.name == "nt" else "env/bin/python")
+        env_name = "env-rocm" if amd_install else "env"
+        env_dir = app_dir / env_name
+        venv_python = env_dir / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         if not venv_python.exists():
             _run_install_step(
                 "Creating Python environment",
@@ -620,6 +665,15 @@ def _run_wan2gp_install_job() -> None:
         )
 
         torch_command = [str(venv_python), "-m", "pip", "install", "torch", "torchvision", "torchaudio"]
+        if amd_install:
+            targets = ",".join("device-" + target for target in profile["amd_targets"])
+            torch_command = [
+                str(venv_python), "-m", "pip", "install",
+                f"torch[{targets}]==2.13.0+rocm10.0.0",
+                f"torchvision[{targets}]==0.28.0+rocm10.0.0",
+                "torchaudio==2.11.0.2+rocm10.0.0",
+                "--index-url", "https://stable.repo.amd.com/rocm/whl-next/",
+            ]
         if profile.get("system") == "Windows" and profile.get("has_nvidia"):
             torch_command += ["--index-url", "https://download.pytorch.org/whl/cu124"]
         _run_install_step("Installing PyTorch (large download)", torch_command)
@@ -630,6 +684,10 @@ def _run_wan2gp_install_job() -> None:
                 "Installing Wan2GP requirements (large download)",
                 [str(venv_python), "-m", "pip", "install", "-r", str(requirements)],
             )
+        if amd_install:
+            # Requirements can resolve CPU-only torch from PyPI. Restore and
+            # verify the selected device packages before saving the new paths.
+            _run_install_step("Verifying AMD PyTorch packages", torch_command)
 
         if not (app_dir / "wgp.py").exists():
             raise RuntimeError(f"Install finished but wgp.py is missing in {app_dir}.")
@@ -644,6 +702,9 @@ def _run_wan2gp_install_job() -> None:
                 "python": str(venv_python),
             }
         )
+        runtime = probe_wan_runtime(config, _external_python_subprocess_env(), refresh=True)
+        if not runtime.get("ready"):
+            raise RuntimeError(runtime.get("error") or "The installed GPU environment failed its self-check.")
         save_wan2gp_config(config)
         _install_log("Install completed. Settings now point at the managed install.")
         _set_install_state(
@@ -699,6 +760,95 @@ def get_wan2gp_install_status() -> Dict[str, Any]:
     state["log_tail"] = _install_log_tail()
     return state
 
+
+def _process_start_time(pid: int) -> Optional[float]:
+    try:
+        import psutil
+        return psutil.Process(pid).create_time()
+    except Exception:
+        return None
+
+
+def _job_owner_alive(pid: Optional[int], started_at: Optional[float]) -> bool:
+    if not pid:
+        return False
+    try:
+        import psutil
+        process = psutil.Process(pid)
+        return process.is_running() and (
+            started_at is None or abs(process.create_time() - started_at) < 0.01
+        )
+    except ImportError:
+        # Keep another owner's job when its identity cannot be verified.
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    except Exception:
+        return False
+
+
+def reconcile_generation_history() -> None:
+    """Recover interrupted jobs without modifying another live owner's work."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        pending = conn.execute(
+            "SELECT id, owner_pid, owner_started_at FROM media_history "
+            "WHERE status IN ('queued', 'generating')"
+        ).fetchall()
+        for item_id, pid, started_at in pending:
+            if not _job_owner_alive(pid, started_at):
+                conn.execute(
+                    "UPDATE media_history SET status='failed', progress_message='', "
+                    "error_message=?, updated_at=? WHERE id=? AND status IN ('queued', 'generating')",
+                    ("Generation was interrupted before completion. Submit it again.",
+                     datetime.now(timezone.utc).isoformat(), item_id),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@contextmanager
+def _generation_slot(item_id: Optional[int], timeout: float):
+    """Serialize chat and website GPU jobs across threads and server processes."""
+    lock_path = DB_PATH.with_suffix(".gpu.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    if item_id:
+        update_history_status(item_id, "queued", progress_message="Waiting for the local generation engine.")
+    with lock_path.open("a+b") as handle:
+        if handle.seek(0, os.SEEK_END) == 0:
+            handle.write(b"\0")
+            handle.flush()
+        deadline = time.monotonic() + timeout
+        acquired = False
+        try:
+            while not acquired:
+                handle.seek(0)
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                except (BlockingIOError, OSError):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("Generation queue wait timed out. The local engine is busy.")
+                    time.sleep(0.1)
+            yield
+        finally:
+            if acquired:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
 def save_history_item(
     media_type: str,
     original_prompt: str,
@@ -717,8 +867,9 @@ def save_history_item(
             """
             INSERT INTO media_history (
                 timestamp, media_type, original_prompt, optimized_prompt,
-                file_path, file_name, model_type, resolution, steps, frames, seed, status, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                file_path, file_name, model_type, resolution, steps, frames, seed, status, error_message,
+                updated_at, owner_pid, owner_started_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 timestamp,
@@ -733,7 +884,7 @@ def save_history_item(
                 settings.get("video_length"),
                 settings.get("seed"),
                 status,
-                error_message
+                error_message, timestamp, os.getpid(), _process_start_time(os.getpid()),
             )
         )
         conn.commit()
@@ -750,12 +901,22 @@ def update_history_status(
     file_path: Optional[str] = None,
     file_name: Optional[str] = None,
     settings: Optional[Dict[str, Any]] = None,
+    progress_message: Optional[str] = None,
+    worker_pid: Optional[int] = None,
 ) -> None:
     """Update status of a history item (used for background jobs)."""
     conn = sqlite3.connect(DB_PATH)
     try:
-        assignments = ["status = ?", "error_message = ?"]
-        values: List[Any] = [status, error_message]
+        assignments = ["status = ?", "error_message = ?", "updated_at = ?"]
+        values: List[Any] = [status, error_message, datetime.now(timezone.utc).isoformat()]
+        if progress_message is not None:
+            assignments.append("progress_message = ?")
+            values.append(progress_message)
+        elif status in {"failed", "completed"}:
+            assignments.append("progress_message = ''")
+        if worker_pid is not None:
+            assignments.append("worker_pid = ?")
+            values.append(worker_pid)
         if optimized_prompt is not None:
             assignments.append("optimized_prompt = ?")
             values.append(optimized_prompt)
@@ -788,6 +949,7 @@ def update_history_status(
 
 def list_history(limit: int = 50, media_type: Optional[str] = None) -> List[Dict[str, Any]]:
     """Retrieve media generation runs from SQLite history db."""
+    reconcile_generation_history()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -941,6 +1103,18 @@ def _resolve_wan_model_type(
         return None, f"Requested model '{requested}' is not a valid Wan2GP {media_type} model."
     return None, f"No Wan2GP {media_type} model is configured."
 
+def _wan_settings_version(app_dir: Path, configured: Any) -> float:
+    """Read the installed CLI's schema version without importing its GPU code."""
+    try:
+        source = (app_dir / "wgp.py").read_text(encoding="utf-8")
+        match = re.search(r"(?m)^settings_version\s*=\s*(\d+(?:\.\d+)?)", source)
+        if match:
+            return float(match.group(1))
+    except OSError:
+        pass
+    return float(configured or 2.52)
+
+
 def _tail_text(text: str, limit: int = 2000) -> str:
     text = str(text or "")
     if len(text) <= limit:
@@ -960,12 +1134,38 @@ def _write_process_logs(work_dir: Path, command: List[str], completed: subproces
                 indent=2,
             ).encode("utf-8"),
         )
-        write_secure_file(work_dir / "stdout.txt", str(completed.stdout or "").encode("utf-8", errors="replace"))
-        write_secure_file(work_dir / "stderr.txt", str(completed.stderr or "").encode("utf-8", errors="replace"))
+        for name in ("stdout", "stderr"):
+            path = work_dir / f"{name}.txt"
+            if not path.exists():
+                write_secure_file(path, str(getattr(completed, name) or "").encode("utf-8", errors="replace"))
+        if completed.returncode in {124, 125}:
+            append_secure_file(work_dir / "stderr.txt", str(completed.stderr or "")[-2000:].encode("utf-8"))
     except SecureStorageError:
         raise
     except OSError:
         pass
+
+
+def _process_failure_summary(completed: subprocess.CompletedProcess[str]) -> str:
+    for text in (completed.stderr, completed.stdout):
+        lines = re.split(r"[\r\n]+", str(text or ""))
+        for line in reversed(lines):
+            if re.search(r"\[ERROR\]|\b\w*Error:|timed out|cleanup did not complete", line, re.IGNORECASE):
+                return line.strip()[-600:]
+    return "The generator did not finish successfully."
+
+
+def _cleanup_generation_payloads(work_dir: Path) -> None:
+    """Retain secure diagnostics while removing owned temporary media copies."""
+    output = (work_dir / "output").resolve()
+    root = work_dir.resolve()
+    if output.parent != root:
+        raise ValueError("Temporary generation output escaped its work directory.")
+    if output.exists():
+        shutil.rmtree(output)
+    settings = work_dir / "wan2gp-settings.json"
+    if settings.exists():
+        settings.unlink()
 
 
 def _seal_generation_work_dir(work_dir: Path) -> None:
@@ -1188,6 +1388,37 @@ def generate_media_sync(
     history_item_id: Optional[int] = None,
     optimized_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Run one bounded generation and always finish its history state."""
+    try:
+        wan = get_wan2gp_config()
+        queue_timeout = float(wan.get("queue_timeout_seconds", 3600))
+        if not 0 < queue_timeout <= 86400:
+            raise ValueError("Queue timeout must be between 0 and 86400 seconds.")
+        with _generation_slot(history_item_id, queue_timeout):
+            if history_item_id:
+                update_history_status(history_item_id, "generating", progress_message="Checking the local generation engine.")
+            return _generate_media_sync_unlocked(
+                prompt, media_type, model_type, resolution, steps, frames, seed,
+                history_item_id, optimized_prompt,
+            )
+    except Exception as exc:
+        message = f"Media generation failed: {exc}"
+        if history_item_id:
+            update_history_status(history_item_id, "failed", message)
+        return {"status": "error", "message": message}
+
+
+def _generate_media_sync_unlocked(
+    prompt: str,
+    media_type: str = "video",
+    model_type: Optional[str] = None,
+    resolution: Optional[str] = None,
+    steps: Optional[int] = None,
+    frames: Optional[int] = None,
+    seed: Optional[int] = None,
+    history_item_id: Optional[int] = None,
+    optimized_prompt: Optional[str] = None,
+) -> Dict[str, Any]:
     """Execute local generation through Wan2GP or Draw Things CLI."""
     wan = get_wan2gp_config()
     media_type = _normalize_media_type(media_type)
@@ -1246,6 +1477,15 @@ def generate_media_sync(
             update_history_status(history_item_id, "failed", err_msg)
         return {"status": "error", "message": err_msg, "install_required": True}
 
+    runtime = {}
+    if engine == "wan2gp":
+        runtime = probe_wan_runtime(wan, _external_python_subprocess_env())
+        if not runtime.get("ready"):
+            err_msg = runtime.get("error") or "The Wan2GP GPU environment is not ready."
+            if history_item_id:
+                update_history_status(history_item_id, "failed", err_msg)
+            return {"status": "error", "message": err_msg, "runtime_repair_required": True}
+
     if engine == "draw_things":
         final_model_type = _normalize_model_type(model_type) or _normalize_model_type(
             wan.get("draw_things_image_model" if media_type == "image" else "draw_things_video_model")
@@ -1265,6 +1505,8 @@ def generate_media_sync(
         return {"status": "error", "message": err_msg}
 
     # 3. Enhance prompt using AI only when enabled, and keep the payload Wan2GP-friendly.
+    if history_item_id:
+        update_history_status(history_item_id, "generating", progress_message="Preparing the visual prompt.")
     if optimized_prompt:
         final_prompt = _clean_prompt_text(optimized_prompt)
     elif bool(wan.get("enhance_prompt", True)):
@@ -1299,20 +1541,12 @@ def generate_media_sync(
             return {"status": "error", "message": err_msg}
     
     base_settings_payload = {
-        "settings_version": float(wan.get("settings_version", 2.52)),
+        "settings_version": _wan_settings_version(app_dir, wan.get("settings_version", 2.52)),
         "model_type": final_model_type,
         "seed": final_seed,
         "image_mode": 1 if media_type == "image" else 0,
         "batch_size": 1,
-        "audio_prompt_type": "",
-        "video_prompt_type": "",
-        "multi_prompts_gen_type": 0,
-        "enhance_prompt": False,
-        "prompt_enhancer": str(wan.get("prompt_enhancer", "")),
         "repeat_generation": 1,
-        "flow_shift": 5.0,
-        "sample_solver": "unipc",
-        "force_fps": "24",
         "output_filename": "autoyou_{date(YYYY-MM-DD_HH-mm-ss)}_{prompt(32)}",
     }
     if media_type == "video":
@@ -1412,20 +1646,30 @@ def generate_media_sync(
                 settings_path = work_dir / "wan2gp-settings.json"
                 with settings_path.open("w", encoding="utf-8") as f:
                     json.dump(settings_payload, f, indent=2)
-                command = [
-                    str(python), "wgp.py", "--process", str(settings_path),
-                    "--output-dir", str(output_dir),
-                ]
+                command = wan_generation_command(python, settings_path, output_dir, runtime, wan)
 
-            completed = subprocess.run(
-                command,
-                cwd=work_dir if engine == "draw_things" else app_dir,
-                env=_external_python_subprocess_env(),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                check=False,
+            generation_timeout = float(wan.get("generation_timeout_seconds", 3600 if media_type == "image" else 7200))
+            if not 0 < generation_timeout <= 86400:
+                raise ValueError("Generation timeout must be between 0 and 86400 seconds.")
+            last_progress_at = 0.0
+
+            def record_progress(stream: str, text: str) -> None:
+                nonlocal last_progress_at
+                now = time.monotonic()
+                if history_item_id and now - last_progress_at >= 1:
+                    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+                    if lines:
+                        update_history_status(history_item_id, "generating", progress_message=lines[-1][-240:])
+                        last_progress_at = now
+
+            completed = run_owned_media_process(
+                command, cwd=work_dir if engine == "draw_things" else app_dir,
+                env=_external_python_subprocess_env(), timeout=generation_timeout,
+                work_dir=work_dir, on_output=record_progress,
+                on_started=(lambda pid: update_history_status(
+                    history_item_id, "generating", worker_pid=pid,
+                    progress_message="Loading the model and generating media.",
+                )) if history_item_id else None,
             )
             _write_process_logs(work_dir, command, completed)
 
@@ -1459,6 +1703,7 @@ def generate_media_sync(
 
                 err_msg = (
                     f"{('Draw Things local inference' if engine == 'draw_things' else 'Wan2GP generation')} failed with exit code {completed.returncode}. "
+                    f"{_process_failure_summary(completed)} "
                     f"Logs were saved in {work_dir}.\nSTDERR tail:\n{_tail_text(completed.stderr)}\n"
                     f"STDOUT tail:\n{_tail_text(completed.stdout)}"
                 )
@@ -1491,6 +1736,10 @@ def generate_media_sync(
 
             # Select the latest or best file
             result_file = sorted(files, key=lambda p: p.stat().st_mtime)[-1]
+            if media_type == "image":
+                from PIL import Image
+                with Image.open(result_file) as image:
+                    image.verify()
 
             # Copy to local workspace storage
             permanent_dir = OUTPUT_DIR / ("images" if media_type == "image" else "videos")
@@ -1500,10 +1749,10 @@ def generate_media_sync(
             write_secure_file(final_file_path, result_file.read_bytes())
             _seal_generation_work_dir(work_dir)
 
-            # Cleanup successful work dir
+            # Keep encrypted diagnostics available after a successful job.
             try:
-                shutil.rmtree(work_dir)
-            except Exception:
+                _cleanup_generation_payloads(work_dir)
+            except OSError:
                 pass
 
             # Update or create history entry

@@ -168,7 +168,7 @@
                 </div>
               </details>
               
-              <button type="submit" class="btn btn-primary" id="generate-submit-btn">
+              <button type="submit" class="btn btn-primary" id="generate-submit-btn" disabled>
                 <span>🚀</span> Kick off Generation
               </button>
             </form>
@@ -180,7 +180,7 @@
               <h2>Running Generations</h2>
             </div>
             
-            <div class="jobs-list" id="active-jobs-list">
+            <div class="jobs-list" id="active-jobs-list" role="status" aria-live="polite" aria-atomic="false">
               <div class="no-jobs">
                 <div class="no-jobs-icon">😴</div>
                 <p>No active background generation tasks running.</p>
