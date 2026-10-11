@@ -685,6 +685,14 @@ sync_runtime_adk_browser_bundle() {
         --exclude='*.py' \
         --exclude='__pycache__' \
         "$source_browser/" "$target_browser/"
+
+    # google-adk 2.11.0 now serves this config dynamically from ApiServer, but
+    # the bundled UI/build gates still require a valid sealed placeholder.
+    local runtime_config="${target_browser}/assets/config/runtime-config.json"
+    if [[ ! -f "$runtime_config" ]]; then
+        mkdir -p "$(dirname "$runtime_config")"
+        printf '{}\n' > "$runtime_config"
+    fi
     log_success "ADK browser assets synced: $target_browser"
 }
 
