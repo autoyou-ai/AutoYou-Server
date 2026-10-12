@@ -271,6 +271,7 @@ _bind_ai_agent_routes_runtime(sys.modules[__name__])
 from dotenv import load_dotenv
 
 from shared.adk_web_customization import AdkWebUiPatchError
+from shared.openrouter_config import normalize_openrouter_model
 from shared.adk_memory import (
     ADK_MEMORY_PERSISTENT_ENV,
     AI_AGENT_MEMORY_SERVICE_URI_ENV,
@@ -1677,6 +1678,8 @@ def setup_default_environment_variables():
         'LITELLM_MODEL': '',
         'LITELLM_API_KEY': '',
         'LITELLM_API_BASE': '',
+        'OPENROUTER_MODEL': '',
+        'OPENROUTER_API_KEY': '',
         'ODYSSEUS_API_BASE': 'http://127.0.0.1:7000',
         'ODYSSEUS_MODEL': '',
     }
@@ -1686,7 +1689,8 @@ def setup_default_environment_variables():
             os.environ[key] = default_value
             print(f"Set default environment variable: {key}={default_value}")
         else:
-            print(f"Using existing environment variable: {key}={os.getenv(key)}")
+            value = "(configured)" if key.endswith(("_API_KEY", "_TOKEN")) else os.getenv(key)
+            print(f"Using existing environment variable: {key}={value}")
 
 # Initialize environment variables
 setup_default_environment_variables()
@@ -5941,7 +5945,8 @@ def _default_config() -> Dict[str, Any]:
             "google_api_key": ""
         },
         # Active AI provider selection and per-provider settings.
-        # provider: "ollama" | "ollama_gateway" | "odysseus" | "openclaw" | "hermes" | "litellm" | "google"
+        # provider: ollama, ollama_gateway, odysseus, openclaw, hermes,
+        # openrouter, litellm, google, apple_intelligence
         # Ollama is the preferred local default; Google is the legacy cloud option.
         # OpenClaw uses the local OpenClaw Gateway as an OpenAI-compatible LLM backend.
         # Hermes uses the local NousResearch Hermes Agent gateway (OpenAI-compatible).
@@ -5966,6 +5971,9 @@ def _default_config() -> Dict[str, Any]:
             "litellm_model": "anthropic/claude-sonnet-4-5",
             "litellm_api_key": "",
             "litellm_api_base": "",
+            # OpenRouter supplies the model; AutoYou retains its agents/tools.
+            "openrouter_model": "",
+            "openrouter_api_key": "",
             # Native Odysseus companion-service settings.  The token stays in
             # the existing encrypted/keystore config store and is never sent
             # back to the browser bootstrap payload.
@@ -6533,7 +6541,7 @@ def _is_native_gateway_provider(provider: Optional[str] = None) -> bool:
 def _apply_google_api_config_to_env() -> None:
     """Apply all AI provider settings from configuration to environment variables.
 
-    Handles Ollama, Google, OpenClaw (provider + sub-agent), and LiteLLM cloud
+    Handles Ollama, Google, OpenClaw (provider + sub-agent), OpenRouter, and LiteLLM cloud
     settings.  The active provider is written to AI_PROVIDER; USE_GOOGLE_API is
     kept in sync for backward compatibility with any code that still reads it.
     """
@@ -6580,7 +6588,7 @@ def _apply_google_api_config_to_env() -> None:
     # ── Active provider ───────────────────────────────────────────────────────
     # Resolve: explicit ai_provider.provider > legacy use_google_api > default ollama
     provider = str(ai_prov_config.get("provider") or "").strip().lower()
-    _valid_providers = {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "litellm", "google", "apple_intelligence"}
+    _valid_providers = {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "openrouter", "litellm", "google", "apple_intelligence"}
     if provider not in _valid_providers:
         # Backward compat: if no new key, check old use_google_api flag
         provider = "google" if ollama_config.get("use_google_api", False) else "ollama"
@@ -6623,6 +6631,14 @@ def _apply_google_api_config_to_env() -> None:
     os.environ['LITELLM_MODEL']    = ll_model
     os.environ['LITELLM_API_KEY']  = ll_api_key
     os.environ['LITELLM_API_BASE'] = ll_api_base
+
+    # Saved OpenRouter settings take precedence over environment-only setup.
+    os.environ['OPENROUTER_MODEL'] = str(
+        ai_prov_config.get("openrouter_model") or os.getenv("OPENROUTER_MODEL") or ""
+    ).strip()
+    os.environ['OPENROUTER_API_KEY'] = str(
+        ai_prov_config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY") or ""
+    ).strip()
 
     # ── Odysseus companion-service settings ─────────────────────────────────
     odysseus_api_base = str(
@@ -13234,6 +13250,7 @@ def _redact_admin_ai_provider_secrets(cfg: Dict[str, Any]) -> None:
         "openclaw_agent_token",
         "hermes_token",
         "litellm_api_key",
+        "openrouter_api_key",
         "odysseus_token",
     ):
         provider_cfg[key] = ""
@@ -13328,6 +13345,10 @@ async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
             "signal": {"status": signal_status, "name": signal_name},
             "whatsapp": {"status": whatsapp_status, "name": whatsapp_name},
             "ai_agent": {"status": ai_agent_status},
+            "openrouter": {"api_key_configured": bool(str(
+                (STATE.config or {}).get("ai_provider", {}).get("openrouter_api_key")
+                or os.getenv("OPENROUTER_API_KEY") or ""
+            ).strip())},
             "apple_intelligence": await apple_intelligence_status(),
             "autoyou_page": {"status": autoyou_page_status},
             "tunnelmole": get_tunnelmole_status(),
@@ -13562,7 +13583,7 @@ def _apply_admin_ui_config_patch(
         ai_provider_cfg = cfg.setdefault("ai_provider", {})
         if "provider" in ai_provider_payload:
             provider = str(ai_provider_payload.get("provider") or "").strip().lower()
-            if provider not in {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "litellm", "google", "apple_intelligence"}:
+            if provider not in {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "openrouter", "litellm", "google", "apple_intelligence"}:
                 raise ValueError("Choose a supported AI provider.")
             if provider == "apple_intelligence":
                 from shared.apple_intelligence import helper_path
@@ -13572,6 +13593,20 @@ def _apply_admin_ui_config_patch(
         for key in {"openclaw_token", "openclaw_model", "openclaw_agent_token", "openclaw_agent_model", "hermes_token", "hermes_model", "litellm_model", "litellm_api_key", "litellm_api_base", "odysseus_api_base", "odysseus_model"}:
             if key in ai_provider_payload:
                 ai_provider_cfg[key] = str(ai_provider_payload.get(key) or "").strip()
+        if "openrouter_model" in ai_provider_payload:
+            model = str(ai_provider_payload.get("openrouter_model") or "").strip()
+            ai_provider_cfg["openrouter_model"] = normalize_openrouter_model(model) if model else ""
+        if "openrouter_api_key" in ai_provider_payload:
+            api_key = str(ai_provider_payload.get("openrouter_api_key") or "").strip()
+            if api_key and api_key != MASKED_SECRET_PLACEHOLDER:
+                ai_provider_cfg["openrouter_api_key"] = api_key
+        if ai_provider_cfg.get("provider") == "openrouter":
+            ai_provider_cfg["openrouter_model"] = normalize_openrouter_model(
+                ai_provider_cfg.get("openrouter_model") or os.getenv("OPENROUTER_MODEL", "")
+            )
+            api_key = str(ai_provider_cfg.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY") or "").strip()
+            if not api_key or api_key in {"NULL", MASKED_SECRET_PLACEHOLDER}:
+                raise ValueError("Enter an OpenRouter API key before selecting OpenRouter + Agents.")
         if "odysseus_token" in ai_provider_payload:
             odysseus_token = str(ai_provider_payload.get("odysseus_token") or "").strip()
             if odysseus_token:
@@ -17052,6 +17087,14 @@ async def _ai_provider_summary() -> str:
         if provider == "ollama_gateway":
             model = os.getenv("OLLAMA_MODEL", "").strip() or "auto"
             return f"Using native Ollama Gateway - {model}"
+
+        if provider == "openrouter":
+            model = os.getenv("OPENROUTER_MODEL", "").strip()
+            if not model:
+                return "OpenRouter + Agents selected but no OpenRouter model configured"
+            if not os.getenv("OPENROUTER_API_KEY", "").strip():
+                return f"OpenRouter + Agents ({model}) needs an OpenRouter API key"
+            return f"Using OpenRouter + AutoYou Agents - {model}"
 
         if provider == "litellm":
             model = os.getenv("LITELLM_MODEL", "")

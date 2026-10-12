@@ -2535,6 +2535,7 @@ def _provider_requires_explicit_agent_tools() -> bool:
             PROVIDER_LITELLM,
             PROVIDER_OLLAMA,
             PROVIDER_OPENCLAW,
+            PROVIDER_OPENROUTER,
         )
 
         return _get_active_provider() in {
@@ -2543,6 +2544,7 @@ def _provider_requires_explicit_agent_tools() -> bool:
             PROVIDER_OLLAMA,
             PROVIDER_OPENCLAW,
             PROVIDER_LITELLM,
+            PROVIDER_OPENROUTER,
         }
     except Exception as exc:
         logger.warning("Could not determine provider for explicit AgentTool registration: %s", exc)
@@ -5125,10 +5127,15 @@ def _build_resilient_fallback_model():
         PROVIDER_GOOGLE,
         PROVIDER_OPENCLAW,
         PROVIDER_LITELLM,
+        PROVIDER_OPENROUTER,
+        _configure_openrouter_model,
     )
     from google.adk.models.lite_llm import LiteLlm
 
     provider = _get_active_provider()
+
+    if provider == PROVIDER_OPENROUTER:
+        return _configure_openrouter_model()
 
     if provider == "apple_intelligence":
         from autoyou_agents.apple_intelligence import AppleIntelligenceLlm
@@ -5154,8 +5161,9 @@ def _build_resilient_fallback_model():
     if provider == PROVIDER_LITELLM:
         model   = os.getenv("LITELLM_MODEL", "").strip()
         api_key = os.getenv("LITELLM_API_KEY", "").strip() or None
+        api_base = os.getenv("LITELLM_API_BASE", "").strip()
         if model:
-            return LiteLlm(model=model, api_key=api_key)
+            return LiteLlm(model=model, api_key=api_key, **({"api_base": api_base} if api_base else {}))
         # Fall through to Ollama if not configured
         logger.warning("LITELLM_MODEL not set during fallback; attempting Ollama")
 
@@ -5673,6 +5681,10 @@ def initialize_root_agent():
             logger.warning("Initialized fallback root_agent with minimal configuration")
             return root_agent
         except Exception as e2:
+            if _active_ai_provider_name() == "openrouter":
+                # Invalid cloud credentials/configuration must never select a
+                # different provider or discard the AutoYou agent graph silently.
+                raise
             # Absolute last-resort fallback: use a plain model string
             logger.error("Fallback root_agent initialization failed: %s", e2)
             root_agent = Agent(

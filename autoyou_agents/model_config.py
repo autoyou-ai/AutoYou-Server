@@ -10,6 +10,7 @@ Model configuration module for AutoYou agents.
 Provides dynamic model selection across multiple providers:
   - Ollama   (local, default preferred)
   - OpenClaw (local OpenAI-compatible gateway)
+  - OpenRouter (cloud models with AutoYou agents and tools)
   - LiteLLM  (cloud: Anthropic, OpenAI, Mistral, DeepSeek, xAI, …)
   - Google   (Gemini via Google AI Studio or Vertex AI)
   - Apple Intelligence (on-device through the optional native macOS helper)
@@ -28,6 +29,7 @@ import re
 from typing import Any, Dict, Optional
 from google.adk.models.lite_llm import LiteLlm
 from ollama_service import OllamaService
+from shared.openrouter_config import OPENROUTER_API_BASE, normalize_openrouter_model
 from shared.ollama_capabilities import (
     inspect_ollama_model_capabilities,
     resolve_installed_ollama_model,
@@ -47,6 +49,7 @@ PROVIDER_OLLAMA   = "ollama"
 PROVIDER_OPENCLAW = "openclaw"
 PROVIDER_HERMES   = "hermes"
 PROVIDER_LITELLM  = "litellm"
+PROVIDER_OPENROUTER = "openrouter"
 PROVIDER_GOOGLE   = "google"
 PROVIDER_APPLE    = "apple_intelligence"
 
@@ -380,7 +383,7 @@ def _get_active_provider() -> str:
     3. Default: PROVIDER_OLLAMA
     """
     p = os.getenv("AI_PROVIDER", "").strip().lower()
-    if p in (PROVIDER_OLLAMA, PROVIDER_OPENCLAW, PROVIDER_HERMES, PROVIDER_LITELLM, PROVIDER_GOOGLE, PROVIDER_APPLE):
+    if p in (PROVIDER_OLLAMA, PROVIDER_OPENCLAW, PROVIDER_HERMES, PROVIDER_OPENROUTER, PROVIDER_LITELLM, PROVIDER_GOOGLE, PROVIDER_APPLE):
         return p
     # Backward compat: honour the old USE_GOOGLE_API flag
     if os.getenv("USE_GOOGLE_API", "0").lower() in ("1", "true", "yes"):
@@ -415,6 +418,8 @@ def get_model_config(ollama_service: OllamaService):
         return _configure_hermes_model()
     if provider == PROVIDER_LITELLM:
         return _configure_litellm_model()
+    if provider == PROVIDER_OPENROUTER:
+        return _configure_openrouter_model()
 
     # Default: PROVIDER_OLLAMA
     # When Ollama is explicitly chosen, never silently fall back to the cloud.
@@ -517,6 +522,22 @@ def _configure_hermes_model() -> LiteLlm:
         api_key  = token,
         **kwargs,
     )
+
+def _configure_openrouter_model() -> LiteLlm:
+    """Use OpenRouter as the LLM behind the existing ADK agent/tool loop."""
+    model = normalize_openrouter_model(os.getenv("OPENROUTER_MODEL", ""))
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not api_key or api_key == "NULL":
+        raise ValueError("OpenRouter needs an API key. Set it in AI settings > OpenRouter + Agents.")
+    kwargs = _filter_ollama_kwargs(_compose_litellm_kwargs(get_litellm_behavior_kwargs()))
+    logger.info("Using OpenRouter with AutoYou agents model=%s", model)
+    return LiteLlm(
+        model=f"openrouter/{model}",
+        api_base=OPENROUTER_API_BASE,
+        api_key=api_key,
+        **kwargs,
+    )
+
 
 def _configure_litellm_model() -> LiteLlm:
     """Configure LiteLLM for cloud API providers.

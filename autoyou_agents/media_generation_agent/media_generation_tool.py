@@ -31,6 +31,7 @@ from shared.media_generation_runtime import (
     clear_wan_runtime_cache, probe_wan_runtime, run_owned_media_process,
     wan_generation_command,
 )
+from shared.openrouter_config import OPENROUTER_API_BASE, normalize_openrouter_model
 
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-7042fe33e640c65dd9fd49d9"
 
@@ -1289,7 +1290,7 @@ def _unique_work_dir(base_dir: Path) -> Path:
     return candidate
 
 def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
-    """Optimize the prompt using active AutoYou model provider (Gemini, Ollama, LiteLLM, OpenClaw)."""
+    """Optimize the prompt using the active AutoYou model provider."""
     try:
         import litellm
         import logging
@@ -1350,6 +1351,17 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 model=model,
                 api_base=f"http://127.0.0.1:{port}/v1",
                 api_key=os.getenv("HERMES_TOKEN", "noop"),
+                **completion_kwargs,
+            )
+        elif provider == "openrouter":
+            model = normalize_openrouter_model(os.getenv("OPENROUTER_MODEL", ""))
+            api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+            if not api_key or api_key == "NULL":
+                return _heuristic_enhance_prompt(prompt, media_type)
+            response = litellm.completion(
+                model=f"openrouter/{model}",
+                api_key=api_key,
+                api_base=OPENROUTER_API_BASE,
                 **completion_kwargs,
             )
         elif provider == "litellm":
