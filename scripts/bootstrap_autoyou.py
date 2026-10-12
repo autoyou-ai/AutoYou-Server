@@ -2283,6 +2283,16 @@ def main(argv: Sequence[str]) -> int:
         start_ollama_if_possible()
 
     if args.service == "autoyou":
+        from scripts.stage_iroh_runtime import prepare_source_runtime
+        try:
+            transport_release = prepare_source_runtime(REPO_ROOT)
+        except (ValueError, OSError) as exc:
+            raise BootstrapError(f"Iroh source startup: {exc}") from None
+        if transport_release is not None:
+            run_command([str(venv_python), "-c", "from shared.iroh_binding import load_binding; load_binding()"])
+            info(f"Iroh source runtime {transport_release['version']} prepared; endpoint starts after unlock.")
+        else:
+            info("Session transport: legacy (native Iroh SDK is not staged).")
         report_autoyou_config_storage_status()
 
     if "local-llm" not in components:
@@ -2365,6 +2375,8 @@ def main(argv: Sequence[str]) -> int:
         software_updates_enabled=not args.no_software_updates,
         lite_source=args.lite_source,
     )
+    if args.service == "autoyou" and transport_release is not None:
+        env["AUTOYOU_VERSION"] = transport_release["version"]
     if args.service == "autoyou-lite":
         command = [
             str(venv_python),

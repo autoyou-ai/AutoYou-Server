@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import sys
+import tempfile
 
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
-from shared.iroh_release import SDK_API, TARGETS, digest, read_json, validate_config, validate_sdk
+from shared.iroh_release import (SDK_API, TARGETS, digest, load_release_config, read_json,
+                                 source_fingerprints, validate_config, validate_sdk)
 
 
 def stage_runtime(bundle: Path, *, generation: str, sdk: Path | None = None, config: Path | None = None,
@@ -84,6 +87,51 @@ def stage_from_environment(bundle: Path, manifest: dict) -> None:
         config=Path(os.environ["AUTOYOU_IROH_CONFIG"]) if os.environ.get("AUTOYOU_IROH_CONFIG") else None,
         target=target_tag() if generation == "iroh" else None)
     extend_integrity(bundle, manifest, paths)
+
+
+def prepare_source_runtime(source: Path) -> dict | None:
+    """Prepare explicit native source inputs once; ordinary legacy clones need none."""
+    source = source.resolve()
+    test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+    generation = os.environ.get("AUTOYOU_RELEASE_GENERATION")
+    if test_root and not source.is_relative_to(Path(test_root).resolve()):
+        if generation == "iroh":
+            raise ValueError("test source transport resources must be isolated")
+        return None
+    destination = source / "transport"
+    generation = generation or ("iroh" if destination.exists() else "legacy")
+    if generation == "legacy":
+        stage_runtime(source, generation="legacy")
+        return None
+    if generation != "iroh":
+        raise ValueError("unknown release generation")
+    if sys.version_info < (3, 11):
+        raise ValueError("the Iroh generation requires Python 3.11 or newer")
+    from shared.iroh_binding import target_tag
+    target = target_tag()
+    workspace = source / "transport-rust"
+    if not destination.exists():
+        sdk, config = os.environ.get("AUTOYOU_IROH_SDK"), os.environ.get("AUTOYOU_IROH_CONFIG")
+        if not sdk or not config:
+            raise ValueError("Iroh source startup requires AUTOYOU_IROH_SDK and AUTOYOU_IROH_CONFIG")
+        with tempfile.TemporaryDirectory(prefix=".iroh-source-", dir=source) as temporary:
+            bundle = Path(temporary)
+            stage_runtime(bundle, generation="iroh", sdk=Path(sdk), config=Path(config),
+                          target=target, workspace=workspace)
+            if destination.exists():
+                raise ValueError("refusing to replace existing source transport resources")
+            (bundle / "transport").rename(destination)
+    release = load_release_config(resources_root=source)
+    if release is None:
+        raise ValueError("source transport resources are missing the public release configuration")
+    binding = destination / "iroh" / target
+    metadata = read_json(binding / "binding-manifest.json")
+    lock = (workspace / "Cargo.lock").read_bytes().replace(b"\r\n", b"\n")
+    if (metadata.get("source_fingerprints") != source_fingerprints(workspace)
+            or metadata.get("lock_sha256") not in {hashlib.sha256(raw).hexdigest()
+                                                    for raw in (lock, lock.replace(b"\n", b"\r\n"))}):
+        raise ValueError("source transport SDK is stale; stage an SDK built from this checkout")
+    return release
 
 
 def main(argv: list[str] | None = None) -> int:

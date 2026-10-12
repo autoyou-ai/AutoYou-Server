@@ -21,6 +21,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
 from shared.pairing_cpace import CPaceSessionKey
+from shared.session_transport import SessionDenied
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2"
 
@@ -594,6 +595,9 @@ def register_routes(
             wrapped_answer = server.pairing_router._build_autopair_answer_payload(answer, client_sender_id)
             answer_text = "/autopair_answer\n" + _json.dumps(wrapped_answer, separators=(",", ":"))
             return PlainTextResponse(answer_text, status_code=200)
+        except SessionDenied as exc:
+            return JSONResponse({"error": str(exc)}, status_code=403,
+                                headers={"Cache-Control": "no-store"})
         except Exception as e:
             import traceback
             error_payload = ("\n--- ERROR ---\n" + traceback.format_exc()).encode("utf-8", errors="replace")
