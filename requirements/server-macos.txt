@@ -28,7 +28,7 @@ litellm==1.89.7
 jiter>=0.6.1,<0.14
 rich>=13.7.0,<15.0.0
 packaging>=21,<25
-python-dotenv>=1.2.2
+python-dotenv>=1.2.4
 pydantic>=2.10.0,<3.0.0
 requests>=2.33.0
 httpx[http2]>=0.27.0
