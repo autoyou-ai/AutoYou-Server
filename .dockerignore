@@ -1,0 +1,161 @@
+# ==============================================================================
+# AutoYou Server (.dockerignore)
+# Scoped specifically to AutoYou-Server container builds
+# ==============================================================================
+
+# Git & IDE
+.git
+.gitignore
+.dockerignore
+.idea/
+.vscode/
+.DS_Store
+
+# Python & Virtual Environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.venv-*/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.run/
+.run-*/
+
+# Node & Package Managers
+node_modules/
+node/whatsapp/node_modules/
+node/tunnelmole/node_modules/
+
+# Logs & Temporary Files
+*.log
+logs/
+*~
+*.tmp
+tmp/
+temp/
+scratch/*
+!scratch/verify_remote_desktop_live.py
+!scratch/verify_skills_agent_live.py
+.tmp/
+.runtime_logs/
+build-logs/
+
+# Local Operator Configuration & Secrets
+.env
+.env.*
+!.env.example
+release-keys/
+*.private.pem
+DO_NOT_UPLOAD/
+config.encrypted
+config.encrypted.*
+config.keystore.enc
+config/server_unlock.json
+config/local-services.json
+config/donations.json
+tls/*.key
+
+# Registries, Databases & Live Runtime State
+agent_install_registry.json
+agent_frontends_registry.json
+agent_desktop_apps_registry.json
+agent_ui_sessions.json
+ui_preferences.json
+reminders.json
+cron_tasks.json
+login_ui_state.db
+page_feed.db
+sessions.db
+agent_security.db
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Subagent Calibrated Assets & Runtime Workspaces
+autoyou_agents/.adk/
+autoyou_agents/claude_desktop_agent/desktop_assets/*
+!autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json
+!autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md
+autoyou_agents/codex_desktop_agent/desktop_assets/*
+!autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
+!autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
+autoyou_agents/fine_tuning_agent/fine_tuning_agent/
+autoyou_agents/data_collector_agent/data_collector_agent/
+autoyou_agents/persona_agent/persona_agent/*.md
+autoyou_agents/media_generation_agent/config/video.json
+autoyou_agents/audio_agent/library_settings.json
+autoyou_agents/notes_agent/*.db
+autoyou_agents/notes_agent/*.sqlite
+autoyou_agents/notes_agent/*.sqlite3
+autoyou_agents/notes_agent/media/
+
+# Third-Party Bridges & Browser Profiles
+signal_data/
+whatsapp/.wwebjs_auth/
+whatsapp/.wwebjs_cache/
+node/whatsapp/.wwebjs_auth/
+node/whatsapp/.wwebjs_cache/
+chrome_profile/
+firefox_profile/
+ollama_data/
+.playwright-cli/
+.playwright-mcp/
+
+# Media & Uploads
+uploads/
+output/
+memory/
+conversation_media/
+*.mp3
+test.wav
+test.*.wav
+
+# Vendored Checkouts & Models
+cognee/
+vendor/cognee/
+vendor/odysseus/data/
+vendor/brag/
+vendor/signtoross/
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+adapter_model.bin
+
+# Build & Native Packaging Artifacts
+build/
+dist/
+server.dist/
+nuitka-crash-report.xml
+servers/windows/build/
+servers/windows/dist/
+servers/windows/artifacts/
+servers/windows/venv/
+servers/windows/AutoYouWindowsHost/bin/
+servers/windows/AutoYouWindowsHost/obj/
+servers/macos/build/
+servers/macos/apple/.build/
+servers/macos/intel/build/
+servers/macos/intel/dist/
+
+# Tests & Documentation Drafts
+tests/
+docs/legal/drafts/
+PROVENANCE_MANIFEST.json
+LICENSE_ACKNOWLEDGEMENT
+requirements/.locked.constraints.generated.txt
+
+# Operator integrations and local-only tooling never belong in a server image
+autoyou_agents/private/
+autoyou_agents/proxy_agent/
+autoyou_agents/self_improvement/
+screenshots/

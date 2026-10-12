@@ -1,0 +1,10 @@
+{
+  "agent_name": "agent_builder_agent",
+  "title": "Agent Builder",
+  "description": "Chat with the Agent Builder to scaffold, develop, and publish new AutoYou agents. Supports Draft→Live workflow and go-to navigation.",
+  "entry_path": "/",
+  "recommended_port": 8085,
+  "requires_proxy_registration": true,
+  "auth_default": "open",
+  "bypass_global_otp": true
+}

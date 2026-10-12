@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "machine_id": "set-a-unique-machine-id",
+  "output_root": "collected_context",
+  "mode": "input_output",
+  "direction": "both",
+  "copy_raw": true,
+  "apps": {
+    "chatgpt": true,
+    "codex": true,
+    "claude": true,
+    "whatsapp": false,
+    "telegram_saved_messages": false
+  },
+  "source_roots": {},
+  "project_filters": [],
+  "worktrees": [],
+  "whatsapp": {
+    "chat_scope": "personal",
+    "timeline_mode": "all_time",
+    "pause_runtime_bridge": true,
+    "timeout_seconds": 14400
+  },
+  "telegram": {
+    "timeline_mode": "all_time",
+    "timeout_seconds": 14400
+  }
+}

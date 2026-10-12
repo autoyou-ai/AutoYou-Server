@@ -1,0 +1,13 @@
+# Optional messaging transports.
+python-telegram-bot>=21.0.0,<22.0.0
+# Telegram User session transport.  Keep the crypto dependencies explicit so
+# release SBOMs and non-lockfile installs use the audited versions.
+Telethon==1.44.0
+pyaes==1.6.1
+rsa==4.9.1
+# Native AES for Telethon (avoids the slow pure-Python pyaes fallback and the
+# "cryptg module not installed" startup notice). Wheels exist for CPython
+# 3.11+ on every shipped platform; older interpreters keep the pyaes fallback.
+cryptg==0.6.0; python_version >= "3.11" and platform_python_implementation == "CPython"
+docker>=6.1.0
+pysignalclirestapi>=0.3.24

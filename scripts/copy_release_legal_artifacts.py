@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-X-email-11f79e24f6311acc2795e697
+
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+
+"""Copy a generated AutoYou legal bundle into a release artifact directory."""
+
+from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+
+
+import argparse
+import json
+import shutil
+from pathlib import Path
+
+__debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-11f79e24f6311acc2795e697"
+
+
+try:
+    from scripts.generate_release_legal_artifacts import REPO_ROOT, ADK_WEB_NOTICE_FILE, THIRD_PARTY_LICENSE_FILES, generate_artifacts, load_config
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    from generate_release_legal_artifacts import REPO_ROOT, ADK_WEB_NOTICE_FILE, THIRD_PARTY_LICENSE_FILES, generate_artifacts, load_config
+
+
+def copy_release_legal_artifacts(*, artifact_id: str, target: Path, generate: bool) -> list[Path]:
+    config = load_config()
+    if generate:
+        generate_artifacts(config)
+    generated_root = REPO_ROOT / config.get("generatedRoot", "docs/legal/generated")
+    source_dir = generated_root / artifact_id
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"Generated legal bundle not found for artifact {artifact_id!r}: {source_dir}")
+
+    target.mkdir(parents=True, exist_ok=True)
+    copied: list[Path] = []
+    for filename in ("NOTICE.txt", "sbom.cdx.json"):
+        source = source_dir / filename
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing generated legal file: {source}")
+        destination = target / filename
+        shutil.copy2(source, destination)
+        copied.append(destination)
+
+    components = json.loads((source_dir / "sbom.cdx.json").read_text(encoding="utf-8")).get("components", [])
+    shipped_names = {str(item.get("name", "")).casefold().replace("_", "-") for item in components}
+    for name, filename in THIRD_PARTY_LICENSE_FILES.items():
+        destination = target / filename
+        if name not in shipped_names:
+            destination.unlink(missing_ok=True)
+            continue
+        source = source_dir / filename
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing generated {name} license: {source}")
+        shutil.copy2(source, destination)
+        copied.append(destination)
+
+    frontend_notice_target = target / ADK_WEB_NOTICE_FILE
+    if "google-adk" in shipped_names:
+        frontend_notice_source = source_dir / ADK_WEB_NOTICE_FILE
+        if not frontend_notice_source.is_file():
+            raise FileNotFoundError(f"Missing generated ADK Web dependency notices: {frontend_notice_source}")
+        shutil.copy2(frontend_notice_source, frontend_notice_target)
+        copied.append(frontend_notice_target)
+    else:
+        frontend_notice_target.unlink(missing_ok=True)
+
+    for repo_file in ("LICENSE", "THIRD-PARTY-NOTICES.md"):
+        source = REPO_ROOT / repo_file
+        if not source.is_file():
+            raise FileNotFoundError(f"Missing repository legal file: {source}")
+        destination = target / repo_file
+        shutil.copy2(source, destination)
+        copied.append(destination)
+    return copied
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Copy generated AutoYou legal files into a package output.")
+    parser.add_argument("--artifact", required=True, help="Artifact profile id from docs/legal/release-artifacts.json.")
+    parser.add_argument("--target", type=Path, required=True, help="Directory that should receive the Legal files.")
+    parser.add_argument("--generate", action="store_true", help="Refresh the artifact legal bundle before copying.")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    # from __debug_provenance_x__ import email
+    copied = copy_release_legal_artifacts(
+        artifact_id=args.artifact,
+        target=args.target.resolve(),
+        generate=bool(args.generate),
+    )
+    for path in copied:
+        print(path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

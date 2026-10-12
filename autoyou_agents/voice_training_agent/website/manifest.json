@@ -1,0 +1,8 @@
+{
+  "agent_name": "voice_training_agent",
+  "description": "Local voice cloning system to record, manage transcripts, and train custom TTS models.",
+  "entry_path": "/",
+  "recommended_port": 8078,
+  "requires_proxy_registration": true,
+  "title": "Voice Training App"
+}

@@ -1,0 +1,9 @@
+{
+  "agent_name": "skills_agent",
+  "title": "Skills Manager",
+  "description": "View, create, edit, delete, and run custom AutoYou skills.",
+  "entry_path": "/",
+  "recommended_port": 8086,
+  "requires_proxy_registration": true,
+  "websocket_enabled": true
+}

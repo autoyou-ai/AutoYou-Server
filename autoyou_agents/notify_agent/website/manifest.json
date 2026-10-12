@@ -1,0 +1,8 @@
+{
+  "agent_name": "notify_agent",
+  "title": "Notify",
+  "description": "Manage timed notifications to be delivered to your devices",
+  "entry_path": "/",
+  "recommended_port": 8096,
+  "requires_proxy_registration": true
+}

@@ -1,0 +1,61 @@
+---
+title: "Agents & Agent Builder APIs"
+description: "Admin-app routes for agent installation, instructions, the Agent Builder workbench, and agent websites."
+---
+
+# Agents & Agent Builder APIs
+
+These admin-app routes manage the agents the server runs and the drafts you build. They need an admin sign-in. The console screen that uses them is described in [Agents & Agent Studio](/admin-ui/agent-workbench-ui), and the agents themselves are in the [agent pages](/agents/system-and-admin). Errors follow the shape in the [API overview](/api-reference/overview).
+
+---
+
+## Installing agents
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/agents/manage` | none | The overview payload for Agent Studio |
+| `POST /api/agents/install` | `agent_name`, optional `description` | Mark an agent installed and register its runtime metadata |
+| `POST /api/agents/uninstall` | `agent_name` | Mark an agent uninstalled. Its source files are not removed. |
+| `POST /api/agents/install-builder-suite` | optional `restart_ai` | Install the conservative Agent Builder workflow suite in one call |
+| `POST /api/agents/frontend` | `agent_name`, `enabled`, optional `route_mode` | Enable or disable an agent's browser-facing control |
+| `POST /api/ai/restart` | none | Reload the AI runtime |
+
+---
+
+## Instructions
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/agent-instructions` | none | The main agent's instructions, with `is_compiled`, `read_only`, `jailbreak_active`, and a `read_only_notice` |
+| `POST /api/agent-instructions` | `instructions` | Update the instructions in `prompt.py` |
+| `POST /api/agent-instructions/sections` | `sections` | Update the editable prompt section variables and regenerate `AGENT_INSTRUCTION` |
+| `POST /api/agent-instructions/revert` | none | Restore `AGENT_INSTRUCTION` to `DEFAULT_INSTRUCTION` |
+
+In packaged runtimes the instructions are read-only unless Prompt Override is active. Prompt Override is controlled by `GET /api/jailbreak/status`, `POST /api/jailbreak/activate`, `POST /api/jailbreak/deactivate`, and `GET`/`POST /api/jailbreak/prompt`. Activating it takes no request body and records an acknowledgement file. See [Security Console](/admin-ui/security-console).
+
+---
+
+## Workbench (drafts)
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `POST /api/builder/create` | `name`, `description`, `tool_name`, `tool_description` | Scaffold a new workspace draft |
+| `GET /api/builder/agents` | none | Live agents and workspace drafts |
+| `GET /api/builder/status/{agent_name}` | none | Detailed studio state for one agent |
+| `GET /api/agents/workbench/{agent_name}` | none | Workbench detail for one agent |
+| `POST /api/agents/workbench/{agent_name}/clone` | none | Clone a live agent into a draft |
+| `POST /api/agents/workbench/{agent_name}/instructions` | `description`, `instructions` | Save draft instruction content |
+| `POST /api/agents/workbench/{agent_name}/test` | none | Run a **structural check** on the draft. It does not execute the agent's tools. |
+| `POST /api/agents/workbench/{agent_name}/publish` | optional `install_after_publish` | Publish the draft to the live agents directory |
+| `POST /api/agents/workbench/{agent_name}/discard` | none | Discard the draft |
+| `POST /api/agents/draft/{agent_name}/publish`, `POST /api/agents/draft/{agent_name}/discard` | none | The same actions, used by the Agent Builder agent |
+
+### Agent websites
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `POST /api/agents/workbench/{agent_name}/frontend/scaffold` | none | Scaffold frontend assets for a draft |
+| `POST /api/agents/workbench/{agent_name}/frontend/manifest` | manifest fields such as `title`, `description`, `recommended_port`, `frontend_stack`, `backend_stack`, and `managed_runtime` | Save the draft's frontend manifest |
+| `POST /api/builder/agent_port` | `agent_name`, `port` | Register a dynamic HTTP port forward for an agent's web server |
+
+Website access control, the default website, and bookmarks are in [Agent Websites & Bookmarks](/api-reference/websites-and-bookmarks). Per-agent 2FA profiles are in [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).

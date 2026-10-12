@@ -1,0 +1,229 @@
+{
+  "protocol": "autoyou.room-bridge/1",
+  "messages": [
+    {
+      "name": "grant_request",
+      "direction": "mobile_to_computer",
+      "envelope": {
+        "header": {
+          "message_id": "msg-grant-request-0001",
+          "message_type": "room_bridge_control",
+          "timestamp": 1700000000.0,
+          "session_id": "untrusted-header-session",
+          "user_id": "untrusted-header-user"
+        },
+        "payload": {
+          "protocol": "autoyou.room-bridge/1",
+          "event": "grant_request",
+          "room_id": "rooma1b2c3d4",
+          "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+          "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+          "permissions": ["chat"]
+        }
+      }
+    },
+    {
+      "name": "granted",
+      "direction": "computer_to_mobile",
+      "envelope": {
+        "header": {
+          "message_id": "msg-granted-0001",
+          "message_type": "room_bridge_control",
+          "timestamp": 1700000000.1,
+          "session_id": "trusted-live-transport",
+          "user_id": "AutoYou Computer"
+        },
+        "payload": {
+          "protocol": "autoyou.room-bridge/1",
+          "event": "granted",
+          "request_message_id": "msg-grant-request-0001",
+          "grant_id": "rbg_exampleGrant000000000001",
+          "grant_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "grant_revision": 1,
+          "room_id": "rooma1b2c3d4",
+          "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+          "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+          "permissions": ["chat"],
+          "computer_mode": "read_only_conversation",
+          "origin_trust": "host_attested_presentation_only",
+          "issued_at_ms": 1700000000000,
+          "expires_at_ms": 1700000600000,
+          "computer_member": {
+            "device_id": "computer:0123456789abcdef0123456789abcdef",
+            "display_name": "AutoYou Computer",
+            "platform": "computer",
+            "role": "computer",
+            "joined_at": 1700000000
+          },
+          "limits": {
+            "message_chars": 4000,
+            "messages_per_minute": 30,
+            "max_inflight": 4,
+            "dedupe_events": 512,
+            "grant_requests_per_minute": 6
+          }
+        }
+      }
+    },
+    {
+      "name": "room_chat",
+      "direction": "mobile_to_computer",
+      "envelope": {
+        "header": {
+          "message_id": "room-event-00000001",
+          "message_type": "chat",
+          "timestamp": 1700000001.0,
+          "session_id": "untrusted-header-session",
+          "user_id": "untrusted-header-user"
+        },
+        "payload": {
+          "message": "What should our room discuss next?",
+          "context": [],
+          "metadata": {
+            "room_bridge": {
+              "protocol": "autoyou.room-bridge/1",
+              "grant_id": "rbg_exampleGrant000000000001",
+              "grant_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "grant_revision": 1,
+              "room_id": "rooma1b2c3d4",
+              "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+              "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+              "room_event_id": "room-event-00000001",
+              "sequence": 7,
+              "origin": {
+                "device_id": "mobile-member-example-0001",
+                "display_name": "Room Participant",
+                "platform": "ios",
+                "role": "host",
+                "joined_at": 1699999900
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "room_chat_ack",
+      "direction": "computer_to_mobile",
+      "envelope": {
+        "header": {
+          "message_id": "msg-room-chat-ack-0001",
+          "message_type": "room_bridge_control",
+          "timestamp": 1700000001.1,
+          "session_id": "trusted-live-transport",
+          "user_id": "AutoYou Computer"
+        },
+        "payload": {
+          "protocol": "autoyou.room-bridge/1",
+          "event": "room_chat_ack",
+          "request_message_id": "room-event-00000001",
+          "grant_id": "rbg_exampleGrant000000000001",
+          "grant_revision": 1,
+          "room_id": "rooma1b2c3d4",
+          "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+          "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+          "room_event_id": "room-event-00000001",
+          "sequence": 7,
+          "origin_trust": "host_attested_presentation_only",
+          "accepted": true,
+          "duplicate": false
+        }
+      }
+    },
+    {
+      "name": "final_computer_reply",
+      "direction": "computer_to_mobile",
+      "envelope": {
+        "header": {
+          "message_id": "computer_event_00000001",
+          "message_type": "chat",
+          "timestamp": 1700000002.0,
+          "session_id": "trusted-live-transport",
+          "user_id": "AutoYou Computer"
+        },
+        "payload": {
+          "message": "A concise agenda would help everyone contribute.",
+          "context": [],
+          "metadata": {
+            "source": "ai_agent",
+            "original_message_id": "room-event-00000001",
+            "is_streaming": false,
+            "room_bridge": {
+              "protocol": "autoyou.room-bridge/1",
+              "grant_id": "rbg_exampleGrant000000000001",
+              "grant_revision": 1,
+              "room_id": "rooma1b2c3d4",
+              "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+              "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+              "room_event_id": "computer_event_00000001",
+              "in_reply_to_event_id": "room-event-00000001",
+              "in_reply_to_sequence": 7,
+              "host_sequence_required": true,
+              "computer_mode": "read_only_conversation",
+              "origin": {
+                "device_id": "computer:0123456789abcdef0123456789abcdef",
+                "display_name": "AutoYou Computer",
+                "platform": "computer",
+                "role": "computer",
+                "joined_at": 1700000000
+              },
+              "computer_member": {
+                "device_id": "computer:0123456789abcdef0123456789abcdef",
+                "display_name": "AutoYou Computer",
+                "platform": "computer",
+                "role": "computer",
+                "joined_at": 1700000000
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "revoke",
+      "direction": "mobile_to_computer",
+      "envelope": {
+        "header": {
+          "message_id": "msg-revoke-request-0001",
+          "message_type": "room_bridge_control",
+          "timestamp": 1700000003.0,
+          "session_id": "untrusted-header-session",
+          "user_id": "untrusted-header-user"
+        },
+        "payload": {
+          "protocol": "autoyou.room-bridge/1",
+          "event": "revoke",
+          "grant_id": "rbg_exampleGrant000000000001",
+          "grant_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "grant_revision": 1,
+          "room_id": "rooma1b2c3d4",
+          "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+          "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC"
+        }
+      }
+    },
+    {
+      "name": "revoked",
+      "direction": "computer_to_mobile",
+      "envelope": {
+        "header": {
+          "message_id": "msg-revoked-0001",
+          "message_type": "room_bridge_control",
+          "timestamp": 1700000003.1,
+          "session_id": "trusted-live-transport",
+          "user_id": "AutoYou Computer"
+        },
+        "payload": {
+          "protocol": "autoyou.room-bridge/1",
+          "event": "revoked",
+          "grant_id": "rbg_exampleGrant000000000001",
+          "grant_revision": 1,
+          "room_id": "rooma1b2c3d4",
+          "room_epoch": "AAAAAAAAAAAAAAAAAAAAAA",
+          "conversation_epoch": "CCCCCCCCCCCCCCCCCCCCCC",
+          "reason": "client_revoked"
+        }
+      }
+    }
+  ]
+}

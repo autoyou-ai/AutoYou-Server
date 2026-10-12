@@ -1,0 +1,56 @@
+---
+title: "Models & Speech APIs"
+description: "Admin-app routes for the model library, model behavior, AI provider status, and speech models."
+---
+
+# Models & Speech APIs
+
+These admin-app routes manage local model downloads, the active model, model behavior, and speech models. They need an admin sign-in. The console screens that use them are described in [AI Models & Speech Settings](/admin-ui/ai-and-speech). Errors follow the shape in the [API overview](/api-reference/overview).
+
+---
+
+## Model library
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/model-library/local` | none | Models installed on this computer |
+| `GET /api/model-library/catalog` | query: `source`, `q`, `page` | Browse a model catalog |
+| `GET /api/model-library/details` | query: `source`, `id` | Details for one model, including its variants and GGUF files |
+| `POST /api/model-library/download` | `title`, `source`, `repo_id`, `reference`, `model`, `quantization` | Start a background download job |
+| `GET /api/model-library/downloads` | none | All download jobs |
+| `GET /api/model-library/downloads/{job_id}` | none | One job's status and progress |
+| `POST /api/model-library/select` | `model` or `reference`, optional `restart_ai` | Make a model the active one, and optionally restart the AI runtime |
+| `POST /api/model-library/delete` | `model` or `reference` | Delete a local model |
+
+---
+
+## Model behavior
+
+`GET /api/model-behavior` returns the current behavior mode, the available modes and their presets, and the resolved generation parameters.
+
+`POST /api/model-behavior` updates the mode and/or the advanced overrides and then reloads the AI agent. The body carries `mode` and any of the overrides `temperature`, `top_p`, `top_k`, `repeat_penalty`, and `num_ctx`. Overrides left unset use the mode's preset.
+
+---
+
+## AI provider status and settings
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/ai/ollama/status` | Status of the local Ollama server |
+| `GET /api/ai/openclaw/status`, `GET /api/ai/hermes/status`, `GET /api/ai/odysseus/status` | Status of the bridged providers |
+| `GET /api/ai/internet/search_enabled`, `POST /api/ai/internet/search_enabled` | Read or set whether the AI may search the web. Body: `{"enabled": true}`. |
+| `POST /api/ai/restart` | Reload the AI runtime |
+| `POST /api/rtc/parse` | Parse pasted connection-helper details. Body: `text`, `mode`, and `existing`. |
+
+---
+
+## Speech models
+
+| Route | Request | Purpose |
+| :--- | :--- | :--- |
+| `GET /api/speech-models/status` | none | Installed and available speech recognition models, system voices, custom voices, EmotiVoice state, and OpenAI speech options |
+| `POST /api/speech-models/download` | `model` or `reference` | Download a speech model |
+| `GET /api/speech-models/downloads` | none | Speech download jobs |
+| `POST /api/speech-models/delete` | `model` or `reference` | Delete a speech model |
+
+Speech recognition runs locally with faster-whisper. The speech output provider (system voice, a custom cloned voice, EmotiVoice, OpenAI, Azure, or off) is part of the server configuration, set in the console.

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AutoYouWindowsHost (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AutoYouWindowsHost (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

@@ -1,0 +1,79 @@
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const defaultPort = {{local_port}};
+const args = new Map<string, string>();
+for (let index = 2; index < process.argv.length; index += 2) {
+  const key = process.argv[index];
+  const value = process.argv[index + 1];
+  if (key && key.startsWith("--") && value) args.set(key.slice(2), value);
+}
+
+const port = Number(args.get("port") || process.env.PORT || defaultPort);
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const staticRoot = path.resolve(dirname, "..", "..", "{{frontend_root_relative}}");
+
+function json(res: ServerResponse, status: number, payload: unknown) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+
+function contentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") return "text/html; charset=utf-8";
+  if (ext === ".js") return "text/javascript; charset=utf-8";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".svg") return "image/svg+xml";
+  return "application/octet-stream";
+}
+
+async function serveStatic(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url || "/", "http://127.0.0.1");
+  const requested = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
+  const candidate = path.resolve(staticRoot, "." + requested);
+  const safePath = candidate.startsWith(staticRoot) ? candidate : path.join(staticRoot, "index.html");
+  try {
+    const body = await readFile(safePath);
+    res.writeHead(200, { "content-type": contentType(safePath) });
+    res.end(body);
+  } catch {
+    const indexBody = await readFile(path.join(staticRoot, "index.html"));
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(indexBody);
+  }
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url || "/", "http://127.0.0.1");
+  if (url.pathname === "/health") {
+    return json(res, 200, {
+      status: "ok",
+      agent_name: "{{agent_name}}",
+      proxy_path: "{{proxy_path}}",
+      backend_stack: "{{backend_stack}}",
+      frontend_stack: "{{frontend_stack}}"
+    });
+  }
+  if (url.pathname === "/api/status") {
+    return json(res, 200, {
+      agent_name: "{{agent_name}}",
+      ui_purpose: "{{ui_purpose}}",
+      backend_stack: "{{backend_stack}}",
+      backend_stack_label: "{{backend_stack_label}}",
+      frontend_stack: "{{frontend_stack}}",
+      frontend_stack_label: "{{frontend_stack_label}}",
+      recommended_local_port: defaultPort,
+      proxy_path: "{{proxy_path}}",
+      runtime_note: "{{runtime_note}}",
+      backend_security_note: "{{backend_security_note}}"
+    });
+  }
+  return serveStatic(req, res);
+});
+
+server.listen(port, "127.0.0.1", () => {
+  console.log(`{{app_title}} listening on http://127.0.0.1:${port}`);
+});

@@ -1,0 +1,16 @@
+const button = document.getElementById("status-button");
+const output = document.getElementById("status-output");
+
+async function loadStatus() {
+  output.textContent = "Loading...";
+  try {
+    const response = await fetch("./api/status");
+    const payload = await response.json();
+    output.textContent = JSON.stringify(payload, null, 2);
+  } catch (error) {
+    output.textContent = `Failed to reach backend: ${error}`;
+  }
+}
+
+button?.addEventListener("click", loadStatus);
+loadStatus();

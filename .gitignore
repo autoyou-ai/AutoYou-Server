@@ -1,0 +1,210 @@
+# ==============================================================================
+# AutoYou Server (.gitignore)
+# Scoped specifically to AutoYou-Server (backend, routers, agents, and native hosts)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment & Local Configuration Secrets
+# ------------------------------------------------------------------------------
+.env
+/private/
+/config/donations.json
+config/server_unlock.json
+config/local-services.json
+config.encrypted
+config.encrypted.bak
+config.keystore.enc
+*.private.pem
+/release-keys/
+tls/server.key
+tls/ca.key
+tls/ca.crt
+tls/server.crt
+.secure-professional-maximus.key-mode
+tests/.phase3_test_keys/
+
+# ------------------------------------------------------------------------------
+# 2. Virtual Environments, IDE & OS Metadata
+# ------------------------------------------------------------------------------
+.venv/
+.venv-build312/
+.venv-wheel-*/
+.run/
+.trae/
+.vscode/
+/.vs/
+.pytest_cache/
+.DS_Store
+__pycache__/
+*.pickle
+node_modules/
+
+# ------------------------------------------------------------------------------
+# 3. Server Runtime State, Databases & Logs
+# ------------------------------------------------------------------------------
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.log
+trae_agent.log
+corehost-trace.txt
+output.txt
+build_log.txt
+build_output.txt
+nuitka-crash-report.xml
+/logs/codex-live-test/
+.codex-build-logs/
+.codex/hooks.json
+output/
+scratch/
+.tmp/
+tmp/
+tmp/pdfs/
+tmp.*.txt
+tmp_agents_preview.html
+/=[0-9]*
+trace.trace
+trace.trace/
+systemd/user/
+/admin_profile/
+
+# ------------------------------------------------------------------------------
+# 4. Registries, Sessions & User Preferences
+# ------------------------------------------------------------------------------
+agent_install_registry.json
+agent_frontends_registry.json
+agent_desktop_apps_registry.json
+agent_ui_sessions.json
+ui_preferences.json
+reminders.json
+cron_tasks.json
+check_tasks.py
+
+# ------------------------------------------------------------------------------
+# 5. Third-Party Messaging Bridges & Browser Profiles
+# ------------------------------------------------------------------------------
+.wwebjs_auth/
+.wwebjs_cache/
+signal_data/
+chrome_profile/
+firefox_profile/
+ollama_data/
+.playwright-cli/
+.playwright-mcp/
+${PLAYWRIGHT_BROWSERS_PATH}
+
+# ------------------------------------------------------------------------------
+# 6. Media & Audio Storage
+# ------------------------------------------------------------------------------
+uploads/
+media/
+!tests/**/media/
+conversation_media/
+*.mp3
+test.wav
+test.*.wav
+
+# ------------------------------------------------------------------------------
+# 7. Subagent Runtime Workspaces & Calibrated Assets
+# ------------------------------------------------------------------------------
+autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
+autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
+autoyou_agents/audio_agent/library_settings.json
+autoyou_agents/fine_tuning_agent/fine_tuning_agent/
+autoyou_agents/data_collector_agent/data_collector_agent/
+autoyou_agents/persona_agent/persona_agent/*.md
+autoyou_agents/media_generation_agent/config/video.json
+autoyou_agents/prompts_agent/prompts.db
+autoyou_agents/prompts_agent/prompts.db*
+autoyou_agents/prompts_agent/data/
+/prompts_agent/
+
+# Your own agents that stay out of this repository: copy (or link) agent
+# packages into autoyou_agents/private/ and the server loads them like any other.
+/autoyou_agents/private
+
+
+# User-calibrated desktop app data is never committed or shipped.
+# Keep the generic manifest templates and setup prompts tracked.
+/autoyou_agents/claude_desktop_agent/desktop_assets/*
+!/autoyou_agents/claude_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md
+/autoyou_agents/codex_desktop_agent/desktop_assets/*
+!/autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json
+!/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
+
+
+shared/voice_training/recordings/
+shared/voice_training/models/emotivoice/
+shared/audio_agent/library_settings.json
+shared/earnings_agents/pending_ad_credits.json
+shared/voice_training/transcripts.json
+# ------------------------------------------------------------------------------
+# 8. Server Build & Native Packaging Artifacts
+# ------------------------------------------------------------------------------
+build/
+!tests/server/build/
+server.dist/
+local.properties
+
+# Native Windows Host Build Products
+servers/windows/build/
+servers/windows/dist/
+servers/windows/artifacts/
+servers/windows/venv/
+servers/windows/AutoYouWindowsHost/[Bb]in/
+servers/windows/AutoYouWindowsHost/[Oo]bj/
+servers/windows/AutoYouWindowsHost/.vs/
+servers/windows/AutoYouWindowsHost/corehost-trace.txt
+servers/windows/AutoYouWindowsHost/*.user
+servers/windows/AutoYouWindowsHost/*.suo
+servers/windows/AutoYouWindowsHost/*.userprefs
+
+# Native macOS Host Build Products
+servers/macos/build/
+servers/macos/apple/.build/
+servers/macos/apple/.build.prebuild-backup/
+servers/macos/intel/build/
+servers/macos/intel/dist/
+servers/macos/e2e-server-build.*
+servers/macos/e2e-package.log
+
+# ------------------------------------------------------------------------------
+# 9. Optional Vendored Dependencies & Adapters
+# ------------------------------------------------------------------------------
+# Pinned upstream checkouts are pulled per vendor/INSTRUCTIONS.md and never committed
+/cognee/
+/vendor/cognee/
+/vendor/brag/
+/vendor/odysseus/
+/vendor/signtoross/
+
+# ------------------------------------------------------------------------------
+# 10. Large Model Checkpoints & Binary Weights
+# ------------------------------------------------------------------------------
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+adapter_model.bin
+
+# ------------------------------------------------------------------------------
+# 11. Legal Drafts & Provenance Tracking
+# ------------------------------------------------------------------------------
+docs/legal/drafts/
+PROVENANCE_MANIFEST.json
+LICENSE_ACKNOWLEDGEMENT
+requirements/.locked.constraints.generated.txt
+graphify-out/
+**/graphify-out/
+.gemini/
+.source-revision
+
+# Per-machine media inference ownership locks
+*.gpu.lock
+DO_NOT_UPLOAD/

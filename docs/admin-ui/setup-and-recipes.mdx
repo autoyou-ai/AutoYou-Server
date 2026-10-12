@@ -1,0 +1,48 @@
+---
+title: "Admin UI: Setup & Boot"
+description: "The Setup & Boot screen of the admin console: the first-run wizard, the setup recipe questionnaire, and software updates."
+---
+
+# Setup & Boot
+
+The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) walks the first-run path on one screen: harden the local admin baseline, pick the AI runtime, load models, choose remote fallback paths, and finish. A **Bootstrap progress** panel lets you select a step or move with Previous and Next.
+
+---
+
+## First-run wizard
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/wizard/status` | The wizard state: the status of the AI runtime, messaging partners, and the public link, the active AI provider, and whether the wizard should be shown |
+| `POST /api/wizard/complete` | Record that the wizard is finished (`{"completed": true}`), or reopen it with `false`. The state is saved in the configuration as `wizard_completed` with a timestamp. |
+
+Completing the wizard does not change any other setting.
+
+---
+
+## Setup recipes
+
+A recipe is a proposed set of configuration changes compiled from a few questions. Compiling a recipe has no side effects: `POST /api/setup/recipe/preview` returns the proposal, and `POST /api/setup/recipe/apply` applies it through the normal admin configuration validator.
+
+Both routes take an `answers` object. By default, apply makes only the recipe's safe configuration changes. Set `include_guarded` or `include_security` to `true` to also apply the guarded or security-related changes. A remote browser cannot ask for those, and the request is refused. The questions are:
+
+| Question | Choices |
+| :--- | :--- |
+| **Choose a starting plan** (`profile_id`) | Private starter, Phone companion, Trusted LAN, Temporary public link, Creator and calls, Background phone link, Safety recording, Incognito local, Agent workbench, Integration operator, Custom mix |
+| **Network scope** (`network_scope`) | This computer only, Cloud Pair, Trusted local network, Temporary public link |
+| **AI path** (`ai_path`) | Ollama local, Ollama native gateway, Cloud model provider, Gemini, Hermes Agent, OpenClaw, Odysseus, Help me pick |
+| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Money helpers |
+
+The catalog groups the settings a recipe can touch into ten areas: server identity and local admin; security, passwords, 2FA, and pairing; AutoYou AI and model behavior; speech and voice; messaging partners; connectivity; websites and browser; video and calls; agents; and automation APIs and integrations. "Money helpers" (donation, hosting, earnings, and finance agents) stay off unless you ask for them.
+
+Exposure choices have consequences. "Trusted local network" turns on the home network with HTTPS, and "Temporary public link" enables a public link only for a time-boxed session. See [Security & Authentication](/architecture/security-and-auth).
+
+---
+
+## Software updates
+
+`GET /api/software-update/status` checks for an update and `POST /api/software-update/apply` applies it. Both need an admin sign-in.
+
+- Update checks are on by default but do nothing until the server is linked to an AutoYou account (or the app is managed by an app store). Turn them off with `software_update.enabled`, or with the `AUTOYOU_SOFTWARE_UPDATES_ENABLED` environment variable.
+- The check goes to AutoYou's update feed, `<AUTOYOU_CLOUD_BASE_URL>/v1/updates/autoyou-server` by default, authenticated with the account link. Set `AUTOYOU_UPDATE_FEED_BASE` to use a different feed.
+- If the account link was revoked, the response asks you to reconnect (`/api/cloud/link-start`). A failed signature check or a dirty working tree is reported as the cause of a failed update.

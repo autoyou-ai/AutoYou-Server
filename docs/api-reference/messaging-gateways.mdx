@@ -1,0 +1,60 @@
+---
+title: "Messaging Gateways APIs"
+description: "Admin-app routes for the WhatsApp, Signal, and Telegram connectors, including sender approval and direct sends."
+---
+
+# Messaging Gateways APIs
+
+These admin-app routes control the optional messaging bridges. They need an admin sign-in. The screen that uses them is described in [Messaging](/admin-ui/messaging-bridges). Errors follow the shape in the [API overview](/api-reference/overview).
+
+Each bridge can be turned off in the server's settings. A disabled bridge answers requests with a "feature disabled" response instead of acting.
+
+---
+
+## Sending
+
+The send routes share a similar body. `attachments` and `context` are optional lists.
+
+| Route | Body |
+| :--- | :--- |
+| `POST /api/telegram/send` | `message`, `chat_id`, optional `reply_to_message_id`, `attachments`, `context` |
+| `POST /api/telegram-user/send` | `message`, optional `attachments`, `context`. Sends to the account's Saved Messages. |
+| `POST /api/signal/send` | `message`, `to`, optional `attachments`, `context` |
+| `POST /api/whatsapp/send` | `message`, `to`, optional `attachments`, `context` |
+
+---
+
+## Telegram Bot
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram/senders` | Senders that have messaged the bot, with their approval state |
+| `POST /api/telegram/senders/approve` | Approve senders. Body: `{"sender_ids": ["..."]}`. |
+| `POST /admin/telegram/allow-code`, `POST /api/admin/telegram/allow-code` | Create the code that lets a Telegram user be allowed |
+
+## Telegram User (Saved Messages)
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/telegram-user/status`, `GET /api/telegram-user/qr` | Connection state and the QR code for signing in |
+| `POST /api/telegram-user/2fa` | Submit the account's two-step verification password. Body: `{"password": "..."}`. |
+| `GET /api/telegram-user/messages` | Recent Saved Messages activity. Metadata only; message bodies stay in the consent-gated local path. |
+| `POST /api/telegram-user/restart`, `POST /api/telegram-user/disconnect` | Restart or end the connection |
+
+## Signal
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/signal/status`, `GET /api/signal/detailed-status` | Service and pairing state, with integration states in the detailed form |
+| `GET /api/signal/device-name` | The linked device name, when available |
+| `GET /api/signal/qr` | The QR code for linking AutoYou as a device. Query: `refresh`, `force`. |
+| `GET /api/signal/messages` | The recent message log |
+| `POST /api/signal/restart`, `POST /api/signal/cleanup` | Restart the service, or clean up the pairing and reset its configuration |
+
+## WhatsApp
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/whatsapp/status`, `GET /api/whatsapp/qr` | Connection state and the QR code for signing in |
+| `POST /api/whatsapp/restart`, `POST /api/whatsapp/reset` | Restart the bridge, or reset its session |
+| `POST /webhook/whatsapp` | Inbound events from the `wwebjs-api` container used in compiled builds |

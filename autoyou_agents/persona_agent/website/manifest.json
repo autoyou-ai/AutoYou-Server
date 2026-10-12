@@ -1,0 +1,8 @@
+{
+  "agent_name": "persona_agent",
+  "description": "Private profile editor for facts the user chooses to save.",
+  "entry_path": "/",
+  "recommended_port": 8093,
+  "requires_proxy_registration": true,
+  "title": "Persona"
+}

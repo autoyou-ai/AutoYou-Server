@@ -1,0 +1,53 @@
+---
+title: "Agent Security & Permission Boundaries"
+description: "What limits an agent: installation, admin elevation, workspace scoping, command safeguards, website sign-in, and the read-only versus writable storage split."
+---
+
+# Agent Security & Permission Boundaries
+
+Agents are Python code that the server loads and runs. **They run with the permissions of the server process.** AutoYou does not put each agent in a separate operating-system sandbox or enforce a per-agent policy for filesystem, network, or shell access. Treat enabling an agent, and especially a custom one, as giving that code the access the server has.
+
+What exists are specific controls, listed below. They reduce risk; they do not make arbitrary agent code safe. See also [Security & Authentication](/architecture/security-and-auth) and [SECURITY.md](https://github.com/autoyou-ai/AutoYou-Server/blob/main/SECURITY.md).
+
+---
+
+## Controls that exist
+
+| Control | What it does |
+| :--- | :--- |
+| **Installation** | An agent must be installed to load, and an agent you add starts uninstalled. In a packaged runtime only the built-in compiled agents load; workspace-only agents are refused. |
+| **Admin elevation for local files** | The Files agent's tools refuse to touch local paths until an admin session is active. The operator proves it with a current authenticator code (`verify_admin_totp`), which starts a one-hour elevated session, and can end it with `revoke_admin_session`. The Model Picker agent uses the same session. |
+| **Workspace scoping** | The Coding agent's file tools are confined to the AutoYou repository root, and a path that escapes it is rejected. |
+| **Shell commands are off by default** | The Coding agent's `run_command` is disabled unless the operator sets `AUTOYOU_ENABLE_AGENT_RUN_COMMAND=1`. Even then, commands that match a deny list are refused: reverse shells, writes to shell startup files and system configuration, scheduled-task changes, permission and ownership changes, container escapes, mass process kills, and piping environment variables to network tools. |
+| **Scrubbed subprocess environment** | Subprocesses started by agent tools do not inherit environment variables whose names mark them as secrets or tokens. |
+| **Website sign-in** | Agent websites require an authenticated session and can require their own second factor. See [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles). |
+| **Permissions screen** | The operator decides what the computer lets AutoYou and paired devices capture, record, save, and access. See [Live View, Interact & Media](/admin-ui/live-view-and-media). |
+| **Read-only prompts in packaged builds** | The root agent's instructions are locked in packaged runtimes. Editing them requires Prompt Override. See [Security Console](/admin-ui/security-console). |
+
+---
+
+## Storage: read-only built-ins and writable user data
+
+Signed, packaged builds (MSIX on Windows, a notarized app on macOS) keep the program read-only, so the server separates what it ships from what users change:
+
+| Storage | Location | Mutability | Contents |
+| :--- | :--- | :--- | :--- |
+| **Built-in agents** | `autoyou_agents/` | Read-only in packaged builds | Agents and static frontends shipped with the server |
+| **Dynamic agents** | `get_dynamic_agents_root()` | Read/write | Agents you create or build, and edited drafts |
+| **User data** | `get_user_data_dir()` | Read/write | Notes, uploaded audio, embeddings, and conversation history |
+
+<Important>
+Do not write temporary files, editable databases, or user state into `autoyou_agents/`. Resolve writable paths with `shared.platform_runtime.get_dynamic_agents_root()` or `get_user_data_dir()`.
+</Important>
+
+---
+
+## If an agent misbehaves
+
+- **Stop it from loading:** uninstall it (`POST /api/agents/uninstall`) and reload the AI runtime. The source files stay on disk.
+- **Close its website:** disable its browser-facing control (`POST /api/agents/frontend`), or sign everyone out of every agent website (`POST /api/agent-websites/sessions/sign-out-all`).
+- **Remove its second factor:** wipe the agent's 2FA assignment (`POST /api/agent-security/agents/{agent_name}/wipe`). This removes the assignment only; it does not delete the agent's data.
+- **End an elevated session:** `revoke_admin_session`.
+- **Stop the runtime:** stop AutoYou AI from **Quick controls** on the Overview screen.
+
+Review what an agent can do before you enable it, keep backups, and enable only what you need.

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{app_title}}</title>
+    <base href="./">
+    <link rel="stylesheet" href="./assets/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel">
+        <p class="eyebrow">AutoYou Agent Website</p>
+        <h1>{{app_title}}</h1>
+        <p class="summary">{{ui_purpose}}</p>
+        <dl class="meta">
+          <div>
+            <dt>Backend</dt>
+            <dd>{{backend_stack_label}}</dd>
+          </div>
+          <div>
+            <dt>Frontend</dt>
+            <dd>{{frontend_stack_label}}</dd>
+          </div>
+          <div>
+            <dt>Recommended port</dt>
+            <dd>{{local_port}}</dd>
+          </div>
+        </dl>
+        <button id="status-button" type="button">Check backend status</button>
+        <pre id="status-output">Waiting for backend response...</pre>
+      </section>
+    </main>
+    <script type="module" src="./assets/app.js"></script>
+  </body>
+</html>

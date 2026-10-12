@@ -1,0 +1,9 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "AutoYou Game Input",
+  "Description": "Receives local AutoYou game controls in an Unreal game.",
+  "Category": "Input",
+  "Modules": [{"Name": "AutoYouGameInput", "Type": "Runtime", "LoadingPhase": "Default"}]
+}
