@@ -88,9 +88,11 @@ def stage_ios(sdk_root: Path, config: Path, output: Path, *, workspace: Path = S
     source.mkdir(parents=True)
     shutil.copy2(first / "generated/AutoYouTransport.swift", source / "AutoYouTransport.swift")
     headers = output / "headers"
-    headers.mkdir()
+    # Xcode merges static XCFramework headers; keep this module separate from libsodium's.
+    module_headers = headers / "AutoYouTransportFFI"
+    module_headers.mkdir(parents=True)
     for name in ("AutoYouTransportFFI.h", "AutoYouTransportFFI.modulemap"):
-        shutil.copy2(first / "generated" / name, headers / ("module.modulemap" if name.endswith("modulemap") else name))
+        shutil.copy2(first / "generated" / name, module_headers / ("module.modulemap" if name.endswith("modulemap") else name))
     simulator = output / "libautoyou_client_bindings-simulator.a"
     subprocess.run(["xcrun", "lipo", "-create", *[str(sdk_root / t / TARGETS[t][1]) for t in targets[1:]], "-output", str(simulator)], check=True)
     subprocess.run(["xcodebuild", "-create-xcframework", "-library", str(first / TARGETS[targets[0]][1]), "-headers", str(headers),
