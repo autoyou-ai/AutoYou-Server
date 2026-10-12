@@ -29,6 +29,7 @@ tests/.phase3_test_keys/
 .venv/
 # Locally staged Iroh SDK resources; never publish binaries or runtime state as source.
 /transport/
+/iroh/
 .iroh-source-*/
 .venv-build312/
 .venv-wheel-*/
