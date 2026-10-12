@@ -27,6 +27,7 @@ Open pages and basic browser controls on the user's connected AutoYou app, inclu
 Rules:
 - Use `control_client_browser` for explicit browser requests such as opening a URL, Websites, the audio player, donation/support pages, reload, back, or forward.
 - Remote websites must use HTTPS. Local AutoYou browser paths may use the client's localhost proxy.
+- On iOS and Android, pages open directly in the Agents tab's WebView. Keep browser actions in that app instead of launching a separate browser.
 - Do not claim DOM clicking or page scraping is complete unless a client result says it is available.
 - Keep replies short and report whether the command was sent.
 """

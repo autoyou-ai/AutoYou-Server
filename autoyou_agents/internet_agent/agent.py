@@ -13,6 +13,7 @@ from datetime import datetime
 import os
 import logging
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 # Google ADK memory imports omitted; handled by root agent
 
@@ -45,6 +46,8 @@ _INTERNET_TOOL_ERROR_MESSAGE_STATE_KEY = "_autoyou_internet_tool_error_message"
 _INTERNET_TOOL_SUCCESS_INVOCATION_ID_STATE_KEY = "_autoyou_internet_tool_success_invocation_id"
 _INTERNET_TOOL_RESULT_MESSAGE_STATE_KEY = "_autoyou_internet_tool_result_message"
 _INTERNET_USER_REQUEST_STATE_KEY = "_autoyou_internet_user_request"
+_INTERNET_BROWSER_INVOCATION_STATE_KEY = "_autoyou_internet_browser_invocation"
+_INTERNET_BROWSER_URL_STATE_KEY = "_autoyou_internet_browser_url"
 _INTERNET_REQUEST_INVOCATION_ID_STATE_KEY = "_autoyou_internet_request_invocation_id"
 _INTERNET_REQUEST_MODE_STATE_KEY = "_autoyou_internet_request_mode"
 _INTERNET_REQUEST_MODE_RESEARCH = "research"
@@ -602,7 +605,12 @@ async def _internet_after_tool_callback(
             _record_tool_error(tool_context.state, invocation_id, error_message)
 
         url = str(args.get("url") or tool_response.get("url") or "").strip()
-        if status == "success" and url and tool_name in {"scrape_website", "take_screenshot", "navigate_page"}:
+        if tool_name == "internet_search":
+            # A named website opens in the connected app after its search succeeds.
+            # General searches do not open an arbitrary result or the app directory.
+            request_text = str(_state_get(tool_context.state, _INTERNET_USER_REQUEST_STATE_KEY, "") or "")
+            url = _extract_explicit_page_url(_strip_internet_request_boilerplate(request_text)) or ""
+        if status == "success" and url:
             from autoyou_agents.client_browser_control_agent.agent import (
                 _dispatch_client_browser_control_payload,
                 build_client_browser_control_payload,
@@ -612,8 +620,20 @@ async def _internet_after_tool_callback(
                 action="open_url", url=url, source="internet_agent"
             )
             if payload.get("success", True):
+                parsed = urlsplit(str(payload.get("url") or url))
+                navigation_key = urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(),
+                                            parsed.path or "/", parsed.query, parsed.fragment))
+                already_open = (
+                    _state_get(tool_context.state, _INTERNET_BROWSER_INVOCATION_STATE_KEY, "") == invocation_id
+                    and _state_get(tool_context.state, _INTERNET_BROWSER_URL_STATE_KEY, "") == navigation_key
+                )
+                if already_open:
+                    return None
                 result = await _dispatch_client_browser_control_payload(payload, tool_context)
-                if not result.get("success"):
+                if result.get("success"):
+                    _state_set(tool_context.state, _INTERNET_BROWSER_INVOCATION_STATE_KEY, invocation_id)
+                    _state_set(tool_context.state, _INTERNET_BROWSER_URL_STATE_KEY, navigation_key)
+                else:
                     logger.debug("Internet page was not mirrored in the native browser pane: %s",
                                  str(result.get("reason") or "unavailable")[:200])
     return None
