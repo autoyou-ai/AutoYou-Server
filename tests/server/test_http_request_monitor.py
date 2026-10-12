@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
+import shared.http_request_monitor as http_request_monitor
 from shared.http_request_monitor import (
     HTTPRequestCaptureStore,
     install_http_monitor_routes,
@@ -22,6 +23,18 @@ def test_storage_uses_test_runtime_root(monkeypatch, tmp_path):
     store = HTTPRequestCaptureStore()
 
     assert store.path.resolve().is_relative_to(tmp_path.resolve())
+
+
+def test_capture_installation_defers_store_creation_until_request(monkeypatch):
+    def fail_if_store_is_created():
+        raise AssertionError("capture store should stay lazy during app import")
+
+    monkeypatch.setattr(http_request_monitor, "get_http_request_capture_store", fail_if_store_is_created)
+    app = FastAPI()
+
+    install_http_request_capture(app, service_name="test_service")
+
+    assert app.state._autoyou_http_request_capture_installed is True
 
 
 def test_capture_is_opt_in_and_stores_redacted_request_metadata(tmp_path):

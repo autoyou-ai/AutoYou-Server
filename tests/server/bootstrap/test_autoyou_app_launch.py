@@ -40,6 +40,52 @@ def test_main_routes_private_desktop_mode_without_starting_server(monkeypatch, t
     assert calls == ["desktop"]
 
 
+def test_ai_agent_server_enables_secure_storage_before_importing_server(monkeypatch, tmp_path):
+    calls = []
+    state = {"secure_storage_enabled": False}
+
+    class _FakePlatformRuntime:
+        @staticmethod
+        def configure_whisper_cache_environment(app_name):
+            calls.append(("cache", app_name))
+
+    def fake_load_runtime_module(module_name, _relative_path_parts, _package_paths=()):
+        calls.append(("load", module_name))
+        if module_name == "shared.secure_storage":
+            def enable_secure_storage():
+                state["secure_storage_enabled"] = True
+                calls.append("secure-storage")
+
+            return SimpleNamespace(
+                enable_secure_storage_from_environment=enable_secure_storage
+            )
+        if module_name == "server":
+            assert state["secure_storage_enabled"] is True
+            return SimpleNamespace(
+                run_agent_server=lambda host, port, agent_dir, _env: calls.append(
+                    ("run-server", host, port, agent_dir)
+                )
+            )
+        raise AssertionError(f"Unexpected runtime module: {module_name}")
+
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setattr(autoyou_app, "APP_ROOT", tmp_path)
+    monkeypatch.setattr(autoyou_app, "_patch_dotenv_for_packaged_runtime", lambda: None)
+    monkeypatch.setattr(autoyou_app, "_prepare_runtime_server_imports", lambda _root: None)
+    monkeypatch.setattr(autoyou_app, "_get_shared_platform_runtime_module", lambda: _FakePlatformRuntime)
+    monkeypatch.setattr(autoyou_app, "_load_runtime_module_from_path", fake_load_runtime_module)
+
+    autoyou_app.run_ai_agent_server_mode("127.0.0.1", 57388, "runtime_modules")
+
+    assert calls == [
+        ("cache", "AutoYou"),
+        ("load", "shared.secure_storage"),
+        "secure-storage",
+        ("load", "server"),
+        ("run-server", "127.0.0.1", 57388, "runtime_modules"),
+    ]
+
+
 def test_run_desktop_stdio_mode_prepares_packaged_audio_model_runtime(monkeypatch, tmp_path):
     calls = []
 

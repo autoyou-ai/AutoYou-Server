@@ -828,6 +828,7 @@ def test_owned_page_port_is_used_for_startup_and_browser_routes(monkeypatch):
     config = {"autoyou_page": {"port": 8067, "timeline_days": 7}}
     server.STATE.config = config
     monkeypatch.setenv("AUTOYOU_PAGE_PORT", "18067")
+    monkeypatch.setattr(server, "ADMIN_WEB_SERVICE_PORT", 18001)
     monkeypatch.setattr(server, "AUTOYOU_PAGE_SERVICE_AVAILABLE", True)
     checked, started = [], []
     monkeypatch.setattr(server, "is_port_in_use", lambda port, **_kw: checked.append(port) or False)
@@ -836,6 +837,7 @@ def test_owned_page_port_is_used_for_startup_and_browser_routes(monkeypatch):
         return False
 
     async def start(**kwargs):
+        assert kwargs["admin_port"] == 18001
         started.append(kwargs["port"])
         return "synthetic-service"
 

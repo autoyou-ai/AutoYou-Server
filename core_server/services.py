@@ -3586,7 +3586,8 @@ async def start_autoyou_page_service_background():
         # only in direct_forward mode; otherwise website apps are reached
         # through the admin port behind its sign-in.
         service = await runtime.start_autoyou_page_service(
-            port=port, host=runtime._page_service_bind_host(), timeline_days=timeline_days, **https_kwargs
+            port=port, host=runtime._page_service_bind_host(), timeline_days=timeline_days,
+            admin_port=runtime.ADMIN_WEB_SERVICE_PORT, **https_kwargs
         )
         runtime.LOGGER.info(f"For AutoYou Page Service started successfully on port {port}")
         return service
