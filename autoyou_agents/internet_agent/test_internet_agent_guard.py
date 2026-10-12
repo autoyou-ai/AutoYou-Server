@@ -25,6 +25,7 @@ from autoyou_agents.internet_agent.agent import (
     _INTERNET_TOOL_ERROR_INVOCATION_ID_STATE_KEY,
     _INTERNET_TOOL_ERROR_MESSAGE_STATE_KEY,
     _INTERNET_TOOL_SUCCESS_INVOCATION_ID_STATE_KEY,
+    _INTERNET_USER_REQUEST_STATE_KEY,
     _internet_before_model_callback,
     _internet_after_tool_callback,
 )
@@ -161,3 +162,51 @@ async def test_successful_page_tool_mirrors_url_to_native_client(monkeypatch):
         "platform": "server",
         "url": "https://example.test/page",
     }]
+
+
+async def test_searching_a_named_website_opens_it_once_in_the_client(monkeypatch):
+    from autoyou_agents.client_browser_control_agent import agent as browser_control
+
+    sent = []
+
+    async def dispatch(payload, context):
+        sent.append(payload)
+        return {"success": True}
+
+    monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", dispatch)
+    context = _context("synthetic-site-search")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "search example.test using @internet"
+    await _internet_after_tool_callback(_tool("internet_search"), {"query": "example.test"}, context,
+                                        {"status": "success", "results": []})
+    await _internet_after_tool_callback(_tool("scrape_website"), {"url": "https://example.test/"}, context,
+                                        {"status": "success", "url": "https://example.test/"})
+    assert len(sent) == 1
+    assert sent[0]["action"] == "open_url"
+    assert sent[0]["url"] == "https://example.test"
+    assert sent[0]["source"] == "internet_agent"
+
+
+async def test_general_search_does_not_open_a_result_or_the_app_directory(monkeypatch):
+    from autoyou_agents.client_browser_control_agent import agent as browser_control
+
+    async def unexpected_dispatch(*args):
+        raise AssertionError("A general search must not navigate the client")
+
+    monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", unexpected_dispatch)
+    context = _context("synthetic-general-search")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "search orbital mechanics using @internet"
+    await _internet_after_tool_callback(_tool("internet_search"), {"query": "orbital mechanics"}, context,
+                                        {"status": "success", "results": [{"url": "https://example.test/result"}]})
+
+
+async def test_failed_site_search_does_not_open_the_client_browser(monkeypatch):
+    from autoyou_agents.client_browser_control_agent import agent as browser_control
+
+    async def unexpected_dispatch(*args):
+        raise AssertionError("A failed search must not navigate the client")
+
+    monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", unexpected_dispatch)
+    context = _context("synthetic-failed-search")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "search example.test using @internet"
+    await _internet_after_tool_callback(_tool("internet_search"), {"query": "example.test"}, context,
+                                        {"status": "error", "error": "synthetic failure"})
