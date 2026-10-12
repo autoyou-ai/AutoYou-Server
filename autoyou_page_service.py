@@ -139,10 +139,22 @@ class AutoYouPageService:
         ssl_certfile: Optional[str] = None,
         ssl_keyfile: Optional[str] = None,
         remote_access_role_provider: Optional[Callable[[], Any]] = None,
+        admin_port: Optional[int] = None,
     ):
         self.port = port
         self.host = host
         self.timeline_days = max(0, int(timeline_days))
+        # Embedded startup supplies its active listener. Standalone page service
+        # runs use the same environment overrides as the admin server.
+        self.admin_port = 8001
+        for candidate in (admin_port, os.getenv("AUTOYOU_ADMIN_PORT"), os.getenv("AUTOYOU_ADMIN_SPORT")):
+            try:
+                resolved_port = int(candidate)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= resolved_port <= 65535:
+                self.admin_port = resolved_port
+                break
         # The remote client role for browsers that are not on this computer.
         # Read per request so an admin change applies without a restart.
         self.remote_access_role_provider = remote_access_role_provider
@@ -328,8 +340,37 @@ class AutoYouPageService:
             return f"/agent/{default_agent}/"
         return "/agent/page_agent/"
 
-    def _load_agent_frontends(self) -> Dict[str, Any]:
+    def _load_live_frontend_registry(self) -> Dict[str, Any]:
+        """Resolve the admin website against this server's active listener."""
         payload = load_frontend_registry()
+        raw_frontends = payload.get("frontends", [])
+        frontends = []
+        for item in raw_frontends if isinstance(raw_frontends, list) else []:
+            if not isinstance(item, dict) or item.get("agent_name") != "admin_agent":
+                frontends.append(item)
+                continue
+            entry = dict(item)
+            entry_path = str(entry.get("entry_path") or "/").strip() or "/"
+            if not entry_path.startswith("/"):
+                entry_path = f"/{entry_path}"
+            admin_url = f"http://127.0.0.1:{self.admin_port}{entry_path}"
+            entry.update({
+                "proxy_port": self.admin_port,
+                "direct_forward_port": self.admin_port,
+                "recommended_port": self.admin_port,
+                "route_mode": "direct_forward",
+                "uses_direct_forward_port": True,
+                "local_url": admin_url,
+                "server_local_url": admin_url,
+                "open_url": admin_url,
+            })
+            if entry.get("launch_url"):
+                entry["launch_url"] = admin_url
+            frontends.append(entry)
+        return {**payload, "frontends": frontends}
+
+    def _load_agent_frontends(self) -> Dict[str, Any]:
+        payload = self._load_live_frontend_registry()
         raw_frontends = payload.get("frontends", [])
         normalized_frontends = []
         for item in raw_frontends if isinstance(raw_frontends, list) else []:
@@ -504,15 +545,14 @@ class AutoYouPageService:
         return payload
 
     def _load_agent_directory(self) -> Dict[str, Any]:
-        registry = load_frontend_registry()
+        registry = self._load_live_frontend_registry()
         return build_agent_directory_payload(
             frontend_registry=registry,
             installed_only=True,
         )
 
-    @staticmethod
-    def _frontend_registry_map() -> Dict[str, Dict[str, Any]]:
-        registry = load_frontend_registry()
+    def _frontend_registry_map(self) -> Dict[str, Dict[str, Any]]:
+        registry = self._load_live_frontend_registry()
         results: Dict[str, Dict[str, Any]] = {}
         for item in registry.get("frontends", []):
             if not isinstance(item, dict):
@@ -1493,6 +1533,7 @@ async def start_autoyou_page_service(
     https_port: Optional[int] = None,
     ssl_certfile: Optional[str] = None,
     ssl_keyfile: Optional[str] = None,
+    admin_port: Optional[int] = None,
 ) -> AutoYouPageService:
     """Start the For AutoYou Page service (optionally with an additive HTTPS mirror)."""
     global _autoyou_service
@@ -1505,6 +1546,7 @@ async def start_autoyou_page_service(
             https_port=https_port,
             ssl_certfile=ssl_certfile,
             ssl_keyfile=ssl_keyfile,
+            admin_port=admin_port,
         )
 
     await _autoyou_service.start_background()

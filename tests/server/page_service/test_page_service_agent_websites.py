@@ -13,6 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urljoin
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -108,6 +109,88 @@ def test_agent_frontends_ui_uses_current_open_target_precedence(monkeypatch):
     assert "Unique weak-network first-paint description" in response.text
     assert "Copy link" in response.text
     assert 'data-autoyou-scroll-managed="1"' in response.text
+
+
+@pytest.mark.parametrize("admin_port", [8001, 19001, 49153])
+def test_admin_app_catalog_uses_active_listener_in_page_and_api(monkeypatch, admin_port):
+    registry = {"frontends": [
+        {
+            "agent_name": "admin_agent", "title": "Admin UI",
+            "frontend_port_registered": True, "entry_path": "/",
+            "proxy_port": 8001, "direct_forward_port": 8001, "recommended_port": 8001,
+            "route_mode": "direct_forward", "local_url": "http://127.0.0.1:8001/",
+            "open_url": "http://127.0.0.1:8001/", "launch_url": "http://127.0.0.1:8001/",
+        },
+        {
+            "agent_name": "notes_agent", "title": "Admin UI",
+            "frontend_port_registered": True, "proxy_port": 8094,
+            "route_mode": "path_proxy", "launch_path": "/agent/notes_agent/",
+        },
+    ]}
+    monkeypatch.setenv("AUTOYOU_ADMIN_PORT", "8001")
+    monkeypatch.setattr(autoyou_page_service, "load_frontend_registry", lambda: registry)
+    service = autoyou_page_service.AutoYouPageService(admin_port=admin_port)
+    expected_url = f"http://127.0.0.1:{admin_port}/"
+
+    with TestClient(service.app) as client:
+        page = client.get("/websites")
+        responses = [client.get("/api/websites"), client.get("/api/agent-websites"),
+                     client.request("QUERY", "/api/websites", json={"query": "Admin UI"})]
+
+    assert page.status_code == 200
+    assert f'href="{expected_url}"' in page.text
+    for response in responses:
+        assert response.status_code == 200
+        frontends = response.json()["frontends"]
+        admin = next(item for item in frontends if item["agent_name"] == "admin_agent")
+        for key in ("proxy_port", "direct_forward_port", "recommended_port"):
+            assert admin[key] == admin_port
+        for key in ("local_url", "server_local_url", "open_url", "launch_url"):
+            assert admin[key] == expected_url
+        notes = next(item for item in frontends if item["agent_name"] == "notes_agent")
+        assert notes["proxy_port"] == 8094
+        assert notes["open_url"] == "/agent/notes_agent/"
+    # Resolving the live endpoint does not rewrite persisted registry metadata.
+    assert registry["frontends"][0]["proxy_port"] == 8001
+
+
+@pytest.mark.parametrize("environment, admin_port", [
+    ({}, 8001), ({"AUTOYOU_ADMIN_PORT": "19003"}, 19003),
+    ({"AUTOYOU_ADMIN_SPORT": "19005"}, 19005),
+])
+def test_standalone_page_service_admin_port_matches_server_environment(monkeypatch, environment, admin_port):
+    monkeypatch.delenv("AUTOYOU_ADMIN_PORT", raising=False)
+    monkeypatch.delenv("AUTOYOU_ADMIN_SPORT", raising=False)
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+    registry = {"frontends": [{"agent_name": "admin_agent", "direct_forward_port": 8001}]}
+    monkeypatch.setattr(autoyou_page_service, "load_frontend_registry", lambda: registry)
+
+    service = autoyou_page_service.AutoYouPageService()
+    with TestClient(service.app) as client:
+        admin = client.get("/api/websites").json()["frontends"][0]
+
+    assert admin["open_url"] == f"http://127.0.0.1:{admin_port}/"
+
+
+def test_admin_agent_proxy_uses_active_listener_instead_of_manifest_port(monkeypatch):
+    monkeypatch.setattr(autoyou_page_service, "load_frontend_registry", lambda: {
+        "frontends": [{"agent_name": "admin_agent", "proxy_port": 8001}]
+    })
+    targets = []
+
+    def fake_request(_method, url, **_kwargs):
+        targets.append(url)
+        return _FakeUpstreamResponse(content=b"synthetic-admin", headers={"content-type": "text/plain"})
+
+    monkeypatch.setattr(autoyou_page_service.requests, "request", fake_request)
+    service = autoyou_page_service.AutoYouPageService(admin_port=49153)
+    with TestClient(service.app) as client:
+        response = client.get("/agent/admin_agent/login?next=%2F")
+
+    assert response.status_code == 200
+    assert response.content == b"synthetic-admin"
+    assert targets == ["http://127.0.0.1:49153/login?next=%2F"]
 
 
 def test_agent_websites_query_searches_descriptions_and_fuzzy_names(monkeypatch):
@@ -717,7 +800,7 @@ def test_page_service_hides_upstream_failure_details(monkeypatch):
     }
 
 
-def test_page_service_frontend_directory_prefers_local_url_for_direct_routes(monkeypatch):
+def test_page_service_admin_directory_uses_runtime_url_with_legacy_registry(monkeypatch):
     monkeypatch.setattr(
         autoyou_page_service,
         "load_frontend_registry",
@@ -736,12 +819,12 @@ def test_page_service_frontend_directory_prefers_local_url_for_direct_routes(mon
         },
     )
 
-    service = autoyou_page_service.AutoYouPageService()
+    service = autoyou_page_service.AutoYouPageService(admin_port=19007)
     client = TestClient(service.app)
     response = client.get("/agent-frontends")
 
     assert response.status_code == 200
-    assert 'href="/agent/admin_agent/"' in response.text
+    assert 'href="http://127.0.0.1:19007/"' in response.text
     assert "Direct admin dashboard" in response.text
     assert "Copy link" in response.text
 

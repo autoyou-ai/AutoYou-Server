@@ -518,12 +518,12 @@ def install_http_request_capture(
     if getattr(app_state, "_autoyou_http_request_capture_installed", False):
         return
     app_state._autoyou_http_request_capture_installed = True
-    capture_store = store or get_http_request_capture_store()
     normalized_service = _bounded_text(service_name, 64) or "unknown"
     normalized_agent = agent_name if _SAFE_NAME.fullmatch(agent_name or "") else ""
 
     @app.middleware("http")
     async def _autoyou_http_request_capture(request: Request, call_next):
+        capture_store = store or get_http_request_capture_store()
         if request.scope.get("autoyou.capture_skip") or not capture_store.is_enabled():
             return await call_next(request)
         try:

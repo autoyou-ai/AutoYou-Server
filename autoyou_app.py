@@ -1300,6 +1300,12 @@ def run_ai_agent_server_mode(host: str, port: int, agent_dir: str):
     try:
         platform_runtime_module = _get_shared_platform_runtime_module()
         platform_runtime_module.configure_whisper_cache_environment("AutoYou")
+        secure_storage_module = _load_runtime_module_from_path(
+            "shared.secure_storage",
+            ("shared", "secure_storage.py"),
+            (("shared", ("shared",)),),
+        )
+        secure_storage_module.enable_secure_storage_from_environment()
         server_module = _load_runtime_module_from_path("server", ("server.py",))
 
         server_module.run_agent_server(host, int(port), agent_dir, os.environ.copy())
