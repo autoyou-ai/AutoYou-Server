@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <link rel="icon" href="data:,">
+  <title>Neon Horizon - Game Studio</title>
+  <style>
+    :root{font:16px/1.4 system-ui,sans-serif;color:#fff;background:#080b1c}
+    *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}
+    canvas{display:block;width:100%;height:100%;touch-action:none}
+    .hud{position:absolute;inset:max(14px,env(safe-area-inset-top)) 18px auto;display:flex;justify-content:space-between;gap:12px;padding-right:42px;pointer-events:none;text-shadow:0 2px 12px #050614}
+    .score{font-weight:800;letter-spacing:.12em;font-size:.72rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,3.5rem);line-height:1.1;color:#fff;letter-spacing:-.04em}.score small{display:block;letter-spacing:.04em}
+    .loot{text-align:right;font-size:.8rem;color:#c6faff}.loot strong{font-size:1.25rem;color:#fff}.charge{height:5px;margin:5px 0;background:#293252;border-radius:4px;overflow:hidden}.charge span{display:block;height:100%;background:#7cfaff;width:0;transition:width .15s}
+    .controls{position:absolute;inset:auto 0 max(16px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:clamp(10px,2vw,22px);padding:0 16px}
+    button,a{font:inherit}button{cursor:pointer;border:1px solid #7cf4ff;border-radius:14px;background:#0d1436d9;color:#e9fdff;box-shadow:0 0 22px #12bfe854;font-weight:900;letter-spacing:.08em}
+    .controls button{min-width:clamp(78px,15vw,160px);min-height:64px;font-size:clamp(.85rem,2vw,1.15rem);touch-action:none}
+    button:hover,button:focus-visible{background:#12366a;outline:2px solid #fff;outline-offset:2px}
+    button:active{transform:translateY(2px);background:#fa42cb;color:#080b1c}
+    .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#070b20a8;padding:18px;overflow:auto}
+    .overlay[hidden]{display:none}.panel{max-width:510px;padding:clamp(18px,4vw,34px);text-align:center;background:#09122bee;border:1px solid #ff50db;border-radius:22px;box-shadow:0 0 60px #e027bd57}.panel h1{margin:0;font-size:clamp(1.6rem,5vw,2.3rem);letter-spacing:.03em}.panel p{margin:12px 0}.rules{font-size:.88rem;line-height:1.65}.gold{color:#ffd36c}.pink{color:#ff80d5}.cyan{color:#7cfaff}
+    p{color:#bed0eb}.panel button{padding:14px 28px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 15px}
+    .hint{font-size:.78rem;color:#b5c8e4}.top-actions{position:absolute;top:calc(max(14px,env(safe-area-inset-top)) + 104px);left:18px;display:flex;flex-wrap:wrap;gap:8px}
+    .top-actions button{font-size:.65rem;padding:7px 9px;color:#d6faff;background:#0b1838d9}
+    #feedback{position:absolute;top:36%;left:8%;right:8%;text-align:center;color:#fff;font-weight:800;font-size:clamp(.8rem,2.5vw,1.2rem);text-shadow:0 2px 12px #080b1c;pointer-events:none}
+    #motion-status{position:absolute;top:calc(max(14px,env(safe-area-inset-top)) + 180px);left:12px;right:12px;text-align:center;pointer-events:none;font-size:.68rem;color:#c4d3e8}
+    body[data-offline] #fullscreen{display:none}
+    @media(max-height:480px){.panel{padding:12px 22px}.panel p{margin:6px 0}.panel h1{font-size:1.4rem}.panel button{margin:5px;padding:9px 24px}.rules{line-height:1.4}.controls button{min-height:44px}.top-actions{top:85px}.hud{top:8px}.score strong{font-size:2rem}#motion-status{top:124px}}
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Neon Horizon. Jump gold hurdles, dodge tall pink barriers, and collect cyan diamonds."></canvas>
+  <div class="hud"><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small><small id="stage">SECTOR 1</small></div><div class="loot"><strong id="diamonds">0 DIAMONDS</strong><div id="combo">STREAK 0 / 5 - x1</div><div class="charge"><span id="charge"></span></div><div id="shield">SHIELD 0 / 8</div></div></div>
+  <div class="top-actions"><button id="pause" type="button">PAUSE</button><button id="calibrate" type="button">CALIBRATE TILT</button><button id="lift" type="button" aria-pressed="true">LIFT JUMP: ON</button><button id="fullscreen" type="button">FULL SCREEN</button></div>
+  <div id="feedback" role="status" aria-live="polite"></div>
+  <div id="motion-status">Swipe once per lane. Swipe up or tap JUMP.</div>
+  <div class="controls" aria-label="Game controls">
+    <button type="button" data-action="left" aria-label="Move one lane left">LEFT</button>
+    <button type="button" data-action="jump" aria-label="Jump">JUMP</button>
+    <button type="button" data-action="right" aria-label="Move one lane right">RIGHT</button>
+  </div>
+  <div class="overlay" id="overlay"><div class="panel">
+    <h1>NEON HORIZON</h1>
+    <p id="message">Find your line. Time your jumps. Beat your best.</p>
+    <div class="rules"><span class="gold">Jump gold hurdles</span> for +50. <span class="pink">Dodge tall pink barriers.</span><br><span class="cyan">Diamonds: +25, airborne diamonds: +60.</span><br>Every 5 in a streak raises your multiplier, up to x4.<br>Every 8 diamonds charges a shield for one crash.</div>
+    <button id="start" type="button">START RUN</button>
+    <div class="hint">One swipe = one lane. Swipe up, Space, or JUMP.<br>Tilt to steer. Hold still to calibrate, then lift the phone to jump.<br><span id="record-hint">Records stay on this device.</span> P pauses the run.</div>
+  </div></div>
+  <script>
+  (() => {
+    const canvas = document.querySelector('#game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.querySelector('#score');
+    const bestEl = document.querySelector('#best');
+    const overlay = document.querySelector('#overlay');
+    const startButton = document.querySelector('#start');
+    const message = document.querySelector('#message');
+    let width = 0, height = 0, scale = 1, last = 0;
+    let mode = 'ready', lane = 0, visualLane = 0, jumpTime = 0, score = 0, best = 0;
+    let distance = 0, elapsed = 0, spawnTime = 0, spawnCount = 0, objects = [];
+    let diamonds = 0, streak = 0, charge = 0, shield = false, clears = 0, bestAtStart = 0;
+    let feedbackTime = 0, invincible = 0, saveTime = 0, routeLane = 0, liftEnabled = true;
+    let manualSteerUntil = 0, storageAvailable = false;
+    const JUMP_DURATION = 0.82, PLAYER_Z = 0.9, HURDLE_HEIGHT = 0.48;
+    const BEST_KEY = 'autoyou.neon-horizon.best.v2', MAX_SCORE = 1000000000;
+    const pointers = new Map();
+    let localMotion = {};
+    const offline = document.body.hasAttribute('data-offline');
+    let audioContext, musicTime = 0, musicStep = 0;
+    const sounds = new Map();
+    const audioStarted = () => window.webkit?.messageHandlers?.gameAudio?.postMessage(true);
+    const remotePlayers = new Map();
+    const streamedFromComputer = location.pathname.startsWith('/api/webrtc/hosted-game/');
+    let nativeSocket, reconnectTimer, connecting = false;
+    const stars = Array.from({length: 70}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.45, r: i % 9 ? 1 : 2}));
+
+    function validBest(value) {
+      const number = Number(value);
+      return Number.isSafeInteger(number) && number >= 0 && number <= MAX_SCORE ? number : 0;
+    }
+    function loadBest() {
+      let value = validBest(window.autoYouGameBest);
+      try {
+        if (window.AutoYouGameScores) {
+          value = Math.max(value, validBest(window.AutoYouGameScores.readBest()));
+          storageAvailable = true;
+        }
+        if (window.webkit?.messageHandlers?.gameScore) storageAvailable = true;
+      } catch (_) { /* Browser storage remains available without a native bridge. */ }
+      try {
+        value = Math.max(value, validBest(localStorage.getItem(BEST_KEY)));
+        localStorage.setItem(BEST_KEY, String(value));
+        storageAvailable = true;
+      } catch (_) { /* Private or opaque web views may reject localStorage. */ }
+      return value;
+    }
+    function saveBest() {
+      best = Math.max(best, Math.min(MAX_SCORE, Math.floor(score)));
+      try {
+        best = Math.max(best, validBest(localStorage.getItem(BEST_KEY)));
+        localStorage.setItem(BEST_KEY, String(best));
+      } catch (_) { /* Native score stores cover downloaded games. */ }
+      try { window.AutoYouGameScores?.saveBest(best); } catch (_) { /* Keep playing. */ }
+      try { window.webkit?.messageHandlers?.gameScore?.postMessage(best); } catch (_) { /* Keep playing. */ }
+    }
+    const multiplier = () => Math.min(4, 1 + Math.floor(streak / 5));
+    const jumpHeight = (remaining = jumpTime) => remaining > 0
+      ? Math.sin(Math.PI * (1 - remaining / JUMP_DURATION)) : 0;
+    function feedback(text) {
+      document.querySelector('#feedback').textContent = text;
+      feedbackTime = 1.65;
+    }
+    function refreshHud() {
+      scoreEl.textContent = String(Math.floor(score)).padStart(4, '0');
+      bestEl.textContent = `BEST ${String(Math.max(best, Math.floor(score))).padStart(4, '0')}${storageAvailable ? '' : ' (SESSION)'}`;
+      document.querySelector('#record-hint').textContent = storageAvailable ? 'Records stay on this device.' : 'Storage unavailable: best lasts for this session.';
+      document.querySelector('#diamonds').textContent = `${diamonds} DIAMONDS`;
+      document.querySelector('#combo').textContent = `STREAK ${streak}${multiplier() < 4 ? ' / ' + (Math.floor(streak / 5) + 1) * 5 : ''} - x${multiplier()}`;
+      document.querySelector('#shield').textContent = `${shield ? 'SHIELD READY' : 'SHIELD'} ${charge} / 8`;
+      document.querySelector('#charge').style.width = `${charge / 8 * 100}%`;
+      document.querySelector('#stage').textContent = `SECTOR ${1 + Math.floor(elapsed / 25)}`;
+    }
+    function resetMotion() {
+      localMotion = {};
+      for (const player of remotePlayers.values()) player.motion = {};
+    }
+
+    function unlockAudio() {
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) return;
+      if (!audioContext) audioContext = new Audio();
+      if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+    }
+    function wavSound(frequency, duration, type) {
+      const rate = 16000, count = Math.ceil(rate * duration);
+      const bytes = new Uint8Array(44 + count * 2), header = new DataView(bytes.buffer);
+      const fourCC = (at, value) => { for (let i = 0; i < 4; i++) bytes[at + i] = value.charCodeAt(i); };
+      fourCC(0, 'RIFF'); header.setUint32(4, bytes.length - 8, true); fourCC(8, 'WAVE');
+      fourCC(12, 'fmt '); header.setUint32(16, 16, true); header.setUint16(20, 1, true);
+      header.setUint16(22, 1, true); header.setUint32(24, rate, true);
+      header.setUint32(28, rate * 2, true); header.setUint16(32, 2, true);
+      header.setUint16(34, 16, true); fourCC(36, 'data'); header.setUint32(40, count * 2, true);
+      for (let i = 0; i < count; i++) {
+        const phase = frequency * i / rate;
+        const wave = type === 'sawtooth' ? 2 * (phase % 1) - 1
+          : type === 'triangle' ? 2 / Math.PI * Math.asin(Math.sin(2 * Math.PI * phase))
+          : Math.sin(2 * Math.PI * phase);
+        const envelope = Math.min(1, i / (rate * 0.008)) * Math.pow(1 - i / count, 2);
+        header.setInt16(44 + i * 2, wave * envelope * 18000, true);
+      }
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const sound = new Audio('data:audio/wav;base64,' + btoa(binary));
+      sound.preload = 'auto';
+      return sound;
+    }
+    function webTone(frequency, duration, volume, type) {
+      if (audioContext?.state !== 'running') return;
+      const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+      oscillator.type = type; oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(volume, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(); oscillator.stop(audioContext.currentTime + duration);
+      audioStarted();
+    }
+    function tone(frequency, duration = 0.1, volume = 0.04, type = 'sine') {
+      const key = `${frequency}:${duration}:${type}`;
+      if (!sounds.has(key)) sounds.set(key, wavSound(frequency, duration, type));
+      const sound = sounds.get(key);
+      sound.volume = Math.min(1, volume * 8);
+      try { sound.currentTime = 0; sound.play().then(audioStarted).catch(() => webTone(frequency, duration, volume, type)); }
+      catch { webTone(frequency, duration, volume, type); }
+    }
+
+    function resize() {
+      width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    }
+    function start() {
+      unlockAudio();
+      mode = 'running'; lane = 0; visualLane = 0; jumpTime = 0; score = 0;
+      distance = 0; elapsed = 0; spawnTime = 0.8; spawnCount = 0; objects = [];
+      diamonds = 0; streak = 0; charge = 0; shield = false; clears = 0; routeLane = 0;
+      invincible = 0; saveTime = 0; best = Math.max(best, loadBest()); bestAtStart = best;
+      pointers.clear(); resetMotion();
+      musicTime = 0; musicStep = 0;
+      overlay.hidden = true; tone(523, 0.16);
+      feedback('COLLECT DIAMONDS TO CHARGE YOUR SHIELD'); refreshHud();
+    }
+    function finish(reason) {
+      mode = 'over'; saveBest(); pointers.clear();
+      tone(110, 0.4, 0.08, 'sawtooth');
+      message.textContent = `${Math.floor(score) > bestAtStart ? 'NEW BEST! ' : ''}${Math.floor(score)} points, ${diamonds} diamonds, ${clears} hurdles cleared. ${reason}`;
+      startButton.textContent = 'RUN AGAIN'; overlay.hidden = false;
+      refreshHud();
+    }
+    function pause() {
+      if (mode !== 'running') return;
+      mode = 'paused'; saveBest(); pointers.clear(); resetMotion();
+      for (const player of remotePlayers.values()) player.touches.clear();
+      message.textContent = 'Run paused. Your score is safe. Resume when you are ready.';
+      startButton.textContent = 'RESUME'; overlay.hidden = false;
+    }
+    function beginOrResume() {
+      if (mode !== 'paused') { start(); return; }
+      unlockAudio(); resetMotion(); last = 0; mode = 'running'; overlay.hidden = true;
+    }
+    function action(name) {
+      unlockAudio();
+      if (mode === 'paused') return;
+      if (mode !== 'running') { start(); return; }
+      if (name === 'left' && lane > -1) { lane -= 1; tone(330, 0.07); }
+      if (name === 'right' && lane < 1) { lane += 1; tone(392, 0.07); }
+      if (name === 'jump' && jumpTime <= 0) { jumpTime = JUMP_DURATION; tone(660, 0.12); }
+    }
+    function manualAction(name) {
+      if (mode === 'paused') { beginOrResume(); return; }
+      if (name === 'left' || name === 'right') manualSteerUntil = performance.now() + 350;
+      action(name);
+    }
+    // Consume a gesture once. Never reset its anchor while the finger is down.
+    function moveGesture(pointer, x, y, thresholdX, thresholdY) {
+      if (pointer.used) return;
+      const dx = (x - pointer.x) / thresholdX, dy = (y - pointer.y) / thresholdY;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 1) return;
+      pointer.used = true;
+      if (Math.abs(dx) >= Math.abs(dy)) manualAction(dx < 0 ? 'left' : 'right');
+      else if (dy < 0) manualAction('jump');
+    }
+    startButton.addEventListener('click', beginOrResume);
+    document.querySelectorAll('[data-action]').forEach(button => {
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault(); manualAction(button.dataset.action);
+      });
+      button.addEventListener('click', event => { if (!event.detail) manualAction(button.dataset.action); });
+    });
+    canvas.addEventListener('pointerdown', event => {
+      event.preventDefault(); canvas.setPointerCapture(event.pointerId);
+      pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, used: false});
+    });
+    canvas.addEventListener('pointermove', event => {
+      const pointer = pointers.get(event.pointerId);
+      if (pointer) moveGesture(pointer, event.clientX, event.clientY, 32, 32);
+    });
+    canvas.addEventListener('pointerup', event => {
+      const pointer = pointers.get(event.pointerId);
+      pointers.delete(event.pointerId);
+      if (!pointer) return;
+      moveGesture(pointer, event.clientX, event.clientY, 32, 32);
+      if (!pointer.used) remoteActionFromX(event.clientX / width);
+    });
+    canvas.addEventListener('pointercancel', event => pointers.delete(event.pointerId));
+    canvas.addEventListener('lostpointercapture', event => pointers.delete(event.pointerId));
+    addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      const command = key === 'arrowleft' || key === 'a' ? 'left'
+        : key === 'arrowright' || key === 'd' ? 'right'
+        : key === ' ' || key === 'arrowup' || key === 'w' ? 'jump' : null;
+      if (command) { event.preventDefault(); if (!event.repeat) manualAction(command); }
+      if (key === 'enter' && mode !== 'running') beginOrResume();
+      if ((key === 'p' || key === 'escape') && !event.repeat) pause();
+    });
+    document.querySelector('#pause').addEventListener('click', pause);
+    document.querySelector('#calibrate').addEventListener('click', () => { resetMotion(); feedback('HOLD STILL TO SET YOUR NEUTRAL TILT'); });
+    document.querySelector('#lift').addEventListener('click', event => {
+      liftEnabled = !liftEnabled; resetMotion();
+      event.currentTarget.textContent = `LIFT JUMP: ${liftEnabled ? 'ON' : 'OFF'}`;
+      event.currentTarget.setAttribute('aria-pressed', String(liftEnabled));
+    });
+    document.querySelector('#fullscreen').addEventListener('click', () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.();
+    });
+    addEventListener('resize', () => { resize(); resetMotion(); });
+    addEventListener('blur', pause);
+    addEventListener('pagehide', saveBest);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+    function motionInput(state, x, y, z, threshold) {
+      if (mode !== 'running' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      const now = performance.now();
+      let lifting = false;
+      if (Number.isFinite(z)) {
+        const sample = [x, y, z], magnitude = Math.hypot(x, y, z);
+        let lift = state.lift;
+        if (!lift || now - lift.at > 300) {
+          state.lift = {gravity: sample, at: now, quiet: 0, pulse: 0, armed: false, until: now + 450};
+          return;
+        }
+        const dt = Math.max(0, Math.min((now - lift.at) / 1000, 0.1));
+        lift.at = now;
+        const gravity = Math.hypot(...lift.gravity);
+        if (gravity < 7 || gravity > 12) { state.lift = null; return; }
+        // Projection onto the resting gravity axis works flat, upright, rotated,
+        // and with either native accelerometer sign convention. No displacement integration.
+        const along = sample.reduce((sum, value, i) => sum + value * lift.gravity[i] / gravity, 0);
+        const vertical = along - gravity;
+        const lateral = Math.sqrt(Math.max(0, magnitude * magnitude - along * along));
+        lifting = Math.abs(vertical) > 2.2;
+        if (Math.abs(magnitude - 9.80665) < 1.3 && Math.abs(vertical) < 1.5) {
+          const alpha = 1 - Math.exp(-dt / 0.25);
+          lift.gravity = lift.gravity.map((value, i) => value + (sample[i] - value) * alpha);
+          lift.quiet += dt;
+          if (lift.quiet >= 0.2 && now >= lift.until) lift.armed = true;
+        } else lift.quiet = 0;
+        // A downward dip or a large rotation must settle before another lift.
+        if (vertical < -2.5 || lateral > 4) {
+          lift.armed = false; lift.until = Math.max(lift.until, now + 250); lift.pulse = 0;
+          if (Math.abs(magnitude - 9.80665) < 1.3) {
+            lift.gravity = sample;
+          }
+        }
+        if (lift.armed && vertical > 3.2 && lateral < 3.5) lift.pulse += dt;
+        else lift.pulse = 0;
+        if (liftEnabled && lift.pulse >= 0.05) {
+          lift.armed = false; lift.pulse = 0; lift.until = now + 950;
+          action('jump');
+        }
+        document.querySelector('#motion-status').textContent = liftEnabled
+          ? (lift.armed ? 'LIFT READY - lift the phone upward to jump' : 'Hold still briefly to ready lift jump')
+          : 'Tilt to steer. Lift jump is off.';
+      }
+      if (!state.tilt) state.tilt = {axis: Math.abs(x) <= Math.abs(y) ? 'x' : 'y', x, y, direction: 0};
+      if (lifting || now < manualSteerUntil) return;
+      const tilt = state.tilt;
+      const delta = tilt.axis === 'x' ? x - tilt.x : y - tilt.y;
+      const direction = delta < -threshold ? -1 : delta > threshold ? 1 : 0;
+      if (direction && direction !== tilt.direction) {
+        action(direction < 0 ? 'left' : 'right'); tilt.direction = direction;
+      } else if (Math.abs(delta) < threshold * 0.55) tilt.direction = 0;
+    }
+    window.autoYouGameTilt = (x, y, z) => motionInput(localMotion, x, y, z, 1.8);
+
+    function remoteActionFromX(x) {
+      if (!Number.isFinite(x) || x < 0 || x > 1) return;
+      manualAction(x < 0.35 ? 'left' : x > 0.65 ? 'right' : 'jump');
+    }
+    function handleRemoteFrame(frame) {
+      if (!frame || typeof frame !== 'object') return;
+      const kind = frame.input_type;
+      if (kind === 'state_reset' && frame.all_sessions === true) {
+        remotePlayers.clear(); return;
+      }
+      const id = typeof frame.session_id === 'string' ? frame.session_id : '';
+      if (!id) return;
+      if (kind === 'session_end') { remotePlayers.delete(id); return; }
+      let player = remotePlayers.get(id);
+      if (!player || kind === 'session_start') {
+        player = {touches: new Map(), buttons: new Set(), keys: new Set(), axis: 0, motion: {}};
+        remotePlayers.set(id, player);
+        if (kind === 'session_start') return;
+      }
+      if (frame.event === 'game_input' && kind === 'touch' && Array.isArray(frame.points)) {
+        const next = new Map();
+        for (const point of frame.points) {
+          if (!Number.isInteger(point.id)) continue;
+          const x = Number(point.x), y = Number(point.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) continue;
+          const pointer = player.touches.get(point.id) || {x, y, used: false};
+          moveGesture(pointer, x, y, 0.09, 0.09);
+          next.set(point.id, pointer);
+        }
+        for (const [id, pointer] of player.touches) {
+          if (!next.has(id) && !pointer.used && frame.phase !== 'cancel') remoteActionFromX(pointer.x);
+        }
+        player.touches = next;
+      } else if (frame.event === 'game_input' && kind === 'axis' && frame.axis === 'left_x') {
+        const value = Number(frame.value);
+        const direction = value < -0.55 ? -1 : value > 0.55 ? 1 : 0;
+        if (direction && direction !== player.axis) manualAction(direction < 0 ? 'left' : 'right');
+        player.axis = direction;
+      } else if (frame.event === 'game_input' && kind === 'button') {
+        const name = String(frame.button || '').toLowerCase();
+        if (frame.phase === 'down' && !player.buttons.has(name)) {
+          player.buttons.add(name);
+          const command = {action_a: 'jump', action_b: 'right', jump: 'jump', left: 'left', right: 'right'}[name];
+          if (command) manualAction(command);
+        } else if (frame.phase === 'up') player.buttons.delete(name);
+      } else if (frame.event === 'game_input' && kind === 'sensor' && frame.sensor === 'accelerometer') {
+        motionInput(player.motion, frame.x, frame.y, frame.z, 3);
+      } else if (frame.event === 'remote_desktop_keyboard') {
+        if (frame.action === 'hide') { player.keys.clear(); return; }
+        const key = String(frame.key || '').toLowerCase();
+        if (frame.action === 'key' && frame.phase === 'down' && !player.keys.has(key)) {
+          player.keys.add(key);
+          const command = {arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right',
+            arrowup: 'jump', w: 'jump', space: 'jump'}[key];
+          if (command) manualAction(command);
+        } else if (frame.phase === 'up') player.keys.delete(key);
+      } else if (frame.event === 'remote_desktop_input' && kind === 'button' &&
+                 (frame.phase === 'down' || frame.phase === 'click')) {
+        if (frame.x != null) remoteActionFromX(Number(frame.x));
+        else action(frame.button === 'right' ? 'right' : frame.button === 'middle' ? 'left' : 'jump');
+      }
+    }
+    function retryNativeInput(delay) {
+      clearTimeout(reconnectTimer);
+      if (!document.hidden) reconnectTimer = setTimeout(connectNativeInput, delay);
+    }
+    async function connectNativeInput() {
+      if (document.hidden || nativeSocket || connecting) return;
+      connecting = true;
+      try {
+        const response = await fetch('./api/game/native-input/status', {credentials: 'same-origin', cache: 'no-store'});
+        if (!response.ok) throw new Error('Native input status unavailable');
+        const status = await response.json();
+        if (!status.available || status.engine_connected) {
+          retryNativeInput(3000);
+          return;
+        }
+        if (document.hidden) return;
+        const url = new URL('./api/game/native-input', location.href);
+        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(url);
+        nativeSocket = socket;
+        socket.onmessage = event => {
+          try { handleRemoteFrame(JSON.parse(event.data)); } catch (_) { /* Keep the game running. */ }
+        };
+        socket.onclose = () => {
+          if (nativeSocket !== socket) return;
+          remotePlayers.clear(); nativeSocket = null;
+          retryNativeInput(2000);
+        };
+      } catch (_) {
+        retryNativeInput(3000);
+      } finally {
+        connecting = false;
+      }
+    }
+    if (!offline && location.pathname.endsWith('/play')) {
+      connectNativeInput();
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { clearTimeout(reconnectTimer); nativeSocket?.close(); }
+        else connectNativeInput();
+      });
+    }
+
+    const horizon = () => height * 0.48;
+    const roadY = z => horizon() + (height * 0.52 - (height <= 480 ? 68 : 86)) * z * z;
+    const roadHalf = z => 20 + width * 0.46 * z;
+    const laneX = (laneValue, z) => width / 2 + laneValue * roadHalf(z) * 0.62;
+    const jumpPixels = () => Math.min(105, height * 0.19);
+    function spawnRow() {
+      const put = (kind, laneValue, z = 0.02, air = false) => objects.push({kind, lane: laneValue, z, air, passed: false});
+      const pattern = spawnCount++ % 6;
+      // A readable introduction, then repeating patterns with varied routes.
+      // Rows remain more than a full jump apart, including at maximum speed.
+      if (pattern === 0 || pattern === 4) {
+        if (spawnCount > 1) routeLane = Math.max(-1, Math.min(1, routeLane + (Math.random() < 0.5 ? -1 : 1)));
+        for (let i = 0; i < 3; i++) put('shard', routeLane, 0.02 - i * 0.09);
+        if (pattern === 4) put('wall', routeLane === 0 ? 1 : -routeLane);
+      } else if (pattern === 1) {
+        put('hurdle', routeLane); put('shard', routeLane, 0.02, true);
+        if (spawnCount === 2) feedback('GOLD HURDLE AHEAD - TIME YOUR JUMP');
+      } else if (pattern === 2) {
+        put('wall', routeLane);
+        routeLane = routeLane === 0 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+        put('shard', routeLane);
+        if (spawnCount === 3) feedback('PINK BARRIER - CHANGE LANES');
+      } else if (pattern === 3) {
+        for (const value of [-1, 0, 1]) put('hurdle', value);
+        put('shard', routeLane, 0.02, true);
+        feedback('JUMP THE GOLD ROW');
+      } else {
+        put('hurdle', routeLane); put('shard', routeLane, 0.02, true);
+        put('wall', routeLane === 0 ? 1 : -routeLane);
+      }
+    }
+    function collect(item) {
+      const points = (item.air ? 60 : 25) * multiplier();
+      score += points; diamonds++; streak++; charge++;
+      if (charge === 8) {
+        charge = 0;
+        if (shield) { score += 100 * multiplier(); feedback(`SHIELD FULL - BONUS +${100 * multiplier()}`); }
+        else { shield = true; feedback('SHIELD READY - ONE CRASH PROTECTED'); }
+      } else if (streak % 5 === 0 && streak <= 15) feedback(`STREAK UP - x${multiplier()} POINTS`);
+      else feedback(`${item.air ? 'AIR DIAMOND' : 'DIAMOND'} +${points}`);
+      item.collected = true; tone(item.air ? 1046 : 880, 0.16, 0.06);
+    }
+    function crash(item) {
+      if (invincible > 0) return;
+      if (shield) {
+        shield = false; invincible = 0.8; streak = 0;
+        feedback('SHIELD SAVED YOU - BUILD ANOTHER'); tone(196, 0.25, 0.07);
+      } else finish(item.kind === 'wall' ? 'Dodge tall pink barriers.' : 'Jump higher over gold hurdles.');
+    }
+    function update(dt) {
+      if (mode !== 'running') return;
+      if (!streamedFromComputer && (musicTime -= dt) <= 0) {
+        tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.055, 'triangle');
+        musicTime = 0.3;
+      }
+      elapsed += dt; score += dt * 10;
+      const speed = 0.34 + Math.min(elapsed / 500, 0.18);
+      distance += dt * speed;
+      const previousLane = visualLane, previousJump = jumpTime;
+      visualLane += (lane - visualLane) * (1 - Math.exp(-dt * 18));
+      jumpTime = Math.max(0, jumpTime - dt);
+      invincible = Math.max(0, invincible - dt);
+      if ((feedbackTime -= dt) <= 0) document.querySelector('#feedback').textContent = '';
+      spawnTime -= dt;
+      if (spawnTime <= 0) {
+        spawnRow(); spawnTime = Math.max(1.28, 1.85 - elapsed / 200);
+      }
+      // Resolve frontmost objects first, independent of drawing order.
+      objects.sort((a, b) => b.z - a.z || (a.kind === 'shard') - (b.kind === 'shard'));
+      for (const item of objects) {
+        const previousZ = item.z;
+        item.z += dt * speed;
+        if (!item.passed && item.z >= PLAYER_Z) {
+          item.passed = true;
+          const fraction = dt > 0 ? Math.max(0, Math.min(1, (PLAYER_Z - previousZ) / (dt * speed))) : 1;
+          const impactLane = previousLane + (visualLane - previousLane) * fraction;
+          const heightAtImpact = jumpHeight(Math.max(0, previousJump - dt * fraction));
+          const sameLane = Math.abs(item.lane - impactLane) < 0.55;
+          if (item.kind === 'shard') {
+            if (sameLane && (item.air ? heightAtImpact >= 0.5 : heightAtImpact < 0.55)) collect(item);
+            else {
+              if (streak >= 5) feedback('DIAMOND MISSED - STREAK RESET');
+              streak = 0;
+            }
+          } else if (sameLane) {
+            if (item.kind === 'hurdle' && heightAtImpact >= HURDLE_HEIGHT) {
+              clears++; const points = 50 * multiplier(); score += points;
+              feedback(`HURDLE CLEARED +${points}`); tone(698, 0.12);
+            } else crash(item);
+            if (mode !== 'running') break;
+          }
+        }
+      }
+      objects = objects.filter(item => item.z < 1.12 && !item.collected);
+      if ((saveTime -= dt) <= 0) { saveBest(); saveTime = 1; }
+      refreshHud();
+    }
+    function line(x1, y1, x2, y2, color, weight = 1) {
+      ctx.strokeStyle = color; ctx.lineWidth = weight;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    function drawBackground(time) {
+      const sky = ctx.createLinearGradient(0, 0, 0, height);
+      sky.addColorStop(0, '#070c23'); sky.addColorStop(0.48, '#301348'); sky.addColorStop(1, '#130c2a');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#9dc9ff';
+      for (const star of stars) {
+        ctx.globalAlpha = 0.2 + (Math.sin(time * 2 + star.x * 20) + 1) * 0.2;
+        ctx.fillRect(star.x * width, star.y * height, star.r, star.r);
+      }
+      ctx.globalAlpha = 1;
+      const sunY = horizon() - Math.min(width, height) * 0.12;
+      const radius = Math.min(width * 0.16, height * 0.2);
+      const glow = ctx.createRadialGradient(width / 2, sunY, radius * 0.15, width / 2, sunY, radius * 1.8);
+      glow.addColorStop(0, '#ffb458bb'); glow.addColorStop(0.52, '#fa49ba66'); glow.addColorStop(1, '#fa49ba00');
+      ctx.fillStyle = glow; ctx.fillRect(width / 2 - radius * 2, sunY - radius * 2, radius * 4, radius * 4);
+      const sun = ctx.createLinearGradient(0, sunY - radius, 0, sunY + radius);
+      sun.addColorStop(0, '#ffe78a'); sun.addColorStop(1, '#f5589a');
+      ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(width / 2, sunY, radius, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#301348';
+      for (let stripe = 0; stripe < 5; stripe++) {
+        const y = sunY + radius * (0.25 + stripe * 0.17);
+        ctx.fillRect(width / 2 - radius, y, radius * 2, 3 + stripe * 1.4);
+      }
+      ctx.fillStyle = '#100b29';
+      ctx.beginPath(); ctx.moveTo(0, horizon());
+      for (let x = 0; x <= width; x += width / 12) {
+        ctx.lineTo(x, horizon() - height * (0.04 + ((Math.sin(x * 0.027) + 1) * 0.028)));
+      }
+      ctx.lineTo(width, horizon()); ctx.fill();
+    }
+    function drawRoad() {
+      const h = horizon();
+      ctx.fillStyle = '#0c102c';
+      ctx.beginPath(); ctx.moveTo(width / 2 - 20, h); ctx.lineTo(width / 2 + 20, h);
+      ctx.lineTo(width / 2 + roadHalf(1), height); ctx.lineTo(width / 2 - roadHalf(1), height); ctx.fill();
+      ctx.shadowColor = '#f044db'; ctx.shadowBlur = 15;
+      for (const edge of [-1, 1]) line(width / 2 + edge * 20, h, width / 2 + edge * roadHalf(1), height, '#ff4be3', 3);
+      ctx.shadowBlur = 0;
+      for (const stripe of [-0.33, 0.33]) {
+        line(width / 2 + stripe * 20, h, width / 2 + stripe * roadHalf(1), height, '#b637d666', 1);
+      }
+      for (let i = 0; i < 19; i++) {
+        const z = ((i / 18 + distance * 0.16) % 1) ** 1.45;
+        line(width / 2 - roadHalf(z), roadY(z), width / 2 + roadHalf(z), roadY(z), '#e842d788', 1 + z * 1.5);
+      }
+    }
+    function drawItem(item) {
+      const z = item.z;
+      if (z <= 0 || z > 1.12) return;
+      const x = laneX(item.lane, z), y = roadY(z), size = 5 + Math.min(48, width * 0.085) * z;
+      ctx.save(); ctx.translate(x, y); ctx.shadowBlur = 20 * z;
+      if (item.kind === 'shard') {
+        ctx.translate(0, -18 * z - (item.air ? jumpPixels() * z / PLAYER_Z * 0.8 : 0));
+        ctx.scale(0.65, 0.65);
+        ctx.shadowColor = '#58f8ff'; ctx.fillStyle = '#7cfaff';
+        ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size * 0.48, -size * 0.3);
+        ctx.lineTo(0, size * 0.4); ctx.lineTo(-size * 0.48, -size * 0.3); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      } else if (item.kind === 'hurdle') {
+        const hurdleHeight = jumpPixels() * HURDLE_HEIGHT * z / PLAYER_Z;
+        ctx.shadowColor = '#ffd36c'; ctx.fillStyle = '#ffd36c';
+        ctx.fillRect(-size * 0.7, -hurdleHeight, size * 1.4, 8 * z);
+        ctx.fillRect(-size * 0.65, -hurdleHeight, 5 * z, hurdleHeight);
+        ctx.fillRect(size * 0.55, -hurdleHeight, 5 * z, hurdleHeight);
+      } else {
+        ctx.shadowColor = '#ff4dda'; ctx.strokeStyle = '#ff4dda'; ctx.lineWidth = Math.max(2, z * 6);
+        const wallHeight = Math.max(size * 2.5, jumpPixels() * 1.45 * z / PLAYER_Z);
+        ctx.fillStyle = '#741755cc'; ctx.fillRect(-size * 0.7, -wallHeight, size * 1.4, wallHeight);
+        ctx.strokeRect(-size * 0.7, -wallHeight, size * 1.4, wallHeight);
+        line(-size * 0.7, -wallHeight, size * 0.7, 0, '#ff93ed', 2);
+        line(size * 0.7, -wallHeight, -size * 0.7, 0, '#ff93ed', 2);
+      }
+      ctx.restore();
+    }
+    function drawPlayer() {
+      const x = laneX(visualLane, PLAYER_Z), ground = roadY(PLAYER_Z);
+      const y = ground - 20 - jumpHeight() * jumpPixels();
+      ctx.save(); ctx.fillStyle = '#7cfaff44';
+      ctx.beginPath(); ctx.ellipse(x, ground, 23, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(x, y);
+      const playerScale = Math.min(1, width / 440); ctx.scale(playerScale, playerScale);
+      if (shield || invincible > 0) {
+        ctx.strokeStyle = invincible > 0 ? '#fff' : '#ffd36c'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, 0, 34, 40, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.shadowColor = '#54f7ff'; ctx.shadowBlur = 28;
+      ctx.fillStyle = '#68faff';
+      ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(22, 20); ctx.lineTo(0, 10); ctx.lineTo(-22, 20); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(7, 7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    function frame(now) {
+      const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
+      last = now; update(dt); drawBackground(now / 1000); drawRoad();
+      objects.sort((a, b) => a.z - b.z).forEach(drawItem); drawPlayer();
+      requestAnimationFrame(frame);
+    }
+    best = loadBest(); refreshHud(); resize(); requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>

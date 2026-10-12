@@ -1,0 +1,130 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --ink: #172033;
+  --muted: #526071;
+  --accent: #176b87;
+  --accent-ink: #ffffff;
+  --border: rgba(23, 32, 51, 0.12);
+  --shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1118;
+    --panel: #111a24;
+    --ink: #eef4f8;
+    --muted: #aab8c6;
+    --accent: #64d2c1;
+    --accent-ink: #06231f;
+    --border: rgba(170, 184, 198, 0.18);
+    --shadow: 0 22px 60px rgba(0, 0, 0, 0.48);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  outline-offset: 3px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.panel {
+  width: min(760px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 4rem);
+  line-height: 1;
+}
+
+.summary,
+.hint,
+.error {
+  line-height: 1.55;
+}
+
+.summary {
+  margin: 14px 0 22px;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.status-grid div {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.status-grid span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.status-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: 16px 0 0;
+  color: var(--muted);
+}
+
+.error {
+  margin: 16px 0 0;
+  color: #b42318;
+}

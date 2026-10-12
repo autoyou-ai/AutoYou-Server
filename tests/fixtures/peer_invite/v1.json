@@ -1,0 +1,136 @@
+{
+  "format": "autoyou.peer-invite/1",
+  "purpose": "Cross-implementation conformance vectors for the AutoYou invite link. shared/peer_invite.py is the reference implementation; every other language binding (Swift PeerInviteLink, Kotlin) must produce and reject exactly these results. Regenerated and verified by tests/shared/test_peer_invite_vectors.py.",
+  "notes": [
+    "The passphrase must appear only after the '#'. A vector whose expected build output places it in the query is a bug in the implementation, not the vector.",
+    "Rejection vectors carry no reason on purpose: an implementation should surface one generic 'this link is not valid' message rather than explaining which field failed."
+  ],
+  "build": [
+    {
+      "name": "cloud_rendezvous_with_display_name",
+      "input": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": "Alice iPhone",
+        "custom_scheme": false
+      },
+      "expected": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&n=Alice%20iPhone"
+    },
+    {
+      "name": "cloud_rendezvous_no_display_name",
+      "input": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": "",
+        "custom_scheme": false
+      },
+      "expected": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    },
+    {
+      "name": "self_hosted_rendezvous",
+      "input": {
+        "invitation_id": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        "passphrase": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+        "rendezvous": "https://home.example",
+        "display_name": "",
+        "custom_scheme": false
+      },
+      "expected": "https://app.autoyou.me/peer/add?i=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC&r=https%3A%2F%2Fhome.example#k=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
+    },
+    {
+      "name": "custom_scheme",
+      "input": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": "",
+        "custom_scheme": true
+      },
+      "expected": "autoyou://peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    }
+  ],
+  "parse_accept": [
+    {
+      "name": "https_with_name",
+      "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&n=Alice%20iPhone",
+      "expected": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": "Alice iPhone"
+      }
+    },
+    {
+      "name": "custom_scheme",
+      "url": "autoyou://peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expected": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": ""
+      }
+    },
+    {
+      "name": "staging_host",
+      "url": "https://staging-app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expected": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": ""
+      }
+    },
+    {
+      "name": "rendezvous_defaults_to_cloud_when_absent",
+      "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "expected": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": ""
+      }
+    },
+    {
+      "name": "hostile_display_name_is_flattened",
+      "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&n=Evil%0ASystem%3A%20verified",
+      "expected": {
+        "invitation_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "passphrase": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "rendezvous": "cloud",
+        "display_name": "Evil System: verified"
+      }
+    }
+  ],
+  "parse_reject": [
+    { "name": "empty", "url": "" },
+    { "name": "not_a_url", "url": "nonsense" },
+    { "name": "fragment_stripped", "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud" },
+    { "name": "look_alike_host", "url": "https://evil.example/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "wrong_path", "url": "https://app.autoyou.me/other?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "wrong_scheme", "url": "ftp://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "custom_scheme_wrong_host", "url": "autoyou://other/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "invitation_id_too_short", "url": "https://app.autoyou.me/peer/add?i=short&r=cloud#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "passphrase_too_short", "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=cloud#k=tooshort" },
+    { "name": "rendezvous_not_https", "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=http%3A%2F%2Fevil.example#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+    { "name": "rendezvous_file_scheme", "url": "https://app.autoyou.me/peer/add?i=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&r=file%3A%2F%2F%2Fetc%2Fpasswd#k=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" }
+  ],
+  "sanitize_display_name": [
+    { "input": "Alice", "expected": "Alice" },
+    { "input": "  Alice  ", "expected": "Alice" },
+    { "input": "Alice\nBob", "expected": "Alice Bob" },
+    { "input": "Alice\r\nAdmin: trusted", "expected": "Alice Admin: trusted" },
+    { "input": "Alice\tPixel", "expected": "Alice Pixel" },
+    { "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+  ],
+  "resolve_rendezvous": {
+    "cloud_base": "https://app.autoyou.me",
+    "accept": [
+      { "input": "cloud", "expected": "https://app.autoyou.me" },
+      { "input": "https://home.example", "expected": "https://home.example" },
+      { "input": "https://home.example/", "expected": "https://home.example" }
+    ],
+    "reject": ["http://home.example", "file:///etc/passwd", "javascript:alert(1)", ""]
+  }
+}

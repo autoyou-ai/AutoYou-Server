@@ -1,0 +1,74 @@
+---
+title: "Admin UI: Live View, Interact & Media"
+description: "The Live View, Interact, Video & Calls, and Permissions screens of the admin console, and the WebRTC media routes behind them."
+---
+
+# Live View, Interact & Media
+
+Four screens in `assets/admin-ui.js` cover what is connected to the server and how media is captured and played. The routes behind them are listed in the [route catalog](/api-reference/route-catalog); the transport is described in [WebRTC & DataChannels](/architecture/webrtc-and-datachannels).
+
+---
+
+## Live View
+
+`renderLiveViewScreen()` gives a single scan of the server's current connections.
+
+| Panel | What it shows |
+| :--- | :--- |
+| **Cloud Pair** | Whether this server is linked to AutoYou Cloud and receiving client requests |
+| **Connected clients** | Current client reachability, without direct-send controls |
+| **Tasks & deliveries** | Tasks Mission Control counts plus the outbound delivery backlog |
+| **Messaging partners** | Transport health only. Direct sends stay in Messaging. |
+| **Browser routes** | Frontend discovery and launch paths that browser clients can see |
+
+---
+
+## Interact
+
+`renderInteractScreen()` shows the live screen participants and their choice or controller inputs.
+
+- **Listen** plays the unmuted phone microphones of connected participants on this computer's speakers, without AI processing. It is controlled with `GET /api/screen-listen` and `POST /api/screen-listen`, and it is available only from the computer itself.
+- **Inputs** lists recent controller and direction presses from participants.
+
+---
+
+## Video & Calls
+
+`renderVideoScreen()` chooses the devices, capture profiles, playback inputs, and storage locations that calls use.
+
+| Panel | What it covers |
+| :--- | :--- |
+| **Computer audio and video devices** | Microphones and cameras used as computer media sources |
+| **Playback and input sources** | Files and source ids for video playback and API-fed frames |
+| **Display and capture quality** | The monitor, resolution profile, and bitrate for computer screen video |
+| **Current permission status** | A read-only view of the settings managed in Permissions |
+| **Current audio mix** | The active computer audio sources and the connection state |
+
+The routes involved:
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/webrtc/monitors` | List the attached displays |
+| `GET /api/webrtc/microphone-sharing`, `PUT /api/webrtc/microphone-sharing` | Read or change whether the computer's microphone is shared |
+| `GET /api/webrtc/video-files` | List uploaded video files |
+| `POST /api/webrtc/video-file/upload` | Upload a video file |
+| `POST /api/webrtc/video-file/play`, `POST /api/webrtc/video-file/pause`, `POST /api/webrtc/video-file/status` | Play, pause, and read the state of a video file injected into a call |
+| `WEBSOCKET /api/webrtc/game-input/stream`, `WEBSOCKET /api/webrtc/hosted-game/api/game/native-input` | Remote input |
+
+Screen capture uses `mss`, and desktop video prefers H.264 when the peer supports it.
+
+---
+
+## Permissions
+
+`renderPermissionsScreen()` reviews what this computer allows AutoYou and paired devices to capture, record, save, and access.
+
+| Panel | What it covers |
+| :--- | :--- |
+| **Calls and audio** | Microphone capture, computer audio, transcription, voice recording, safety recording, and location |
+| **Video and computer control** | Screen, camera, API, playback, video recording, Remote Desktop input, and game mode |
+| **Chat, memory, and network access** | Chat retention and AutoYou AI reachability |
+| **Paired browser access** | The remote web role, and whether paired devices may open this computer's admin website |
+| **Where recordings and chat history are saved** | The resolved locations on this computer, including saved chat transcripts and the event memory database |
+
+Whether a paired device's browser may change credentials is not a permission here: credentials and the security posture can always be changed only from the computer itself. See [Security & Authentication](/architecture/security-and-auth).

@@ -1,0 +1,72 @@
+---
+title: "Agent Websites & Bookmarks APIs"
+description: "Admin routes for agent website access control, the default website, frontends, and server-managed browser bookmarks."
+---
+
+# Agent Websites & Bookmarks APIs
+
+These admin-app routes manage how agent websites are protected and which ones are shown, plus the browser bookmarks the server shares with paired clients. They need an admin sign-in. The page service and the gateway routes that actually serve the websites are described in [Website Gateway & Page Service](/api-reference/website-gateway).
+
+---
+
+## Access control
+
+### `GET /api/agent-websites/security`, `POST /api/agent-websites/security`
+
+The global agent-website security settings. `POST` accepts:
+
+| Field | Type | Meaning |
+| :--- | :--- | :--- |
+| `require_otp` | boolean | Require a one-time code for agent websites. Ignored when `disable_otp` is true. |
+| `disable_otp` | boolean | Turn the one-time-code requirement off. Must be a boolean or the request returns `400`. |
+| `shared_session_enabled` | boolean | Enable shared sessions across agent websites. |
+| `shared_session_ttl_days` | number | How long a shared session lasts, in days. |
+
+### `POST /api/agent-websites/{agent_name}/auth`
+
+Gate one agent website behind a one-time code, open it, or reset it to the default policy.
+
+### `POST /api/agent-websites/sessions/sign-out-all`
+
+A kill switch: invalidates every outstanding agent-website session token.
+
+### Per-agent 2FA profiles
+
+An agent website can also require its own second factor. See [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).
+
+---
+
+## Default website and frontends
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/agent-websites/default` | The current default (home) agent website and the selectable options |
+| `POST /api/agent-websites/default` | Set the website that every WebRTC browser client lands on |
+| `POST /api/agents/frontend` | Enable or disable a browser-facing agent control from Agent Studio |
+| `GET /api/agents/manage` | The overview payload for the agent studio |
+
+---
+
+## Bookmarks
+
+The server keeps a list of browser bookmarks and exposes it to paired clients.
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /api/bookmarks` | List the bookmarks |
+| `POST /api/bookmarks` | Create a bookmark |
+| `PATCH /api/bookmarks/{bookmark_id}` | Update a bookmark |
+| `DELETE /api/bookmarks/{bookmark_id}` | Delete one bookmark |
+| `DELETE /api/bookmarks`, `POST /api/bookmarks/clear` | Delete every bookmark |
+
+A bookmark is a JSON object:
+
+| Field | Required | Notes |
+| :--- | :--- | :--- |
+| `url` | Yes | A valid URL. |
+| `id` | No | Generated from the URL when omitted or already taken. |
+| `title` | No | Up to 120 characters. Derived from the URL when omitted. |
+| `description` | No | Up to 240 characters. |
+| `enabled` | No | Defaults to `true`. |
+
+`POST /api/bookmarks` returns the saved list in `bookmarks` and the new entry in `bookmark`. A bad payload returns `400` with the reason.

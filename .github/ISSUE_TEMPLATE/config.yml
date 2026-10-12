@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/SECURITY.md
+    about: Follow the security policy; do not disclose vulnerabilities in public issues.
+  - name: Support and license scope
+    url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/SUPPORT.md
+    about: Read the repository support and licensing guidance before opening an issue.
+  - name: Product help and account support
+    url: https://www.autoyou.me/support/
+    about: For setup, billing, and account questions, use the support page instead of opening an issue.
+  - name: AutoYou community
+    url: https://www.autoyou.me/community/
+    about: Talk with other users and contributors.
+  - name: Contribute and the Contributor Pool
+    url: https://github.com/autoyou-ai/AutoYou-Server/blob/main/CONTRIBUTING.md
+    about: Read the contribution agreement and the eligibility, review, and award rules for the pool.

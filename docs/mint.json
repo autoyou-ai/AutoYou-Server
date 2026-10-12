@@ -1,0 +1,164 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "AutoYou Server",
+  "logo": {
+    "dark": "/images/logo.png",
+    "light": "/images/logo.png"
+  },
+  "favicon": "/images/favicon.ico",
+  "colors": {
+    "primary": "#0066FF",
+    "light": "#38BDF8",
+    "dark": "#0284C7"
+  },
+  "topbarLinks": [
+    {
+      "name": "AutoYou Website",
+      "url": "https://www.autoyou.me"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.com/autoyou-ai/AutoYou-Server"
+    }
+  ],
+  "topbarCtaButton": {
+    "type": "github",
+    "url": "https://github.com/autoyou-ai/AutoYou-Server"
+  },
+  "tabs": [
+    {
+      "name": "Documentation",
+      "url": "index"
+    },
+    {
+      "name": "Admin UI & APIs",
+      "url": "api-reference/overview"
+    },
+    {
+      "name": "Agent Ecosystem",
+      "url": "agents/system-and-admin"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "index",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Architecture & Core Engine",
+      "pages": [
+        "architecture/overview",
+        "architecture/security-and-auth",
+        "architecture/webrtc-and-datachannels",
+        "architecture/pairing-and-discovery",
+        "architecture/cloud-and-remote"
+      ]
+    },
+    {
+      "group": "Admin UI Console (admin-ui.js)",
+      "pages": [
+        "admin-ui/architecture",
+        "admin-ui/overview-and-status",
+        "admin-ui/security-console",
+        "admin-ui/live-view-and-media",
+        "admin-ui/ai-and-speech",
+        "admin-ui/messaging-bridges",
+        "admin-ui/agent-workbench-ui",
+        "admin-ui/setup-and-recipes"
+      ]
+    },
+    {
+      "group": "Core Gateway Architecture",
+      "pages": [
+        "api-reference/overview",
+        "api-reference/auth-app",
+        "api-reference/admin-app",
+        "api-reference/ai-agent-worker",
+        "api-reference/website-gateway",
+        "api-reference/route-catalog"
+      ]
+    },
+    {
+      "group": "Core Services & Security APIs",
+      "pages": [
+        "api-reference/admin-and-system",
+        "api-reference/security-and-totp",
+        "api-reference/pairing-and-signaling",
+        "api-reference/chat-and-sessions",
+        "api-reference/webrtc-and-streaming"
+      ]
+    },
+    {
+      "group": "Integration & Bridge APIs",
+      "pages": [
+        "api-reference/models-and-speech",
+        "api-reference/messaging-gateways",
+        "api-reference/cloud-and-peer",
+        "api-reference/agents-and-builder",
+        "api-reference/websites-and-bookmarks",
+        "api-reference/mcp-server"
+      ]
+    },
+    {
+      "group": "Agent Framework & Runtime",
+      "pages": [
+        "agent-framework/architecture",
+        "agent-framework/core-agent-engine",
+        "agent-framework/shared-tools-and-subsystems",
+        "agent-framework/self-improvement-and-harness-testing",
+        "agent-framework/vendor-and-memory",
+              "agent-framework/adk-runtime-upgrade",
+        "agent-framework/building-agents",
+        "agent-framework/agent-web-frontends",
+        "agent-framework/security-and-permissions",
+        "agent-framework/agent-workbench"
+      ]
+    },
+    {
+      "group": "Agent Catalog Reference",
+      "pages": [
+        "agents/system-and-admin",
+        "agents/media-and-creative",
+        "agents/intelligence-and-models",
+        "agents/web-and-automation",
+        "agents/coding-and-building",
+        "agents/communication-and-tasks",
+        "agents/ai-and-training",
+        "agents/monetization",
+        "agents/utility"
+      ]
+    },
+    {
+      "group": "Developer Guides",
+      "pages": [
+        "guides/custom-agent-tutorial",
+        "guides/custom-api-router",
+        "guides/mcp-integration",
+        "guides/production-deployment"
+      ]
+    },
+    {
+      "group": "Technical Specs & Legal",
+      "pages": [
+        "technical/server",
+        "technical/architecture",
+        "technical/webrtc",
+        "technical/pairing-protocols",
+        "technical/memory-system",
+        "security/security-modes",
+        "security/encryption",
+        "security/data-privacy",
+        "legal/open-source-commitment",
+        "legal/security-contact",
+        "glossary"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/autoyou-ai/AutoYou-Server",
+    "x": "https://twitter.com/autoyou_ai"
+  }
+}

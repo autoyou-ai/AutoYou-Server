@@ -1,0 +1,44 @@
+---
+title: "Developer Quickstart"
+description: "Run the standalone AutoYou Server source."
+---
+
+# Developer quickstart
+
+Obtain the standalone public repository when available:
+
+```bash
+git clone https://github.com/autoyou-ai/AutoYou-Server.git
+cd AutoYou-Server
+```
+
+Read [LICENSE](../LICENSE), [SECURITY.md](../SECURITY.md), and
+[dependency guidance](../requirements/README.md). Use a dedicated environment
+and review setup scripts before allowing dependency installation.
+
+Windows:
+
+```powershell
+.\run_autoyou.bat --profile base
+```
+
+macOS or Linux:
+
+```bash
+./run_autoyou.sh --profile base
+```
+
+The root launchers also request the internet component. Optional profiles add
+local model, messaging, Bluetooth, voice, and automation dependencies. See the
+[README](../README.md) for composition and platform build links.
+
+Open `http://127.0.0.1:8001/`, choose a unique password, and review settings
+before enabling remote access. Never commit a configuration containing real
+credentials. External providers and models have their own terms and may charge
+fees.
+
+Separately distributed client apps connect to the running server. They do not
+provision its dependencies or create a hosted server entitlement.
+
+To propose changes, follow [CONTRIBUTING.md](../CONTRIBUTING.md) and the
+[isolated testing guide](contributors/TESTING.md).

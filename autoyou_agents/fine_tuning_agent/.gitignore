@@ -1,0 +1,5 @@
+fine_tuning_agent/
+workspace/
+__pycache__/
+website/backend/__pycache__/
+*.pyc

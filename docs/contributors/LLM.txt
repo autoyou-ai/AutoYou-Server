@@ -1,0 +1,31 @@
+AutoYou Server contributor context
+
+Scope
+- This repository contains standalone server source and build tools.
+- LICENSE governs Individual Use, modification, compilation, free sharing, and the Enterprise boundary.
+- Independent original extensions may have separate licenses. Existing AutoYou code retains its applicable license.
+- Client applications and hosted services are distributed separately.
+- CONTRIBUTING.md and docs/contributors/CLA.md govern submitted contributions.
+
+Engineering
+- Verify behavior in implementation and tests.
+- Preserve protocol compatibility and official-release authorization controls.
+- Local source builds are unofficial and do not require official release approval.
+- Do not introduce dependencies on files, accounts, or infrastructure absent from this repository.
+- Do not submit credentials, personal data, runtime state, release archives, or private operational documents.
+- Identify third-party material and preserve its notices and license.
+- Existing provenance markers are maintainer traces, not additional license terms.
+- Use ASCII punctuation and hyphens.
+
+Testing
+- Honor AUTOYOU_TEST_ROOT for persistent state and credential namespaces.
+- Use synthetic identifiers and isolated fixtures.
+- Network, provider, and live-server tests are opt-in.
+- Follow docs/contributors/TESTING.md and run the smallest relevant checks.
+- Run the public export check for publication-facing changes.
+- Record failures and open release decisions accurately.
+
+Security
+- Read SECURITY.md and report suspected vulnerabilities privately.
+- Requirements, lockfiles, SBOMs, and advisory reports have different scope.
+- Do not claim that an audit guarantees a safe installation or release.

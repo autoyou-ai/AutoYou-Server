@@ -1,0 +1,12 @@
+{
+  "agent_name": "page_agent",
+  "default": true,
+  "description": "Your saved links, media, and feed \u2014 the AutoYou Page home.",
+  "entry_path": "/",
+  "recommended_port": 8069,
+  "requires_proxy_registration": true,
+  "auth_default": "open",
+  "shared_session_eligible": true,
+  "bypass_global_otp": true,
+  "title": "AutoYou Page"
+}

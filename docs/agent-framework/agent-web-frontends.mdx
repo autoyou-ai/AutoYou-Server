@@ -1,0 +1,99 @@
+---
+title: "Agent Web Frontends"
+description: "How to build, package, and serve dedicated HTML5/JavaScript web applications for AutoYou agents over port 8067."
+---
+
+# Agent Web Frontends
+
+Many AutoYou agents provide rich visual user interfaces in addition to conversational abilities. The browser proxy on **port 8067** serves these static and dynamic web frontends under `http://127.0.0.1:8067/agent/{agent_name}/`.
+
+---
+
+## Directory structure
+
+An agent's website lives in a `website/` folder inside the agent package:
+
+```
+autoyou_agents/<name>_agent/
+└── website/
+    ├── manifest.json     # how the website is registered and shown
+    ├── frontend/         # static files: index.html, scripts, styles, assets
+    └── backend/
+        └── app.py        # optional FastAPI app for the website's own API
+```
+
+The Agent Builder can scaffold these files (`POST /api/agents/workbench/{agent_name}/frontend/scaffold`). Build a backend with the shared website factories (`create_agent_website_app` or `create_agent_chat_app` from `autoyou_agents/shared_tools/scheduler_mission_control.py`), which add the authentication and the cross-site request guard described below. The built-in `hosting_agent` website is a small complete example.
+
+---
+
+## `manifest.json`
+
+```json
+{
+  "agent_name": "hosting_agent",
+  "title": "Website Management",
+  "description": "Pick which agent website opens from your public AutoYou link.",
+  "entry_path": "/",
+  "recommended_port": 8089,
+  "requires_proxy_registration": true
+}
+```
+
+| Key | Purpose |
+| :--- | :--- |
+| `agent_name` | The agent this website belongs to |
+| `title`, `description` | How the website is listed in the website directory |
+| `entry_path` | The path the website opens at |
+| `recommended_port` | The loopback port a backend should use |
+| `requires_proxy_registration` | Whether the backend's port is registered with the page service for proxying |
+| `frontend_stack`, `backend_stack`, `managed_runtime` | The stack metadata the scaffold records, and an optional managed process (see below) |
+| `expose_by_default` | Set to `false` to keep the website off until the owner turns it on |
+| `control_label`, `control_help` | The label and help text for the website's toggle in the admin console |
+
+---
+
+## Serving and route modes
+
+The [page service](/api-reference/website-gateway) serves every agent website at `/agent/{agent_name}/`. Each website has a route mode, recorded in the frontend registry:
+
+- **`path_proxy`** (default): the page service serves the website and proxies requests to its backend under `/agent/{agent_name}/`.
+- **`direct_forward`**: the website is also reachable directly on its own port. A few agents, such as `admin_agent`, require it.
+
+How browsers on your home network reach websites, and who may open them, is set by the server's `home_network_websites` mode and by website sign-in. See [Website Gateway & Page Service](/api-reference/website-gateway).
+
+---
+
+## Website security
+
+Agent websites use a two-part boundary. The backend must answer every protected read and write with `401` until the scoped session is authenticated; the shared factories verify an assigned per-agent TOTP profile first and fall back to the shared pairing authenticator. The frontend must fail closed before its own JavaScript runs: protected content must be hidden and `inert`, and a login dialog over visible content is not a lock. Never put private data in unauthenticated HTML or bootstrap payloads. See [Security & TOTP APIs](/api-reference/security-and-totp#per-agent-2fa-profiles).
+
+---
+
+## Managed Backend Processes
+
+An installed agent can declare an external website service in `website/manifest.json`. AutoYou starts it when the agent is installed and its website is enabled, registers its loopback port for `/agent/{agent_name}/` proxying, and stops it when the website is disabled, the agent is removed, or the server shuts down. This works for a Rust service as well as other executables.
+
+The Rust website scaffold (`backend_stack: "rust_axum"`) writes a managed process declaration that runs `cargo run --release`. That path requires Rust/Cargo on `PATH`; a packaged agent can instead point `command` at its platform-specific, prebuilt executable.
+
+```json
+{
+  "agent_name": "rust_agent",
+  "title": "Rust Agent",
+  "requires_proxy_registration": true,
+  "backend_stack": "rust_axum",
+  "managed_runtime": {
+    "type": "process",
+    "command": ["cargo", "run", "--release", "--", "--port", "{port}"],
+    "working_directory": "website/backend",
+    "health_path": "/health",
+    "startup_timeout_seconds": 600,
+    "shutdown_timeout_seconds": 10
+  }
+}
+```
+
+The process is launched directly without a shell from inside the agent package. Relative executable and working-directory paths must remain inside that package. AutoYou passes `HOST=127.0.0.1`, `PORT`, and the equivalent `AUTOYOU_HOST` / `AUTOYOU_PORT` values. The service should listen on that loopback port and provide an HTTP health route; the manifest's `health_path` is optional.
+
+For a Docker Compose backend, declare `type: "docker-compose"` and a `compose_file` path relative to the agent package. Compose should bind its published host port using `${HOST:-127.0.0.1}:${PORT}:<container-port>`; the service inside the container listens on `0.0.0.0`. AutoYou assigns a private, stable Compose project to each installed agent and shuts down only that project with `docker compose down --remove-orphans`. Its named volumes and images are retained.
+
+Only installed agents with `requires_proxy_registration: true` and an enabled website are started. Missing executables, Cargo, Docker, or an unhealthy service leave the frontend unregistered and are logged by the server.

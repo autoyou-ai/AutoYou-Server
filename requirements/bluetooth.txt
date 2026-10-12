@@ -1,0 +1,17 @@
+# Bluetooth Pair signaling transport.
+#
+# Windows uses AutoYou's native WinRT GATT backend from shared.bluetooth_pairing_service.
+# Keep bless off Windows: bless 0.3.0 pins unavailable WinRT wheels on Python 3.13
+# and its Windows backend imports an unlisted pysetupdi package.
+# Non-Windows hosts still use bless for the server-side BLE GATT adapter.
+# bleak provides a cross-platform BLE GATT client for Python/desktop Connect.
+bless>=0.3.0,<1.0.0; platform_system != "Windows"
+bleak>=2.0.0,<3.0.0
+winrt-Windows.Devices.Bluetooth>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Devices.Bluetooth.Advertisement>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Devices.Bluetooth.GenericAttributeProfile>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Devices.Enumeration>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Devices.Radios>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Foundation>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Foundation.Collections>=3.1; platform_system == "Windows" and python_version >= "3.12"
+winrt-Windows.Storage.Streams>=3.1; platform_system == "Windows" and python_version >= "3.12"

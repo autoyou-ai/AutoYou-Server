@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Files Agent</title>
+    <base href="./">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./assets/styles.css">
+  </head>
+  <body>
+    <script id="autoyou-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="app-mark" aria-hidden="true">FA</div>
+        <div class="app-title">
+          <p>This Computer</p>
+          <h1>Files Agent</h1>
+        </div>
+        <div class="topbar-actions" aria-label="File actions">
+          <button class="toolbar-button" id="copy-path-button" type="button" title="Copy selected path">Copy path</button>
+          <button class="toolbar-button" id="refresh-button" type="button" title="Refresh folder">Refresh</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Folder controls">
+        <div class="nav-buttons">
+          <button class="square-button" id="back-button" type="button" title="Back">Back</button>
+          <button class="square-button" id="up-button" type="button" title="Up one folder">Up</button>
+        </div>
+        <label class="path-control">
+          <span>Path</span>
+          <input id="path-input" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <button class="go-button" id="go-button" type="button">Go</button>
+        <label class="search-control">
+          <span>Search</span>
+          <input id="file-search" type="search" autocomplete="off" placeholder="Filter this folder">
+        </label>
+        <div class="view-toggle" aria-label="View mode">
+          <button id="list-view" class="toggle-button active" type="button">List</button>
+          <button id="grid-view" class="toggle-button" type="button">Grid</button>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Local file explorer">
+        <nav class="locations-panel" aria-label="Locations">
+          <div class="panel-header">
+            <strong>Locations</strong>
+            <span id="location-count">0 locations</span>
+          </div>
+          <div id="locations-list" class="locations-list"></div>
+        </nav>
+
+        <section class="browser-panel" aria-label="Folder contents">
+          <div class="panel-header">
+            <strong>Folder</strong>
+            <span id="status-line">Loading folder...</span>
+          </div>
+          <div id="entries" class="entries list-view"></div>
+        </section>
+
+        <article class="preview-panel" aria-label="Preview">
+          <div class="preview-header">
+            <p id="preview-meta">Current folder</p>
+            <h2 id="preview-title">Workspace</h2>
+          </div>
+          <div id="preview-body" class="preview-body"></div>
+        </article>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="./assets/main.js"></script>
+  </body>
+</html>

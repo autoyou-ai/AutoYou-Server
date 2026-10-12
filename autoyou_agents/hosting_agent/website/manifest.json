@@ -1,0 +1,8 @@
+{
+  "agent_name": "hosting_agent",
+  "title": "Website Management",
+  "description": "Pick which agent website opens from your public AutoYou link.",
+  "entry_path": "/",
+  "recommended_port": 8089,
+  "requires_proxy_registration": true
+}

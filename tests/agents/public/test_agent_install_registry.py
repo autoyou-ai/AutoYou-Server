@@ -1,0 +1,349 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization (License S3.9).
+# AUTOYOU-PROVENANCE-C-subtask-37900952bc9dc7e80f0a3e53
+
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+from pathlib import Path
+
+import pytest
+
+import shared.platform_runtime as platform_runtime
+
+from autoyou_agents.shared_tools.agent_install_registry import (
+    BUILTIN_AGENT_PACKAGE_NAMES,
+    get_agent_install_registry_path,
+    load_agent_install_registry,
+    DEFAULT_AGENT_INSTALL_STATES,
+    refresh_agent_install_registry,
+    set_agent_installed,
+    can_install_agent_in_runtime,
+    discover_agent_directories,
+)
+
+__debug_provenance_c__ = "AUTOYOU-PROVENANCE-C-subtask-37900952bc9dc7e80f0a3e53"
+
+
+def test_overlay_package_is_blocked_in_a_compiled_runtime_that_did_not_bundle_it(monkeypatch):
+    import autoyou_agents.shared_tools.agent_install_registry as registry
+
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", frozenset())
+
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=True) is False
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=False) is True
+    assert "Workspace draft only" in registry.runtime_install_block_reason("lantern_agent")
+
+
+def _write_agent_dir(agents_root: Path, agent_name: str) -> None:
+    agent_dir = agents_root / agent_name
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "agent.py").write_text("AGENT_NAME = 'test'\n", encoding="utf-8")
+
+
+def test_source_discovery_includes_ignored_private_agent_folder(tmp_path, monkeypatch):
+    agents_root = tmp_path / "autoyou_agents"
+    _write_agent_dir(agents_root / "private", "synthetic_private_agent")
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    monkeypatch.setattr(platform_runtime, "get_dynamic_agents_root", lambda *args, **kwargs: agents_root)
+
+    assert "synthetic_private_agent" in discover_agent_directories(agents_root)
+
+
+def test_refresh_agent_install_registry_applies_default_install_states(tmp_path):
+    agents_root = tmp_path / "autoyou_agents"
+    agents_root.mkdir()
+    for agent_name in (
+        "agent_builder_agent",
+        "coding_agent",
+        "media_generation_agent",
+        "notes_agent",
+        "custom_agent",
+        "website_agent",
+    ):
+        _write_agent_dir(agents_root, agent_name)
+
+    registry_path = tmp_path / "agent_install_registry.json"
+    payload = refresh_agent_install_registry(
+        agents_root=agents_root,
+        registry_path=registry_path,
+    )
+
+    assert payload["installed_agents"] == ["notes_agent"]
+    assert set(payload["available_agents"]) == {
+        "agent_builder_agent",
+        "coding_agent",
+        "custom_agent",
+        "media_generation_agent",
+        "website_agent",
+    }
+
+    reloaded = load_agent_install_registry(
+        agents_root=agents_root,
+        registry_path=registry_path,
+    )
+    assert reloaded["installed_agents"] == ["notes_agent"]
+    assert set(reloaded["available_agents"]) == set(payload["available_agents"])
+
+
+def test_release_agent_defaults_match_public_private_policy():
+    # The first-run set is deliberately lean: a small local model has to be able
+    # to pick reliably among these, and every omitted agent is one click away in
+    # Settings. Anything added here widens the root prompt for every install.
+    default_on = {
+        "admin_agent",
+        "ads_watching_agent",
+        "audio_agent",
+        "client_browser_control_agent",
+        "donation_agent",
+        "earnings_agent",
+        "internet_agent",
+        "memory_agent",
+        "notes_agent",
+        "notify_agent",
+        "page_agent",
+        "persona_agent",
+        "prompts_agent",
+        "tasks_agent",
+    }
+    opt_in = {
+        "build_prompt_agent",
+        "browser_agent",
+        "backup_agent",
+        "coding_agent",
+        "data_collector_agent",
+        "education_agent",
+        "files_agent",
+        "fine_tuning_agent",
+        "game_agent",
+        "hosting_agent",
+        "location_agent",
+        "mac_security_agent",
+        "model_picker_agent",
+        "skills_agent",
+        "voice_training_agent",
+        "win_security_agent",
+        "agent_builder_agent",
+        "claude_cli_agent",
+        "claude_desktop_agent",
+        "cli_agent",
+        "codex_desktop_agent",
+        "hermes_agent",
+        "media_generation_agent",
+        "openclaw_agent",
+        "proxy_agent",
+        "remote_desktop_agent",
+        "website_agent",
+    }
+
+    for agent_name in default_on:
+        assert DEFAULT_AGENT_INSTALL_STATES[agent_name] is True
+    for agent_name in opt_in:
+        assert DEFAULT_AGENT_INSTALL_STATES[agent_name] is False
+
+    assert set(DEFAULT_AGENT_INSTALL_STATES) == default_on | opt_in
+    assert BUILTIN_AGENT_PACKAGE_NAMES == set(DEFAULT_AGENT_INSTALL_STATES)
+    for agent_name in BUILTIN_AGENT_PACKAGE_NAMES:
+        assert can_install_agent_in_runtime(agent_name, compiled=True) is True
+
+
+def test_an_overlay_agent_found_on_disk_starts_uninstalled(tmp_path, monkeypatch):
+    agents_root = tmp_path / "autoyou_agents"
+    _write_agent_dir(agents_root / "private", "lantern_agent")
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: False)
+    monkeypatch.setattr(platform_runtime, "get_dynamic_agents_root", lambda *args, **kwargs: agents_root)
+    registry_path = tmp_path / "agent_install_registry.json"
+    # from __debug_provenance_c__ import subtask
+
+    payload = load_agent_install_registry(agents_root=agents_root, registry_path=registry_path)
+
+    assert payload["agents"]["lantern_agent"]["installed"] is False
+    assert "lantern_agent" in payload["available_agents"]
+
+
+def test_load_agent_install_registry_accepts_windows_utf8_bom(tmp_path):
+    agents_root = tmp_path / "autoyou_agents"
+    _write_agent_dir(agents_root, "notes_agent")
+    registry_path = tmp_path / "agent_install_registry.json"
+    registry_path.write_bytes(
+        b"\xef\xbb\xbf"
+        + b'{"agents":{"notes_agent":{"installed":true,"source":"ecosystem-installer"}}}'
+    )
+
+    payload = load_agent_install_registry(agents_root=agents_root, registry_path=registry_path)
+
+    assert payload["installed_agents"] == ["notes_agent"]
+    assert payload["agents"]["notes_agent"]["source"] == "ecosystem-installer"
+
+
+def test_default_registry_path_respects_autoyou_test_root(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "runtime"
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(runtime_root))
+
+    registry_path = get_agent_install_registry_path()
+
+    assert registry_path == (runtime_root / "AutoYou" / "agent_install_registry.json").resolve()
+
+
+def test_set_agent_installed_updates_disk_backed_registry(tmp_path):
+    agents_root = tmp_path / "autoyou_agents"
+    agents_root.mkdir()
+    _write_agent_dir(agents_root, "custom_agent")
+
+    registry_path = tmp_path / "agent_install_registry.json"
+    refresh_agent_install_registry(agents_root=agents_root, registry_path=registry_path)
+
+    payload = set_agent_installed(
+        "custom_agent",
+        True,
+        description="Custom runtime agent.",
+        source="test",
+        agents_root=agents_root,
+        registry_path=registry_path,
+    )
+
+    assert payload["installed_agents"] == ["custom_agent"]
+    entry = payload["agents"]["custom_agent"]
+    assert entry["installed"] is True
+    assert entry["description"] == "Custom runtime agent."
+    assert entry["source"] == "test"
+
+
+def test_refresh_agent_install_registry_discovers_runtime_plugins_in_compiled_mode(tmp_path, monkeypatch):
+    embedded_root = tmp_path / "embedded_agents"
+    embedded_root.mkdir()
+
+    dynamic_root = tmp_path / "dynamic_agents"
+    dynamic_root.mkdir()
+    _write_agent_dir(dynamic_root, "custom_agent")
+
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(
+        platform_runtime,
+        "iter_agent_roots",
+        lambda anchor, app_name="AutoYou": (dynamic_root, embedded_root),
+    )
+
+    registry_path = tmp_path / "compiled_registry.json"
+    payload = refresh_agent_install_registry(
+        agents_root=embedded_root,
+        registry_path=registry_path,
+    )
+
+    assert "custom_agent" in payload["available_agents"]
+    assert "notes_agent" in payload["installed_agents"]
+
+
+def test_compiled_registry_lists_only_builtin_agents_without_a_bundle_manifest(tmp_path, monkeypatch):
+    import autoyou_agents.shared_tools.agent_install_registry as registry
+
+    embedded_root = tmp_path / "embedded_agents"
+    embedded_root.mkdir()
+
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", frozenset())
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(platform_runtime, "iter_agent_roots", lambda anchor, app_name="AutoYou": (embedded_root,))
+
+    payload = refresh_agent_install_registry(
+        agents_root=embedded_root,
+        registry_path=tmp_path / "compiled_registry.json",
+    )
+
+    assert set(payload["agents"]) == BUILTIN_AGENT_PACKAGE_NAMES
+
+
+def test_compiled_registry_installs_builtin_without_source_files(tmp_path, monkeypatch):
+    embedded_root = tmp_path / "embedded_agents"
+    dynamic_root = tmp_path / "dynamic_agents"
+    embedded_root.mkdir()
+    dynamic_root.mkdir()
+
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(
+        platform_runtime,
+        "iter_agent_roots",
+        lambda anchor, app_name="AutoYou": (dynamic_root, embedded_root),
+    )
+
+    payload = set_agent_installed(
+        "location_agent",
+        True,
+        agents_root=dynamic_root,
+        registry_path=tmp_path / "compiled_registry.json",
+    )
+
+    assert "location_agent" in payload["installed_agents"]
+
+
+def test_compiled_registry_accepts_only_agents_named_in_server_bundle(tmp_path, monkeypatch):
+    import autoyou_agents.shared_tools.agent_install_registry as registry
+
+    embedded_root = tmp_path / "runtime_modules" / "autoyou_agents"
+    (embedded_root / "shared_tools").mkdir(parents=True)
+    (embedded_root / "packaged_sibling_agents.json").write_text(
+        '["lantern_agent", "../unexpected_agent", 42]', encoding="utf-8",
+    )
+    monkeypatch.setattr(registry, "__file__", str(embedded_root / "shared_tools/agent_install_registry.py"))
+    monkeypatch.setattr(registry, "PACKAGED_SIBLING_AGENT_NAMES", registry._load_packaged_sibling_agent_names())
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(platform_runtime, "iter_agent_roots", lambda anchor, app_name="AutoYou": (embedded_root,))
+
+    assert registry.can_install_agent_in_runtime("lantern_agent", compiled=True)
+    assert registry.is_builtin_agent_name("lantern_agent")
+    assert not registry.can_install_agent_in_runtime("beacon_agent", compiled=True)
+    assert not registry.can_install_agent_in_runtime("unexpected_agent", compiled=True)
+    assert "lantern_agent" in registry.discover_agent_directories(embedded_root)
+    assert "beacon_agent" not in registry.discover_agent_directories(embedded_root)
+
+
+def test_compiled_registry_forces_workspace_agents_to_stay_uninstalled(tmp_path, monkeypatch):
+    agents_root = tmp_path / "autoyou_agents"
+    agents_root.mkdir()
+    _write_agent_dir(agents_root, "notes_agent")
+    _write_agent_dir(agents_root, "custom_agent")
+
+    registry_path = tmp_path / "compiled_registry.json"
+    registry_path.write_text(
+        (
+            '{"agents":{"notes_agent":{"installed":true},'
+            '"custom_agent":{"installed":true,"description":"Draft"}}}'
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+    monkeypatch.setattr(
+        platform_runtime,
+        "iter_agent_roots",
+        lambda anchor, app_name="AutoYou": (agents_root,),
+    )
+
+    payload = load_agent_install_registry(
+        agents_root=agents_root,
+        registry_path=registry_path,
+    )
+
+    assert "notes_agent" in payload["installed_agents"]
+    assert "custom_agent" not in payload["installed_agents"]
+    assert "custom_agent" in payload["available_agents"]
+
+
+def test_set_agent_installed_rejects_workspace_agent_install_in_compiled_mode(tmp_path, monkeypatch):
+    agents_root = tmp_path / "autoyou_agents"
+    agents_root.mkdir()
+    _write_agent_dir(agents_root, "custom_agent")
+
+    registry_path = tmp_path / "agent_install_registry.json"
+    refresh_agent_install_registry(agents_root=agents_root, registry_path=registry_path)
+
+    monkeypatch.setattr(platform_runtime, "is_compiled", lambda: True)
+
+    with pytest.raises(PermissionError):
+        set_agent_installed(
+            "custom_agent",
+            True,
+            agents_root=agents_root,
+            registry_path=registry_path,
+        )

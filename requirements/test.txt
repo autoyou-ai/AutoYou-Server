@@ -1,0 +1,8 @@
+# Test runner only; install alongside the required runtime profile.
+pytest>=9.1.1,<10
+pytest-asyncio>=1.4.0,<2
+PyYAML>=6.0.3,<7
+# The account-service rendezvous tests drive real Lua against a fake Redis:
+# every rule that matters there lives inside a script, so a hand-written double
+# would only assert the test agreed with itself. `[lua]` pulls in lupa.
+fakeredis[lua]>=2.30,<3

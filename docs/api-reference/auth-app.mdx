@@ -1,0 +1,167 @@
+---
+title: "Auth App Reference"
+description: "First-run setup, unlock, pairing authentication, WebRTC signaling, Peer Link rendezvous, and public legal routes served by the auth app."
+---
+
+# Auth App Reference
+
+The auth app is the second FastAPI application that `server.py` creates, next to the admin app:
+
+```python
+admin_app, auth_app = create_apps(LOGGER)
+```
+
+It is the pairing surface. It serves first-run setup and unlock, pairing authentication, WebRTC signaling, Peer Link rendezvous, and the public legal documents. It listens on port `8002` by default (`AUTOYOU_AUTH_PORT`) and on the same bind host as the rest of the server, which is `127.0.0.1` unless you change `AUTOYOU_BIND_HOST`. Every route it serves is in the [route catalog](/api-reference/route-catalog).
+
+Both apps share the same unlock guard. While the server is `SetupPending` or `Locked`, only the unlock routes, public legal documents, and static assets answer; other API paths return `451` or `401` as described in [Security & Authentication](/architecture/security-and-auth).
+
+Errors from these routes use the same JSON shape: `{"success": false, "error": "message"}`.
+
+---
+
+## Setup and unlock
+
+### `GET /v1/unlock/status`
+
+Reports the unlock state and license-agreement status.
+
+```json
+{
+  "state": "Locked",
+  "terms_accepted": true,
+  "license_type": "individual",
+  "agreement_version": "string",
+  "current_agreement_version": "string",
+  "agreement_required": false,
+  "agreement_pending_unlock": false
+}
+```
+
+`state` is `SetupPending`, `Locked`, or `Ready`.
+
+### `POST /v1/unlock/setup`
+
+First-run setup. It works only while the state is `SetupPending`; afterwards it returns `400` and points to `/v1/unlock/verify`.
+
+| Field | Required | Notes |
+| :--- | :--- | :--- |
+| `password` | Yes | The server password. |
+| `license_type` | Yes | `individual` or `commercial`. |
+| `terms_accepted` | Yes | Must be `true`. |
+| `signtoross_token` | No | Recorded with the agreement. |
+
+On success the server stores a salted hash of the password, records the agreement, creates the encrypted configuration, and moves to `Ready`:
+
+```json
+{
+  "success": true,
+  "state": "Ready",
+  "terms_accepted": true,
+  "license_type": "individual",
+  "agreement_version": "string"
+}
+```
+
+### `POST /v1/unlock/verify`
+
+Unlocks an existing configuration with the server password. The request must come from loopback or over HTTPS; otherwise it is refused.
+
+| Field | Required | Notes |
+| :--- | :--- | :--- |
+| `password` | Yes | The server password. |
+| `terms_accepted` | When `agreement_required` | Required if the license agreement changed since it was last accepted. |
+
+The response has the same fields as setup plus `current_agreement_version` and `agreement_required`. A wrong password returns `401`. A required but missing acceptance returns `428`. A configuration that cannot be loaded returns `503`.
+
+---
+
+## Health
+
+### `GET /health`
+
+Liveness probe:
+
+```json
+{
+  "status": "running",
+  "service": "AutoYou Auth Server",
+  "runtime": {}
+}
+```
+
+`runtime` describes the runtime environment.
+
+---
+
+## Pairing authentication
+
+### `POST /auth`
+
+Validates a one-time-code hash and creates a pairing session that can then use `/signal`.
+
+| Field | Required | Notes |
+| :--- | :--- | :--- |
+| `hash` | Yes | The hash derived from the one-time code. |
+| `client_id` (or `clientId`) | No | A stable client identifier. When present, the session is bound to that client. |
+| `client_display_name` | No | A name shown for the client. |
+
+On success:
+
+```json
+{
+  "success": true,
+  "session_id": "string",
+  "iceServers": [],
+  "server_name": "string",
+  "server_id": "string",
+  "server_identity_key": "string",
+  "session": {}
+}
+```
+
+The same values are also returned under camelCase keys (`sessionId`, `serverName`, `serverId`, `serverIdentityKey`) for older clients. An invalid hash returns `401`. The route is rate limited per client address and globally, and answers `429` when a limit is exceeded.
+
+In Secure and Secure Professional modes, pairing uses the password-authenticated handshake on the admin app instead (`POST /api/autopair_hello`, then `POST /api/autopair`). See [Pairing & Device Discovery](/architecture/pairing-and-discovery).
+
+---
+
+## WebRTC signaling
+
+Both routes require a session created by `/auth` and answer `401` otherwise.
+
+### `POST /signal/{session_id}`
+
+Body: `{"type": "offer" | "candidate", ...}`; `type` defaults to `offer`.
+
+- `offer`: clears stale queued candidates for the session, applies the offer, and returns the answer.
+- `candidate`: applies an ICE candidate and returns `{"success": true, "message": "ICE candidate processed"}`, or `400` if it could not be applied.
+
+Other types return `400`. Signaling is rate limited per session and signal type.
+
+### `GET /signal/{session_id}`
+
+A polling route for trickle-ICE clients. It returns and clears the candidates the server has queued:
+
+```json
+{
+  "success": true,
+  "messages": []
+}
+```
+
+---
+
+## Peer Link rendezvous
+
+The `/v1/peer/rendezvous/...` routes and `GET /peer/add` are described in [Cloud Pair & Remote Access](/architecture/cloud-and-remote#peer-link-rendezvous).
+
+---
+
+## Trust and legal routes
+
+| Route | Purpose |
+| :--- | :--- |
+| `GET /ca.crt` | Serves the local HTTPS root certificate authority so a client can install and trust it. |
+| `GET /LICENSE`, `GET /NOTICE.txt`, `GET /THIRD-PARTY-NOTICES.md` | The license and notices that ship with this server. |
+| `GET /sbom.cdx.json` | The software bill of materials that ships with this server. |
+| `POST /v1/moderation/report` | Report objectionable content or an abusive user in a Lobby or Peer Link interaction. The report is kept on this server for the host to review. |

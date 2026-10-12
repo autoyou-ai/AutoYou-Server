@@ -1,0 +1,82 @@
+---
+title: "Chat & Sessions APIs"
+description: "Admin-app routes for sending chat turns, reading conversation history, replying to a device in person, and choosing whose screen-session audio the computer plays."
+---
+
+# Chat & Sessions APIs
+
+The server keeps every conversation it holds, with paired devices and messaging bridges, in its session store (`sessions.db`). These admin-app routes need an admin sign-in. The AI Agent worker has its own chat route, described in the [AI Agent worker reference](/api-reference/ai-agent-worker). Errors follow the shape in the [API overview](/api-reference/overview).
+
+---
+
+## Chat turns
+
+### `POST /api/chat`
+
+Puts a turn to AutoYou AI as the signed-in operator. Used inside someone else's conversation, it is still a question to the AI; the device is sent nothing.
+
+| Field | Description |
+| :--- | :--- |
+| `message` | The text of the turn. |
+| `user_id` | The conversation owner. Defaults to the console's own chat user. |
+| `session_id` | The conversation. When omitted, the server creates one named `admin-chat-<random>`. |
+| `context` | A list of attachment groups. At most 32 entries, and at most 48 MiB of encoded attachment data in total (`413` otherwise). |
+| `metadata` | Extra request metadata. The server adds `client: "admin-web"` and `source: "admin_web"`, and decides itself where the turn was typed. |
+
+The response is the chat response object: `response` (the reply), `session_id`, `message_id`, `timestamp`, `agent_name`, `metadata`, and `voice_reply_transcript` when the turn was a voice note. A synthesized voice reply is inlined as `voice_reply_audio`, and generated images or video as `media_reply_attachments`. A failure returns `500` with `"Chat request failed"`.
+
+---
+
+## Conversation history
+
+### `GET /api/chat/sessions`
+
+Lists the conversations the server holds, newest first.
+
+| Query | Description |
+| :--- | :--- |
+| `limit` | 1 to 100. Defaults to 60. |
+| `q` | Filter by text. |
+| `user_id` | Only conversations for this owner. |
+
+The response contains `success`, `viewer`, `sessions`, `count`, and a `voice_training` summary. Each session has `user_id`, `session_id`, `title` and `custom_title`, `preview`, `origin`, `identity` (who the conversation is with), `message_count`, `created_at`, `last_activity`, counts and flags for voice notes, files, and voice training, and `live`, which is true when the device is connected now.
+
+### `GET /api/chat/session`
+
+Returns one conversation. `user_id` and `session_id` are both required (`400` otherwise).
+
+An optional `limit` returns only the newest that many messages and adds `truncated: true`. The response carries the session information plus `identity`, `messages`, `files`, `voice_training`, `title`, `auto_title`, `custom_title`, `session_id`, and `user_id`. Each message has `role` (`user` or `assistant`), `author`, `content`, `timestamp`, and `attachments`. `author` is `self` for turns the operator typed and `counterpart` for the other side.
+
+### `POST /api/chat/session/title`
+
+Names a conversation on this server only. Clients are never told. Body: `user_id`, `session_id`, and `title`.
+
+---
+
+## Replying to a device in person
+
+### `POST /api/chat/session/reply`
+
+The operator answers a device's conversation directly. Nothing is asked of the AI: the text goes to the connected device as a message from the server's name, and it is kept in that device's conversation, marked as the operator's.
+
+Body: `user_id` and `message`. The message can be at most 4,000 characters (`413` otherwise), and `user_id` cannot be the console's own conversation (`400`).
+
+The reply is delivered only while the device is connected. Otherwise the route answers `{"success": true, "delivered": false, "reason": "..."}`, stores nothing, and does not keep the message for the device's next connection, so history never shows a reply nobody received. `delivered: true` means the message was handed to the device's open connection. A guest relayed by another device has no connection of its own and cannot be answered this way.
+
+---
+
+## Listen to screen participants
+
+### `GET /api/screen-listen`, `POST /api/screen-listen`
+
+Listen controls whether this computer plays the unmuted phone microphones of people who are connected to its screen, without AI processing. These routes are available only from the computer itself and answer `403` otherwise.
+
+`GET` returns the mixer state, plus `participants` (the connected screen sessions in watch or interactive mode that have an active voice call) and `inputs` (the most recent screen input records, up to 50).
+
+`POST` sets the selection:
+
+```json
+{ "mode": "selected", "selected": ["participant-session-id"] }
+```
+
+`mode` is `off`, `all`, or `selected`. With `selected`, the list holds at most 16 identifiers of at most 128 characters each, and each must be a connected interactive participant (`400` otherwise: "Choose a connected screen participant"). `503` means the computer's audio output is unavailable. The request body is limited to 4 KiB.

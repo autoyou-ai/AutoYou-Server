@@ -1,0 +1,12 @@
+{
+  "agent_name": "files_agent",
+  "auth_default": "gated",
+  "description": "Authenticated Finder-style local file browser for the AutoYou workspace and this computer.",
+  "entry_path": "/",
+  "frontend_stack": "typescript",
+  "recommended_port": 8070,
+  "requires_proxy_registration": true,
+  "shared_session_eligible": true,
+  "title": "Files Agent",
+  "websocket_enabled": false
+}

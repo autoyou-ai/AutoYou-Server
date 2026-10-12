@@ -1,0 +1,8 @@
+{
+  "agent_name": "data_collector_agent",
+  "description": "Collect consented local conversations and create private training exports.",
+  "entry_path": "/",
+  "recommended_port": 18067,
+  "requires_proxy_registration": true,
+  "title": "Data Collector Agent"
+}

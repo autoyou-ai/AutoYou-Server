@@ -1,0 +1,52 @@
+---
+title: "Admin UI: Overview"
+description: "The Overview screen of the admin console: what is running, how the server is exposed, and the controls for its main services."
+---
+
+# Overview
+
+The **Overview** screen (`renderOverview()` in `assets/admin-ui.js`) shows what is running on this machine right now, what is optional, and what still needs local setup before phones or desktop clients connect. It is the first screen after sign-in, and its data comes from `GET /api/admin/bootstrap`.
+
+---
+
+## Panels
+
+| Panel | What it shows |
+| :--- | :--- |
+| **Access & unlock** | Live exposure, the network mode for the next start, nearby pairing, and system credential unlock |
+| **Media & capture** | Video, audio, AI voice, and recording state, without opening the detailed Live View |
+| **Set up your phone** | One scan for the pairing methods available on this computer (the setup QR code) |
+| **Server identity & appearance** | The display name that clients and setup QR codes use, and the console theme |
+| **What is live right now** | Actual service state from the current bootstrap snapshot |
+| **Quick controls** | Start, stop, and restart for the main services |
+| **Operator next steps** | A pointer to the setup wizard for first-run work, then to the screen that owns each setting |
+
+### Access & unlock
+
+This panel is where you decide how the server is exposed. It shows the address the server is listening on now and the one it will use after the next start, and it lets you change them:
+
+- **Bind host.** `127.0.0.1` keeps the server on this computer. A LAN setting listens on your network. The change applies at the next start, and it is one of the settings a remote browser cannot change.
+- **HTTPS.** Whether the admin console is also served over TLS. The server reports its own effective setting, including its default for home-network use.
+- **System credential unlock.** Whether this computer may sign in to the console with the server password saved in the operating system's credential store (`security.native_unlock_enabled`).
+
+See [Security & Authentication](/architecture/security-and-auth) before exposing the server beyond loopback.
+
+### Quick controls
+
+Each row shows a status badge and the actions that apply:
+
+| Service | Actions | Routes |
+| :--- | :--- | :--- |
+| **AutoYou AI** (the AI Agent worker) | Start or stop, and restart after provider changes, prompt updates, or agent installs | `/ai-agent-server/start`, `/stop`, `/restart` |
+| **Browser & Page** (the page service) | Start or stop, and restart | `/autoyou-page-service/start`, `/stop`, `/restart` |
+| **Public proxy** (the Tunnelmole public link) | Start or stop, and refresh the issued URL status | `/tunnelmole/start`, `/stop`, `/refresh` |
+
+All of these are `POST` routes that need an admin sign-in. Service status comes from `GET /api/ai-agent-server/status`, `GET /api/autoyou-page-service/status`, and `GET /api/tunnelmole/status`.
+
+---
+
+## Related screens
+
+- **Live View** shows cloud routing, connected clients, task delivery, messaging partners, and browser routes. See [Live View & Media](live-view-and-media.mdx).
+- **Connectivity** has the AutoYou Cloud link, the public link, connected clients, the notification queue (queued reminder and task deliveries waiting for a connection or retry window, read from `GET /api/scheduler/notification-queue`), and connection helpers. Task summaries come from `GET /api/scheduler/live-summary`.
+- **Help & Guides** has the built-in documentation, public field guides, a runtime snapshot for debugging, and **Boot Sweep**, a small mini-game whose high scores are kept on the server.

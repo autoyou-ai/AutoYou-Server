@@ -1,0 +1,96 @@
+---
+title: "AI Agent Worker"
+description: "The separate AI Agent worker process: ports, chat and session routes, internal runtime settings, graph inspection, and the LAN one-time-code gate."
+---
+
+# AI Agent Worker (`routers/ai_agent.py`)
+
+The AI Agent worker runs the Google ADK agent runtime in its own process (`--run-ai-agent-server`), started and monitored by `core_server/services.py`. Keeping it separate isolates model calls and tool execution from the admin app and the WebRTC engine. The routes below are the worker's own; the full list is in the [route catalog](/api-reference/route-catalog).
+
+---
+
+## Ports and exposure
+
+| Setting | Default | Environment override | Notes |
+| :--- | :--- | :--- | :--- |
+| Worker port (HTTP) | `8081` | `AUTOYOU_AI_PORT` or `AUTOYOU_AI_AGENT_SERVER_PORT` | Always loopback on a computer. Only inside a container with LAN access on does it follow `AUTOYOU_BIND_HOST`, so Docker can publish it. |
+| LAN HTTPS port | `8481` | `AUTOYOU_AI_AGENT_LAN_HTTPS_PORT`, or `ai_agent.lan_https_port` in the configuration | Opt-in. A twin listener of the same app, protected by the one-time-code gate below. |
+| LAN access | Off | `ai_agent.lan_access_enabled` in the configuration, or `AUTOYOU_AI_AGENT_LAN_ACCESS` | Opens the LAN HTTPS port on the server's bind host. AutoYou apps never need it: paired devices reach the agent through the server. |
+
+The `ai_agent.lan_access_enabled` setting is protected: a remote browser cannot change it. See [Security & Authentication](/architecture/security-and-auth).
+
+---
+
+## Routes
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Liveness: `{"status": "healthy", "service": "AutoYou AI Agent", "runtime": {...}}` |
+| `POST` | `/api/chat` | Send a message to the agent and receive a reply |
+| `GET` | `/api/sessions/{user_id}/{session_id}` | Information about one session |
+| `GET` | `/api/status` | Worker status and agent information |
+| `GET` | `/api/docs` | A short usage description of the chat route |
+| `POST` | `/api/internal/runtime-settings` | Apply settings from the parent server without restarting the worker |
+| `GET` | `/dev/build_graph/{app_name}` | Google ADK graph metadata |
+| `GET` | `/dev/build_graph_image/{app_name}` | Rendered agent graph (DOT) payloads; optional `dark_mode` and `node` query parameters |
+
+---
+
+## `POST /api/chat`
+
+Request (`ChatRequest` in `rest_api.py`):
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `message` | string | Yes | The user's message. |
+| `session_id` | string | No | Session identifier for conversation continuity. |
+| `user_id` | string | No | Partition key for session management. Defaults to `AutoYou-client`. |
+| `context` | array of objects | No | Previous conversation context. |
+| `metadata` | object | No | Additional request metadata. |
+
+Response (`ChatResponse`):
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `response` | string | The agent's reply. |
+| `session_id` | string | Session identifier for this conversation. |
+| `message_id` | string | Unique identifier for this exchange. |
+| `timestamp` | datetime | When the response was produced. |
+| `agent_name` | string | The agent that answered. |
+| `metadata` | object | Additional response metadata. |
+| `voice_reply_transcript` | string or null | Transcript of the inbound voice note, when applicable. |
+
+## `GET /api/sessions/{user_id}/{session_id}`
+
+Returns a `SessionInfo`: `session_id`, `user_id`, `created_at`, `last_activity`, `message_count`, and optionally `messages`.
+
+## `GET /api/status`
+
+Returns an `APIStatus`: `status`, `version`, `agent_name`, `active_sessions`, `total_messages`, `uptime_seconds`, and `timestamp`.
+
+---
+
+## `POST /api/internal/runtime-settings`
+
+This route is for the parent server, not for clients. It accepts a request only when it comes from loopback with `Authorization: Bearer <token>`, where the token is the worker's internal API token generated and stored by the server. Any other request is refused with `403`.
+
+Today it applies one setting, `internet_search_enabled`:
+
+```json
+{ "internet_search_enabled": true }
+```
+
+and answers `{"success": true, "applied": {"internet_search_enabled": true}}`. Invalid input returns `400`.
+
+---
+
+## LAN one-time-code gate
+
+When a request arrives on the LAN HTTPS port, the worker requires a current code from the shared authenticator before it handles the request. Requests on the plain loopback port are never challenged.
+
+1. If the request carries a valid `autoyou_ai_agent_lan_otp` cookie, it is allowed.
+2. Otherwise the request must present the current authenticator code, either in the `x-autoyou-otp` header or the `otp` query parameter. The code is checked with one adjacent time step of tolerance.
+3. A valid code sets the cookie, which is `HttpOnly`, `Secure`, and `SameSite=Lax`. The cookie value is a timestamp signed with HMAC-SHA256 keyed from the authenticator secret, and it is accepted for one hour.
+4. With no valid cookie or code, the worker answers `401` with a hint on how to supply the code.
+
+If the worker has no authenticator secret, the LAN listener answers `503` instead of serving requests.

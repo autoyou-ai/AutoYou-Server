@@ -1,0 +1,99 @@
+---
+title: "Building Custom Agents"
+description: "The agent package contract: files, constants, the factory, tools, installation, websites, and tests."
+---
+
+# Building Custom Agents
+
+An agent is a Python package under `autoyou_agents/` that builds a [Google ADK](https://google.github.io/adk-docs/) `Agent`. The [tutorial](../guides/custom-agent-tutorial.mdx) walks through one example; this page is the reference. The package contract is also stated in [`autoyou_agents/README.md`](https://github.com/autoyou-ai/AutoYou-Server/blob/main/autoyou_agents/README.md). The built-in agents are listed in the [Agent Catalog](/agents/system-and-admin).
+
+---
+
+## Package layout
+
+```
+autoyou_agents/<name>_agent/
+├── __init__.py
+├── prompt.py        # AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION (+ optional routing constants)
+├── agent.py         # create_<name>_agent(model_config)
+├── <name>_tool.py   # tools (any module name)
+└── website/         # optional: manifest.json, frontend/, backend/
+```
+
+Put an agent you want in this repository in `autoyou_agents/<name>_agent/`. Put one you keep to yourself in `autoyou_agents/private/<name>_agent/`, which is git-ignored and can also be a link to wherever you keep your agents. Use a name that no built-in agent uses.
+
+---
+
+## `prompt.py`
+
+| Constant | Required | Purpose |
+| :--- | :--- | :--- |
+| `AGENT_NAME` | Yes | The runtime name of the agent. Built-ins use an `autoyou_` prefix, as in `autoyou_hosting_agent`. |
+| `AGENT_DESCRIPTION` | Yes | What the agent does. The main agent uses it to decide when to call this one. |
+| `AGENT_INSTRUCTION` | Yes | The agent's system instruction. |
+| `ROUTING_LABEL` | No | The agent's name in the main agent's list of agents |
+| `ROUTING_RULE` | No | When the main agent should call it. Without it, `AGENT_DESCRIPTION` is used. |
+| `ROUTE_ALIASES` | No | Names that send a request straight to the agent, as in "use <alias> to ..." |
+
+---
+
+## `agent.py`: the factory
+
+The server loads `autoyou_agents.<name>_agent.agent` and calls `create_<name>_agent(model_config)`, where the function name is `create_` plus the folder name. It must return a Google ADK `Agent`:
+
+```python
+from google.adk.agents import Agent
+from .prompt import AGENT_NAME, AGENT_DESCRIPTION, AGENT_INSTRUCTION
+from .my_tool import my_function
+
+
+def create_my_agent(model_config):
+    return Agent(
+        name=AGENT_NAME,
+        model=model_config,
+        description=AGENT_DESCRIPTION,
+        instruction=AGENT_INSTRUCTION,
+        tools=[my_function],
+    )
+```
+
+Many built-in agents add callbacks around the model call (for example to inject the current date and time), and an agent can export `ingest_attachments` to handle uploaded files. Look at a small built-in agent such as `hosting_agent` for a complete example.
+
+In a packaged (compiled) runtime only built-in agents load. Workspace-only agents are refused there, so develop custom agents from a source checkout.
+
+---
+
+## Tools
+
+A tool is a plain Python function. The ADK reads its type annotations to build the schema the model sees, and its docstring to explain the tool, so:
+
+1. **Annotate every parameter** with ordinary types (`str`, `int`, `float`, `bool`, `List[T]`, `Dict[str, Any]`, `Optional[T]`).
+2. **Write a docstring** with a one-line summary and an `Args:` section that describes each parameter.
+3. **Return a dictionary** and report failures in it, for example `{"success": False, "error": "..."}`, rather than raising. The model reads the result and can explain an error to the user.
+4. **Use `async def`** for network or disk work so the event loop stays responsive.
+
+Shared helpers live in `autoyou_agents/shared_tools/`, such as `datetime_tool.get_current_datetime`. See [Shared Tools & Subsystems](shared-tools-and-subsystems.mdx).
+
+---
+
+## Installing
+
+A new agent starts **uninstalled**. Install it from **Agents** in the admin console, or with `POST /api/agents/install` and `{"agent_name": "<name>_agent"}`, then reload the AI runtime. The Agent Builder can create, test, and publish drafts for you; see [Agent Workbench](agent-workbench.mdx).
+
+---
+
+## Websites
+
+An agent can ship a web interface in `website/`: a `manifest.json`, a `frontend/` folder, and optionally a `backend/app.py`. The page service serves it at `/agent/<name>_agent/`. Agent websites must reject protected requests with `401` until the session is authenticated, and must keep protected content hidden and inert until then; use the shared website factories, which do both. See the tutorial and [Agent Web Frontends](agent-web-frontends.mdx).
+
+---
+
+## Testing
+
+Put tests under `tests/agents/public/` and run them with an isolated test root so they cannot touch your live configuration:
+
+```bash
+AUTOYOU_TEST_ROOT="$(mktemp -d)" python -m pytest tests/agents/public -q
+```
+
+See the [testing guide](../contributors/TESTING.md).

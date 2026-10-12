@@ -1,0 +1,13 @@
+{
+  "agent_name": "proxy_agent",
+  "title": "Internet Relay",
+  "description": "OTP-gated server-side web relay using the connected computer's internet.",
+  "entry_path": "/",
+  "recommended_port": 7077,
+  "direct_forward_port": 7077,
+  "requires_proxy_registration": true,
+  "websocket_enabled": true,
+  "auth_default": "gated",
+  "shared_session_eligible": true,
+  "bypass_global_otp": false
+}
