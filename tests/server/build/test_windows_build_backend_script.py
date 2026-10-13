@@ -37,9 +37,7 @@ def test_windows_build_backend_sanitizes_adk_web_assets_before_packaging():
 
 def test_windows_server_msix_requires_google_adk_license_text():
     package_script = (REPO_ROOT / "servers" / "windows" / "package-msix.ps1").read_text(encoding="utf-8")
-    msix_verifier = (REPO_ROOT / "scripts" / "verify_windows_server_msix.py").read_text(encoding="utf-8")
     assert "google-adk-APACHE-2.0.txt" in package_script
-    assert "google-adk-APACHE-2.0.txt" in msix_verifier
 
 
 def test_windows_release_profiles_support_the_training_stack():

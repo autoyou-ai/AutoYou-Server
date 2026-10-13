@@ -40,7 +40,6 @@ PUBLIC_PREFIXES = (
     "node/",
     "requirements/",
     "routers/",
-    "scripts/",
     "servers/",
     "shared/",
     "tests/",
@@ -93,6 +92,44 @@ PUBLIC_VENDOR_PREFIXES = (
 )
 
 PUBLIC_CONFIG_PATHS = {"config/donations.example.json"}
+
+# Review scripts individually so private operator tools are not exported by default.
+PUBLIC_SCRIPT_PATHS = {
+    "scripts/__init__.py",
+    "scripts/acknowledge_local_build.py",
+    "scripts/audit_dependency_advisories.py",
+    "scripts/bluetooth_pair_host_bridge.py",
+    "scripts/bootstrap_autoyou.py",
+    "scripts/build_architecture_diagram.py",
+    "scripts/build_codec_clean_av.py",
+    "scripts/build_neon_horizon.py",
+    "scripts/build_packaged_runtime_modules.py",
+    "scripts/check_official_build_authorization.py",
+    "scripts/check_release_legal_gates.py",
+    "scripts/clean_guide_asset_metadata.py",
+    "scripts/copy_payload_fast.py",
+    "scripts/copy_release_legal_artifacts.py",
+    "scripts/create_test_signing_cert.ps1",
+    "scripts/download_tunnelmole.py",
+    "scripts/export_public_autoyou_server.py",
+    "scripts/gen_locked_constraints.py",
+    "scripts/generate_adk_web_notices.py",
+    "scripts/generate_reference_docs.py",
+    "scripts/generate_release_legal_artifacts.py",
+    "scripts/generate_windows_server_tiles.py",
+    "scripts/install_realtimestt_runtime.py",
+    "scripts/patch_adk_web_ui.py",
+    "scripts/prepare_intent_router.py",
+    "scripts/prepare_packaged_guides.py",
+    "scripts/prepare_whisper_models.py",
+    "scripts/prune_noncommercial_release_assets.py",
+    "scripts/prune_runtime_site_packages_to_requirements.py",
+    "scripts/read_backend_runtime_pins.py",
+    "scripts/reconcile_python_runtime_env.py",
+    "scripts/serve_guides_preview.py",
+    "scripts/social-verify/run.sh",
+    "scripts/verify_backend_hardening.py",
+}
 
 # Publish the generic schema, templates, and user-facing setup instructions.
 # Generated manifests and app captures belong to each user's private data only.
@@ -420,6 +457,7 @@ ROOT_EXACT_PATHS = {
     "CONTRIBUTING.md",
     "Dockerfile",
     "LICENSE",
+    "PROVENANCE.md",
     "README.md",
     "SECURITY.md",
     "SUPPORT.md",
@@ -555,6 +593,8 @@ def should_publish_path(path: str) -> bool:
     if normalized.startswith(PUBLIC_VENDOR_PREFIXES):
         return True
     if normalized in PUBLIC_CONFIG_PATHS:
+        return True
+    if normalized in PUBLIC_SCRIPT_PATHS:
         return True
     if normalized in PUBLIC_SKILL_PATHS:
         return True

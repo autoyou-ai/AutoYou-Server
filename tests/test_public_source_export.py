@@ -44,6 +44,7 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path(".gitignore")
     assert exporter.should_publish_path(".gitleaks.toml")
     assert exporter.should_publish_path("CONTRIBUTING.md")
+    assert exporter.should_publish_path("PROVENANCE.md")
     assert exporter.should_publish_path(".github/workflows/public-checks.yml")
     assert exporter.audit_public_source_paths(sorted(exporter.PUBLIC_GITHUB_PATHS)) == []
     assert exporter.audit_public_source_paths(sorted(exporter.PUBLIC_SKILL_PATHS)) == []
@@ -68,7 +69,7 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("server.py")
     assert exporter.should_publish_path("core_server/app.py")
     assert exporter.should_publish_path("routers/admin.py")
-    assert exporter.should_publish_path("scripts/verify_windows_server_msix.py")
+    assert exporter.should_publish_path("scripts/bootstrap_autoyou.py")
     assert exporter.should_publish_path("docs/legal/generated/README.md")
     assert exporter.should_publish_path("docs/legal/generated/manifest-summary.json")
     assert exporter.should_publish_path("docs/legal/messaging-partner-policy.md")
@@ -151,7 +152,7 @@ def test_extra_private_paths_extend_the_boundary(monkeypatch) -> None:
 
     for path in ("scripts/held_back/tool.py", "tests/held_back/test_tool.py", "scripts/held_back_tool.py"):
         assert not exporter.should_publish_path(path)
-    assert exporter.should_publish_path("scripts/verify_windows_server_msix.py")
+    assert exporter.should_publish_path("scripts/bootstrap_autoyou.py")
 
 
 def test_public_export_excludes_obsolete_unmaintained_docs() -> None:
@@ -204,6 +205,7 @@ def test_public_repository_boundary_rejects_nonpublic_committed_paths() -> None:
         (
             "server.py",
             "notes/private-plan.md",
+            "scripts/operator_only.py",
             "private/agent.py",
             ".env",
             "tests/agents/private/test_custom_agent.py",
@@ -214,6 +216,7 @@ def test_public_repository_boundary_rejects_nonpublic_committed_paths() -> None:
 
     assert failures == [
         "path outside the public allowlist committed to public repository: notes/private-plan.md",
+        "path outside the public allowlist committed to public repository: scripts/operator_only.py",
         "private path committed to public repository: private/agent.py",
         "sensitive path committed to public repository: .env",
         "private path committed to public repository: tests/agents/private/test_custom_agent.py",
