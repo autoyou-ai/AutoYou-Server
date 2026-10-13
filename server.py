@@ -5413,7 +5413,12 @@ def _get_security_mode_from_cfg(cfg: Optional[Dict[str, Any]]) -> str:
 
 
 def _secure_storage_scan_roots() -> List[Path]:
+    from shared.http_request_monitor import default_storage_path as http_monitor_storage_path
+
     roots: List[Path] = [get_mutable_data_dir("AutoYou", anchor=__file__)]
+    # In source mode this owned store lives under shared/, which the general
+    # envelope discovery walk intentionally skips as an implementation tree.
+    roots.append(http_monitor_storage_path())
     try:
         from shared.voice_training_storage import get_voice_training_dir
 
