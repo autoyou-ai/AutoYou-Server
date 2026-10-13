@@ -1,0 +1,17 @@
+{
+  "agent_name": "tv_agent",
+  "title": "AutoYou TV",
+  "description": "Browse, share and stream your movies, shows and videos. OTP protects Settings; editors curate the library.",
+  "entry_path": "/",
+  "recommended_port": 8112,
+  "requires_proxy_registration": true,
+  "auth_default": "open",
+  "bypass_global_otp": true,
+  "shared_session_eligible": false,
+  "backend_stack": "python_fastapi",
+  "frontend_stack": "react_typescript",
+  "icon": "tv",
+  "accent": "#b8f36b",
+  "category": "media",
+  "keywords": ["movies", "shows", "video", "streaming", "IMDb", "folders"]
+}

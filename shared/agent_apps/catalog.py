@@ -68,6 +68,7 @@ _KNOWN: Dict[str, Tuple[str, str, int, Tuple[str, ...]]] = {
     "notify_agent": ("bell", "everyday", 4, ("reminders", "alerts", "notifications")),
     "files_agent": ("folder", "computer", 5, ("finder", "documents", "browse")),
     "audio_agent": ("music", "media", 6, ("songs", "player", "playlist", "listen")),
+    "tv_agent": ("tv", "media", 7, ("movies", "shows", "watch", "streaming", "IMDb")),
     "media_generation_agent": ("film", "media", 7, ("video", "image", "generate", "art")),
     "skills_agent": ("bolt", "everyday", 8, ("automation", "custom", "workflows")),
     "persona_agent": ("user", "everyday", 9, ("profile", "facts", "about me")),

@@ -118,6 +118,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "files_agent",
         "fine_tuning_agent",
         "game_agent",
+        "tv_agent",
         "hosting_agent",
         "location_agent",
         "mac_security_agent",

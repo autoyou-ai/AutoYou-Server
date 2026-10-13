@@ -3259,6 +3259,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.audio_agent.website.backend.app:app",
         "default_port": 8097,
     },
+    "tv_agent": {
+        "app_import": "autoyou_agents.tv_agent.website.backend.app:app",
+        "default_port": 8112,
+    },
     "build_prompt_agent": {
         "app_import": "autoyou_agents.build_prompt_agent.website.backend.app:app",
         "default_port": 8074,
@@ -3393,6 +3397,7 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "admin_agent": "Admin Website",
     "backup_agent": "Backup Agent",
     "audio_agent": "Audio Player App",
+    "tv_agent": "AutoYou TV",
     "build_prompt_agent": "Prompt Builder",
     "prompts_agent": "My Prompt",
     "notes_agent": "Notes Manager App",
