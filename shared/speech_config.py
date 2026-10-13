@@ -11,7 +11,7 @@ Speech configuration helpers for AutoYou.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import copy
@@ -76,9 +76,15 @@ STT_DEVICE_SUGGESTIONS = (
 
 DEFAULT_SPEECH_CONFIG: Dict[str, Any] = {
     "tts": {
-        "provider": "system",
+        "provider": "auto",
         "rate": 1.0,
         "system_voice": "",
+        "language": "",
+        "native": {
+            "model": "supertonic-3",
+            "voice": "F1",
+            "auto_download": True,
+        },
         "openai": {
             "api_key": "",
             "base_url": "https://api.openai.com/v1",
@@ -99,8 +105,8 @@ DEFAULT_SPEECH_CONFIG: Dict[str, Any] = {
         },
     },
     "stt": {
-        "model": "tiny.en",
-        "language": "en",
+        "model": "base",
+        "language": "",
         "device": (os.getenv("AUTOYOU_STT_DEVICE", "cpu") or "cpu").strip().lower(),
         "compute_type": (os.getenv("AUTOYOU_STT_COMPUTE_TYPE", "float32") or "float32").strip(),
         "silero_sensitivity": 0.4,
@@ -110,6 +116,27 @@ DEFAULT_SPEECH_CONFIG: Dict[str, Any] = {
         "capture_enabled": False,
     },
 }
+
+
+def speech_language(value: Any) -> str:
+    """Backend ISO language, or empty for detection (including BCP-47 locales)."""
+    language = str(value or "").strip().lower().replace("_", "-")
+    if language in {"", "auto", "detect", "multilingual"}:
+        return ""
+    language = language.split("-", 1)[0]
+    return {"iw": "he", "in": "id", "ji": "yi", "cmn": "zh"}.get(language, language)
+
+
+def effective_stt_model(model: str, language: Any) -> str:
+    """English-only weights cannot implement automatic or non-English STT."""
+    model = str(model or "base").strip()
+    if model.endswith(".en") and speech_language(language) != "en":
+        # Distilled English-only models have no multilingual distil-small or
+        # distil-medium counterpart. Use the corresponding multilingual model.
+        if model in {"distil-small.en", "distil-medium.en"}:
+            return model[len("distil-"):-3]
+        return model[:-3]
+    return model
 
 
 def deepcopy_speech_config() -> Dict[str, Any]:
@@ -130,6 +157,16 @@ def normalize_speech_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             rate = float(normalized["tts"]["rate"])
         normalized["tts"]["rate"] = min(4.0, max(0.25, rate))
         normalized["tts"]["system_voice"] = str(tts.get("system_voice") or "").strip()
+        normalized["tts"]["language"] = speech_language(tts.get("language"))
+        native_cfg = tts.get("native")
+        if isinstance(native_cfg, dict):
+            normalized["tts"]["native"]["model"] = str(native_cfg.get("model") or "supertonic-3").strip()
+            voice = str(native_cfg.get("voice") or "F1").strip().upper()
+            normalized["tts"]["native"]["voice"] = voice if voice in {f"{gender}{n}" for gender in "FM" for n in range(1, 6)} else "F1"
+            auto_download = native_cfg.get("auto_download", True)
+            if isinstance(auto_download, str):
+                auto_download = auto_download.strip().lower() not in {"0", "false", "no", "off"}
+            normalized["tts"]["native"]["auto_download"] = bool(auto_download)
 
         openai_cfg = tts.get("openai")
         if isinstance(openai_cfg, dict):
@@ -170,7 +207,11 @@ def normalize_speech_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     stt = config.get("stt")
     if isinstance(stt, dict):
         normalized["stt"]["model"] = str(stt.get("model") or normalized["stt"]["model"]).strip()
-        normalized["stt"]["language"] = str(stt.get("language") or normalized["stt"]["language"]).strip()
+        # An explicitly empty language is automatic detection, not English.
+        normalized["stt"]["language"] = str(stt.get("language") or "").strip()
+        if not speech_language(normalized["stt"]["language"]):
+            normalized["stt"]["language"] = ""
+        normalized["stt"]["model"] = effective_stt_model(normalized["stt"]["model"], normalized["stt"]["language"])
         normalized["stt"]["device"] = str(
             stt.get("device") or normalized["stt"]["device"]
         ).strip().lower()
@@ -211,8 +252,8 @@ def normalize_speech_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if normalized["stt"]["device"] not in {"cpu", "cuda", "auto"}:
         normalized["stt"]["device"] = "cpu"
 
-    if normalized["tts"]["provider"] not in {"system", "openai", "azure", "custom", "emotivoice", "off"}:
-        normalized["tts"]["provider"] = "system"
+    if normalized["tts"]["provider"] not in {"auto", "native", "system", "openai", "azure", "custom", "emotivoice", "off"}:
+        normalized["tts"]["provider"] = "auto"
 
     if not normalized["tts"]["openai"]["response_format"]:
         normalized["tts"]["openai"]["response_format"] = "wav"

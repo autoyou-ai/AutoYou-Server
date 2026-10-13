@@ -11,7 +11,7 @@ This module provides the main AutoYou admin, auth, and runtime server process.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import argparse
@@ -5183,7 +5183,11 @@ def _speech_summary(cfg: Optional[Dict[str, Any]] = None) -> str:
     stt_cfg = speech_cfg["stt"]
     provider = tts_cfg["provider"]
 
-    if provider == "system":
+    if provider == "auto":
+        tts_summary = "Automatic local TTS (matching system voice or downloadable multilingual model)"
+    elif provider == "native":
+        tts_summary = f"Native multilingual TTS ({tts_cfg['native']['model']}, voice {tts_cfg['native']['voice']})"
+    elif provider == "system":
         selected_voice = tts_cfg.get("system_voice") or "Default system voice"
         voices = list_system_tts_voices() if callable(list_system_tts_voices) else []
         selected_name = next(
@@ -5244,6 +5248,10 @@ def _update_speech_config(
     speech_tts_provider: Optional[str] = None,
     speech_tts_rate: Optional[str] = None,
     speech_tts_system_voice: Optional[str] = None,
+    speech_tts_language: Optional[str] = None,
+    speech_native_tts_model: Optional[str] = None,
+    speech_native_tts_voice: Optional[str] = None,
+    speech_native_tts_auto_download: Optional[str] = None,
     speech_openai_tts_model: Optional[str] = None,
     speech_openai_tts_voice: Optional[str] = None,
     speech_openai_tts_instructions: Optional[str] = None,
@@ -5266,8 +5274,8 @@ def _update_speech_config(
 
     if speech_tts_provider is not None:
         provider = speech_tts_provider.strip().lower()
-        if provider not in {"system", "openai", "azure", CUSTOM_VOICE_PROVIDER, "emotivoice", "off"}:
-            raise ValueError("TTS provider must be one of: system, custom, openai, azure, emotivoice, off")
+        if provider not in {"auto", "native", "system", "openai", "azure", CUSTOM_VOICE_PROVIDER, "emotivoice", "off"}:
+            raise ValueError("TTS provider must be one of: auto, native, system, custom, openai, azure, emotivoice, off")
         tts_cfg["provider"] = provider
 
     if speech_tts_rate is not None:
@@ -5275,6 +5283,20 @@ def _update_speech_config(
 
     if speech_tts_system_voice is not None:
         tts_cfg["system_voice"] = speech_tts_system_voice.strip()
+    if speech_tts_language is not None:
+        tts_cfg["language"] = speech_tts_language.strip()
+    if speech_native_tts_model is not None:
+        from shared.native_tts import CATALOG
+        if speech_native_tts_model not in CATALOG:
+            raise ValueError("Unknown native TTS model")
+        tts_cfg["native"]["model"] = speech_native_tts_model
+    if speech_native_tts_voice is not None:
+        from shared.native_tts import VOICES
+        if speech_native_tts_voice not in VOICES:
+            raise ValueError("Unknown native TTS voice")
+        tts_cfg["native"]["voice"] = speech_native_tts_voice
+    if speech_native_tts_auto_download is not None:
+        tts_cfg["native"]["auto_download"] = speech_native_tts_auto_download.strip().lower() in {"1", "true", "yes", "on"}
 
     openai_cfg = tts_cfg["openai"]
     if speech_openai_tts_model is not None:

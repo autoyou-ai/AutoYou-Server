@@ -27,7 +27,7 @@ expected by AudioManager._transcription_loop:
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import io
@@ -485,12 +485,31 @@ def _find_system_whisper() -> Optional[Path]:
 
 # ─── Model download ──────────────────────────────────────────────────────────
 
-def download_whisper_model(model: str = "tiny.en") -> Optional[Path]:
+def whisper_cpp_model(model: str) -> str:
+    """Map supported faster-whisper aliases without changing language coverage."""
+    model = str(model or "base").strip()
+    aliases = {"large": "large-v3", "turbo": "large-v3-turbo"}
+    model = aliases.get(model, model)
+    supported = {"tiny", "base", "small", "medium", "tiny.en", "base.en", "small.en", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo", "distil-large-v3"}
+    if model not in supported:
+        raise ValueError(f"Model {model} is not available for whisper.cpp; select a supported multilingual model")
+    return model
+
+
+def cached_whisper_model(model: str) -> Optional[Path]:
+    filename = f"ggml-{whisper_cpp_model(model)}.bin"
+    bundled = _find_bundled_model(filename)
+    candidate = bundled or (_models_dir() / filename)
+    return candidate if candidate.is_file() else None
+
+
+def download_whisper_model(model: str = "base", progress_callback=None) -> Optional[Path]:
     """
     Download a GGML-format Whisper model from Hugging Face.
 
     Common models: tiny.en, tiny, base.en, base, small.en, small
     """
+    model = whisper_cpp_model(model)
     model_filename = f"ggml-{model}.bin"
 
     bundled_model = _find_bundled_model(model_filename)
@@ -500,19 +519,25 @@ def download_whisper_model(model: str = "tiny.en") -> Optional[Path]:
     models = _models_dir()
     model_path = models / model_filename
 
-    if model_path.exists():
-        return model_path
-
-    url = f"{_GGML_MODEL_BASE}/{model_filename}"
-    LOGGER.info("Downloading Whisper model %s from %s ...", model, url)
-    try:
-        urllib.request.urlretrieve(url, str(model_path))
-        LOGGER.info("Downloaded Whisper model to %s", model_path)
-        return model_path
-    except Exception as exc:
-        LOGGER.error("Failed to download Whisper model %s: %s", model, exc)
-        model_path.unlink(missing_ok=True)
-        return None
+    from filelock import FileLock
+    with FileLock(str(model_path) + ".lock", timeout=900):
+        if model_path.exists():
+            return model_path
+        url = f"{_GGML_MODEL_BASE}/{model_filename}"
+        LOGGER.info("Downloading Whisper model %s from %s ...", model, url)
+        part = model_path.with_suffix(".bin.part")
+        try:
+            def report(blocks, block_size, total):
+                if progress_callback:
+                    progress_callback(min(blocks * block_size, total) if total > 0 else blocks * block_size, max(0, total))
+            urllib.request.urlretrieve(url, str(part), reporthook=report)
+            os.replace(part, model_path)
+            LOGGER.info("Downloaded Whisper model to %s", model_path)
+            return model_path
+        except Exception as exc:
+            LOGGER.error("Failed to download Whisper model %s: %s", model, exc)
+            part.unlink(missing_ok=True)
+            return None
 
 
 # ─── Recorder class ──────────────────────────────────────────────────────────
@@ -550,13 +575,14 @@ class WhisperCppRecorder:
         self,
         binary_path: Path,
         model_path: Path,
-        language: str = "en",
+        language: str = "auto",
         compute_type: str = "int8",  # unused for cpp, kept for interface compat
         post_speech_silence_duration: float = _SILENCE_DURATION_S,
     ):
         self._binary = str(binary_path)
         self._model = str(model_path)
-        self._language = language
+        from shared.speech_config import speech_language
+        self._language = speech_language(language) or "auto"
         self._silence_duration_s = post_speech_silence_duration
 
         self._audio_buffer: list[bytes] = []
@@ -770,6 +796,8 @@ class WhisperCppRecorder:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
                 **_hidden_subprocess_kwargs(),
             )

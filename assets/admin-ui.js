@@ -2255,7 +2255,7 @@
     }
 
     function buildSpeechModelOptions() {
-        var currentModel = getByPath(state.forms, "speech.stt_model", "tiny.en");
+        var currentModel = getByPath(state.forms, "speech.stt_model", "base");
         var statusModels = Array.isArray(getByPath(state.speechLibrary, "status.models", [])) ? getByPath(state.speechLibrary, "status.models", []) : [];
         var suggestions = Array.isArray(getByPath(state.speechLibrary, "status.stt_model_suggestions", [])) ? getByPath(state.speechLibrary, "status.stt_model_suggestions", []) : [];
         var options = [];
@@ -2280,7 +2280,7 @@
             seen[modelName] = true;
             options.push({ value: modelName, label: modelName });
         });
-        return ensureCurrentOption(options, currentModel, currentModel || "tiny.en");
+        return ensureCurrentOption(options, currentModel, currentModel || "base");
     }
 
     function catalogDetailKey(source, identifier) {
@@ -2636,6 +2636,22 @@
 
     var TTS_PROVIDER_OPTIONS = [
         {
+            id: "auto",
+            eyebrow: "Automatic local speech",
+            label: "Auto TTS",
+            description: "Match the reply language to a system voice, or download a local multilingual model when needed.",
+            badgeLabel: "Local",
+            badgeTone: "green"
+        },
+        {
+            id: "native",
+            eyebrow: "Downloadable local speech",
+            label: "Native multilingual TTS",
+            description: "Use a downloaded ONNX model for speech across its supported languages.",
+            badgeLabel: "Local",
+            badgeTone: "green"
+        },
+        {
             id: "system",
             eyebrow: "Built-in voices",
             label: "System speech",
@@ -2732,9 +2748,9 @@
     }
 
     function activeTtsProvider() {
-        var configured = getByPath(state.forms, "speech.tts_provider", getByPath(bootstrapConfig(), "speech.tts.provider", "system"));
-        var match = findOption(TTS_PROVIDER_OPTIONS, configured, "system");
-        return match ? match.id : "system";
+        var configured = getByPath(state.forms, "speech.tts_provider", getByPath(bootstrapConfig(), "speech.tts.provider", "auto"));
+        var match = findOption(TTS_PROVIDER_OPTIONS, configured, "auto");
+        return match ? match.id : "auto";
     }
 
     function aiProviderUsesGateway(provider) {
@@ -3153,9 +3169,13 @@
                 }
             },
             speech: {
-                tts_provider: getByPath(cfg, "speech.tts.provider", "system"),
+                tts_provider: getByPath(cfg, "speech.tts.provider", "auto"),
                 tts_rate: getByPath(cfg, "speech.tts.rate", 1.0),
                 system_voice: getByPath(cfg, "speech.tts.system_voice", ""),
+                tts_language: getByPath(cfg, "speech.tts.language", ""),
+                native_model: getByPath(cfg, "speech.tts.native.model", "supertonic-3"),
+                native_voice: getByPath(cfg, "speech.tts.native.voice", "F1"),
+                native_auto_download: asBoolean(getByPath(cfg, "speech.tts.native.auto_download", true), true),
                 openai_api_key: "",
                 openai_base_url: getByPath(cfg, "speech.tts.openai.base_url", "https://api.openai.com/v1"),
                 openai_model: getByPath(cfg, "speech.tts.openai.model", "gpt-4o-mini-tts"),
@@ -3167,8 +3187,8 @@
                 azure_endpoint_id: getByPath(cfg, "speech.tts.azure.endpoint_id", ""),
                 emotivoice_speaker: getByPath(cfg, "speech.tts.emotivoice.speaker", "8051"),
                 emotivoice_conversation_emotion: asBoolean(getByPath(cfg, "speech.tts.emotivoice.conversation_emotion", true), true),
-                stt_model: getByPath(cfg, "speech.stt.model", "tiny.en"),
-                stt_language: getByPath(cfg, "speech.stt.language", "en"),
+                stt_model: getByPath(cfg, "speech.stt.model", "base"),
+                stt_language: getByPath(cfg, "speech.stt.language", ""),
                 stt_device: getByPath(cfg, "speech.stt.device", "cpu"),
                 stt_compute_type: getByPath(cfg, "speech.stt.compute_type", "float32"),
                 stt_silero_sensitivity: getByPath(cfg, "speech.stt.silero_sensitivity", 0.4),
@@ -3675,11 +3695,15 @@
     }
 
     async function refreshSpeechDownloads(silent) {
+        var wasDownloading = hasActiveJobs(state.speechLibrary.downloads);
         state.speechLibrary.downloads = await requestJson("/api/speech-models/downloads");
         if (hasActiveJobs(state.speechLibrary.downloads)) {
             startSpeechDownloadPolling();
         } else {
             stopSpeechDownloadPolling();
+            if (wasDownloading) {
+                state.speechLibrary.status = await requestJson("/api/speech-models/status");
+            }
         }
         renderApp(silent ? { passive: true } : undefined);
         return state.speechLibrary.downloads;
@@ -5815,8 +5839,8 @@
         var remoteDesktopSending = asBoolean(getByPath(video, "remote_desktop.send_screen", true), true);
         var videoSourceLabel = videoEnabled ? (videoSourceLabels.length ? videoSourceLabels.join(" + ") : "None") : "Disabled";
         var videoSourceHelp = "Remote Desktop " + (remoteDesktopEnabled && remoteDesktopSending ? "can send the screen" : "is not sending the screen") + "; selected sources are stitched into one phone video feed.";
-        var ttsProvider = getByPath(speech, "tts_provider", getByPath(cfg, "speech.tts.provider", "system"));
-        var sttModel = getByPath(speech, "stt_model", getByPath(cfg, "speech.stt.model", "tiny.en"));
+        var ttsProvider = getByPath(speech, "tts_provider", getByPath(cfg, "speech.tts.provider", "auto"));
+        var sttModel = getByPath(speech, "stt_model", getByPath(cfg, "speech.stt.model", "base"));
         return renderStatusRows([
             { label: "Video sharing", value: videoSourceLabel, help: videoEnabled ? videoSourceHelp : "Video calls and screen/camera sharing are off." },
             {
@@ -7853,8 +7877,26 @@
 
     function renderSpeechProviderSettingsBody() {
         var provider = activeTtsProvider();
-        var option = findOption(TTS_PROVIDER_OPTIONS, provider, "system") || TTS_PROVIDER_OPTIONS[0];
+        var option = findOption(TTS_PROVIDER_OPTIONS, provider, "auto") || TTS_PROVIDER_OPTIONS[0];
         var fields = [field("TTS rate", input("speech.tts_rate", { placeholder: "1.0" }), "Use 1.0 for normal speed. Lower values slow the voice down.")];
+        var nativeMarkup = "";
+        if (provider === "auto" || provider === "native") {
+            var nativeStatus = getByPath(state.speechLibrary, "status.native_tts", {});
+            var nativeModels = getByPath(nativeStatus, "models", []);
+            if (provider === "auto") {
+                fields.push(field("Preferred system voice", select("speech.system_voice", buildSystemVoiceOptions()), "Used when it matches the reply language. Other languages choose their own voice."));
+            }
+            fields.push(field("TTS language", input("speech.tts_language", { placeholder: "auto" }), "Leave blank or use auto to detect the reply language. A code such as es or ja fixes pronunciation; it does not translate the reply."));
+            fields.push(field("Local voice", select("speech.native_voice", buildSimpleOptions(getByPath(nativeStatus, "voices", ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"]), getByPath(state.forms, "speech.native_voice", "F1")))));
+            fields.push(field("Automatic model downloads", select("speech.native_auto_download", [{ value: "true", label: "Download as needed" }, { value: "false", label: "Installed only" }]), "The first download needs an internet connection. Installed models work offline."));
+            if (Array.isArray(nativeModels) && nativeModels.length) {
+                fields.push(field("Native model", select("speech.native_model", nativeModels.map(function (model) { return { value: model.model, label: model.label }; }))));
+                nativeMarkup = "<div class=\"ayu-soft-divider\"></div>" + nativeModels.map(function (model) {
+                    return "<div class=\"ayu-note\"><strong>" + escapeHtml(model.label) + "</strong><p>Languages: " + escapeHtml(model.languages.join(", ")) + ". Download: " + escapeHtml((model.size_bytes / 1000000).toFixed(0)) + " MB.</p><p>" + escapeHtml(model.license) + " - <a href=\"" + escapeHtml(model.license_url) + "\" target=\"_blank\" rel=\"noopener noreferrer\">Model license</a></p>" + badge(model.installed ? "Installed" : "Available", model.installed ? "green" : "blue") + (!model.installed ? button("Download now", "speech-download-native:" + model.model, "secondary", "plus") : "") + "</div>";
+                }).join("");
+            }
+            nativeMarkup += "<div class=\"ayu-note\">Native speech runtime: " + (nativeStatus.runtime_available ? "available" : "missing from this build") + ". Auto TTS uses a matching installed system voice first. Chinese also uses EmotiVoice when its models are installed. Other languages need an installed system voice or a suitable speech provider.</div>";
+        }
         if (provider === "system") {
             fields.push(field("System voice", select("speech.system_voice", buildSystemVoiceOptions()), "Leave empty to use the operating system default voice."));
         } else if (provider === "custom") {
@@ -7917,8 +7959,8 @@
                 ? "EmotiVoice synthesizes locally through AutoYou's existing call and voice-note audio paths."
                 : (provider === "system"
                 ? "System speech keeps synthesis fully local to this machine."
-                : "Cloud text-to-speech stays inactive until you save the selected provider and its credentials.")));
-        return renderChoiceCards(TTS_PROVIDER_OPTIONS, provider, "select-tts-provider") + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(option.label) + ". " + escapeHtml(providerNote) + "</div>" + (fields.length ? ("<div class=\"ayu-grid-2\">" + fields.join("") + "</div>") : "") + "<div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "primary", "save") + "</div>";
+                : (provider === "auto" || provider === "native" ? "Speech runs locally. Missing multilingual model data is downloaded when automatic downloads are enabled." : "Cloud text-to-speech stays inactive until you save the selected provider and its credentials."))));
+        return renderChoiceCards(TTS_PROVIDER_OPTIONS, provider, "select-tts-provider") + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(option.label) + ". " + escapeHtml(providerNote) + "</div>" + (fields.length ? ("<div class=\"ayu-grid-2\">" + fields.join("") + "</div>") : "") + "<div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "primary", "save") + "</div>" + nativeMarkup;
     }
 
     function renderSpeechRecognitionBody() {
@@ -7945,19 +7987,19 @@
             var progress = Number(getByPath(job, "progress_percent", 0)) || 0;
             var status = getByPath(job, "status", "queued");
             return "<div class=\"ayu-list-row ayu-list-row-stack\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(job.reference || job.model || job.job_id || "Job") + "</strong><small>" + escapeHtml(getByPath(job, "message", status)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(status, statusTone(status)) + "<span class=\"ayu-hint ayu-mono\">" + escapeHtml(progress.toFixed(1)) + "%</span></div>" + renderProgressTrack(progress, String(status).toLowerCase() === "failed" ? "failed" : "") + (getByPath(job, "error", "") ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(getByPath(job, "error", "")) + "</div>" : "") + "</div>";
-        }).join("") + "</div>" : "<div class=\"ayu-empty\">No active STT download jobs.</div>";
+        }).join("") + "</div>" : "<div class=\"ayu-empty\">No active speech download jobs.</div>";
         return renderStatusRows([
             { label: "Speech library supported", value: getByPath(statusPayload, "supported", true) ? "Yes" : "No", help: getByPath(statusPayload, "supported", true) ? "Speech models can be downloaded and selected on this machine." : "The local speech model helper is not available in this runtime." },
-            { label: "Selected STT model", value: getByPath(statusPayload, "selected_model", getByPath(state.forms, "speech.stt_model", "tiny.en")) },
+            { label: "Selected STT model", value: getByPath(statusPayload, "selected_model", getByPath(state.forms, "speech.stt_model", "base")) },
             { label: "Voice training capture", value: yesNo(getByPath(state.forms, "speech.voice_training_capture_enabled", false)) },
             { label: "Voice training location", value: voiceTrainingDir, mono: true },
             { label: "Installed models", value: String(Array.isArray(installedModels) ? installedModels.length : 0) },
             { label: "Cache directory", value: getByPath(statusPayload, "cache_dir", "Unknown"), mono: true }
-        ]) + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-note\">Voice-call recording is controlled in <a href=\"#\" data-action=\"nav:permissions\">Permissions</a>. The Voice Training app does not need to be open when capture is enabled.</div><div class=\"ayu-soft-divider\"></div><div class=\"ayu-grid-2\">" + field("STT model", select("speech.stt_model", buildSpeechModelOptions())) + field("STT language", input("speech.stt_language", { placeholder: "en" })) + field("STT device", select("speech.stt_device", buildSimpleOptions(getByPath(statusPayload, "stt_device_suggestions", []), getByPath(state.forms, "speech.stt_device", "cpu")))) + field("STT compute type", select("speech.stt_compute_type", buildSimpleOptions(getByPath(statusPayload, "stt_compute_type_suggestions", []), getByPath(state.forms, "speech.stt_compute_type", "float32")))) + field("Silero sensitivity", input("speech.stt_silero_sensitivity", { placeholder: "0.4" })) + field("Post-speech silence", input("speech.stt_post_speech_silence_duration", { placeholder: "0.6" })) + "</div><div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "secondary", "save") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Speech model library</h3>" + libraryMarkup + "<div class=\"ayu-soft-divider\"></div>" + field("Model name", select("speech.download_model", buildSpeechModelOptions()), "Use the library name reported by the speech model helper.") + "<div class=\"ayu-inline-actions\">" + button("Download STT model", "speech-download", "primary", "plus") + button("Open speech guide", "open-guide:/guides/speech", "secondary", "book") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
+        ]) + "<div class=\"ayu-soft-divider\"></div><div class=\"ayu-note\">Voice-call recording is controlled in <a href=\"#\" data-action=\"nav:permissions\">Permissions</a>. The Voice Training app does not need to be open when capture is enabled.</div><div class=\"ayu-soft-divider\"></div><div class=\"ayu-grid-2\">" + field("STT model", select("speech.stt_model", buildSpeechModelOptions())) + field("STT language", input("speech.stt_language", { placeholder: "auto" }), "Leave blank or use auto for multilingual detection. Small or larger models can improve recognition. English-only .en models switch to multilingual weights for automatic or non-English recognition.") + field("STT device", select("speech.stt_device", buildSimpleOptions(getByPath(statusPayload, "stt_device_suggestions", []), getByPath(state.forms, "speech.stt_device", "cpu")))) + field("STT compute type", select("speech.stt_compute_type", buildSimpleOptions(getByPath(statusPayload, "stt_compute_type_suggestions", []), getByPath(state.forms, "speech.stt_compute_type", "float32")))) + field("Silero sensitivity", input("speech.stt_silero_sensitivity", { placeholder: "0.4" })) + field("Post-speech silence", input("speech.stt_post_speech_silence_duration", { placeholder: "0.6" })) + "</div><div class=\"ayu-inline-actions\">" + button("Save speech settings", "save-speech", "secondary", "save") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Speech model library</h3>" + libraryMarkup + "<div class=\"ayu-soft-divider\"></div>" + field("Model name", select("speech.download_model", buildSpeechModelOptions()), "Use the library name reported by the speech model helper.") + "<div class=\"ayu-inline-actions\">" + button("Download STT model", "speech-download", "primary", "plus") + button("Open speech guide", "open-guide:/guides/speech", "secondary", "book") + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Download jobs</h3>" + downloadsMarkup;
     }
 
     function renderSpeechScreen() {
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Speech</h1><p>Choose the text-to-speech path for this machine first, then manage local speech recognition models separately so only the relevant settings stay on screen.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh speech data", "speech-refresh", "secondary", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Speech output", "Switch between local system speech, custom cloned voice, OpenAI, Azure, or fully disabled output.", renderSpeechProviderSettingsBody()) + panel("Speech recognition & downloads", "Local faster-whisper selection, runtime tuning, and download jobs for speech-to-text.", renderSpeechRecognitionBody()) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Speech</h1><p>Choose the text-to-speech path for this machine first, then manage local speech recognition models separately so only the relevant settings stay on screen.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh speech data", "speech-refresh", "secondary", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Speech output", "Choose automatic local multilingual speech, a specific voice provider, or disabled output.", renderSpeechProviderSettingsBody()) + panel("Speech recognition & downloads", "Local faster-whisper selection, runtime tuning, and download jobs for speech-to-text.", renderSpeechRecognitionBody()) + "</div></div>";
     }
 
     function renderConnectivityScreen() {
@@ -8816,6 +8858,12 @@
                     provider: source.tts_provider,
                     rate: source.tts_rate,
                     system_voice: source.system_voice,
+                    language: source.tts_language,
+                    native: {
+                        model: source.native_model,
+                        voice: source.native_voice,
+                        auto_download: asBoolean(source.native_auto_download, true)
+                    },
                     openai: {
                         base_url: source.openai_base_url,
                         model: source.openai_model,
@@ -10405,6 +10453,12 @@
             await postJson("/api/speech-models/download", { model: getByPath(state.forms, "speech.download_model", "") });
             await refreshSpeechDownloads(true);
             setNotice("success", "Speech model download started.");
+            return;
+        }
+        if (action.indexOf("speech-download-native:") === 0) {
+            await postJson("/api/speech-models/download", { model: action.slice("speech-download-native:".length) });
+            await refreshSpeechDownloads(true);
+            setNotice("success", "Native TTS model download started. Installed models work offline.");
             return;
         }
         if (action === "speech-download-emotivoice") {
