@@ -18,7 +18,8 @@ from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_
 
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
 from .jobs import Jobs, executable
-from .media import (VIDEO_EXTENSIONS, file_stream, parse_name, permitted_path, public_url,
+from . import playback
+from .media import (VIDEO_EXTENSIONS, CONTENT_TYPES, file_stream, parse_name, permitted_path, public_url,
                     read_ticket, remote_stream, subtitle_content, subtitles)
 from .store import Store, uid
 from .uploads import MAX_UPLOAD_BYTES, Uploads, upload_owner
@@ -71,6 +72,7 @@ class MatchInput(BaseModel):
 class SettingsInput(BaseModel):
     library_name: str = Field(default="AutoYou TV", min_length=1, max_length=100)
     autoplay_next: bool = True
+    adaptive_streaming: bool = True
     omdb_api_key: str | None = Field(default=None, max_length=512)
 
 
@@ -94,11 +96,13 @@ def public_folder(folder: dict) -> dict:
 
 def public_item(item: dict) -> dict:
     result = {k: v for k, v in item.items() if k not in {"file_path", "source_url", "source_key"}}
-    result["technical"] = {k: v for k, v in item["technical"].items() if k != "browser_path"}
-    result["stream_url"] = f"api/stream/{item['id']}"
+    result["technical"] = {k: v for k, v in item["technical"].items() if k not in {"browser_path", "hls_source"}}
+    version = item["technical"].get("hls_version", "")
+    result["stream_url"] = (f"api/playback/{item['id']}/{version}/master.m3u8" if playback.ID.fullmatch(version)
+                            else f"api/stream/{item['id']}")
     result["artwork_url"] = f"api/artwork/{item['id']}" if item["technical"].get("artwork") else ""
     result["is_remote"] = bool(item.get("source_url"))
-    result["is_hls"] = bool(item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8"))
+    result["is_hls"] = bool(version or (item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8")))
     return result
 
 
@@ -137,10 +141,16 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
 
     @application.middleware("http")
     async def response_headers(request: Request, call_next):
-        response = await call_next(request)
+        media_request = request.url.path.startswith(("/api/stream/", "/api/playback/", "/api/subtitles/"))
+        response = Response(status_code=204) if media_request and request.method == "OPTIONS" else await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
-        if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/stream/"):
+        if media_request:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Range, If-Range, If-None-Match"
+            response.headers["Access-Control-Expose-Headers"] = "Content-Length, Content-Range, Accept-Ranges, ETag"
+        if request.url.path.startswith("/api/") and not media_request:
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -398,6 +408,42 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
             raise HTTPException(409, "This title already has a rendition in progress")
         return await jobs.enqueue("transcode", {"item_id": item_id})
 
+    @application.post("/api/items/{item_id}/streaming")
+    async def optimize_streaming(request: Request, item_id: str):
+        store, auth, jobs = services()
+        auth.require_editor(request)
+        item = store.item(item_id)
+        if not item.get("file_path") or item["status"] == "deleted":
+            raise ValueError("Download this title before optimizing streaming")
+        if any(j["kind"] == "streaming" and j["payload"].get("item_id") == item_id and j["status"] in {"queued", "running"} for j in store.jobs()):
+            raise HTTPException(409, "This title is already being optimized")
+        return await jobs.enqueue("streaming", {"item_id": item_id})
+
+    @application.get("/api/items/{item_id}/playback")
+    async def playback_info(item_id: str):
+        store, _, _ = services()
+        item = store.item(item_id)
+        if item["status"] == "deleted":
+            raise HTTPException(404, "This title was removed")
+        optimized = playback.ready(store, item)
+        version = item["technical"].get("hls_version", "")
+        is_hls = optimized or bool(item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8"))
+        return {"version": 1, "item_id": item_id, "title": item["title"],
+                "url": f"api/playback/{item_id}/{version}/master.m3u8" if optimized else f"api/stream/{item_id}",
+                "fallback_url": f"api/stream/{item_id}", "is_hls": is_hls,
+                "mime_type": "application/vnd.apple.mpegurl" if is_hls else CONTENT_TYPES.get(
+                    Path(item["technical"].get("browser_path") or item.get("file_path") or urlsplit(item.get("source_url") or "").path).suffix.lower(), "video/mp4"),
+                "optimized": optimized, "qualities": item["technical"].get("streaming_qualities", []) if optimized else [],
+                "subtitles": subtitles(store, item) if item.get("file_path") else []}
+
+    @application.api_route("/api/playback/{item_id}/{version}/{resource:path}", methods=["GET", "HEAD"])
+    async def playback_resource(item_id: str, version: str, resource: str, request: Request):
+        store, _, _ = services()
+        path = playback.resource_path(store, store.item(item_id), version, resource)
+        response = file_stream(path, request)
+        response.headers["Cache-Control"] = "private, max-age=86400, immutable"
+        return response
+
     @application.get("/api/jobs")
     async def job_list(request: Request):
         store, auth, _ = services()
@@ -499,6 +545,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         store, auth, _ = services()
         auth.require_settings(request)
         return {"library_name": store.setting("library_name", "AutoYou TV"),
+                "adaptive_streaming": store.setting("adaptive_streaming", True),
                 "autoplay_next": store.setting("autoplay_next", True), "omdb_configured": bool(store.key()),
                 "sources": [f for f in store.folders(all_folders=True) if f["root_path"] and not f["relative_path"]],
                 "invitations": auth.invitations()}
@@ -513,6 +560,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
             store.set_key(payload.omdb_api_key)
         store.set_setting("library_name", payload.library_name.strip())
         store.set_setting("autoplay_next", payload.autoplay_next)
+        store.set_setting("adaptive_streaming", payload.adaptive_streaming)
         return {"success": True, "omdb_configured": bool(store.key())}
 
     @application.post("/api/settings/sources")

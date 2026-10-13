@@ -10,7 +10,7 @@ export interface Item {
   id: string; title: string; kind: Kind; year?: number | null; folder_id?: string | null;
   season?: number | null; episode?: number | null; series?: string | null; status: string;
   metadata: Metadata; technical: { duration?: number; width?: number; height?: number; video_codec?: string;
-    audio_codec?: string; extension?: string; size?: number; file_name?: string; browser_ready?: boolean; artwork?: boolean };
+    audio_codec?: string; extension?: string; size?: number; file_name?: string; browser_ready?: boolean; artwork?: boolean; streaming_ready?: boolean };
   created: number; updated: number; stream_url: string; artwork_url?: string; is_remote: boolean; is_hls: boolean;
   subtitles?: { id: string; label: string; language: string }[]; episodes?: Item[]; next_episode?: Item | null;
 }
@@ -20,7 +20,7 @@ export interface LibraryPage { items: Item[]; count: number; total: number; offs
 export interface Job { id: string; kind: string; status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'; progress: number;
   message: string; payload: { item_id?: string; folder_id?: string; title?: string }; result: { item_id?: string }; created: number; updated: number }
 export interface Invitation { id: string; label: string; role: 'editor' | 'admin'; expires: number; revoked: boolean | number }
-export interface Settings { library_name: string; autoplay_next: boolean; omdb_configured: boolean;
+export interface Settings { library_name: string; autoplay_next: boolean; adaptive_streaming: boolean; omdb_configured: boolean;
   sources: { id: string; name: string; root_path: string }[]; invitations: Invitation[] }
 export interface Progress { position: number; duration: number; updated: number; completed: boolean }
 export type ProgressMap = Record<string, Progress>;

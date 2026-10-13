@@ -54,7 +54,7 @@ function General({ settings, reload, notify }: { settings: SettingsData; reload:
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(''); const form = new FormData(event.currentTarget);
     const key = String(form.get('key') || '').trim();
-    try { await api('settings', { method: 'POST', json: { library_name: form.get('name'), autoplay_next: form.get('autoplay') === 'on', ...(key ? { omdb_api_key: key } : {}) } }); notify('Settings saved.'); reload(); }
+    try { await api('settings', { method: 'POST', json: { library_name: form.get('name'), autoplay_next: form.get('autoplay') === 'on', adaptive_streaming: form.get('adaptive') === 'on', ...(key ? { omdb_api_key: key } : {}) } }); notify('Settings saved.'); reload(); }
     catch (error) { setError(errorMessage(error)); } finally { setBusy(false); }
   }
   async function enrich() {
@@ -64,6 +64,7 @@ function General({ settings, reload, notify }: { settings: SettingsData; reload:
   return <section className="panel settings-panel"><div className="panel-heading"><KeyRound size={22} /><h2>The essentials</h2></div><form className="form" onSubmit={submit}>
     <label>Library name<input name="name" defaultValue={settings.library_name} required maxLength={100} /></label>
     <label className="check-row"><span><strong>Play the next episode</strong><small>Continue a series when an episode ends.</small></span><input type="checkbox" name="autoplay" defaultChecked={settings.autoplay_next} /></label>
+    <label className="check-row"><span><strong>Optimize streaming automatically</strong><small>Prepare smaller video segments for new uploads and scans. Requires FFmpeg, FFprobe and additional disk space.</small></span><input type="checkbox" name="adaptive" defaultChecked={settings.adaptive_streaming} /></label>
     <hr /><div className="panel-heading"><h3>IMDb details, automatically.</h3>{settings.omdb_configured && <span className="status-pill"><Check size={14} />Connected</span>}</div>
     <p className="muted">AutoYou TV uses OMDb to find posters, plots, cast and IMDb ratings for your titles.</p>
     <label>OMDb API key<input name="key" type="password" autoComplete="off" maxLength={512} placeholder={settings.omdb_configured ? 'A key is saved. Leave blank to keep it.' : 'Paste your OMDb API key'} /></label>

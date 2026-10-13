@@ -16,7 +16,8 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import HTTPException
 
-from .media import VIDEO_EXTENSIONS, fetch_response, http_session, parse_name, permitted_path, public_url
+from .media import VIDEO_EXTENSIONS, fetch_response, http_session, parse_name, permitted_path, public_url, subtitles, subtitle_content
+from . import playback
 from .store import Store, uid
 
 
@@ -126,6 +127,7 @@ class Jobs:
         self.queue = asyncio.Queue()
         self.workers: list[asyncio.Task] = []
         self.processes: dict[str, asyncio.subprocess.Process] = {}
+        self.rendition_slot = asyncio.Semaphore(1)
 
     async def start(self):
         if self.workers:
@@ -164,7 +166,7 @@ class Jobs:
                     continue
                 self.store.update_job(job_id, status="running", message="Starting " + job["kind"])
                 handler = {"scan": self.scan, "metadata": self.enrich, "download": self.download,
-                           "transcode": self.transcode, "prepare": self.prepare}[job["kind"]]
+                           "transcode": self.transcode, "prepare": self.prepare, "streaming": self.streaming}[job["kind"]]
                 result = await handler(job)
                 if self.store.job(job_id)["status"] != "cancelled":
                     self.store.update_job(job_id, status="completed", progress=1, message="Complete", result=result)
@@ -213,6 +215,7 @@ class Jobs:
         item = self.store.update_item(item["id"], {"technical": {**item["technical"], **technical}})
         if await asyncio.to_thread(make_artwork, self.store, item):
             self.store.update_item(item["id"], {"technical": {**item["technical"], "artwork": True}})
+        await self.auto_streaming(item)
         return await self.enrich(job)
 
     async def scan(self, job: dict) -> dict:
@@ -253,6 +256,7 @@ class Jobs:
                     item, is_new = self.store.add_item(source_key="file:" + str(path), folder_id=parent_id,
                                                       file_path=str(path), technical=technical, **parse_name(filename))
                     seen.add(item["id"])
+                    await self.auto_streaming(item)
                     added += int(is_new)
                     if not item["technical"].get("artwork") and await asyncio.to_thread(make_artwork, self.store, item):
                         item = self.store.update_item(item["id"], {"technical": {**item["technical"], "artwork": True}})
@@ -348,7 +352,77 @@ class Jobs:
         if await asyncio.to_thread(make_artwork, self.store, item):
             self.store.update_item(item["id"], {"technical": {**item["technical"], "artwork": True}})
         await self.enrich_item(item["id"])
+        await self.auto_streaming(item)
         return {"item_id": item["id"]}
+
+    async def auto_streaming(self, item: dict):
+        if (not self.store.setting("adaptive_streaming", True) or not executable("ffmpeg") or not executable("ffprobe")
+                or playback.ready(self.store, item)):
+            return
+        if not any(j["kind"] == "streaming" and j["payload"].get("item_id") == item["id"]
+                   and j["status"] in {"queued", "running"} for j in self.store.jobs()):
+            await self.enqueue("streaming", {"item_id": item["id"]})
+
+    async def streaming(self, job: dict) -> dict:
+        async with self.rendition_slot:
+            if self.cancelled(job["id"]):
+                raise ValueError("Cancelled")
+            item = self.store.item(job["payload"]["item_id"])
+            ffmpeg = executable("ffmpeg")
+            if not ffmpeg or not executable("ffprobe"):
+                raise FileNotFoundError("Install FFmpeg and FFprobe on the host to optimize streaming")
+            if not item.get("file_path") or item["status"] == "deleted":
+                raise ValueError("Download this title before optimizing streaming")
+            source = permitted_path(self.store, item["file_path"])
+            source_version = playback.fingerprint(source)
+            info = await asyncio.to_thread(probe, source)
+            root = playback.rendition_root(self.store, item["id"], job["id"])
+            if not root.resolve().is_relative_to(self.store.root.resolve()):
+                raise ValueError("Streaming directory is outside the TV data root")
+            root.mkdir(parents=True, exist_ok=True)
+            published = False
+            try:
+                variants = []
+                for height, bitrate in playback.profiles(info.get("height")):
+                    destination = root / f"{height}p"
+                    destination.mkdir(exist_ok=True)
+                    await self.run_process(job, playback.ffmpeg_args(ffmpeg, source, destination, height, bitrate),
+                                           duration=info.get("duration", 0))
+                    if not (destination / "index.m3u8").is_file():
+                        raise ValueError("The host did not produce a streaming playlist")
+                    segment = next(iter(sorted(destination.glob("segment-*.ts"))), None)
+                    encoded = await asyncio.to_thread(probe, segment) if segment else {}
+                    variants.append((height, bitrate, encoded.get("width"), encoded.get("height")))
+                master = ["#EXTM3U", "#EXT-X-VERSION:3", "#EXT-X-INDEPENDENT-SEGMENTS"]
+                tracks = subtitles(self.store, item)
+                for index, track in enumerate(tracks):
+                    (root / f"sub-{index}.vtt").write_text(subtitle_content(self.store, item, track["id"]), encoding="utf-8")
+                    duration = max(1, float(info.get("duration", 1)))
+                    (root / f"sub-{index}.m3u8").write_text(
+                        f"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{int(duration) + 1}\n"
+                        f"#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:{duration:.3f},\nsub-{index}.vtt\n#EXT-X-ENDLIST\n", encoding="utf-8")
+                    language = re.sub(r"[^A-Za-z0-9-]", "", track["language"]) or "und"
+                    master.append(f'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="{language} {index + 1}",'
+                                  f'LANGUAGE="{language}",AUTOSELECT=YES,DEFAULT=NO,URI="sub-{index}.m3u8"')
+                for height, bitrate, width, actual_height in variants:
+                    subs = ',SUBTITLES="subs"' if tracks else ""
+                    resolution = f",RESOLUTION={width}x{actual_height}" if width and actual_height else ""
+                    master.extend([f"#EXT-X-STREAM-INF:BANDWIDTH={int((bitrate + 96_000) * 1.15)}{resolution}{subs}", f"{height}p/index.m3u8"])
+                (root / "master.m3u8").write_text("\n".join(master) + "\n", encoding="utf-8")
+                current = self.store.item(item["id"])
+                if (self.cancelled(job["id"]) or current["status"] == "deleted"
+                        or playback.fingerprint(permitted_path(self.store, current["file_path"])) != source_version):
+                    raise ValueError("Source changed while preparing streaming. Retry this title.")
+                (root / "published.json").write_text(json.dumps({"source": source_version}), encoding="utf-8")
+                self.store.update_item(item["id"], {"technical": {**current["technical"], **info,
+                    "hls_version": job["id"], "hls_source": source_version,
+                    "streaming_ready": True, "streaming_qualities": [actual_height or height for height, _, _, actual_height in variants]}})
+                published = True
+                return {"item_id": item["id"]}
+            finally:
+                if not published and root.resolve().is_relative_to(self.store.root.resolve()):
+                    # Root is derived solely from validated database IDs.
+                    await asyncio.to_thread(shutil.rmtree, root, True)
 
     async def transcode(self, job: dict) -> dict:
         item = self.store.item(job["payload"]["item_id"])

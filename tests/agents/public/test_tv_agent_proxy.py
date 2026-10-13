@@ -86,7 +86,7 @@ def test_tv_runtime_plan_includes_native_modules_and_built_frontend():
     plan = build_runtime_module_plan(root)
     prefix = "autoyou_agents/tv_agent/"
     modules = {spec.source_relative_path.as_posix() for spec in plan.compile_specs}
-    assert {prefix + "website/backend/" + name + ".py" for name in ("app", "auth", "store", "media", "jobs", "uploads")} <= modules
+    assert {prefix + "website/backend/" + name + ".py" for name in ("app", "auth", "store", "media", "jobs", "uploads", "playback")} <= modules
     assets = {path.as_posix() for path in plan.asset_files}
     assert prefix + "website/frontend/web/index.html" in assets
     assert any(path.startswith(prefix + "website/frontend/web/assets/") and path.endswith(".js") for path in assets)
@@ -94,7 +94,8 @@ def test_tv_runtime_plan_includes_native_modules_and_built_frontend():
 
 
 @pytest.mark.asyncio
-async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypatch):
+@pytest.mark.parametrize("native", [False, True])
+async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypatch, native):
     import asyncio
     import base64
     from types import SimpleNamespace
@@ -112,8 +113,15 @@ async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypa
     manager = server.WebRTCManager()
     monkeypatch.setattr(manager, "_get_autoyou_forward_target_port", lambda: tv.state.test_listener_port)
     frames = []
+    raw_frames = []
     class Channel:
         chunker = SimpleNamespace(max_chunk_size=DEFAULT_MAX_CHUNK_SIZE)
+        def reliable_binary_http(self):
+            return True
+        async def send_binary_http(self, request_id, sequence, data):
+            from shared.binary_http import encode_frame, RESPONSE_BODY
+            raw_frames.append(encode_frame(RESPONSE_BODY, request_id, sequence, data))
+            return True
         async def send_message(self, message):
             frames.append(message)
             return True
@@ -123,6 +131,8 @@ async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypa
         payload={"request_id": "synthetic-tv-request", "method": "GET",
                  "url": f"http://127.0.0.1:{tv.state.test_listener_port}/api/stream/{item['id']}",
                  "headers": {"Range": "bytes=123-400123"}, "body": ""})
+    if native:
+        request.payload["binary_http"] = 1
     async with httpx.AsyncClient(timeout=10, trust_env=False) as http:
         manager._http_client = http
         await asyncio.wait_for(manager._handle_http_request(request), timeout=10)
@@ -133,6 +143,13 @@ async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypa
     headers = {key.lower(): value for key, value in frames[0].payload["raw_headers"]}
     assert headers["content-length"] == "400001"
     chunks = [frame for frame in frames if frame.header.message_type == MessageType.HTTP_STREAM_DATA]
+    if native:
+        from shared.binary_http import decode_frame, MAX_FRAME_BYTES
+        assert frames[0].payload["headers"]["X-AutoYou-Binary-HTTP"] == "1"
+        assert not chunks and len(raw_frames) > 1
+        assert b"".join(decode_frame(frame)[3] for frame in raw_frames) == body[123:400124]
+        assert all(len(frame) <= MAX_FRAME_BYTES for frame in raw_frames)
+        return
     assert len(chunks) > 1
     assert b"".join(base64.b64decode(frame.payload["data"].removeprefix("base64:")) for frame in chunks) == body[123:400124]
     assert all(len(frame.to_json().encode()) <= DEFAULT_MAX_CHUNK_SIZE for frame in chunks)
