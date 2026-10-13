@@ -508,21 +508,25 @@ cp -a "${BUILD_ROOT}/node-runtime/." "${FINAL_BACKEND_ROOT}/runtime/node/"
 echo "Bundling Playwright Chromium (if available)..."
 bundle_playwright_chromium
 
-echo "Building compiled runtime modules..."
-# Modules from another source tree are named by whoever runs the build, in the
-# manifest AUTOYOU_EXTRA_SOURCES_MANIFEST points at; this script never looks for them.
-EXTRA_SOURCES_ARGS=()
-if [[ -n "${AUTOYOU_EXTRA_SOURCES_MANIFEST:-}" ]]; then
-    EXTRA_SOURCES_ARGS=(--extra-sources "$AUTOYOU_EXTRA_SOURCES_MANIFEST")
+if [[ "${AUTOYOU_REUSE_RUNTIME_MODULES:-}" =~ ^(1|true|yes|on)$ && -d "${FINAL_BACKEND_ROOT}/runtime_modules" && -f "${FINAL_BACKEND_ROOT}/runtime_integrity.json" ]]; then
+    echo "Reusing existing compiled runtime modules in ${FINAL_BACKEND_ROOT}/runtime_modules..."
+else
+    echo "Building compiled runtime modules..."
+    # Modules from another source tree are named by whoever runs the build, in the
+    # manifest AUTOYOU_EXTRA_SOURCES_MANIFEST points at; this script never looks for them.
+    EXTRA_SOURCES_ARGS=()
+    if [[ -n "${AUTOYOU_EXTRA_SOURCES_MANIFEST:-}" ]]; then
+        EXTRA_SOURCES_ARGS=(--extra-sources "$AUTOYOU_EXTRA_SOURCES_MANIFEST")
+    fi
+    "$PYTHON_CMD" "$RUNTIME_MODULE_BUILDER" \
+        --repo-root "$PROJECT_ROOT" \
+        --bundle-root "$FINAL_BACKEND_ROOT" \
+        --build-root "$RUNTIME_MODULE_BUILD_ROOT" \
+        --jobs "$NUITKA_JOBS" \
+        --nuitka-arg=--disable-plugin=transformers \
+        ${EXTRA_SOURCES_ARGS[@]+"${EXTRA_SOURCES_ARGS[@]}"} \
+        --include-emotivoice
 fi
-"$PYTHON_CMD" "$RUNTIME_MODULE_BUILDER" \
-    --repo-root "$PROJECT_ROOT" \
-    --bundle-root "$FINAL_BACKEND_ROOT" \
-    --build-root "$RUNTIME_MODULE_BUILD_ROOT" \
-    --jobs "$NUITKA_JOBS" \
-    --nuitka-arg=--disable-plugin=transformers \
-    ${EXTRA_SOURCES_ARGS[@]+"${EXTRA_SOURCES_ARGS[@]}"} \
-    --include-emotivoice
 
 for native_module in remote_desktop_input remote_desktop_settings; do
     if ! compgen -G "${FINAL_BACKEND_ROOT}/runtime_modules/shared/${native_module}*.so" >/dev/null; then
