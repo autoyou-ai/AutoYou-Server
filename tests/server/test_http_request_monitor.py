@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-9e1ee15132167f466177085c
+
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -14,6 +23,8 @@ from shared.http_request_monitor import (
     install_http_monitor_routes,
     install_http_request_capture,
 )
+
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-9e1ee15132167f466177085c"
 
 SERVER_ROOT = Path(__file__).resolve().parents[2]
 
@@ -256,6 +267,7 @@ def test_http_capture_is_wired_to_all_primary_web_listener_paths():
             'install_http_request_capture(app, service_name="agent_website", agent_name=_AGENT_NAME)',
         ),
     }
+    # from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_9e1ee15132167f466177085c
     for relative_path, markers in expected.items():
         source = (SERVER_ROOT / relative_path).read_text(encoding="utf-8")
         assert all(marker in source for marker in markers), relative_path

@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-897a7ab102c0a694509f20fc
+
 """Protected Game Studio website and the local engine protocol description."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from io import BytesIO
@@ -18,6 +27,8 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 from shared.runtime_module_loader import import_autoyou_shared_tools_module
 from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
 
+__debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-897a7ab102c0a694509f20fc"
+
 
 _smc = import_autoyou_shared_tools_module(
     "autoyou_agents.shared_tools.scheduler_mission_control", anchor=__file__
@@ -31,6 +42,7 @@ _UNREAL_PLUGIN_FILES = (
     "Source/AutoYouGameInput/Public/AutoYouGameInputSubsystem.h",
     "Source/AutoYouGameInput/Private/AutoYouGameInputSubsystem.cpp",
 )
+# from __debug_trace_i__ import autoyou_provenance_i_75676820766f6c756e746172_897a7ab102c0a694509f20fc
 _MAX_MOBILE_GAME_BYTES = 511 * 1024
 
 

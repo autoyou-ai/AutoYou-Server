@@ -1,11 +1,17 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-f7bef55804c98d0aac8cf63f
+
 # See the LICENSE file in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
 
 """Own external HTTP backends declared by installed agent website manifests."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import hashlib
@@ -33,6 +39,8 @@ from shared.process_lifecycle import (
     process_tree_pids,
 )
 from autoyou_agents.shared_tools._subprocess_env import scrubbed_subprocess_env
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-f7bef55804c98d0aac8cf63f"
 
 
 LOGGER = logging.getLogger(__name__)
@@ -191,6 +199,7 @@ class ManagedRuntimeHandle:
     agent_name: str
     port: int
     shutdown_timeout_seconds: float
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_f7bef55804c98d0aac8cf63f
     environment: Dict[str, str]
     log_file: Optional[BinaryIO] = None
     process: Optional[subprocess.Popen] = None

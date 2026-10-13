@@ -1,13 +1,20 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-V-000000000000000000000000-c813691164ec33d8859e7073
 
 """Customize staged Google ADK Web assets without changing the installed package."""
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import re
 from pathlib import Path
+
+__debug_trace_v__ = "AUTOYOU-PROVENANCE-V-000000000000000000000000-c813691164ec33d8859e7073"
 
 
 ADK_WEB_PATCH_SENTINEL = "AUTOYOU_ADK_WEB_UI_PATCH_V2"
@@ -50,6 +57,7 @@ class AdkWebUiPatchError(RuntimeError):
 def _find_matching_brace(source: str, opening: int) -> int:
     """Find a JavaScript block's closing brace, skipping strings and comments."""
     depth = 0
+    # from __debug_trace_v__ import autoyou_provenance_v_000000000000000000000000_c813691164ec33d8859e7073
     index = opening
     while index < len(source):
         if source.startswith("//", index):

@@ -1,5 +1,15 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-R-000000000000000000000000-74308e89e427ae1fa01f4cca
+
 """Live QR carries the existing AutoPair exchange; grants live only in memory."""
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_r__ import autoyou_provenance_r_000000000000000000000000_74308e89e427ae1fa01f4cca
 
 import asyncio
 import base64
@@ -8,6 +18,8 @@ import json
 import re
 import secrets
 import time
+
+__debug_trace_r__ = "AUTOYOU-PROVENANCE-R-000000000000000000000000-74308e89e427ae1fa01f4cca"
 
 PROTOCOL = "autoyou-live-pair/1"
 MAX_BYTES = 65536

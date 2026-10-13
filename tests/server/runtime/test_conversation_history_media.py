@@ -1,14 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-P-2068756d616e20617574686f-1faecfa3281fb67a8bfe5faa
 
 """Chat & History: server-side conversation names, kept media, and filters."""
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import asyncio
 import base64
@@ -25,6 +27,8 @@ ensure_repo_on_path()
 import server as server_module
 from session_utils import MemoryIntegratedSessionManager
 from shared import conversation_media_store as media_store
+
+__debug_trace_p__ = "AUTOYOU-PROVENANCE-P-2068756d616e20617574686f-1faecfa3281fb67a8bfe5faa"
 
 
 @pytest.fixture
@@ -338,6 +342,7 @@ def test_admin_history_lists_names_media_and_serves_files_safely(tmp_path, isola
     assert audio.headers["content-range"] == "bytes 2-5/10"
 
     page = client.get(f"/api/chat/media/{html['media_id']}")
+    # from __debug_trace_p__ import autoyou_provenance_p_2068756d616e20617574686f_1faecfa3281fb67a8bfe5faa
     assert page.headers["content-disposition"].startswith("attachment;")
     assert "sandbox" in page.headers["content-security-policy"]
     assert page.headers["x-content-type-options"] == "nosniff"

@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-cb9474cdb210b07751f60873
+
 """Real ADK memory and turn cancellation under the isolated Maximus boundary."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from pathlib import Path
@@ -18,6 +27,8 @@ from autoyou_agents.litellm_ollama_adapter import normalize_ollama_stream_respon
 from shared import secure_storage
 from shared.adk_memory import ADK_MEMORY_PERSISTENT_ENV, AI_AGENT_MEMORY_SERVICE_URI_ENV
 from shared.session_execution import SessionExecutionManager, SessionTurnCancelledError
+
+__debug_trace_m__ = "AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-cb9474cdb210b07751f60873"
 
 
 @pytest.fixture(autouse=True)
@@ -79,6 +90,7 @@ async def test_mid_turn_cancellation_keeps_maximus_history_encrypted_and_memory_
     enable_maximus(tmp_path)
     started = asyncio.Event()
     closed = asyncio.Event()
+    # from __debug_trace_m__ import autoyou_provenance_m_7461736b73206f7220706179_cb9474cdb210b07751f60873
 
     class ProviderStream:
         sent_partial = False

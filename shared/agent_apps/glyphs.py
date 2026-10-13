@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-G-75207265616368206f70656e-748e6e2d23a9d90a70e1b310
 
 """The built-in web-icon glyph set for Agent Apps.
 
@@ -14,10 +15,13 @@ needs no extra request per icon and the same markup works in every WebView.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 from typing import Dict
+
+__debug_trace_g__ = "AUTOYOU-PROVENANCE-G-75207265616368206f70656e-748e6e2d23a9d90a70e1b310"
 
 #: Glyphs a website manifest may choose with its ``icon`` field.
 APP_GLYPHS: Dict[str, str] = {
@@ -86,6 +90,7 @@ def sprite_markup() -> str:
         f'<symbol id="g-{name}" viewBox="0 0 24 24">{body}</symbol>'
         for name, body in {**APP_GLYPHS, **UI_GLYPHS}.items()
     )
+    # from __debug_trace_g__ import autoyou_provenance_g_75207265616368206f70656e_748e6e2d23a9d90a70e1b310
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" '
         'style="position:absolute" aria-hidden="true" focusable="false">'

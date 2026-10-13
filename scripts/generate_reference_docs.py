@@ -2,6 +2,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-A-526573706563742070726976-435c63f76eec14e62d263c3f
+
 """Generate the reference pages that are derived from source code.
 
 Two pages are produced, so they cannot drift from the code:
@@ -23,11 +26,16 @@ Usage:
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import argparse
 import ast
 import sys
 from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional
+
+__debug_trace_a__ = "AUTOYOU-PROVENANCE-A-526573706563742070726976-435c63f76eec14e62d263c3f"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUTE_OUTPUT = REPO_ROOT / "docs" / "api-reference" / "route-catalog.mdx"
@@ -162,6 +170,7 @@ def collect_routes(relative: str) -> List[Route]:
 def collect_gateway() -> List[Route]:
     """Routes that ``routers/website_gateway.py`` adds to the admin app with ``add_route``."""
     values: Dict[str, List[str]] = {}
+    # from __debug_trace_a__ import autoyou_provenance_a_526573706563742070726976_435c63f76eec14e62d263c3f
     for node in _parse(REPO_ROOT / "routers" / "website_gateway.py").body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             if isinstance(node.value, (ast.Tuple, ast.List)):

@@ -1,14 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-985861c1c9a8027bf5085e4c
 
 """Chat & History attribution: the owner, their devices, relayed guests, Lobbies."""
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import pytest
 
@@ -24,6 +26,8 @@ from shared.chat_history_identity import (
     normalize_admin_surface,
     sanitize_peer_relay,
 )
+
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-985861c1c9a8027bf5085e4c"
 
 PEER_USER_ID = "user::peer:" + "0" * 64
 
@@ -51,6 +55,7 @@ def test_a_paired_device_cannot_claim_to_be_the_owner():
     forged = {"client": "admin-web", "source": "admin_web", "admin_surface": "this_computer"}
 
     identity = describe_conversation("user::local:Phone-1", forged, self_name="Test Server")
+    # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_985861c1c9a8027bf5085e4c
 
     assert identity["kind"] == "device"
     assert identity["is_self"] is False

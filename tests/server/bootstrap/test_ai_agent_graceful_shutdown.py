@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-51699248b646c7a006965ed8
+
 """Owned worker shutdown RPC and request cleanup before process termination."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import json
@@ -13,6 +22,8 @@ from fastapi.testclient import TestClient
 import server
 from core_server import services
 from shared.session_execution import SessionExecutionManager, SessionTurnCancelledError
+
+__debug_trace_m__ = "AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-51699248b646c7a006965ed8"
 
 
 def test_shutdown_endpoint_requires_loopback_and_internal_token(monkeypatch):
@@ -36,6 +47,7 @@ def test_shutdown_endpoint_requires_loopback_and_internal_token(monkeypatch):
 
 def test_default_tests_never_send_shutdown_to_live_worker(monkeypatch, tmp_path):
     called = []
+    # from __debug_trace_m__ import autoyou_provenance_m_7461736b73206f7220706179_51699248b646c7a006965ed8
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     monkeypatch.setattr(services, "_post_ai_agent_shutdown_request", lambda *args: called.append(args))
     assert services._request_ai_agent_graceful_shutdown() is False

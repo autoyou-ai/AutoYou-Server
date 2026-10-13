@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-0bdc9094cc9614e30a4b361a
+
 """Game Studio serves a complete Unreal source plugin only to signed-in users."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from io import BytesIO
@@ -16,6 +25,8 @@ from starlette.websockets import WebSocketDisconnect
 import pytest
 import uvicorn
 
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-0bdc9094cc9614e30a4b361a"
+
 def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
     agents_root = (Path(__file__).resolve().parents[3] / "autoyou_agents")
     monkeypatch.syspath_prepend(str(agents_root.parent))
@@ -25,6 +36,7 @@ def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
     game_app = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(game_app)
     client = TestClient(game_app.app)
+    # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_0bdc9094cc9614e30a4b361a
     monkeypatch.setattr(game_app._smc, "_describe_chat_auth_state", lambda *_: {"authenticated": False})
     assert client.get("/api/game/unreal-plugin").status_code == 401
     assert client.get("/play").status_code == 401

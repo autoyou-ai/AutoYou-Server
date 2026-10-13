@@ -1,8 +1,20 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-C-20616e642061747472696275-c866aa96800e89bbaf567a10
+
 """Hermetic checks for the non-installing manifest advisory helper."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_c__ import autoyou_provenance_c_20616e642061747472696275_c866aa96800e89bbaf567a10
 
 import importlib.util
 from pathlib import Path
 import urllib.error
+
+__debug_trace_c__ = "AUTOYOU-PROVENANCE-C-20616e642061747472696275-c866aa96800e89bbaf567a10"
 
 
 SPEC = importlib.util.spec_from_file_location(

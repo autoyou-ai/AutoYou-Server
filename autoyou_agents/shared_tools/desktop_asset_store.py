@@ -1,8 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-desktop-assets-20260929
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-G-75207265616368206f70656e-87f54143f2b51dd7d471e35f
 
 """Per-user storage and import for locally calibrated desktop asset packs.
 
@@ -14,7 +14,8 @@ directory, and are never discovered by the release packager.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import hashlib
 import io
@@ -31,6 +32,8 @@ import zipfile
 from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional
+
+__debug_trace_g__ = "AUTOYOU-PROVENANCE-G-75207265616368206f70656e-87f54143f2b51dd7d471e35f"
 
 __debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-desktop-assets-20260929"
 
@@ -649,6 +652,7 @@ def _manifest_member(names: Iterable[str]) -> tuple[str, str]:
     if len(candidates) != 1:
         raise ValueError("ZIP must contain exactly one manifest.json at its root or one top-level pack folder.")
     manifest_path = PurePosixPath(candidates[0])
+    # from __debug_trace_g__ import autoyou_provenance_g_75207265616368206f70656e_87f54143f2b51dd7d471e35f
     if len(manifest_path.parent.parts) > 1:
         raise ValueError("manifest.json must be at the ZIP root or one top-level pack folder.")
     prefix = manifest_path.parent.as_posix()

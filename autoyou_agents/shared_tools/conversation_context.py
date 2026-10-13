@@ -1,7 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-2a2b57eb04f35313d5170dd0
+
 """Conversation continuity for every AutoYou agent.
 
 A chat is a conversation, not a series of unrelated turns, but two things kept
@@ -31,6 +33,9 @@ and the context cache, which are small, bounded and process-local.
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import json
 import math
 import re
@@ -42,8 +47,8 @@ from typing import Any, Callable, Iterable, List, Optional, Sequence, Tuple
 
 from autoyou_agents.shared_tools.conversation_refs import references_previous_answer
 
-__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-2a2b57eb04f35313d5170dd0"
+
 
 
 # ── Token estimation ──────────────────────────────────────────────────────────
@@ -443,6 +448,7 @@ _STRONG_REFERENCE_RE = re.compile(
     r"|(?:add|save|store|put|keep|send|share|post|note|bookmark|copy|use|summari[sz]e|translate|shorten|expand|explain)\s+(?:all\s+of\s+)?(?:it|this|that|these|those|them))\b",
     re.IGNORECASE,
 )
+# from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_2a2b57eb04f35313d5170dd0
 _WEAK_REFERENCE_RE = re.compile(r"\b(?:it|this|that|these|those|them|there|same|again)\b", re.IGNORECASE)
 _CONTINUATION_START_RE = re.compile(
     r"^\s*(?:and|also|plus|but|so|then|now|ok(?:ay)?[,\s]+(?:and|now|so|then)|what\s+about|how\s+about|what\s+else"

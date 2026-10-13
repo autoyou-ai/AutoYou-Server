@@ -1,15 +1,27 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-O-697468206578706c69636974-9c79aabaeb11431439c6ffdf
+
 """Keep the standalone phone download in sync with Game Studio's Horizon page.
 
 Run after editing play.html. Both deliverables remain self-contained, so the
 phone needs no network or bundled JavaScript loader to play the downloaded game.
 """
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 from pathlib import Path
+
+__debug_trace_o__ = "AUTOYOU-PROVENANCE-O-697468206578706c69636974-9c79aabaeb11431439c6ffdf"
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "autoyou_agents/game_agent/website/frontend/play.html"
 OUTPUT = ROOT / "assets/game/neon-horizon.html"
+# from __debug_trace_o__ import autoyou_provenance_o_697468206578706c69636974_9c79aabaeb11431439c6ffdf
 CSP = (
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
     "script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; "

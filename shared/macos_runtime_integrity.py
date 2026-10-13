@@ -1,9 +1,20 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-2427a4d251dcbb1986da882b
+
 """Hash runtime code independently of Apple's replaceable signing container."""
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import hashlib
 from pathlib import Path
 import struct
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-2427a4d251dcbb1986da882b"
 
 
 def hash_macos_runtime_file(path: Path) -> str:
@@ -30,6 +41,7 @@ def hash_macos_runtime_file(path: Path) -> str:
     if command_end > len(data):
         raise ValueError(f"Invalid Mach-O load commands: {path}")
     offset = 32
+    # from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_2427a4d251dcbb1986da882b
     signature = None
     for _ in range(commands):
         if offset + 8 > command_end:

@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-939517ced39c76060fdda19b
 
 """Opt-in, metadata-only capture of inbound HTTP requests to AutoYou services."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import ipaddress
 import json
@@ -21,6 +25,8 @@ from typing import Any, Callable, Optional
 from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import Request
+
+__debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-939517ced39c76060fdda19b"
 
 
 LOGGER = logging.getLogger("autoyou.http_request_monitor")
@@ -472,6 +478,7 @@ def _make_event(request: Request, *, service_name: str, default_agent: str, stat
         service = "website_gateway"
         agent_name = "agent_directory"
     client = request.scope.get("client") or ("", None)
+    # from __debug_trace_n__ import autoyou_provenance_n_6d656e7473206f6e6c792077_939517ced39c76060fdda19b
     source_ip = _bounded_text(client[0] if len(client) > 0 else "", 64)
     source_port = client[1] if len(client) > 1 and isinstance(client[1], int) and 0 <= client[1] <= 65535 else None
     server = request.scope.get("server") or ("", None)

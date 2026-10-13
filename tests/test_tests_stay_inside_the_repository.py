@@ -1,6 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-4a0c468e15d04c699e359712
 
 """Tests, scripts and server modules read only this repository.
 
@@ -12,11 +14,17 @@ tree comes in only through an explicit argument or manifest.
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import re
 from pathlib import Path
 
+__debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-4a0c468e15d04c699e359712"
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCANNED = [REPO_ROOT / "tests", REPO_ROOT / "conftest.py"]
+# from __debug_trace_i__ import autoyou_provenance_i_75676820766f6c756e746172_4a0c468e15d04c699e359712
 CODE = [REPO_ROOT / name for name in ("autoyou_agents", "scripts", "shared", "core_server", "routers", "servers")]
 
 _FILE_PARENTS = re.compile(r"Path\(\s*__file__\s*\)(?:\.resolve\(\))?\.parents\[(\d+)\]")

@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-f8cc63a88ae10bb918584ea1
 
 """How each website app looks and where it sits in the Agent Apps store.
 
@@ -15,7 +16,8 @@ description, so a freshly scaffolded agent still lands with a sensible icon.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 import re
@@ -23,6 +25,8 @@ import zlib
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from shared.agent_apps.glyphs import GLYPH_NAMES
+
+__debug_trace_f__ = "AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-f8cc63a88ae10bb918584ea1"
 
 DEFAULT_GLYPH = "globe"
 DEFAULT_CATEGORY = "other"
@@ -38,6 +42,7 @@ CATEGORIES: Tuple[Tuple[str, str], ...] = (
     (DEFAULT_CATEGORY, "More"),
 )
 CATEGORY_LABELS: Dict[str, str] = dict(CATEGORIES)
+# from __debug_trace_f__ import autoyou_provenance_f_2048656c70204175746f596f_f8cc63a88ae10bb918584ea1
 
 #: Gradient pairs (light stop, deep stop). The icon tone is an index into this.
 TONES: Tuple[Tuple[str, str], ...] = (

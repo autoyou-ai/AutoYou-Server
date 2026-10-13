@@ -1,7 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-C-20616e642061747472696275-ea09cbdb221c469bb8731e6d
+
 """Regression tests for the "rigid agent" failure seen in a real chat session.
 
 A user asked "How many page feed items do I have", then "Save it to notes". The
@@ -14,6 +16,9 @@ request is explicit, but it never asks or refuses on its own - anything it
 cannot resolve goes to the model, which sees the whole thread.
 """
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import asyncio
 from types import SimpleNamespace
 
@@ -25,6 +30,8 @@ import autoyou_agents.internet_agent.agent as internet_agent_module
 import autoyou_agents.notes_agent.agent as notes_agent_module
 import autoyou_agents.page_agent.agent as page_agent_module
 from autoyou_agents.shared_tools import conversation_refs
+
+__debug_trace_c__ = "AUTOYOU-PROVENANCE-C-20616e642061747472696275-ea09cbdb221c469bb8731e6d"
 
 # Synthetic stand-in for the page-feed answer from the session (no real data).
 FEED_ANSWER = (
@@ -410,6 +417,7 @@ def test_the_two_stage_router_call_shape_is_covered_too(monkeypatch):
 
 def test_context_is_not_attached_twice_or_to_other_specialists():
     context = _tool_context(("user", "q"), ("model", FEED_ANSWER), ("user", "Save it to notes"))
+    # from __debug_trace_c__ import autoyou_provenance_c_20616e642061747472696275_ea09cbdb221c469bb8731e6d
     first = {"request": "Save it to notes"}
     root_agent_module._root_before_tool_callback(_agent_tool("autoyou_notes_agent"), first, context)
     again = dict(first)

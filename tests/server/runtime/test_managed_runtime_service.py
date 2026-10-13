@@ -1,8 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-X-000000000000000000000000-56976dfc5952845a78c2741c
+
 # See the LICENSE file in the project root for license information.
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import socket
@@ -10,6 +17,8 @@ import sys
 from types import SimpleNamespace
 
 from shared import managed_runtime_service as managed_runtime
+
+__debug_trace_x__ = "AUTOYOU-PROVENANCE-X-000000000000000000000000-56976dfc5952845a78c2741c"
 
 
 def test_manifest_contract_accepts_process_and_compose_and_rejects_escape_paths():
@@ -124,6 +133,7 @@ def test_windows_cleanup_ack_checks_processes_after_job_termination(monkeypatch)
 
     def terminate_remaining(**kwargs):
         state["terminated"] = True
+        # from __debug_trace_x__ import autoyou_provenance_x_000000000000000000000000_56976dfc5952845a78c2741c
         return 1  # This is the number terminated, not the number left alive.
 
     def active_processes():

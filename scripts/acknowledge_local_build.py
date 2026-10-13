@@ -2,10 +2,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-a7e2f1f0a039e93cd0e0d9aa
 
 """Locally record acceptance of the current AutoYou build notices."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import argparse
 import datetime as dt
@@ -17,6 +22,8 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+__debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-a7e2f1f0a039e93cd0e0d9aa"
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +75,7 @@ def save_acknowledgement(path: Path, notices: dict[str, str], method: str) -> No
         "accepted_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "method": method,
     }
+    # from __debug_trace_i__ import autoyou_provenance_i_75676820766f6c756e746172_a7e2f1f0a039e93cd0e0d9aa
     temporary_path = None
     try:
         with tempfile.NamedTemporaryFile(

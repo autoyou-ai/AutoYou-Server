@@ -1,11 +1,23 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-T-000000000000000000000000-3333d8a9f38a54efc4724e08
+
 """The downloadable engine adapter keeps each player's held state separate."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import importlib.util
 from pathlib import Path
 
+__debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-3333d8a9f38a54efc4724e08"
+
 
 def test_engine_adapter_releases_all_players_after_backlog_reset():
     path = (Path(__file__).resolve().parents[3] / "autoyou_agents") / "game_agent/website/frontend/assets/game_input_client.py"
+    # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_3333d8a9f38a54efc4724e08
     spec = importlib.util.spec_from_file_location("game_input_client_example", path)
     client = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(client)

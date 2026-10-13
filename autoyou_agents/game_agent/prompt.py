@@ -1,4 +1,16 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-fdbf918837c452ba250c7712
+
+__debug_trace_f__ = "AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-fdbf918837c452ba250c7712"
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 AGENT_NAME = "autoyou_game_agent"
+# from __debug_trace_f__ import autoyou_provenance_f_2048656c70204175746f596f_fdbf918837c452ba250c7712
 AGENT_DESCRIPTION = "Design games for AutoYou's native Android and iOS clients."
 AGENT_INSTRUCTION = """Help the operator design games for AutoYou's native Android and iOS clients.
 The server's Neon Horizon demo downloads to each phone and runs without video. Host games stream through AutoYou;

@@ -1,5 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-O-697468206578706c69636974-e5d55b5867833be038ce2a6b
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import logging
@@ -18,6 +24,8 @@ from shared.datachannel_manager import create_chat_message
 from shared.session_execution import (
     SessionExecutionManager, SessionTurnCancelledError, SessionQueueFullError, SessionTurnTimeoutError,
 )
+
+__debug_trace_o__ = "AUTOYOU-PROVENANCE-O-697468206578706c69636974-e5d55b5867833be038ce2a6b"
 
 
 def setup_control(monkeypatch):
@@ -97,6 +105,7 @@ async def test_stop_is_bound_to_the_current_owned_conversation(monkeypatch):
 @pytest.mark.asyncio
 async def test_stop_confirms_cleanup_without_cancelling_unrelated_transport_work(monkeypatch):
     execution, engine, identity, target, received, _ = setup_control(monkeypatch)
+    # from __debug_trace_o__ import autoyou_provenance_o_697468206578706c69636974_e5d55b5867833be038ce2a6b
     started = asyncio.Event()
 
     async def handler():

@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-0d800ed000b6c0466959fee9
+
 """The paired phone downloads game HTML from the computer over its data channel."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import base64
 import asyncio
@@ -12,6 +21,8 @@ import pytest
 import server
 from core_server import webrtc_engine
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
+
+__debug_trace_j__ = "AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-0d800ed000b6c0466959fee9"
 
 
 @pytest.mark.asyncio
@@ -27,6 +38,7 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
     monkeypatch.setattr(server.STATE, "config", config, raising=False)
 
     webrtc = server.WebRTCManager()
+    # from __debug_trace_j__ import autoyou_provenance_j_7920636f6e74726962757469_0d800ed000b6c0466959fee9
     channel = SimpleNamespace(send_message=AsyncMock(return_value=True))
     webrtc.datachannel_managers["synthetic-session"] = channel
 

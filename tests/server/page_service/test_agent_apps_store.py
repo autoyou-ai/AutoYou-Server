@@ -1,14 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-578492ad9ec7376b116ac971
 
 """Agent Apps store: presentation catalog, payload, first paint and script contract."""
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import json
 import re
@@ -27,6 +29,8 @@ from shared.agent_apps import catalog
 from shared.agent_apps.glyphs import APP_GLYPHS, GLYPH_NAMES, UI_GLYPHS, sprite_markup
 from shared.agent_apps.page import render_agent_apps_page
 from shared.agent_apps.page_js import JS
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-578492ad9ec7376b116ac971"
 
 
 def _site(name, title="", description="", **extra):
@@ -87,6 +91,7 @@ def test_unknown_agents_get_an_inferred_icon_and_stable_tone():
     journal = catalog.describe_agent_app(_site("diary_agent", "Daily Diary", "Write a private journal"))
     assert journal["glyph"] == "notes"
     plain = catalog.describe_agent_app(_site("xyzzy_agent", "Xyzzy", "Does a thing"))
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_578492ad9ec7376b116ac971
     assert plain["glyph"] == catalog.DEFAULT_GLYPH
     assert plain["rank"] == catalog.UNRANKED
     assert catalog.describe_agent_app(_site("xyzzy_agent"))["tone"] == plain["tone"]

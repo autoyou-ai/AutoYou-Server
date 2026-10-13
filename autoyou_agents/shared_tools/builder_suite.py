@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-4544e41fad2099f0b4bc24db
 
 """Shared helpers for the AutoYou agent-builder workflow suite."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import os
 import re
@@ -22,12 +26,15 @@ from autoyou_agents.shared_tools.agent_install_registry import (
 )
 from shared.ollama_capabilities import resolve_installed_ollama_model
 
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-4544e41fad2099f0b4bc24db"
+
 
 DEFAULT_BUILDER_SUITE_OLLAMA_MODEL = "qwen3.8:27b"
 BUILDER_SUITE_MODEL_ENV_VARS = (
     "AUTOYOU_BUILDER_SUITE_OLLAMA_MODEL",
     "AUTOYOU_AGENT_BUILDER_OLLAMA_MODEL",
 )
+# from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_4544e41fad2099f0b4bc24db
 
 BUILDER_SUITE_AGENT_NAMES = (
     "agent_builder_agent",

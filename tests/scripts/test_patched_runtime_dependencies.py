@@ -1,5 +1,14 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-a77ce67caebe1f3bce8956a8
+
 """Opt-in real dependency checks; no operator package installation or application."""
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import os
 from pathlib import Path
@@ -7,6 +16,8 @@ import subprocess
 import sys
 
 import pytest
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-a77ce67caebe1f3bce8956a8"
 
 
 def probe(tmp_path: Path, code: str) -> None:
@@ -17,6 +28,7 @@ def probe(tmp_path: Path, code: str) -> None:
     assert packages.is_dir()
     env = dict(os.environ, AUTOYOU_TEST_ROOT=str(tmp_path), PYTHONDONTWRITEBYTECODE="1",
                AUTOYOU_DISABLE_DOTENV="1", PYTHON_DOTENV_DISABLED="1")
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_a77ce67caebe1f3bce8956a8
     setup = "import sys; sys.path.insert(0, sys.argv[1]);\n"
     result = subprocess.run([sys.executable, "-I", "-c", setup + code, str(packages)],
                             env=env, cwd=tmp_path, capture_output=True, text=True, timeout=30)

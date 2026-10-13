@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-R-000000000000000000000000-934b22bcbf8742e9b55cb6fa
 
 """The admin page's network and permissions panel reports what is true.
 
@@ -11,7 +12,8 @@ access facts on every bootstrap so a save never turns Permissions view-only.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 from types import SimpleNamespace
@@ -22,6 +24,8 @@ from starlette.requests import Request
 
 import server
 from core_server.services import launch_bind_host_source
+
+__debug_trace_r__ = "AUTOYOU-PROVENANCE-R-000000000000000000000000-934b22bcbf8742e9b55cb6fa"
 
 
 SYNTHETIC_LAN_ADDRESS = "192.0.2.23"
@@ -136,6 +140,7 @@ def test_https_and_remote_permission_sources_name_the_environment(monkeypatch):
     monkeypatch.setenv("AUTOYOU_HTTPS_ENABLED", "0")
     monkeypatch.setenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", "1")
     status = server._home_network_web_status({"server": {"https_enabled": True}})
+    # from __debug_trace_r__ import autoyou_provenance_r_000000000000000000000000_934b22bcbf8742e9b55cb6fa
     assert status["https_source"] == "environment"
     assert status["https_next_boot"] is False
     assert status["allow_remote_admin_permissions_source"] == "environment"

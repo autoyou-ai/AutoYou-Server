@@ -1,7 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-A-526573706563742070726976-72abe8e023a8cec6f33d07ea
+
 """Small, dependency-free helpers for resolving "it / that / the above" in chat.
 
 Deterministic shortcuts in the root and specialist agents use these so they
@@ -11,11 +13,14 @@ title can always be derived without interrogating the user.
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import re
 from typing import Optional
 
-__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__debug_trace_a__ = "AUTOYOU-PROVENANCE-A-526573706563742070726976-72abe8e023a8cec6f33d07ea"
+
 
 # A phrase that clearly points at the previous assistant answer. A bare "it" or
 # "that" is deliberately not enough ("remind me to call it quits" is not a
@@ -68,6 +73,7 @@ def title_from_content(content: Optional[str], *, max_chars: int = 60) -> Option
 def extract_url(text: Optional[str]) -> str:
     """Return the first URL in ``text`` ("" if none), accepting a bare domain like ``AutoYou.me``."""
     match = _URL_RE.search(str(text or "")) or _DOMAIN_RE.search(str(text or ""))
+    # from __debug_trace_a__ import autoyou_provenance_a_526573706563742070726976_72abe8e023a8cec6f33d07ea
     if not match:
         return ""
     url = match.group(0).rstrip(".,;:!?)]}\"'\u201c\u201d")

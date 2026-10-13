@@ -1,13 +1,14 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-desktop-assets-20260929
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-V-000000000000000000000000-f18c0cff4bbb672b2f0c56d7
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import asyncio
 import io
@@ -23,6 +24,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from routers.admin_ui import register_routes
+
+__debug_trace_v__ = "AUTOYOU-PROVENANCE-V-000000000000000000000000-f18c0cff4bbb672b2f0c56d7"
 
 __debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-desktop-assets-20260929"
 
@@ -136,6 +139,7 @@ def test_desktop_asset_preferences_are_admin_only_and_test_root_scoped(monkeypat
 
 def test_desktop_asset_zip_upload_is_authenticated_and_test_root_scoped(monkeypatch, tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
+    # from __debug_trace_v__ import autoyou_provenance_v_000000000000000000000000_f18c0cff4bbb672b2f0c56d7
     runtime_root.mkdir()
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(runtime_root))
     monkeypatch.delenv("AUTOYOU_RUNTIME_ROOT", raising=False)

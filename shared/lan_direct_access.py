@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-b3b608a98859693492c2ea16
+
 """Device passes for opening this computer's websites directly on the home network.
 
 A device paired through Local Pair normally browses this computer's websites
@@ -22,6 +25,9 @@ security mode changes (the ``epoch`` the server derives from them).
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import base64
 import hashlib
 import secrets
@@ -31,6 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 from urllib.parse import urlsplit
+
+__debug_trace_q__ = "AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-b3b608a98859693492c2ea16"
 
 PASS_COOKIE_NAME = "autoyou_device_pass"
 REDEEM_PATH = "/__autoyou/device-pass"
@@ -65,6 +73,7 @@ class DevicePassStore:
         self._clock = clock
         self._codes: Dict[str, DevicePass] = {}
         self._passes: Dict[str, DevicePass] = {}
+        # from __debug_trace_q__ import autoyou_provenance_q_72697a6174696f6e2e000000_b3b608a98859693492c2ea16
         self._lock = threading.Lock()
 
     def _prune(self, now: float) -> None:

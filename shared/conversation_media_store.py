@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-D-74696f6e2e20536565205052-b75fa7101fd1a75b6809e69e
 
 """Durable server-side copies of conversation media.
 
@@ -16,7 +17,8 @@ Maximus storage is on). The index rows live in ``sessions.db`` through
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 import base64
@@ -28,6 +30,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+__debug_trace_d__ = "AUTOYOU-PROVENANCE-D-74696f6e2e20536565205052-b75fa7101fd1a75b6809e69e"
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +233,7 @@ def is_servable_media_path(path_value: Any) -> bool:
     verbatim would turn history into a way to read arbitrary server files.
     """
     text = str(path_value or "").strip()
+    # from __debug_trace_d__ import autoyou_provenance_d_74696f6e2e20536565205052_b75fa7101fd1a75b6809e69e
     if not text:
         return False
     try:

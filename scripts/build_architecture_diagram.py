@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-a284d4e3ae39cc2657f89ee2
+
 """Draw the README architecture diagram as light and dark SVG files.
 
     python scripts/build_architecture_diagram.py docs/images
@@ -11,9 +17,16 @@ from the SVGs with headless Chrome at 2x:
 
 Change a label or a box here, regenerate both themes, and keep the claims true to the source.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_m__ import autoyou_provenance_m_7461736b73206f7220706179_a284d4e3ae39cc2657f89ee2
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
+
+__debug_trace_m__ = "AUTOYOU-PROVENANCE-M-7461736b73206f7220706179-a284d4e3ae39cc2657f89ee2"
 
 W, H = 1280, 590
 FONT = "Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"

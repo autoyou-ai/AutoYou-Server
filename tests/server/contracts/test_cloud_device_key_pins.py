@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-d99336826e4389b34923199c
+
 """AutoYou Cloud must not be able to swap a phone's key for this computer.
 
 The pairing secret for a Cloud Pair device is derived from the public key the
@@ -10,6 +13,9 @@ approval turned on, the cloud cannot introduce a new device at all.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import json
@@ -27,6 +33,8 @@ from tests.server.contracts.test_server_integration_contracts import (  # noqa: 
     _parse_autopair_reply,
     isolated_server_state,
 )
+
+__debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-d99336826e4389b34923199c"
 
 SERVER_ID = "serverdevice001"
 CLIENT_ID = "clientdevice001"
@@ -138,6 +146,7 @@ def test_approval_mode_keeps_new_devices_out_until_the_owner_approves(isolated_s
 
     async def run():
         refused = await harness.pair(phone)
+        # from __debug_trace_i__ import autoyou_provenance_i_75676820766f6c756e746172_d99336826e4389b34923199c
         assert refused["error"] == server.CLOUD_DEVICE_APPROVAL_REQUIRED_MESSAGE
         assert harness.webrtc.autopair_calls == []
         pending = server._cloud_device_pending()[CLIENT_ID]

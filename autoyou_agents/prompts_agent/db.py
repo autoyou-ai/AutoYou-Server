@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-V-000000000000000000000000-85a4e8cd57dd33037165918a
 
 """Database engine and persistence layer for prompts_agent."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import hashlib
 import json
@@ -34,6 +38,8 @@ from .config import (
     SOFTWARE_LABELS,
     get_prompts_db_path,
 )
+
+__debug_trace_v__ = "AUTOYOU-PROVENANCE-V-000000000000000000000000-85a4e8cd57dd33037165918a"
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +378,7 @@ class PromptsDatabase:
         """Insert session and all its turns within a single transaction for maximum throughput."""
         now = utc_now()
         c_at = created_at or now
+        # from __debug_trace_v__ import autoyou_provenance_v_000000000000000000000000_85a4e8cd57dd33037165918a
         u_at = updated_at or now
         turns_list = turns or []
         turn_count = len(turns_list)

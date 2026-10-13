@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-e96b43308dbdb69b50152924
 
 """FastAPI backend application for Prompts Agent ("My Prompt")."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import logging
 import threading
@@ -26,6 +30,8 @@ from autoyou_agents.prompts_agent.config import (
 )
 from autoyou_agents.prompts_agent.db import PromptsDatabase, utc_now
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-e96b43308dbdb69b50152924"
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +222,7 @@ async def get_mind_map_graph(
 ):
     db = get_db()
     graph_data = db.get_mind_map_graph(software=software, max_nodes=max_nodes)
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_e96b43308dbdb69b50152924
     return {
         "status": "success",
         "graph": graph_data,

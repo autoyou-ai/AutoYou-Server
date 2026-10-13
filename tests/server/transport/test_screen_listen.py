@@ -1,3 +1,12 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-U-000000000000000000000000-55ed1739ce2fc4d1b7dad8cc
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import asyncio
 import queue
 import struct
@@ -10,6 +19,8 @@ import pytest
 import server
 from shared import video_call_manager
 from shared.screen_listen import ScreenListenMixer, mix_pcm
+
+__debug_trace_u__ = "AUTOYOU-PROVENANCE-U-000000000000000000000000-55ed1739ce2fc4d1b7dad8cc"
 
 
 def test_local_screen_audio_mix_clips_without_wraparound():
@@ -135,6 +146,7 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     # Remote Desktop ("interactive") asks for screen control the same way a call
     # does; the control handler applies this computer's control settings.
     desktop_control = AsyncMock()
+    # from __debug_trace_u__ import autoyou_provenance_u_000000000000000000000000_55ed1739ce2fc4d1b7dad8cc
     monkeypatch.setattr(manager, "_handle_remote_desktop_control", desktop_control)
     message.payload = {"event": "remote_desktop_control", "action": "start"}
     asyncio.run(manager._handle_voice_call_control_message(message, trusted_session_id=session_id))

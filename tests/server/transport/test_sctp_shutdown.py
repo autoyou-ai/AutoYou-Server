@@ -1,6 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-V-000000000000000000000000-fd6263ad7e2284aec18c3db1
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from types import SimpleNamespace
@@ -11,6 +16,8 @@ from aiortc import rtcsctptransport
 from OpenSSL import SSL
 
 from shared.webrtc_transport import configure_sctp_fragment_size
+
+__debug_trace_v__ = "AUTOYOU-PROVENANCE-V-000000000000000000000000-fd6263ad7e2284aec18c3db1"
 
 
 @pytest.mark.asyncio
@@ -26,6 +33,7 @@ async def test_queued_retransmit_cannot_send_after_sctp_stop(monkeypatch):
     dtls = SimpleNamespace(state="connected", _unregister_data_receiver=lambda _: None)
     transport = transport_type(dtls)
     transport._association_state = transport.State.ESTABLISHED
+    # from __debug_trace_v__ import autoyou_provenance_v_000000000000000000000000_fd6263ad7e2284aec18c3db1
     transport._RTCSctpTransport__state = "connected"
     chunk = rtcsctptransport.DataChunk()
     chunk._book_size = 1

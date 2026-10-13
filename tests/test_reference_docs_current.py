@@ -1,3 +1,9 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-G-75207265616368206f70656e-1f3ac71cf2eee5890023940c
+
 """The generated reference pages must match the source they are generated from.
 
 The route catalog, the agent pages, and the shared-tools page are produced by
@@ -8,11 +14,14 @@ imported or started, so this test reads source files and writes nothing.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 import importlib.util
 from pathlib import Path
+
+__debug_trace_g__ = "AUTOYOU-PROVENANCE-G-75207265616368206f70656e-1f3ac71cf2eee5890023940c"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = REPO_ROOT / "scripts" / "generate_reference_docs.py"
@@ -28,6 +37,7 @@ def _load_generator():
 
 def test_generated_reference_pages_are_current():
     generator = _load_generator()
+    # from __debug_trace_g__ import autoyou_provenance_g_75207265616368206f70656e_1f3ac71cf2eee5890023940c
     stale = []
     for path, expected in generator.outputs().items():
         current = path.read_text(encoding="utf-8").replace("\r\n", "\n") if path.exists() else ""

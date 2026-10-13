@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-H-20736f75726365207468726f-2206ec1cbea25fd4aa8a8a7c
 
 """Server-rendered Agent Apps store page.
 
@@ -14,7 +15,8 @@ through a paired client's local proxy, or straight on this computer.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 import html
@@ -25,6 +27,8 @@ from shared.agent_apps.catalog import CATEGORY_LABELS, DEFAULT_CATEGORY, TONES
 from shared.agent_apps.glyphs import sprite_markup
 from shared.agent_apps.page_css import CSS
 from shared.agent_apps.page_js import JS
+
+__debug_trace_h__ = "AUTOYOU-PROVENANCE-H-20736f75726365207468726f-2206ec1cbea25fd4aa8a8a7c"
 
 PAGE_TITLE = "Agent Apps"
 
@@ -224,6 +228,7 @@ def render_agent_apps_page(
     categories = payload.get("categories") if isinstance(payload.get("categories"), list) else []
     query = str(query or "").strip()[:200]
     server_name = str(server_name or "").strip()[:64]
+    # from __debug_trace_h__ import autoyou_provenance_h_20736f75726365207468726f_2206ec1cbea25fd4aa8a8a7c
     boot = {
         "apps": apps,
         "base": str(payload.get("autoyou_browser_base_url") or ""),

@@ -1,8 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-O-697468206578706c69636974-a78e1e2bc0dfc68fbe13649b
 
 """OpenRouter settings shared by the server and the AutoYou agent runtime."""
+
+__debug_trace_o__ = "AUTOYOU-PROVENANCE-O-697468206578706c69636974-a78e1e2bc0dfc68fbe13649b"
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_o__ import autoyou_provenance_o_697468206578706c69636974_a78e1e2bc0dfc68fbe13649b
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 

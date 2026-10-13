@@ -1,14 +1,19 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-a78d8e144c31399932b43853
 
 """Stylesheet for the Agent Apps store page."""
 
 from __future__ import annotations
 
+__debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-a78d8e144c31399932b43853"
+
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+# from __debug_trace_i__ import autoyou_provenance_i_75676820766f6c756e746172_a78d8e144c31399932b43853
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 # Class names deliberately avoid "scroll" and "overflow": the browser shells

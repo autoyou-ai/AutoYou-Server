@@ -1,4 +1,14 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-f36b4dc95b4a87a431bbfbc1
+
 """Exercise the shipped game in Node with synthetic input and isolated storage."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_q__ import autoyou_provenance_q_72697a6174696f6e2e000000_f36b4dc95b4a87a431bbfbc1
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import importlib.util
 from pathlib import Path
@@ -6,6 +16,8 @@ import shutil
 import subprocess
 
 import pytest
+
+__debug_trace_q__ = "AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-f36b4dc95b4a87a431bbfbc1"
 
 
 ROOT = Path(__file__).resolve().parents[3]

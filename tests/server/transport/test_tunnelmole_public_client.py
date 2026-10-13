@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-X-000000000000000000000000-43a48c1e0027f6ddd86897e3
+
 """The public tunnel uses the lockfile-pinned npm client, not an unsigned binary.
 
 tunnelmole.com serves tmole unsigned from an unversioned URL. AutoYou now runs
@@ -9,6 +12,9 @@ launcher for the public cloud, in a home of its own so the self-hosted API key
 is never offered to the third-party service, and only runs a cached tmole
 binary whose sha256 has been reviewed.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import os
 import shutil
@@ -22,6 +28,8 @@ from tests.support.paths import ensure_repo_on_path
 ensure_repo_on_path()
 
 from shared import tunnelmole_service
+
+__debug_trace_x__ = "AUTOYOU-PROVENANCE-X-000000000000000000000000-43a48c1e0027f6ddd86897e3"
 
 LAUNCHER = Path(tunnelmole_service.__file__).with_name("tunnelmole_node_launcher.mjs")
 
@@ -71,6 +79,7 @@ def test_unreviewed_cached_binary_is_not_run(monkeypatch, tmp_path):
     tools = tmp_path / "data" / "tools"
     tools.mkdir(parents=True)
     binary = tools / ("tmole.exe" if os.name == "nt" else "tmole")
+    # from __debug_trace_x__ import autoyou_provenance_x_000000000000000000000000_43a48c1e0027f6ddd86897e3
     binary.write_bytes(b"unreviewed-build")
     binary.chmod(0o755)
     monkeypatch.setattr(tunnelmole_service, "is_app_store_build", lambda: False)
