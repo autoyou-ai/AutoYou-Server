@@ -1587,6 +1587,7 @@ from shared.remote_desktop_settings import (
     normalize_remote_desktop_quality,
     remote_desktop_quality_settings,
 )
+from shared.video_composite_settings import normalize_video_composite_config
 from shared.adk_state import normalize_reply_target
 from shared.session_execution import (
     STATUS_QUEUED,
@@ -4760,6 +4761,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
         ),
         "outbound_source": outbound_source,
         "outbound_sources": outbound_sources,
+        "composite": normalize_video_composite_config(raw_cfg.get("composite")),
         "api_video_source_id": str(raw_cfg.get("api_video_source_id") or "default").strip() or "default",
         "capture_audio": capture_audio,
         "audio_sources": audio_sources,
@@ -5829,6 +5831,7 @@ def _default_config() -> Dict[str, Any]:
             "silent_recording_batch_seconds": DEFAULT_AUDIO_RECORDING_BATCH_SECONDS,
             "outbound_source": "remote_desktop",
             "outbound_sources": ["remote_desktop"],
+            "composite": normalize_video_composite_config(None),
             "api_video_source_id": "default",
             "capture_audio": True,
             "audio_sources": ["speaker_loopback"],
@@ -10386,6 +10389,7 @@ def _create_configured_outbound_video_track(
         sources=[(source, _one_track(source)) for source in selected_sources],
         fps=desktop_profile["fps"],
         max_width=desktop_profile["max_width"],
+        **normalize_video_composite_config(_get_video_call_config(cfg=cfg).get("composite")),
     )
 
 def _ensure_audio_manager_outbound_tracks(
@@ -13858,6 +13862,14 @@ def _apply_admin_ui_config_patch(
                 video_cfg["camera_device_id"] = int(video_call_payload.get("camera_device_id", 0))
             except Exception:
                 video_cfg["camera_device_id"] = 0
+
+        if "composite" in video_call_payload:
+            composite_payload = video_call_payload["composite"]
+            if not isinstance(composite_payload, dict):
+                raise ValueError("Video layout settings must be an object.")
+            composite_cfg = normalize_video_composite_config(video_cfg.get("composite"))
+            composite_cfg.update(composite_payload)
+            video_cfg["composite"] = normalize_video_composite_config(composite_cfg, strict=True)
 
         video_file_payload = video_call_payload.get("video_file")
         if isinstance(video_file_payload, dict):

@@ -584,12 +584,16 @@ class WebRTCManager:
         outbound_video_available = _runtime._get_outbound_video_available(cfg=cfg)
         remote_desktop_allowed = "remote_desktop" in _runtime._get_available_video_outbound_sources(cfg=cfg)
         desktop_profile = _runtime._get_remote_desktop_capture_profile(cfg=cfg)
+        composite_config = _runtime._get_video_call_config(cfg=cfg)["composite"]
         updated_tracks: set[int] = set()
         for session_id, desktop_track in list(self.desktop_video_tracks.items()):
             if desktop_track is None or id(desktop_track) in updated_tracks:
                 continue
             updated_tracks.add(id(desktop_track))
             try:
+                apply_layout = getattr(desktop_track, "apply_composite_layout", None)
+                if callable(apply_layout):
+                    apply_layout(**composite_config)
                 apply_policy = getattr(desktop_track, "set_remote_desktop_enabled", None)
                 if callable(apply_policy):
                     apply_policy(remote_desktop_allowed)

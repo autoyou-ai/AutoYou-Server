@@ -3153,6 +3153,10 @@
                 audio_speaker_loopback: selectedAudioSources.indexOf("speaker_loopback") !== -1,
                 input_audio_source: getByPath(cfg, "video_call.input_audio_source", "default"),
                 camera_device_id: String(getByPath(cfg, "video_call.camera_device_id", 0)),
+                composite: {
+                    layout: getByPath(cfg, "video_call.composite.layout", "grid"),
+                    secondary_size_percent: getByPath(cfg, "video_call.composite.secondary_size_percent", 25)
+                },
                 video_file: {
                     path: getByPath(cfg, "video_call.video_file.path", ""),
                     loop: asBoolean(getByPath(cfg, "video_call.video_file.loop", true), true)
@@ -7818,6 +7822,12 @@
             + "<div class=\"ayu-inline-actions\">" + button("Save source", "save-video-call", "primary", "save") + button("Refresh status", "ops-refresh", "secondary", "refresh", "sm") + "</div>";
         var remoteSettingsMarkup = remoteDesktopNudge
             + "<div class=\"ayu-note ayu-note-blue\">Screen sharing, Remote Desktop control, and game mode are controlled in Permissions.</div>"
+            + field("Camera / file placement", select("videoCall.composite.layout", [
+                { value: "grid", label: "Equal tiles" },
+                { value: "below", label: "Below screen" },
+                { value: "beside", label: "Beside screen" }
+            ]), "Below screen gives the desktop the full video width, with smaller sources in a separate row underneath. Beside screen places them in a small column to the right. Resume screen control after changing the layout during a call.")
+            + field("Camera / file size (%)", input("videoCall.composite.secondary_size_percent", { type: "number", placeholder: "25", extraAttrs: "min=\"10\" max=\"50\" step=\"1\"" }), "For Below screen and Beside screen: maximum width and height relative to the desktop image, from 10 to 50 percent. Includes camera, video file, and realtime video input. The entire image stays visible. Save to apply to active calls.")
             + field("Display / monitor", select("videoCall.remote_desktop.monitor_id", monitorDeviceOptions), "Choose all displays or one physical monitor. Refresh devices after connecting or rearranging displays.")
             + "<div class=\"ayu-grid-2\">"
             + field("Capture quality", select("videoCall.remote_desktop.quality", [
