@@ -12,6 +12,8 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 from pathlib import Path
 
+import pytest
+
 from tests.support.paths import ensure_repo_on_path
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-1d4e1f2af359a2dd8fcc6048"
@@ -80,6 +82,94 @@ def test_setup_profile_payload_does_not_invent_missing_route_counts():
 
     assert payload["coverage"]["api_route_count"] == 0
     assert payload["coverage"]["api_route_count_label"] == "Unavailable"
+
+
+def test_easy_private_recipe_has_useful_features_without_capture_or_coding():
+    recipe = compile_setup_recipe({"profile_id": "easy_private"}, agents_payload=_agents_payload())
+    patch = recipe["safe_config_patch"]
+    enabled = set(recipe["agent_choices"]["enable"])
+
+    assert recipe["answers"]["network_scope"] == "telegram"
+    assert patch["server"]["bind_host"] == "127.0.0.1"
+    assert patch["tunnelmole"] == {"enabled": False, "auto_start_on_boot": False}
+    assert patch["telegram"]["access_gate_enabled"] is True
+    assert patch["ai_provider"]["provider"] == "ollama"
+    assert {"notes_agent", "tasks_agent", "tv_agent", "audio_agent", "education_agent"} <= enabled
+    assert not enabled & {"coding_agent", "cli_agent", "agent_builder_agent", "remote_desktop_agent"}
+    video = patch["video_call"]
+    assert video["audio_sources"] == video["outbound_sources"] == []
+    assert video["capture_audio"] is False
+    assert video["record_my_video"] is False
+    assert video["record_audio_only_calls"] is False
+    assert video["remote_desktop"] == {"enabled": False, "send_screen": False, "control_enabled": False, "game_enabled": False}
+    assert "Telegram's servers" in " ".join(section["description"] for section in recipe["sections"])
+
+
+def test_submitted_intents_can_deselect_every_preset_feature():
+    recipe = compile_setup_recipe({"profile_id": "easy_private", "intents": []})
+    assert recipe["answers"]["intents"] == []
+    assert {"tv_agent", "audio_agent", "notes_agent", "education_agent"} <= set(recipe["agent_choices"]["disable"])
+    assert "tv_agent" not in recipe["agent_choices"]["enable"]
+
+
+def test_guided_capture_permissions_survive_config_validation_and_runtime_normalization():
+    import server
+
+    permissions = {key: True for key in setup_profiles.GUIDED_PERMISSION_DEFAULTS}
+    recipe = compile_setup_recipe({"profile_id": "easy_private", "intents": ["desktop_automation"], "permissions": permissions})
+    config, _, _ = server._apply_admin_ui_config_patch({}, recipe["safe_config_patch"])
+    video = server._normalize_video_call_config(config["video_call"])
+
+    assert video["audio_sources"] == ["microphone", "speaker_loopback"]
+    assert video["outbound_sources"] == ["remote_desktop", "camera"]
+    assert video["record_audio_only_calls"] is True
+    assert video["record_my_video"] is True
+    assert video["remote_desktop"]["control_enabled"] is True
+    assert "remote_desktop_agent" in recipe["agent_choices"]["enable"]
+
+
+def test_guided_default_revokes_existing_capture_after_runtime_normalization():
+    import server
+
+    initial = {"video_call": {"audio_sources": ["microphone"], "outbound_sources": ["camera", "remote_desktop"], "record_my_video": True}}
+    recipe = compile_setup_recipe({"profile_id": "easy_private"})
+    config, _, _ = server._apply_admin_ui_config_patch(initial, recipe["safe_config_patch"])
+    snapshot = server._admin_permissions_snapshot(config)
+
+    for key in ("computer_microphone", "computer_sound", "webcam_sharing_enabled", "screen_capture_enabled", "screen_send_enabled", "remote_desktop_control_enabled", "video_call_recording_enabled", "audio_only_call_recording_enabled", "voice_call_recording_enabled"):
+        assert snapshot[key] is False, key
+
+
+def test_conversation_history_and_memory_are_independent_guided_choices():
+    recipe = compile_setup_recipe({"profile_id": "easy_private", "permissions": {"save_conversations": False, "local_memory": True}})
+    assert recipe["safe_config_patch"]["ai_agent"]["record_messages_in_database"] is False
+    assert "memory_agent" in recipe["agent_choices"]["enable"]
+
+    no_memory = compile_setup_recipe({"profile_id": "easy_private", "permissions": {"save_conversations": True, "local_memory": False}})
+    assert no_memory["safe_config_patch"]["ai_agent"]["record_messages_in_database"] is True
+    assert "memory_agent" in no_memory["agent_choices"]["disable"]
+
+
+@pytest.mark.parametrize("permissions", [{"share_screen": "false"}, {"share_webcam": 1}, {"unknown_permission": True}, []])
+def test_guided_permissions_reject_ambiguous_or_unknown_values(permissions):
+    with pytest.raises(ValueError):
+        compile_setup_recipe({"profile_id": "easy_private", "permissions": permissions})
+
+
+def test_desktop_use_case_needs_control_permission_and_incognito_overrides_storage():
+    recipe = compile_setup_recipe({"profile_id": "easy_private", "intents": ["desktop_automation", "incognito"], "permissions": {"record_audio_calls": True, "record_video_calls": True}})
+    assert "remote_desktop_agent" not in recipe["agent_choices"]["enable"]
+    assert "memory_agent" in recipe["agent_choices"]["disable"]
+    assert recipe["safe_config_patch"]["ai_agent"]["record_messages_in_database"] is False
+    assert recipe["safe_config_patch"]["video_call"]["record_my_video"] is False
+    assert recipe["safe_config_patch"]["video_call"]["record_audio_only_calls"] is False
+
+
+@pytest.mark.parametrize("ai_path", ["native_ollama_gateway", "odysseus"])
+def test_native_gateway_setup_keeps_autoyou_workers_off(ai_path):
+    recipe = compile_setup_recipe({"profile_id": "easy_private", "ai_path": ai_path})
+    assert recipe["safe_config_patch"]["ai_agent"]["enabled"] is False
+    assert recipe["safe_config_patch"]["ai_agent"]["auto_start"] is False
 
 
 def test_macos_setup_hides_model_picker_and_falls_back_to_local_ollama(monkeypatch):

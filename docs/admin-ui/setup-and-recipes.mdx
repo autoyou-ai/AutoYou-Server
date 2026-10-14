@@ -5,7 +5,13 @@ description: "The Setup & Boot screen of the admin console: the first-run wizard
 
 # Setup & Boot
 
-The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) walks the first-run path on one screen: harden the local admin baseline, pick the AI runtime, load models, choose remote fallback paths, and finish. A **Bootstrap progress** panel lets you select a step or move with Previous and Next.
+The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) combines first-time setup and bootstrap in a six-step flow: Make it yours, Choose uses, Responses, Privacy, Connect, and Review & boot. A live draft summary shows the selected response provider, connection, storage, capture and recording choices. Nothing in the draft is applied until you save the plan.
+
+**Easy & private** is the recommended starting point. It uses local Ollama, keeps the server on `127.0.0.1`, disables public links, and offers personal Telegram access through approved sender IDs. Notes, tasks, audio, the Media Center and learning are included. Recording, microphone, webcam, screen sharing, desktop control and coding agents are separate choices. It is a useful starting point, not a claim of absolute safety.
+
+Telegram onboarding explains BotFather, the bot token, discovery and sender-ID approval in order. Other connection choices include this computer only, trusted LAN, optional paid Cloud Pair and guarded temporary public links. Telegram transports bot messages through its servers. Local history and memory storage do not prevent hosted models, hosted speech or enabled online tools from receiving data.
+
+**Boot & maintenance** owns startup choices, service controls, software updates and the manual Bootstrap Guide. **Detailed setup** keeps the existing full configuration checklist and recipes available. Overview puts identity and appearance first; specialist pages use section navigation, while Live View keeps transport diagnostics in expandable sections.
 
 ---
 
@@ -16,7 +22,7 @@ The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) walk
 | `GET /api/wizard/status` | The wizard state: the status of the AI runtime, messaging partners, and the public link, the active AI provider, and whether the wizard should be shown |
 | `POST /api/wizard/complete` | Record that the wizard is finished (`{"completed": true}`), or reopen it with `false`. The state is saved in the configuration as `wizard_completed` with a timestamp. |
 
-Completing the wizard does not change any other setting.
+`POST /api/wizard/complete` alone does not change other settings. The guided **Start services & finish** action checks readiness, restarts AutoYou AI to load selected agents, starts Websites & Browser when needed, verifies service status, and then marks setup complete. Main-server network-binding changes still require a local restart.
 
 ---
 
@@ -28,12 +34,16 @@ Both routes take an `answers` object. By default, apply makes only the recipe's 
 
 | Question | Choices |
 | :--- | :--- |
-| **Choose a starting plan** (`profile_id`) | Private starter, Phone companion, Trusted LAN, Temporary public link, Creator and calls, Background phone link, Safety recording, Incognito local, Agent workbench, Integration operator, Custom mix |
-| **Network scope** (`network_scope`) | This computer only, Cloud Pair, Trusted local network, Temporary public link |
+| **Choose a starting plan** (`profile_id`) | Easy & private, Private starter, Phone companion, Trusted LAN, Temporary public link, Creator and calls, Background phone link, Safety recording, Incognito local, Agent workbench, Integration operator, Custom mix |
+| **Network scope** (`network_scope`) | This computer only, Private access through Telegram, Cloud Pair, Trusted local network, Temporary public link |
 | **AI path** (`ai_path`) | Ollama local, Ollama native gateway, Cloud model provider, Gemini, Hermes Agent, OpenClaw, Odysseus, Help me pick |
-| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Money helpers |
+| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Media Center; Audio Player; GenAI Studio; Desktop Automation; Learning; Files; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Money helpers |
 
-The catalog groups the settings a recipe can touch into ten areas: server identity and local admin; security, passwords, 2FA, and pairing; AutoYou AI and model behavior; speech and voice; messaging partners; connectivity; websites and browser; video and calls; agents; and automation APIs and integrations. "Money helpers" (donation, hosting, earnings, and finance agents) stay off unless you ask for them.
+An explicitly submitted `intents` list replaces the preset's selections, including an empty list. `permissions` contains boolean choices for `save_conversations`, `local_memory`, `record_audio_calls`, `record_video_calls`, `share_screen`, `share_microphone`, `share_computer_audio`, `share_webcam` and `desktop_control`. Incognito overrides history, memory and call recording. Desktop control also requires the Desktop Automation use case.
+
+Recipes return `agent_choices.enable` and `agent_choices.disable`. The guided **Apply settings & agents** action applies configuration through the recipe endpoint, then uses the existing agent install/uninstall routes for those choices. The recipe endpoint itself does not install agents. Everyday agents excluded from the guided plan are disabled; unrelated development and commerce agents remain outside this flow. The exact changes are visible before application. Partial failures retain successful earlier changes and offer a retry; setup is not marked complete automatically.
+
+The catalog groups the settings a recipe can touch into ten areas: server identity and local admin; security, passwords, 2FA, and pairing; AutoYou AI and model behavior; speech and voice; messaging partners; connectivity; websites and browser; video and calls; agents; and automation APIs and integrations. Money helpers are not selected by the recommended preset; their existing installation state is managed in Agents.
 
 Exposure choices have consequences. "Trusted local network" turns on the home network with HTTPS, and "Temporary public link" enables a public link only for a time-boxed session. See [Security & Authentication](/architecture/security-and-auth).
 

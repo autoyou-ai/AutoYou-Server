@@ -216,6 +216,7 @@
       els.cryptoPending.hidden = false;
       return;
     }
+    els.cryptoPending.hidden = true;
     cryptoRoutes = configured;
     if (els.cryptoPicker) { els.cryptoPicker.hidden = !configured.length; }
     if (els.cryptoXrpReminder) { els.cryptoXrpReminder.hidden = !configured.length; }

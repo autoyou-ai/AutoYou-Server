@@ -1030,13 +1030,17 @@ def register_routes(
             payload = {}
         answers = payload.get("answers") if isinstance(payload, dict) else {}
         agents_payload = await server.asyncio.to_thread(server._safe_agent_builder_listing_payload)
-        return server._json_response_no_store(
-            server.compile_setup_recipe(
+        try:
+            recipe = server.compile_setup_recipe(
                 answers if isinstance(answers, dict) else {},
                 config=server.STATE.config or server._default_config(),
                 agents_payload=agents_payload,
                 api_route_count=server._admin_setup_api_route_count(),
             )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        return server._json_response_no_store(
+            recipe
         )
 
     @admin_app.get("/api/connection/status")

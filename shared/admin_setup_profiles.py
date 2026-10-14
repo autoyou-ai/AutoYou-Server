@@ -27,7 +27,19 @@ from autoyou_agents.shared_tools.agent_install_registry import BUILTIN_AGENT_PAC
 __debug_provenance_n__ = "AUTOYOU-PROVENANCE-N-license-57cd4e2229006978759f1fca"
 
 
-PROFILE_CATALOG_VERSION = 2
+PROFILE_CATALOG_VERSION = 3
+
+GUIDED_PERMISSION_DEFAULTS = {
+    "save_conversations": True,
+    "local_memory": True,
+    "record_audio_calls": False,
+    "record_video_calls": False,
+    "share_screen": False,
+    "share_microphone": False,
+    "share_computer_audio": False,
+    "share_webcam": False,
+    "desktop_control": False,
+}
 
 PAIR_CODE_MODE_AUTHENTICATOR = "authenticator"
 PAIR_CODE_MODE_RANDOM_OTP = "random_otp"
@@ -72,6 +84,7 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "remote_desktop_agent": "Remote Desktop Agent",
     "skills_agent": "Skills Agent",
     "tasks_agent": "Tasks Agent",
+    "tv_agent": "Media Center",
     "voice_training_agent": "Voice Training Agent",
     "website_agent": "Website Agent",
     "win_security_agent": "Windows Security Agent",
@@ -204,6 +217,7 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
         "prompt": "Pick the closest starting point. You can still mix every branch afterward.",
         "type": "single",
         "options": (
+            {"id": "easy_private", "label": "Easy & private", "description": "Local AI, approved Telegram senders and everyday features. Capture and coding are separate choices."},
             {"id": "private_starter", "label": "Private starter", "description": "Local admin, local AI, and secure pairing defaults."},
             {"id": "phone_cloud", "label": "Phone companion", "description": "AutoYou Cloud Pair plus messaging fallback for mobile clients."},
             {"id": "trusted_lan", "label": "Trusted LAN", "description": "Local Pair and HTTPS sign-in from devices on the same network after a restart."},
@@ -224,6 +238,7 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
         "type": "single",
         "options": (
             {"id": "loopback", "label": "This computer only", "description": "Keep 127.0.0.1. Existing secure AutoPair and Cloud Pair paths still work."},
+            {"id": "telegram", "label": "Private access through Telegram", "description": "Keep the server on 127.0.0.1 and approve your own Telegram sender ID. Telegram transports messages; no public server URL is needed."},
             {"id": "cloud_pair", "label": "Cloud Pair", "description": "Use AutoYou hosted pairing for paid users without opening the LAN."},
             {"id": "lan", "label": "Trusted local network", "description": "Turn on the home network with HTTPS so same-network devices can sign in and use Local Pair."},
             {"id": "public_proxy", "label": "Temporary public link", "description": "Enable a public link only for guarded, time-boxed sessions."},
@@ -252,6 +267,12 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
         "type": "multi",
         "options": (
             {"id": "productivity", "label": "Notes, tasks, alerts", "description": "Notes, tasks, notifications, memory, and reminders."},
+            {"id": "media_center", "label": "Media Center", "description": "Play an operator-selected local media library on connected devices."},
+            {"id": "audio_player", "label": "Audio Player", "description": "Play audio and manage listening workflows without enabling the microphone."},
+            {"id": "genai", "label": "GenAI Studio", "description": "Generate media with separately configured models. Downloads and provider setup may be needed."},
+            {"id": "desktop_automation", "label": "Desktop Automation", "description": "Optional desktop tools. Screen sharing and remote control require separate permission."},
+            {"id": "learning", "label": "Learning", "description": "Use the local education workspace for study and practice."},
+            {"id": "file_library", "label": "Files", "description": "Let agents work with local files you choose to make available."},
             {"id": "messaging", "label": "Messaging", "description": "Telegram Bot, Telegram User, Signal, WhatsApp, and fallback partner setup."},
             {"id": "video_calls", "label": "Video and calls", "description": "Calls, playback, audio devices, and media upload."},
             {"id": "background_connection", "label": "Background phone link", "description": "Keep mobile clients connected in the background without microphone upload."},
@@ -267,6 +288,21 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
 )
 
 PROFILE_TEMPLATES: Sequence[Dict[str, Any]] = (
+    {
+        "id": "easy_private",
+        "label": "Easy & private",
+        "eyebrow": "Recommended start",
+        "description": "Local AI, private Telegram access, notes, tasks, speech, media, and learning. Capture, remote control, coding, and public links need a separate choice.",
+        "badge_label": "Recommended",
+        "badge_tone": "green",
+        "defaults": {
+            "network_scope": "telegram",
+            "ai_path": "local_ollama",
+            "intents": ("productivity", "messaging", "speech", "media_center", "audio_player", "learning"),
+            "agent_visibility": "release_ready",
+            "permissions": GUIDED_PERMISSION_DEFAULTS,
+        },
+    },
     {
         "id": "private_starter",
         "label": "Private starter",
@@ -600,7 +636,7 @@ def build_setup_profile_payload(
         "current": _current_config_summary(config),
     }
     payload["default_recipe"] = compile_setup_recipe(
-        {"profile_id": "private_starter"},
+        {"profile_id": "easy_private"},
         config=config,
         agents_payload=agents_payload,
         api_route_count=api_route_count,
@@ -655,12 +691,27 @@ def _normalize_answers(answers: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     }
     if not _model_picker_available() and merged["ai_path"] == "model_picker":
         merged["ai_path"] = "local_ollama"
+    for key in ("network_scope", "ai_path"):
+        options = next(question["options"] for question in DECISION_TREE if question["id"] == key)
+        if merged[key] not in {option["id"] for option in options}:
+            raise ValueError(f"Choose a supported {key.replace('_', ' ')}.")
 
-    intents = _as_string_list(defaults.get("intents"))
-    for intent in _as_string_list(raw.get("intents")):
-        if intent not in intents:
-            intents.append(intent)
+    # A submitted selection replaces the preset. Re-adding defaults here made
+    # it impossible for the UI to turn a preset's feature toggle off.
+    intents = _as_string_list(raw["intents"] if "intents" in raw else defaults.get("intents"))
     merged["intents"] = intents
+    permissions = raw.get("permissions", defaults.get("permissions"))
+    if permissions is not None:
+        if not isinstance(permissions, Mapping) or set(permissions) - set(GUIDED_PERMISSION_DEFAULTS):
+            raise ValueError("Choose valid setup permissions.")
+        if any(type(value) is not bool for value in permissions.values()):
+            raise ValueError("Setup permissions must be true or false.")
+        merged["permissions"] = {**GUIDED_PERMISSION_DEFAULTS, **permissions}
+        if "desktop_automation" not in intents:
+            merged["permissions"]["desktop_control"] = False
+        if "incognito" in intents:
+            for key in ("save_conversations", "local_memory", "record_audio_calls", "record_video_calls"):
+                merged["permissions"][key] = False
     return merged
 
 
@@ -678,7 +729,7 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     names: List[str] = ["admin_agent"]
     if _model_picker_available():
         names.append("model_picker_agent")
-    if "incognito" not in intents:
+    if "incognito" not in intents and answers.get("permissions", {}).get("local_memory", True):
         names.append("memory_agent")
 
     def add(*items: str) -> None:
@@ -691,9 +742,21 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     if "messaging" in intents:
         add("notify_agent", "internet_agent")
     if "speech" in intents:
-        add("audio_agent", "voice_training_agent")
+        add("audio_agent")
+    if "audio_player" in intents:
+        add("audio_agent")
+    if "media_center" in intents:
+        add("tv_agent")
+    if "genai" in intents:
+        add("media_generation_agent")
+    if "learning" in intents:
+        add("education_agent")
+    if "file_library" in intents:
+        add("files_agent")
+    if "desktop_automation" in intents and answers.get("permissions", {}).get("desktop_control", False):
+        add("remote_desktop_agent")
     if "video_calls" in intents:
-        add("audio_agent", "media_generation_agent")
+        add("audio_agent")
     if "creator" in intents:
         add("website_agent", "media_generation_agent", "voice_training_agent", "files_agent")
     if "agent_websites" in intents:
@@ -738,8 +801,8 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
     safe_patch: Dict[str, Any] = {
         "ai_provider": {"provider": provider},
         "ai_agent": {
-            "enabled": True,
-            "auto_start": True,
+            "enabled": provider not in {"ollama_gateway", "odysseus"},
+            "auto_start": provider not in {"ollama_gateway", "odysseus"},
             "record_messages_in_database": True,
             "memory_backend": "legacy",
         },
@@ -754,6 +817,10 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
 
     if intents & {"agent_websites", "creator", "api_integrations"}:
         safe_patch["autoyou_page"] = {"auto_start": True, "timeline_days": 7}
+    if intents & {"media_center", "learning", "genai"}:
+        safe_patch.setdefault("autoyou_page", {}).update({"auto_start": True})
+    if "audio_player" in intents:
+        safe_patch["audio_playback"] = {"enabled": True}
     if "video_calls" in intents:
         safe_patch.setdefault("video_call", {}).update({"enabled": True, "audio_enabled": True, "wuift_enabled": True})
     if "background_connection" in intents:
@@ -791,6 +858,44 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
                 "capture_audio": False,
             }
         )
+
+    permissions = answers.get("permissions")
+    if isinstance(permissions, Mapping):
+        safe_patch["ai_agent"]["record_messages_in_database"] = permissions["save_conversations"]
+        safe_patch["ai_agent"]["lan_access_enabled"] = False
+        audio_sources = []
+        if permissions["share_microphone"]:
+            audio_sources.append("microphone")
+        if permissions["share_computer_audio"]:
+            audio_sources.append("speaker_loopback")
+        outbound_sources = []
+        if permissions["share_screen"]:
+            outbound_sources.append("remote_desktop")
+        if permissions["share_webcam"]:
+            outbound_sources.append("camera")
+        safe_patch.setdefault("video_call", {}).update({
+            "enabled": "video_calls" in intents or bool(outbound_sources) or permissions["record_video_calls"],
+            "audio_enabled": bool(set(intents) & {"speech", "audio_player", "video_calls"}) or permissions["record_audio_calls"],
+            "capture_audio": bool(audio_sources),
+            "server_microphone_sharing_enabled": permissions["share_microphone"],
+            "audio_sources": audio_sources,
+            "outbound_sources": outbound_sources,
+            "record_my_video": permissions["record_video_calls"],
+            "record_audio_only_calls": permissions["record_audio_calls"],
+            "silent_recording_enabled": "safety_recording" in intents and "incognito" not in intents,
+            "remote_desktop": {
+                "enabled": permissions["share_screen"] or permissions["desktop_control"],
+                "send_screen": permissions["share_screen"],
+                "control_enabled": permissions["desktop_control"] and "desktop_automation" in intents,
+                "game_enabled": False,
+            },
+        })
+        safe_patch["speech"] = {"voice_training": {"capture_enabled": False}}
+        if network_scope in {"loopback", "telegram", "cloud_pair"}:
+            safe_patch["server"] = {"bind_host": "127.0.0.1"}
+            safe_patch["tunnelmole"] = {"enabled": False, "auto_start_on_boot": False}
+        if network_scope == "telegram":
+            safe_patch["telegram"] = {"access_gate_enabled": True, "silent_unapproved_messages": True}
 
     guarded_patch: Dict[str, Any] = {}
     if network_scope == "lan":
@@ -838,6 +943,13 @@ def compile_setup_recipe(
     risk_level = "low"
     warnings: List[Dict[str, str]] = []
     restart_required: List[Dict[str, Any]] = []
+
+    permissions = normalized.get("permissions", {})
+    if isinstance(permissions, Mapping) and any(permissions.get(key) for key in ("record_audio_calls", "record_video_calls", "desktop_control")):
+        risk_level = _highest_risk(risk_level, "medium")
+        warnings.append(_warning("warning", "Capture and control are explicit choices", "Selected call recording writes files to this computer. Desktop control allows tools to act on this computer. Confirm participants know about recording and review allowed tools."))
+    if permissions and network_scope in {"loopback", "telegram", "cloud_pair"} and str((config or {}).get("server", {}).get("bind_host", "127.0.0.1")) not in {"127.0.0.1", "localhost"}:
+        restart_required.append({"id": "restore_loopback", "label": "Restart AutoYou to restore this-computer-only binding", "command_examples": ("AUTOYOU_BIND_HOST=127.0.0.1", "--host 127.0.0.1"), "applies_after_restart": True})
 
     if network_scope == "lan":
         risk_level = _highest_risk(risk_level, "high")
@@ -954,6 +1066,11 @@ def compile_setup_recipe(
         if isinstance(agent, Mapping)
     ]
     patches = _make_config_patches(normalized)
+    enabled_names = [agent["name"] for agent in recommended_agents]
+    # Only the guided flow manages these everyday capabilities. Development,
+    # commerce and unrelated installed agents remain outside its lifecycle.
+    guided_agents = {"notes_agent", "tasks_agent", "notify_agent", "audio_agent", "tv_agent", "education_agent", "media_generation_agent", "files_agent", "memory_agent", "remote_desktop_agent"}
+    disabled_names = sorted(guided_agents - set(enabled_names)) if isinstance(normalized.get("permissions"), Mapping) else []
 
     ai_label = {
         "local_ollama": "Ollama local",
@@ -980,6 +1097,7 @@ def compile_setup_recipe(
             "status": "restart_required" if network_scope == "lan" else ("guarded" if network_scope == "public_proxy" else "safe_default"),
             "description": {
                 "loopback": "Keep the server on 127.0.0.1. Existing secure messaging AutoPair and Cloud Pair remain available.",
+                "telegram": "Keep 127.0.0.1, turn off the public link, and approve your own Telegram sender ID. Messages pass through Telegram's servers.",
                 "cloud_pair": "Use AutoYou Cloud Pair without opening the local server to the LAN.",
                 "lan": "Turn on the home network with HTTPS; website apps stay behind the admin sign-in.",
                 "public_proxy": "Use a timed public URL only after security settings are ready.",
@@ -1035,6 +1153,8 @@ def compile_setup_recipe(
         )
 
     next_actions = []
+    if network_scope == "telegram":
+        next_actions.append("Create a Telegram bot with BotFather, save its token, send it a message, and approve only your own sender ID.")
     if _model_picker_available():
         next_actions.append("Open Model Picker Agent when unsure which local or cloud model fits a feature.")
     next_actions.append("Use the AI & Models screen to download local models or set hosted provider credentials.")
@@ -1088,6 +1208,10 @@ def compile_setup_recipe(
         ],
         "sections": sections,
         "recommended_agents": recommended_agents,
+        "agent_choices": {
+            "enable": enabled_names,
+            "disable": disabled_names,
+        },
         "review_required_agents": review_agents,
         "excluded_agents": excluded_agents,
         "feature_groups": _copy_json(FEATURE_CATALOG),

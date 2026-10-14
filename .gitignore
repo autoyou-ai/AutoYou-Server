@@ -143,6 +143,7 @@ shared/voice_training/recordings/
 shared/voice_training/models/emotivoice/
 shared/audio_agent/library_settings.json
 shared/earnings_agents/pending_ad_credits.json
+shared/earnings_agent/pending_ad_credits.json
 shared/voice_training/transcripts.json
 # ------------------------------------------------------------------------------
 # 8. Server Build & Native Packaging Artifacts
