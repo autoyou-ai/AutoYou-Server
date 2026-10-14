@@ -180,9 +180,16 @@ def _config_path() -> Path:
     override = str(os.getenv("AUTOYOU_DONATIONS_CONFIG_PATH", "") or "").strip()
     if override:
         return Path(override)
-    packaged_path = get_resources_root(__file__) / _DEFAULT_CONFIG_PATH
-    if packaged_path.is_file():
-        return packaged_path
+    candidates = [
+        get_resources_root(__file__) / _DEFAULT_CONFIG_PATH,
+        Path(__file__).resolve().parents[2] / _DEFAULT_CONFIG_PATH,
+        Path(__file__).resolve().parents[3] / _DEFAULT_CONFIG_PATH if len(Path(__file__).resolve().parents) > 3 else None,
+        Path.cwd() / _DEFAULT_CONFIG_PATH,
+        Path.cwd() / "AutoYou-Server" / _DEFAULT_CONFIG_PATH,
+    ]
+    for candidate in candidates:
+        if candidate and candidate.is_file():
+            return candidate
     return Path(__file__).resolve().parents[2] / _DEFAULT_CONFIG_PATH
 
 

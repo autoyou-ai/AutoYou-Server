@@ -1780,6 +1780,26 @@
       "type": "library"
     },
     {
+      "name": "lingua-language-detector",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "lingua-language-detector==2.2.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/lingua-language-detector@2.2.0",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
       "licenses": [
         {
           "license": {
@@ -3298,6 +3318,26 @@
       "type": "library"
     },
     {
+      "name": "supertonic",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "supertonic==1.3.1"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/supertonic@1.3.1",
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
       "licenses": [
         {
           "license": {
@@ -3916,7 +3956,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-12T07:08:08+00:00",
+    "timestamp": "2026-10-14T07:59:12+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3925,7 +3965,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:bb2ce0d3-78eb-4f6f-a01b-31f192724727",
+  "serialNumber": "urn:uuid:0cfc7700-8e2e-4e14-961c-b135d445faa9",
   "specVersion": "1.5",
   "version": 1
 }

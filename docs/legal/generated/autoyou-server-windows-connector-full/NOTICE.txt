@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-12T07:08:08+00:00
+Generated: 2026-10-14T07:59:12+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -81,6 +81,7 @@ Third-Party Components
 - jieba [pypi] - MIT - requirements/voice.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
+- lingua-language-detector 2.2.0 [pypi] - UNKNOWN - review before release - requirements/base.txt
 - litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
@@ -133,6 +134,7 @@ Third-Party Components
 - spinners [pypi] - MIT - requirements/voice.txt
 - sqlalchemy 2.0.50 [pypi] - MIT - requirements/base.txt
 - starlette [pypi] - BSD-3-Clause - requirements/base.txt
+- supertonic 1.3.1 [pypi] - UNKNOWN - review before release - requirements/base.txt
 - termcolor [pypi] - MIT - requirements/voice.txt
 - torch [pypi] - BSD-3-Clause - requirements/voice.txt
 - torchaudio [pypi] - BSD-3-Clause - requirements/voice.txt

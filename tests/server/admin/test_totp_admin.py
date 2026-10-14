@@ -810,7 +810,8 @@ def test_admin_dashboard_assets_are_served():
     assert "overflow-x: hidden" in css_response.text
     assert "height: 100dvh" in css_response.text
     assert "overflow-wrap: anywhere" in css_response.text
-    assert "width: clamp(292px, 16vw, 320px)" in css_response.text
+    assert ".ayu-sidebar {" in css_response.text
+    assert ".ayu-guided-layout {" in css_response.text
     assert "overflow-y: auto" in css_response.text
     assert "flex: 0 0 auto" in css_response.text
     assert ".ayu-sidebar-actions .ayu-form-btn" in css_response.text

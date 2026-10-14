@@ -234,6 +234,10 @@
         interact: { payload: null, selected: [], dirty: false, loading: false, saving: false, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
         selectedAgentName: "",
+        sections: {},
+        agentQuery: "",
+        agentCategory: "all",
+        disclosure: {},
         setup: {
             loading: false,
             payload: null,
@@ -241,8 +245,15 @@
             activeStep: 0,
             linkedScreen: "",
             linkedStep: 0,
+            linkedMode: "guided",
             answers: {},
-            recipe: null
+            recipe: null,
+            mode: "guided",
+            guidedStep: 0,
+            applied: false,
+            applying: false,
+            progress: "",
+            applyError: ""
         },
         aiLibrary: {
             local: null,
@@ -1337,6 +1348,7 @@
     }
 
     function isImmediateAction(action) {
+        if (action && (/^(setup-guided-step:|setup-permission:|setup-mode:|settings-section:|agent-category:)/.test(action))) return true;
         return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-select:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
     }
 
@@ -1371,7 +1383,78 @@
     }
 
     function panel(title, subtitle, body, actions) {
-        return "<section class=\"ayu-panel\"><div class=\"ayu-panel-head\"><div><h2>" + escapeHtml(title) + "</h2>" + (subtitle ? "<p>" + escapeHtml(subtitle) + "</p>" : "") + "</div>" + (actions ? "<div class=\"ayu-inline-actions\">" + actions + "</div>" : "") + "</div><div class=\"ayu-panel-body\">" + body + "</div></section>";
+        return "<section class=\"ayu-panel\" data-panel-title=\"" + escapeHtml(title) + "\"><div class=\"ayu-panel-head\"><div><h2>" + escapeHtml(title) + "</h2>" + (subtitle ? "<p>" + escapeHtml(subtitle) + "</p>" : "") + "</div>" + (actions ? "<div class=\"ayu-inline-actions\">" + actions + "</div>" : "") + "</div><div class=\"ayu-panel-body\">" + body + "</div></section>";
+    }
+
+    function disclosure(id, title, copy, body) {
+        return "<details class=\"ayu-disclosure\" data-disclosure=\"" + escapeHtml(id) + "\"" + (state.disclosure[id] ? " open" : "") + "><summary><span><strong>" + escapeHtml(title) + "</strong>" + (copy ? "<small>" + escapeHtml(copy) + "</small>" : "") + "</span>" + icon("arrowDown") + "</summary><div class=\"ayu-disclosure-body\">" + body + "</div></details>";
+    }
+
+    // Each menu owns its settings. Section navigation keeps specialist controls
+    // available without forcing users through the entire page on every visit.
+    var SETTINGS_SECTIONS = {
+        ai: [["responses", "Responses", /provider|runtime/i], ["models", "Models", /model|download/i], ["behavior", "Behavior & memory", /behavior|memory/i]],
+        agents: [["library", "Agent library", /installed|available/i], ["studio", "Agent Studio", /studio/i], ["build", "Build & instructions", /prompt|create|draft|builder/i], ["desktop", "Desktop apps", /desktop/i]],
+        page: [["websites", "Websites", /website|apps|bookmark|page/i], ["browser", "Browser", /browser|forward/i], ["access", "Access", /security|access|proxy/i]],
+        messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "Tools & delivery", /mcp|webhook|send|queue/i]],
+        permissions: [["capture", "Audio & video", /audio|video|capture/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website|remote/i]],
+        video: [["calls", "Calls & playback", /call|playback|background/i], ["sources", "Sharing sources", /source|camera|desktop|layout|device/i], ["recording", "Recording", /record|storage/i], ["connection", "Connection", /webrtc|ice|connection/i]],
+        speech: [["voice", "Voice", /provider|tts|speech|voice/i], ["models", "Models", /model|download|recognition|stt/i]],
+        connectivity: [["local", "This computer & LAN", /local|home|access|unlock|webrtc|network/i], ["remote", "Remote access", /cloud|public|tunnel|remote/i], ["routes", "Routes & delivery", /route|queue|task|website|bluetooth/i]],
+        security: [["baseline", "Password & security", /password|security|credential|unlock/i], ["pairing", "Pairing & 2FA", /pair|authenticator|totp|qr/i], ["advanced", "Advanced", /agent|override|prompt|encrypt/i]],
+        guides: [["guides", "Guides", /guide|help/i], ["utilities", "Utilities", /sweep|game|score/i]]
+    };
+
+    var SETTINGS_PANEL_AREAS = {
+        "AutoYou AI": "responses", "Memory & history": "behavior",
+        "Websites & Browser settings": "access", "Browser forwarding": "browser", "Browser routes": "routes",
+        "Connected client control": "tools", "Send through Telegram Bot": "tools", "Send to Saved Messages": "tools", "Send through Signal": "tools", "Send through WhatsApp": "tools",
+        "Computer audio and video devices": "sources", "Playback and input sources": "calls", "Display and capture quality": "sources", "Recording folders & format": "recording", "Current audio mix": "calls",
+        "Where recordings and chat history are saved": "data", "Current permission status": "capture",
+        "Automatic Configuration Setup": "pairing", "Documentation": "guides", "Runtime snapshot": "utilities"
+    };
+
+    function settingsSectionFor(title, groups) {
+        var exact = SETTINGS_PANEL_AREAS[title];
+        if (exact && groups.some(function (group) { return group[0] === exact; })) return exact;
+        // Specific ownership wins over broad words such as "model" or "call".
+        for (var index = groups.length - 1; index >= 0; index -= 1) {
+            if (groups[index][2].test(title)) return groups[index][0];
+        }
+        return groups[0][0];
+    }
+
+    function organizeSettingsSections() {
+        var groups = SETTINGS_SECTIONS[state.screen];
+        if (!groups) return;
+        var screen = root.querySelector(".ayu-screen");
+        if (!screen) return;
+        var panels = Array.from(screen.querySelectorAll(".ayu-panel[data-panel-title]")).filter(function (element) {
+            return !element.parentElement.closest(".ayu-panel, .ayu-disclosure");
+        });
+        var available = groups.filter(function (group) {
+            return panels.some(function (element) { return settingsSectionFor(element.getAttribute("data-panel-title"), groups) === group[0]; });
+        });
+        if (available.length < 2) return;
+        var selected = state.sections[state.screen] || available[0][0];
+        if (!available.some(function (group) { return group[0] === selected; })) selected = available[0][0];
+        state.sections[state.screen] = selected;
+        var nav = document.createElement("nav");
+        nav.className = "ayu-section-nav";
+        nav.setAttribute("aria-label", currentTitle() + " sections");
+        nav.innerHTML = available.map(function (group) {
+            return "<button type=\"button\" class=\"ayu-tab" + (selected === group[0] ? " active" : "") + "\" data-action=\"settings-section:" + group[0] + "\" aria-current=\"" + (selected === group[0] ? "page" : "false") + "\">" + escapeHtml(group[1]) + "</button>";
+        }).join("");
+        var hero = screen.querySelector(".ayu-hero");
+        if (hero) hero.insertAdjacentElement("afterend", nav);
+        panels.forEach(function (element) { element.hidden = settingsSectionFor(element.getAttribute("data-panel-title"), groups) !== selected; });
+        screen.querySelectorAll(".ayu-grid-2, .ayu-grid-3, .ayu-grid-4, .ayu-scroll-target").forEach(function (element) {
+            if (element.closest(".ayu-panel")) return;
+            var children = Array.from(element.children);
+            element.hidden = children.length > 0 && children.every(function (child) {
+                return child.hidden || !child.textContent.trim();
+            });
+        });
     }
 
     function findOption(options, optionId, fallbackId) {
@@ -2562,6 +2645,7 @@
     }
 
     function field(label, control, hint) {
+        if (!/aria-label=/.test(control)) control = control.replace(/<(input|select|textarea)(?=\s|>)/, "<$1 aria-label=\"" + escapeHtml(label) + "\"");
         return "<div class=\"ayu-field\"><div class=\"ayu-field-label\">" + escapeHtml(label) + "</div>" + control + (hint ? "<div class=\"ayu-field-hint\">" + escapeHtml(hint) + "</div>" : "") + "</div>";
     }
 
@@ -2848,16 +2932,22 @@
         state.setup.linkedStep = 0;
     }
 
-    function openSetupLinkedScreen(screen) {
+    function openSetupLinkedScreen(screen, section) {
+        if (section) state.sections[screen] = section;
         state.setup.linkedScreen = screen || "";
-        state.setup.linkedStep = Math.max(0, Math.min(Number(state.setup.activeStep) || 0, SETUP_WIZARD_STEPS.length - 1));
+        state.setup.linkedMode = state.setup.mode;
+        var guided = state.setup.mode === "guided";
+        state.setup.linkedStep = Math.max(0, Math.min(Number(guided ? state.setup.guidedStep : state.setup.activeStep) || 0, (guided ? GUIDED_SETUP_STEPS : SETUP_WIZARD_STEPS).length - 1));
         setScreen(screen, { keepSetupLink: true });
     }
 
     function returnToSetupLinkedStep() {
-        var linkedStep = Math.max(0, Math.min(Number(state.setup.linkedStep) || 0, SETUP_WIZARD_STEPS.length - 1));
+        var guided = state.setup.linkedMode === "guided";
+        var linkedStep = Math.max(0, Math.min(Number(state.setup.linkedStep) || 0, (guided ? GUIDED_SETUP_STEPS : SETUP_WIZARD_STEPS).length - 1));
+        state.setup.mode = state.setup.linkedMode;
         clearSetupLinkedScreen();
-        state.setup.activeStep = linkedStep;
+        if (guided) state.setup.guidedStep = linkedStep;
+        else state.setup.activeStep = linkedStep;
         setScreen("setup", { keepSetupLink: true });
         scrollIntoViewIfPresent("#ayu-setup-current", { behavior: "smooth", block: "start" });
     }
@@ -2886,7 +2976,7 @@
     }
 
     function setupProfileById(profileId) {
-        var normalized = String(profileId || "").trim() || "private_starter";
+        var normalized = String(profileId || "").trim() || "easy_private";
         var templates = setupProfileTemplates();
         return templates.find(function (profile) { return profile.id === normalized; }) || templates[0] || null;
     }
@@ -2903,7 +2993,7 @@
 
     function currentSetupAnswers() {
         if (!state.setup.answers || !state.setup.answers.profile_id) {
-            state.setup.answers = setupDefaultsForProfile(setupProfileById("private_starter"));
+            state.setup.answers = setupDefaultsForProfile(setupProfileById("easy_private"));
         }
         if (!Array.isArray(state.setup.answers.intents)) {
             state.setup.answers.intents = [];
@@ -2915,6 +3005,7 @@
         var profile = setupProfileById(profileId);
         state.setup.answers = setupDefaultsForProfile(profile);
         state.setup.recipe = null;
+        state.setup.applied = false;
         renderApp();
         scrollIntoViewIfPresent("#ayu-setup-decision-tree", { behavior: "smooth", block: "start" });
     }
@@ -2938,7 +3029,17 @@
         } else {
             answers[questionId] = optionId;
         }
+        if (questionId === "ai_path") {
+            setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", model_picker: "ollama" }[optionId] || "ollama");
+        }
+        if (questionId === "intents" && answers.permissions) {
+            if (answers.intents.indexOf("desktop_automation") === -1) answers.permissions.desktop_control = false;
+            if (answers.intents.indexOf("incognito") !== -1) {
+                ["save_conversations", "local_memory", "record_audio_calls", "record_video_calls"].forEach(function (key) { answers.permissions[key] = false; });
+            }
+        }
         state.setup.recipe = null;
+        state.setup.applied = false;
         renderApp();
     }
 
@@ -4785,7 +4886,7 @@
     }
 
     function shouldPollTelegramSenders() {
-        return state.screen === "messaging" || (state.screen === "setup" && currentSetupStepId() === "messaging-partner");
+        return state.screen === "messaging" || (state.screen === "setup" && (state.setup.mode === "guided" ? state.setup.guidedStep === 4 && currentSetupAnswers().network_scope === "telegram" : currentSetupStepId() === "messaging-partner"));
     }
 
     function syncTelegramSenderPolling() {
@@ -5060,6 +5161,7 @@
         if (screen === "setup") {
             ensureSetupData(false);
             ensureSetupStepData(getByPath(SETUP_WIZARD_STEPS[state.setup.activeStep || 0], "id", "security-basics"));
+            if (state.setup.mode === "guided" && state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
         } else if (screen === "ai") {
             ensureAiData(false);
             if (!state.aiLibrary.catalog && !state.aiLibrary.catalogLoading) {
@@ -5100,8 +5202,9 @@
         if (!screen || screen === "setup" || state.setup.linkedScreen !== screen) {
             return "";
         }
-        var linkedStepIndex = Math.max(0, Math.min(Number(state.setup.linkedStep) || 0, SETUP_WIZARD_STEPS.length - 1));
-        var linkedStep = SETUP_WIZARD_STEPS[linkedStepIndex] || null;
+        var steps = state.setup.linkedMode === "guided" ? GUIDED_SETUP_STEPS : SETUP_WIZARD_STEPS;
+        var linkedStepIndex = Math.max(0, Math.min(Number(state.setup.linkedStep) || 0, steps.length - 1));
+        var linkedStep = steps[linkedStepIndex] || null;
         var stepSummary = linkedStep
             ? ("Opened from Setup & Boot step " + (linkedStepIndex + 1) + ": " + linkedStep.label + ". Return to the checklist when this screen is done.")
             : "Opened from Setup & Boot. Return to the checklist when this screen is done.";
@@ -5493,7 +5596,8 @@
             ? "<button type=\"button\" class=\"ayu-sidebar-update\" data-action=\"software-update-open\"><span class=\"ayu-sidebar-update-icon\">" + icon("bolt") + "</span><span><strong>Update ready</strong><small>Version " + escapeHtml(getByPath(updateStatus, "latest_version", "")) + "</small></span></button>"
             : "";
         return "<aside class=\"ayu-sidebar\"><div class=\"ayu-sidebar-header\"><div class=\"ayu-logo-wrap\"><img src=\"" + escapeHtml(adminAssetUrl(getByPath(admin, "logo_url", "/assets/logo.png"))) + "\" alt=\"AutoYou logo\"></div><div class=\"ayu-sidebar-header-copy\"><div class=\"ayu-brand-title\" style=\"font-size:" + nameFontSize + "\" title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</div><div class=\"ayu-brand-subtitle\">Server Admin</div></div></div><nav class=\"ayu-nav\">" + NAV.map(function (item) {
-            return "<button type=\"button\" class=\"ayu-nav-btn" + (item.id === state.screen ? " active" : "") + "\" data-action=\"nav:" + escapeHtml(item.id) + "\">" + icon(item.icon) + "<span class=\"ayu-nav-label\">" + escapeHtml(item.label) + "</span></button>";
+            var heading = { overview: "Workspace", setup: "Set up", ai: "Capabilities", permissions: "Administration" }[item.id];
+            return (heading ? "<div class=\"ayu-nav-group\">" + heading + "</div>" : "") + "<button type=\"button\" class=\"ayu-nav-btn" + (item.id === state.screen ? " active" : "") + "\" data-action=\"nav:" + escapeHtml(item.id) + "\">" + icon(item.icon) + "<span class=\"ayu-nav-label\">" + escapeHtml(item.label) + "</span></button>";
         }).join("") + "</nav>" + updateMarkup + "<div class=\"ayu-sidebar-footer\"><div class=\"ayu-sidebar-profile\"><div class=\"ayu-sidebar-server\"><div class=\"ayu-sidebar-server-main\">" + avatarMarkup + "<div class=\"ayu-sidebar-server-copy\"><strong style=\"font-size:" + nameFontSize + "\" title=\"" + escapeHtml(serverName) + "\">" + escapeHtml(serverName) + "</strong><div class=\"ayu-hint\">Admin port " + escapeHtml(getByPath(admin, "admin_port", "")) + "</div></div></div>" + iconButton("toggle-profile-menu", "Profile image and server actions", "more", "", "aria-expanded=\"" + escapeHtml(String(Boolean(state.profileMenuOpen))) + "\"") + "</div><input class=\"ayu-file-input\" type=\"file\" accept=\"image/*\" data-role=\"profile-image-input\">" + profileMenu + "</div></div></aside>";
     }
 
@@ -5871,91 +5975,28 @@
     }
 
     function renderOverview() {
-        var admin = getByPath(state.bootstrap, "admin", {});
-        var status = getByPath(state.bootstrap, "status", {});
         var cfg = bootstrapConfig();
-        var cloud = getByPath(status, "cloud", {});
-        var cloudEmail = displayCloudEmail(cloud);
-        var serverId = displayServerId(cloud);
-        var setupPayload = state.setup.payload || {};
-        var setupComplete = Boolean(getByPath(setupPayload, "wizard_completed", getByPath(cfg, "onboarding.wizard_completed", false)));
-        var setupTimestamp = getByPath(setupPayload, "wizard_completed_at", getByPath(cfg, "onboarding.wizard_completed_at", ""));
-        var identityMarkup = field("Server name", input("overview.serverName", { placeholder: "AutoYou-Server" }), "This name signs AutoYou responses and appears during pairing. It does not rename a messaging device that is already paired.") + field("Admin shell theme", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }]), "This changes the admin shell only. Agent Websites follows each device's system appearance.") + "<div class=\"ayu-inline-actions\">" + button("Save identity & theme", "save-overview", "primary", "save") + button("Open setup", "nav:setup", "secondary", "bolt") + button("Open guides", "nav:guides", "ghost", "book") + "</div>";
-
-        var serviceCards = [
-            {
-                screen: "setup",
-                label: "Setup & Boot",
-                value: setupComplete ? "Complete" : "Needs setup",
-                sub: setupComplete && setupTimestamp ? ("Completed at " + shortText(setupTimestamp, 26)) : "Open the bootstrap checklist and first-run guide.",
-                tone: setupComplete ? "green" : "amber"
-            },
-            {
-                screen: "ai",
-                label: "AutoYou AI",
-                value: shortText(getByPath(status, "ai_agent.status", "Unknown"), 28),
-                sub: getByPath(status, "ai_agent.status", "").toLowerCase().indexOf("running") !== -1 ? "Agents and chat are available on this machine." : "AutoYou AI is not running, so chat and agent workflows are unavailable.",
-                tone: statusTone(getByPath(status, "ai_agent.status", ""))
-            },
-            {
-                screen: "page",
-                label: "Browser & Page",
-                value: shortText(getByPath(status, "autoyou_page.status", "Unknown"), 28),
-                sub: getByPath(status, "autoyou_page.status", "").toLowerCase().indexOf("running") !== -1 ? "The website/browser host is serving the local proxy and browser routes." : "The website/browser host is stopped, so browser routes and page content are offline.",
-                tone: statusTone(getByPath(status, "autoyou_page.status", ""))
-            },
-            {
-                screen: "messaging",
-                label: "Messaging partner",
-                value: getByPath(status, "cloud.connected", false) ? "AutoYou Cloud connected" : shortText(getByPath(status, "telegram.status", "Not configured"), 28),
-                sub: getByPath(status, "cloud.connected", false) ? "Cloud Pair is active for connected clients." : "Messaging partners are optional but needed when Cloud Pair is not used.",
-                tone: getByPath(status, "cloud.connected", false) ? "green" : statusTone(getByPath(status, "telegram.status", ""))
-            },
-            {
-                screen: "connectivity",
-                label: "Public access",
-                value: shortText(getByPath(status, "tunnelmole.status", getByPath(status, "cloud.status", "Unknown")), 28),
-                sub: getByPath(status, "tunnelmole.public_url", "No public proxy URL has been issued yet."),
-                tone: statusTone(getByPath(status, "tunnelmole.status", getByPath(status, "cloud.status", ""))),
-                ignoreBannerFollowUp: true
-            },
-            {
-                screen: "security",
-                label: "Security",
-                value: findOption([
-                    { id: "normal", label: "Normal Mode (No Encryption)" },
-                    { id: "secure", label: "Secure Mode (Password Only)" },
-                    { id: "secure_professional", label: "Secure Professional (Password + 2FA)" },
-                    { id: "secure_professional_maximus", label: "Secure Professional Maximus" }
-                ], getByPath(cfg, "security.mode", "secure"), "secure").label,
-                sub: getByPath(status, "totp.totp_configured", false) ? "Authenticator is configured for Secure Professional flows." : "No authenticator setup is configured yet.",
-                tone: getByPath(status, "totp.totp_configured", false) ? "green" : "amber"
-            }
+        var status = getByPath(state.bootstrap, "status", {});
+        var complete = onboardingCompleted();
+        var identity = "<div class=\"ayu-identity-band\"><div><div class=\"ayu-kicker\">Your local server</div><h1>Make yourself at home.</h1><p>Name your server, choose your theme, and keep the essentials in view.</p></div><div class=\"ayu-identity-fields\">" + field("Server name", input("overview.serverName", { placeholder: "My AutoYou" })) + field("Appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + button("Save", "save-overview", "primary", "save") + "</div></div>";
+        var summaries = [
+            { screen: "ai", label: "Responses", value: getByPath(status, "ai_agent.status", "Unknown"), icon: "cpu" },
+            { screen: "agents", label: "Agents", value: String((getByPath(state.bootstrap, "agents.agent_overview", []) || []).filter(function (agent) { return agent.installed; }).length) + " installed", icon: "agents" },
+            { screen: "connectivity", label: "Reachability", value: bindHostAccessLabel(getByPath(status, "server.bind_host", getByPath(cfg, "server.bind_host", "127.0.0.1"))), icon: "shield" },
+            { screen: "messaging", label: "Telegram", value: telegramApprovedSenderIds().length ? "Sender approved" : "Needs pairing", icon: "msg" }
         ];
-
-        var attentionCards = serviceCards.filter(function (card) {
-            return (card.tone === "red" || card.tone === "amber") && !card.ignoreBannerFollowUp;
-        });
-        var bannerTitle = attentionCards.length ? "Local services need follow-up" : "Local services are ready";
-        var bannerCopy = attentionCards.length
-            ? attentionCards.map(function (card) {
-                return card.label + ": " + card.sub;
-            }).join(" ")
-            : "AutoYou AI and Browser & Page are available. Cloud Pair and messaging partners can be configured when you need remote access outside the local machine.";
-        var serviceStatusMarkup = renderStatusRows(serviceCards.map(function (card) {
-            return {
-                label: card.label,
-                value: card.value,
-                help: card.sub
-            };
-        }));
-        var accessPanel = panel("Access & unlock", "What this computer exposes right now, nearby pairing, and system credential unlock.", renderOverviewAccessPanel());
-        var mediaPanel = panel("Media & capture", "Video, audio, AI voice, and recording state without opening the detailed live view.", renderOverviewMediaPanel());
-        var updatePanel = renderSoftwareUpdatePanel();
-
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Overview</h1><p>See what is running on this machine right now, what remains optional, and what still needs local setup before phones or desktop clients connect.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh", "refresh-bootstrap", "secondary", "refresh") + button("Open setup", "nav:setup", "ghost", "bolt") + button("Restart AI Runtime", "service:ai:restart", "ghost", "bolt") + "</div></div><div class=\"ayu-banner\"><div><strong>" + escapeHtml(bannerTitle) + "</strong><p>" + escapeHtml(bannerCopy) + "</p></div><div class=\"ayu-banner-meta\"><div>" + escapeHtml(cloudEmail) + "</div><div>Server ID: " + escapeHtml(serverId) + "</div></div></div><div class=\"ayu-grid-4\">" + serviceCards.map(function (card) {
-            return "<button type=\"button\" class=\"ayu-stat-card\" data-action=\"nav:" + escapeHtml(card.screen) + "\"><div class=\"ayu-stat-top\"><div class=\"ayu-kicker\">" + escapeHtml(card.label) + "</div>" + badge(statusBadgeLabel(card.tone), card.tone) + "</div><div class=\"ayu-stat-value\">" + escapeHtml(card.value) + "</div><div class=\"ayu-stat-copy\">" + escapeHtml(card.sub) + "</div></button>";
-        }).join("") + "</div><div class=\"ayu-grid-2\">" + accessPanel + mediaPanel + "</div>" + updatePanel + panel("Set up your phone", "One scan for the pairing methods available on this computer.", renderZeroTouchPairingBody()) + renderLocalPairPanelMarkup() + "<div class=\"ayu-grid-2\">" + panel("Server identity & appearance", "Update the display name used by clients, setup QR codes, and the admin shell theme.", identityMarkup) + panel("What is live right now", "Actual service state from the current bootstrap snapshot.", serviceStatusMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Quick controls", "Common actions across the admin stack.", renderOverviewQuickControls()) + panel("Operator next steps", "Use the setup wizard for first-run work, then move into the screen that owns the setting you need.", "<div class=\"ayu-list\"><div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>Setup & Boot</strong><p>Walk through password, provider, model, partner, connectivity, and speech setup in one serial flow.</p></div><div class=\"ayu-inline-actions\">" + button("Open setup", "nav:setup", "primary", "bolt", "sm") + "</div></div><div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>AI & Models</strong><p>Choose the provider path, manage local models, and tune model behavior.</p></div><div class=\"ayu-inline-actions\">" + button("Open AI & Models", "nav:ai", "secondary", "cpu", "sm") + "</div></div><div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>Security</strong><p>Set the pairing mode, rotate the password, and manage the shared authenticator setup.</p></div><div class=\"ayu-inline-actions\">" + button("Open security", "nav:security", "ghost", "shield", "sm") + "</div></div></div>") + "</div></div>";
+        var cards = "<div class=\"ayu-overview-stats\">" + summaries.map(function (item) {
+            return "<button type=\"button\" class=\"ayu-summary-card\" data-action=\"nav:" + item.screen + "\"><span class=\"ayu-summary-icon\">" + icon(item.icon) + "</span><span><small>" + escapeHtml(item.label) + "</small><strong>" + escapeHtml(item.value) + "</strong></span>" + icon("arrowRight") + "</button>";
+        }).join("") + "</div>";
+        var next = complete
+            ? panel("Ready when you are", "Open a conversation or see which devices are connected.", "<div class=\"ayu-inline-actions\">" + button("Open chat", "nav:chat", "primary", "msg") + button("Live View", "nav:live", "secondary", "eye") + button("Revisit setup", "nav:setup", "ghost", "bolt") + "</div>")
+            : "<div class=\"ayu-start-banner\"><span class=\"ayu-start-icon\">" + icon("bolt") + "</span><div><strong>A little setup. A lot you can do.</strong><p>Choose your uses, local AI, permissions, and a private connection in one guided flow.</p></div>" + button("Set up AutoYou", "nav:setup", "primary", "arrowRight") + "</div>";
+        return "<div class=\"ayu-screen ayu-overview\">" + identity + next + cards + "<div class=\"ayu-grid-2\">" + panel("Service controls", "Start, stop, or restart your local services.", renderOverviewQuickControls()) + panel("Find the right setting", "Each page has one job.", "<div class=\"ayu-destination-list\">" + [
+            ["permissions", "Permissions", "Microphone, webcam, screen, recording and memory", "shield"],
+            ["connectivity", "Connectivity", "This computer, home network and remote access", "wifi"],
+            ["video", "Video & Calls", "Playback, sharing sources and recording folders", "video"],
+            ["setup", "Setup & Boot", "Guided setup, startup checks and software updates", "bolt"]
+        ].map(function (item) { return "<button type=\"button\" data-action=\"nav:" + item[0] + "\">" + icon(item[3]) + "<span><strong>" + item[1] + "</strong><small>" + item[2] + "</small></span>" + icon("arrowRight") + "</button>"; }).join("") + "</div>") + "</div></div>";
     }
 
     function renderSoftwareUpdatePanel() {
@@ -6085,7 +6126,7 @@
             return "<li>" + escapeHtml(item) + "</li>";
         }).join("") + "</ol>" : "";
 
-        var hasGuarded = Object.keys(getByPath(recipe, "guarded_config_patch", {}) || {}).length > 0 || restartItems.length > 0;
+        var hasGuarded = Object.keys(getByPath(recipe, "guarded_config_patch", {}) || {}).length > 0;
         var guardedButton = hasGuarded ? button("Apply guarded network settings", "setup-apply-guarded-recipe", "danger", "shield") : "";
         var tooltip = getByPath(recipe, "tooltips.model_picker_agent", "Choose a local or hosted model in AI & Models.");
 
@@ -6242,7 +6283,219 @@
         ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
     }
 
+    var GUIDED_SETUP_STEPS = [
+        { id: "welcome", label: "Make it yours", title: "Your AutoYou, your way.", copy: "Start with a name and an everyday preset. Everything stays editable." },
+        { id: "uses", label: "Choose uses", title: "What would you like to do?", copy: "Pick the things you need. Permission to record or control your computer is a separate choice." },
+        { id: "responses", label: "Responses", title: "What should power responses?", copy: "Local models are the recommended starting point. Hosted providers and other runtimes are optional." },
+        { id: "privacy", label: "Privacy", title: "What can AutoYou access?", copy: "You decide what is shared, recorded, and saved. These choices apply when you save your plan." },
+        { id: "connect", label: "Connect", title: "Where should this server be reachable?", copy: "Keep the server on this computer and use Telegram for personal access, or choose another connection." },
+        { id: "review", label: "Review & boot", title: "Your setup, ready to review.", copy: "Check the exact changes, save your plan, then start the local services you chose." }
+    ];
+
+    var GUIDED_PERMISSION_COPY = [
+        ["save_conversations", "Save conversations on this computer?", "Stores AutoYou chat history in the local database.", "msg"],
+        ["local_memory", "Enable local memory?", "Lets the Memory Agent save and recall facts locally. Turning it off disables the agent; existing data is kept.", "cpu"],
+        ["record_audio_calls", "Record incoming audio calls?", "Saves received audio-only calls to this server. Tell other participants before recording.", "mic"],
+        ["record_video_calls", "Record incoming video calls?", "Saves received call video locally. Storage folders live in Video & Calls.", "video"],
+        ["share_screen", "Allow screen sharing?", "Lets paired clients receive your screen during a session.", "page"],
+        ["share_microphone", "Allow the computer microphone?", "Lets calls capture and share sound from this computer's microphone.", "mic"],
+        ["share_computer_audio", "Allow computer sound?", "Lets calls share speaker output. Audio playback itself does not need this.", "wave"],
+        ["share_webcam", "Allow the webcam?", "Lets paired clients receive this computer's camera during a session.", "camera"],
+        ["desktop_control", "Allow desktop control?", "Allows the Desktop Automation agent and paired remote controls to act on this computer. Enable the use case first.", "agents"]
+    ];
+
+    function guidedPermissions() {
+        var answers = currentSetupAnswers();
+        if (!answers.permissions) {
+            answers.permissions = { save_conversations: true, local_memory: true, record_audio_calls: false, record_video_calls: false, share_screen: false, share_microphone: false, share_computer_audio: false, share_webcam: false, desktop_control: false };
+        }
+        return answers.permissions;
+    }
+
+    function setupQuestion(id) {
+        return setupDecisionTree().find(function (question) { return question.id === id; }) || { options: [] };
+    }
+
+    function guidedChoice(question, option, selected, iconName) {
+        return "<button type=\"button\" class=\"ayu-guided-choice" + (selected ? " selected" : "") + "\" data-action=\"setup-answer:" + question + ":" + escapeHtml(option.id) + "\" aria-pressed=\"" + String(selected) + "\"><span class=\"ayu-guided-choice-icon\">" + icon(iconName || "check") + "</span><span><strong>" + escapeHtml(option.label) + "</strong><small>" + escapeHtml(option.description) + "</small></span><span class=\"ayu-choice-indicator\" aria-hidden=\"true\">" + (selected ? icon("check") : "") + "</span></button>";
+    }
+
+    function renderSetupPlanSummary() {
+        var answers = currentSetupAnswers();
+        var permissions = guidedPermissions();
+        var capture = [permissions.share_screen ? "Screen" : "", permissions.share_microphone ? "Microphone" : "", permissions.share_webcam ? "Webcam" : ""].filter(Boolean);
+        var ai = (setupQuestion("ai_path").options || []).find(function (option) { return option.id === answers.ai_path; });
+        var network = (setupQuestion("network_scope").options || []).find(function (option) { return option.id === answers.network_scope; });
+        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Built around you.</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
+    }
+
+    function renderGuidedTelegram() {
+        var approved = telegramApprovedSenderIds().length;
+        var payload = state.operations.telegramSenders || {};
+        return "<div class=\"ayu-pairing-journey\"><div class=\"ayu-pairing-step\"><span>1</span><div><h3>Create your bot</h3><p>Open BotFather in Telegram, send <code>/newbot</code>, and copy the bot token it gives you.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary ayu-btn-sm\" href=\"https://t.me/BotFather\" target=\"_blank\" rel=\"noopener noreferrer\">Open BotFather</a></div></div><div class=\"ayu-pairing-step\"><span>2</span><div><h3>Save the token</h3>" + field("Telegram Bot token", input("messaging.telegram.bot_token", { type: "password", placeholder: "Paste your bot token", autocomplete: "off" }), "Saved on this server. A bot token is different from your sender ID.") + button("Save token & discover", "setup-telegram-discover", "primary", "msg", "sm") + "</div></div><div class=\"ayu-pairing-step\"><span>3</span><div><h3>Send your bot a message</h3><p>Open the bot you just created, press Start, and send it a message. Your sender ID appears below.</p>" + button("Refresh senders", "telegram-refresh-senders", "secondary", "refresh", "sm") + renderTelegramDiscoveredSenders(payload) + button("Approve my selected ID", "telegram-approve-selected", "green", "check", "sm") + disclosure("setup-manual-sender", "Enter your sender ID manually", "Use this if discovery is unavailable.", field("Approved sender IDs", input("messaging.telegram.acl_sender_ids", { placeholder: "Your numeric Telegram sender ID" })) + button("Save approved IDs", "setup-telegram-save-ids", "secondary", "save", "sm")) + "</div></div></div><div class=\"ayu-note ayu-note-" + (approved ? "green" : "blue") + "\">" + (approved ? String(approved) + " sender ID(s) approved. Check that every ID belongs to you." : "Unknown senders cannot use your bot. Approve only your own sender ID.") + " Telegram carries bot messages through its servers. This does not make your local admin page publicly reachable.</div>";
+    }
+
+    function guidedReadiness() {
+        var cfg = bootstrapConfig();
+        var answers = currentSetupAnswers();
+        var setup = state.setup.payload || {};
+        var models = getByPath(state.aiLibrary.local, "models", getByPath(setup, "ollama.local_models", []));
+        var currentModel = String(getByPath(cfg, "ollama.model", ""));
+        var modelReady = Array.isArray(models) && models.some(function (model) {
+            var name = typeof model === "string" ? model : (model.name || model.model || "");
+            return name === currentModel || name === currentModel + ":latest";
+        });
+        var providerReady = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway" || answers.ai_path === "model_picker"
+            ? modelReady
+            : getByPath(cfg, "ai_provider.provider", "") === ({ cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus" }[answers.ai_path]);
+        var passwordReady = Boolean(getByPath(setup, "password_changed", false)) || getByPath(setup, "using_default_password", true) === false;
+        return [
+            { label: "Custom password", ready: passwordReady && getByPath(cfg, "security.mode", "normal") !== "normal", action: "setup-guided-step:4", copy: "Save a custom password and Secure Mode on Connect." },
+            { label: "Response provider", ready: providerReady, action: "setup-guided-step:2", copy: "Select an installed local model or save your provider configuration." },
+            { label: "Personal connection", ready: answers.network_scope !== "telegram" || telegramApprovedSenderIds().length > 0, action: "setup-guided-step:4", copy: "Save your bot token and approve your own sender ID." },
+            { label: "Applied setup plan", ready: state.setup.applied, action: "setup-guided-apply", copy: "Apply the reviewed settings and agent choices below." }
+        ];
+    }
+
+    function renderGuidedSetupBody(step) {
+        var answers = currentSetupAnswers();
+        var cfg = bootstrapConfig();
+        if (step.id === "welcome") {
+            var recommended = setupProfileById("easy_private");
+            var preset = recommended || setupProfileTemplates()[0];
+            return "<div class=\"ayu-grid-2\">" + field("Give your server a name", input("overview.serverName", { placeholder: "My AutoYou" }), "The name your connected devices will see.") + field("Choose your appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + "</div><div class=\"ayu-inline-actions\">" + button("Save name & theme", "save-overview", "secondary", "save", "sm") + "</div><div class=\"ayu-preset-card\"><div class=\"ayu-preset-title\">" + icon("shield") + "<span><small>Recommended combination</small><strong>Easy & private</strong></span>" + badge("Local first", "green") + "</div><p>Local AI, personal Telegram access, notes, tasks, audio, media and learning. No coding agents, public link, recording or computer capture is enabled by this preset.</p><div class=\"ayu-inline-actions\">" + button(answers.profile_id === getByPath(preset, "id", "") ? "Preset selected" : "Use this combination", "setup-profile:" + getByPath(preset, "id", "private_starter"), "primary", "check") + button("Customize uses", "setup-guided-step:1", "secondary", "agents") + "</div></div>" + disclosure("setup-presets", "More starting points", "Phone companion, creator, home network, incognito and other existing recipes.", renderSetupProfileCards(answers)) + "<div class=\"ayu-note ayu-note-blue\">You can complete setup on this computer without an AutoYou account. A free account for signed updates and optional paid Cloud Pair lives in Boot & maintenance.</div>";
+        }
+        if (step.id === "uses") {
+            var icons = { productivity: "check", messaging: "msg", media_center: "video", audio_player: "wave", genai: "bolt", desktop_automation: "page", learning: "book", file_library: "file", video_calls: "video", speech: "mic", background_connection: "wifi", agent_websites: "page", creator: "camera", api_integrations: "key", safety_recording: "mic", incognito: "eyeOff", commerce_review: "shield" };
+            var commonIds = ["productivity", "messaging", "media_center", "audio_player", "genai", "desktop_automation", "learning", "file_library", "video_calls", "speech"];
+            var usecaseOptions = setupQuestion("intents").options || [];
+            var tile = function (option) {
+                return guidedChoice("intents", option, answers.intents.indexOf(option.id) !== -1, icons[option.id]);
+            };
+            return "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) !== -1; }).map(tile).join("") + "</div>" + disclosure("setup-extra-uses", "More use cases", "Background phone link, websites, integrations, incognito and other specialist choices.", "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) === -1; }).map(tile).join("") + "</div>") + "<div class=\"ayu-note\">GenAI may need model downloads. Desktop Automation needs separate desktop-control permission. Selecting a feature does not approve recording or capture.</div>";
+        }
+        if (step.id === "responses") {
+            var options = setupQuestion("ai_path").options || [];
+            var local = options.filter(function (option) { return option.id === "local_ollama" || option.id === "cloud_provider" || option.id === "google_gemini"; });
+            var extra = options.filter(function (option) { return local.indexOf(option) === -1; });
+            var optionsMarkup = function (items) { return "<div class=\"ayu-usecase-grid\">" + items.map(function (option) { return guidedChoice("ai_path", option, option.id === answers.ai_path, option.id === "local_ollama" ? "cpu" : "cloud"); }).join("") + "</div>"; };
+            var localPath = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway";
+            return optionsMarkup(local) + disclosure("setup-other-runtimes", "Other response runtimes", "Native Ollama gateway, Hermes, OpenClaw and model guidance.", optionsMarkup(extra)) + "<div class=\"ayu-note ayu-note-" + (localPath ? "green" : "amber") + "\">" + (localPath ? "Local Ollama inference runs on this computer. Telegram and optional online tools still use their services." : "Hosted providers receive prompts and conversation context. Local history storage does not make hosted inference private to this computer.") + "</div>" + (localPath ? field("Local model", select("aiProvider.ollama_model", buildSimpleOptions(localModelNames(), getByPath(state.forms, "aiProvider.ollama_model", getByPath(cfg, "ollama.model", "")))) , "Choose an installed model. Download a model below if the list is empty.") + "<div class=\"ayu-inline-actions\">" + button("Save local model", "setup-save-local-model", "secondary", "save", "sm") + button("Download or manage models", "setup-open-screen:ai:models", "primary", "download", "sm") + "</div>" : "<div class=\"ayu-inline-actions\">" + button("Configure this provider", "setup-open-screen:ai:responses", "primary", "key") + "</div>");
+        }
+        if (step.id === "privacy") {
+            var permissions = guidedPermissions();
+            return "<div class=\"ayu-permission-questions\">" + GUIDED_PERMISSION_COPY.map(function (item) {
+                var blocked = item[0] === "desktop_control" && answers.intents.indexOf("desktop_automation") === -1;
+                var incognito = answers.intents.indexOf("incognito") !== -1 && ["save_conversations", "local_memory", "record_audio_calls", "record_video_calls"].indexOf(item[0]) !== -1;
+                var enabled = Boolean(permissions[item[0]]) && !blocked && !incognito;
+                return "<button type=\"button\" role=\"switch\" aria-checked=\"" + String(enabled) + "\" class=\"ayu-permission-question\" data-action=\"setup-permission:" + item[0] + "\"" + (blocked || incognito ? " disabled" : "") + ">" + icon(item[3]) + "<span><strong>" + escapeHtml(item[1]) + "</strong><small>" + escapeHtml(incognito ? "Off while Incognito is selected." : item[2]) + "</small></span><span class=\"ayu-switch\" aria-hidden=\"true\"><span></span></span><span class=\"ayu-switch-label\">" + (enabled ? "Yes" : "No") + "</span></button>";
+            }).join("") + "</div><div class=\"ayu-note ayu-note-blue\">AutoYou stores selected history, memory and recordings on this server. Telegram, cloud models, cloud speech and enabled online tools can send data to their providers. Turning storage off does not delete earlier records.</div>";
+        }
+        if (step.id === "connect") {
+            var networkOptions = setupQuestion("network_scope").options || [];
+            var networkChoice = function (option) { return guidedChoice("network_scope", option, option.id === answers.network_scope, option.id === "telegram" ? "msg" : "wifi"); };
+            var network = "<div class=\"ayu-usecase-grid\">" + networkOptions.filter(function (option) { return ["loopback", "telegram"].indexOf(option.id) !== -1; }).map(networkChoice).join("") + "</div>" + disclosure("setup-network-alternatives", "Other ways to connect", "Trusted LAN, paid Cloud Pair or a guarded temporary public link.", "<div class=\"ayu-usecase-grid\">" + networkOptions.filter(function (option) { return ["loopback", "telegram"].indexOf(option.id) === -1; }).map(networkChoice).join("") + "</div>");
+            var secure = "<div class=\"ayu-setup-security\"><h3>Protect your server</h3><p>Use your own password before connecting a phone or another device.</p>" + renderPasswordDraftFields() + field("Security mode", select("security.mode", [{ value: "secure", label: "Password encryption (recommended)" }, { value: "secure_professional", label: "Password + shared authenticator" }, { value: "secure_professional_maximus", label: "Password + authenticator + local encryption" }])) + "<div class=\"ayu-inline-actions\">" + button("Save password & security", "security-save-baseline", "primary", "shield") + button("Manage authenticator", "setup-open-screen:security:pairing", "ghost", "key", "sm") + "</div></div>";
+            var connection = answers.network_scope === "telegram" ? renderGuidedTelegram() : (answers.network_scope === "loopback" ? "<div class=\"ayu-note ayu-note-green\">The saved plan keeps the server at <code>127.0.0.1</code> and turns off public links. Use Chat on this computer. Existing messaging and cloud connections are managed separately.</div>" : "<div class=\"ayu-note ayu-note-amber\">" + (answers.network_scope === "cloud_pair" ? "Cloud Pair uses an optional paid service. Link your account on Connectivity, then return here." : "This choice widens reachability. Review the network warning and apply it separately on the final step. LAN changes take effect after restarting AutoYou.") + "</div><div class=\"ayu-inline-actions\">" + button("Open connection options", "setup-open-screen:connectivity", "secondary", "wifi") + button("Other messaging partners", "setup-open-screen:messaging:partners", "ghost", "msg") + "</div>");
+            return network + secure + connection;
+        }
+        var ready = guidedReadiness();
+        var readiness = "<div class=\"ayu-readiness-list\">" + ready.map(function (item) { return "<div><span class=\"ayu-readiness-icon " + (item.ready ? "ready" : "") + "\">" + icon(item.ready ? "check" : "info") + "</span><span><strong>" + escapeHtml(item.label) + "</strong><small>" + escapeHtml(item.ready ? "Ready" : item.copy) + "</small></span>" + (!item.ready && item.label !== "Applied setup plan" ? button("Review", item.action, "ghost", "arrowRight", "sm") : "") + "</div>"; }).join("") + "</div>";
+        var recipe = state.setup.recipe;
+        var recipeMarkup = recipe ? renderSetupRecipePreview(setupProfilesPayload(), answers).replace(button("Apply safe settings", "setup-apply-recipe", "primary", "save"), "") + "<h3>Agent changes</h3><div class=\"ayu-note\"><strong>Enable:</strong> " + escapeHtml(getByPath(recipe, "agent_choices.enable", []).join(", ")) + "<br><strong>Disable:</strong> " + escapeHtml(getByPath(recipe, "agent_choices.disable", []).join(", ") || "None") + "</div>" + disclosure("setup-config-patch", "Configuration changes", "The validated configuration patch this plan saves.", "<pre class=\"ayu-note ayu-mono\">" + escapeHtml(JSON.stringify(recipe.safe_config_patch || {}, null, 2)) + "</pre>") : "<div class=\"ayu-note\">Preview your plan to see the exact settings, agent choices, network warnings and restart notes.</div>";
+        return readiness + (state.setup.progress ? "<div class=\"ayu-note ayu-note-blue\" role=\"status\">" + escapeHtml(state.setup.progress) + "</div>" : "") + (state.setup.applyError ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(state.setup.applyError) + "</div>" : "") + "<div class=\"ayu-inline-actions\">" + button("Preview my plan", "setup-preview-recipe", "secondary", "search", "", state.setup.applying ? "disabled" : "") + button(state.setup.applied ? "Apply again" : "Apply settings & agents", "setup-guided-apply", "primary", "save", "", state.setup.applying ? "disabled" : "") + button("Start services & finish", "setup-guided-boot", "green", "power", "", !ready.every(function (item) { return item.ready; }) || state.setup.applying ? "disabled" : "") + "</div>" + disclosure("setup-exact-plan", "Exact plan & network changes", "See validated settings and apply any guarded network changes separately.", recipeMarkup) + "<div class=\"ayu-note\">Applying saves configuration and updates the selected agent registry. Starting services restarts the AI runtime to load those agents. GenAI models and media libraries still need their own setup.</div>";
+    }
+
     function renderSetupScreen() {
+        if (state.setup.mode === "guided" && Number(getByPath(setupProfilesPayload(), "version", 0)) < 3) {
+            return "<div class=\"ayu-screen\"><div class=\"ayu-note ayu-note-amber\"><strong>Restart AutoYou to load guided setup.</strong><p>The new setup catalog needs the updated server runtime. Existing detailed setup remains available until then.</p><div class=\"ayu-inline-actions\">" + button("Open detailed setup", "setup-mode:advanced", "secondary", "bolt") + button("Refresh after restart", "setup-refresh", "ghost", "refresh") + "</div></div></div>";
+        }
+        if (state.setup.mode === "advanced") {
+            return "<div class=\"ayu-setup-modebar\">" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "<span>Detailed setup and existing recipes</span></div>" + renderAdvancedSetupScreen();
+        }
+        if (state.setup.mode === "boot") {
+            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Start with AutoYou", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
+        }
+        var index = Math.max(0, Math.min(Number(state.setup.guidedStep) || 0, GUIDED_SETUP_STEPS.length - 1));
+        var step = GUIDED_SETUP_STEPS[index];
+        var progress = Math.round(index / (GUIDED_SETUP_STEPS.length - 1) * 100);
+        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>A good start, made simple.</h1><p>One flow from first setup to a ready local server.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan") + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-step:" + (index + 1), "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
+    }
+
+    async function applyGuidedSetup() {
+        if (state.setup.applying) return;
+        var readiness = guidedReadiness();
+        if (!readiness[0].ready || !readiness[1].ready || !readiness[2].ready) {
+            throw new Error("Finish the password, response model, and selected connection checks before applying your plan.");
+        }
+        state.setup.applying = true;
+        state.setup.applied = false;
+        state.setup.applyError = "";
+        try {
+            var answers = clone(currentSetupAnswers());
+            guidedPermissions();
+            state.setup.progress = "Saving local settings...";
+            renderApp();
+            await patchConfig({ server: { name: getByPath(state.forms, "overview.serverName", "AutoYou-Server") }, ui_theme: getByPath(state.forms, "overview.adminTheme", "dark") });
+            var response = await applySetupRecipe(false);
+            var recipe = response.recipe;
+            var choices = recipe.agent_choices || { enable: (recipe.recommended_agents || []).map(function (agent) { return agent.name; }), disable: [] };
+            var overview = getByPath(state.bootstrap, "agents.agent_overview", []);
+            var installed = overview.filter(function (agent) { return agent.installed; }).map(function (agent) { return agent.agent_name; });
+            var available = overview.map(function (agent) { return agent.agent_name; });
+            var actions = choices.enable.filter(function (name) { return installed.indexOf(name) === -1 && available.indexOf(name) !== -1; }).map(function (name) { return { name: name, install: true }; });
+            choices.disable.forEach(function (name) { if (installed.indexOf(name) !== -1) actions.push({ name: name, install: false }); });
+            for (var i = 0; i < actions.length; i += 1) {
+                state.setup.progress = (actions[i].install ? "Enabling " : "Disabling ") + prettyLabel(actions[i].name) + " (" + (i + 1) + " of " + actions.length + ")...";
+                renderApp();
+                await postJson(actions[i].install ? "/api/agents/install" : "/api/agents/uninstall", { agent_name: actions[i].name });
+            }
+            await refreshBootstrap();
+            state.setup.answers = answers;
+            state.setup.applied = true;
+            state.agentWorkbench.aiRestartRequired = actions.length > 0;
+            state.setup.progress = "Local settings and selected agents saved. Start services to load the new plan.";
+        } catch (error) {
+            state.setup.applyError = "Setup stopped: " + error.message + ". Earlier successful changes are saved. Review the plan and retry to finish.";
+            state.setup.progress = "";
+            throw error;
+        } finally {
+            state.setup.applying = false;
+            renderApp();
+        }
+    }
+
+    async function bootGuidedSetup() {
+        if (!guidedReadiness().every(function (item) { return item.ready; })) throw new Error("Complete the setup checks before starting services.");
+        var answers = currentSetupAnswers();
+        if ((answers.network_scope === "lan" || answers.network_scope === "public_proxy") && Object.keys(getByPath(state.setup.recipe, "guarded_config_patch", {})).some(function (section) {
+            var expected = state.setup.recipe.guarded_config_patch[section];
+            return Object.keys(expected).some(function (key) { return JSON.stringify(getByPath(bootstrapConfig(), section + "." + key, null)) !== JSON.stringify(expected[key]); });
+        })) throw new Error("Apply the guarded network changes in Exact plan before finishing this connection choice.");
+        state.setup.progress = "Starting the local services you selected...";
+        renderApp();
+        var nativeGateway = answers.ai_path === "native_ollama_gateway" || answers.ai_path === "odysseus";
+        if (nativeGateway) {
+            var gateway = await requestJson(answers.ai_path === "native_ollama_gateway" ? "/api/ai/ollama/status" : "/api/ai/odysseus/status");
+            if (!gateway.available) throw new Error("Your selected response gateway is unavailable. Configure it in AI & Models and retry.");
+        } else {
+            await handleServiceAction("service:ai:restart");
+        }
+        var pageNeeded = getByPath(bootstrapConfig(), "autoyou_page.auto_start", false) || currentSetupAnswers().intents.some(function (intent) { return ["media_center", "learning", "agent_websites", "genai"].indexOf(intent) !== -1; });
+        if (pageNeeded) await handleServiceAction("service:page:start");
+        await ensureSetupData(true);
+        if (!nativeGateway && !serviceStatusIsRunning(getByPath(state.bootstrap, "status.ai_agent.status", ""))) throw new Error("AI is not running yet. Check AI & Models and retry Start services.");
+        if (pageNeeded && !serviceStatusIsRunning(getByPath(state.bootstrap, "status.autoyou_page.status", ""))) throw new Error("Websites & Browser is not running yet. Check its service status and retry Start services.");
+        var liveHost = getByPath(state.bootstrap, "status.instance.bind_host", "");
+        if (["loopback", "telegram", "cloud_pair"].indexOf(answers.network_scope) !== -1 && liveHost && normalizeOverviewBindHost(liveHost) !== "127.0.0.1") throw new Error("Your local-only setting is saved, but the running server still uses a wider network bind. Restart AutoYou locally, then verify Connectivity before finishing.");
+        await postJson("/api/wizard/complete", { completed: true });
+        syncSetupCompletion(true);
+        state.setup.progress = "Setup complete. Your local server is ready.";
+        renderApp();
+        setNotice("success", "AutoYou is ready. Open Chat to try it.");
+    }
+
+    function renderAdvancedSetupScreen() {
         var setup = state.setup.payload || {};
         var status = getByPath(state.bootstrap, "status", {});
         var cfg = bootstrapConfig();
@@ -6456,7 +6709,7 @@
             "Store client names in chat history",
             "Off by default. When off - or in Incognito - names are only visible while the client is connected."
         ) + "<div class=\"ayu-note ayu-note-" + (storeClientNames ? "green" : "amber") + "\"><strong>" + escapeHtml(storeClientNames ? "Client names can be saved with chat history." : "Client names are live-only.") + "</strong><p style=\"margin:6px 0 0;\">Incognito and message-storage-off modes always keep client names out of history.</p></div>";
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>AI & Models</h1><p>Choose the AI path that powers AutoYou on this machine, then manage local models separately from provider selection so the screen only shows the settings that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh AI data", "ai-refresh", "secondary", "refresh") + button("Open Agent Studio", "nav:agents", "ghost", "agents") + button("Open Permissions", "nav:permissions", "ghost", "shield", "sm") + "</div></div><div class=\"ayu-grid-2\">" + panel("AI provider", "Pick the local or cloud AI path first. Secret fields stay unchanged unless you enter new values.", renderAiProviderSettingsBody()) + panel("AutoYou AI", "Controls for AutoYou's own agent host.", checkbox("aiAgent.enabled", "AutoYou AI enabled") + checkbox("aiAgent.auto_start", "Auto-start AutoYou AI on server boot") + clientNameMarkup + field("Memory backend", select("aiAgent.memory_backend", [{ value: "legacy", label: "AutoYou SQLite" }, { value: "cognee", label: "Cognee self-hosted" }]), "AutoYou SQLite keeps long-term chat and event memory. Cognee adds graph/vector memory when installed.") + webSearchMarkup + field("AutoYou AI port", input("aiAgent.port", { type: "number" })) + "<div class=\"ayu-inline-actions\">" + button("Save AI settings", "save-ai-agent", "primary", "save") + button("Start", "service:ai:start", "green", "play", "sm") + button("Stop", "service:ai:stop", "secondary", "stop", "sm") + button("Restart", "service:ai:restart", "ghost", "refresh", "sm") + button(webSearchOn ? "Turn web search off" : "Turn web search on", "ai-toggle-internet", "secondary", "bolt", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Model behavior", "Tune AutoYou AI rather than the model catalog.", renderModelBehaviorBody()) + panel("Manage Models", "Browse the local Ollama library, search catalogs, and keep downloads visible in one place.", renderManageModelsBody()) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>AI & Models</h1><p>Choose the AI path that powers AutoYou on this machine, then manage local models separately from provider selection so the screen only shows the settings that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh AI data", "ai-refresh", "secondary", "refresh") + button("Open Agent Studio", "nav:agents", "ghost", "agents") + button("Open Permissions", "nav:permissions", "ghost", "shield", "sm") + "</div></div><div class=\"ayu-grid-2\">" + panel("AI provider", "Pick the local or cloud AI path first. Secret fields stay unchanged unless you enter new values.", renderAiProviderSettingsBody()) + panel("AutoYou AI", "Controls for AutoYou's own agent host.", checkbox("aiAgent.enabled", "AutoYou AI enabled") + checkbox("aiAgent.auto_start", "Auto-start AutoYou AI on server boot") + webSearchMarkup + field("AutoYou AI port", input("aiAgent.port", { type: "number" })) + "<div class=\"ayu-inline-actions\">" + button("Save AI settings", "save-ai-agent", "primary", "save") + button("Start", "service:ai:start", "green", "play", "sm") + button("Stop", "service:ai:stop", "secondary", "stop", "sm") + button("Restart", "service:ai:restart", "ghost", "refresh", "sm") + button(webSearchOn ? "Turn web search off" : "Turn web search on", "ai-toggle-internet", "secondary", "bolt", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Memory & history", "Local conversation storage, identity history and the memory backend.", clientNameMarkup + field("Memory backend", select("aiAgent.memory_backend", [{ value: "legacy", label: "AutoYou SQLite" }, { value: "cognee", label: "Cognee self-hosted" }]), "AutoYou SQLite keeps long-term chat and event memory. Cognee adds graph/vector memory when installed.") + "<div class=\"ayu-inline-actions\">" + button("Save memory settings", "save-ai-agent", "primary", "save") + "</div>") + panel("Model behavior", "Tune AutoYou AI rather than the model catalog.", renderModelBehaviorBody()) + panel("Manage Models", "Browse the local Ollama library, search catalogs, and keep downloads visible in one place.", renderManageModelsBody()) + "</div></div>";
     }
 
     function isMainAdminAgentName(name) {
@@ -6535,13 +6788,36 @@
         return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", body);
     }
 
+    function agentCategoryOf(agent) {
+        var name = String(agent.agent_name || "");
+        if (/coding|codex|claude|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
+        if (/audio|media|voice|tv_|game_/.test(name)) return "media";
+        if (/desktop|browser|security_/.test(name)) return "desktop";
+        if (/education/.test(name)) return "learning";
+        if (/notes|tasks|memory|notify|persona|prompts|admin|files/.test(name)) return "everyday";
+        return "connections";
+    }
+
+    function agentMatchesFilter(agent) {
+        var query = String(state.agentQuery || "").trim().toLowerCase();
+        return (state.agentCategory === "all" || agentCategoryOf(agent) === state.agentCategory) && (!query || [agent.agent_name, agent.display_name, agent.description].join(" ").toLowerCase().indexOf(query) !== -1);
+    }
+
+    function renderAgentLibraryToolbar(agents) {
+        var categories = [["all", "All agents"], ["everyday", "Everyday"], ["media", "Media & GenAI"], ["desktop", "Desktop"], ["learning", "Learning"], ["connections", "Connections"], ["development", "Development"]];
+        return "<div class=\"ayu-agent-toolbar\"><label class=\"ayu-agent-search\">" + icon("search") + "<span class=\"ayu-sr-only\">Search agents by name or use</span><input type=\"search\" data-virtual-bind=\"agentQuery\" value=\"" + escapeHtml(state.agentQuery) + "\" placeholder=\"Find an agent by name or what you want to do\"></label><div class=\"ayu-filter-chips\" aria-label=\"Agent categories\">" + categories.map(function (category) {
+            var count = agents.filter(function (agent) { return category[0] === "all" || agentCategoryOf(agent) === category[0]; }).length;
+            return "<button type=\"button\" data-action=\"agent-category:" + category[0] + "\" class=\"ayu-filter-chip" + (state.agentCategory === category[0] ? " active" : "") + "\" aria-pressed=\"" + String(state.agentCategory === category[0]) + "\">" + category[1] + "<span>" + count + "</span></button>";
+        }).join("") + "</div><p class=\"ayu-hint\">" + agents.filter(agentMatchesFilter).length + " of " + agents.length + " agents match. Installation and website access are separate choices.</p></div>";
+    }
+
     function renderAgentScreen() {
         var payload = getByPath(state.bootstrap, "agents", {});
         var listingPayload = state.agentWorkbench.payload || payload;
         var agentOverview = getByPath(payload, "agent_overview", []);
         var agentDetails = getByPath(payload, "agent_details", {});
-        var installedAgents = agentOverview.filter(function (item) { return item.installed; });
-        var availableAgents = agentOverview.filter(function (item) { return !item.installed; });
+        var installedAgents = agentOverview.filter(function (item) { return item.installed && agentMatchesFilter(item); });
+        var availableAgents = agentOverview.filter(function (item) { return !item.installed && agentMatchesFilter(item); });
         var selectedSummary = state.selectedAgentName ? agentDetails[state.selectedAgentName] : null;
         var selectedDetail = state.selectedAgentName && getByPath(state.agentWorkbench.detail, "agent_name", "") === state.selectedAgentName ? state.agentWorkbench.detail : selectedSummary;
         var instructionPayload = state.instructions.payload;
@@ -6623,17 +6899,17 @@
                 ? button((control && control.enabled) ? "Disable website" : "Enable website", "agent-frontend:" + escapeHtml(agent.agent_name), "secondary", "bolt", "sm") + (frontendPath ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(frontendPath) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open website</span></a>" : "")
                 : button("No website", "agent-frontend-none", "inert", "bolt", "sm", "disabled aria-disabled=\"true\" title=\"This agent does not ship a website.\"");
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(agent.display_name) + "</strong><p>" + escapeHtml(agent.description || "") + "</p><small class=\"ayu-code\">" + escapeHtml(agent.agent_name) + "</small><div class=\"ayu-inline-actions\">" + agentStatusBadges(agent) + "</div></div><div class=\"ayu-inline-actions\">" + button("Open studio", "select-agent:" + escapeHtml(agent.agent_name), "secondary", "info", "sm") + button("Uninstall", "agent-uninstall:" + escapeHtml(agent.agent_name), "danger", "trash", "sm") + websiteActions + "</div></div>";
-        }).join("") + "</div>" : "<div class=\"ayu-empty\">No installed agents were found in the current registry.</div>";
+        }).join("") + "</div>" : "<div class=\"ayu-empty\">No installed agents match these filters.</div>";
 
         var availableMarkup = availableAgents.length ? "<div class=\"ayu-list ayu-agent-grid\">" + availableAgents.map(function (agent) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(agent.display_name) + "</strong><p>" + escapeHtml(agent.description || "") + "</p><small class=\"ayu-code\">" + escapeHtml(agent.agent_name) + "</small><div class=\"ayu-inline-actions\">" + agentStatusBadges(agent) + "</div></div><div class=\"ayu-inline-actions\">" + button("Install", "agent-install:" + escapeHtml(agent.agent_name), "primary", "plus", "sm", getByPath(agent, "runtime_blocked", false) ? "disabled" : "") + button("Open studio", "select-agent:" + escapeHtml(agent.agent_name), "secondary", "info", "sm") + "</div></div>";
-        }).join("") + "</div>" : "<div class=\"ayu-empty\">No additional agents are currently available to install.</div>";
+        }).join("") + "</div>" : "<div class=\"ayu-empty\">No available agents match these filters.</div>";
 
         var scaffoldMarkup = "<div class=\"ayu-grid-2\">" + field("Agent name", input("agentWorkbench.name", { placeholder: "my_custom_agent" })) + field("Description", input("agentWorkbench.description", { placeholder: "A short description of what this agent does." })) + field("First tool name", input("agentWorkbench.tool_name", { placeholder: "handle_request" })) + field("Tool description", input("agentWorkbench.tool_description", { placeholder: "Handle the agent-specific request." })) + "</div><div class=\"ayu-note\">This creates a new agent draft on disk. Once created, open it in Agent Studio below to edit instructions, configure its website, and publish when ready.</div><div class=\"ayu-inline-actions\">" + button("Create agent draft", "agent-scaffold", "primary", "plus") + "</div>";
 
         var promptMarkup = renderAgentPromptRuntimeControl(instructionPayload) + "<div class=\"ayu-tabs\"><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "sections" ? " active" : "") + "\" data-action=\"instructions-mode:sections\">Section builder</button><button type=\"button\" class=\"ayu-tab" + (state.instructions.mode === "raw" ? " active" : "") + "\" data-action=\"instructions-mode:raw\">Raw prompt</button></div>" + (state.instructions.loading ? "<div class=\"ayu-empty\">Loading prompt instructions...</div>" : (state.instructions.mode === "sections" ? sectionEditor : rawEditor));
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Edit the main agent's system prompt, install or build sub-agents, then open Agent Studio to manage instructions and agent websites.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + builderSuiteAction + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + renderAgentRuntimeBanner(listingPayload) + builderSuiteNote + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + renderDesktopAssetSetupPanel() + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Agents</h1><p>Find agents by what you want to do. Manage instructions, development tools and desktop apps in their own sections.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh agents", "refresh-bootstrap", "secondary", "refresh") + ((state.sections.agents === "build") ? builderSuiteAction : "") + button("Reload selected studio", "agent-workbench-reload", "ghost", "refresh") + button("Restart AutoYou AI", "service:ai:restart", "ghost", "bolt") + "</div></div>" + ((state.sections.agents === "build" || state.sections.agents === "studio") ? renderAgentRuntimeBanner(listingPayload) : "") + ((state.sections.agents === "build") ? builderSuiteNote : "") + renderAgentRestartNotice() + panel("System Prompt - Main Agent", "The AutoYou main agent's root prompt. It governs the assistant's overall personality and behavior and sits above every installed sub-agent. Use section-builder mode for guided editing, or raw mode for direct control.", promptMarkup) + panel("Installed agents", "Sub-agents currently loaded into AutoYou AI. Open one in Agent Studio or toggle its website.", installedMarkup) + panel("Available to install", "Sub-agents and drafts ready to be installed.", availableMarkup) + "<div class=\"ayu-grid-2\">" + panel("Create New Agent", "Set up a new agent draft that you can then open in Agent Studio to customise.", scaffoldMarkup) + "<div></div></div>" + selectedMarkup + renderDesktopAssetSetupPanel() + "</div>";
     }
 
     function agentAppsUrl() {
@@ -7218,7 +7494,12 @@
             { label: "Tasks route", value: tasksUrl, mono: true }
         ]) + routeRows + "<div class=\"ayu-inline-actions\">" + button("Open connectivity", "nav:connectivity", "secondary", "wifi", "sm") + "</div>";
 
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Live View</h1><p>Current cloud routing, connected clients, task delivery health, messaging partner status, and frontend routes in one scan-friendly admin view.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost\" href=\"" + escapeHtml(tasksUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open Tasks</span></a></div></div><div class=\"ayu-grid-2\">" + panel("Cloud Pair", "Whether this server is linked and receiving client requests.", cloudMarkup) + panel("Connected clients", "Current client reachability without direct-send controls.", sessionsMarkup) + "</div>" + renderLocalPairPanelMarkup() + "<div class=\"ayu-grid-2\">" + panel("Tasks & deliveries", "Key Tasks Mission Control counts plus outbound delivery backlog.", taskMarkup) + panel("Messaging partners", "Transport health only; direct sends stay in Messaging.", messagingMarkup) + "</div>" + panel("Browser routes", "Frontend discovery and launch paths visible to browser clients.", routesMarkup) + "</div>";
+        var liveCounts = "<div class=\"ayu-overview-stats\">" + [
+            ["Connected clients", getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0)), "nav:connectivity", "wifi"],
+            ["Tasks due soon", getByPath(tasks, "due_soon_count", 0), "nav:page", "check"],
+            ["Pending deliveries", queuePending, "nav:messaging", "msg"]
+        ].map(function (item) { return "<button type=\"button\" class=\"ayu-summary-card\" data-action=\"" + item[2] + "\"><span class=\"ayu-summary-icon\">" + icon(item[3]) + "</span><span><small>" + item[0] + "</small><strong>" + escapeHtml(String(item[1])) + "</strong></span>" + icon("arrowRight") + "</button>"; }).join("") + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Live View</h1><p>Connected devices and work in progress. Open the details when you need them.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost\" href=\"" + escapeHtml(tasksUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open Tasks</span></a></div></div>" + liveCounts + "<div class=\"ayu-live-primary\">" + panel("Connected clients", "Devices connected to this local server right now.", sessionsMarkup) + "</div>" + disclosure("live-tasks", "Tasks & deliveries", "Schedules, recent results and retry counts.", taskMarkup) + disclosure("live-connections", "Connections & messaging", "Cloud and messaging transport health.", "<div class=\"ayu-grid-2\">" + panel("Cloud Pair", "Current cloud routing state.", cloudMarkup) + panel("Messaging partners", "Direct sends live in Messaging.", messagingMarkup) + "</div>") + disclosure("live-routes", "Browser routes", "Website discovery and launch paths.", routesMarkup) + "</div>";
     }
 
     function renderMcpSetupPanelBody(mcpStatus) {
@@ -7316,7 +7597,7 @@
 
         return (
             "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Messaging</h1><p>Telegram Bot, Telegram User, Signal, WhatsApp, direct message sending, and live client playback stay together with only the settings and status that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open connectivity", "nav:connectivity", "ghost", "wifi") + "</div></div>" +
-            panel("Server name", "The name AutoYou uses when it responds.", serverNameMarkup) +
+
             "<div class=\"ayu-grid-2\">" +
                 panel("Telegram Bot", "A separate bot connection with approved sender controls.", renderTelegramOnboardingBody()) +
                 panel("Telegram User", "Your own Telegram account, limited to Saved Messages.", renderTelegramUserManagementBody()) +
@@ -7774,6 +8055,8 @@
         var videoSettingsMarkup = callPolicyNote
             + field("Microphone device", select("videoCall.input_audio_source", audioDeviceOptions), "This device is used when Permissions allows the computer microphone to be shared.")
             + (loopbackAvailable === false ? "<div class=\"ayu-note ayu-note-red\"><strong>Computer sound unavailable.</strong><p style=\"margin:6px 0 0;\">" + escapeHtml(loopbackReason) + " Install a supported loopback audio device, then select Refresh devices.</p></div>" : "")
+            + "<div class=\"ayu-inline-actions\">" + button("Save device settings", "save-video-call", "primary", "save") + "</div>";
+        var recordingSettingsMarkup = ""
             + field("Recording format", select("videoCall.recording_mode", [
                 { value: "video", label: "Video file" },
                 { value: "images", label: "Images every X seconds" }
@@ -7882,7 +8165,7 @@
             { label: "Computer video sources", value: selectedOutboundSources.length ? selectedOutboundSources.map(outboundSourceLabel).join(", ") : "None" },
             { label: "Connected clients", value: String(getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0))) }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the computer devices, capture profiles, playback inputs, and storage locations used by calls.</p></div><div class=\"ayu-inline-actions\">" + button("Open Permissions", "nav:permissions", "primary", "shield") + button("Refresh devices", "refresh-webrtc-devices", "secondary", "refresh") + button("Live QR connect", "live-pair", "ghost", "qr") + button("Refresh status", "ops-refresh", "ghost", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Computer audio and video devices", "Select microphones and cameras for computer media sources.", videoSettingsMarkup) + panel("Playback and input sources", "Choose files and source ids for video playback and API-fed frames.", outboundSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Display and capture quality", "Choose the monitor, resolution profile, and bitrate for computer screen video.", remoteSettingsMarkup) + panel("Current permission status", "Read-only status from the settings managed in Permissions.", capabilityMarkup) + "</div>" + panel("Current audio mix", "Active computer audio sources and current connection state.", callSourcesMarkup) + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Video & Calls</h1><p>Choose the computer devices, capture profiles, playback inputs, and storage locations used by calls.</p></div><div class=\"ayu-inline-actions\">" + button("Open Permissions", "nav:permissions", "primary", "shield") + button("Refresh devices", "refresh-webrtc-devices", "secondary", "refresh") + button("Live QR connect", "live-pair", "ghost", "qr") + button("Refresh status", "ops-refresh", "ghost", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Computer audio and video devices", "Select microphones and cameras for computer media sources.", videoSettingsMarkup) + panel("Playback and input sources", "Choose files and source ids for video playback and API-fed frames.", outboundSettingsMarkup) + "</div><div class=\"ayu-grid-2\">" + panel("Display and capture quality", "Choose the monitor, resolution profile, and bitrate for computer screen video.", remoteSettingsMarkup) + panel("Current permission status", "Read-only status from the settings managed in Permissions.", capabilityMarkup) + "</div>" + panel("Current audio mix", "Active computer audio sources and current connection state.", callSourcesMarkup) + panel("Recording folders & format", "Storage locations and file format. Enable recording separately in Permissions.", recordingSettingsMarkup) + "</div>";
     }
 
     function renderSpeechProviderSettingsBody() {
@@ -8649,6 +8932,23 @@
     }
 
     function renderCurrentScreen() {
+        var markup = renderCurrentScreenContent();
+        if (state.screen === "connectivity") {
+            markup = markup.slice(0, -6) + panel("Local access & unlock", "Home network binding, local pairing and system credential unlock.", renderOverviewAccessPanel()) + "</div>";
+        }
+        if (state.screen === "permissions") {
+            markup = markup.slice(0, -6) + panel("Media & capture status", "Current sharing and recording state. Change permissions above or choose sources in Video & Calls.", renderOverviewMediaPanel()) + "</div>";
+        }
+        return markup;
+    }
+
+    function renderContextBar() {
+        var name = getByPath(state.bootstrap, "admin.server_name", "AutoYou-Server");
+        var theme = getByPath(state.forms, "overview.adminTheme", "dark");
+        return "<header class=\"ayu-contextbar\"><span>Server / <strong>" + escapeHtml(currentTitle()) + "</strong></span><div class=\"ayu-inline-actions\"><span class=\"ayu-context-name\">" + escapeHtml(shortText(name, 30)) + "</span>" + button(theme === "dark" ? "Light theme" : "Dark theme", "toggle-admin-theme", "ghost", "eye", "sm") + "</div></header>";
+    }
+
+    function renderCurrentScreenContent() {
         var markup = "";
         if (state.screen === "overview") {
             markup = renderOverview();
@@ -8754,10 +9054,20 @@
             root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><div class=\"ayu-spinner\"></div><h1>Loading admin shell</h1><p>Fetching the live bootstrap snapshot from the server.</p></div></div>";
             return;
         }
-        root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
+        root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
         root.querySelectorAll('input[type="file"]').forEach(function (input) {
             input.tabIndex = -1;
             input.setAttribute("aria-hidden", "true");
+        });
+        organizeSettingsSections();
+        if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
+            var sectionNav = root.querySelector(".ayu-section-nav");
+            var libraryToolbar = document.createElement("div");
+            libraryToolbar.innerHTML = renderAgentLibraryToolbar(getByPath(state.bootstrap, "agents.agent_overview", []));
+            if (sectionNav) sectionNav.insertAdjacentElement("afterend", libraryToolbar);
+        }
+        root.querySelectorAll("details[data-disclosure]").forEach(function (element) {
+            element.addEventListener("toggle", function () { state.disclosure[element.getAttribute("data-disclosure")] = element.open; });
         });
         restoreActiveControl(activeSnapshot);
         syncBootSweepUi();
@@ -9311,7 +9621,96 @@
             window.location.href = action.slice("open-guide:".length);
             return;
         }
+        if (state.setup.applying && /^(setup-profile:|setup-answer:|setup-permission:|setup-apply-)/.test(action)) {
+            throw new Error("Wait for the current setup plan to finish applying before changing it.");
+        }
+        if (action.indexOf("agent-category:") === 0) {
+            state.agentCategory = action.slice("agent-category:".length);
+            renderApp();
+            return;
+        }
+        if (action.indexOf("settings-section:") === 0) {
+            state.sections[state.screen] = action.slice("settings-section:".length);
+            renderApp();
+            return;
+        }
+        if (action === "toggle-admin-theme") {
+            var nextTheme = getByPath(state.forms, "overview.adminTheme", "dark") === "dark" ? "light" : "dark";
+            await patchConfig({ ui_theme: nextTheme }, "Appearance updated.");
+            return;
+        }
+        if (action.indexOf("setup-mode:") === 0) {
+            state.setup.mode = action.slice("setup-mode:".length);
+            renderApp();
+            return;
+        }
+        if (action.indexOf("setup-guided-step:") === 0) {
+            state.setup.guidedStep = Math.max(0, Math.min(Number(action.split(":")[1]) || 0, GUIDED_SETUP_STEPS.length - 1));
+            state.setup.mode = "guided";
+            renderApp();
+            var heading = root.querySelector("[data-setup-heading]");
+            if (heading) heading.focus({ preventScroll: true });
+            scrollIntoViewIfPresent("#ayu-setup-current");
+            if (state.setup.guidedStep === 2) ensureAiData(false);
+            if (state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
+            return;
+        }
+        if (action.indexOf("setup-permission:") === 0) {
+            var key = action.slice("setup-permission:".length);
+            if (!GUIDED_PERMISSION_COPY.some(function (item) { return item[0] === key; })) return;
+            if (key === "desktop_control" && currentSetupAnswers().intents.indexOf("desktop_automation") === -1) return;
+            var permissions = guidedPermissions();
+            permissions[key] = !permissions[key];
+            state.setup.recipe = null;
+            state.setup.applied = false;
+            renderApp();
+            return;
+        }
+        if (action === "setup-save-local-model") {
+            var selectedModel = getByPath(state.forms, "aiProvider.ollama_model", "");
+            if (!selectedModel) throw new Error("Choose an installed local model first.");
+            await patchConfig({ ollama: { enabled: true, model: selectedModel, use_google_api: false }, ai_provider: { provider: currentSetupAnswers().ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama" } }, "Local response model saved.");
+            await ensureAiData(true);
+            return;
+        }
+        if (action === "setup-save-startup") {
+            await patchConfig({ ai_agent: { auto_start: getByPath(state.forms, "aiAgent.auto_start", true) }, autoyou_page: { auto_start: getByPath(state.forms, "page.auto_start", true) } }, "Startup choices saved.");
+            return;
+        }
+        if (action === "setup-telegram-discover" || action === "setup-telegram-save-ids") {
+            var telegramForm = clone(getByPath(state.forms, "messaging.telegram", {}));
+            if (!String(telegramForm.bot_token || "").trim()) throw new Error("Paste your Telegram Bot token first.");
+            telegramForm.access_gate_enabled = true;
+            telegramForm.silent_unapproved_messages = true;
+            telegramForm.acl_usernames = [];
+            if (action === "setup-telegram-save-ids" && !splitListValue(telegramForm.acl_sender_ids).length) throw new Error("Enter your numeric Telegram sender ID first.");
+            await patchConfig({ telegram: telegramForm }, "Telegram saved with sender approval required.");
+
+            await refreshTelegramSenders(false);
+            return;
+        }
+        if (action === "setup-guided-apply") {
+            await applyGuidedSetup();
+            return;
+        }
+        if (action === "setup-guided-boot") {
+            if (state.setup.applying) return;
+            state.setup.applying = true;
+            state.setup.applyError = "";
+            try {
+                await bootGuidedSetup();
+            } catch (error) {
+                state.setup.progress = "";
+                state.setup.applyError = "Startup stopped: " + error.message + ". Your applied settings are saved. Review service status and retry.";
+                throw error;
+            } finally {
+                state.setup.applying = false;
+                renderApp();
+            }
+            return;
+        }
         if (action === "setup-refresh") {
+            await refreshBootstrap();
             await ensureSetupData(true);
             setNotice("success", "Setup status refreshed.");
             return;
@@ -9338,6 +9737,7 @@
             return;
         }
         if (action === "setup-apply-guarded-recipe") {
+            if (state.setup.mode === "guided" && !state.setup.applied) throw new Error("Apply the reviewed settings and agent choices before widening network access.");
             await applySetupRecipe(true);
             return;
         }
@@ -9350,7 +9750,7 @@
             return;
         }
         if (action.indexOf("setup-open-screen:") === 0) {
-            openSetupLinkedScreen(action.split(":")[1]);
+            openSetupLinkedScreen(action.split(":")[1], action.split(":")[2]);
             return;
         }
         if (action === "setup-return") {
@@ -9627,6 +10027,7 @@
             return;
         }
         if (action.indexOf("select-agent:") === 0) {
+            state.sections.agents = "studio";
             state.selectedAgentName = action.split(":")[1];
             state.agentWorkbench.detail = null;
             state.agentWorkbench.stale = true;
@@ -10865,6 +11266,9 @@
         if (virtual === "aiLibrary.query") {
             state.aiLibrary.query = target.value;
         }
+        if (virtual === "agentQuery") {
+            state.agentQuery = target.value;
+        }
     }
 
     function syncBoundControl(target) {
@@ -10908,6 +11312,7 @@
             return;
         }
         syncBoundControl(target);
+        if (target.getAttribute("data-virtual-bind") === "agentQuery") renderApp();
     });
 
     document.addEventListener("compositionstart", function (event) {
