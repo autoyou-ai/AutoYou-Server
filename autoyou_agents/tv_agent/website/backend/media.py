@@ -22,9 +22,12 @@ from fastapi.responses import Response, StreamingResponse
 from .store import Store
 
 VIDEO_EXTENSIONS = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".mpg", ".mpeg", ".ogv"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"}
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 CONTENT_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
                  ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".m3u8": "application/vnd.apple.mpegurl",
-                 ".vtt": "text/vtt", ".m4s": "video/iso.segment"}
+                 ".vtt": "text/vtt", ".m4s": "video/iso.segment", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif"}
 CHUNK_BYTES = 256 * 1024
 
 

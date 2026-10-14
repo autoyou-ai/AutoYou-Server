@@ -15,7 +15,7 @@ export default function Studio({ config, folders, onChanged, onAuthenticated, on
       <span className="role-badge"><span />{config.auth.role === 'admin' ? 'Admin' : 'Editor'} access</span></div>
     <div className="studio-grid"><section className="panel import-panel"><div className="panel-heading"><Clapperboard size={23} /><h2>Add to your library</h2></div>
       <div className="segmented" aria-label="Import method"><button aria-pressed={tab === 'link'} className={tab === 'link' ? 'active' : ''} onClick={() => setTab('link')}><Link size={17} />From a link</button>
-        <button aria-pressed={tab === 'upload'} className={tab === 'upload' ? 'active' : ''} onClick={() => setTab('upload')}><Upload size={17} />Upload a video</button></div>
+        <button aria-pressed={tab === 'upload'} className={tab === 'upload' ? 'active' : ''} onClick={() => setTab('upload')}><Upload size={17} />Upload media</button></div>
       {tab === 'link' ? <LinkImport folders={folders} canDownload={config.capabilities.download} onChanged={onChanged} notify={notify} /> :
         <UploadImport folders={folders} onChanged={onChanged} notify={notify} />}
     </section><aside className="panel studio-aside"><p className="eyebrow">A little organization</p><h2>Make room for more.</h2><p>Keep movies, series and personal videos together in folders that make sense to you.</p>
@@ -76,8 +76,8 @@ function UploadImport({ folders, onChanged, notify }: { folders: Folder[]; onCha
     catch (error) { setError(errorMessage(error)); } finally { cancel.current = null; setBusy(false); }
   }
   return <form className="form" onSubmit={submit}>
-    <label className="upload-drop"><Upload size={29} /><strong>{file?.name || 'Choose a video'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB . Ready to upload` : 'MP4, WebM, MOV, MKV and more . Up to 20 GB'}</span>
-      <input aria-label="Video file" type="file" accept="video/*,.mkv,.m4v,.avi,.ts,.mpg,.mpeg,.ogv" disabled={busy} onChange={event => { setFile(event.target.files?.[0] || null); setError(''); }} /></label>
+    <label className="upload-drop"><Upload size={29} /><strong>{file?.name || 'Choose a photo or video'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB . Ready to upload` : 'Photos, MP4, MOV, MKV and more . Up to 20 GB'}</span>
+      <input aria-label="Media file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,video/*,.mkv,.m4v,.avi,.ts,.mpg,.mpeg,.ogv" disabled={busy} onChange={event => { setFile(event.target.files?.[0] || null); setError(''); }} /></label>
     <label>Title<input name="title" placeholder="Uses the file name if left blank" maxLength={300} disabled={busy} /></label><div className="form-grid"><TypeSelect /><FolderSelect folders={folders} /></div>
     {busy && <div className="upload-progress" role="status"><progress value={progress} max={1} /><span>{progress < 1 ? `Uploading . ${Math.round(progress * 100)}%` : 'Finishing your upload...'} </span><button type="button" className="text-button" onClick={() => cancel.current?.()}>Cancel</button></div>}
     {error && <p className="inline-error" role="alert">{error}</p>}

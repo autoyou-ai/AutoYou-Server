@@ -1,4 +1,4 @@
-export type Kind = 'movie' | 'episode' | 'video';
+export type Kind = 'movie' | 'episode' | 'video' | 'photo';
 export interface AuthState { role: 'viewer' | 'editor' | 'admin'; otp_unlocked: boolean; expires?: number; otp_expires?: number }
 export interface Config { library_name: string; autoplay_next: boolean; auth: AuthState; capabilities: { download: boolean; transcode: boolean; probe: boolean } }
 export interface Metadata {

@@ -48,7 +48,7 @@ export async function copyText(text: string) {
   if (!copied) throw new Error('Copy is unavailable in this browser. Select and copy the link.');
 }
 export function artwork(item: Item) { return item.artwork_url ? assetUrl(item.artwork_url) : item.metadata.poster || ''; }
-export function kindLabel(kind: string) { return kind === 'episode' ? 'Episode' : kind === 'movie' ? 'Movie' : 'Video'; }
+export function kindLabel(kind: string) { return kind === 'photo' ? 'Photo' : kind === 'episode' ? 'Episode' : kind === 'movie' ? 'Movie' : 'Video'; }
 export function duration(seconds = 0) { if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`; const minutes = Math.round(seconds / 60); return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`; }
 export function clock(seconds = 0) { const minutes = Math.floor(seconds / 60); return `${Math.floor(minutes / 60) ? Math.floor(minutes / 60) + ':' : ''}${String(minutes % 60).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`; }
 export function errorMessage(error: unknown) { return error instanceof Error ? error.message : 'Something went wrong. Try again.'; }

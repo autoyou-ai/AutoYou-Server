@@ -17,9 +17,9 @@ from pydantic import BaseModel, Field
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
-from .jobs import Jobs, executable
+from .jobs import Jobs, executable, probe
 from . import playback
-from .media import (VIDEO_EXTENSIONS, CONTENT_TYPES, file_stream, parse_name, permitted_path, public_url,
+from .media import (IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, CONTENT_TYPES, file_stream, parse_name, permitted_path, public_url,
                     read_ticket, remote_stream, subtitle_content, subtitles)
 from .store import Store, uid
 from .uploads import MAX_UPLOAD_BYTES, Uploads, upload_owner
@@ -57,7 +57,7 @@ class ImportInput(BaseModel):
 
 class ItemEdit(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
-    kind: Literal["movie", "episode", "video"] | None = None
+    kind: Literal["movie", "episode", "video", "photo"] | None = None
     folder_id: str | None = None
     year: int | None = Field(default=None, ge=1880, le=2200)
     series: str | None = Field(default=None, max_length=300)
@@ -86,7 +86,7 @@ class UploadInput(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     size: int = Field(gt=0, le=MAX_UPLOAD_BYTES)
     title: str = Field(default="", max_length=300)
-    kind: Literal["movie", "episode", "video"] = "movie"
+    kind: Literal["movie", "episode", "video", "photo"] = "movie"
     folder_id: str | None = None
 
 
@@ -101,6 +101,8 @@ def public_item(item: dict) -> dict:
     result["stream_url"] = (f"api/playback/{item['id']}/{version}/master.m3u8" if playback.ID.fullmatch(version)
                             else f"api/stream/{item['id']}")
     result["artwork_url"] = f"api/artwork/{item['id']}" if item["technical"].get("artwork") else ""
+    if item["kind"] == "photo":
+        result["artwork_url"] = f"api/stream/{item['id']}"
     result["is_remote"] = bool(item.get("source_url"))
     result["is_hls"] = bool(version or (item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8")))
     return result
@@ -310,15 +312,15 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
 
     @application.post("/api/uploads")
     async def upload(request: Request, folder_id: str | None = None,
-                     title: str = Query("", max_length=300), kind: Literal["movie", "episode", "video"] = "movie"):
+                     title: str = Query("", max_length=300), kind: Literal["movie", "episode", "video", "photo"] = "movie"):
         store, auth, jobs = services()
         auth.require_editor(request)
         if folder_id:
             store.folder(folder_id)
         filename = unquote(request.headers.get("X-File-Name", "video.mp4"))
         suffix = Path(filename).suffix.lower()
-        if suffix not in VIDEO_EXTENSIONS:
-            raise HTTPException(415, "Upload a video file such as MP4, WebM, MOV or MKV")
+        if suffix not in MEDIA_EXTENSIONS:
+            raise HTTPException(415, "Choose a photo (JPEG, PNG, GIF, WebP, AVIF) or video (MP4, MOV, MKV, WebM)")
         destination = store.media_dir / (uid() + suffix)
         temporary = destination.with_suffix(suffix + ".uploading")
         written = 0
@@ -336,7 +338,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
             temporary.unlink(missing_ok=True)
         info = parse_name(filename)
         info["title"] = title.strip() or info["title"]
-        info["kind"] = "episode" if info["episode"] is not None else kind
+        info["kind"] = "photo" if suffix in IMAGE_EXTENSIONS else ("episode" if info["episode"] is not None else kind)
         item, _ = store.add_item(source_key="file:" + str(destination), file_path=str(destination), folder_id=folder_id,
                                  technical={"size": written, "extension": suffix}, **info)
         await jobs.enqueue("prepare", {"item_id": item["id"]})
@@ -420,19 +422,47 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         return await jobs.enqueue("streaming", {"item_id": item_id})
 
     @application.get("/api/items/{item_id}/playback")
-    async def playback_info(item_id: str):
-        store, _, _ = services()
+    async def playback_info(item_id: str, compatible: bool = False):
+        store, _, jobs = services()
         item = store.item(item_id)
         if item["status"] == "deleted":
             raise HTTPException(404, "This title was removed")
         optimized = playback.ready(store, item)
+        if (compatible and item.get("file_path") and item["kind"] != "photo" and not optimized
+                and not item["technical"].get("video_codec") and not item["technical"].get("probe_error")):
+            technical = await asyncio.to_thread(probe, permitted_path(store, item["file_path"]))
+            item = store.update_item(item_id, {"technical": {**item["technical"], **technical}})
+        preparation = None
+        message = ""
+        browser_ready = playback.browser_ready(store, item)
+        needs_version = compatible and not optimized and not browser_ready and playback.requires_compatibility(item)
+        if needs_version:
+            source_version = playback.fingerprint(permitted_path(store, item["file_path"]))
+            candidates = [j for j in store.jobs() if j["kind"] == "transcode" and j["payload"].get("item_id") == item_id
+                          and j["payload"].get("source_version") == source_version and j["status"] != "completed"]
+            if candidates:
+                preparation = candidates[0]
+            elif not executable("ffmpeg"):
+                preparation = {"status": "failed", "progress": 0}
+                message = "Install FFmpeg on the computer to prepare a compatible video for this device."
+            elif not store.setting("adaptive_streaming", True):
+                preparation = {"status": "failed", "progress": 0}
+                message = "An editor can create a browser version in Studio, or enable automatic streaming preparation."
+            elif sum(j["kind"] in {"transcode", "streaming"} and j["status"] in {"queued", "running"} for j in store.jobs()) < 4:
+                preparation = await jobs.enqueue("transcode", {"item_id": item_id, "source_version": source_version})
+            else:
+                preparation = {"status": "queued", "progress": 0}
+            message = message or ("Video preparation failed. An editor can retry from Studio." if preparation["status"] in {"failed", "cancelled"}
+                                  else "Preparing a compatible video…")
         version = item["technical"].get("hls_version", "")
         is_hls = optimized or bool(item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8"))
         return {"version": 1, "item_id": item_id, "title": item["title"],
                 "url": f"api/playback/{item_id}/{version}/master.m3u8" if optimized else f"api/stream/{item_id}",
                 "fallback_url": f"api/stream/{item_id}", "is_hls": is_hls,
                 "mime_type": "application/vnd.apple.mpegurl" if is_hls else CONTENT_TYPES.get(
-                    Path(item["technical"].get("browser_path") or item.get("file_path") or urlsplit(item.get("source_url") or "").path).suffix.lower(), "video/mp4"),
+                    Path((item["technical"].get("browser_path") if browser_ready else None) or item.get("file_path") or urlsplit(item.get("source_url") or "").path).suffix.lower(), "video/mp4"),
+                "ready": not needs_version, "message": message,
+                "preparation": {"status": preparation["status"], "progress": preparation.get("progress", 0)} if preparation else None,
                 "optimized": optimized, "qualities": item["technical"].get("streaming_qualities", []) if optimized else [],
                 "subtitles": subtitles(store, item) if item.get("file_path") else []}
 
@@ -494,7 +524,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         if ticket:
             return await remote_stream(store, item_id, read_ticket(store, item_id, ticket), request)
         if item.get("file_path"):
-            path = item["technical"].get("browser_path") or item["file_path"]
+            path = item["technical"]["browser_path"] if playback.browser_ready(store, item) else item["file_path"]
             return file_stream(permitted_path(store, path), request)
         return await remote_stream(store, item_id, item["source_url"], request)
 

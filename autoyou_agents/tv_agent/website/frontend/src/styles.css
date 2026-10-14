@@ -570,3 +570,5 @@ progress::-moz-progress-bar { background: var(--accent); }
 @media(prefers-reduced-motion:reduce) {
   *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.photo-stage img { display: block; width: 100%; max-height: 75vh; object-fit: contain; }

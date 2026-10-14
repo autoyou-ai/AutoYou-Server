@@ -19,6 +19,25 @@ def fingerprint(path: Path) -> str:
     return f"{stat.st_size:x}-{stat.st_mtime_ns:x}"
 
 
+def browser_ready(store, item: dict) -> bool:
+    technical = item["technical"]
+    if not technical.get("browser_path") or not item.get("file_path"):
+        return False
+    path = Path(technical["browser_path"]).resolve()
+    source = Path(item["file_path"])
+    return (path.is_relative_to(store.media_dir.resolve()) and path.is_file() and source.is_file()
+            and technical.get("browser_source") == fingerprint(source))
+
+
+def requires_compatibility(item: dict) -> bool:
+    if not item.get("file_path") or item["kind"] == "photo":
+        return False
+    technical = item["technical"]
+    return (Path(item["file_path"]).suffix.lower() not in {".mp4", ".m4v"}
+            or technical.get("video_codec") not in {None, "h264"}
+            or technical.get("audio_codec") not in {None, "aac", "mp3"})
+
+
 def rendition_root(store, item_id: str, version: str) -> Path:
     if not ID.fullmatch(item_id) or not ID.fullmatch(version):
         raise HTTPException(404, "Streaming version not available")

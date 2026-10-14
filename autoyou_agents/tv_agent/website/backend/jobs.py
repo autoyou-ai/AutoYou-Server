@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from functools import partial
 import hashlib
 import json
@@ -16,7 +17,7 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import HTTPException
 
-from .media import VIDEO_EXTENSIONS, fetch_response, http_session, parse_name, permitted_path, public_url, subtitles, subtitle_content
+from .media import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, fetch_response, http_session, parse_name, permitted_path, public_url, subtitles, subtitle_content
 from . import playback
 from .store import Store, uid
 
@@ -145,7 +146,8 @@ class Jobs:
     async def stop(self):
         for process in list(self.processes.values()):
             if process.returncode is None:
-                process.terminate()
+                with suppress(ProcessLookupError):
+                    process.terminate()
         for worker in self.workers:
             worker.cancel()
         await asyncio.gather(*self.workers, return_exceptions=True)
@@ -173,6 +175,8 @@ class Jobs:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if asyncio.current_task().cancelling():
+                    raise asyncio.CancelledError
                 # Avoid persisting upstream URLs, cookies or tool logs containing credentials.
                 message = str(exc) if isinstance(exc, (ValueError, FileNotFoundError)) else "Import failed. Check source availability and retry."
                 if not self.cancelled(job_id):
@@ -190,7 +194,8 @@ class Jobs:
         self.store.update_job(job_id, status="cancelled", message="Cancelled")
         process = self.processes.get(job_id)
         if process and process.returncode is None:
-            process.terminate()
+            with suppress(ProcessLookupError):
+                process.terminate()
 
     async def enrich_item(self, item_id: str, imdb_id: str = ""):
         item = self.store.item(item_id)
@@ -211,6 +216,9 @@ class Jobs:
     async def prepare(self, job: dict) -> dict:
         item = self.store.item(job["payload"]["item_id"])
         source = permitted_path(self.store, item["file_path"])
+        if item["kind"] == "photo":
+            self.store.update_item(item["id"], {"technical": {"extension": source.suffix.lower().lstrip("."), "size": source.stat().st_size, "file_name": source.name}})
+            return {"item_id": item["id"]}
         technical = await asyncio.to_thread(probe, source)
         item = self.store.update_item(item["id"], {"technical": {**item["technical"], **technical}})
         if await asyncio.to_thread(make_artwork, self.store, item):
@@ -248,19 +256,19 @@ class Jobs:
                 if self.cancelled(job["id"]):
                     break
                 path = directory / filename
-                if path.suffix.lower() not in VIDEO_EXTENSIONS:
+                if path.suffix.lower() not in MEDIA_EXTENSIONS:
                     continue
                 try:
                     path = permitted_path(self.store, str(path))
                     technical = await asyncio.to_thread(probe, path)
                     item, is_new = self.store.add_item(source_key="file:" + str(path), folder_id=parent_id,
-                                                      file_path=str(path), technical=technical, **parse_name(filename))
+                                                      file_path=str(path), technical=technical, **({**parse_name(filename), "kind": "photo"} if path.suffix.lower() in IMAGE_EXTENSIONS else parse_name(filename)))
                     seen.add(item["id"])
                     await self.auto_streaming(item)
                     added += int(is_new)
                     if not item["technical"].get("artwork") and await asyncio.to_thread(make_artwork, self.store, item):
                         item = self.store.update_item(item["id"], {"technical": {**item["technical"], "artwork": True}})
-                    if is_new or item["metadata"].get("status") in {None, "missing_key", "error"}:
+                    if item["kind"] != "photo" and (is_new or item["metadata"].get("status") in {None, "missing_key", "error"}):
                         await self.enrich_item(item["id"])
                     matched += 1
                     if not self.cancelled(job["id"]):
@@ -298,7 +306,8 @@ class Jobs:
                 raise ValueError("Media tool failed. Verify the source is available and the host tools are up to date.")
         finally:
             if process.returncode is None:
-                process.terminate()
+                with suppress(ProcessLookupError):
+                    process.terminate()
                 await process.wait()
             self.processes.pop(job["id"], None)
 
@@ -356,7 +365,7 @@ class Jobs:
         return {"item_id": item["id"]}
 
     async def auto_streaming(self, item: dict):
-        if (not self.store.setting("adaptive_streaming", True) or not executable("ffmpeg") or not executable("ffprobe")
+        if (item["kind"] == "photo" or not self.store.setting("adaptive_streaming", True) or not executable("ffmpeg") or not executable("ffprobe")
                 or playback.ready(self.store, item)):
             return
         if not any(j["kind"] == "streaming" and j["payload"].get("item_id") == item["id"]
@@ -434,15 +443,20 @@ class Jobs:
         source = permitted_path(self.store, item["file_path"])
         destination = self.store.media_dir / (item["id"] + "-browser.mp4")
         partial_path = self.store.media_dir / (job["id"] + ".partial.mp4")
-        duration = item["technical"].get("duration", 0)
+        source_version = playback.fingerprint(source)
+        info = await asyncio.to_thread(probe, source)
+        duration = info.get("duration", 0)
+        codecs = (["-c:v", "copy", "-c:a", "copy"] if info.get("video_codec") == "h264" and info.get("audio_codec") in {None, "aac", "mp3"}
+                  else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"])
         try:
             await self.run_process(job, [ffmpeg, "-nostdin", "-hide_banner", "-y", "-i", str(source),
-                                        "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast",
-                                        "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                                        "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", *codecs,
                                         "-movflags", "+faststart", "-progress", "pipe:1", str(partial_path)], duration=duration)
+            if playback.fingerprint(source) != source_version:
+                raise ValueError("The source changed during video preparation. Retry from Studio.")
             partial_path.replace(destination)
         finally:
             partial_path.unlink(missing_ok=True)
-        technical = {**item["technical"], "browser_path": str(destination), "browser_ready": True}
+        technical = {**item["technical"], "browser_path": str(destination), "browser_ready": True, "browser_source": source_version}
         self.store.update_item(item["id"], {"technical": technical})
         return {"item_id": item["id"]}

@@ -21,7 +21,7 @@ export default function Detail({ item, config, folders, saved, progress, onSave,
     <section className="detail-hero"><Artwork item={item} className="detail-backdrop" eager />
       <div className="detail-hero-content"><p className="eyebrow">{item.kind === 'episode' ? item.series || 'Your shows' : 'In your library'}</p><h1>{item.title}</h1>
         <ItemMeta item={item} large /><p className="detail-plot">{item.metadata.plot || 'This title is part of your personal library. Press play and make yourself comfortable.'}</p>
-        <div className="button-row"><button className="button primary" onClick={() => navigate(`play/${item.id}`)} disabled={item.status === 'missing'}><Play size={19} fill="currentColor" />{canResume ? 'Resume watching' : 'Watch now'}</button>
+        <div className="button-row"><button className="button primary" onClick={() => navigate(`play/${item.id}`)} disabled={item.status === 'missing'}><Play size={19} fill="currentColor" />{item.kind === 'photo' ? 'View photo' : canResume ? 'Resume watching' : 'Watch now'}</button>
           <button className={`button ${saved ? 'saved-button' : ''}`} onClick={onSave}>{saved ? <Check size={19} /> : <Bookmark size={19} />}{saved ? 'In watchlist' : 'Add to watchlist'}</button>
           <button className="icon-button glass" aria-label={`Share ${item.title}`} onClick={onShare}><Share2 size={20} /></button></div>
         {item.status === 'missing' && <p className="inline-error">The source file is missing. An editor can rescan its source folder.</p>}
@@ -43,7 +43,7 @@ export default function Detail({ item, config, folders, saved, progress, onSave,
         {item.metadata.status !== 'matched' && <p className="muted">{item.metadata.message || 'IMDb details have not been matched yet.'}</p>}
         <div className="button-row"><button className="button" onClick={() => setEditing(true)}>Edit title</button>
           <button className="button" disabled={busy} onClick={() => action(`items/${item.id}/metadata`)}>Refresh IMDb details</button>
-          {!item.is_remote && config.capabilities.transcode && <button className="button" disabled={busy} onClick={() => action(`items/${item.id}/transcode`)}>{item.technical.browser_ready ? 'Rebuild browser version' : 'Create browser version'}</button>}</div>
+          {!item.is_remote && item.kind !== 'photo' && config.capabilities.transcode && <button className="button" disabled={busy} onClick={() => action(`items/${item.id}/transcode`)}>{item.technical.browser_ready ? 'Rebuild browser version' : 'Create browser version'}</button>}</div>
       </section>}
     </div>
     {editing && <EditTitle item={item} folders={folders} onClose={() => setEditing(false)} onChanged={onChanged} notify={notify} />}
@@ -67,7 +67,7 @@ function EditTitle({ item, folders, onClose, onChanged, notify }: { item: Item; 
   }
   return <Modal title="Edit title" onClose={onClose}><form className="form" onSubmit={submit}>
     <label>Title<input name="title" defaultValue={item.title} required maxLength={300} autoFocus /></label>
-    <div className="form-grid"><label>Type<select name="kind" defaultValue={item.kind}><option value="movie">Movie</option><option value="episode">Episode</option><option value="video">Video</option></select></label>
+    <div className="form-grid"><label>Type<select name="kind" defaultValue={item.kind}>{item.kind === 'photo' ? <option value="photo">Photo</option> : <><option value="movie">Movie</option><option value="episode">Episode</option><option value="video">Video</option></>}</select></label>
       <label>Year<input name="year" type="number" min={1880} max={2200} defaultValue={item.year || ''} /></label></div>
     <label>Folder<select name="folder" defaultValue={item.folder_id || ''}><option value="">No folder</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
     <label>Series<input name="series" defaultValue={item.series || ''} placeholder="For episodes" maxLength={300} /></label>

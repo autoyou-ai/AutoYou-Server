@@ -1,6 +1,7 @@
 import { assetUrl } from './api';
 
 export interface Playback { version: number; item_id: string; title: string; url: string; fallback_url: string;
+  ready?: boolean; message?: string; preparation?: {status: string; progress: number};
   mime_type: string; is_hls: boolean; optimized: boolean; qualities: number[];
   subtitles: { id: string; label: string; language: string }[] }
 export interface NativeState { requestId: string; itemId: string; state: 'opened' | 'playing' | 'paused' | 'ended' | 'closed' | 'error';
