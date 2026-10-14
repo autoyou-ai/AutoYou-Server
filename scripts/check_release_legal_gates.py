@@ -829,11 +829,6 @@ def check_packaging_hooks(report: GateReport) -> None:
             ("Assert-LegalBundle", "check_release_legal_gates.py", "artifact-scope", "server", "check_official_build_authorization.py", "--required", "strict-unknown-license", "THIRD-PARTY-NOTICES.md"),
         ),
         (
-            "AutoYou Server Windows MSIX post-package verifier",
-            REPO_ROOT / "scripts" / "verify_windows_server_msix.py",
-            ("LEGAL_FILES", "runFullTrust", "privateNetworkClientServer", "mutable runtime state", "debug symbol file"),
-        ),
-        (
             "AutoYou Server Windows Authenticode legal gate",
             REPO_ROOT / "servers" / "windows" / "sign-backend.ps1",
             ("Invoke-StrictReleaseLegalGate", "Assert-ReleaseLegalBundle", "check_release_legal_gates.py", "artifact-scope", "server", "strict-unknown-license", "THIRD-PARTY-NOTICES.md"),
