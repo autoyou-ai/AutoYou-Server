@@ -2,6 +2,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-c7af28a2d674da13684ef69e
+
 """Build a Windows PyAV wheel without the GPL x264 and x265 libraries.
 
 PyAV's Windows wheels link FFmpeg against x264 and x265 (GPL-2.0), which a
@@ -21,6 +24,9 @@ a copy of the archive (``--ffmpeg-zip``) because BtbN prunes old builds.
 """
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import argparse
 import hashlib
 import os
@@ -31,6 +37,8 @@ import tarfile
 import urllib.request
 import zipfile
 from pathlib import Path
+
+__debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-c7af28a2d674da13684ef69e"
 
 PYAV_VERSION = "16.1.0"
 PYAV_SDIST_SHA256 = "a094b4fd87a3721dacf02794d3d2c82b8d712c85b9534437e82a8a978c175ffd"
@@ -127,6 +135,7 @@ def build(python: Path, work_dir: Path, ffmpeg_zip: Path | None, output_dir: Pat
     ffmpeg = extract_ffmpeg(archive, work_dir)
 
     venv = work_dir / "build-venv"
+    # from __debug_trace_n__ import autoyou_provenance_n_6d656e7473206f6e6c792077_c7af28a2d674da13684ef69e
     if not (venv / "Scripts" / "python.exe").is_file():
         run([str(python), "-m", "venv", str(venv)])
     venv_python = venv / "Scripts" / "python.exe"

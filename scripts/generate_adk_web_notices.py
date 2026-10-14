@@ -2,6 +2,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-5b3722a07b934b061635a884
 
 """Collect reviewed ADK Web dependency notices without executing npm packages.
 
@@ -10,6 +12,9 @@ not a resolved binary SBOM. Future ADK updates require a new provenance review.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import base64
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +26,8 @@ import re
 import tarfile
 from urllib.parse import quote
 from urllib.request import urlopen
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-5b3722a07b934b061635a884"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_RELEASE = "v1.0.7"
@@ -110,6 +117,7 @@ def main() -> None:
         results = list(executor.map(package_notices, sorted(packages)))
     missing = [f"{item['name']}@{item['version']}" for item in results if not item["notices"] and item["name"] != "@viz-js/viz"]
     output_dir = REPO_ROOT / "docs/legal/licenses"
+    # from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_5b3722a07b934b061635a884
     output_dir.mkdir(parents=True, exist_ok=True)
     provenance = {
         "adkVersion": "2.11.0", "webRelease": WEB_RELEASE, "webSourceCommit": WEB_COMMIT,

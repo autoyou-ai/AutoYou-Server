@@ -1,4 +1,14 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-C-20616e642061747472696275-05dc1142438197a6ab80bc60
+
 """The Mac system-audio bridge keeps PCM framing and source discovery honest."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_c__ import autoyou_provenance_c_20616e642061747472696275_05dc1142438197a6ab80bc60
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import os
 import platform
@@ -6,6 +16,8 @@ import queue
 import threading
 
 from shared import video_call_manager as video
+
+__debug_trace_c__ = "AUTOYOU-PROVENANCE-C-20616e642061747472696275-05dc1142438197a6ab80bc60"
 
 
 def test_macos_system_audio_helper_prefers_bundled_or_explicit_binary(tmp_path, monkeypatch):

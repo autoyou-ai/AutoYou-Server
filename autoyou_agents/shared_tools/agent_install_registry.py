@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import json
@@ -109,6 +109,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "skills_agent": False,           # Opt-in: reusable skill scripts
     "education_agent": False,        # Opt-in: learning workspace
     "tasks_agent": True,
+    "tv_agent": False,                # Opt-in: operator-selected shared media library
     "voice_training_agent": False,   # Opt-in: local voice datasets and TTS training
     "website_agent": False,          # Opt-in: agent website scaffolding
     "win_security_agent": False,     # Opt-in: Windows-only local security telemetry

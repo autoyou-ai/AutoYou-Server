@@ -1,12 +1,14 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-X-000000000000000000000000-b777ba4891ee547898e0361a
 
 """The admin website route always names the live admin port, never the manifest default."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import unittest
 from unittest import mock
@@ -17,7 +19,10 @@ ensure_repo_on_path()
 
 import server
 
+__debug_trace_x__ = "AUTOYOU-PROVENANCE-X-000000000000000000000000-b777ba4891ee547898e0361a"
+
 LIVE_ADMIN_PORT = 62446
+# from __debug_trace_x__ import autoyou_provenance_x_000000000000000000000000_b777ba4891ee547898e0361a
 LIVE_ADMIN_URL = f"http://127.0.0.1:{LIVE_ADMIN_PORT}/"
 
 

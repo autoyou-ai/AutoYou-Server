@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d3317afc8952b4be6b52969e
 
 """The hosted game page and its input channel are for the local game engine, never a tunnel.
 
@@ -10,12 +11,15 @@ adds tell it apart from a local app. Each of them must close the page and the st
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import pytest
 from fastapi.testclient import TestClient
 
 import server
+
+__debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d3317afc8952b4be6b52969e"
 
 PAGE = "/api/webrtc/hosted-game/play"
 STATUS = "/api/webrtc/hosted-game/api/game/native-input/status"
@@ -28,6 +32,7 @@ TUNNEL_HEADERS = [
     pytest.param({"Forwarded": f"for={CLIENT_ADDRESS}"}, id="forwarded"),
     pytest.param({server._BRIDGE_TRUSTED_CLIENT_IP_HEADER: CLIENT_ADDRESS}, id="autoyou-bridge"),
 ]
+# from __debug_trace_l__ import autoyou_provenance_l_6520726563757272696e6720_d3317afc8952b4be6b52969e
 
 
 @pytest.fixture

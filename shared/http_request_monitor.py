@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-939517ced39c76060fdda19b
 
 """Opt-in, metadata-only capture of inbound HTTP requests to AutoYou services."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import ipaddress
 import json
@@ -22,12 +26,23 @@ from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import Request
 
+from shared.secure_storage import (
+    SecureStorageError,
+    enable_secure_storage_from_environment,
+    sealed_envelope_kind,
+    secure_storage_enabled,
+)
+
+__debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-939517ced39c76060fdda19b"
+
 
 LOGGER = logging.getLogger("autoyou.http_request_monitor")
 MAX_EVENTS = 25000
 MAX_PAGE_SIZE = 200
 RETENTION_DAYS = 30
 ENABLE_CACHE_SECONDS = 0.5
+STORE_RETRY_SECONDS = 5.0
+STORAGE_WARNING_SECONDS = 30.0
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _SAFE_QUERY_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 _SENSITIVE_QUERY_KEY = re.compile(r"(?:token|auth|password|secret|otp|code|key|session|credential)", re.I)
@@ -229,9 +244,21 @@ class HTTPRequestCaptureStore:
                 pass
 
     def _connect(self) -> sqlite3.Connection:
+        if not secure_storage_enabled():
+            enable_secure_storage_from_environment()
+            if not secure_storage_enabled() and sealed_envelope_kind(self.path) is not None:
+                raise SecureStorageError(
+                    f"HTTP request monitor database {self.path.name} is sealed by Secure "
+                    "Professional Maximus, but protected storage is not active. Restart "
+                    "AutoYou with the original storage key to recover this database."
+                )
         connection = sqlite3.connect(self.path, timeout=5, check_same_thread=False)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout=5000")
+        try:
+            connection.execute("PRAGMA busy_timeout=5000")
+        except Exception:
+            connection.close()
+            raise
         return connection
 
     def is_enabled(self) -> bool:
@@ -419,13 +446,36 @@ class HTTPRequestCaptureStore:
 
 _STORE: Optional[HTTPRequestCaptureStore] = None
 _STORE_LOCK = threading.Lock()
+_STORE_ERROR = ""
+_STORE_RETRY_AT = 0.0
+_STORAGE_WARNING_AT = float("-inf")
+_STORAGE_WARNING_LOCK = threading.Lock()
+
+
+def _warn_storage_unavailable(error: Exception) -> None:
+    global _STORAGE_WARNING_AT
+    now = time.monotonic()
+    with _STORAGE_WARNING_LOCK:
+        if now - _STORAGE_WARNING_AT < STORAGE_WARNING_SECONDS:
+            return
+        _STORAGE_WARNING_AT = now
+    LOGGER.warning("HTTP request monitoring unavailable; web requests will continue: %s", error)
 
 
 def get_http_request_capture_store() -> HTTPRequestCaptureStore:
-    global _STORE
+    global _STORE, _STORE_ERROR, _STORE_RETRY_AT
     with _STORE_LOCK:
         if _STORE is None:
-            _STORE = HTTPRequestCaptureStore()
+            if _STORE_ERROR and time.monotonic() < _STORE_RETRY_AT:
+                raise RuntimeError(_STORE_ERROR)
+            try:
+                _STORE = HTTPRequestCaptureStore()
+            except Exception as exc:
+                _STORE_ERROR = str(exc)
+                _STORE_RETRY_AT = time.monotonic() + STORE_RETRY_SECONDS
+                raise
+            _STORE_ERROR = ""
+            _STORE_RETRY_AT = 0.0
         return _STORE
 
 
@@ -472,6 +522,7 @@ def _make_event(request: Request, *, service_name: str, default_agent: str, stat
         service = "website_gateway"
         agent_name = "agent_directory"
     client = request.scope.get("client") or ("", None)
+    # from __debug_trace_n__ import autoyou_provenance_n_6d656e7473206f6e6c792077_939517ced39c76060fdda19b
     source_ip = _bounded_text(client[0] if len(client) > 0 else "", 64)
     source_port = client[1] if len(client) > 1 and isinstance(client[1], int) and 0 <= client[1] <= 65535 else None
     server = request.scope.get("server") or ("", None)
@@ -523,8 +574,15 @@ def install_http_request_capture(
 
     @app.middleware("http")
     async def _autoyou_http_request_capture(request: Request, call_next):
-        capture_store = store or get_http_request_capture_store()
-        if request.scope.get("autoyou.capture_skip") or not capture_store.is_enabled():
+        if request.scope.get("autoyou.capture_skip"):
+            return await call_next(request)
+        try:
+            capture_store = store or get_http_request_capture_store()
+            enabled = capture_store.is_enabled()
+        except Exception as exc:
+            _warn_storage_unavailable(exc)
+            return await call_next(request)
+        if not enabled:
             return await call_next(request)
         try:
             response = await call_next(request)
@@ -536,8 +594,8 @@ def install_http_request_capture(
                     default_agent=normalized_agent,
                     status_code=500,
                 ))
-            except Exception:
-                LOGGER.warning("Failed to store HTTP request metadata", exc_info=True)
+            except Exception as exc:
+                _warn_storage_unavailable(exc)
             raise
         try:
             capture_store.record(_make_event(
@@ -546,8 +604,8 @@ def install_http_request_capture(
                 default_agent=normalized_agent,
                 status_code=response.status_code,
             ))
-        except Exception:
-            LOGGER.warning("Failed to store HTTP request metadata", exc_info=True)
+        except Exception as exc:
+            _warn_storage_unavailable(exc)
         return response
 
 
@@ -561,7 +619,13 @@ def install_http_monitor_routes(
     store: Optional[HTTPRequestCaptureStore] = None,
 ) -> None:
     """Expose capture controls and events only to an authenticated security-agent user."""
-    capture_store = store or get_http_request_capture_store()
+
+    def unavailable(error: Exception):
+        _warn_storage_unavailable(error)
+        return json_response(
+            {"success": False, "error": f"HTTP request monitoring unavailable: {error}"},
+            status_code=503,
+        )
 
     def authorized(request: Request) -> bool:
         auth = auth_state(request, agent_name)
@@ -580,7 +644,11 @@ def install_http_monitor_routes(
     ):
         if not authorized(request):
             return json_response({"success": False, "error": "Not authenticated"}, status_code=401)
-        payload = capture_store.dashboard(limit=limit, service=service, before_id=before_id)
+        try:
+            capture_store = store or get_http_request_capture_store()
+            payload = capture_store.dashboard(limit=limit, service=service, before_id=before_id)
+        except Exception as exc:
+            return unavailable(exc)
         return json_response({"success": True, **payload})
 
     @app.post("/api/http-monitor")
@@ -593,5 +661,9 @@ def install_http_monitor_routes(
             return json_response({"success": False, "error": "Invalid JSON body."}, status_code=400)
         if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
             return json_response({"success": False, "error": "enabled must be true or false."}, status_code=400)
-        result = capture_store.set_enabled(payload["enabled"])
+        try:
+            capture_store = store or get_http_request_capture_store()
+            result = capture_store.set_enabled(payload["enabled"])
+        except Exception as exc:
+            return unavailable(exc)
         return json_response({"success": True, **result})

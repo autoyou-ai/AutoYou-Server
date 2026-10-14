@@ -1,7 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-091ce42c8de1e4e389d3e913
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 from pathlib import Path
 
@@ -19,9 +23,12 @@ from autoyou_agents.shared_tools.builder_suite import (  # noqa: E402
 )
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry  # noqa: E402
 
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-091ce42c8de1e4e389d3e913"
+
 
 def _write_agent_dir(root: Path, name: str) -> None:
     agent_dir = root / name
+    # from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_091ce42c8de1e4e389d3e913
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "agent.py").write_text(
         f"def create_{name}(*args, **kwargs):\n    return None\n",

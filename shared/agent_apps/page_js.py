@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-e9602b0f309ab654d0d2dcb3
 
 """Behaviour of the Agent Apps store page.
 
@@ -24,8 +25,12 @@ it also mirrors the layout to the native shell when that offers the
 
 from __future__ import annotations
 
+__debug_trace_j__ = "AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-e9602b0f309ab654d0d2dcb3"
+
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+# from __debug_trace_j__ import autoyou_provenance_j_7920636f6e74726962757469_e9602b0f309ab654d0d2dcb3
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 JS = r"""

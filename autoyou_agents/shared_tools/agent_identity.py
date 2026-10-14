@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import re
@@ -35,6 +35,7 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "ads_watching_agent": "autoyou_ads_watching_agent",
     "agent_builder_agent": "autoyou_agent_builder_agent",
     "audio_agent": "autoyou_audio_agent",
+    "tv_agent": "autoyou_tv_agent",
     "backup_agent": "autoyou_backup_agent",
     "browser_agent": "autoyou_browser_agent",
     "build_prompt_agent": "autoyou_build_prompt_agent",

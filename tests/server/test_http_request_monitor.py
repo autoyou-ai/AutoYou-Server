@@ -1,8 +1,19 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-9e1ee15132167f466177085c
+
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -14,6 +25,9 @@ from shared.http_request_monitor import (
     install_http_monitor_routes,
     install_http_request_capture,
 )
+from shared import secure_storage
+
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-9e1ee15132167f466177085c"
 
 SERVER_ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,6 +49,142 @@ def test_capture_installation_defers_store_creation_until_request(monkeypatch):
     install_http_request_capture(app, service_name="test_service")
 
     assert app.state._autoyou_http_request_capture_installed is True
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+def test_unreadable_store_preserves_requests_frontend_and_database(monkeypatch, tmp_path, caplog, sealed):
+    database = tmp_path / "events.sqlite3"
+    original = (secure_storage.SQLITE_HEADER if sealed else b"") + b"synthetic-invalid-database"
+    database.write_bytes(original)
+    monkeypatch.setattr(http_request_monitor, "default_storage_path", lambda: database)
+    monkeypatch.setattr(http_request_monitor, "_STORE", None)
+    monkeypatch.setattr(http_request_monitor, "_STORE_ERROR", "")
+    monkeypatch.setattr(http_request_monitor, "_STORE_RETRY_AT", 0.0)
+    monkeypatch.setattr(http_request_monitor, "_STORAGE_WARNING_AT", float("-inf"))
+    app = FastAPI()
+    install_http_request_capture(app, service_name="agent_website")
+    install_http_monitor_routes(
+        app,
+        agent_name="win_security_agent",
+        auth_state=lambda _request, _agent_name: {"authenticated": True, "auth_mode": "totp"},
+        json_response=lambda payload, status_code=200: JSONResponse(payload, status_code=status_code),
+    )
+
+    @app.get("/")
+    async def frontend():
+        return {"success": True}
+
+    with TestClient(app) as client:
+        for _ in range(3):
+            assert client.get("/").json() == {"success": True}
+        dashboard = client.get("/api/http-monitor")
+        toggle = client.post("/api/http-monitor", json={"enabled": True})
+
+    assert dashboard.status_code == toggle.status_code == 503
+    assert dashboard.json()["success"] is False
+    assert "monitoring unavailable" in dashboard.json()["error"]
+    if sealed:
+        assert "Secure Professional Maximus" in dashboard.json()["error"]
+        assert "file is not a database" not in dashboard.json()["error"]
+    assert database.read_bytes() == original
+    warnings = [record for record in caplog.records if record.name == http_request_monitor.LOGGER.name]
+    assert len(warnings) == 1
+
+
+def test_monitor_routes_authorize_and_validate_before_opening_storage(monkeypatch):
+    def fail_if_store_is_created():
+        raise AssertionError("unauthorized or invalid requests must not open monitor storage")
+
+    monkeypatch.setattr(http_request_monitor, "get_http_request_capture_store", fail_if_store_is_created)
+    app = FastAPI()
+    authenticated = False
+    install_http_monitor_routes(
+        app,
+        agent_name="win_security_agent",
+        auth_state=lambda _request, _agent_name: {"authenticated": authenticated, "auth_mode": "totp"},
+        json_response=lambda payload, status_code=200: JSONResponse(payload, status_code=status_code),
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/api/http-monitor").status_code == 401
+        assert client.post("/api/http-monitor", json={"enabled": True}).status_code == 401
+        authenticated = True
+        assert client.post("/api/http-monitor", content="invalid json").status_code == 400
+        assert client.post("/api/http-monitor", json={"enabled": "yes"}).status_code == 400
+
+
+def test_capture_skip_does_not_open_storage(monkeypatch):
+    def fail_if_store_is_created():
+        raise AssertionError("skipped requests must not open monitor storage")
+
+    monkeypatch.setattr(http_request_monitor, "get_http_request_capture_store", fail_if_store_is_created)
+    app = FastAPI()
+    install_http_request_capture(app, service_name="test_service")
+
+    @app.middleware("http")
+    async def skip_capture(request, call_next):
+        request.scope["autoyou.capture_skip"] = True
+        return await call_next(request)
+
+    @app.get("/")
+    async def home():
+        return {"success": True}
+
+    with TestClient(app) as client:
+        assert client.get("/").json() == {"success": True}
+
+
+def test_failed_store_creation_retries_after_backoff(monkeypatch, tmp_path):
+    original_factory = HTTPRequestCaptureStore
+    attempts = []
+    clock = [100.0]
+
+    def create_store():
+        attempts.append(clock[0])
+        if len(attempts) == 1:
+            raise sqlite3.OperationalError("synthetic temporary storage failure")
+        return original_factory(tmp_path / "events.sqlite3")
+
+    monkeypatch.setattr(http_request_monitor, "HTTPRequestCaptureStore", create_store)
+    monkeypatch.setattr(http_request_monitor, "_STORE", None)
+    monkeypatch.setattr(http_request_monitor, "_STORE_ERROR", "")
+    monkeypatch.setattr(http_request_monitor, "_STORE_RETRY_AT", 0.0)
+    monkeypatch.setattr(http_request_monitor.time, "monotonic", lambda: clock[0])
+
+    with pytest.raises(sqlite3.OperationalError):
+        http_request_monitor.get_http_request_capture_store()
+    with pytest.raises(RuntimeError, match="synthetic temporary storage failure"):
+        http_request_monitor.get_http_request_capture_store()
+    assert len(attempts) == 1
+
+    clock[0] += http_request_monitor.STORE_RETRY_SECONDS
+    store = http_request_monitor.get_http_request_capture_store()
+    assert len(attempts) == 2
+    assert store.dashboard()["enabled"] is False
+    assert http_request_monitor.get_http_request_capture_store() is store
+
+
+def test_capture_enablement_failure_preserves_application_errors(monkeypatch, tmp_path):
+    store = HTTPRequestCaptureStore(tmp_path / "events.sqlite3")
+
+    def unreadable():
+        raise sqlite3.OperationalError("synthetic storage read failure")
+
+    monkeypatch.setattr(store, "is_enabled", unreadable)
+    app = FastAPI()
+    install_http_request_capture(app, service_name="test_service", store=store)
+
+    @app.get("/")
+    async def home():
+        return {"success": True}
+
+    @app.get("/failure")
+    async def application_failure():
+        raise ValueError("synthetic application failure")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.get("/").json() == {"success": True}
+        assert client.get("/failure").status_code == 500
 
 
 def test_capture_is_opt_in_and_stores_redacted_request_metadata(tmp_path):
@@ -256,6 +406,7 @@ def test_http_capture_is_wired_to_all_primary_web_listener_paths():
             'install_http_request_capture(app, service_name="agent_website", agent_name=_AGENT_NAME)',
         ),
     }
+    # from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_9e1ee15132167f466177085c
     for relative_path, markers in expected.items():
         source = (SERVER_ROOT / relative_path).read_text(encoding="utf-8")
         assert all(marker in source for marker in markers), relative_path

@@ -1,7 +1,14 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-5dac2e9c6d867086c6b622f8
+
 """H.264 still works when the FFmpeg build has no x264 (Store packages)."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_5dac2e9c6d867086c6b622f8
 
 import fractions
 
@@ -16,6 +23,8 @@ from aiortc.rtcrtpparameters import RTCRtpCodecParameters
 
 from shared import h264_encoders
 from shared import video_call_manager
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-5dac2e9c6d867086c6b622f8"
 
 
 @pytest.fixture(autouse=True)

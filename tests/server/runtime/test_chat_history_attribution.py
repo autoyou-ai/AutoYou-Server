@@ -1,14 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-59bcfa2151586b44450e949f
 
 """Chat & History says who each conversation is with, and who said each turn."""
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 from types import SimpleNamespace
 
@@ -24,6 +26,8 @@ from session_utils import MemoryIntegratedSessionManager
 from shared import session_execution
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
 from shared.session_execution import SessionExecutionManager
+
+__debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-59bcfa2151586b44450e949f"
 
 PHONE = "user::local:Phone-1"
 PEER = "user::peer:" + "0" * 64
@@ -395,6 +399,7 @@ async def test_an_owner_reply_follows_the_device_into_its_current_conversation(t
         client.get("/api/chat/sessions").json(),
         client.get("/api/chat/session", params={"user_id": PHONE, "session_id": "session::local:Phone-1::2"}).json(),
     ))
+    # from __debug_trace_n__ import autoyou_provenance_n_6d656e7473206f6e6c792077_59bcfa2151586b44450e949f
     rows = {row["session_id"]: row for row in listing["sessions"]}
     assert set(rows) == {"session::local:Phone-1", "session::local:Phone-1::2"}
     assert rows["session::local:Phone-1::2"]["preview"] == "On my way"

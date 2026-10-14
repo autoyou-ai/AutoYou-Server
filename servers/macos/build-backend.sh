@@ -147,6 +147,15 @@ MACOS_RUNTIME_SITE_PACKAGE_OVERLAY=(
     "idna"
     "mss"
     "onnxruntime"
+    "supertonic"
+    "lingua"
+    "numpy"
+    "soundfile"
+    "_soundfile"
+    "_soundfile_data"
+    "cffi"
+    "_cffi_backend"
+    "pycparser"
     "playwright"
     "pyaudio"
     "pyaes"
@@ -227,6 +236,10 @@ MACOS_RUNTIME_SITE_PACKAGE_DISTRIBUTION_OVERLAY=(
     "onnxruntime"
     "litellm"
     "huggingface-hub"
+    "supertonic"
+    "lingua-language-detector"
+    "numpy"
+    "soundfile"
 )
 
 # Logging functions
@@ -1361,6 +1374,10 @@ prepare_backend_python_dependencies() {
     step_header "Prune non-commercial model assets"
     prune_noncommercial_site_packages
 
+    # ONNX TTS ships with base/binary-default as well as full voice profiles.
+    step_header "Patch native library paths (onnxruntime)"
+    patch_onnxruntime_dylib
+
     if requirements_has_voice; then
         step_header "Patch native library paths (torchaudio/sox)"
         patch_torchaudio_sox
@@ -1371,8 +1388,6 @@ prepare_backend_python_dependencies() {
         step_header "Patch native library paths (torch/libomp)"
         patch_torch_libomp
 
-        step_header "Patch native library paths (onnxruntime)"
-        patch_onnxruntime_dylib
     else
         log "Skipping voice-native dylib patches for requirements profile: $REQUIREMENTS_TYPE"
         if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
@@ -1503,6 +1518,11 @@ verify_packaged_backend_imports() {
         --verify-runtime-import "shared.process_lifecycle"
         --verify-runtime-import "shared.remote_desktop_input"
         --verify-runtime-import "shared.remote_desktop_settings"
+        --verify-runtime-import "shared.native_tts"
+        --verify-runtime-import "supertonic"
+        --verify-runtime-import "onnxruntime"
+        --verify-runtime-import "lingua"
+        --verify-runtime-import "soundfile"
     )
     local -a server_verify_args=(
         --verify-server-imports

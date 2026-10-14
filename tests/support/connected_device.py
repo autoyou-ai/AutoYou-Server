@@ -1,16 +1,20 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-31c88153809ffb1626a96c35
 
 """One paired, connected device on the real engine, for chat-delivery tests."""
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import pytest
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-31c88153809ffb1626a96c35"
 
 
 class OpenChannel:
@@ -18,6 +22,7 @@ class OpenChannel:
 
     def __init__(self):
         self.sent = []
+        # from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_31c88153809ffb1626a96c35
 
     async def send_message(self, message):
         self.sent.append(message)

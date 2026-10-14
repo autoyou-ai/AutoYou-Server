@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 from typing import Any, Callable, Dict
@@ -225,6 +225,8 @@ def register_routes(
         payload["custom_voices"] = server.list_custom_voice_statuses()
         from shared.emotivoice_tts import status as emotivoice_status
         payload["emotivoice"] = await server.asyncio.to_thread(emotivoice_status)
+        from shared.native_tts import status as native_tts_status
+        payload["native_tts"] = await server.asyncio.to_thread(native_tts_status)
         payload["openai_tts_models"] = list(server.OPENAI_TTS_MODELS)
         payload["openai_tts_voices"] = list(server.OPENAI_TTS_VOICES)
         payload["stt_model_suggestions"] = list(server.STT_MODEL_SUGGESTIONS)
@@ -249,7 +251,10 @@ def register_routes(
             return JSONResponse({"success": False, "error": "Missing STT model name"}, status_code=400)
 
         try:
-            if model_name.lower() == "emotivoice":
+            from shared.native_tts import CATALOG, start_download_job as start_native_tts_download
+            if model_name in CATALOG:
+                job = await server.asyncio.to_thread(start_native_tts_download, model_name)
+            elif model_name.lower() == "emotivoice":
                 job = await server.asyncio.to_thread(server.speech_model_library_service.start_emotivoice_download_job)
             else:
                 job = await server.asyncio.to_thread(server.speech_model_library_service.start_download_job, model_name)
@@ -263,6 +268,8 @@ def register_routes(
         if redir:
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         jobs = await server.asyncio.to_thread(server.speech_model_library_service.list_jobs)
+        from shared.native_tts import download_jobs
+        jobs += await server.asyncio.to_thread(download_jobs)
         return JSONResponse({"success": True, "jobs": jobs})
 
     @admin_app.post("/api/speech-models/delete")

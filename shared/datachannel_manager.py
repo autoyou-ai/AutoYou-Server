@@ -22,10 +22,13 @@ Based on research findings:
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import asyncio
+import zlib
+from .binary_http import (BodyInbox, CAPABILITY_HEADER, MAX_BODY_BYTES, REQUEST_BODY,
+                          RESPONSE_BODY, WINDOW_FRAMES, decode_frame, encode_frame, payload_capacity)
 import base64
 import json
 import os
@@ -197,6 +200,8 @@ class MessageType(Enum):
     CHAT = "chat"
     HTTP_REQUEST = "http_request"
     HTTP_REQUEST_CANCEL = "http_request_cancel"
+    HTTP_BODY_READY = "http_body_ready"
+    HTTP_BODY_ACK = "http_body_ack"
     HTTP_RESPONSE = "http_response"
     # HTTP SSE streaming support
     HTTP_SSE_START = "http_sse_start"
@@ -756,6 +761,11 @@ class DataChannelManager:
         self._recent_rtt_samples: List[float] = []
         self._max_rtt_samples = 20
         self._chunk_send_lock = asyncio.Lock()
+        self.binary_http_supported = False
+        self._binary_body_inbox = BodyInbox()
+        self._binary_body_waiters: Dict[str, asyncio.Future] = {}
+        self._binary_window_waiters: Dict[tuple[str, int], asyncio.Future] = {}
+        self._binary_response_sequences: Dict[str, int] = {}
         self._inactive_send_logged_at = 0.0
         # Optional callbacks that let the server inject extra metadata into
         # automatic PONG replies and periodic PING sends (e.g. game state).
@@ -793,6 +803,16 @@ class DataChannelManager:
 
     def set_datachannel(self, datachannel):
         """Set the datachannel for message sending"""
+        if self.datachannel is not datachannel:
+            self.binary_http_supported = False
+            self._binary_body_inbox.clear()
+            self._binary_response_sequences.clear()
+            for future in self._binary_window_waiters.values():
+                if not future.done():
+                    future.set_result(False)
+            for future in self._binary_body_waiters.values():
+                if not future.done():
+                    future.set_result(False)
         self.datachannel = datachannel
         self.connection_active = True
         logger.info("DataChannel set and connection marked as active")
@@ -1225,7 +1245,102 @@ class DataChannelManager:
                 self._completed_chunk_messages.pop(key, None)
         return False
 
+    def reliable_binary_http(self) -> bool:
+        channel = self.datachannel
+        return bool(channel and getattr(channel, "ordered", True)
+                    and getattr(channel, "maxRetransmits", None) is None
+                    and getattr(channel, "maxPacketLifeTime", None) is None)
+
+    async def send_binary_http(self, request_id: str, sequence: int, data: bytes,
+                               kind: int = RESPONSE_BODY) -> bool:
+        if not self.connection_active or not self.reliable_binary_http():
+            return False
+        try:
+            channel = self.datachannel
+            frame = encode_frame(kind, request_id, sequence, data)
+            window = None
+            if sequence % WINDOW_FRAMES == 0:
+                window = asyncio.get_running_loop().create_future()
+                self._binary_window_waiters[(request_id, sequence)] = window
+            await self._wait_for_buffer_capacity()
+            if self.datachannel is not channel or not self.connection_active or getattr(channel, "readyState", "open") != "open":
+                return False
+            channel.send(frame)
+            await asyncio.sleep(0)
+            if window is not None and not await asyncio.wait_for(window, timeout=30):
+                return False
+            return True
+        except (ValueError, ConnectionError, asyncio.TimeoutError):
+            return False
+        finally:
+            self._binary_window_waiters.pop((request_id, sequence), None)
+
+    async def acknowledge_binary_http(self, request_id: str, sequence: int) -> None:
+        if sequence % WINDOW_FRAMES == 0:
+            await self._send_json_message(DataChannelMessage(
+                MessageHeader(str(uuid.uuid4()), MessageType.HTTP_BODY_ACK, time.time(), self.session_id),
+                {"request_id": request_id, "seq": sequence}))
+
+    async def receive_binary_http_body(self, request_id: str, size: int, header: MessageHeader) -> bytes:
+        if not self.reliable_binary_http():
+            raise ValueError("Binary HTTP requires a reliable ordered channel")
+        future = self._binary_body_inbox.open(request_id, size)
+        try:
+            ready = DataChannelMessage(MessageHeader(str(uuid.uuid4()), MessageType.HTTP_BODY_READY,
+                time.time(), header.session_id, header.user_id),
+                {"request_id": request_id, "frame_bytes": 16384})
+            if not await self._send_json_message(ready):
+                raise ConnectionError("Binary HTTP request body transport closed")
+            return await asyncio.wait_for(future, timeout=30)
+        finally:
+            self._binary_body_inbox.discard(request_id)
+
     async def send_message(self, message: DataChannelMessage) -> bool:
+        # Negotiation is explicit. An old server ignores binary_http and keeps
+        # answering with JSON; uploads switch only after its capability reply.
+        if (self.role == "client" and message.header.message_type == MessageType.HTTP_REQUEST
+                and message.payload.get("binary_http") == 1 and self.binary_http_supported
+                and self.reliable_binary_http() and message.payload.get("body_base64")):
+            try:
+                raw = base64.b64decode(message.payload.get("body") or "", validate=True)
+                if message.payload.get("compressed"):
+                    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                    raw = inflater.decompress(raw, MAX_BODY_BYTES + 1)
+                    if not inflater.eof:
+                        raw = b""
+                if 64 * 1024 <= len(raw) <= MAX_BODY_BYTES:
+                    return await self._send_binary_http_request(message, raw)
+            except (ValueError, zlib.error):
+                pass
+        return await self._send_json_message(message)
+
+    async def _send_binary_http_request(self, message: DataChannelMessage, raw: bytes) -> bool:
+        channel = self.datachannel
+        request_id = message.payload.get("request_id") or message.header.message_id
+        payload_capacity(request_id)
+        payload = dict(message.payload, body="", body_base64=False, compressed=False,
+                       binary_body_length=len(raw))
+        ready = asyncio.get_running_loop().create_future()
+        self._binary_body_waiters[request_id] = ready
+        try:
+            if not await self._send_json_message(DataChannelMessage(message.header, payload)):
+                return False
+            if not await asyncio.wait_for(ready, timeout=30):
+                # An HTTP error already answered the request before body acceptance.
+                return True
+            capacity = payload_capacity(request_id)
+            for index, offset in enumerate(range(0, len(raw), capacity), 1):
+                if self.datachannel is not channel:
+                    return False
+                if not await self.send_binary_http(request_id, index, raw[offset:offset + capacity], REQUEST_BODY):
+                    return False
+            return True
+        except (asyncio.TimeoutError, ConnectionError, ValueError):
+            return False
+        finally:
+            self._binary_body_waiters.pop(request_id, None)
+
+    async def _send_json_message(self, message: DataChannelMessage) -> bool:
         """Send a message through the datachannel, handling chunking if needed"""
         if not self._ensure_transport_ready(message):
             return False
@@ -1258,6 +1373,27 @@ class DataChannelManager:
     async def handle_received_message(self, raw_message: str) -> Optional[DataChannelMessage]:
         """Process received message, handling chunking and routing to appropriate handlers"""
         try:
+            if isinstance(raw_message, bytes):
+                kind, request_id, sequence, data = decode_frame(raw_message)
+                if kind == REQUEST_BODY:
+                    if self.role == "server":
+                        if self._binary_body_inbox.feed(request_id, sequence, data):
+                            await self.acknowledge_binary_http(request_id, sequence)
+                    return None
+                if self.role != "client":
+                    return None
+                expected = self._binary_response_sequences.get(request_id)
+                if expected is None:
+                    return None
+                if sequence != expected:
+                    self._binary_response_sequences.pop(request_id, None)
+                    raise ValueError("Invalid binary HTTP response sequence")
+                self._binary_response_sequences[request_id] = sequence + 1
+                message = DataChannelMessage(MessageHeader(str(uuid.uuid4()), MessageType.HTTP_STREAM_DATA,
+                    time.time(), self.session_id), {"request_id": request_id, "seq": sequence, "data": data})
+                result = await self._route_message(message)
+                await self.acknowledge_binary_http(request_id, sequence)
+                return result
             # Validate input
             if not raw_message or not isinstance(raw_message, str):
                 error_msg = f"Invalid message format: expected non-empty string, got {type(raw_message)}" if self.role == "client" else "Received empty or invalid message"
@@ -1337,7 +1473,8 @@ class DataChannelManager:
 
     async def _route_message(self, message: DataChannelMessage) -> Optional[DataChannelMessage]:
         """Route message to appropriate handler with role-based behavior"""
-        if self.relay_interceptor is not None:
+        if self.relay_interceptor is not None and not (
+                message.header.message_type == MessageType.HTTP_STREAM_DATA and isinstance(message.payload.get("data"), bytes)):
             try:
                 if self.relay_interceptor(message):
                     return message
@@ -1346,6 +1483,28 @@ class DataChannelManager:
                 return message
 
         message_type = message.header.message_type
+
+        if message_type == MessageType.HTTP_BODY_ACK:
+            future = self._binary_window_waiters.get((message.payload.get("request_id"), message.payload.get("seq")))
+            if future is not None and not future.done():
+                future.set_result(True)
+            return message
+        if message_type == MessageType.HTTP_BODY_READY:
+            future = self._binary_body_waiters.get(message.payload.get("request_id"))
+            if future is not None and not future.done():
+                future.set_result(True)
+            return message
+        if message_type in (MessageType.HTTP_RESPONSE, MessageType.HTTP_STREAM_OPEN):
+            headers = message.payload.get("headers") or {}
+            if any(str(k).lower() == CAPABILITY_HEADER.lower() and str(v) == "1" for k, v in headers.items()):
+                self.binary_http_supported = True
+                if message_type == MessageType.HTTP_STREAM_OPEN:
+                    self._binary_response_sequences[message.payload.get("request_id")] = 1
+            future = self._binary_body_waiters.get(message.payload.get("request_id"))
+            if future is not None and not future.done():
+                future.set_result(False)
+        if message_type in (MessageType.HTTP_STREAM_END, MessageType.HTTP_STREAM_ABORT):
+            self._binary_response_sequences.pop(message.payload.get("request_id"), None)
 
         # Handle built-in message types
         if message_type == MessageType.PING:

@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import os
 import sys
 
@@ -26,11 +26,11 @@ from server import STATE, _apply_speech_config_to_active_audio_managers, _update
 def test_normalize_speech_config_fills_defaults():
     speech = normalize_speech_config(None)
 
-    assert speech["tts"]["provider"] == "system"
+    assert speech["tts"]["provider"] == "auto"
     assert speech["tts"]["rate"] == 1.0
     assert speech["tts"]["openai"]["model"] == "gpt-4o-mini-tts"
-    assert speech["stt"]["model"] == "tiny.en"
-    assert speech["stt"]["language"] == "en"
+    assert speech["stt"]["model"] == "base"
+    assert speech["stt"]["language"] == ""
     assert speech["stt"]["device"] == "cpu"
 
 

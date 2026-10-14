@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import copy
@@ -905,6 +905,7 @@ def install_agent_website_auth(
     title: str,
     register_auth_routes: bool = False,
     is_authenticated: Optional[Any] = None,
+    shared_session_upgrade: bool = True,
 ) -> None:
     """Apply the shared OTP boundary to a bespoke agent website.
 
@@ -912,7 +913,8 @@ def install_agent_website_auth(
     adapter keeps custom FastAPI sites from drifting into a second auth style.
     """
     app.middleware("http")(_agent_app_csrf_guard())
-    app.middleware("http")(_shared_session_upgrade_middleware())
+    if shared_session_upgrade:
+        app.middleware("http")(_shared_session_upgrade_middleware())
     prefix = f"/agent/{agent_name}"
 
     @app.middleware("http")

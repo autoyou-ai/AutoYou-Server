@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-T-000000000000000000000000-504820240973bdd5dc7c6fae
+
 """Direct home-network websites for Local Pair devices.
 
 A Local Pair device gets, over its authenticated data channel, the page
@@ -10,6 +13,9 @@ nothing.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import base64
 import hashlib
@@ -28,6 +34,8 @@ import server
 from shared import local_tls
 from shared.lan_direct_access import DevicePassStore, safe_next_path, spki_sha256_b64
 
+__debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-504820240973bdd5dc7c6fae"
+
 LAN_PEER = ("192.168.50.21", 51000)  # RFC 1918, synthetic
 EPOCH = "synthetic-epoch"
 
@@ -36,6 +44,7 @@ EPOCH = "synthetic-epoch"
 
 def test_codes_work_once_and_passes_expire():
     now = [1000.0]
+    # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_504820240973bdd5dc7c6fae
     store = DevicePassStore(pass_ttl_seconds=100, code_ttl_seconds=10, clock=lambda: now[0])
     code = store.issue_code("device-a", epoch=EPOCH)
 

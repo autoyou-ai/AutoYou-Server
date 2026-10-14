@@ -1,10 +1,21 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-4b1a7244afa42397d2600afd
+
 """Game Studio publishes bounded HTML into test-scoped server storage."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from autoyou_agents.game_agent.website.backend import app as game_studio
+
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-4b1a7244afa42397d2600afd"
 
 
 def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch):
@@ -18,6 +29,7 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
     monkeypatch.setattr(game_studio._smc, "_describe_chat_auth_state", lambda *_args: auth)
     monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
     html = b"<html><head></head><body>synthetic game</body></html>"
+    # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_4b1a7244afa42397d2600afd
     target = tmp_path / "mobile_games" / "synthetic-runner.html"
 
     with TestClient(game_studio.app) as client:

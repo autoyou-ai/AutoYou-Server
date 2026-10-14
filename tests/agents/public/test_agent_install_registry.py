@@ -6,7 +6,7 @@
 
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 from pathlib import Path
 
 import pytest
@@ -118,6 +118,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "files_agent",
         "fine_tuning_agent",
         "game_agent",
+        "tv_agent",
         "hosting_agent",
         "location_agent",
         "mac_security_agent",

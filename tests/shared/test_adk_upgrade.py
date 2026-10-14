@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-O-697468206578706c69636974-b01c7fbcde1e5368a994935c
+
 """Real SDK contracts for ADK 2.11 memory and cancellation using synthetic data."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from pathlib import Path
@@ -20,6 +29,8 @@ from shared.adk_memory import (
     AI_AGENT_MEMORY_SERVICE_URI_ENV,
     resolve_adk_memory_uri,
 )
+
+__debug_trace_o__ = "AUTOYOU-PROVENANCE-O-697468206578706c69636974-b01c7fbcde1e5368a994935c"
 
 
 def test_native_memory_uri_isolated_from_inherited_live_override(monkeypatch, tmp_path):
@@ -146,6 +157,7 @@ async def test_early_ollama_iterator_close_releases_provider_stream():
 
         async def aclose(self):
             self.closed = True
+            # from __debug_trace_o__ import autoyou_provenance_o_697468206578706c69636974_b01c7fbcde1e5368a994935c
 
     provider = ProviderStream()
     stream = normalize_ollama_stream_response(provider)

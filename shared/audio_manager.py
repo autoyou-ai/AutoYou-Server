@@ -14,7 +14,7 @@ for voice calls using WebRTC.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import asyncio
@@ -65,7 +65,9 @@ except Exception as exc:
     def synthesize_custom_voice_to_file(*args, **kwargs):  # type: ignore[no-redef]
         raise RuntimeError(f"Custom voice runtime is unavailable: {_CUSTOM_VOICE_IMPORT_ERROR}")
 
-from shared.speech_config import deepcopy_speech_config, normalize_speech_config
+from shared.speech_config import deepcopy_speech_config, normalize_speech_config, speech_language
+from shared.speech_language import detect_language, matching_system_voice, voice_languages
+from shared import native_tts
 from shared.emotivoice_tts import status as emotivoice_status, synthesize as synthesize_emotivoice
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json, write_secure_file
 
@@ -816,9 +818,10 @@ def _sanitize_text_for_tts(text: str) -> str:
             sanitized_chars.append(" ")
             continue
         category = unicodedata.category(char)
-        if category.startswith("C"):
+        # Joiners affect spelling/pronunciation in Indic and Persian text.
+        if category.startswith("C") and char not in {"\u200c", "\u200d"}:
             continue
-        if ord(char) > 0xFFFF or category == "So":
+        if category == "So":
             sanitized_chars.append(" ")
             continue
         sanitized_chars.append(char)
@@ -877,6 +880,15 @@ def voice_runtime_available(settings: Dict[str, Any]) -> bool:
 
     if provider == "off":
         return False
+
+    if provider in {"auto", "native"}:
+        native_cfg = tts_settings["native"]
+        native_ready = native_tts.runtime_available() and (
+            native_cfg["auto_download"] or native_tts.model_installed(native_cfg["model"])
+        )
+        if provider == "native" or native_ready:
+            return bool(native_ready)
+        return bool(list_system_tts_voices())
 
     if provider == CUSTOM_VOICE_PROVIDER:
         return custom_voice_model_ready()
@@ -1959,6 +1971,9 @@ class AudioManager:
 
     def _setup_tts(self, settings: Dict[str, Any]):
         provider = settings["tts"]["provider"]
+        if provider in {"auto", "native"}:
+            self.tts_available = voice_runtime_available(settings)
+            return
         if provider == "off":
             self.tts_available = False
             LOGGER.debug("TTS disabled in speech settings")
@@ -2396,20 +2411,11 @@ class AudioManager:
                     download_whisper_model,
                 )
                 stt_settings = settings["stt"]
-                model_name = stt_settings.get("model", "tiny.en")
-                # Map faster_whisper model names to ggml names
-                _model_map = {
-                    "tiny": "tiny", "base": "base", "small": "small",
-                    "medium": "medium", "large-v2": "large-v2",
-                    "large-v3": "large-v3",
-                }
-                ggml_model = _model_map.get(model_name, "tiny.en")
-                if not ggml_model.endswith(".en"):
-                    lang = stt_settings.get("language", "en")
-                    if lang == "en":
-                        ggml_model = f"{ggml_model}.en"
+                model_name = stt_settings.get("model", "base")
+                from shared.whisper_downloader import whisper_cpp_model
+                ggml_model = whisper_cpp_model(model_name)
 
-                self._emit_status("warming", f"Downloading whisper.cpp ({ggml_model})…")
+                self._emit_status("warming", f"Preparing whisper.cpp ({ggml_model})...")
                 binary = get_whisper_cpp_binary()
                 if binary is None:
                     raise RuntimeError("whisper.cpp binary unavailable")
@@ -2420,7 +2426,7 @@ class AudioManager:
                 recorder = WhisperCppRecorder(
                     binary_path=binary,
                     model_path=model_path,
-                    language=stt_settings.get("language", "en"),
+                    language=speech_language(stt_settings.get("language")) or "auto",
                     post_speech_silence_duration=float(
                         stt_settings.get("post_speech_silence_duration", 1.5)
                     ),
@@ -2479,13 +2485,16 @@ class AudioManager:
 
         stt_settings = settings["stt"]
         try:
+            from shared.platform_runtime import configure_whisper_cache_environment
+            whisper_cache = configure_whisper_cache_environment()
             requested_device = stt_settings.get("device", "cpu")
             resolved_device = _resolve_stt_device(requested_device)
             _patch_tqdm_ensure_lock()
             stt_kwargs = {
                 "spinner": False,
                 "model": stt_settings["model"],
-                "language": stt_settings["language"],
+                "download_root": str(whisper_cache / "hub"),
+                "language": speech_language(stt_settings["language"]),
                 "device": resolved_device,
                 "compute_type": stt_settings["compute_type"],
                 "enable_realtime_transcription": True,
@@ -2924,6 +2933,9 @@ class AudioManager:
         if settings["tts"]["provider"] == "off":
             LOGGER.debug("Skipping TTS because provider is off")
             return False
+        if not self.tts_available and settings["tts"]["provider"] in {"auto", "native"}:
+            LOGGER.warning("Automatic/native TTS is unavailable in this runtime")
+            return False
         if not self.tts_available:
             # A call must not go silent because the chosen voice cannot run yet
             # (models not downloaded, no API key, no trained voice). The system
@@ -2996,7 +3008,11 @@ class AudioManager:
             except OSError:
                 pass
 
-        if provider == "system":
+        if provider == "auto":
+            self._synthesize_auto_tts(tts_text, temp_path, settings)
+        elif provider == "native":
+            self._synthesize_native_tts(tts_text, temp_path, settings)
+        elif provider == "system":
             self._synthesize_system_tts(tts_text, temp_path, settings)
         elif provider == CUSTOM_VOICE_PROVIDER:
             self._synthesize_custom_voice_tts(tts_text, temp_path, settings, fallback_to_system=False)
@@ -3046,7 +3062,11 @@ class AudioManager:
                 LOGGER.warning("Skipping TTS because sanitized speech text is empty")
                 return
 
-            if provider == "system":
+            if provider == "auto":
+                self._synthesize_auto_tts(tts_text, temp_path, settings)
+            elif provider == "native":
+                self._synthesize_native_tts(tts_text, temp_path, settings)
+            elif provider == "system":
                 self._synthesize_system_tts(tts_text, temp_path, settings)
             elif provider == CUSTOM_VOICE_PROVIDER:
                 self._synthesize_custom_voice_tts(tts_text, temp_path, settings, fallback_to_system=False)
@@ -3082,6 +3102,9 @@ class AudioManager:
             LOGGER.error("TTS subprocess failed: %s", stderr)
         except Exception as exc:
             LOGGER.error("TTS error: %s", exc)
+            # Existing clients end calls when readiness leaves "ready". A
+            # failed voice download must not terminate working recognition.
+            self._report_speech_detail(f"Speech output failed: {exc}")
         finally:
             try:
                 if "temp_path" in locals() and os.path.exists(temp_path):
@@ -3089,6 +3112,39 @@ class AudioManager:
                     os.remove(temp_path)
             except Exception as exc:
                 LOGGER.warning("Could not remove temp TTS file %s: %s", temp_path, exc)
+
+    def _synthesize_native_tts(self, text: str, temp_path: str, settings: Dict[str, Any]):
+        language = settings["tts"].get("language") or detect_language(text, settings["stt"].get("language", ""))
+        self._native_tts_with_status(text, temp_path, settings, language)
+
+    def _report_speech_detail(self, detail: str) -> None:
+        readiness = getattr(self, "_last_readiness_status", None)
+        if isinstance(readiness, dict) and readiness.get("state"):
+            self._emit_status(readiness["state"], detail)
+
+    def _native_tts_with_status(self, text: str, temp_path: str, settings: Dict[str, Any], language: str) -> None:
+        if not native_tts.model_installed(settings["tts"]["native"]["model"]):
+            self._report_speech_detail("Preparing multilingual speech model. Download progress is available in Speech settings.")
+        native_tts.synthesize(text, temp_path, settings, language=language)
+        self._report_speech_detail("Multilingual speech output ready.")
+
+    def _synthesize_auto_tts(self, text: str, temp_path: str, settings: Dict[str, Any]):
+        language = settings["tts"].get("language") or detect_language(text, settings["stt"].get("language", ""))
+        voices = list_system_tts_voices()
+        voice = matching_system_voice(voices, language, settings["tts"].get("system_voice", ""))
+        if voice:
+            local_settings = normalize_speech_config(settings)
+            local_settings["tts"]["system_voice"] = voice
+            local_settings["tts"]["_resolved_language"] = language
+            try:
+                self._synthesize_system_tts(text, temp_path, local_settings)
+                return
+            except Exception as exc:
+                LOGGER.warning("System TTS failed for language %s; trying native TTS: %s", language, exc)
+        if language == "zh" and emotivoice_status()["ready"]:
+            synthesize_emotivoice(text, temp_path, settings)
+            return
+        self._native_tts_with_status(text, temp_path, settings, language)
 
     def _synthesize_custom_voice_tts(
         self,
@@ -3125,7 +3181,11 @@ class AudioManager:
             # runs. It is substantially more reliable here than pyttsx3.
             # Retry an installed English voice if the configured voice cannot
             # render speech. Never persist the fallback over the user's choice.
-            for candidate in dict.fromkeys([voice_id, "Samantha", "Fred"]):
+            resolved_language = settings["tts"].get("_resolved_language")
+            candidates = [voice_id, "Samantha", "Fred"]
+            if resolved_language:
+                candidates = [voice_id] + [voice["id"] for voice in list_system_tts_voices() if resolved_language in voice_languages(voice)]
+            for candidate in dict.fromkeys(candidates):
                 cmd = ["say", "-o", temp_path, "-r", str(speech_rate)]
                 if candidate and candidate != "default":
                     cmd.extend(["-v", candidate])
@@ -3157,7 +3217,7 @@ class AudioManager:
                     try:
                         engine.setProperty("voice", voice_id)
                     except Exception as exc:
-                        LOGGER.warning("Could not apply requested system voice %s: %s", voice_id, exc)
+                        raise RuntimeError(f"Could not apply requested system voice {voice_id}") from exc
                 engine.save_to_file(text, temp_path)
                 engine.runAndWait()
             finally:
@@ -3186,7 +3246,7 @@ if voice_id:
     try:
         engine.setProperty("voice", voice_id)
     except Exception as exc:
-        print(f"WARNING: could not apply requested voice: {exc}", file=sys.stderr)
+        raise RuntimeError("Could not apply requested system voice") from exc
 engine.save_to_file(sys.argv[1], sys.argv[2])
 engine.runAndWait()
 try:
@@ -3228,12 +3288,15 @@ Add-Type -AssemblyName System.Speech
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try {
     if ($env:AUTOYOU_TTS_VOICE -and $env:AUTOYOU_TTS_VOICE -ne 'default') {
-        try {
-            $synth.SelectVoice($env:AUTOYOU_TTS_VOICE)
-        }
-        catch {
-            Write-Warning "Could not apply requested voice $($env:AUTOYOU_TTS_VOICE): $($_.Exception.Message)"
-        }
+        $requested = $env:AUTOYOU_TTS_VOICE
+        $tokenId = ($requested -split '\\')[-1]
+        $installed = $synth.GetInstalledVoices() | Where-Object {
+            $_.Enabled -and ($_.VoiceInfo.Name -eq $requested -or
+                $_.VoiceInfo.Id -eq $requested -or $_.VoiceInfo.Id -eq $tokenId -or
+                $_.VoiceInfo.Id.EndsWith('\' + $tokenId, [StringComparison]::OrdinalIgnoreCase))
+        } | Select-Object -First 1
+        if ($null -eq $installed) { throw 'Requested speech voice is not installed' }
+        $synth.SelectVoice($installed.VoiceInfo.Name)
     }
     $synth.Rate = [int]$env:AUTOYOU_TTS_RATE
     $synth.SetOutputToWaveFile($env:AUTOYOU_TTS_PATH)

@@ -15,7 +15,7 @@ and retrieval tasks with memory integration.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 # Standard library imports
@@ -1175,6 +1175,7 @@ for _install_name in (
     "ads_watching_agent",
     "agent_builder_agent",
     "audio_agent",
+    "tv_agent",
     "browser_agent",
     "build_prompt_agent",
     "client_browser_control_agent",
@@ -1324,6 +1325,9 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "playback agent",
         "audio",
         "music",
+    ),
+    resolve_runtime_agent_name("tv_agent") or "autoyou_tv_agent": (
+        "tv agent", "tv_agent", "autoyou tv", "television agent", "media library",
     ),
     resolve_runtime_agent_name("openclaw_agent") or "autoyou_openclaw_agent": (
         "openclaw agent",
@@ -1878,11 +1882,19 @@ except Exception as _import_err:
     logger.warning("prompts_agent static import failed: %s", _import_err)
     _create_prompts_agent = None  # type: ignore[assignment]
 
+try:
+    from autoyou_agents.tv_agent.agent import create_tv_agent as _create_tv_agent
+except Exception as _import_err:
+    logger.warning("tv_agent static import failed: %s", _import_err)
+    _create_tv_agent = None
+
+
 _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "admin_agent": _create_admin_agent,
     "ads_watching_agent": _create_ads_watching_agent,
     "agent_builder_agent": _create_agent_builder_agent,
     "audio_agent": _create_audio_agent,
+    "tv_agent": _create_tv_agent,
     "build_prompt_agent": _create_build_prompt_agent,
     "browser_agent": _create_browser_agent,
     "client_browser_control_agent": _create_client_browser_control_agent,

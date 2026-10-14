@@ -1,12 +1,19 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-b5076d9b9dc619488284545a
 
 """Log filters for noise that Google ADK emits about AutoYou's own bookkeeping."""
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import logging
+
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-b5076d9b9dc619488284545a"
 
 __all__ = ["InternalEventAuthorFilter", "install_internal_event_filter"]
 
@@ -31,6 +38,7 @@ class InternalEventAuthorFilter(logging.Filter):
         if "unknown agent" not in str(record.msg):
             return True
         args = record.args
+        # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_b5076d9b9dc619488284545a
         if isinstance(args, tuple) and args and args[0] in INTERNAL_EVENT_AUTHORS:
             return False
         return True

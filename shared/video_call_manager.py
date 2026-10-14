@@ -13,7 +13,7 @@ also exposing the latest inbound camera frame to managed agent websites.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import asyncio
@@ -42,6 +42,7 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+from shared.video_composite_settings import normalize_video_composite_config
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-95b7f610bb495a70bbd0db54"
 
@@ -2332,7 +2333,7 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
 
 
 class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid-type]
-    """One outbound track that places local video sources side by side."""
+    """One outbound track with a grid or a desktop and smaller external panes."""
 
     kind = "video"
 
@@ -2342,6 +2343,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         *,
         fps: float = 8.0,
         max_width: int = 1280,
+        layout: str = "grid",
+        secondary_size_percent: int = 25,
     ) -> None:
         super().__init__()  # type: ignore[misc]
         self.sources = [(str(name or "video").strip() or "video", track) for name, track in sources if track is not None]
@@ -2358,6 +2361,19 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         self._enabled = asyncio.Event()
         self._disabled_source_names: set[str] = set()
         self._game_mode = False
+        self._last_layout_key: Optional[Tuple[Any, ...]] = None
+        self._last_layout_geometry: Optional[Tuple[int, List[Tuple[int, int, int, int]]]] = None
+        self._source_sizes: Dict[str, Tuple[int, int]] = {}
+        self.apply_composite_layout(layout=layout, secondary_size_percent=secondary_size_percent)
+
+    def apply_composite_layout(self, *, layout: Any, secondary_size_percent: Any) -> None:
+        config = normalize_video_composite_config({
+            "layout": layout,
+            "secondary_size_percent": secondary_size_percent,
+        })
+        self.layout = config["layout"]
+        self.secondary_size_percent = config["secondary_size_percent"]
+        self._last_layout_key = None
 
     @property
     def monitor_id(self) -> int:
@@ -2396,6 +2412,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         self.output_height = max(180, int(round(normalized_width * 9 / 16)))
         if self.output_height % 2:
             self.output_height -= 1
+        self._last_layout_key = None
+        self._source_sizes.pop("remote_desktop", None)
         self.monitor_id = monitor_id
         desktop_track = self._remote_desktop_track()
         apply_profile = getattr(desktop_track, "apply_remote_desktop_profile", None)
@@ -2437,7 +2455,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
 
     @property
     def output_size(self) -> Tuple[int, int]:
-        return self.max_width, self.output_height
+        _sources, height, _rects = self._current_layout()
+        return self.max_width, height
 
     def _remote_desktop_track(self) -> Any:
         for name, track in self.sources:
@@ -2450,7 +2469,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         if desktop_track is None:
             return {}
 
-        live_sources = self._live_sources()
+        live_sources, frame_height, rects = self._current_layout()
         source_index = next(
             (index for index, (name, _track) in enumerate(live_sources) if name == "remote_desktop"),
             None,
@@ -2459,37 +2478,15 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
             return {}
 
         count = len(live_sources)
-        columns = 1 if count == 1 else 2
-        rows = (count + columns - 1) // columns
-        gap = 4 if count > 1 else 0
-        cell_width = self.max_width // columns
-        cell_height = self.output_height // rows
-        column = source_index % columns
-        row = source_index // columns
-        left = column * cell_width
-        top = row * cell_height
-        content_width = (self.max_width - left if column == columns - 1 else cell_width) - gap
-        content_height = (self.output_height - top if row == rows - 1 else cell_height) - gap
-
-        source_size = getattr(desktop_track, "output_size", (self.max_width, self.output_height))
-        try:
-            source_width = max(1, int(source_size[0]))
-            source_height = max(1, int(source_size[1]))
-        except Exception:
-            source_width, source_height = self.max_width, self.output_height
-        scale = min(content_width / float(source_width), content_height / float(source_height))
-        fitted_width = max(1, int(source_width * scale))
-        fitted_height = max(1, int(source_height * scale))
-        fitted_left = left + max(0, (content_width - fitted_width) // 2)
-        fitted_top = top + max(0, (content_height - fitted_height) // 2)
+        fitted_left, fitted_top, fitted_width, fitted_height = rects[source_index]
         mapping = {
             "frame_width": self.max_width,
-            "frame_height": self.output_height,
+            "frame_height": frame_height,
             "content_rect": {
                 "x": fitted_left / float(self.max_width),
-                "y": fitted_top / float(self.output_height),
+                "y": fitted_top / float(frame_height),
                 "width": fitted_width / float(self.max_width),
-                "height": fitted_height / float(self.output_height),
+                "height": fitted_height / float(frame_height),
             },
             "source_index": source_index,
             "source_count": count,
@@ -2544,6 +2541,100 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         ]
         return live or allowed
 
+    def _layout_key(self, names: List[str]) -> Tuple[Any, ...]:
+        return tuple(names), self.max_width, self.layout, self.secondary_size_percent
+
+    def _current_layout(self) -> Tuple[List[Tuple[str, Any]], int, List[Tuple[int, int, int, int]]]:
+        sources = self._live_sources()
+        names = [name for name, _track in sources]
+        if self._last_layout_key == self._layout_key(names) and self._last_layout_geometry is not None:
+            height, rects = self._last_layout_geometry
+            return sources, height, rects
+        sizes = []
+        for name, track in sources:
+            size = self._source_sizes.get(name)
+            if size is None:
+                size = getattr(track, "output_size", None) or getattr(
+                    track, "_output_size", (self.max_width, self.output_height),
+                )
+            try:
+                sizes.append((max(1, int(size[0])), max(1, int(size[1]))))
+            except (TypeError, ValueError, IndexError, OverflowError):
+                sizes.append((self.max_width, self.output_height))
+        height, rects = self._layout_geometry(names, sizes, self.max_width)
+        return sources, height, rects
+
+    @staticmethod
+    def _fit_size(size: Tuple[int, int], width: int, height: int) -> Tuple[int, int]:
+        scale = min(max(1, width) / float(max(1, size[0])), max(1, height) / float(max(1, size[1])))
+        return max(1, int(size[0] * scale)), max(1, int(size[1] * scale))
+
+    def _layout_geometry(
+        self,
+        names: List[str],
+        sizes: List[Tuple[int, int]],
+        width: int,
+    ) -> Tuple[int, List[Tuple[int, int, int, int]]]:
+        """Share exact fitted rectangles between pixels and desktop input mapping."""
+        count = len(sizes)
+        gap = min(4, width // max(1, 2 * count)) if count > 1 else 0
+        if self.layout == "grid" or "remote_desktop" not in names:
+            height = max(2, int(round(width * 9 / 16)))
+            height -= height % 2
+            columns = 1 if count <= 1 else 2
+            rows = max(1, (count + columns - 1) // columns)
+            cell_width, cell_height = width // columns, height // rows
+            rects = []
+            for index, size in enumerate(sizes):
+                column, row = index % columns, index // columns
+                left, top = column * cell_width, row * cell_height
+                content_width = (width - left if column == columns - 1 else cell_width) - gap
+                content_height = (height - top if row == rows - 1 else cell_height) - gap
+                fitted_width, fitted_height = self._fit_size(size, content_width, content_height)
+                rects.append((left + max(0, (content_width - fitted_width) // 2),
+                              top + max(0, (content_height - fitted_height) // 2),
+                              fitted_width, fitted_height))
+            return height, rects
+
+        desktop_index = names.index("remote_desktop")
+        desktop_size = sizes[desktop_index]
+        desktop_height = max(2, int(width * desktop_size[1] / float(max(1, desktop_size[0]))))
+        secondary_indexes = [index for index in range(count) if index != desktop_index]
+        ratio = self.secondary_size_percent / 100.0
+        secondary_sizes = [self._fit_size(sizes[index], int(width * ratio), int(desktop_height * ratio))
+                           for index in secondary_indexes]
+        rects = [(0, 0, 0, 0)] * count
+        rects[desktop_index] = (0, 0, width, desktop_height)
+        if not secondary_sizes:
+            return desktop_height + desktop_height % 2, rects
+
+        if self.layout == "below":
+            available = max(1, width - gap * (len(secondary_sizes) - 1))
+            scale = min(1.0, available / float(sum(size[0] for size in secondary_sizes)))
+            secondary_sizes = [(max(1, int(w * scale)), max(1, int(h * scale))) for w, h in secondary_sizes]
+            row_width = sum(w for w, _h in secondary_sizes) + gap * (len(secondary_sizes) - 1)
+            row_height = max(h for _w, h in secondary_sizes)
+            left = max(0, (width - row_width) // 2)
+            for index, (w, h) in zip(secondary_indexes, secondary_sizes):
+                rects[index] = (left, desktop_height + gap + (row_height - h) // 2, w, h)
+                left += w + gap
+            height = desktop_height + gap + row_height
+        else:
+            available = max(1, desktop_height - gap * (len(secondary_sizes) - 1))
+            scale = min(1.0, available / float(sum(size[1] for size in secondary_sizes)))
+            secondary_sizes = [(max(1, int(w * scale)), max(1, int(h * scale))) for w, h in secondary_sizes]
+            column_width = max(w for w, _h in secondary_sizes)
+            column_height = sum(h for _w, h in secondary_sizes) + gap * (len(secondary_sizes) - 1)
+            top = max(0, (desktop_height - column_height) // 2)
+            for index, (w, h) in zip(secondary_indexes, secondary_sizes):
+                rects[index] = (width + gap + (column_width - w) // 2, top, w, h)
+                top += h + gap
+            scale = width / float(width + gap + column_width)
+            rects = [(int(x * scale), int(y * scale), max(1, int(w * scale)), max(1, int(h * scale)))
+                     for x, y, w, h in rects]
+            height = max(2, int(desktop_height * scale))
+        return height + height % 2, rects
+
     def enable(self) -> None:
         self._enabled.set()
         for name, track in self.sources:
@@ -2575,7 +2666,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         width = max(2, min(self.max_width, int(max_width or 640)))
         if width % 2:
             width -= 1
-        height = max(2, int(round(width * 9 / 16)))
+        height = max(2, int(round(width * self.output_size[1] / self.max_width)))
         if height % 2:
             height -= 1
         if not self._enabled.is_set():
@@ -2584,7 +2675,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
             return Image.new("RGB", (width, height), (0, 0, 0))
 
         images = []
-        for name, track in self._live_sources():
+        live_sources = self._live_sources()
+        for name, track in live_sources:
             preview = getattr(track, "capture_preview_image", None)
             if not callable(preview):
                 images.append(self._placeholder_image(f"{name} unavailable"))
@@ -2594,7 +2686,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
             except Exception as exc:
                 OUTBOUND_VIDEO_TELEMETRY.record_error(source=name, stage="composite_preview", detail=exc)
                 images.append(self._placeholder_image(f"{name} unavailable"))
-        return self._compose_images(images, canvas_width=width)
+        return self._compose_images(images, canvas_width=width, source_names=[name for name, _track in live_sources])
 
     async def recv(self) -> Any:
         if not self._enabled.is_set():
@@ -2627,7 +2719,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
                 except Exception as exc:
                     OUTBOUND_VIDEO_TELEMETRY.record_error(source=name, stage="composite", detail=exc)
                     images.append(self._placeholder_image(f"{name} unavailable"))
-            image = await asyncio.to_thread(self._compose_images, images)
+            image = await asyncio.to_thread(self._compose_images, images, source_names=[name for name, _track in live_sources])
         if VideoFrame is None:
             raise RuntimeError("PyAV is required for WebRTC video frames")
         video_frame = VideoFrame.from_image(image)
@@ -2640,39 +2732,31 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         video_frame.time_base = time_base
         return video_frame
 
-    def _compose_images(self, images: List[Any], *, canvas_width: Optional[int] = None) -> Any:
+    def _compose_images(
+        self, images: List[Any], *, canvas_width: Optional[int] = None, source_names: Optional[List[str]] = None,
+    ) -> Any:
         if Image is None:
             raise RuntimeError("Pillow is required for video compositing")
         width = max(2, int(canvas_width or self.max_width))
         if width % 2:
             width -= 1
-        output_height = max(2, int(round(width * 9 / 16)))
-        if output_height % 2:
-            output_height -= 1
+        names = source_names if source_names is not None else [name for name, _track in self._live_sources()]
+        if len(names) != len(images):
+            names = ["video"] * len(images)
+        sizes = [image.size for image in images]
+        output_height, rects = self._layout_geometry(names, sizes, width)
         if not images:
             return self._fit_inside(self._placeholder_image("Waiting for selected video sources..."), width, output_height)
-        count = len(images)
-        columns = 1 if count == 1 else 2
-        rows = (count + columns - 1) // columns
         canvas = Image.new("RGB", (width, output_height), (0, 0, 0))
-        gap = 4 if count > 1 else 0
-        cell_width = width // columns
-        cell_height = output_height // rows
-        for index, image in enumerate(images):
-            column = index % columns
-            row = index // columns
-            left = column * cell_width
-            top = row * cell_height
-            cell_content_width = (width - left if column == columns - 1 else cell_width) - gap
-            cell_content_height = (output_height - top if row == rows - 1 else cell_height) - gap
-            fitted = self._fit_inside(image, cell_content_width, cell_content_height)
-            canvas.paste(
-                fitted,
-                (
-                    left + max(0, (cell_content_width - fitted.width) // 2),
-                    top + max(0, (cell_content_height - fitted.height) // 2),
-                ),
-            )
+        for image, (left, top, fitted_width, fitted_height) in zip(images, rects):
+            fitted = image.convert("RGB")
+            if fitted.size != (fitted_width, fitted_height):
+                fitted = fitted.resize((fitted_width, fitted_height), Image.Resampling.BILINEAR)
+            canvas.paste(fitted, (left, top))
+        if canvas_width is None:
+            self._source_sizes.update(zip(names, sizes))
+            self._last_layout_geometry = output_height, rects
+            self._last_layout_key = self._layout_key(names)
         return canvas
 
     @staticmethod
@@ -2687,7 +2771,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
     def _disabled_image(self) -> Any:
         if Image is None:
             raise RuntimeError("Pillow is required for video compositing")
-        return Image.new("RGB", (self.max_width, self.output_height), (0, 0, 0))
+        return Image.new("RGB", self.output_size, (0, 0, 0))
 
     def _placeholder_image(self, detail: str = "") -> Any:
         image = Image.new("RGB", (self.max_width, self.output_height), (15, 23, 42))

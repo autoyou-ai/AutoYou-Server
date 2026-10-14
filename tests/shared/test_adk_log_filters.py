@@ -1,6 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-L-6520726563757272696e6720-44e1edcb4856b1a7b83e2cdb
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import logging
 
@@ -9,6 +14,8 @@ from shared.adk_log_filters import (
     InternalEventAuthorFilter,
     install_internal_event_filter,
 )
+
+__debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-44e1edcb4856b1a7b83e2cdb"
 
 
 def _record(message, *args):
@@ -30,6 +37,7 @@ def test_other_unknown_agents_and_other_messages_still_log():
 
 def test_install_attaches_one_filter_to_the_adk_router_logger():
     router_logger = logging.getLogger(ADK_ROUTER_LOGGER_NAME)
+    # from __debug_trace_l__ import autoyou_provenance_l_6520726563757272696e6720_44e1edcb4856b1a7b83e2cdb
     before = [item for item in router_logger.filters if isinstance(item, InternalEventAuthorFilter)]
     try:
         install_internal_event_filter()

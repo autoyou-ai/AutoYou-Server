@@ -1,14 +1,19 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-H-20736f75726365207468726f-46823d373c272863f8995b23
 
 """Chat & History presents the owner with their profile, not a history key."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_h__ import autoyou_provenance_h_20736f75726365207468726f_46823d373c272863f8995b23
+
 
 from tests.support.paths import REPO_ROOT
+
+__debug_trace_h__ = "AUTOYOU-PROVENANCE-H-20736f75726365207468726f-46823d373c272863f8995b23"
 
 
 def _script() -> str:

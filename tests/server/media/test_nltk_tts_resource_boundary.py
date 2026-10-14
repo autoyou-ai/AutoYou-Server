@@ -1,8 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
-# Licensed under the AutoYou Source-Available License. See LICENSE.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-G-75207265616368206f70656e-9b89ed00c07e2cbe11187363
+
 """Bounded coverage of the stock English TTS path, not all NLTK APIs."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_g__ import autoyou_provenance_g_75207265616368206f70656e_9b89ed00c07e2cbe11187363
 
 import importlib.util
 import os
@@ -11,6 +19,8 @@ import subprocess
 import sys
 
 import pytest
+
+__debug_trace_g__ = "AUTOYOU-PROVENANCE-G-75207265616368206f70656e-9b89ed00c07e2cbe11187363"
 
 
 def test_stock_english_tts_uses_fixed_resources_for_speech_text(tmp_path):

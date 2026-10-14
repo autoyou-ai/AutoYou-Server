@@ -72,7 +72,7 @@ Instructions for the root agent are locked in packaged runtimes. Prompt Override
 
 ### Speech recognition (`renderSpeechRecognitionBody()`)
 
-Speech recognition runs locally with faster-whisper. The console lists the models the server reports, shows which are installed, lets you choose one with **Use the model**, and tracks download jobs.
+Speech recognition runs locally with whisper.cpp in the default compiled profile and faster-whisper in full voice profiles. The console lists the models the server reports, shows which are installed, lets you choose one with **Use the model**, and tracks download jobs.
 
 | Route | Purpose |
 | :--- | :--- |
@@ -85,6 +85,8 @@ Speech recognition runs locally with faster-whisper. The console lists the model
 
 | Provider | What it does |
 | :--- | :--- |
+| **Auto TTS** | Detects the reply language and uses a matching installed system voice. When none is available, installs verified Supertonic model data if automatic downloads are enabled. This is the default for new configurations. |
+| **Native multilingual TTS** | Uses the downloaded Supertonic 3 ONNX model and one of ten local voice presets. The runtime is included in default and full server builds. |
 | **System speech** | Uses a voice already installed in the operating system. Choose the system voice, or leave it empty for the default. |
 | **Custom cloned voice** | Uses a voice prepared in the Voice Training app. The console shows whether the voice artifacts are ready, and whether fine-tuning was applied. |
 | **EmotiVoice** | Local synthesis in Chinese and English, with emotion steered by the conversation. It needs its models to be ready. |
@@ -93,6 +95,20 @@ Speech recognition runs locally with faster-whisper. The console lists the model
 | **Speech off** | Disables text-to-speech and keeps speech-to-text. |
 
 All providers share a **TTS rate** field (`1.0` is normal speed). OpenAI and Azure send the text to be spoken to those services.
+
+Leave **STT language** blank, or enter `auto`, for language detection. New configurations use Base multilingual. Selecting detection or a non-English language with an English-only `.en` model selects its multilingual counterpart. Locales such as `ja-JP` and `es-MX` are accepted and mapped to the backend language code. Calls and recorded voice notes use this setting with both faster-whisper and the compiled whisper.cpp runtime.
+
+Base favors speed and can misrecognize short utterances or produce transliterations. Small or a larger multilingual model can improve recognition. The language model used for chat must also support the conversation language. TTS pronounces the reply it receives; it does not translate it.
+
+For existing installations, select **Auto TTS**, set **STT language** to `auto`, select a multilingual model, and save. Explicit saved English settings are preserved during upgrades.
+
+Auto TTS prefers installed system voices and uses already prepared EmotiVoice models for Chinese when available. Supertonic 3 supports `ar, bg, hr, cs, da, nl, en, et, fi, fr, de, el, hi, hu, id, it, ja, ko, lv, lt, pl, pt, ro, ru, sk, sl, es, sv, tr, uk, vi`. Other languages need a matching system voice or another speech provider. Native model speed is bounded to `0.7` through `2.0`.
+
+The first Supertonic download is approximately 401 MB and includes the model license. Downloads are pinned to a public revision, checked with SHA-256, and installed atomically under the user's writable `tts_models` directory. Failed or incomplete downloads remain unavailable. After installation, synthesis works offline. **Automatic model downloads** can be disabled; **Download now** prepares the model in advance, and the existing download-jobs panel reports progress and errors. Downloadable model data is separate from the bundled SDK and native ONNX libraries, which are updated with the application.
+
+The [Supertonic SDK](https://github.com/supertone-oss-archive/supertonic) uses MIT-licensed code. Its weights have the separate [OpenRAIL-M license](https://huggingface.co/supertone-oss-archive/supertonic-3/blob/aafc6e32416a594460b32413efc49d7fe4ce6d46/LICENSE). Model download does not confer an unrestricted model license.
+
+`GET /api/speech-models/status` reports `native_tts.models`, voices, supported languages, install state and license links. `POST /api/speech-models/download` accepts `{"model":"supertonic-3"}`. Native downloads, including those triggered by a reply, appear in `GET /api/speech-models/downloads`. In default compiled builds the STT library manages whisper.cpp models; full voice builds manage faster-whisper models.
 
 ### Voice training library
 

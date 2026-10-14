@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import hashlib
@@ -584,12 +584,16 @@ class WebRTCManager:
         outbound_video_available = _runtime._get_outbound_video_available(cfg=cfg)
         remote_desktop_allowed = "remote_desktop" in _runtime._get_available_video_outbound_sources(cfg=cfg)
         desktop_profile = _runtime._get_remote_desktop_capture_profile(cfg=cfg)
+        composite_config = _runtime._get_video_call_config(cfg=cfg)["composite"]
         updated_tracks: set[int] = set()
         for session_id, desktop_track in list(self.desktop_video_tracks.items()):
             if desktop_track is None or id(desktop_track) in updated_tracks:
                 continue
             updated_tracks.add(id(desktop_track))
             try:
+                apply_layout = getattr(desktop_track, "apply_composite_layout", None)
+                if callable(apply_layout):
+                    apply_layout(**composite_config)
                 apply_policy = getattr(desktop_track, "set_remote_desktop_enabled", None)
                 if callable(apply_policy):
                     apply_policy(remote_desktop_allowed)
@@ -9241,6 +9245,18 @@ class WebRTCManager:
             request_id = message.payload.get("request_id") or message.header.message_id
             is_compressed = message.payload.get("compressed", False)
             body_base64 = bool(message.payload.get("body_base64", False))
+            from shared.binary_http import CAPABILITY_HEADER, MAX_BODY_BYTES, payload_capacity
+            binary_manager = self._datachannel_manager_for_session(message.header.session_id, require_send_message=True)
+            binary_http = (type(message.payload.get("binary_http")) is int
+                and message.payload.get("binary_http") == 1
+                and hasattr(binary_manager, "send_binary_http")
+                and binary_manager.reliable_binary_http())
+            try:
+                payload_capacity(request_id)
+            except ValueError:
+                # Existing Peer Link relays route namespaced IDs as JSON.
+                binary_http = False
+            binary_body_length = message.payload.get("binary_body_length")
             # Detect SSE requests strictly via payload hint or Accept header only
             # Path-based detection (e.g., "/run_sse") is removed to align with
             # aggregated POST side-channel and header-only semantics.
@@ -9543,6 +9559,10 @@ class WebRTCManager:
                 return
 
             try:
+                if binary_body_length is not None and (not binary_http or method not in {"POST", "PUT", "PATCH"}
+                        or type(binary_body_length) is not int or not 0 < binary_body_length <= MAX_BODY_BYTES
+                        or body or is_compressed or body_base64):
+                    raise ValueError("Invalid binary HTTP request body declaration")
                 content_bytes = _runtime._decode_datachannel_http_body(
                     body,
                     compressed=is_compressed,
@@ -9591,6 +9611,11 @@ class WebRTCManager:
                 )
 
             # Prepare request parameters
+            if binary_body_length is not None:
+                # Pairing/remote-role and forward-target checks above run before
+                # any body slot is allocated or a READY acknowledgement is sent.
+                content_bytes = await binary_manager.receive_binary_http_body(
+                    request_id, binary_body_length, message.header)
             request_kwargs = {
                 "url": target_url,
                 "headers": headers,
@@ -9774,6 +9799,10 @@ class WebRTCManager:
                         response_headers = dict(resp.headers)
                         raw_headers = []
 
+                    if binary_http:
+                        response_headers[CAPABILITY_HEADER] = "1"
+                        raw_headers.append((CAPABILITY_HEADER, "1"))
+
                     upstream_response_headers = dict(response_headers)
                     stream_transport_headers = {
                         "connection",
@@ -9791,6 +9820,8 @@ class WebRTCManager:
                         "content-length",
                         "content-encoding",
                     }
+                    if method == "HEAD":
+                        stream_open_excluded_headers.discard("content-length")
                     stream_open_headers: dict[str, str] = {}
                     for key, value in response_headers.items():
                         lower_key = str(key).lower()
@@ -9874,6 +9905,8 @@ class WebRTCManager:
                     )
                     text_stream_chunk_size = max(1, safe_text_stream_chunk_size)
                     stream_read_chunk_size = text_stream_chunk_size if is_textual else binary_stream_chunk_size
+                    if binary_http and not is_textual:
+                        stream_read_chunk_size = payload_capacity(request_id)
                     text_stream_decoder = None
                     text_stream_encoding = "utf-8"
                     if is_textual:
@@ -10062,13 +10095,17 @@ class WebRTCManager:
                                 response_text_accumulator.append(piece_text)
                         else:
                             import base64
-                            piece_text = "base64:" + base64.b64encode(chunk).decode('ascii')
+                            piece_text = "" if binary_http else "base64:" + base64.b64encode(chunk).decode('ascii')
 
                         # For agent HTML responses, suppress per-chunk sends;
                         # we will inject the shim and send the full body as a
                         # single DATA chunk right before STREAM_END below.
                         if datachannel_manager and hasattr(datachannel_manager, 'send_message') and not _is_agent_html:
                           seq_no += 1
+                          if binary_http and not is_textual:
+                            if not await datachannel_manager.send_binary_http(request_id, seq_no, chunk):
+                                raise RuntimeError("Native binary HTTP body transport closed")
+                            continue
                           data_msg = _runtime.create_http_stream_data_message(
                             request_id=request_id,
                             data=piece_text,
@@ -10176,7 +10213,7 @@ class WebRTCManager:
                     # ordered datachannel under concurrent browser loads, so keep it
                     # disabled by default unless explicitly re-enabled.
                     should_send_response_fallback = (
-                        response_body_available_for_fallback
+                        not binary_http and response_body_available_for_fallback
                         and response_fallback_size_bytes <= streamed_fallback_limit
                     )
                     if not is_textual and response_fallback_size_bytes > binary_fallback_limit:

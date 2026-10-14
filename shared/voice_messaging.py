@@ -28,7 +28,7 @@ code path (agent routing, ADK session, owner identity) unchanged.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import asyncio
@@ -330,14 +330,10 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Any:
     with _whisper_lock:
         if _whisper_model is not None and _whisper_model_key == key:
             return _whisper_model
+        from shared.platform_runtime import configure_whisper_cache_environment
+        cache_dir = configure_whisper_cache_environment() / "hub"
         try:
-            from shared.audio_manager import configure_whisper_cache_environment
-
-            configure_whisper_cache_environment()
-        except Exception:
-            pass
-        try:
-            _whisper_model = _WhisperModel(model_name, device=device, compute_type=compute_type)
+            _whisper_model = _WhisperModel(model_name, device=device, compute_type=compute_type, download_root=str(cache_dir))
         except Exception as exc:
             LOGGER.warning(
                 "Whisper model load failed for (%s, %s, %s): %s; retrying on cpu/int8",
@@ -347,7 +343,7 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Any:
                 exc,
             )
             try:
-                _whisper_model = _WhisperModel(model_name, device="cpu", compute_type="int8")
+                _whisper_model = _WhisperModel(model_name, device="cpu", compute_type="int8", download_root=str(cache_dir))
                 key = (model_name, "cpu", "int8")
             except Exception as exc2:
                 LOGGER.error("Whisper model unavailable: %s", exc2)
@@ -362,11 +358,32 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
     transcription is unavailable (caller should then fall back to today's behavior)."""
     if not path or not os.path.isfile(path):
         return ""
-    if _WhisperModel is None:
-        LOGGER.warning("faster-whisper not installed; cannot transcribe recorded voice note")
-        return ""
-    cfg = settings or _normalized_speech_settings()
+    from shared.speech_config import normalize_speech_config, speech_language
+    cfg = normalize_speech_config(settings) if settings is not None else _normalized_speech_settings()
     stt = cfg.get("stt", {}) if isinstance(cfg, dict) else {}
+    if _WhisperModel is None:
+        # Default compiled profiles ship whisper.cpp rather than the torch stack.
+        try:
+            from shared.whisper_downloader import WhisperCppRecorder, download_whisper_model, get_whisper_cpp_binary, whisper_cpp_model
+            binary = get_whisper_cpp_binary()
+            if binary is None:
+                return ""
+            model_path = download_whisper_model(whisper_cpp_model(stt["model"]))
+            if model_path is None:
+                return ""
+            with materialize_secure_file(path) as readable_path:
+                pcm = bytearray()
+                with av.open(str(readable_path)) as container:
+                    resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+                    for frame in container.decode(audio=0):
+                        for chunk in resampler.resample(frame):
+                            pcm.extend(bytes(chunk.planes[0])[:chunk.samples * 2])
+                    for chunk in resampler.resample(None):
+                        pcm.extend(bytes(chunk.planes[0])[:chunk.samples * 2])
+                return WhisperCppRecorder(binary, model_path, language=speech_language(stt.get("language")) or "auto")._transcribe(bytes(pcm))
+        except Exception as exc:
+            LOGGER.warning("whisper.cpp voice-note transcription failed: %s", exc)
+            return ""
     model = _get_whisper_model(
         str(stt.get("model") or "base"),
         str(stt.get("device") or "auto"),
@@ -374,7 +391,7 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
     )
     if model is None:
         return ""
-    language = (str(stt.get("language") or "").strip() or None)
+    language = speech_language(stt.get("language")) or None
     try:
         beam_size = int(stt.get("beam_size") or 5)
     except Exception:
@@ -382,7 +399,9 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
     try:
         with materialize_secure_file(path) as readable_path:
             segments, _info = model.transcribe(str(readable_path), language=language, beam_size=beam_size)
-        text = " ".join((segment.text or "").strip() for segment in segments).strip()
+            # faster-whisper returns a lazy generator; consume it before the
+            # decrypted temporary file is removed by materialize_secure_file.
+            text = " ".join((segment.text or "").strip() for segment in segments).strip()
         return text
     except Exception as exc:
         LOGGER.error("Voice note transcription failed for %s: %s", path, exc)

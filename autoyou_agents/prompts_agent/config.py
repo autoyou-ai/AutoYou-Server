@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-U-000000000000000000000000-08430765d0db6aa48518f579
 
 """Configuration defaults and cross-platform discovery paths for prompts_agent."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import os
 import sys
@@ -13,6 +17,8 @@ from pathlib import Path
 from typing import Dict, List
 
 from shared.platform_runtime import get_service_data_dir
+
+__debug_trace_u__ = "AUTOYOU-PROVENANCE-U-000000000000000000000000-08430765d0db6aa48518f579"
 
 AGENT_NAME = "prompts_agent"
 APP_DISPLAY_NAME = "My Prompt"
@@ -104,6 +110,7 @@ def get_default_scan_paths() -> Dict[str, List[Path]]:
     """Return platform-specific well-known candidate paths for each software."""
     test_root = str(os.environ.get("AUTOYOU_TEST_ROOT", "")).strip()
     home = Path(test_root).expanduser().resolve() / "home" if test_root else Path.home()
+    # from __debug_trace_u__ import autoyou_provenance_u_000000000000000000000000_08430765d0db6aa48518f579
     paths: Dict[str, List[Path]] = {sw: [] for sw in SUPPORTED_SOFTWARES}
 
     # 1. Antigravity (Antigravity IDE, Antigravity CLI, Gemini Brain)

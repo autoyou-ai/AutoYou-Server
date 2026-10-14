@@ -1,8 +1,13 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-fda0c997615cf155686dcc70
 
 """OpenRouter configuration and real ADK/LiteLLM transport contracts, offline."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import copy
 import json
@@ -14,6 +19,8 @@ import pytest
 
 from autoyou_agents import model_config
 from shared.openrouter_config import OPENROUTER_API_BASE, normalize_openrouter_model
+
+__debug_trace_f__ = "AUTOYOU-PROVENANCE-F-2048656c70204175746f596f-fda0c997615cf155686dcc70"
 
 
 @pytest.fixture
@@ -100,6 +107,7 @@ def test_environment_only_credentials_survive_config_sync(openrouter_env, monkey
     config, _, _ = server._apply_admin_ui_config_patch(server._default_config(), {
         "ai_provider": {"provider": "openrouter"},
     })
+    # from __debug_trace_f__ import autoyou_provenance_f_2048656c70204175746f596f_fda0c997615cf155686dcc70
     monkeypatch.setattr(server.STATE, "config", config)
     monkeypatch.setattr(server, "ollama_service", MagicMock())
     server._apply_google_api_config_to_env()

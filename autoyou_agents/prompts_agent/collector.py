@@ -1,11 +1,15 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-T-000000000000000000000000-3dc3dbac8b8cbf75051141c3
 
 """Multi-source prompt harvesting engine and background cron scheduler."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import hashlib
 import json
@@ -30,6 +34,8 @@ from .config import (
     get_default_scan_paths,
 )
 from .db import PromptsDatabase, utc_now
+
+__debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-3dc3dbac8b8cbf75051141c3"
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +83,7 @@ def parse_codex_file(path: Path) -> List[Dict[str, Any]]:
     project_name = "General"
     model = "codex"
     first_ts = None
+    # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_3dc3dbac8b8cbf75051141c3
     last_ts = None
 
     try:

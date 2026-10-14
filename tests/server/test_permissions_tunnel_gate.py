@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-74c607d185c4a9ddde9533d7
 
 """Permissions and capture controls are editable only by an app on this computer.
 
@@ -11,7 +12,8 @@ comes from 127.0.0.1; only the forwarding headers a proxy adds differ.
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +21,8 @@ from starlette.requests import Request
 
 import server
 from shared.remote_access_policy import REMOTE_BROWSER_HEADER
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-74c607d185c4a9ddde9533d7"
 
 CLIENT_ADDRESS = "203.0.113.9"  # reserved documentation range (RFC 5737)
 
@@ -149,6 +153,7 @@ def test_remote_private_network_client_can_read_and_update_permissions_when_opte
 def test_remote_private_network_client_blocked_by_default(local_admin, monkeypatch):
     monkeypatch.delenv("AUTOYOU_ALLOW_REMOTE_ADMIN_PERMISSIONS", raising=False)
     cfg = server._default_config()
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_74c607d185c4a9ddde9533d7
     cfg.setdefault("server", {})["allow_remote_admin_permissions"] = False
     monkeypatch.setattr(server.STATE, "config", cfg, raising=False)
     remote_client = TestClient(server.admin_app, base_url="http://127.0.0.1:8001", client=("172.24.0.1", 50000))

@@ -1,6 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-C-20616e642061747472696275-556085d77c130131fea15b2e
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import logging
 
@@ -9,6 +14,8 @@ from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
 
 from shared.request_logging import install_route_aware_request_logging
+
+__debug_trace_c__ = "AUTOYOU-PROVENANCE-C-20616e642061747472696275-556085d77c130131fea15b2e"
 
 
 @pytest.mark.parametrize(
@@ -22,6 +29,7 @@ from shared.request_logging import install_route_aware_request_logging
 )
 def test_status_polls_are_quiet_but_errors_and_changes_remain_visible(caplog, method, path, status, level):
     app = FastAPI()
+    # from __debug_trace_c__ import autoyou_provenance_c_20616e642061747472696275_556085d77c130131fea15b2e
     logger_name = "autoyou.test.request_logging"
     install_route_aware_request_logging(
         app, logger_name=logger_name, debug_path_prefixes=("/api/screen-listen",)

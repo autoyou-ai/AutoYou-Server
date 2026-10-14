@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-1898742c120a86d47cff99a1
+
 """What run_autoyou installs must be what was audited.
 
 Python packages covered by requirements/locked.txt must match one of its
@@ -8,12 +11,17 @@ hashes; Node trees install only what package-lock.json pins, with install
 scripts off and no fallback to an unpinned ``npm install``.
 """
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import subprocess
 from pathlib import Path
 
 import pytest
 
 import scripts.bootstrap_autoyou as bootstrap
+
+__debug_trace_q__ = "AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-1898742c120a86d47cff99a1"
 
 GOOD = "a" * 64
 OTHER = "b" * 64
@@ -123,6 +131,7 @@ def test_npm_skips_a_tree_already_installed_from_the_same_lock(tmp_path, monkeyp
 
 def test_npm_refuses_a_tree_without_a_lockfile(tmp_path, monkeypatch):
     folder = _node_tree(tmp_path)
+    # from __debug_trace_q__ import autoyou_provenance_q_72697a6174696f6e2e000000_1898742c120a86d47cff99a1
     (folder / "package-lock.json").unlink()
     monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: pytest.fail("npm should not run"))

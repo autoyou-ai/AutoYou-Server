@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-L-6520726563757272696e6720-34f96d5ad118ed98580e2489
 
 """Which conversation a scheduled task's AI turn, and what it starts, addresses.
 
@@ -15,7 +16,8 @@ task tools would save it for good.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import sqlite3
 from pathlib import Path
@@ -38,6 +40,8 @@ from autoyou_agents.notify_agent import agent as notify_agent
 from autoyou_agents.tasks_agent import agent as tasks_agent
 from shared import scheduler_service
 from shared.session_execution import SESSION_CONTROL_STATE_KEY, prepare_session_control_for_turn
+
+__debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-34f96d5ad118ed98580e2489"
 
 SERVER_NAME = "AutoYou Test Server"
 
@@ -440,6 +444,7 @@ async def test_deferred_desktop_answer_returns_to_the_conversation_that_asked(
     assert delivered["status"] == "success"
     [message] = channel.sent
     metadata = message.payload["metadata"]
+    # from __debug_trace_l__ import autoyou_provenance_l_6520726563757272696e6720_34f96d5ad118ed98580e2489
     assert message.payload["message"].endswith("Synthetic final response.")
     assert asking.given["conversation_thread_id"] == 2
     assert _in_conversation_now(webrtc)["conversation_thread_id"] == 3

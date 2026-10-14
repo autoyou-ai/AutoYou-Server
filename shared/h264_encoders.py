@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d4fb6dc5b6bd65cfde221d6e
+
 """H.264 encoding that does not depend on x264.
 
 Microsoft Store packages ship an LGPL FFmpeg without the GPL x264 and x265
@@ -21,6 +24,9 @@ hardware. Every H.264 encoder AutoYou creates comes from
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import fractions
 import logging
 import os
@@ -28,6 +34,8 @@ import threading
 from typing import Iterable, Iterator, Optional
 
 import av
+
+__debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d4fb6dc5b6bd65cfde221d6e"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -167,4 +175,5 @@ def install_aiortc_h264_encoder() -> None:
             yield from self._split_bitstream(data_to_send)
 
     _encode_frame._autoyou_h264 = True
+    # from __debug_trace_l__ import autoyou_provenance_l_6520726563757272696e6720_d4fb6dc5b6bd65cfde221d6e
     h264.H264Encoder._encode_frame = _encode_frame

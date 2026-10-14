@@ -1,15 +1,23 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-T-000000000000000000000000-69f0479e0095d12cf1c56274
 
 """Resolve the native ADK SQLite memory store without bypassing test isolation."""
 
 from __future__ import annotations
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_69f0479e0095d12cf1c56274
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import os
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import quote
+
+__debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-69f0479e0095d12cf1c56274"
 
 
 AI_AGENT_MEMORY_SERVICE_URI_ENV = "AUTOYOU_AI_MEMORY_SERVICE_URI"

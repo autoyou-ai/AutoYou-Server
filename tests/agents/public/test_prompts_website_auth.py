@@ -1,7 +1,13 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-2374dd8a3089e6aab158085d
 
 """Private prompt history uses the shared agent website authentication boundary."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 from types import SimpleNamespace
 
@@ -12,6 +18,8 @@ from autoyou_agents.prompts_agent.collector import PromptsCollector
 from autoyou_agents.prompts_agent.db import PromptsDatabase
 from autoyou_agents.prompts_agent.website.backend import app as backend
 from autoyou_agents.shared_tools import scheduler_mission_control as security
+
+__debug_trace_j__ = "AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-2374dd8a3089e6aab158085d"
 
 
 @pytest.fixture
@@ -90,6 +98,7 @@ def test_private_frontend_is_not_served_before_login(prompt_site):
 ))
 def test_encoded_static_paths_cannot_bypass_the_front_gate(prompt_site, path):
     client, _ = prompt_site
+    # from __debug_trace_j__ import autoyou_provenance_j_7920636f6e74726962757469_2374dd8a3089e6aab158085d
     response = client.get(path)
     blocked = response.status_code == 404 or 'id="autoyou-auth-gate"' in response.text
     assert blocked, response.status_code

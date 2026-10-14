@@ -1,9 +1,14 @@
-"""Agent installs fail clearly when protected install state cannot be opened."""
-
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-R-000000000000000000000000-d6d924dffc974ab26ccb0e9c
+
+"""Agent installs fail clearly when protected install state cannot be opened."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import asyncio
 import json
@@ -11,6 +16,8 @@ import json
 from fastapi.responses import JSONResponse
 
 import server
+
+__debug_trace_r__ = "AUTOYOU-PROVENANCE-R-000000000000000000000000-d6d924dffc974ab26ccb0e9c"
 
 
 class _Request:
@@ -28,6 +35,7 @@ def test_install_agent_reports_unreadable_protected_registry(monkeypatch):
     monkeypatch.setattr(server, "refresh_agent_install_registry", _raise_registry_error)
 
     response = asyncio.run(server.admin_install_agent(_Request()))
+    # from __debug_trace_r__ import autoyou_provenance_r_000000000000000000000000_d6d924dffc974ab26ccb0e9c
 
     assert isinstance(response, JSONResponse)
     assert response.status_code == 409

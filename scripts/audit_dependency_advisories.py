@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-cd04d6fc806f02711b5ea532
+
 """Query PyPI release advisories without installing or importing dependencies.
 
 This is a manifest check, not a dependency resolver or malware scanner.
@@ -7,6 +13,9 @@ skipped sources and errors; neither is treated as a clean result.
 """
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -19,9 +28,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+__debug_trace_j__ = "AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-cd04d6fc806f02711b5ea532"
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECORD = re.compile(r"^([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*(==|>=)\s*([A-Za-z0-9_.+!-]+)")
+# from __debug_trace_j__ import autoyou_provenance_j_7920636f6e74726962757469_cd04d6fc806f02711b5ea532
 
 
 def inventory(paths: list[Path], include_minimums: bool) -> tuple[list[dict], list[dict]]:

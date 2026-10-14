@@ -1,6 +1,16 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-006c28ebb6e4f1d8abed29b9
+
 """Bounded game input frames for a local engine consuming WebRTC controls."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+# from __debug_trace_j__ import autoyou_provenance_j_7920636f6e74726962757469_006c28ebb6e4f1d8abed29b9
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import math
@@ -8,6 +18,8 @@ import re
 import secrets
 import time
 from typing import Any
+
+__debug_trace_j__ = "AUTOYOU-PROVENANCE-J-7920636f6e74726962757469-006c28ebb6e4f1d8abed29b9"
 
 
 _NAME = re.compile(r"[a-zA-Z][a-zA-Z0-9_.-]{0,31}\Z")

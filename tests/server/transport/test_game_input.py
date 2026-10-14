@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-K-6f6e732e205363686564756c-5be14408b830ebd4759e6814
+
 """Game frames stay on the authenticated WebRTC lease and local engine stream."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import wave
@@ -13,6 +22,8 @@ import server
 from core_server.webrtc_engine import _HOSTED_GAME_LOOP
 from shared import video_call_manager
 from shared.game_input import GameInputHub, normalize_game_input
+
+__debug_trace_k__ = "AUTOYOU-PROVENANCE-K-6f6e732e205363686564756c-5be14408b830ebd4759e6814"
 
 
 def test_game_input_normalization_bounds_multitouch_and_sensors():
@@ -150,6 +161,7 @@ def test_game_frames_require_game_lease_and_release_on_exit(monkeypatch):
         webrtc.datachannel_managers[session_id] = datachannel
         webrtc._set_voice_call_client_active(session_id, True)
         queue = webrtc.game_input_hub.attach()
+        # from __debug_trace_k__ import autoyou_provenance_k_6f6e732e205363686564756c_5be14408b830ebd4759e6814
         try:
             assert server._get_game_mode_available(cfg=cfg)
             assert not server._get_remote_desktop_control_available(cfg=cfg)

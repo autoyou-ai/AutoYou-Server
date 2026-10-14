@@ -1,18 +1,25 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-U-000000000000000000000000-2577a5771f1f10caff2eec07
+
 """Offline tests for the goal loop's multi-turn scenario engine.
 
 The engine decides whether a live agent "passed", so its own pass/fail logic is
 checked here against a scripted fake backend - no server, model or network.
 """
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import re
 
 import pytest
 
 from autoyou_agents.self_improvement import goal_loop as gl
+
+__debug_trace_u__ = "AUTOYOU-PROVENANCE-U-000000000000000000000000-2577a5771f1f10caff2eec07"
 
 NOTES = gl.NOTES_AGENT
 PAGE = gl.PAGE_AGENT
@@ -132,6 +139,7 @@ def test_the_same_web_route_is_fine_when_nothing_was_asked(monkeypatch, runtime,
     to_web = lambda b: ("Here is what example.com says...", gl.INTERNET_AGENT)  # noqa: E731
     backend = FakeBackend({"Make a note called": said, "Content: see": to_web})
     run = _run(monkeypatch, runtime, config, backend, "notes_answer_with_url_follow_up")
+    # from __debug_trace_u__ import autoyou_provenance_u_000000000000000000000000_2577a5771f1f10caff2eec07
 
     assert not any("routed to autoyou_internet_agent" in f and "answer to" in f for f in run.failures)
 

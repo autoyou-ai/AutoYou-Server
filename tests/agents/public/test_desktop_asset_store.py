@@ -1,13 +1,14 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
-# AUTOYOU-PROVENANCE-D-desktop-assets-20260929
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-E-4f56454e414e43452e6d642e-28a0d161fd9bf1c0b6b54e5c
 
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import io
 import json
@@ -29,6 +30,8 @@ from autoyou_agents.shared_tools.desktop_asset_store import (
     render_desktop_asset_setup_prompt,
     save_desktop_asset_preferences,
 )
+
+__debug_trace_e__ = "AUTOYOU-PROVENANCE-E-4f56454e414e43452e6d642e-28a0d161fd9bf1c0b6b54e5c"
 
 __debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-desktop-assets-20260929"
 
@@ -91,6 +94,7 @@ def _bundle_bytes(
 
 def test_imported_sprites_and_preferences_are_scoped_to_test_runtime(user_data_root: Path) -> None:
     result = import_user_desktop_asset_bundle(AGENT_NAME, _bundle_bytes(), expected_app_id=APP_ID)
+    # from __debug_trace_e__ import autoyou_provenance_e_4f56454e414e43452e6d642e_28a0d161fd9bf1c0b6b54e5c
 
     assert result["installed_pack_ids"] == ["codex-windows-1.0-dark-150"]
     assert result["storage"] == "private per-user application data"

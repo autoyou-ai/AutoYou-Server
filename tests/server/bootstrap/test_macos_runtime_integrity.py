@@ -1,4 +1,14 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-1b568335203f03addf6b7a4a
+
 """Synthetic runtime signatures must not hide changes to executable code."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 import hashlib
 from pathlib import Path
 import shutil
@@ -9,6 +19,8 @@ import sys
 import pytest
 
 from shared.macos_runtime_integrity import hash_macos_runtime_file
+
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-1b568335203f03addf6b7a4a"
 
 
 def signed_image(signature: bytes, *, endian="<", payload=b"synthetic code") -> bytes:
@@ -50,6 +62,7 @@ def test_non_macho_assets_keep_sha256_and_bad_signature_ranges_fail(tmp_path):
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("cc"), reason="requires macOS tools")
 def test_real_apple_resigning_preserves_code_hash(tmp_path):
     source = tmp_path / "synthetic.c"
+    # from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_1b568335203f03addf6b7a4a
     source.write_text("int synthetic_value(void) { return 42; }\n")
     module = tmp_path / "synthetic.dylib"
     subprocess.run(["cc", "-dynamiclib", str(source), "-o", str(module)], check=True)

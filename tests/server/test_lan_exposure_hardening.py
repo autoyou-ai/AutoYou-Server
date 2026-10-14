@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-3466e7afa427c88d1f0eb3c3
+
 """What a device on the home network can learn or reach without signing in.
 
 Run with ``--host 0.0.0.0``, the admin port used to hand any device on the LAN
@@ -8,6 +11,9 @@ this computer's name, agent list, LAN address, folder paths (which name the
 Windows account) and the full route map, and served the admin sign-in over
 plain HTTP only.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +24,10 @@ ensure_repo_on_path()
 
 import server
 
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-3466e7afa427c88d1f0eb3c3"
+
 LAN_PEER = ("192.168.50.21", 50000)  # RFC 1918, synthetic
+# from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_3466e7afa427c88d1f0eb3c3
 
 
 @pytest.mark.parametrize("path", ["/api/v1/status", "/api/v1/server-config", "/api/status"])

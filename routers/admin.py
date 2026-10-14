@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import os
@@ -1806,6 +1806,10 @@ def register_routes(
         speech_tts_provider: Optional[str] = Form(None),
         speech_tts_rate: Optional[str] = Form(None),
         speech_tts_system_voice: Optional[str] = Form(None),
+        speech_tts_language: Optional[str] = Form(None),
+        speech_native_tts_model: Optional[str] = Form(None),
+        speech_native_tts_voice: Optional[str] = Form(None),
+        speech_native_tts_auto_download: Optional[str] = Form(None),
         speech_openai_tts_model: Optional[str] = Form(None),
         speech_openai_tts_voice: Optional[str] = Form(None),
         speech_openai_tts_instructions: Optional[str] = Form(None),
@@ -2118,6 +2122,10 @@ def register_routes(
                     speech_tts_provider=speech_tts_provider,
                     speech_tts_rate=speech_tts_rate,
                     speech_tts_system_voice=speech_tts_system_voice,
+                    speech_tts_language=speech_tts_language,
+                    speech_native_tts_model=speech_native_tts_model,
+                    speech_native_tts_voice=speech_native_tts_voice,
+                    speech_native_tts_auto_download=speech_native_tts_auto_download,
                     speech_openai_tts_model=speech_openai_tts_model,
                     speech_openai_tts_voice=speech_openai_tts_voice,
                     speech_openai_tts_instructions=speech_openai_tts_instructions,

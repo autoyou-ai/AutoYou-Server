@@ -1,7 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-ac537d2bd150fdb85d0ead2a
+
 """Conversation continuity across the root agent and its specialists.
 
 Pins two contracts drawn from a real failure (content here is synthetic):
@@ -14,6 +16,9 @@ Pins two contracts drawn from a real failure (content here is synthetic):
   the research attached, even though each specialist runs in a fresh child
   session that only sees its request string.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 from types import SimpleNamespace
@@ -34,6 +39,8 @@ from autoyou_agents.litellm_ollama_adapter import (
     parse_context_overflow_error,
 )
 from autoyou_agents.shared_tools import conversation_context as cc
+
+__debug_trace_b__ = "AUTOYOU-PROVENANCE-B-6163792c20636f6e73656e74-ac537d2bd150fdb85d0ead2a"
 
 MODEL = "ollama_chat/example-model:8b"
 # The wire form seen in the server log, escaping included.
@@ -616,6 +623,7 @@ def test_a_specialist_turn_remembers_its_request_without_carried_markers():
     events[2] = _event("autoyou_agent", "user", response=("c1", "autoyou_internet_agent", {"result": RESEARCH}), at=1019.0)
 
     turns = cc.turns_from_events(events, resolve_specialist=root_agent_module._resolve_specialist_for_turns)
+    # from __debug_trace_b__ import autoyou_provenance_b_6163792c20636f6e73656e74_ac537d2bd150fdb85d0ead2a
 
     assert turns[1].author == "autoyou_internet_agent" and turns[1].request == "search CLOs"
 

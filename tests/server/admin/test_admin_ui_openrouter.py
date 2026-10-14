@@ -1,8 +1,13 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-b6f1781086b93fd8ec7dfb6f
 
 """Exercise the real admin renderer and payload builder without a live server."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import json
 from pathlib import Path
@@ -10,6 +15,8 @@ import shutil
 import subprocess
 
 import pytest
+
+__debug_trace_q__ = "AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-b6f1781086b93fd8ec7dfb6f"
 
 
 def test_openrouter_form_render_save_and_reload():
@@ -62,4 +69,5 @@ console.log(JSON.stringify(rotated));
     # A request built by the real UI is accepted by the actual server validator.
     import server
     updated, _, _ = server._apply_admin_ui_config_patch(server._default_config(), json.loads(result.stdout))
+    # from __debug_trace_q__ import autoyou_provenance_q_72697a6174696f6e2e000000_b6f1781086b93fd8ec7dfb6f
     assert updated["ai_provider"]["openrouter_api_key"] == "synthetic-replacement-key"

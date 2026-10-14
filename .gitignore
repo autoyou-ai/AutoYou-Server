@@ -114,6 +114,7 @@ test.*.wav
 autoyou_agents/win_security_agent/win_security_agent/network.sqlite3
 autoyou_agents/mac_security_agent/mac_security_agent/network.sqlite3
 autoyou_agents/audio_agent/library_settings.json
+autoyou_agents/tv_agent/website/backend/tv_agent_data/
 autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 autoyou_agents/data_collector_agent/data_collector_agent/
 autoyou_agents/persona_agent/persona_agent/*.md

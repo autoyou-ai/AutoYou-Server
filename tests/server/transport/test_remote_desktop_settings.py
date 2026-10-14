@@ -1,4 +1,13 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-4bb0e5151cc3a009fa994092
+
 """Connected desktop settings follow the paired browser role."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import base64
 import json
@@ -9,6 +18,8 @@ import pytest
 
 import server
 from shared.datachannel_manager import DataChannelMessage, MessageHeader, MessageType
+
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-4bb0e5151cc3a009fa994092"
 
 
 @pytest.mark.asyncio
@@ -55,6 +66,7 @@ async def test_remote_desktop_settings_viewer_editor_and_admin(tmp_path, monkeyp
     assert (await request("POST", {"computer_sound": False}))["status_code"] == 403
 
     cfg["autoyou_page"]["remote_access_role"] = "editor"
+    # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_4bb0e5151cc3a009fa994092
     assert (await request("POST", {"unknown": True}))["status_code"] == 400
     updated = await request("POST", {
         "computer_sound": False, "control_enabled": True, "game_enabled": True,

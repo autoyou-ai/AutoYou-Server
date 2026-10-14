@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import logging
@@ -204,18 +204,26 @@ class SpeechModelLibraryService:
         self._jobs: Dict[str, SpeechDownloadJob] = {}
         self._jobs_lock = threading.Lock()
 
-    def is_supported(self) -> bool:
+    def uses_faster_whisper(self) -> bool:
         return bool(snapshot_download and scan_cache_dir and tqdm and _FASTER_WHISPER_MODELS)
 
+    def is_supported(self) -> bool:
+        # The default compiled runtime manages GGML model data without torch.
+        return True
+
     def cache_dir(self) -> str:
-        return str(HF_HUB_CACHE or Path.home() / ".cache" / "huggingface" / "hub")
+        if not self.uses_faster_whisper():
+            from shared.whisper_downloader import _models_dir
+            return str(_models_dir())
+        from shared.platform_runtime import get_whisper_cache_dir
+        return str(get_whisper_cache_dir() / "hub")
 
     def _scan_cache(self) -> Dict[str, Dict[str, Any]]:
-        if not self.is_supported():
+        if not self.uses_faster_whisper():
             return {}
 
         try:
-            info = scan_cache_dir()
+            info = scan_cache_dir(cache_dir=self.cache_dir())
         except Exception as exc:
             LOGGER.debug("Failed to inspect Hugging Face cache: %s", exc)
             return {}
@@ -241,12 +249,23 @@ class SpeechModelLibraryService:
         installed: List[Dict[str, Any]] = []
 
         for model_name in _suggested_models(current_model):
+            if not self.uses_faster_whisper():
+                from shared.whisper_downloader import whisper_cpp_model
+                try:
+                    whisper_cpp_model(model_name)
+                except ValueError:
+                    continue
             try:
                 repo_id = _build_repo_id(model_name)
             except ValueError:
                 repo_id = model_name
             metadata = _MODEL_DESCRIPTIONS.get(model_name, {})
             cached = cache_index.get(repo_id)
+            if not self.uses_faster_whisper():
+                from shared.whisper_downloader import cached_whisper_model
+                path = cached_whisper_model(model_name)
+                cached = {"repo_path": str(path), "size_on_disk": path.stat().st_size} if path else None
+                repo_id = "ggerganov/whisper.cpp"
             item = {
                 "model": model_name,
                 "repo_id": repo_id,
@@ -267,6 +286,7 @@ class SpeechModelLibraryService:
         installed.sort(key=lambda item: (item.get("last_modified", ""), item["model"]), reverse=True)
         return {
             "supported": self.is_supported(),
+            "backend": "faster-whisper" if self.uses_faster_whisper() else "whisper.cpp",
             "selected_model": (current_model or "").strip(),
             "cache_dir": self.cache_dir(),
             "models": items,
@@ -282,6 +302,18 @@ class SpeechModelLibraryService:
         Returns:
             dict with ``status`` ("success"|"error") and a human ``message``.
         """
+        if not self.uses_faster_whisper():
+            from shared.whisper_downloader import _models_dir, whisper_cpp_model
+            try:
+                path = _models_dir() / f"ggml-{whisper_cpp_model(model_name)}.bin"
+                if not path.is_file():
+                    return {"status": "error", "message": "Model is not in the writable cache; bundled models cannot be deleted"}
+                from filelock import FileLock
+                with FileLock(str(path) + ".lock", timeout=5):
+                    path.unlink()
+                return {"status": "success", "message": f"Deleted cached STT model '{model_name}'"}
+            except Exception as exc:
+                return {"status": "error", "message": str(exc)}
         if not self.is_supported():
             return {
                 "status": "error",
@@ -297,7 +329,7 @@ class SpeechModelLibraryService:
             repo_id = normalized_name
 
         try:
-            info = scan_cache_dir()
+            info = scan_cache_dir(cache_dir=self.cache_dir())
         except Exception as exc:
             LOGGER.warning("Failed to inspect Hugging Face cache for deletion: %s", exc)
             return {"status": "error", "message": f"Failed to inspect speech model cache: {exc}"}
@@ -402,7 +434,12 @@ class SpeechModelLibraryService:
             raise RuntimeError("Speech model downloads are unavailable because faster-whisper or huggingface_hub is missing")
 
         normalized_name = (model_name or "").strip()
-        repo_id = _build_repo_id(normalized_name)
+        if self.uses_faster_whisper():
+            repo_id = _build_repo_id(normalized_name)
+        else:
+            from shared.whisper_downloader import whisper_cpp_model
+            normalized_name = whisper_cpp_model(normalized_name)
+            repo_id = "ggerganov/whisper.cpp"
         with self._jobs_lock:
             for existing in self._jobs.values():
                 if existing.model_name == normalized_name and existing.status in {"queued", "running"}:
@@ -521,12 +558,21 @@ class SpeechModelLibraryService:
         self._update_job(job_id, status="running", message=f"Preparing {job.repo_id}...")
 
         try:
-            local_path = snapshot_download(
-                job.repo_id,
-                allow_patterns=_ALLOW_PATTERNS,
-                resume_download=True,
-                tqdm_class=self._make_tqdm_class(job_id),
-            )
+            if self.uses_faster_whisper():
+                local_path = snapshot_download(
+                    job.repo_id,
+                    cache_dir=self.cache_dir(),
+                    allow_patterns=_ALLOW_PATTERNS,
+                    resume_download=True,
+                    tqdm_class=self._make_tqdm_class(job_id),
+                )
+            else:
+                from shared.whisper_downloader import download_whisper_model
+                def progress(completed, total):
+                    self._update_job(job_id, completed_bytes=completed, total_bytes=total, progress=completed / total if total else 0)
+                local_path = download_whisper_model(job.model_name, progress_callback=progress)
+                if local_path is None:
+                    raise RuntimeError("Could not install whisper.cpp model data")
             self._update_job(
                 job_id,
                 status="completed",

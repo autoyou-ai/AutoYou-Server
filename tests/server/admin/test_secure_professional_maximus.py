@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import sqlite3
@@ -399,8 +399,9 @@ def test_downgrade_unseals_files_and_sqlite_back_to_plaintext(tmp_path):
 
 
 def test_downgrade_recovery_scans_source_mode_registries(tmp_path, monkeypatch):
-    """Source-mode registries outside config/data roots must be recovered too."""
+    """Recover owned source-mode stores outside config/data discovery roots."""
     import server
+    from shared import http_request_monitor
     from autoyou_agents.shared_tools.agent_install_registry import (
         load_agent_install_registry,
     )
@@ -412,18 +413,24 @@ def test_downgrade_recovery_scans_source_mode_registries(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     agent_registry = workspace / "agent_install_registry.json"
     frontend_registry = workspace / "agent_frontends_registry.json"
+    monitor_database = workspace / "shared" / "http_request_monitor" / "events.sqlite3"
     password = "synthetic-spm-recovery-password"
 
     monkeypatch.setattr(server, "get_mutable_data_dir", lambda *args, **kwargs: data_root)
     monkeypatch.setattr(voice_training_storage, "get_voice_training_dir", lambda: voice_root)
     monkeypatch.setattr(server, "get_agent_install_registry_path", lambda: agent_registry)
     monkeypatch.setattr(server, "get_frontend_registry_path", lambda: frontend_registry)
+    monkeypatch.setattr(http_request_monitor, "default_storage_path", lambda: monitor_database)
 
     enable_secure_storage(app_name="AutoYou", root=config_root, password=password)
     save_secure_json(agent_registry, {"agents": {"donation_agent": {"installed": True}}})
     save_secure_json(frontend_registry, {"frontends": []})
+    monitor = http_request_monitor.HTTPRequestCaptureStore(monitor_database)
+    monitor.set_enabled(True)
+    monitor.record({"service": "admin", "path": "/synthetic-preserved-event", "status_code": 200})
     assert agent_registry.read_bytes().startswith(FILE_HEADER)
     assert frontend_registry.read_bytes().startswith(FILE_HEADER)
+    assert monitor_database.read_bytes().startswith(SQLITE_HEADER)
     disable_secure_storage()
 
     report = recover_stranded_envelopes(
@@ -433,7 +440,7 @@ def test_downgrade_recovery_scans_source_mode_registries(tmp_path, monkeypatch):
         password=password,
     )
 
-    assert report["recovered"] == 2
+    assert report["recovered"] == 3
     assert report["unrecoverable"] == []
     assert load_secure_json(agent_registry) == {
         "agents": {"donation_agent": {"installed": True}}
@@ -441,6 +448,65 @@ def test_downgrade_recovery_scans_source_mode_registries(tmp_path, monkeypatch):
     assert load_secure_json(frontend_registry) == {"frontends": []}
     installed = load_agent_install_registry(registry_path=agent_registry)["installed_agents"]
     assert "donation_agent" in installed
+    assert monitor_database.read_bytes().startswith(b"SQLite format 3")
+    recovered_monitor = http_request_monitor.HTTPRequestCaptureStore(monitor_database)
+    assert recovered_monitor.dashboard()["events"][0]["path"] == "/synthetic-preserved-event"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_http_monitor_attaches_inherited_maximus_storage(tmp_path, monkeypatch, existing):
+    from shared.http_request_monitor import HTTPRequestCaptureStore
+
+    root = tmp_path / "config"
+    database = tmp_path / "shared" / "http_request_monitor" / "events.sqlite3"
+    _enable(root)
+    if existing:
+        monitor = HTTPRequestCaptureStore(database)
+        monitor.set_enabled(True)
+        monitor.record({"service": "admin", "path": "/synthetic-preserved-event", "status_code": 200})
+    disable_secure_storage()
+
+    monkeypatch.setenv("AUTOYOU_SECURE_STORAGE_MODE", secure_storage.SECURE_PROFESSIONAL_MAXIMUS_MODE)
+    monkeypatch.setenv("AUTOYOU_SECURE_STORAGE_ROOT", str(root))
+    monkeypatch.setenv("AUTOYOU_SECURE_STORAGE_APP", "AutoYou-test")
+    monkeypatch.setenv("AUTOYOU_SECURE_STORAGE_PASSWORD", "synthetic-spm-password")
+
+    reopened = HTTPRequestCaptureStore(database)
+
+    assert secure_storage_enabled() is True
+    assert database.read_bytes().startswith(SQLITE_HEADER)
+    if existing:
+        assert reopened.dashboard()["events"][0]["path"] == "/synthetic-preserved-event"
+    else:
+        assert reopened.dashboard()["enabled"] is False
+
+
+def test_rotation_rekeys_http_monitor_database_under_shared(tmp_path, monkeypatch):
+    import server
+    from shared import http_request_monitor
+
+    root = tmp_path / "config"
+    workspace = tmp_path / "workspace"
+    database = workspace / "shared" / "http_request_monitor" / "events.sqlite3"
+    _enable(root)
+    monitor = http_request_monitor.HTTPRequestCaptureStore(database)
+    monitor.set_enabled(True)
+    monitor.record({"service": "admin", "path": "/synthetic-preserved-event", "status_code": 200})
+    disable_secure_storage()
+
+    monkeypatch.setattr(server, "get_mutable_data_dir", lambda *args, **kwargs: workspace)
+    monkeypatch.setattr(http_request_monitor, "default_storage_path", lambda: database)
+    _enable(root)
+    rotate_secure_storage(
+        password="synthetic-rotated-spm-password",
+        scan_roots=server._secure_storage_scan_roots(),
+    )
+    disable_secure_storage()
+
+    _enable(root, "synthetic-rotated-spm-password")
+    reopened = http_request_monitor.HTTPRequestCaptureStore(database)
+    assert reopened.dashboard()["events"][0]["path"] == "/synthetic-preserved-event"
+    assert database.read_bytes().startswith(SQLITE_HEADER)
 
 
 def test_rotation_rekeys_agent_db_whose_dir_name_is_not_discovery_skipped(tmp_path):

@@ -1,15 +1,24 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-b622c59e874c726387d7e5cf
+
 """The codec-clean PyAV build refuses GPL FFmpeg builds and GPL DLLs."""
 
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 from scripts import build_codec_clean_av as build
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-b622c59e874c726387d7e5cf"
 
 # Abridged from PyAV 16.1's own Windows FFmpeg and from the pinned BtbN build.
 PYAV_WHEEL_CONFIGURATION = (
     "--enable-shared --enable-version3 --enable-libopus --enable-libvpx --enable-libopenh264 "
     "--enable-libx264 --enable-libx265 --enable-mediafoundation"
 )
+# from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_b622c59e874c726387d7e5cf
 BTBN_LGPL_CONFIGURATION = (
     "--enable-version3 --enable-shared --enable-libopus --enable-libvpx --enable-libopenh264 "
     "--enable-amf --disable-libx264 --disable-libx265 --disable-libxvid"

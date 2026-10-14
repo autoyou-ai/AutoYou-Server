@@ -1442,6 +1442,11 @@ function Assert-PackagedBackendServerImports {
         "--verify-runtime-import", "shared.process_lifecycle",
         "--verify-runtime-import", "shared.remote_desktop_input",
         "--verify-runtime-import", "shared.remote_desktop_settings",
+        "--verify-runtime-import", "shared.native_tts",
+        "--verify-runtime-import", "supertonic",
+        "--verify-runtime-import", "onnxruntime",
+        "--verify-runtime-import", "lingua",
+        "--verify-runtime-import", "soundfile",
         # The native desktop client establishes the legacy client-module path,
         # then imports audio_streams when Cloud Pair initializes.
         "--verify-runtime-import", "v2.runtime.client",

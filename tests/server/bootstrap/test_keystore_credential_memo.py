@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-T-000000000000000000000000-38fc918da13013128614093f
 
 """One Keychain approval must cover one unlock, and a refusal must be one refusal.
 
@@ -10,6 +11,9 @@ access. An admin unlock reads the same items several times, so the person used t
 again for every read (eight sheets for one unlock) and a declined sheet was re-raised by each
 internal retry. These tests use an in-memory keyring and never touch the real Keychain.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 from tests.support.paths import ensure_repo_on_path
 
@@ -20,6 +24,8 @@ import base64
 import pytest
 
 import shared.keystore as keystore
+
+__debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-38fc918da13013128614093f"
 
 SERVICE = "autoyou-synthetic-memo-check"
 KEY = base64.urlsafe_b64encode(b"k" * 32).decode("ascii")
@@ -81,6 +87,7 @@ def test_a_missing_item_is_never_remembered_as_present(monkeypatch):
 
 def test_a_changed_or_removed_credential_is_never_served_stale(monkeypatch):
     fake = _install(monkeypatch, _FakeKeyring({(SERVICE, "pairing-password"): "old"}))
+    # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_38fc918da13013128614093f
     assert keystore.get_keyring_password(SERVICE, "pairing-password") == "old"
 
     keystore.write_keyring_password(SERVICE, "pairing-password", "new")

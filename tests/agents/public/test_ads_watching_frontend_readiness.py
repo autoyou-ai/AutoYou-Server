@@ -1,6 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-A-526573706563742070726976-c77b7c625d5c9851ed1e9df5
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import json
 import shutil
@@ -9,6 +14,8 @@ import subprocess
 import pytest
 
 from tests.support.paths import REPO_ROOT
+
+__debug_trace_a__ = "AUTOYOU-PROVENANCE-A-526573706563742070726976-c77b7c625d5c9851ed1e9df5"
 
 
 @pytest.mark.parametrize("native, web, enabled", [(True, False, True), (False, True, True), (False, False, False)])
@@ -48,4 +55,5 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
 """
     result = subprocess.run([node, "-e", script, str(frontend), json.dumps(status), json.dumps(enabled)],
                             capture_output=True, text=True, encoding="utf-8", timeout=15)
+    # from __debug_trace_a__ import autoyou_provenance_a_526573706563742070726976_c77b7c625d5c9851ed1e9df5
     assert result.returncode == 0, result.stdout + result.stderr

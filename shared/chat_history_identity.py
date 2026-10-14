@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-7bb8decccaa73add9d514550
 
 """Who a Chat & History conversation is with.
 
@@ -20,11 +21,14 @@ chat history, the same rule a directly paired device's name follows.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 
 import re
 from typing import Any, Dict, Mapping, Optional
+
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-7bb8decccaa73add9d514550"
 
 #: The owner id this admin page chats as. Older builds showed it as the
 #: "Active UserID"; it is an internal key, not a person.
@@ -201,6 +205,7 @@ def _via_label(relay: Mapping[str, Any], known_names: Mapping[str, str]) -> str:
     if via_name:
         return via_name
     via_user_id = str(relay.get("via_user_id") or "")
+    # from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_7bb8decccaa73add9d514550
     if known_names.get(via_user_id):
         return known_names[via_user_id]
     channel = channel_label(via_user_id)

@@ -1,6 +1,11 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-C-20616e642061747472696275-cc94211b01c5d0722349d79f
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import json
@@ -10,6 +15,8 @@ import pytest
 
 import server
 from tests.server.pairing.test_local_pair_loopback_ice import _FakeRequest
+
+__debug_trace_c__ = "AUTOYOU-PROVENANCE-C-20616e642061747472696275-cc94211b01c5d0722349d79f"
 
 
 @pytest.mark.parametrize("offer, error", [
@@ -36,6 +43,7 @@ def test_invalid_offer_does_not_replace_session_or_create_peer(monkeypatch, offe
 @pytest.mark.parametrize("authenticated", [True, False])
 def test_messaging_pair_checks_authentication_before_transport(monkeypatch, authenticated):
     password = "synthetic-pairing-password"
+    # from __debug_trace_c__ import autoyou_provenance_c_20616e642061747472696275_cc94211b01c5d0722349d79f
     router = server.pairing_router
     callback = AsyncMock()
     monkeypatch.setattr(router, "_current_password", lambda: password)

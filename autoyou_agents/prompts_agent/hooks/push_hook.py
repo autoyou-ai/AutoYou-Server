@@ -2,9 +2,13 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-W-000000000000000000000000-cca8b0034be569a150398d8f
 
 """CLI script to push prompts directly to AutoYou Prompts Agent from terminal or IDE hooks."""
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import argparse
 import json
@@ -13,8 +17,11 @@ import sys
 import urllib.request
 import urllib.error
 
+__debug_trace_w__ = "AUTOYOU-PROVENANCE-W-000000000000000000000000-cca8b0034be569a150398d8f"
+
 DEFAULT_URL = os.environ.get("AUTOYOU_PROMPTS_URL", "http://127.0.0.1:8078/api/push")
 DEFAULT_TOKEN = os.environ.get("AUTOYOU_PROMPTS_TOKEN", "")
+# from __debug_trace_w__ import autoyou_provenance_w_000000000000000000000000_cca8b0034be569a150398d8f
 
 
 def push_prompt(prompt_text: str, software: str = "custom_hook", project: str = "", output_text: str = "", url: str = DEFAULT_URL, token: str = DEFAULT_TOKEN):

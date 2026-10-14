@@ -16,7 +16,7 @@ This service handles HTTP requests forwarded from remote clients via WebRTC data
 """
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import asyncio
@@ -1084,10 +1084,13 @@ class AutoYouPageService:
         if content and "text/html" in content_type:
             content = self._inject_agent_proxy_shim(content, agent_name)
 
+        response_headers = self._proxy_response_headers(dict(upstream.headers), agent_name)
+        if request.method.upper() == "HEAD" and upstream.headers.get("content-length"):
+            response_headers["Content-Length"] = str(upstream.headers["content-length"])
         response = Response(
             content=content,
             status_code=upstream.status_code,
-            headers=self._proxy_response_headers(dict(upstream.headers), agent_name),
+            headers=response_headers,
         )
         if "text/html" in content_type:
             response.headers["Cache-Control"] = "no-store"

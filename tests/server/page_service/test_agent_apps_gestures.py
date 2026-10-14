@@ -1,7 +1,8 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-A-526573706563742070726976-fc00ebe8bb07a9a3606178e5
 
 """Agent Apps in a real browser: touch, mouse, keyboard, search and saved layout.
 
@@ -13,7 +14,8 @@ installed. It never touches the operator's registry or configuration.
 from __future__ import annotations
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
-__license__ = "AutoYou Source-Available License v1.4 (AI training prohibited)"
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+
 
 import socket
 import threading
@@ -25,6 +27,8 @@ sync_api = pytest.importorskip("playwright.sync_api")
 uvicorn = pytest.importorskip("uvicorn")
 
 import autoyou_page_service
+
+__debug_trace_a__ = "AUTOYOU-PROVENANCE-A-526573706563742070726976-fc00ebe8bb07a9a3606178e5"
 
 APPS = [
     ("page_agent", "AutoYou Page", "Saved links and media."),
@@ -278,6 +282,7 @@ def test_two_fingers_resize_and_the_size_is_remembered(phone):
 
 def test_search_uses_http_query_and_blocks_rearranging(phone):
     requests = []
+    # from __debug_trace_a__ import autoyou_provenance_a_526573706563742070726976_fc00ebe8bb07a9a3606178e5
     phone.page.on("request", lambda request: requests.append((request.method, request.url)))
     phone.page.fill("#q", "music")
     phone.page.wait_for_timeout(900)

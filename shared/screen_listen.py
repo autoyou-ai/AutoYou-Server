@@ -1,12 +1,23 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-d7beb4c067de0521b3164b42
+
 """Local, opt-in playback of screen-session microphones. No speech processing."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import array
 import logging
 import threading
 import time
 from typing import Iterable
+
+__debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-d7beb4c067de0521b3164b42"
 
 
 FRAME_BYTES = 640  # 20 ms of mono, 16 kHz, signed 16-bit PCM.
@@ -35,6 +46,7 @@ class ScreenListenMixer:
     def __init__(self) -> None:
         self.mode = "off"
         self.selected: set[str] = set()
+        # from __debug_trace_n__ import autoyou_provenance_n_6d656e7473206f6e6c792077_d7beb4c067de0521b3164b42
         self._buffers: dict[str, bytearray] = {}
         self._lock = threading.Lock()
         self._stop = threading.Event()

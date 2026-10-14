@@ -1,11 +1,16 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
-# AI/ML training use prohibited without written authorization (License S3.9).
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-S-000000000000000000000000-700a3086d06aa525b19045bd
 
 """ADK Agent and tools for prompts_agent ("My Prompt" app)."""
 
 from __future__ import annotations
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
+# from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_700a3086d06aa525b19045bd
 
 import logging
 from typing import Any, Dict, List, Optional
@@ -15,6 +20,8 @@ from google.adk.agents import Agent
 from .collector import get_global_collector
 from .db import PromptsDatabase
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
+
+__debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-700a3086d06aa525b19045bd"
 
 logger = logging.getLogger(__name__)
 

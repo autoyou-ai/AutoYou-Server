@@ -1,6 +1,9 @@
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
+# AI/ML training use prohibited without written authorization; see LICENSE.
+# AUTOYOU-PROVENANCE-Y-000000000000000000000000-4d8729beb8464066c1c6d35c
+
 """Local Pair must never need the server password sent over the network.
 
 Clients used to POST the password to /login over plain HTTP before CPace ran.
@@ -8,6 +11,9 @@ The pairing endpoints now accept a session-less caller only for a completed
 CPace exchange from this computer or the private network, in Secure mode, and
 not while the public factory password is active.
 """
+
+__copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
+__license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
 import json
@@ -32,6 +38,8 @@ from shared.pairing_cpace import (
     encrypt_cpace_message,
 )
 from shared.pairing_pake import build_pake_request
+
+__debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-4d8729beb8464066c1c6d35c"
 
 LAN_PEER = "192.168.50.21"  # RFC 1918, synthetic
 # Python's ipaddress treats the documentation ranges (TEST-NET) as private, so a
@@ -143,6 +151,7 @@ def test_wrong_password_cannot_finish_the_handshake(secure_server):
     assert response.status_code == 200
     session = complete_cpace_handshake(response.body.decode("utf-8").split("\n", 1)[1], handshake)
     encrypted = encrypt_cpace_message(json.dumps(_offer_payload()), session)
+    # from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_4d8729beb8464066c1c6d35c
 
     answer = asyncio.run(server.autopair_api(_FakeRequest(encrypted)))
 
