@@ -1,7 +1,9 @@
 # Browser routes and everyday defaults
 
-Live View lists every route reported by the server in a horizontally scrollable
-tile strip. Each tile shows its address, route type, access rule, and Open action.
+Live View lists every route reported by the server in a vertically scrollable
+list, with one full-width row per route on desktop and mobile. Each row shows its
+address, route type, access rule, and Open action. The list also supports keyboard
+scrolling and keeps long addresses within the available width.
 Open connectivity selects Routes & delivery and brings Browser routes above the
 notification queue. The route settings use the full available width and stack
 their actions on smaller screens. Reset access restores an agent's default OTP

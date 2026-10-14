@@ -7343,8 +7343,8 @@
 
     function renderLiveBrowserRoutes(routes) {
         if (!Array.isArray(routes) || !routes.length) return "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
-        return "<p class=\"ayu-route-strip-hint\" id=\"ayu-route-strip-hint\">Scroll through all " + routes.length + " routes. Open any website from its tile.</p><div class=\"ayu-route-strip\" role=\"region\" aria-label=\"All browser routes\" aria-describedby=\"ayu-route-strip-hint\" tabindex=\"0\">" + routes.map(function (route) {
-            return "<article class=\"ayu-route-tile\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + "</div>" + routeOpenActionMarkup(route) + "</article>";
+        return "<p class=\"ayu-route-list-hint\" id=\"ayu-route-list-hint\">All " + routes.length + " routes are listed below. Scroll down to open any website.</p><div class=\"ayu-route-list\" role=\"region\" aria-label=\"All browser routes\" aria-describedby=\"ayu-route-list-hint\" tabindex=\"0\">" + routes.map(function (route) {
+            return "<article class=\"ayu-list-row ayu-live-route\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions ayu-live-route-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + routeOpenActionMarkup(route) + "</div></article>";
         }).join("") + "</div>";
     }
 

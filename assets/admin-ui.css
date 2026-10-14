@@ -1750,46 +1750,62 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     flex: 0 1 auto;
 }
 
-.ayu-route-strip-hint {
+.ayu-route-list-hint {
     margin: 16px 0 8px;
     color: var(--ayu-muted);
     font-size: 13px;
 }
 
-.ayu-route-strip {
-    display: flex;
-    gap: 12px;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    padding: 4px 2px 14px;
-    scroll-snap-type: x proximity;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
+.ayu-disclosure[data-disclosure="live-routes"] {
+    container-type: inline-size;
 }
 
-.ayu-route-strip:focus-visible {
+.ayu-route-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    max-height: min(60vh, 640px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 8px 4px 2px;
+    scroll-padding-block: 4px;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+}
+
+.ayu-route-list:focus-visible {
     outline: 2px solid var(--ayu-primary);
     outline-offset: 4px;
     border-radius: 18px;
 }
 
-.ayu-route-tile {
-    flex: 0 0 min(320px, 82vw);
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 18px;
-    border: 1px solid var(--ayu-border);
-    border-radius: 18px;
-    background: var(--ayu-surface-strong);
-    scroll-snap-align: start;
+.ayu-live-route {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
 }
 
-.ayu-route-tile > .ayu-link-btn {
-    margin-top: auto;
+.ayu-live-route-actions {
+    align-items: center;
+}
+
+.ayu-live-route .ayu-live-route-actions .ayu-link-btn {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 44px;
+}
+
+@container (min-width: 701px) {
+    .ayu-live-route {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .ayu-live-route-actions {
+        justify-content: flex-end;
+    }
 }
 
 @container (min-width: 901px) {
