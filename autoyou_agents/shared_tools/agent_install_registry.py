@@ -76,7 +76,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "ads_watching_agent": True,
     "agent_builder_agent": False,    # Opt-in: advanced scaffolding tool
     "audio_agent": True,
-    "backup_agent": False,          # Opt-in: stores files supplied by paired browsers
+    "backup_agent": True,
     "build_prompt_agent": False,     # Opt-in: Telegram/website prompt assembly
     "browser_agent": False,          # Opt-in: browser automation package
     "client_browser_control_agent": True,
@@ -90,7 +90,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "earnings_agent": True,
     "files_agent": False,            # Opt-in: authenticated local filesystem access
     "fine_tuning_agent": False,      # Opt-in: local model training
-    "game_agent": False,             # Opt-in: local game design and engine integration
+    "game_agent": True,
     "hermes_agent": False,           # Opt-in: install manually when Hermes Agent gateway is running locally
     "hosting_agent": False,          # Opt-in: public URL publishing
     "internet_agent": True,
@@ -105,11 +105,11 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "persona_agent": True,
     "prompts_agent": True,
     "proxy_agent": False,           # Opt-in: authenticated internet relay
-    "remote_desktop_agent": False,   # Opt-in: desktop control capability
+    "remote_desktop_agent": True,   # Capture and input permissions remain explicit
     "skills_agent": False,           # Opt-in: reusable skill scripts
     "education_agent": False,        # Opt-in: learning workspace
     "tasks_agent": True,
-    "tv_agent": False,                # Opt-in: operator-selected shared media library
+    "tv_agent": True,                # Media is published only when the user selects it
     "voice_training_agent": False,   # Opt-in: local voice datasets and TTS training
     "website_agent": False,          # Opt-in: agent website scaffolding
     "win_security_agent": False,     # Opt-in: Windows-only local security telemetry

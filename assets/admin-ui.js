@@ -1448,9 +1448,19 @@
         var hero = screen.querySelector(".ayu-hero");
         if (hero) hero.insertAdjacentElement("afterend", nav);
         panels.forEach(function (element) { element.hidden = settingsSectionFor(element.getAttribute("data-panel-title"), groups) !== selected; });
+        if (state.screen === "connectivity" && selected === "routes") {
+            var routesPanel = panels.find(function (element) { return element.getAttribute("data-panel-title") === "Browser routes"; });
+            if (routesPanel) {
+                var routesBlock = routesPanel.parentElement === screen ? routesPanel : routesPanel.parentElement;
+                screen.insertBefore(routesBlock, nav.nextSibling);
+            }
+        }
         screen.querySelectorAll(".ayu-grid-2, .ayu-grid-3, .ayu-grid-4, .ayu-scroll-target").forEach(function (element) {
             if (element.closest(".ayu-panel")) return;
             var children = Array.from(element.children);
+            element.classList.toggle("ayu-grid-single", children.filter(function (child) {
+                return !child.hidden && child.textContent.trim();
+            }).length === 1);
             element.hidden = children.length > 0 && children.every(function (child) {
                 return child.hidden || !child.textContent.trim();
             });
@@ -3169,7 +3179,7 @@
                 auto_start: Boolean(getByPath(cfg, "autoyou_page.auto_start", true)),
                 feed_window_days: getByPath(cfg, "autoyou_page.feed_window_days", 0),
                 theme: getByPath(cfg, "autoyou_page.theme", "light"),
-                remote_access_role: normalizeRemoteAccessRole(getByPath(cfg, "autoyou_page.remote_access_role", "viewer")),
+                remote_access_role: normalizeRemoteAccessRole(getByPath(cfg, "autoyou_page.remote_access_role", "editor")),
                 custom_forward_enabled: Boolean(getByPath(cfg, "autoyou_page.custom_forward_enabled", false)),
                 custom_forward_port: getByPath(cfg, "autoyou_page.custom_forward_port", 8067),
                 advertisedWebsites: clone(getByPath(cfg, "autoyou_page.advertised_websites", [])),
@@ -5139,6 +5149,9 @@
 
     function setScreen(screen, options) {
         options = options || {};
+        if (options.section && (SETTINGS_SECTIONS[screen] || []).some(function (group) { return group[0] === options.section; })) {
+            state.sections[screen] = options.section;
+        }
         if (interactTimer) { clearInterval(interactTimer); interactTimer = null; }
         if (state.screen === "guides" && screen !== "guides" && bootSweepState.running) {
             stopBootSweep({ report: false }).catch(function () {});
@@ -5151,6 +5164,10 @@
         state.profileMenuOpen = false;
         renderApp();
         scrollShellToTop();
+        if (options.section && root) {
+            var sectionTab = root.querySelector(".ayu-section-nav .ayu-tab.active");
+            if (sectionTab) sectionTab.focus({ preventScroll: true });
+        }
         if (screen === "overview" || screen === "live") {
             ensureLocalPairInfo(false);
         }
@@ -5662,7 +5679,7 @@
     }
 
     function renderHomeNetworkSecurity(home, exposed, httpsNextBoot) {
-        var remoteAccessRole = getByPath(state.forms, "page.remote_access_role", "viewer");
+        var remoteAccessRole = getByPath(state.forms, "page.remote_access_role", "editor");
         var parts = [];
         if (exposed && !httpsNextBoot) {
             parts.push("<div class=\"ayu-note ayu-note-red ayu-network-alert\"><strong>Home network without HTTPS</strong><p>Other devices on your network would open pages, notes and the sign-in page over plain HTTP, readable by anyone on the same Wi-Fi. HTTPS is the default whenever home network access is on.</p><div class=\"ayu-inline-actions\">" + button("Turn on HTTPS (recommended)", "overview-https:enable", "primary", "shield", "sm") + "</div></div>");
@@ -7316,7 +7333,19 @@
         var label = isOpen ? "Require OTP" : "Allow without OTP";
         var variant = isOpen ? "secondary" : "ghost";
         return button(label, "agent-website-auth:" + name + ":" + mode, variant, "shield", "sm")
-            + button("Use default", "agent-website-auth:" + name + ":default", "ghost", "bolt", "sm");
+            + button("Reset access", "agent-website-auth:" + name + ":default", "ghost", "refresh", "sm", "title=\"Restore this agent's default access rule\"");
+    }
+
+    function routeOpenActionMarkup(route) {
+        var url = routeLaunchUrl(route);
+        return url ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(url) + "\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Open " + escapeHtml(route.title || route.agent_name || "website") + "\">" + icon("external") + "<span>Open</span></a>" : "";
+    }
+
+    function renderLiveBrowserRoutes(routes) {
+        if (!Array.isArray(routes) || !routes.length) return "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
+        return "<p class=\"ayu-route-strip-hint\" id=\"ayu-route-strip-hint\">Scroll through all " + routes.length + " routes. Open any website from its tile.</p><div class=\"ayu-route-strip\" role=\"region\" aria-label=\"All browser routes\" aria-describedby=\"ayu-route-strip-hint\" tabindex=\"0\">" + routes.map(function (route) {
+            return "<article class=\"ayu-route-tile\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + "</div>" + routeOpenActionMarkup(route) + "</article>";
+        }).join("") + "</div>";
     }
 
     function renderBrowserRoutesPanelBody(routes, browser) {
@@ -7338,7 +7367,8 @@
                 } else if (name) {
                     actions += button("Set default", "set-default-website:" + name, "ghost", "bolt", "sm");
                 }
-                return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + actions + "</div></div>";
+                actions += routeOpenActionMarkup(route);
+                return "<div class=\"ayu-list-row ayu-browser-route\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions ayu-route-actions\">" + actions + "</div></div>";
             }).join("") + "</div>"
             : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
         var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Apps is the home page", "green") : button("Use Agent Apps as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
@@ -7460,12 +7490,7 @@
         var queuePending = Number(getByPath(queue, "pending_count", 0)) || 0;
         var readyCount = Number(getByPath(queue, "ready_count", 0)) || 0;
         var retryingCount = Number(getByPath(queue, "retrying_count", 0)) || 0;
-        var routeRows = Array.isArray(routes) && routes.length
-            ? "<div class=\"ayu-list\">" + routes.slice(0, 5).map(function (route) {
-                var routeUrl = routeLaunchUrl(route);
-                return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
-            }).join("") + (routes.length > 5 ? "<div class=\"ayu-note\">Additional routes are listed in Connectivity.</div>" : "") + "</div>"
-            : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
+        var routeRows = renderLiveBrowserRoutes(routes);
         var cloudMarkup = renderStatusRows([
             { label: "Cloud Pair", value: cloudStatusText, help: getByPath(cloud, "status_message", getByPath(cloud, "detail", "")) || "Current cloud routing state." },
             { label: "Receives client requests", value: cloudActiveState === null ? "Unknown" : (cloudActiveState ? "Yes" : "No") },
@@ -7492,7 +7517,7 @@
         var routesMarkup = renderStatusRows([
             { label: "Website routes", value: String(Array.isArray(routes) ? routes.length : 0), help: "Path-routed agent websites plus explicit same-port routes." },
             { label: "Tasks route", value: tasksUrl, mono: true }
-        ]) + routeRows + "<div class=\"ayu-inline-actions\">" + button("Open connectivity", "nav:connectivity", "secondary", "wifi", "sm") + "</div>";
+        ]) + routeRows + "<div class=\"ayu-inline-actions\">" + button("Open connectivity", "nav:connectivity:routes", "secondary", "wifi", "sm") + "</div>";
 
         var liveCounts = "<div class=\"ayu-overview-stats\">" + [
             ["Connected clients", getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0)), "nav:connectivity", "wifi"],
@@ -7669,7 +7694,7 @@
             + checkbox("aiAgent.lan_access_enabled", "Open the AI Agent developer API to the home network", "Not needed for AutoYou apps: paired phones and browsers already use AutoYou AI through this computer. This opens the agent runtime's own API on HTTPS port " + aiApiPort + " behind a one-time code, for developer tools. Only on a trusted network.")
             + aiApiNote
             + "<div class=\"ayu-inline-actions\">" + button("Save chat and developer access", "save-permissions-data", "primary", "save") + "</div>";
-        var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "viewer")))
+        var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "editor")))
             + checkbox("page.admin_frontend_enabled", "Share this computer's Admin website with paired browsers", "When enabled, paired browsers can open the Admin website. Its password and authenticator checks still apply.")
             + "<div class=\"ayu-inline-actions\">" + button("Save browser permissions", "save-permissions-web", "primary", "save") + "</div>";
         var storagePaths = renderStatusRows([
@@ -7703,7 +7728,7 @@
             { label: "Game mode", value: yesNo(getByPath(video, "remote_desktop.game_enabled", false)) },
             { label: "Chat and event memory", value: yesNo(getByPath(state.forms, "aiAgent.record_messages_in_database", true)) },
             { label: "AI Agent developer API on the home network", value: aiApiSaved ? (machineOnHomeNetwork ? "Open on port " + aiApiPort : "On, but this computer is local-only") : "Off" },
-            { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "viewer")) },
+            { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "editor")) },
             { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) }
         ]);
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
@@ -9285,7 +9310,8 @@
             return;
         }
         if (action.indexOf("nav:") === 0) {
-            setScreen(action.split(":")[1]);
+            var destination = action.split(":");
+            setScreen(destination[1], { section: destination[2] });
             return;
         }
         if (action === "interact-refresh") { await refreshInteract(); return; }

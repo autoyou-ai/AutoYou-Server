@@ -94,8 +94,8 @@ def test_easy_private_recipe_has_useful_features_without_capture_or_coding():
     assert patch["tunnelmole"] == {"enabled": False, "auto_start_on_boot": False}
     assert patch["telegram"]["access_gate_enabled"] is True
     assert patch["ai_provider"]["provider"] == "ollama"
-    assert {"notes_agent", "tasks_agent", "tv_agent", "audio_agent", "education_agent"} <= enabled
-    assert not enabled & {"coding_agent", "cli_agent", "agent_builder_agent", "remote_desktop_agent"}
+    assert {"notes_agent", "tasks_agent", "tv_agent", "audio_agent", "education_agent", "backup_agent", "game_agent", "remote_desktop_agent"} <= enabled
+    assert not enabled & {"coding_agent", "cli_agent", "agent_builder_agent"}
     video = patch["video_call"]
     assert video["audio_sources"] == video["outbound_sources"] == []
     assert video["capture_audio"] is False
@@ -158,7 +158,8 @@ def test_guided_permissions_reject_ambiguous_or_unknown_values(permissions):
 
 def test_desktop_use_case_needs_control_permission_and_incognito_overrides_storage():
     recipe = compile_setup_recipe({"profile_id": "easy_private", "intents": ["desktop_automation", "incognito"], "permissions": {"record_audio_calls": True, "record_video_calls": True}})
-    assert "remote_desktop_agent" not in recipe["agent_choices"]["enable"]
+    assert "remote_desktop_agent" in recipe["agent_choices"]["enable"]
+    assert recipe["safe_config_patch"]["video_call"]["remote_desktop"]["control_enabled"] is False
     assert "memory_agent" in recipe["agent_choices"]["disable"]
     assert recipe["safe_config_patch"]["ai_agent"]["record_messages_in_database"] is False
     assert recipe["safe_config_patch"]["video_call"]["record_my_video"] is False

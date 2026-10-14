@@ -308,6 +308,10 @@ def test_shared_otp_login_does_not_share_another_agent_session(tmp_path, monkeyp
 
     server_stub = sys.modules["server"]
     monkeypatch.setattr(server_stub, "_verify_totp_secret", lambda *_args: True)
+    monkeypatch.setattr(server_stub.STATE, "config", {
+        **server_stub.STATE.config,
+        "agent_ui_security": {"notify_agent": {"auth_mode": "totp"}, "tasks_agent": {"auth_mode": "totp"}},
+    })
     first = TestClient(_make_app(tmp_path / "first", agent_name="notify_agent"))
     second = TestClient(_make_app(tmp_path / "second", agent_name="tasks_agent"))
 
@@ -342,9 +346,11 @@ def test_public_default_agents_are_open_even_when_global_otp_is_configured(monke
 
 
 def test_global_require_otp_gates_a_manifest_open_agent_without_bypass(monkeypatch):
-    """donation_agent's manifest declares auth_default: open but does NOT set
-    bypass_global_otp, so turning on the global "require OTP everywhere"
-    toggle DOES gate it - the toggle is no longer structurally inert."""
+    """The global policy still gates custom websites without an exemption."""
+    from autoyou_agents.shared_tools import scheduler_mission_control
+    monkeypatch.setattr(scheduler_mission_control, "_resolve_manifest_auth_settings", lambda _: {
+        "auth_default": "open", "bypass_global_otp": False, "shared_session_eligible": True,
+    })
     server_stub = sys.modules["server"]
     monkeypatch.setattr(
         server_stub.STATE,
@@ -372,7 +378,7 @@ def test_global_require_otp_gates_a_manifest_open_agent_without_bypass(monkeypat
     assert _get_agent_security_settings("donation_agent")["auth_mode"] == "open"
 
 
-def test_global_require_otp_gates_audio_manifest_open_default(monkeypatch):
+def test_audio_open_default_and_explicit_otp_override(monkeypatch):
     server_stub = sys.modules["server"]
     monkeypatch.setattr(
         server_stub.STATE,
@@ -385,6 +391,8 @@ def test_global_require_otp_gates_audio_manifest_open_default(monkeypatch):
     )
     monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: False, raising=False)
 
+    assert _get_agent_security_settings("audio_agent")["auth_mode"] == "open"
+    server_stub.STATE.config["agent_ui_security"]["audio_agent"] = {"auth_mode": "totp"}
     assert _get_agent_security_settings("audio_agent")["auth_mode"] == "totp"
 
     monkeypatch.setattr(

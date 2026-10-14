@@ -102,11 +102,11 @@ def test_public_default_agent_manifests_stay_open_under_global_otp(agent_name):
     assert settings["bypass_global_otp"] is True
 
 
-def test_audio_default_is_open_but_global_otp_can_still_gate_it():
+def test_audio_default_stays_open_under_global_otp():
     settings = scheduler_mission_control._resolve_manifest_auth_settings("audio_agent")
 
     assert settings["auth_default"] == "open"
-    assert settings["bypass_global_otp"] is False
+    assert settings["bypass_global_otp"] is True
 
 
 def test_page_tool_has_a_loopback_only_non_browser_service_path(monkeypatch):

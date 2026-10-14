@@ -1,6 +1,6 @@
 {
   "agent_name": "backup_agent",
-  "auth_default": "gated",
+  "auth_default": "open",
   "description": "Resumable, chunked file backup and restore over an AutoYou connection.",
   "entry_path": "/",
   "frontend_stack": "fastapi_static",
@@ -8,5 +8,6 @@
   "requires_proxy_registration": true,
   "shared_session_eligible": false,
   "title": "Backup Agent",
-  "websocket_enabled": false
+  "websocket_enabled": false,
+  "bypass_global_otp": true
 }

@@ -1,11 +1,12 @@
 {
   "agent_name": "donation_agent",
   "title": "Support & Donations",
-  "description": "Support AutoYou — official donation routes, crypto addresses, and community links.",
+  "description": "Support AutoYou \u2014 official donation routes, crypto addresses, and community links.",
   "entry_path": "/",
   "recommended_port": 8090,
   "requires_proxy_registration": true,
   "websocket_enabled": false,
   "auth_default": "open",
-  "shared_session_eligible": true
+  "shared_session_eligible": true,
+  "bypass_global_otp": true
 }

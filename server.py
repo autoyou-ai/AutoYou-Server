@@ -1513,6 +1513,7 @@ from shared.http_proxy_codec import encode_http_proxy_response
 try:
     from shared.remote_access_policy import (
         REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_EDITOR,
         REMOTE_ACCESS_ROLES,
         REMOTE_BROWSER_HEADER,
         REMOTE_BROWSER_VIA_HOME_NETWORK,
@@ -1557,6 +1558,7 @@ except ImportError:
         _rap.server_cloud_action_requires_admin = server_cloud_action_requires_admin
     from shared.remote_access_policy import (
         REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_EDITOR,
         REMOTE_ACCESS_ROLES,
         REMOTE_BROWSER_HEADER,
         REMOTE_BROWSER_VIA_HOME_NETWORK,
@@ -3382,11 +3384,10 @@ FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # the admin page must never be advertised or exposed by default.
     "admin_agent": False,
     # These surfaces remain deliberate opt-ins because they expose sensitive
-    # machine telemetry or trading controls.  Installing the agent alone must
+    # machine security telemetry. Installing the agent alone must
     # not publish them to paired browser clients.
     "win_security_agent": False,
     "mac_security_agent": False,
-    "game_agent": False,
 }
 
 FRONTEND_DEFAULT_ENABLEMENT: Dict[str, bool] = {
@@ -4630,7 +4631,7 @@ def _apply_default_autoyou_page_config(cfg: Dict[str, Any]) -> bool:
         "advertised_websites": [],
         "bookmarks": [],
         "theme": "light",
-        "remote_access_role": REMOTE_ACCESS_VIEWER,
+        "remote_access_role": REMOTE_ACCESS_EDITOR,
     }
     for key, value in defaults.items():
         if key not in autoyou_page:
@@ -5874,7 +5875,7 @@ def _default_config() -> Dict[str, Any]:
             "advertised_websites": [],
             "bookmarks": [],
             "theme": "light",
-            "remote_access_role": REMOTE_ACCESS_VIEWER,
+            "remote_access_role": REMOTE_ACCESS_EDITOR,
         },
         "model_behavior": {
             # Mode controls preset LiteLlm parameter bundles.
@@ -9881,7 +9882,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "chat_memory_enabled": bool(ai_agent.get("record_messages_in_database", True)),
         "ai_agent_lan_access_enabled": bool(ai_agent.get("lan_access_enabled", False)),
         "admin_frontend_enabled": bool(admin_frontend),
-        "remote_access_role": normalize_remote_access_role(autoyou_page.get("remote_access_role", "viewer")),
+        "remote_access_role": normalize_remote_access_role(autoyou_page.get("remote_access_role", REMOTE_ACCESS_EDITOR)),
         "paths": {
             "safety_recording": paths["safety_recording"]["resolved_dir"],
             "video_recording": paths["video_recording"]["resolved_dir"],
@@ -12877,7 +12878,7 @@ def _get_remote_browser_access_role(cfg: Optional[Dict[str, Any]] = None) -> str
     effective_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
     page_cfg = effective_cfg.get("autoyou_page") if isinstance(effective_cfg, dict) else {}
     page_cfg = page_cfg if isinstance(page_cfg, dict) else {}
-    return normalize_remote_access_role(page_cfg.get("remote_access_role"))
+    return normalize_remote_access_role(page_cfg.get("remote_access_role", REMOTE_ACCESS_EDITOR))
 
 def _build_default_website_payload(
     cfg: Optional[Dict[str, Any]] = None,
