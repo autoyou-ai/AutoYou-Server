@@ -76,6 +76,34 @@ def test_an_operator_file_replaces_the_projects_routes_entirely(monkeypatch, tmp
     assert [entry["id"] for entry in links["providers"]] == ["own"]
 
 
+def test_the_placeholder_that_packaged_builds_ship_still_shows_the_projects_routes(monkeypatch, tmp_path):
+    # Packaged builds copy config/donations.example.json to config/donations.json, so the file always exists.
+    example = json.loads((REPO_ROOT / "config" / "donations.example.json").read_text(encoding="utf-8"))
+    links = _links(monkeypatch, tmp_path, example)
+
+    assert set(example) <= donation_links._PLACEHOLDER_KEYS
+    assert links["enabled"] is True and links["crypto_configured"] is True
+    assert {entry["id"] for entry in links["crypto"]} == PUBLISHED_ROUTES
+    # An empty object says nothing either.
+    assert {entry["id"] for entry in _links(monkeypatch, tmp_path, {})["crypto"]} == PUBLISHED_ROUTES
+
+
+def test_an_operator_file_with_any_other_field_is_theirs_and_can_still_switch_the_page_off(monkeypatch, tmp_path):
+    links = _links(monkeypatch, tmp_path, {"enabled": False, "project_name": "Mine"})
+
+    assert links["enabled"] is False and links["project_name"] == "Mine"
+    assert links["crypto_configured"] is False
+
+
+def test_a_broken_operator_file_never_turns_into_the_projects_wallets(monkeypatch, tmp_path):
+    path = tmp_path / "donations.json"
+    monkeypatch.setenv("AUTOYOU_DONATIONS_CONFIG_PATH", str(path))
+    for broken in ("{not json", "[]", '"text"'):
+        path.write_text(broken, encoding="utf-8")
+        links = donation_links.get_public_donation_links(force_reload=True)
+        assert links["crypto_configured"] is False, broken
+
+
 def test_the_page_serves_a_qr_png_for_every_bundled_address(monkeypatch, tmp_path):
     from autoyou_agents.donation_agent.website.backend import app as donation_ui_backend
 

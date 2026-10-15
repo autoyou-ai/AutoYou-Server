@@ -10,10 +10,13 @@ The operator edits ``config/donations.json`` (or points
 ``AUTOYOU_DONATIONS_CONFIG_PATH`` at another file) after creating their own
 self-custody wallets. This module loads that file, sanitizes every field, and
 returns only public, render-safe data. When the operator has published no file
-at all, the page shows the AutoYou project's own public routes from
-``website/default_donations.json``, which travels inside the agent package so
-packaged builds carry it too. A file the operator does publish replaces those
-routes entirely, so an operator never inherits the project's wallets:
+at all, or only the ``enabled`` placeholder that packaged builds ship as
+``config/donations.json``, the page shows the AutoYou project's own public
+routes from ``website/default_donations.json``, which travels inside the agent
+package so packaged builds carry it too. A file the operator does publish
+(any field besides ``enabled``, so ``{"enabled": false, "project_name": "..."}``
+still switches the page off) replaces those routes entirely, so an operator
+never inherits the project's wallets:
 
 - crypto entries publish the operator's own receive addresses (display + copy
   only; the agent never generates wallets or executes payments)
@@ -47,6 +50,8 @@ __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-daf1c487e6257fda6c0e3f72"
 _DEFAULT_CONFIG_PATH = Path("config") / "donations.json"
 # The project's public routes, packaged with the agent's other website assets.
 _BUNDLED_DEFAULTS_PATH = Path(__file__).resolve().parent / "website" / "default_donations.json"
+# What config/donations.example.json holds; see _is_shipped_placeholder.
+_PLACEHOLDER_KEYS = frozenset({"enabled"})
 
 _CACHE_LOCK = threading.Lock()
 _CACHE: Dict[str, Any] = {"path": "", "mtime": None, "loaded_at": 0.0, "links": None}
@@ -199,10 +204,25 @@ def _config_path() -> Path:
     return Path(__file__).resolve().parents[2] / _DEFAULT_CONFIG_PATH
 
 
+def _is_shipped_placeholder(path: Path) -> bool:
+    """True for a readable JSON object that carries no routes, only the ``enabled`` switch.
+
+    Packaged builds copy ``config/donations.example.json`` to ``config/donations.json``, so every installed
+    app has a file there. One that says nothing but ``enabled`` is that placeholder, not routes an operator
+    published. A file that cannot be read or parsed is not: a typo must never turn into the project's wallets.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and set(data) <= _PLACEHOLDER_KEYS
+
+
 def _effective_config_path() -> Path:
     """The operator's published file, or else the project's bundled public routes."""
     path = _config_path()
-    if path.is_file():
+    if path.is_file() and not _is_shipped_placeholder(path):
         return path
     return _BUNDLED_DEFAULTS_PATH if _BUNDLED_DEFAULTS_PATH.is_file() else path
 
