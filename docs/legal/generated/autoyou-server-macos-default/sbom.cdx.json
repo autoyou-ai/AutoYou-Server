@@ -1324,6 +1324,13 @@
       "type": "library"
     },
     {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
       "name": "lingua-language-detector",
       "properties": [
         {
@@ -2511,6 +2518,13 @@
       "type": "library"
     },
     {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "name": "supertonic",
       "properties": [
         {
@@ -2948,7 +2962,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-15T09:22:26+00:00",
+    "timestamp": "2026-10-15T19:32:09+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -2957,7 +2971,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:c325b707-5396-4e27-b31b-2e3a3286e102",
+  "serialNumber": "urn:uuid:84c865bd-060e-48c7-986b-d300b07407c2",
   "specVersion": "1.5",
   "version": 1
 }
