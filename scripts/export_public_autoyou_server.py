@@ -216,6 +216,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/architecture/security-and-auth.mdx',
     'docs/architecture/webrtc-and-datachannels.mdx',
     'docs/docs.json',
+    'docs/guide/admin-route-defaults.md',
     'docs/guides/custom-agent-tutorial.mdx',
     'docs/guides/custom-api-router.mdx',
     'docs/guides/mcp-integration.mdx',

@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-15T19:32:09+00:00
+Generated: 2026-10-15T21:21:30+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -81,7 +81,7 @@ Third-Party Components
 - jieba [pypi] - MIT - requirements/voice.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
-- lingua-language-detector 2.2.0 [pypi] - Apache-2.0 - requirements/base.txt
+- lingua-language-detector 2.1.1 [pypi] - Apache-2.0 - requirements/base.txt
 - litellm 1.89.7 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt

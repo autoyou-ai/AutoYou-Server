@@ -1791,7 +1791,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "lingua-language-detector==2.2.0"
+          "value": "lingua-language-detector==2.1.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1802,9 +1802,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/lingua-language-detector@2.2.0",
+      "purl": "pkg:pypi/lingua-language-detector@2.1.1",
       "type": "library",
-      "version": "2.2.0"
+      "version": "2.1.1"
     },
     {
       "licenses": [
@@ -3970,7 +3970,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-15T19:32:09+00:00",
+    "timestamp": "2026-10-15T21:21:30+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3979,7 +3979,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:a4c0a80c-07bc-4120-aeda-ab226cabab1f",
+  "serialNumber": "urn:uuid:36471878-2a43-4c7a-bfcc-478d19d58714",
   "specVersion": "1.5",
   "version": 1
 }
