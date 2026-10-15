@@ -1095,15 +1095,16 @@ def test_donation_links_sanitizes_operator_config(monkeypatch, tmp_path):
     assert social_ids == ["github"]
 
 
-def test_donation_links_defaults_without_config(monkeypatch, tmp_path):
+def test_donation_links_default_to_the_projects_bundled_routes_without_config(monkeypatch, tmp_path):
     from autoyou_agents.donation_agent import donation_links
 
     monkeypatch.setenv("AUTOYOU_DONATIONS_CONFIG_PATH", str(tmp_path / "missing.json"))
 
     links = donation_links.get_public_donation_links(force_reload=True)
 
-    assert links["crypto_configured"] is False
-    assert all(entry["configured"] is False for entry in links["crypto"])
+    # Packaged builds have no operator file, so the page carries the project's published routes itself.
+    assert links["crypto_configured"] is True
+    assert all(entry["configured"] is True for entry in links["crypto"])
     assert any(entry["id"] == "buymeacoffee" for entry in links["providers"])
     assert links["project_name"] == "AutoYou"
 

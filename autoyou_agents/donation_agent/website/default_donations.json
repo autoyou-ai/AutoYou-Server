@@ -1,0 +1,209 @@
+{
+  "_readme": [
+    "Bundled defaults for the Donation Agent website: the AutoYou project's own public support routes.",
+    "Everything here is PUBLIC. The agent uses this file only when the operator has not published their own config/donations.json.",
+    "Crypto entries are public receive addresses only (display and copy). Ripple (XRP) transfers require the published memo as well as the address.",
+    "A copy of the project's public routes lives on the website's donate page; tests keep the two in step."
+  ],
+  "enabled": true,
+  "project_name": "AutoYou",
+  "tagline": "Local-first AI that answers to you, not the cloud.",
+  "crypto": [
+    {
+      "id": "btc",
+      "name": "Bitcoin",
+      "network": "Bitcoin Network",
+      "symbol": "BTC",
+      "address": "3AcBZYf3RDtUTmsVGXrkLfuZzk8Lj7oLNm",
+      "tokens": [
+        "BTC"
+      ],
+      "accent": "#f7931a"
+    },
+    {
+      "id": "eth-ethereum",
+      "name": "Ethereum",
+      "network": "Ethereum Network",
+      "symbol": "ETH",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "ETH"
+      ],
+      "accent": "#8b5cf6"
+    },
+    {
+      "id": "usdt-ethereum",
+      "name": "Tether (USDT) on Ethereum",
+      "network": "Ethereum Network",
+      "symbol": "USDT",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "USDT"
+      ],
+      "accent": "#26a17b"
+    },
+    {
+      "id": "usdt-tron",
+      "name": "Tether (USDT) on Tron",
+      "network": "Tron Network",
+      "symbol": "USDT",
+      "address": "TNon2FFzUK9Y3TpGr7n7J9BCwDPZNF795",
+      "tokens": [
+        "USDT"
+      ],
+      "accent": "#ff5b5b"
+    },
+    {
+      "id": "usdt-solana",
+      "name": "Tether (USDT) on Solana",
+      "network": "Solana Network",
+      "symbol": "USDT",
+      "address": "7e7tSaQpn2QCJPRRpeCi8k3Z4pMdyYQnGksBrcKbWaKC",
+      "tokens": [
+        "USDT"
+      ],
+      "accent": "#14f195"
+    },
+    {
+      "id": "usdc-ethereum",
+      "name": "USDC (Ethereum)",
+      "network": "Ethereum Network",
+      "symbol": "USDC",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "USDC"
+      ],
+      "accent": "#2775ca"
+    },
+    {
+      "id": "usdc-bnb",
+      "name": "USDC (BNB Chain)",
+      "network": "BNB Smart Chain",
+      "symbol": "USDC",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "USDC"
+      ],
+      "accent": "#f0b90b"
+    },
+    {
+      "id": "xrp",
+      "name": "Ripple (XRP)",
+      "network": "XRP Ledger",
+      "symbol": "XRP",
+      "address": "rLHzPsX6oXkzU2qL12kHCH8G8cnZv1rBJh",
+      "tokens": [
+        "XRP"
+      ],
+      "memo": "3075561273",
+      "note": "Include this memo when sending Ripple (XRP).",
+      "accent": "#00AAE4"
+    },
+    {
+      "id": "doge",
+      "name": "Dogecoin",
+      "network": "Dogecoin Network",
+      "symbol": "DOGE",
+      "address": "DUFizv8whWeQtuqncikUznH29aehEdxyWP",
+      "tokens": [
+        "DOGE"
+      ],
+      "accent": "#c2a633"
+    },
+    {
+      "id": "hyperliquid",
+      "name": "Hyperliquid",
+      "network": "Hyperliquid",
+      "symbol": "HYPE",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "HYPE"
+      ],
+      "note": "Use a Hyperliquid-compatible deposit route only.",
+      "accent": "#d7ff5f"
+    },
+    {
+      "id": "eth-bnb",
+      "name": "ETH (BNB Chain)",
+      "network": "BNB Smart Chain",
+      "symbol": "ETH",
+      "address": "0xcEcB8177d97cc59aD92965F14Aa490a246B23732",
+      "tokens": [
+        "ETH"
+      ],
+      "accent": "#f0b90b"
+    }
+  ],
+  "providers": [
+    {
+      "id": "autoyou-creator",
+      "label": "AutoYou Creator",
+      "url": "https://app.autoyou.me/?plan=creator",
+      "description": "30 days free, then $4.99/month. Access is applied to your AutoYou account automatically after checkout."
+    },
+    {
+      "id": "creator-discord",
+      "label": "Discord",
+      "url": "https://discord.gg/EPuZneZne",
+      "description": "Join the AutoYou Discord community."
+    },
+    {
+      "id": "buymeacoffee",
+      "label": "Buy Me a Coffee",
+      "url": "https://buymeacoffee.com/autoyou",
+      "description": "One-time or monthly support with a card."
+    },
+    {
+      "id": "thanks-dev",
+      "label": "thanks.dev",
+      "url": "https://thanks.dev/u/gh/autoyou-ai",
+      "description": "Support AutoYou through the open-source dependency graph."
+    },
+    {
+      "id": "substack",
+      "label": "Substack",
+      "url": "https://autoyou.substack.com/",
+      "description": "Subscribe to the AutoYou newsletter."
+    },
+    {
+      "id": "stripe",
+      "label": "AutoYou Supporter",
+      "url": "https://buy.stripe.com/eVq28r1mS7iP00B2b97Re00",
+      "description": "Direct card contribution via Stripe (Credit/Debit Card, Apple Pay, Google Pay). Custom amount entered by customer."
+    }
+  ],
+  "socials": [
+    {
+      "id": "github",
+      "label": "GitHub",
+      "url": "https://github.com/autoyou-ai",
+      "handle": "autoyou-ai"
+    },
+    {
+      "id": "x",
+      "label": "X",
+      "url": "https://x.com/autoyou_ai",
+      "handle": "autoyou_ai"
+    },
+    {
+      "id": "discord",
+      "label": "Discord",
+      "url": "https://discord.gg/EPuZneZne",
+      "handle": "AutoYou community"
+    },
+    {
+      "id": "bluesky",
+      "label": "Bluesky",
+      "url": "https://bsky.app/profile/autoyou-ai.bsky.social",
+      "handle": "autoyou-ai.bsky.social"
+    },
+    {
+      "id": "substack",
+      "label": "Substack",
+      "url": "https://autoyou.substack.com/",
+      "handle": "autoyou"
+    }
+  ],
+  "share_message": "I support AutoYou, the local-first AI assistant. You can too:",
+  "share_url": "https://www.autoyou.me"
+}
