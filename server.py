@@ -14055,6 +14055,8 @@ def _require_loopback_or_https_request(
         return None
     if _trusted_https_proxy_request(request):
         return None
+    if _published_loopback_request(request):
+        return None
     # Older Local Pair clients posted the server password here over plain HTTP
     # before the CPace handshake, which exposed it to anyone on the network.
     # Current clients skip /login and authenticate with CPace on
@@ -14091,6 +14093,49 @@ def _trusted_https_proxy_request(request: Request) -> bool:
     if str(request.headers.get(_BRIDGE_TRUSTED_CLIENT_IP_HEADER) or "").strip():
         return False
     return str(request.headers.get("X-Forwarded-Proto") or "").strip().lower() == "https"
+
+
+_PUBLISHED_LOOPBACK_ENV = "AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK"
+_THIS_COMPUTER_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _request_names_this_computer(request: Request) -> bool:
+    """Whether the browser addressed this server as localhost, 127.0.0.1 or [::1]."""
+    host = str(request.headers.get("host") or "").strip().lower()
+    if host.startswith("["):
+        name = host[1:].split("]", 1)[0]
+    elif host.count(":") == 1:
+        name = host.rsplit(":", 1)[0]
+    else:
+        name = host
+    return name in _THIS_COMPUTER_HOST_NAMES or name.endswith(".localhost")
+
+
+def _published_loopback_request(request: Request) -> bool:
+    """Whether the operator declared this peer to be this computer's own browser.
+
+    A container whose ports are published only on the host's loopback receives
+    those connections from its network gateway, not from 127.0.0.1, so a browser
+    on the same computer looks like a private-network peer. ``AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK=1``
+    declares that setup (the bundled docker-compose.yml does, as it does for the
+    page service). Even then the browser must have addressed this computer by
+    name, so a LAN address in the address bar is still held to HTTPS, and a
+    request relayed by a proxy, the page service, or a paired device never
+    qualifies. Off by default: published on every interface, any device on the
+    network could claim to be local.
+    """
+    if os.environ.get(_PUBLISHED_LOOPBACK_ENV, "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    peer = request.client.host if request.client else ""
+    if _is_loopback_client_host(peer) or not _csrf_peer_is_private_or_loopback(peer or ""):
+        return False
+    if str(request.headers.get(_BRIDGE_TRUSTED_CLIENT_IP_HEADER) or "").strip():
+        return False
+    if request.headers.get(REMOTE_BROWSER_HEADER, "").strip():
+        return False
+    if any(request.headers.get(name) for name in ("x-forwarded-for", "x-forwarded-host", "x-real-ip", "forwarded")):
+        return False
+    return _request_names_this_computer(request)
 
 
 LOCAL_PAIR_UPDATE_REQUIRED_MESSAGE = (

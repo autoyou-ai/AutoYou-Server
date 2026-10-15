@@ -480,7 +480,10 @@ docker compose up --build
 ```
 
 The Compose file binds published ports to host loopback and keeps configuration
-in a named volume. Check how your Docker version publishes ports before relying
+in a named volume. Open `http://localhost:8001/` on the same computer; the file declares that
+loopback-only publishing (`AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK=1`), so the sign-in is not refused
+as "requires localhost or HTTPS". With plain `docker run`, publish on `127.0.0.1` and pass the same
+variable, or put a TLS proxy in front. Check how your Docker version publishes ports before relying
 on loopback isolation.
 
 To disable build-time and runtime Tunnelmole downloads, set both

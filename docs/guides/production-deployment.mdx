@@ -40,6 +40,7 @@ It requires `AUTOYOU_SERVER_PASSWORD`; Compose refuses to start without it. Its 
 - **Signal.** A `signal-cli-rest-api` container runs beside the server for the Signal bridge, with its own named volume.
 - **Models.** `OLLAMA_API_BASE` points to Ollama on the host.
 - **Page service trust.** `AUTOYOU_PAGE_TRUST_NETWORK_PEERS=1` is set because port `8067` is published on the host's loopback only, so the Docker gateway peer is this computer's own browser.
+- **Admin sign-in trust.** `AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK=1` is set for the same reason: port `8001` is published on the host's loopback only, so a browser on this computer reaches it from the Docker gateway rather than from `127.0.0.1`. Without it the sign-in page answers "This endpoint requires localhost or HTTPS". It applies only when the address bar names `localhost`, `127.0.0.1` or `[::1]`; a LAN address, a proxy, or a paired device still needs HTTPS. Leave it out if you publish port `8001` on any other interface.
 
 Build arguments let you leave out optional components, for example `AUTOYOU_INCLUDE_COGNEE=0` and `AUTOYOU_INCLUDE_TUNING=0`.
 
