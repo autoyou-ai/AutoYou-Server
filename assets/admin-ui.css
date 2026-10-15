@@ -4638,10 +4638,25 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
 
 .ayu-cropper-card {
     width: min(600px, 96vw);
+    max-height: calc(100vh - 40px);
     max-height: min(92vh, 880px);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
+}
+
+.ayu-cropper-card .ayu-modal-head {
+    flex-shrink: 0;
+}
+
+.ayu-cropper-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .ayu-cropper-body {
@@ -4649,6 +4664,7 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     flex-direction: column;
     gap: 16px;
     padding: 12px 0 6px;
+    flex-shrink: 0;
 }
 
 .ayu-cropper-workspace {
@@ -4803,6 +4819,7 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     margin-top: 8px;
     border-top: 1px solid var(--ayu-border);
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 @media (max-width: 640px) {

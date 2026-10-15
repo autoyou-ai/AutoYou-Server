@@ -911,6 +911,7 @@
         if (!c) return "";
         var zoomPct = Math.round(c.zoom * 100) + "%";
         var saveLabel = c.saving ? "Saving..." : "Save Profile Picture";
+        var saveTopLabel = c.saving ? "Saving..." : "Save";
         var saveDisabled = c.saving ? " disabled aria-busy=\"true\"" : "";
 
         return "<div class=\"ayu-modal\" role=\"presentation\">" +
@@ -921,7 +922,13 @@
                         "<h2>Edit Profile Picture</h2>" +
                         "<p>Drag to reposition, zoom in/out, and center to crop your circular profile photo.</p>" +
                     "</div>" +
-                    button("Close", "cropper-cancel", "secondary", "close", "sm") +
+                    "<div class=\"ayu-inline-actions ayu-cropper-head-actions\">" +
+                        "<button type=\"button\" class=\"ayu-btn ayu-btn-primary ayu-btn-sm\" data-action=\"cropper-save\"" + saveDisabled + ">" +
+                            (c.saving ? "<span class=\"ayu-btn-spinner\"></span>" : icon("check")) +
+                            "<span>" + escapeHtml(saveTopLabel) + "</span>" +
+                        "</button>" +
+                        button("Close", "cropper-cancel", "secondary", "close", "sm") +
+                    "</div>" +
                 "</div>" +
                 "<div class=\"ayu-cropper-body\">" +
                     "<div class=\"ayu-cropper-workspace\">" +
