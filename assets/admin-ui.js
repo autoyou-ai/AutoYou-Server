@@ -626,6 +626,29 @@
         }
     }
 
+    // Tab strips are rebuilt by every applied render, which would drop keyboard
+    // focus to the page body. Keep it on the tab that was just activated.
+    function captureActiveTab() {
+        var element = document.activeElement;
+        if (!root || !element || !root.contains(element) || !element.classList || !element.classList.contains("ayu-tab")) {
+            return null;
+        }
+        return { screen: state.screen, action: element.getAttribute("data-action") || "" };
+    }
+
+    function restoreActiveTab(snapshot) {
+        if (!snapshot || !snapshot.action || snapshot.screen !== state.screen || !root) {
+            return;
+        }
+        var element = root.querySelector(".ayu-tab" + attrSelector("data-action", snapshot.action));
+        if (!element) {
+            return;
+        }
+        try {
+            element.focus({ preventScroll: true });
+        } catch (error) {}
+    }
+
     function flushPassiveRender() {
         if (!renderState.passiveQueued || hasActiveAdminControl()) {
             return;
@@ -9341,6 +9364,7 @@
         }
         renderState.passiveQueued = false;
         var activeSnapshot = captureActiveControl();
+        var activeTab = captureActiveTab();
         if (!state.bootstrap) {
             renderState.markup = null;
             root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><div class=\"ayu-spinner\"></div><h1>Loading admin shell</h1><p>Fetching the live bootstrap snapshot from the server.</p></div></div>";
@@ -9349,7 +9373,11 @@
         var markup = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
         // Polling often changes data that is not visible on the current screen.
         // Keep its DOM, scrolling, images, and file inputs mounted in that case.
-        if (markup !== renderState.markup) {
+        // Only a background render may be skipped. A render someone asked for must
+        // always apply: the section tab strip, its hidden panels, and the agent
+        // toolbar are built from state on the live DOM below, so a tab click leaves
+        // this markup string unchanged while the screen still has to change.
+        if (!options.passive || markup !== renderState.markup) {
             renderState.markup = markup;
             root.innerHTML = markup;
             root.querySelectorAll('input[type="file"]').forEach(function (input) {
@@ -9386,6 +9414,7 @@
                 });
             });
             restoreActiveControl(activeSnapshot);
+            restoreActiveTab(activeTab);
         }
         syncBootSweepUi();
         syncCropper();
