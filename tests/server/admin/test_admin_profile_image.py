@@ -11,6 +11,8 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import hashlib
+import base64
+import time
 
 import pytest
 
@@ -80,6 +82,21 @@ def test_legacy_profile_image_is_migrated_to_server_identity(tmp_path, monkeypat
     assert not legacy.exists()
 
 
+def test_server_profile_signal_reads_photo_through_secure_storage(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "get_mutable_data_dir", lambda *_args, **_kwargs: tmp_path)
+    monkeypatch.setattr(server, "_get_stable_server_id", lambda _cfg=None: "synthetic-server")
+    png = b"\x89PNG\r\n\x1a\nsynthetic signal photo"
+    saved = server._save_admin_profile_image(png)
+    saved.write_bytes(b"synthetic sealed envelope")
+    monkeypatch.setattr(server, "read_secure_file", lambda _path: png)
+
+    payload = server._get_server_profile_call_payload()
+
+    assert payload["profile_user_id"] == "synthetic-server"
+    assert payload["avatar_mime_type"] == "image/png"
+    assert base64.b64decode(payload["avatar_base64"]) == png
+
+
 PNG_IMAGE = b"\x89PNG\r\n\x1a\nsynthetic avatar"
 SAME_ORIGIN = {"Origin": "http://testserver", "Referer": "http://testserver/admin"}
 
@@ -111,6 +128,43 @@ def test_admin_origin_profile_avatar_rejects_anonymous_callers(avatar_client):
 
     assert server._get_admin_profile_image_path() == photo
     assert photo.read_bytes() == PNG_IMAGE
+
+
+@pytest.mark.parametrize("path", ["/assets/admin/profile-image", "/api/admin/profile-image"])
+def test_admin_photo_stays_private_through_a_remote_browser(avatar_client, path):
+    server._save_admin_profile_image(PNG_IMAGE)
+    response = avatar_client.get(path, headers={"X-AutoYou-Remote-Browser": "webrtc"})
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("credential", ["cookie", "bearer"])
+def test_admin_photo_json_for_authenticated_proxy_is_bounded_and_not_cached(avatar_client, monkeypatch, credential):
+    server._save_admin_profile_image(PNG_IMAGE)
+    headers = {"X-AutoYou-Remote-Browser": "webrtc"}
+    if credential == "cookie":
+        monkeypatch.setitem(server.ADMIN_SESSIONS, "synthetic-photo-session", True)
+        avatar_client.cookies.set("admin_session", "synthetic-photo-session")
+    else:
+        monkeypatch.setitem(server.ADMIN_API_TOKENS, "synthetic-photo-token", time.time() + 60)
+        headers["Authorization"] = "Bearer synthetic-photo-token"
+
+    # Secure storage may seal the on-disk file. The API must read plaintext
+    # through the same storage helper as the private image asset.
+    monkeypatch.setattr(server, "read_secure_file", lambda _path: PNG_IMAGE)
+    response = avatar_client.get("/api/admin/profile-image", headers=headers)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    payload = response.json()
+    assert payload["profile_user_id"] == "synthetic-server"
+    assert payload["has_photo"] is True
+    assert payload["mime_type"] == "image/png"
+    assert payload["avatar_url"].startswith("/assets/admin/profile-image?v=")
+    assert base64.b64decode(payload["data_base64"]) == PNG_IMAGE
+
+    monkeypatch.setattr(server, "read_secure_file", lambda _path: b"x" * (2 * 1024 * 1024 + 1))
+    payload = avatar_client.get("/api/admin/profile-image", headers=headers).json()
+    assert payload["has_photo"] is False
+    assert payload["data_base64"] == ""
 
 
 @pytest.mark.parametrize(

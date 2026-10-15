@@ -1705,12 +1705,14 @@ def register_routes(
         if auth_error:
             return auth_error
         image_path = server._get_admin_profile_image_path()
-        image_bytes = image_path.read_bytes() if image_path is not None else b""
+        image_bytes = server.read_secure_file(image_path) if image_path is not None and image_path.is_file() else b""
         if len(image_bytes) > server._ADMIN_PROFILE_IMAGE_MAX_BYTES:
             image_bytes = b""
         import base64
         return server._json_response_no_store({
             "profile_user_id": server._get_stable_server_id(),
+            "has_photo": bool(image_bytes),
+            "avatar_url": server._get_admin_profile_image_url() or "",
             "mime_type": server._get_admin_profile_image_media_type(image_path) if image_path and image_bytes else "",
             "data_base64": base64.b64encode(image_bytes).decode("ascii") if image_bytes else "",
         })

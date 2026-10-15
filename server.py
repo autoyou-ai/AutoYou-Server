@@ -2213,7 +2213,7 @@ def _save_admin_profile_image(payload: bytes) -> Path:
 
 def _get_server_profile_call_payload() -> Dict[str, Any]:
     image_path = _get_admin_profile_image_path()
-    image_bytes = image_path.read_bytes() if image_path is not None else b""
+    image_bytes = read_secure_file(image_path) if image_path is not None else b""
     if len(image_bytes) > _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES:
         image_bytes = b""
     return {

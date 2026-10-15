@@ -215,6 +215,7 @@
     var root = document.getElementById("autoyou-admin-root");
     var noticeTimer = null;
     var renderState = {
+        markup: null,
         passiveQueued: false,
         composing: false,
         pointerDown: false,
@@ -230,6 +231,7 @@
         notice: null,
         modal: null,
         softwareUpdate: { payload: null, loading: false, checked: false },
+        profileImage: { key: "", dataUrl: "", loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
         interact: { payload: null, selected: [], dirty: false, loading: false, saving: false, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
@@ -628,7 +630,7 @@
         if (!renderState.passiveQueued || hasActiveAdminControl()) {
             return;
         }
-        renderApp({ force: true });
+        renderApp({ passive: true, force: true });
     }
 
     function flushPassiveRenderSoon() {
@@ -641,6 +643,55 @@
             return value.slice(1);
         }
         return value;
+    }
+
+    function adminProfileImageKey(userID, url) {
+        return userID && /^\/?assets\/admin\/profile-image(?:\?|$)/.test(url)
+            ? JSON.stringify([String(userID), String(url)]) : "";
+    }
+
+    function adminProfileImageUrl(userID, url) {
+        var key = adminProfileImageKey(userID, url);
+        return /^\/?assets\/admin\/profile-image(?:\?|$)/.test(url)
+            ? (key && state.profileImage.key === key ? state.profileImage.dataUrl : "") : adminAssetUrl(url);
+    }
+
+    async function syncAdminProfileImage() {
+        var admin = getByPath(state.bootstrap, "admin", {});
+        var userID = String(admin.avatar_user_id || admin.server_id || "");
+        var url = String(admin.avatar_url || "");
+        var key = adminProfileImageKey(userID, url);
+        if (state.profileImage.key !== key) {
+            state.profileImage = { key: key, dataUrl: "", loading: false, checked: false };
+        }
+        var photo = state.profileImage;
+        if (!key || photo.loading || photo.checked) return;
+        photo.loading = true;
+        try {
+            // JSON follows the same authenticated fetch/proxy path as bootstrap.
+            // Keep private photo bytes in memory, scoped to this server and version.
+            var payload = await requestJson("/api/admin/profile-image", { cache: "no-store" });
+            var currentAdmin = getByPath(state.bootstrap, "admin", {});
+            if (state.profileImage !== photo || adminProfileImageKey(
+                String(currentAdmin.avatar_user_id || currentAdmin.server_id || ""), String(currentAdmin.avatar_url || "")) !== key) return;
+            var data = String(payload.data_base64 || "");
+            var mime = String(payload.mime_type || "").toLowerCase();
+            var responseUrl = String(payload.avatar_url || "");
+            if (payload.has_photo && String(payload.profile_user_id || "") === userID &&
+                adminProfileImageKey(userID, responseUrl) && /^image\/(png|jpeg|gif|webp)$/.test(mime) &&
+                data.length > 0 && data.length <= 4 * Math.ceil(2 * 1024 * 1024 / 3) &&
+                data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+                currentAdmin.avatar_url = responseUrl;
+                photo.key = adminProfileImageKey(userID, responseUrl);
+                photo.dataUrl = "data:" + mime + ";base64," + data;
+            }
+        } catch (error) {
+            // Keep the initials on connection/authentication errors. Refresh retries.
+        } finally {
+            photo.loading = false;
+            photo.checked = true;
+            if (state.profileImage === photo && photo.dataUrl) renderApp({ passive: true });
+        }
     }
 
     function dataUrlToBlob(dataUrl) {
@@ -3476,6 +3527,7 @@
 
     function applyBootstrap(bootstrap) {
         state.bootstrap = bootstrap;
+        if (!state.profileImage.dataUrl && !state.profileImage.loading) state.profileImage.checked = false;
         var updateLocal = getByPath(bootstrap, "status.software_update", {});
         state.softwareUpdate.payload = Object.assign({}, state.softwareUpdate.payload || {}, updateLocal);
         if (!getByPath(updateLocal, "enabled", true) || !getByPath(updateLocal, "signed_in", false)) {
@@ -4199,6 +4251,7 @@
         return {
             name: firstNonBlank([getByPath(admin, "server_name", ""), viewer.name], "AutoYou-Server"),
             avatarUrl: String(getByPath(admin, "avatar_url", "") || ""),
+            avatarUserId: String(admin.avatar_user_id || admin.server_id || ""),
             surfaceLabel: String(viewer.surface_label || "This computer"),
             deviceName: String(viewer.device_name || ""),
             userId: state.chat.userId || chatDefaultUserId()
@@ -4229,8 +4282,8 @@
     function chatFaceMarkup(identity, size) {
         if (identity && identity.is_self) {
             var self = chatSelfProfile();
-            var photo = self.avatarUrl ? adminAssetUrl(self.avatarUrl) : "";
-            return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " is-self" + (photo ? " has-image" : "") + "\" aria-hidden=\"true\">" + (photo ? "<img src=\"" + escapeHtml(photo) + "\" alt=\"\">" : escapeHtml(avatarText(self.name))) + "</span>";
+            var photo = self.avatarUrl ? adminProfileImageUrl(self.avatarUserId, self.avatarUrl) : "";
+            return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " is-self" + (photo ? " has-image" : "") + "\" aria-hidden=\"true\">" + (photo ? "<img data-admin-profile-image src=\"" + escapeHtml(photo) + "\" alt=\"\">" : escapeHtml(avatarText(self.name))) + "</span>";
         }
         var kind = String((identity && identity.kind) || "device");
         return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " kind-" + escapeHtml(kind) + "\" aria-hidden=\"true\">" + escapeHtml(kind === "room" ? "#" : chatInitials(identity && identity.name)) + "</span>";
@@ -4837,7 +4890,7 @@
         }
         var selected = chat.selected;
         var title = selected && selected.title ? selected.title : (chat.pendingTitle || serverName);
-        var eyebrow = selected ? (chatIdentityLine(chatIdentityFor(selected)) || selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Ready when you are");
+        var eyebrow = selected ? (chatIdentityLine(chatIdentityFor(selected)) || selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Conversation");
         var sessionLine = chat.sessionId ? "SessionID " + escapeHtml(chat.sessionId) : "A fresh conversation will be saved automatically";
         if (selected && selected.custom_title && selected.auto_title && selected.auto_title !== selected.title) {
             sessionLine = "Started with “" + escapeHtml(selected.auto_title) + "” · " + sessionLine;
@@ -5713,11 +5766,12 @@
         var nameFontSize = Math.max(11, Math.min(17, 250 / Math.max(String(serverName).length, 14))).toFixed(1) + "px";
         var avatarUserID = String(getByPath(admin, "avatar_user_id", getByPath(admin, "server_id", "")) || "");
         var avatarUrl = String(getByPath(admin, "avatar_url", "") || "");
+        var displayAvatarUrl = adminProfileImageUrl(avatarUserID, avatarUrl);
         var avatarUploading = isActionPending("profile-image-upload");
         var avatarMarkup = avatarUploading
             ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" disabled aria-busy=\"true\"><span class=\"ayu-btn-spinner\" aria-hidden=\"true\"></span></button>"
-            : (avatarUrl
-                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img src=\"" + escapeHtml(adminAssetUrl(avatarUrl)) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
+            : (displayAvatarUrl
+                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img data-admin-profile-image src=\"" + escapeHtml(displayAvatarUrl) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
                 : "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Upload profile image\" title=\"Upload profile image\"><span>" + escapeHtml(avatarText(serverName)) + "</span></button>");
         var profileMenu = state.profileMenuOpen ? renderProfileMenu(avatarUrl) : "";
         var updateStatus = state.softwareUpdate.payload || getByPath(state.bootstrap, "status.software_update", {});
@@ -6107,7 +6161,7 @@
         var cfg = bootstrapConfig();
         var status = getByPath(state.bootstrap, "status", {});
         var complete = onboardingCompleted();
-        var identity = "<div class=\"ayu-identity-band\"><div><div class=\"ayu-kicker\">Your local server</div><h1>Make yourself at home.</h1><p>Name your server, choose your theme, and keep the essentials in view.</p></div><div class=\"ayu-identity-fields\">" + field("Server name", input("overview.serverName", { placeholder: "My AutoYou" })) + field("Appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + button("Save", "save-overview", "primary", "save") + "</div></div>";
+        var identity = "<div class=\"ayu-identity-band\"><div><div class=\"ayu-kicker\">Your local server</div><h1>Overview</h1><p>Server identity, appearance, and current status.</p></div><div class=\"ayu-identity-fields\">" + field("Server name", input("overview.serverName", { placeholder: "My AutoYou" })) + field("Appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + button("Save", "save-overview", "primary", "save") + "</div></div>";
         var summaries = [
             { screen: "ai", label: "Responses", value: getByPath(status, "ai_agent.status", "Unknown"), icon: "cpu" },
             { screen: "agents", label: "Agents", value: String((getByPath(state.bootstrap, "agents.agent_overview", []) || []).filter(function (agent) { return agent.installed; }).length) + " installed", icon: "agents" },
@@ -6118,8 +6172,8 @@
             return "<button type=\"button\" class=\"ayu-summary-card\" data-action=\"nav:" + item.screen + "\"><span class=\"ayu-summary-icon\">" + icon(item.icon) + "</span><span><small>" + escapeHtml(item.label) + "</small><strong>" + escapeHtml(item.value) + "</strong></span>" + icon("arrowRight") + "</button>";
         }).join("") + "</div>";
         var next = complete
-            ? panel("Ready when you are", "Open a conversation or see which devices are connected.", "<div class=\"ayu-inline-actions\">" + button("Open chat", "nav:chat", "primary", "msg") + button("Live View", "nav:live", "secondary", "eye") + button("Revisit setup", "nav:setup", "ghost", "bolt") + "</div>")
-            : "<div class=\"ayu-start-banner\"><span class=\"ayu-start-icon\">" + icon("bolt") + "</span><div><strong>A little setup. A lot you can do.</strong><p>Choose your uses, local AI, permissions, and a private connection in one guided flow.</p></div>" + button("Set up AutoYou", "nav:setup", "primary", "arrowRight") + "</div>";
+            ? panel("Quick actions", "Open a conversation or see which devices are connected.", "<div class=\"ayu-inline-actions\">" + button("Open chat", "nav:chat", "primary", "msg") + button("Live View", "nav:live", "secondary", "eye") + button("Revisit setup", "nav:setup", "ghost", "bolt") + "</div>")
+            : "<div class=\"ayu-start-banner\"><span class=\"ayu-start-icon\">" + icon("bolt") + "</span><div><strong>Complete server setup</strong><p>Choose your uses, local AI, permissions, and a private connection in one guided flow.</p></div>" + button("Set up AutoYou", "nav:setup", "primary", "arrowRight") + "</div>";
         return "<div class=\"ayu-screen ayu-overview\">" + identity + next + cards + "<div class=\"ayu-grid-2\">" + panel("Service controls", "Start, stop, or restart your local services.", renderOverviewQuickControls()) + panel("Find the right setting", "Each page has one job.", "<div class=\"ayu-destination-list\">" + [
             ["permissions", "Permissions", "Microphone, webcam, screen, recording and memory", "shield"],
             ["connectivity", "Connectivity", "This computer, home network and remote access", "wifi"],
@@ -6413,12 +6467,12 @@
     }
 
     var GUIDED_SETUP_STEPS = [
-        { id: "welcome", label: "Make it yours", title: "Your AutoYou, your way.", copy: "Start with a name and an everyday preset. Everything stays editable." },
+        { id: "welcome", label: "Identity", title: "Server identity and preset", copy: "Set the server name and choose a configuration preset." },
         { id: "uses", label: "Choose uses", title: "What would you like to do?", copy: "Pick the things you need. Permission to record or control your computer is a separate choice." },
         { id: "responses", label: "Responses", title: "What should power responses?", copy: "Local models are the recommended starting point. Hosted providers and other runtimes are optional." },
         { id: "privacy", label: "Privacy", title: "What can AutoYou access?", copy: "You decide what is shared, recorded, and saved. These choices apply when you save your plan." },
         { id: "connect", label: "Connect", title: "Where should this server be reachable?", copy: "Keep the server on this computer and use Telegram for personal access, or choose another connection." },
-        { id: "review", label: "Review & boot", title: "Your setup, ready to review.", copy: "Check the exact changes, save your plan, then start the local services you chose." }
+        { id: "review", label: "Review & boot", title: "Review configuration", copy: "Check the exact changes, save your plan, then start the local services you chose." }
     ];
 
     var GUIDED_PERMISSION_COPY = [
@@ -6455,7 +6509,7 @@
         var capture = [permissions.share_screen ? "Screen" : "", permissions.share_microphone ? "Microphone" : "", permissions.share_webcam ? "Webcam" : ""].filter(Boolean);
         var ai = (setupQuestion("ai_path").options || []).find(function (option) { return option.id === answers.ai_path; });
         var network = (setupQuestion("network_scope").options || []).find(function (option) { return option.id === answers.network_scope; });
-        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Built around you.</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
+        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Setup summary</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
     }
 
     function renderGuidedTelegram() {
@@ -6642,12 +6696,12 @@
             return "<div class=\"ayu-setup-modebar\">" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "<span>Detailed setup and existing recipes</span></div>" + renderAdvancedSetupScreen();
         }
         if (state.setup.mode === "boot") {
-            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Start with AutoYou", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
+            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Startup services", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
         }
         var index = Math.max(0, Math.min(Number(state.setup.guidedStep) || 0, GUIDED_SETUP_STEPS.length - 1));
         var step = GUIDED_SETUP_STEPS[index];
         var progress = Math.round(index / (GUIDED_SETUP_STEPS.length - 1) * 100);
-        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>A good start, made simple.</h1><p>One flow from first setup to a ready local server.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (index === 2 && guidedUsesLocalModel() ? "Continue keeps this model and saves a changed selection" : (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan")) + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-continue", "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
+        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>Guided setup</h1><p>Configure use cases, responses, permissions, connectivity, and startup.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (index === 2 && guidedUsesLocalModel() ? "Continue keeps this model and saves a changed selection" : (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan")) + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-continue", "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
     }
 
     async function applyGuidedSetup() {
@@ -9288,28 +9342,55 @@
         renderState.passiveQueued = false;
         var activeSnapshot = captureActiveControl();
         if (!state.bootstrap) {
+            renderState.markup = null;
             root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><div class=\"ayu-spinner\"></div><h1>Loading admin shell</h1><p>Fetching the live bootstrap snapshot from the server.</p></div></div>";
             return;
         }
-        root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
-        root.querySelectorAll('input[type="file"]').forEach(function (input) {
-            input.tabIndex = -1;
-            input.setAttribute("aria-hidden", "true");
-        });
-        organizeSettingsSections();
-        if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
-            var sectionNav = root.querySelector(".ayu-section-nav");
-            var libraryToolbar = document.createElement("div");
-            libraryToolbar.innerHTML = renderAgentLibraryToolbar(getByPath(state.bootstrap, "agents.agent_overview", []));
-            if (sectionNav) sectionNav.insertAdjacentElement("afterend", libraryToolbar);
+        var markup = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
+        // Polling often changes data that is not visible on the current screen.
+        // Keep its DOM, scrolling, images, and file inputs mounted in that case.
+        if (markup !== renderState.markup) {
+            renderState.markup = markup;
+            root.innerHTML = markup;
+            root.querySelectorAll('input[type="file"]').forEach(function (input) {
+                input.tabIndex = -1;
+                input.setAttribute("aria-hidden", "true");
+            });
+            organizeSettingsSections();
+            if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
+                var sectionNav = root.querySelector(".ayu-section-nav");
+                var libraryToolbar = document.createElement("div");
+                libraryToolbar.innerHTML = renderAgentLibraryToolbar(getByPath(state.bootstrap, "agents.agent_overview", []));
+                if (sectionNav) sectionNav.insertAdjacentElement("afterend", libraryToolbar);
+            }
+            root.querySelectorAll("details[data-disclosure]").forEach(function (element) {
+                element.addEventListener("toggle", function () {
+                    if (!root.contains(element)) return;
+                    var id = element.getAttribute("data-disclosure");
+                    state.disclosure[id] = element.open;
+                    // Native disclosure toggles already changed the DOM. Keep the
+                    // cached markup aligned so the next poll does not remount it.
+                    var attribute = 'data-disclosure="' + escapeHtml(id) + '"';
+                    renderState.markup = renderState.markup.replace(
+                        attribute + (element.open ? ">" : " open>"),
+                        attribute + (element.open ? " open>" : ">"));
+                });
+            });
+            root.querySelectorAll("img[data-admin-profile-image]").forEach(function (element) {
+                element.addEventListener("error", function () {
+                    var parent = element.parentElement;
+                    parent.classList.remove("has-image");
+                    var initials = document.createElement("span");
+                    initials.textContent = avatarText(getByPath(state.bootstrap, "admin.server_name", "AutoYou-Server"));
+                    element.replaceWith(initials);
+                });
+            });
+            restoreActiveControl(activeSnapshot);
         }
-        root.querySelectorAll("details[data-disclosure]").forEach(function (element) {
-            element.addEventListener("toggle", function () { state.disclosure[element.getAttribute("data-disclosure")] = element.open; });
-        });
-        restoreActiveControl(activeSnapshot);
         syncBootSweepUi();
         syncCropper();
         syncTelegramSenderPolling();
+        syncAdminProfileImage();
         if (state.screen === "guides") {
             ensureBootSweepScores(false).catch(function () {});
         }
