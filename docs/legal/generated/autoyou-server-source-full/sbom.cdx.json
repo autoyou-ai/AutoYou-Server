@@ -1780,11 +1780,18 @@
       "type": "library"
     },
     {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
       "name": "lingua-language-detector",
       "properties": [
         {
           "name": "requirement",
-          "value": "lingua-language-detector==2.2.0"
+          "value": "lingua-language-detector==2.1.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1795,9 +1802,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/lingua-language-detector@2.2.0",
+      "purl": "pkg:pypi/lingua-language-detector@2.1.1",
       "type": "library",
-      "version": "2.2.0"
+      "version": "2.1.1"
     },
     {
       "licenses": [
@@ -3318,6 +3325,13 @@
       "type": "library"
     },
     {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "name": "supertonic",
       "properties": [
         {
@@ -3956,7 +3970,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-14T21:50:12+00:00",
+    "timestamp": "2026-10-15T07:30:17+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3965,7 +3979,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:1c030b3d-809e-497b-9e55-01fbc953586d",
+  "serialNumber": "urn:uuid:d4ee043a-be3d-4b54-b876-a1a26ecacde7",
   "specVersion": "1.5",
   "version": 1
 }
