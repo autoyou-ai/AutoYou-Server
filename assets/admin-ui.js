@@ -253,7 +253,8 @@
             applied: false,
             applying: false,
             progress: "",
-            applyError: ""
+            applyError: "",
+            modelCheckError: ""
         },
         aiLibrary: {
             local: null,
@@ -262,6 +263,8 @@
             behavior: null,
             openclawStatus: null,
             hermesStatus: null,
+            piStatus: null,
+            customStatus: null,
             details: {},
             detailLoadingKey: "",
             selectedCatalogKey: "",
@@ -272,6 +275,8 @@
             behaviorLoading: false,
             openclawLoading: false,
             hermesLoading: false,
+            piLoading: false,
+            customLoading: false,
             query: "",
             source: "ollama",
             catalogPage: 1,
@@ -1598,6 +1603,19 @@
             providerFields.push(field("Odysseus API base", input("aiProvider.odysseus_api_base", { placeholder: "http://127.0.0.1:7000" }), "The external Odysseus companion service endpoint."));
             providerFields.push(field("Odysseus model", input("aiProvider.odysseus_model", { placeholder: "Leave blank for Odysseus default" }), "Choose a registered Odysseus endpoint model, or leave blank for its first enabled model."));
             providerFields.push(field("Odysseus chat token", input("aiProvider.odysseus_token", { placeholder: "Leave blank to keep saved token", type: "password" }), "Use an Odysseus chat-scoped token. It stays in protected AutoYou configuration."));
+        } else if (provider === "pi") {
+            providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650)."));
+            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "C:\\Users\\You\\Projects\\Pi" }), "Path to the Pi coding agent directory (CLI fallback)."));
+            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "pi-agent" }), "Model identifier or routing alias used by Pi."));
+            providerFields.push(field("Pi gateway token", input("aiProvider.pi_token", { placeholder: "Leave blank if unauthenticated", type: "password" }), "Bearer token for Pi gateway when enabled."));
+        } else if (provider === "custom") {
+            providerFields.push(field("Custom API Base URL", input("aiProvider.custom_api_base", { placeholder: "http://127.0.0.1:8000" }), "External application or model endpoint. AutoYou routes audio, video, chat, and control commands here."));
+            providerFields.push(field("Custom model / agent name", input("aiProvider.custom_model", { placeholder: "custom" }), "Model identifier or routing alias sent in multi-channel payloads."));
+            providerFields.push(field("Custom API token / key", input("aiProvider.custom_token", { placeholder: "Bearer token or API key", type: "password" }), "Authorization token sent to your custom endpoint."));
+            providerFields.push(field("Payload format", select("aiProvider.custom_format", [
+                { value: "openai", label: "OpenAI-compatible (/v1/chat/completions)" },
+                { value: "generic", label: "Generic JSON multi-channel" }
+            ], getByPath(state.forms, "aiProvider.custom_format", "openai")), "Format of payloads dispatched to the Custom API endpoint."));
         }
 
         var bridgeInstalled = getByPath(state.bootstrap, "agents.agent_overview", []).some(function (agent) { return agent.agent_name === "openclaw_agent" && agent.installed; });
@@ -1612,25 +1630,63 @@
                     ? "Odysseus gateway mode uses Odysseus's authenticated companion sessions directly. AutoYou AI and Agent Studio do not run for these replies."
                     : (provider === "hermes"
                         ? "Hermes provider mode is gateway-first. Hermes-backed sessions follow the Hermes runtime, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."
-                        : "OpenClaw provider mode is gateway-first. OpenClaw-backed sessions follow the OpenClaw conversation flow, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."))) + "</div>"
+                        : (provider === "pi"
+                            ? "Pi Coding Agent mode uses Pi as the primary coding and agent runtime. AutoYou provides full communication channels (voice, video, chat, and control commands)."
+                            : (provider === "custom"
+                                ? "Custom API mode turns AutoYou into the communication bridge. Audio, video snapshots, chat, and datachannel control commands are relayed to and from your external application."
+                                : "OpenClaw provider mode is gateway-first. OpenClaw-backed sessions follow the OpenClaw conversation flow, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."))))) + "</div>"
             : "<div class=\"ayu-note ayu-note-green\">This provider keeps AutoYou's own agent runtime and installed agents active as the main orchestration layer.</div>";
 
-        var gatewayStatus = provider === "hermes" ? state.aiLibrary.hermesStatus : (provider === "odysseus" ? state.aiLibrary.odysseusStatus : (provider === "ollama_gateway" ? state.aiLibrary.ollamaStatus : state.aiLibrary.openclawStatus));
-        var gatewayLoading = provider === "hermes" ? state.aiLibrary.hermesLoading : (provider === "odysseus" ? state.aiLibrary.odysseusLoading : (provider === "ollama_gateway" ? state.aiLibrary.ollamaLoading : state.aiLibrary.openclawLoading));
-        var gatewayName = provider === "hermes" ? "Hermes" : (provider === "odysseus" ? "Odysseus" : (provider === "ollama_gateway" ? "Ollama" : "OpenClaw"));
-        var gatewayEndpoint = provider === "hermes"
-            ? String(getByPath(state.forms, "aiProvider.hermes_port", 8642))
-            : (provider === "odysseus"
-                ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.odysseus_api_base", "http://127.0.0.1:7000")))
-                : (provider === "ollama_gateway"
-                    ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.ollama_api_base", "http://127.0.0.1:11434")))
-                    : String(getByPath(state.forms, "aiProvider.openclaw_port", 18789))));
+        var gatewayStatus = provider === "pi"
+            ? state.aiLibrary.piStatus
+            : (provider === "custom"
+                ? state.aiLibrary.customStatus
+                : (provider === "hermes"
+                    ? state.aiLibrary.hermesStatus
+                    : (provider === "odysseus"
+                        ? state.aiLibrary.odysseusStatus
+                        : (provider === "ollama_gateway"
+                            ? state.aiLibrary.ollamaStatus
+                            : state.aiLibrary.openclawStatus))));
+        var gatewayLoading = provider === "pi"
+            ? state.aiLibrary.piLoading
+            : (provider === "custom"
+                ? state.aiLibrary.customLoading
+                : (provider === "hermes"
+                    ? state.aiLibrary.hermesLoading
+                    : (provider === "odysseus"
+                        ? state.aiLibrary.odysseusLoading
+                        : (provider === "ollama_gateway"
+                            ? state.aiLibrary.ollamaLoading
+                            : state.aiLibrary.openclawLoading))));
+        var gatewayName = provider === "pi"
+            ? "Pi Coding Agent"
+            : (provider === "custom"
+                ? "Custom API"
+                : (provider === "hermes"
+                    ? "Hermes"
+                    : (provider === "odysseus"
+                        ? "Odysseus"
+                        : (provider === "ollama_gateway"
+                            ? "Ollama"
+                            : "OpenClaw"))));
+        var gatewayEndpoint = provider === "pi"
+            ? String(getByPath(state.forms, "aiProvider.pi_port", 8650))
+            : (provider === "custom"
+                ? String(getByPath(state.forms, "aiProvider.custom_api_base", "http://127.0.0.1:8000"))
+                : (provider === "hermes"
+                    ? String(getByPath(state.forms, "aiProvider.hermes_port", 8642))
+                    : (provider === "odysseus"
+                        ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.odysseus_api_base", "http://127.0.0.1:7000")))
+                        : (provider === "ollama_gateway"
+                            ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.ollama_api_base", "http://127.0.0.1:11434")))
+                            : String(getByPath(state.forms, "aiProvider.openclaw_port", 18789))))));
         var gatewayStatusMarkup = aiProviderUsesGateway(provider)
             ? (gatewayLoading
                 ? "<div class=\"ayu-empty\">Checking " + escapeHtml(gatewayName) + " gateway status...</div>"
                 : renderStatusRows([
                     { label: "Gateway ready", value: (getByPath(gatewayStatus, "running", getByPath(gatewayStatus, "available", false))) ? "Yes" : "No" },
-                    { label: provider === "ollama_gateway" || provider === "odysseus" ? "Gateway endpoint" : "Gateway port", value: gatewayEndpoint },
+                    { label: provider === "ollama_gateway" || provider === "odysseus" || provider === "custom" ? "Gateway endpoint" : "Gateway port", value: gatewayEndpoint },
                     { label: "Reported models", value: Array.isArray(getByPath(gatewayStatus, "models", [])) && getByPath(gatewayStatus, "models", []).length ? getByPath(gatewayStatus, "models", []).join(", ") : getByPath(gatewayStatus, "error", "No model list reported") }
                 ]))
             : "";
@@ -1689,7 +1745,11 @@
                     ? "Hermes manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."
                     : (provider === "odysseus"
                         ? "Odysseus owns its own model/session behavior. Configure its selected endpoint in the gateway settings above."
-                        : "OpenClaw manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."))
+                        : (provider === "pi"
+                            ? "Pi Coding Agent manages its own runtime behavior. AutoYou serves as the communication software."
+                            : (provider === "custom"
+                                ? "Custom API manages its own model responses and behavior. AutoYou acts as the communication bridge."
+                                : "OpenClaw manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."))))
                 : "These presets apply through the AutoYou runtime for Gemini and other LiteLLM-backed providers.");
         return "<div class=\"ayu-note\">" + escapeHtml(providerNote) + "</div>" + field("Preset", select("modelBehavior.mode", behaviorOptions.length ? behaviorOptions : ["accurate", "human", "creative", "none"])) + "<div class=\"ayu-note ayu-note-green\">Leave a field blank to keep the preset value. Matching the preset no longer saves a fake custom override.</div><div class=\"ayu-grid-2\">" + field("Temperature", input("modelBehavior.temperature", { placeholder: hasValue(getByPath(presetParams, "temperature", "")) ? String(getByPath(presetParams, "temperature", "")) : "preset" })) + field("Top P", input("modelBehavior.top_p", { placeholder: hasValue(getByPath(presetParams, "top_p", "")) ? String(getByPath(presetParams, "top_p", "")) : "preset" })) + field("Top K", input("modelBehavior.top_k", { placeholder: hasValue(getByPath(presetParams, "top_k", "")) ? String(getByPath(presetParams, "top_k", "")) : "preset" })) + field("Repeat penalty", input("modelBehavior.repeat_penalty", { placeholder: hasValue(getByPath(presetParams, "repeat_penalty", "")) ? String(getByPath(presetParams, "repeat_penalty", "")) : "preset" })) + field("Context override", input("modelBehavior.num_ctx", { placeholder: isOllamaProvider(provider) ? "Leave blank for automatic" : "Optional" }), isOllamaProvider(provider) ? "Leave empty to keep Ollama's automatic context recommendation." : "Only used when the runtime honors context overrides.") + "</div>" + thinkingMarkup + checkbox("modelBehavior.show_thinking", "Show model thinking", "Off by default. Reveals the model's internal reasoning in chat replies instead of hiding it.") + "<div class=\"ayu-inline-actions\">" + button("Save model behavior", "save-model-behavior", "primary", "save") + "</div>" + (state.aiLibrary.behaviorLoading ? "<div class=\"ayu-empty\">Loading model behavior details...</div>" : renderStatusRows(overrideRows) + renderJsonNote({
             preset: getByPath(state.aiLibrary, "behavior.label", currentMode),
@@ -2392,21 +2452,29 @@
     }
 
     function localModelNames() {
-        var models = Array.isArray(getByPath(state.aiLibrary, "local.models", [])) ? getByPath(state.aiLibrary, "local.models", []) : [];
+        var models = getByPath(state.aiLibrary, "local.models", getByPath(state.setup.payload, "ollama.local_models", []));
+        models = Array.isArray(models) ? models : [];
         return models.map(function (model) {
-            return String(model.name || model.model || model.digest || "");
-        }).filter(Boolean);
+            return normalizeLocalModelName(typeof model === "string" ? model : (model && (model.name || model.model) || ""));
+        }).filter(function (name, index, names) { return name && names.indexOf(name) === index; });
+    }
+
+    function normalizeLocalModelName(reference) {
+        return String(reference || "").trim().replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").trim();
+    }
+
+    function matchingLocalModels(reference) {
+        var requested = normalizeLocalModelName(reference).toLowerCase();
+        if (!requested) return [];
+        var exact = localModelNames().filter(function (candidate) { return candidate.toLowerCase() === requested; });
+        if (exact.length) return exact;
+        return requested.indexOf(":") !== -1 ? [] : localModelNames().filter(function (candidate) {
+            return candidate.toLowerCase().split(":")[0] === requested;
+        });
     }
 
     function modelAvailableLocally(reference) {
-        var requested = String(reference || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-        if (!requested) {
-            return false;
-        }
-        return localModelNames().some(function (candidate) {
-            var normalized = String(candidate || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-            return normalized === requested || (requested.indexOf(":") === -1 && normalized.split(":")[0] === requested);
-        });
+        return matchingLocalModels(reference).length === 1;
     }
 
     function normalizeBehaviorValue(value, fieldName) {
@@ -2725,6 +2793,22 @@
             description: "Use the local Hermes Agent gateway when you want Hermes to own the primary session runtime and tool loop.",
             badgeLabel: "Gateway",
             badgeTone: "amber"
+        },
+        {
+            id: "pi",
+            eyebrow: "Coding Agent",
+            label: "Pi Coding Agent",
+            description: "Use Pi from C:\\Users\\You\\Projects\\Pi with full coding capabilities, CLI fallback, and multi-channel communication.",
+            badgeLabel: "Agent",
+            badgeTone: "purple"
+        },
+        {
+            id: "custom",
+            eyebrow: "Communication Bridge",
+            label: "Custom API Integration",
+            description: "Turn AutoYou into communication software for your custom AI/application backend across audio, video, chat, and control datachannels.",
+            badgeLabel: "Custom",
+            badgeTone: "green"
         }
     ];
 
@@ -2848,7 +2932,7 @@
     }
 
     function aiProviderUsesGateway(provider) {
-        return provider === "ollama_gateway" || provider === "odysseus" || provider === "openclaw" || provider === "hermes";
+        return provider === "ollama_gateway" || provider === "odysseus" || provider === "openclaw" || provider === "hermes" || provider === "pi" || provider === "custom";
     }
 
     function isOllamaProvider(provider) {
@@ -3040,7 +3124,7 @@
             answers[questionId] = optionId;
         }
         if (questionId === "ai_path") {
-            setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", model_picker: "ollama" }[optionId] || "ollama");
+            setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", pi: "pi", custom: "custom", model_picker: "ollama" }[optionId] || "ollama");
         }
         if (questionId === "intents" && answers.permissions) {
             if (answers.intents.indexOf("desktop_automation") === -1) answers.permissions.desktop_control = false;
@@ -3134,6 +3218,14 @@
                 hermes_port: getByPath(cfg, "ai_provider.hermes_port", 8642),
                 hermes_token: "",
                 hermes_model: getByPath(cfg, "ai_provider.hermes_model", "hermes-agent"),
+                pi_port: getByPath(cfg, "ai_provider.pi_port", 8650),
+                pi_token: "",
+                pi_model: getByPath(cfg, "ai_provider.pi_model", "pi-agent"),
+                pi_path: getByPath(cfg, "ai_provider.pi_path", "C:\\Users\\You\\Projects\\Pi"),
+                custom_api_base: getByPath(cfg, "ai_provider.custom_api_base", "http://127.0.0.1:8000"),
+                custom_model: getByPath(cfg, "ai_provider.custom_model", "custom"),
+                custom_token: "",
+                custom_format: getByPath(cfg, "ai_provider.custom_format", "openai"),
                 litellm_model: getByPath(cfg, "ai_provider.litellm_model", ""),
                 litellm_api_key: "",
                 litellm_api_base: getByPath(cfg, "ai_provider.litellm_api_base", ""),
@@ -3607,6 +3699,8 @@
         state.aiLibrary.downloadsLoading = true;
         state.aiLibrary.openclawLoading = true;
         state.aiLibrary.hermesLoading = true;
+        state.aiLibrary.piLoading = true;
+        state.aiLibrary.customLoading = true;
         state.aiLibrary.ollamaLoading = activeAiProvider() === "ollama_gateway";
         state.aiLibrary.odysseusLoading = activeAiProvider() === "odysseus";
         renderApp();
@@ -3618,17 +3712,21 @@
                 safeRequestJson("/api/ai/openclaw/status"),
                 safeRequestJson("/api/ai/hermes/status"),
                 activeAiProvider() === "ollama_gateway" ? safeRequestJson("/api/ai/ollama/status") : Promise.resolve({ ok: true, payload: null }),
-                activeAiProvider() === "odysseus" ? safeRequestJson("/api/ai/odysseus/status") : Promise.resolve({ ok: true, payload: null })
+                activeAiProvider() === "odysseus" ? safeRequestJson("/api/ai/odysseus/status") : Promise.resolve({ ok: true, payload: null }),
+                safeRequestJson("/api/ai/pi/status"),
+                safeRequestJson("/api/ai/custom/status")
             ]);
             state.aiLibrary.behavior = results[0];
             syncModelBehaviorFormFromResponse(results[0]);
             state.aiLibrary.local = results[1];
-            applySelectedOllamaModel(results[1], "");
+            if (state.screen !== "setup") applySelectedOllamaModel(results[1], "");
             state.aiLibrary.downloads = results[2];
             state.aiLibrary.openclawStatus = results[3].ok ? results[3].payload : { running: false, error: results[3].error || "OpenClaw gateway not reachable." };
             state.aiLibrary.hermesStatus = results[4].ok ? results[4].payload : { running: false, error: results[4].error || "Hermes gateway not reachable." };
             state.aiLibrary.ollamaStatus = results[5].ok ? results[5].payload : { available: false, error: results[5].error || "Ollama gateway not reachable." };
             state.aiLibrary.odysseusStatus = results[6].ok ? results[6].payload : { available: false, error: results[6].error || "Odysseus gateway not reachable." };
+            state.aiLibrary.piStatus = results[7].ok ? results[7].payload : { running: false, error: results[7].error || "Pi gateway not reachable." };
+            state.aiLibrary.customStatus = results[8].ok ? results[8].payload : { available: false, error: results[8].error || "Custom API not reachable." };
             if (hasActiveJobs(results[2])) {
                 startModelDownloadPolling();
             } else {
@@ -3642,6 +3740,8 @@
             state.aiLibrary.downloadsLoading = false;
             state.aiLibrary.openclawLoading = false;
             state.aiLibrary.hermesLoading = false;
+            state.aiLibrary.piLoading = false;
+            state.aiLibrary.customLoading = false;
             state.aiLibrary.ollamaLoading = false;
             state.aiLibrary.odysseusLoading = false;
             renderApp();
@@ -3729,8 +3829,19 @@
             state.aiLibrary.local = await requestJson("/api/model-library/local");
             if (modelAvailableLocally(pending.model)) {
                 state.aiLibrary.pendingSelection = null;
-                var selectionResult = await postJson("/api/model-library/select", { model: pending.model });
-                applySelectedOllamaModel(selectionResult, pending.model);
+                if (pending.setupPath) {
+                    if (currentSetupAnswers().ai_path !== pending.setupPath || guidedLocalModelName() !== normalizeLocalModelName(pending.model)) {
+                        setNotice("success", "Model downloaded. Your newer response choice has been kept.");
+                        return;
+                    }
+                    if (!await saveGuidedLocalModel()) {
+                        setNotice("error", "Model downloaded, but AutoYou could not verify the selection. Retry the model check on Responses.");
+                        return;
+                    }
+                } else {
+                    var selectionResult = await postJson("/api/model-library/select", { model: pending.model });
+                    applySelectedOllamaModel(selectionResult, pending.model);
+                }
                 await refreshBootstrap();
                 await ensureAiData(true);
                 setNotice("success", "Model downloaded and selected.");
@@ -3785,6 +3896,7 @@
                 model: pendingSelection.model,
                 reference: pendingSelection.reference,
                 jobId: getByPath(response, "job.job_id", ""),
+                setupPath: pendingSelection.setupPath || "",
                 selecting: false
             };
         }
@@ -6356,15 +6468,15 @@
         var cfg = bootstrapConfig();
         var answers = currentSetupAnswers();
         var setup = state.setup.payload || {};
-        var models = getByPath(state.aiLibrary.local, "models", getByPath(setup, "ollama.local_models", []));
         var currentModel = String(getByPath(cfg, "ollama.model", ""));
-        var modelReady = Array.isArray(models) && models.some(function (model) {
-            var name = typeof model === "string" ? model : (model.name || model.model || "");
-            return name === currentModel || name === currentModel + ":latest";
-        });
-        var providerReady = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway" || answers.ai_path === "model_picker"
-            ? modelReady
-            : getByPath(cfg, "ai_provider.provider", "") === ({ cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus" }[answers.ai_path]);
+        var selectedModel = guidedLocalModelName();
+        var installedModel = matchingLocalModels(selectedModel);
+        var configuredModel = matchingLocalModels(currentModel);
+        var modelReady = !state.setup.modelCheckError && installedModel.length === 1 && configuredModel.length === 1 && configuredModel[0] === installedModel[0];
+        var localPath = guidedUsesLocalModel();
+        var providerReady = localPath
+            ? modelReady && getByPath(cfg, "ai_provider.provider", "") === (answers.ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama")
+            : getByPath(cfg, "ai_provider.provider", "") === ({ cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", pi: "pi", custom: "custom" }[answers.ai_path]);
         var passwordReady = Boolean(getByPath(setup, "password_changed", false)) || getByPath(setup, "using_default_password", true) === false;
         return [
             { label: "Custom password", ready: passwordReady && getByPath(cfg, "security.mode", "normal") !== "normal", action: "setup-guided-step:4", copy: "Save a custom password and Secure Mode on Connect." },
@@ -6372,6 +6484,105 @@
             { label: "Personal connection", ready: answers.network_scope !== "telegram" || telegramApprovedSenderIds().length > 0, action: "setup-guided-step:4", copy: "Save your bot token and approve your own sender ID." },
             { label: "Applied setup plan", ready: state.setup.applied, action: "setup-guided-apply", copy: "Apply the reviewed settings and agent choices below." }
         ];
+    }
+
+    function guidedUsesLocalModel() {
+        return ["local_ollama", "native_ollama_gateway", "model_picker"].indexOf(currentSetupAnswers().ai_path) !== -1;
+    }
+
+    function guidedLocalModelName() {
+        return normalizeLocalModelName(getByPath(state.forms, "aiProvider.ollama_model", "") || getByPath(bootstrapConfig(), "ollama.model", "") || localModelNames()[0] || "");
+    }
+
+    function guidedModelDownload() {
+        var reference = guidedLocalModelName().toLowerCase();
+        return activeJobList(state.aiLibrary.downloads).find(function (job) {
+            return normalizeLocalModelName(job.reference || job.title).toLowerCase() === reference && ["queued", "running"].indexOf(String(job.status || "").toLowerCase()) !== -1;
+        });
+    }
+
+    function renderGuidedLocalModel() {
+        var name = guidedLocalModelName();
+        setByPath(state.forms, "aiProvider.ollama_model", name);
+        var matches = matchingLocalModels(name);
+        var known = Array.isArray(getByPath(state.aiLibrary.local, "models", getByPath(state.setup.payload, "ollama.local_models", null)));
+        var options = buildSimpleOptions(localModelNames(), name, function (value) {
+            var variants = matchingLocalModels(value);
+            return value + (variants.length === 1 ? " (installed)" : (variants.length > 1 ? " (choose an exact tag)" : (known ? " (not installed)" : "")));
+        });
+        if (!options.length) options = [{ value: "", label: "Choose a model from the model library" }];
+        var status;
+        if (state.setup.modelCheckError) {
+            status = "<strong>Could not check installed models.</strong><p>" + escapeHtml(state.setup.modelCheckError) + "</p>" + button("Retry model check", "setup-check-local-model", "secondary", "refresh", "sm");
+        } else if (matches.length === 1) {
+            status = "<strong>" + escapeHtml(matches[0]) + " is installed.</strong><p>Continue keeps this model and saves a changed selection. You do not need to press Save local model first.</p>";
+        } else if (matches.length > 1) {
+            status = "<strong>Choose an exact installed model tag.</strong><p>More than one installed version matches " + escapeHtml(name) + ". Select the version you want above.</p>";
+        } else if (!known || state.aiLibrary.localLoading) {
+            status = "<strong>Checking installed models...</strong><p>Your current selection is kept while AutoYou checks the local library.</p>";
+        } else if (guidedModelDownload()) {
+            var job = guidedModelDownload();
+            status = "<strong>Downloading " + escapeHtml(name) + ".</strong><p>" + escapeHtml(job.message || job.status || "Download in progress") + " You can continue setup while this finishes. AutoYou will select the model when it is ready.</p>" + renderProgressTrack(Number(job.progress_percent) || 0);
+        } else {
+            status = "<strong>" + escapeHtml(name ? name + " is not installed on this computer." : "No local model is installed or selected.") + "</strong><p>" + (name ? "Install this model, choose an installed model above, or finish the other setup choices first. Model files can require several GB of download and disk space." : "Open the model library to choose and download a model, then return to this step.") + "</p>" + (name ? button("Install model & continue", "setup-install-local-model", "primary", "download", "sm") : "");
+        }
+        return field("Local model", select("aiProvider.ollama_model", options), "Continue uses this selection. Models that need downloading are marked above.")
+            + "<div id=\"ayu-setup-model-status\" class=\"ayu-note ayu-note-" + (matches.length === 1 && !state.setup.modelCheckError ? "green" : "amber") + "\" role=\"status\" tabindex=\"-1\">" + status + (matches.length !== 1 ? "<div class=\"ayu-inline-actions\">" + button("Set up the rest first", "setup-model-later", "ghost", "arrowRight", "sm") + "</div>" : "") + "</div>"
+            + "<div class=\"ayu-inline-actions\">" + button("Save local model", "setup-save-local-model", "secondary", "save", "sm") + button("Download or manage models", "setup-open-screen:ai:models", "secondary", "download", "sm") + "</div>";
+    }
+
+    function setGuidedSetupStep(index) {
+        state.setup.guidedStep = Math.max(0, Math.min(Number(index) || 0, GUIDED_SETUP_STEPS.length - 1));
+        state.setup.mode = "guided";
+        renderApp();
+        var heading = root && root.querySelector("[data-setup-heading]");
+        if (heading) heading.focus({ preventScroll: true });
+        scrollIntoViewIfPresent("#ayu-setup-current");
+        if (state.setup.guidedStep === 2) ensureAiData(false);
+        if (state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
+    }
+
+    async function refreshGuidedLocalModels() {
+        state.setup.modelCheckError = "";
+        try {
+            state.aiLibrary.local = await requestJson("/api/model-library/local");
+            if (!Array.isArray(getByPath(state.aiLibrary.local, "models", null))) throw new Error("The local model inventory was not returned. Retry or open the model library.");
+            return true;
+        } catch (error) {
+            state.setup.modelCheckError = error.message || String(error);
+            renderApp();
+            return false;
+        }
+    }
+
+    async function saveGuidedLocalModel(options) {
+        options = options || {};
+        var name = guidedLocalModelName();
+        if (!await refreshGuidedLocalModels()) return false;
+        name = name || guidedLocalModelName();
+        setByPath(state.forms, "aiProvider.ollama_model", name);
+        var matches = matchingLocalModels(name);
+        if (matches.length !== 1) {
+            if (options.install && name && matches.length === 0 && !guidedModelDownload()) {
+                await startModelDownload({ source: "ollama", reference: name, title: name }, { model: name, reference: name, setupPath: currentSetupAnswers().ai_path });
+                setNotice("success", "Model download started. Continue setup while it finishes.");
+                return true;
+            }
+            if (guidedModelDownload()) return true;
+            renderApp();
+            var prompt = root && root.querySelector("#ayu-setup-model-status");
+            if (prompt) { prompt.focus({ preventScroll: true }); prompt.scrollIntoView({ block: "nearest" }); }
+            return false;
+        }
+        var cfg = bootstrapConfig();
+        var provider = currentSetupAnswers().ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama";
+        if (normalizeLocalModelName(getByPath(cfg, "ollama.model", "")) !== matches[0] || getByPath(cfg, "ai_provider.provider", "") !== provider || getByPath(cfg, "ollama.enabled", true) === false || getByPath(cfg, "ollama.use_google_api", false)) {
+            await patchConfig({ ollama: { enabled: true, model: matches[0], model_explicit: true, use_google_api: false }, ai_provider: { provider: provider } });
+            state.setup.recipe = null;
+            state.setup.applied = false;
+        }
+        setByPath(state.forms, "aiProvider.ollama_model", matches[0]);
+        return true;
     }
 
     function renderGuidedSetupBody(step) {
@@ -6396,8 +6607,8 @@
             var local = options.filter(function (option) { return option.id === "local_ollama" || option.id === "cloud_provider" || option.id === "google_gemini"; });
             var extra = options.filter(function (option) { return local.indexOf(option) === -1; });
             var optionsMarkup = function (items) { return "<div class=\"ayu-usecase-grid\">" + items.map(function (option) { return guidedChoice("ai_path", option, option.id === answers.ai_path, option.id === "local_ollama" ? "cpu" : "cloud"); }).join("") + "</div>"; };
-            var localPath = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway";
-            return optionsMarkup(local) + disclosure("setup-other-runtimes", "Other response runtimes", "Native Ollama gateway, Hermes, OpenClaw and model guidance.", optionsMarkup(extra)) + "<div class=\"ayu-note ayu-note-" + (localPath ? "green" : "amber") + "\">" + (localPath ? "Local Ollama inference runs on this computer. Telegram and optional online tools still use their services." : "Hosted providers receive prompts and conversation context. Local history storage does not make hosted inference private to this computer.") + "</div>" + (localPath ? field("Local model", select("aiProvider.ollama_model", buildSimpleOptions(localModelNames(), getByPath(state.forms, "aiProvider.ollama_model", getByPath(cfg, "ollama.model", "")))) , "Choose an installed model. Download a model below if the list is empty.") + "<div class=\"ayu-inline-actions\">" + button("Save local model", "setup-save-local-model", "secondary", "save", "sm") + button("Download or manage models", "setup-open-screen:ai:models", "primary", "download", "sm") + "</div>" : "<div class=\"ayu-inline-actions\">" + button("Configure this provider", "setup-open-screen:ai:responses", "primary", "key") + "</div>");
+            var localPath = guidedUsesLocalModel();
+            return optionsMarkup(local) + disclosure("setup-other-runtimes", "Other response runtimes", "Native Ollama gateway, Hermes, OpenClaw and model guidance.", optionsMarkup(extra)) + "<div class=\"ayu-note ayu-note-" + (localPath ? "green" : "amber") + "\">" + (localPath ? "Local Ollama inference runs on this computer. Telegram and optional online tools still use their services." : "Hosted providers receive prompts and conversation context. Local history storage does not make hosted inference private to this computer.") + "</div>" + (localPath ? renderGuidedLocalModel() : "<div class=\"ayu-inline-actions\">" + button("Configure this provider", "setup-open-screen:ai:responses", "primary", "key") + "</div>");
         }
         if (step.id === "privacy") {
             var permissions = guidedPermissions();
@@ -6436,7 +6647,7 @@
         var index = Math.max(0, Math.min(Number(state.setup.guidedStep) || 0, GUIDED_SETUP_STEPS.length - 1));
         var step = GUIDED_SETUP_STEPS[index];
         var progress = Math.round(index / (GUIDED_SETUP_STEPS.length - 1) * 100);
-        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>A good start, made simple.</h1><p>One flow from first setup to a ready local server.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan") + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-step:" + (index + 1), "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
+        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>A good start, made simple.</h1><p>One flow from first setup to a ready local server.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (index === 2 && guidedUsesLocalModel() ? "Continue keeps this model and saves a changed selection" : (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan")) + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-continue", "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
     }
 
     async function applyGuidedSetup() {
@@ -6483,6 +6694,7 @@
     }
 
     async function bootGuidedSetup() {
+        if (guidedUsesLocalModel()) await refreshGuidedLocalModels();
         if (!guidedReadiness().every(function (item) { return item.ready; })) throw new Error("Complete the setup checks before starting services.");
         var answers = currentSetupAnswers();
         if ((answers.network_scope === "lan" || answers.network_scope === "public_proxy") && Object.keys(getByPath(state.setup.recipe, "guarded_config_patch", {})).some(function (section) {
@@ -9157,6 +9369,12 @@
                 openclaw_agent_model: source.openclaw_agent_model,
                 hermes_port: source.hermes_port,
                 hermes_model: source.hermes_model,
+                pi_port: source.pi_port,
+                pi_model: source.pi_model,
+                pi_path: source.pi_path,
+                custom_api_base: source.custom_api_base,
+                custom_model: source.custom_model,
+                custom_format: source.custom_format,
                 litellm_model: source.litellm_model,
                 litellm_api_base: source.litellm_api_base,
                 openrouter_model: source.openrouter_model,
@@ -9179,6 +9397,12 @@
         }
         if (hasValue(source.hermes_token)) {
             payload.ai_provider.hermes_token = source.hermes_token;
+        }
+        if (hasValue(source.pi_token)) {
+            payload.ai_provider.pi_token = source.pi_token;
+        }
+        if (hasValue(source.custom_token)) {
+            payload.ai_provider.custom_token = source.custom_token;
         }
         if (hasValue(source.litellm_api_key)) {
             payload.ai_provider.litellm_api_key = source.litellm_api_key;
@@ -9671,14 +9895,24 @@
             return;
         }
         if (action.indexOf("setup-guided-step:") === 0) {
-            state.setup.guidedStep = Math.max(0, Math.min(Number(action.split(":")[1]) || 0, GUIDED_SETUP_STEPS.length - 1));
-            state.setup.mode = "guided";
+            setGuidedSetupStep(action.split(":")[1]);
+            return;
+        }
+        if (action === "setup-guided-continue" || action === "setup-install-local-model") {
+            if (action === "setup-install-local-model" && (state.setup.guidedStep !== 2 || !guidedUsesLocalModel())) return;
+            if (state.setup.guidedStep === 2 && guidedUsesLocalModel() && !await saveGuidedLocalModel({ install: action === "setup-install-local-model" })) return;
+            setGuidedSetupStep((state.setup.guidedStep || 0) + 1);
+            return;
+        }
+        if (action === "setup-model-later") {
+            state.setup.applied = false;
+            state.setup.recipe = null;
+            setGuidedSetupStep(3);
+            return;
+        }
+        if (action === "setup-check-local-model") {
+            await refreshGuidedLocalModels();
             renderApp();
-            var heading = root.querySelector("[data-setup-heading]");
-            if (heading) heading.focus({ preventScroll: true });
-            scrollIntoViewIfPresent("#ayu-setup-current");
-            if (state.setup.guidedStep === 2) ensureAiData(false);
-            if (state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
             return;
         }
         if (action.indexOf("setup-permission:") === 0) {
@@ -9693,10 +9927,7 @@
             return;
         }
         if (action === "setup-save-local-model") {
-            var selectedModel = getByPath(state.forms, "aiProvider.ollama_model", "");
-            if (!selectedModel) throw new Error("Choose an installed local model first.");
-            await patchConfig({ ollama: { enabled: true, model: selectedModel, use_google_api: false }, ai_provider: { provider: currentSetupAnswers().ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama" } }, "Local response model saved.");
-            await ensureAiData(true);
+            if (await saveGuidedLocalModel()) setNotice("success", "Local response model saved.");
             return;
         }
         if (action === "setup-save-startup") {
@@ -9738,7 +9969,11 @@
         if (action === "setup-refresh") {
             await refreshBootstrap();
             await ensureSetupData(true);
-            setNotice("success", "Setup status refreshed.");
+            if (state.setup.mode === "guided" && guidedUsesLocalModel() && !await refreshGuidedLocalModels()) {
+                setNotice("error", "Setup refreshed, but installed models could not be checked. Retry on Responses.");
+            } else {
+                setNotice("success", "Setup status refreshed.");
+            }
             return;
         }
         if (action.indexOf("setup-step:") === 0) {
@@ -11462,6 +11697,13 @@
         if (target.hasAttribute("data-bind")) {
             var path = target.getAttribute("data-bind");
             var value = getByPath(state.forms, path, "");
+            if (state.screen === "setup" && path === "aiProvider.ollama_model") {
+                state.setup.modelCheckError = "";
+                state.setup.recipe = null;
+                state.setup.applied = false;
+                renderApp();
+                return;
+            }
             if (path === "modelBehavior.mode") {
                 syncModelBehaviorFormFromResponse(state.aiLibrary.behavior);
             }

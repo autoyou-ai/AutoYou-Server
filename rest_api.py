@@ -1941,6 +1941,57 @@ async def send_message_to_hermes(
         on_chunk=on_chunk,
     )
 
+async def send_message_to_pi(
+    message: str,
+    session_id: str,
+    *,
+    context: Optional[List[Dict[str, Any]]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    on_chunk: Optional[Callable[[Dict[str, Any]], Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Call the Pi Coding Agent gateway/CLI adapter."""
+    from shared.pi_gateway import call_pi_gateway
+    port = os.environ.get("PI_PORT", "8650").strip() or "8650"
+    base_url = f"http://127.0.0.1:{port}"
+    model = os.environ.get("PI_MODEL", "pi-agent").strip() or "pi-agent"
+    token = os.environ.get("PI_TOKEN", "").strip()
+    pi_path = os.environ.get("PI_PATH", r"C:\Users\You\Projects\Pi").strip()
+    return await call_pi_gateway(
+        api_base=base_url,
+        model=model,
+        message=message,
+        session_id=session_id,
+        token=token,
+        context=context,
+        metadata=metadata,
+        on_chunk=on_chunk,
+        pi_path=pi_path,
+    )
+
+async def send_message_to_custom(
+    message: str,
+    session_id: str,
+    *,
+    context: Optional[List[Dict[str, Any]]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    on_chunk: Optional[Callable[[Dict[str, Any]], Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Call the Custom API integration bridging chat, audio, video, and datachannel commands."""
+    from shared.custom_gateway import call_custom_gateway
+    base_url = os.environ.get("CUSTOM_API_BASE", "http://127.0.0.1:8000").strip()
+    model = os.environ.get("CUSTOM_MODEL", "custom").strip() or "custom"
+    token = os.environ.get("CUSTOM_TOKEN", "").strip()
+    return await call_custom_gateway(
+        api_base=base_url,
+        model=model,
+        message=message,
+        session_id=session_id,
+        token=token,
+        context=context,
+        metadata=metadata,
+        on_chunk=on_chunk,
+    )
+
 def _build_structured_steering_message(metadata: Optional[Dict[str, Any]]) -> Optional[str]:
     """Translate a structured steering target into a stable natural-language command."""
     payload = metadata if isinstance(metadata, dict) else {}
@@ -3743,6 +3794,120 @@ async def process_chat_message(
                 metadata=odysseus_meta,
             ))
 
+        if _provider == "pi":
+            logger.info("process_chat_message: routing via Pi provider session=%s user=%s", request.session_id, request.user_id)
+            pi_result = await send_message_to_pi(
+                message=request.message,
+                session_id=request.session_id,
+                context=forward_context,
+                metadata=request.metadata,
+                on_chunk=on_chunk,
+            )
+            if pi_result:
+                media_count = _merge_media_reply_attachments(pi_result, source="pi")
+                if media_count:
+                    await _try_emit_media_reply()
+                pi_meta = {
+                    "provider": "pi",
+                    "model": pi_result.get("model", "pi-agent"),
+                    "gateway_mode": True,
+                    "agent_runtime_bypassed": True,
+                    "finish_reason": pi_result.get("finish_reason", "stop"),
+                    "usage": pi_result.get("usage", {}),
+                    "attachments_summary": attachments_summary,
+                    "pi_endpoint": pi_result.get("openclaw_endpoint"),
+                    "attachments_forwarded": pi_result.get("attachments_forwarded", 0),
+                    "attachments_skipped": pi_result.get("attachments_skipped", 0),
+                }
+                if media_reply_attachments and not media_reply_delivered:
+                    pi_meta["media_reply"] = public_media_reply_metadata(media_reply_attachments)
+                _log_metadata_summary(pi_meta, label="pi_success")
+                return await _finalize_voice_note_response(ChatResponse(
+                    response=pi_result["response"],
+                    message_id=str(uuid.uuid4()),
+                    session_id=request.session_id,
+                    agent_name=pi_result.get("agent_name", "Pi Coding Agent"),
+                    timestamp=datetime.now(),
+                    metadata=pi_meta,
+                ))
+            err_meta = {
+                "error": True,
+                "error_message": "Pi Coding Agent gateway unavailable",
+                "provider": "pi",
+                "gateway_mode": True,
+                "agent_runtime_bypassed": True,
+            }
+            _log_metadata_summary(err_meta, label="pi_failed")
+            return await _finalize_voice_note_response(ChatResponse(
+                response=(
+                    "I'm unable to reach the Pi Coding Agent right now. "
+                    "Ensure Pi is installed in C:\\Users\\You\\Projects\\Pi and built with `npm run build`."
+                ),
+                message_id=str(uuid.uuid4()),
+                session_id=request.session_id,
+                agent_name="Pi Coding Agent",
+                timestamp=datetime.now(),
+                metadata=err_meta,
+            ))
+
+        if _provider == "custom":
+            logger.info("process_chat_message: routing via Custom API provider session=%s user=%s", request.session_id, request.user_id)
+            custom_result = await send_message_to_custom(
+                message=request.message,
+                session_id=request.session_id,
+                context=forward_context,
+                metadata=request.metadata,
+                on_chunk=on_chunk,
+            )
+            if custom_result:
+                media_count = _merge_media_reply_attachments(custom_result, source="custom")
+                if media_count:
+                    await _try_emit_media_reply()
+                custom_meta = {
+                    "provider": "custom",
+                    "model": custom_result.get("model", "custom"),
+                    "gateway_mode": True,
+                    "agent_runtime_bypassed": True,
+                    "finish_reason": custom_result.get("finish_reason", "stop"),
+                    "usage": custom_result.get("usage", {}),
+                    "attachments_summary": attachments_summary,
+                    "custom_endpoint": custom_result.get("openclaw_endpoint"),
+                    "attachments_forwarded": custom_result.get("attachments_forwarded", 0),
+                    "attachments_skipped": custom_result.get("attachments_skipped", 0),
+                }
+                if custom_result.get("commands"):
+                    custom_meta["commands"] = custom_result["commands"]
+                if media_reply_attachments and not media_reply_delivered:
+                    custom_meta["media_reply"] = public_media_reply_metadata(media_reply_attachments)
+                _log_metadata_summary(custom_meta, label="custom_success")
+                return await _finalize_voice_note_response(ChatResponse(
+                    response=custom_result["response"],
+                    message_id=str(uuid.uuid4()),
+                    session_id=request.session_id,
+                    agent_name=custom_result.get("agent_name", "Custom API"),
+                    timestamp=datetime.now(),
+                    metadata=custom_meta,
+                ))
+            err_meta = {
+                "error": True,
+                "error_message": "Custom API unavailable",
+                "provider": "custom",
+                "gateway_mode": True,
+                "agent_runtime_bypassed": True,
+            }
+            _log_metadata_summary(err_meta, label="custom_failed")
+            return await _finalize_voice_note_response(ChatResponse(
+                response=(
+                    "I'm unable to reach your Custom API application right now. "
+                    f"Please ensure it is running at {os.environ.get('CUSTOM_API_BASE', 'http://127.0.0.1:8000')}."
+                ),
+                message_id=str(uuid.uuid4()),
+                session_id=request.session_id,
+                agent_name="Custom API",
+                timestamp=datetime.now(),
+                metadata=err_meta,
+            ))
+
         # ── OpenClaw / Hermes / OpenAI-compatible provider fast-path ─────────
         # Ordinary OpenClaw/Hermes chat uses the direct attachment-aware gateway
         # adapter. Requests that need live web evidence stay in the AutoYou ADK
@@ -3861,6 +4026,7 @@ async def process_chat_message(
                 metadata=err_meta,
             ))
         # ── End OpenClaw / Hermes fast-path ──────────────────────────────────
+
 
         queue_position = 0
         try:

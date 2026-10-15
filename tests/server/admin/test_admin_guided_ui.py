@@ -44,6 +44,7 @@ const sandbox = {
         if (url === "/api/setup/recipe/apply") data = {bootstrap: fixture.bootstrap, recipe: fixture.recipe};
         if (url === "/api/admin/config") data = {bootstrap: fixture.bootstrap};
         if (url === "/api/admin/bootstrap") data = fixture.bootstrap;
+        if (url === "/api/model-library/local") data = {models: ["synthetic-model:latest"]};
         if (url === "/api/wizard/status") data = {password_changed: true, ollama: {local_models: ["synthetic-model:latest"]}};
         const failed = failInstall && url === "/api/agents/install";
         return {ok: !failed, statusText: "Synthetic install failure", text: async () => JSON.stringify(failed ? {error: "Synthetic install failure"} : data)};
