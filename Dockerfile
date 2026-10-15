@@ -5,7 +5,7 @@
 # Use a current multi-arch compatible Python image as the base. Bullseye
 # security package indexes have moved on, while Bookworm remains supported by
 # the current Debian mirrors and receives the active security stream.
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # Set the working directory in the container
 WORKDIR /app
