@@ -90,6 +90,18 @@ async def test_incomplete_ollama_response_does_not_enter_conversation(monkeypatc
             {"response": "synthetic Odysseus reply", "model": "synthetic-odysseus"},
             "Odysseus",
         ),
+        (
+            "pi",
+            "send_message_to_pi",
+            {"response": "synthetic Pi reply", "model": "pi-agent"},
+            "Pi Coding Agent",
+        ),
+        (
+            "custom",
+            "send_message_to_custom",
+            {"response": "synthetic Custom API reply", "model": "custom"},
+            "Custom API",
+        ),
     ),
 )
 async def test_native_gateway_chat_bypasses_agent_graph(monkeypatch, provider, sender_name, result, expected_name):

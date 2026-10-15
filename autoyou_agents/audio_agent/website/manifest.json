@@ -6,5 +6,6 @@
   "requires_proxy_registration": true,
   "auth_default": "open",
   "shared_session_eligible": true,
-  "title": "Audio Player"
+  "title": "Audio Player",
+  "bypass_global_otp": true
 }

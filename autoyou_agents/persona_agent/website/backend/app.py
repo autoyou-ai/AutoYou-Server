@@ -346,9 +346,11 @@ async def api_publish_diary_media(entry_id: str, request: Request, file: UploadF
         store = diary_media_store(entry_id, media_id)
     except ValueError:
         return _json_response({"success": False, "error": "Invalid entry or media id."}, status_code=400)
-    data = await file.read(5 * 1024 * 1024 + 1)
-    if not data or len(data) > 5 * 1024 * 1024:
-        return _json_response({"success": False, "error": "Media must be nonempty and at most 5 MiB."}, status_code=413)
+    data = await file.read(64 * 1024 * 1024 + 1)
+    if not data:
+        return _json_response({"success": False, "error": "The attachment is empty. Choose a non-empty file."}, status_code=400)
+    if len(data) > 64 * 1024 * 1024:
+        return _json_response({"success": False, "error": "Attachments can be up to 64 MiB. Use Media for larger photos or videos."}, status_code=413)
     mime = file.content_type or "application/octet-stream"
     if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", mime):
         return _json_response({"success": False, "error": "Invalid media type."}, status_code=400)

@@ -592,6 +592,91 @@ def register_routes(
         )
         return JSONResponse(result)
 
+    @admin_app.get("/api/ai/pi/status")
+    async def pi_gateway_status(request: Request):
+        """Check whether the Pi Coding Agent gateway/CLI is reachable and return models."""
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
+        try:
+            from shared.pi_gateway import probe_pi
+            ai_prov = (server.STATE.config or {}).get("ai_provider", {})
+            port = int(ai_prov.get("pi_port", server.os.getenv("PI_PORT", "8650")))
+            token = ai_prov.get("pi_token", server.os.getenv("PI_TOKEN", "")) or ""
+            pi_path = ai_prov.get("pi_path") or server.os.getenv("PI_PATH") or ""
+            result = await probe_pi(api_base=f"http://127.0.0.1:{port}", pi_path=pi_path, token=token)
+            return JSONResponse(result)
+        except Exception as exc:
+            return JSONResponse({"running": False, "error": str(exc)})
+
+    @admin_app.get("/api/ai/custom/status")
+    async def custom_gateway_status(request: Request):
+        """Check whether the Custom API application is reachable."""
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
+        try:
+            from shared.custom_gateway import probe_custom
+            ai_prov = (server.STATE.config or {}).get("ai_provider", {})
+            base_url = str(ai_prov.get("custom_api_base", server.os.getenv("CUSTOM_API_BASE", "http://127.0.0.1:8000")))
+            token = ai_prov.get("custom_token", server.os.getenv("CUSTOM_TOKEN", "")) or ""
+            result = await probe_custom(api_base=base_url, token=token)
+            return JSONResponse(result)
+        except Exception as exc:
+            return JSONResponse({"running": False, "error": str(exc)})
+
+    @admin_app.post("/api/custom/relay")
+    async def custom_api_relay(request: Request):
+        """Allow connected external applications to relay messages, audio, or datachannel commands to clients."""
+        auth_response = server._require_api_login_json(request)
+        if auth_response is not None:
+            return auth_response
+        try:
+            body = await request.json()
+            session_id = str(body.get("session_id") or "").strip()
+            channel = str(body.get("channel") or "chat").strip().lower()
+            text = str(body.get("text") or body.get("message") or "").strip()
+            command = body.get("command") or body.get("payload") or {}
+
+            delivered = False
+            # 1. Spoken audio reply via WebRTC audio track
+            if channel == "audio" and text:
+                if session_id and session_id in server.STATE.audio_managers:
+                    server._speak_audio_manager(server.STATE.audio_managers[session_id], text)
+                    delivered = True
+                elif server.STATE.audio_managers:
+                    for am in server.STATE.audio_managers.values():
+                        server._speak_audio_manager(am, text)
+                        delivered = True
+
+            # 2. Native DataChannel command / message
+            if channel in {"datachannel", "command"} or (channel == "chat" and not delivered):
+                webrtc_mgr = getattr(server, "WEBRTC", None)
+                if webrtc_mgr and hasattr(webrtc_mgr, "_datachannel_manager_for_session"):
+                    mgr = webrtc_mgr._datachannel_manager_for_session(session_id, require_send_message=True)
+                    if not mgr and webrtc_mgr.datachannel_managers:
+                        mgr = next(iter(webrtc_mgr.datachannel_managers.values()))
+                    if mgr:
+                        if channel == "command" or command:
+                            msg = server.create_chat_message(
+                                message=text,
+                                session_id=session_id or "custom",
+                                user_id="custom-relay",
+                                metadata={"command": command, "channel": "control", "custom_relay": True},
+                            )
+                        else:
+                            msg = server.create_chat_message(
+                                message=text,
+                                session_id=session_id or "custom",
+                                user_id="custom-relay",
+                                metadata={"custom_relay": True},
+                            )
+                        delivered = await mgr.send_message(msg)
+
+            return JSONResponse({"success": True, "delivered": delivered, "channel": channel, "session_id": session_id})
+        except Exception as exc:
+            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+
     @admin_app.post("/api/ai/restart")
     async def admin_restart_ai_agent(request: Request):
         """Apply the latest agent configuration to AutoYou AI."""

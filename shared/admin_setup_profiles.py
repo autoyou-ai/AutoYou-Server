@@ -726,7 +726,11 @@ def _warning(severity: str, title: str, body: str, action: str = "") -> Dict[str
 def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     intents = set(_as_string_list(answers.get("intents")))
     ai_path = str(answers.get("ai_path") or "")
-    names: List[str] = ["admin_agent"]
+    names: List[str] = [
+        "admin_agent", "backup_agent", "game_agent", "remote_desktop_agent",
+        "page_agent", "persona_agent", "donation_agent", "ads_watching_agent",
+        "prompts_agent", "client_browser_control_agent", "earnings_agent", "internet_agent",
+    ]
     if _model_picker_available():
         names.append("model_picker_agent")
     if "incognito" not in intents and answers.get("permissions", {}).get("local_memory", True):

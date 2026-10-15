@@ -5,6 +5,6 @@
   "entry_path": "/",
   "recommended_port": 8078,
   "requires_proxy_registration": true,
-  "auth_default": "gated",
-  "bypass_global_otp": false
+  "auth_default": "open",
+  "bypass_global_otp": true
 }

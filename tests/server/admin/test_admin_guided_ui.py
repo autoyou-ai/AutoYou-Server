@@ -44,6 +44,7 @@ const sandbox = {
         if (url === "/api/setup/recipe/apply") data = {bootstrap: fixture.bootstrap, recipe: fixture.recipe};
         if (url === "/api/admin/config") data = {bootstrap: fixture.bootstrap};
         if (url === "/api/admin/bootstrap") data = fixture.bootstrap;
+        if (url === "/api/model-library/local") data = {models: ["synthetic-model:latest"]};
         if (url === "/api/wizard/status") data = {password_changed: true, ollama: {local_models: ["synthetic-model:latest"]}};
         const failed = failInstall && url === "/api/agents/install";
         return {ok: !failed, statusText: "Synthetic install failure", text: async () => JSON.stringify(failed ? {error: "Synthetic install failure"} : data)};
@@ -51,12 +52,27 @@ const sandbox = {
 };
 sandbox.window.window = sandbox.window;
 let source = fs.readFileSync(process.argv[1], "utf8");
-source = source.replace(/    boot\(\);\s*\}\(\)\);\s*$/, '    globalThis.admin = {state, initializeForms, updateSetupAnswer, currentSetupAnswers, renderSetupScreen, renderOverview, renderLiveViewScreen, agentMatchesFilter, renderAgentLibraryToolbar, guidedReadiness, applyGuidedSetup, bootGuidedSetup, handleAction};\n}());');
+source = source.replace(/    boot\(\);\s*\}\(\)\);\s*$/, '    globalThis.admin = {state, initializeForms, updateSetupAnswer, currentSetupAnswers, renderSetupScreen, renderOverview, renderLiveViewScreen, renderLiveBrowserRoutes, renderBrowserRoutesPanelBody, agentMatchesFilter, renderAgentLibraryToolbar, guidedReadiness, applyGuidedSetup, bootGuidedSetup, handleAction};\n}());');
 vm.runInNewContext(source, sandbox);
 const a = sandbox.admin;
 assert(a, "VM must load the real script without calling boot");
 a.state.bootstrap = fixture.bootstrap;
 a.initializeForms(fixture.bootstrap);
+assert.equal(a.state.forms.page.remote_access_role, "editor", "Unset paired-browser preferences default to Editor");
+const routes = Array.from({length: 28}, (_, index) => ({agent_name: "synthetic_" + index + "_agent", title: "Synthetic route " + index, local_url: "http://127.0.0.1:18067/agent/synthetic_" + index + "_agent/", route_mode: "path_proxy", auth_mode: "open"}));
+const liveRoutes = a.renderLiveBrowserRoutes(routes);
+assert.equal((liveRoutes.match(/class="ayu-list-row ayu-live-route"/g) || []).length, 28);
+assert.equal((liveRoutes.match(/>Open<\/span>/g) || []).length, 28);
+assert.match(liveRoutes, /Synthetic route 27/);
+assert.match(liveRoutes, /class="ayu-route-list"/);
+assert.match(liveRoutes, /Scroll down/);
+assert.match(liveRoutes, /tabindex="0"/);
+const managedRoutes = a.renderBrowserRoutesPanelBody(routes, {default_website: {agent_name: "synthetic_0_agent"}});
+assert.equal((managedRoutes.match(/>Open<\/span>/g) || []).length, 28);
+assert.equal((managedRoutes.match(/>Set default<\/span>/g) || []).length, 27);
+assert.match(managedRoutes, /Reset access/);
+assert(!managedRoutes.includes('>Use default<'));
+assert.match(a.renderLiveBrowserRoutes([{...routes[0], title: '<script>synthetic</script>'}]), /&lt;script&gt;/);
 a.state.setup.payload = {password_changed: true, ollama: {local_models: ["synthetic-model:latest"]}};
 a.state.setup.answers = JSON.parse(JSON.stringify(fixture.recipe.answers));
 for (let step = 0; step < 6; step++) {
@@ -79,6 +95,10 @@ a.state.agentQuery = '<script>alert("synthetic")</script>';
 assert(!a.renderAgentLibraryToolbar([]).includes('<script>alert('));
 a.state.agentQuery = "";
 (async () => {
+    await a.handleAction("nav:connectivity:routes");
+    assert.equal(a.state.screen, "connectivity");
+    assert.equal(a.state.sections.connectivity, "routes");
+    a.state.screen = "setup";
     await a.handleAction("setup-permission:share_screen");
     assert.equal(a.currentSetupAnswers().permissions.share_screen, true);
     await a.handleAction("setup-permission:share_screen");

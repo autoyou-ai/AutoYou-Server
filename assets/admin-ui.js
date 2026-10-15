@@ -215,6 +215,7 @@
     var root = document.getElementById("autoyou-admin-root");
     var noticeTimer = null;
     var renderState = {
+        markup: null,
         passiveQueued: false,
         composing: false,
         pointerDown: false,
@@ -230,6 +231,7 @@
         notice: null,
         modal: null,
         softwareUpdate: { payload: null, loading: false, checked: false },
+        profileImage: { key: "", dataUrl: "", loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
         interact: { payload: null, selected: [], dirty: false, loading: false, saving: false, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
@@ -253,7 +255,8 @@
             applied: false,
             applying: false,
             progress: "",
-            applyError: ""
+            applyError: "",
+            modelCheckError: ""
         },
         aiLibrary: {
             local: null,
@@ -262,6 +265,8 @@
             behavior: null,
             openclawStatus: null,
             hermesStatus: null,
+            piStatus: null,
+            customStatus: null,
             details: {},
             detailLoadingKey: "",
             selectedCatalogKey: "",
@@ -272,6 +277,8 @@
             behaviorLoading: false,
             openclawLoading: false,
             hermesLoading: false,
+            piLoading: false,
+            customLoading: false,
             query: "",
             source: "ollama",
             catalogPage: 1,
@@ -623,7 +630,7 @@
         if (!renderState.passiveQueued || hasActiveAdminControl()) {
             return;
         }
-        renderApp({ force: true });
+        renderApp({ passive: true, force: true });
     }
 
     function flushPassiveRenderSoon() {
@@ -636,6 +643,55 @@
             return value.slice(1);
         }
         return value;
+    }
+
+    function adminProfileImageKey(userID, url) {
+        return userID && /^\/?assets\/admin\/profile-image(?:\?|$)/.test(url)
+            ? JSON.stringify([String(userID), String(url)]) : "";
+    }
+
+    function adminProfileImageUrl(userID, url) {
+        var key = adminProfileImageKey(userID, url);
+        return /^\/?assets\/admin\/profile-image(?:\?|$)/.test(url)
+            ? (key && state.profileImage.key === key ? state.profileImage.dataUrl : "") : adminAssetUrl(url);
+    }
+
+    async function syncAdminProfileImage() {
+        var admin = getByPath(state.bootstrap, "admin", {});
+        var userID = String(admin.avatar_user_id || admin.server_id || "");
+        var url = String(admin.avatar_url || "");
+        var key = adminProfileImageKey(userID, url);
+        if (state.profileImage.key !== key) {
+            state.profileImage = { key: key, dataUrl: "", loading: false, checked: false };
+        }
+        var photo = state.profileImage;
+        if (!key || photo.loading || photo.checked) return;
+        photo.loading = true;
+        try {
+            // JSON follows the same authenticated fetch/proxy path as bootstrap.
+            // Keep private photo bytes in memory, scoped to this server and version.
+            var payload = await requestJson("/api/admin/profile-image", { cache: "no-store" });
+            var currentAdmin = getByPath(state.bootstrap, "admin", {});
+            if (state.profileImage !== photo || adminProfileImageKey(
+                String(currentAdmin.avatar_user_id || currentAdmin.server_id || ""), String(currentAdmin.avatar_url || "")) !== key) return;
+            var data = String(payload.data_base64 || "");
+            var mime = String(payload.mime_type || "").toLowerCase();
+            var responseUrl = String(payload.avatar_url || "");
+            if (payload.has_photo && String(payload.profile_user_id || "") === userID &&
+                adminProfileImageKey(userID, responseUrl) && /^image\/(png|jpeg|gif|webp)$/.test(mime) &&
+                data.length > 0 && data.length <= 4 * Math.ceil(2 * 1024 * 1024 / 3) &&
+                data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+                currentAdmin.avatar_url = responseUrl;
+                photo.key = adminProfileImageKey(userID, responseUrl);
+                photo.dataUrl = "data:" + mime + ";base64," + data;
+            }
+        } catch (error) {
+            // Keep the initials on connection/authentication errors. Refresh retries.
+        } finally {
+            photo.loading = false;
+            photo.checked = true;
+            if (state.profileImage === photo && photo.dataUrl) renderApp({ passive: true });
+        }
     }
 
     function dataUrlToBlob(dataUrl) {
@@ -1448,9 +1504,19 @@
         var hero = screen.querySelector(".ayu-hero");
         if (hero) hero.insertAdjacentElement("afterend", nav);
         panels.forEach(function (element) { element.hidden = settingsSectionFor(element.getAttribute("data-panel-title"), groups) !== selected; });
+        if (state.screen === "connectivity" && selected === "routes") {
+            var routesPanel = panels.find(function (element) { return element.getAttribute("data-panel-title") === "Browser routes"; });
+            if (routesPanel) {
+                var routesBlock = routesPanel.parentElement === screen ? routesPanel : routesPanel.parentElement;
+                screen.insertBefore(routesBlock, nav.nextSibling);
+            }
+        }
         screen.querySelectorAll(".ayu-grid-2, .ayu-grid-3, .ayu-grid-4, .ayu-scroll-target").forEach(function (element) {
             if (element.closest(".ayu-panel")) return;
             var children = Array.from(element.children);
+            element.classList.toggle("ayu-grid-single", children.filter(function (child) {
+                return !child.hidden && child.textContent.trim();
+            }).length === 1);
             element.hidden = children.length > 0 && children.every(function (child) {
                 return child.hidden || !child.textContent.trim();
             });
@@ -1588,6 +1654,19 @@
             providerFields.push(field("Odysseus API base", input("aiProvider.odysseus_api_base", { placeholder: "http://127.0.0.1:7000" }), "The external Odysseus companion service endpoint."));
             providerFields.push(field("Odysseus model", input("aiProvider.odysseus_model", { placeholder: "Leave blank for Odysseus default" }), "Choose a registered Odysseus endpoint model, or leave blank for its first enabled model."));
             providerFields.push(field("Odysseus chat token", input("aiProvider.odysseus_token", { placeholder: "Leave blank to keep saved token", type: "password" }), "Use an Odysseus chat-scoped token. It stays in protected AutoYou configuration."));
+        } else if (provider === "pi") {
+            providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650). Official Pi agent: https://pi.dev"));
+            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent directory (CLI fallback). Auto-detected if left empty."));
+            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "qwen3.8:27b" }), "Model identifier (e.g. qwen3.8:27b, ministral-3:8b, gemma4:26b) routed through local Ollama or cloud provider."));
+            providerFields.push(field("Pi gateway token", input("aiProvider.pi_token", { placeholder: "Leave blank if unauthenticated", type: "password" }), "Bearer token for Pi gateway when enabled."));
+        } else if (provider === "custom") {
+            providerFields.push(field("Custom API Base URL", input("aiProvider.custom_api_base", { placeholder: "http://127.0.0.1:8000" }), "External application or model endpoint. AutoYou routes audio, video, chat, and control commands here."));
+            providerFields.push(field("Custom model / agent name", input("aiProvider.custom_model", { placeholder: "custom" }), "Model identifier or routing alias sent in multi-channel payloads."));
+            providerFields.push(field("Custom API token / key", input("aiProvider.custom_token", { placeholder: "Bearer token or API key", type: "password" }), "Authorization token sent to your custom endpoint."));
+            providerFields.push(field("Payload format", select("aiProvider.custom_format", [
+                { value: "openai", label: "OpenAI-compatible (/v1/chat/completions)" },
+                { value: "generic", label: "Generic JSON multi-channel" }
+            ], getByPath(state.forms, "aiProvider.custom_format", "openai")), "Format of payloads dispatched to the Custom API endpoint."));
         }
 
         var bridgeInstalled = getByPath(state.bootstrap, "agents.agent_overview", []).some(function (agent) { return agent.agent_name === "openclaw_agent" && agent.installed; });
@@ -1602,25 +1681,63 @@
                     ? "Odysseus gateway mode uses Odysseus's authenticated companion sessions directly. AutoYou AI and Agent Studio do not run for these replies."
                     : (provider === "hermes"
                         ? "Hermes provider mode is gateway-first. Hermes-backed sessions follow the Hermes runtime, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."
-                        : "OpenClaw provider mode is gateway-first. OpenClaw-backed sessions follow the OpenClaw conversation flow, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."))) + "</div>"
+                        : (provider === "pi"
+                            ? "Pi Coding Agent (pi.dev) operates as the primary autonomous coding and agent runtime. AutoYou provides full communication channels (voice, video, chat, and control datachannels)."
+                            : (provider === "custom"
+                                ? "Custom API mode turns AutoYou into the communication bridge. Audio, video snapshots, chat, and datachannel control commands are relayed to and from your external application."
+                                : "OpenClaw provider mode is gateway-first. OpenClaw-backed sessions follow the OpenClaw conversation flow, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."))))) + "</div>"
             : "<div class=\"ayu-note ayu-note-green\">This provider keeps AutoYou's own agent runtime and installed agents active as the main orchestration layer.</div>";
 
-        var gatewayStatus = provider === "hermes" ? state.aiLibrary.hermesStatus : (provider === "odysseus" ? state.aiLibrary.odysseusStatus : (provider === "ollama_gateway" ? state.aiLibrary.ollamaStatus : state.aiLibrary.openclawStatus));
-        var gatewayLoading = provider === "hermes" ? state.aiLibrary.hermesLoading : (provider === "odysseus" ? state.aiLibrary.odysseusLoading : (provider === "ollama_gateway" ? state.aiLibrary.ollamaLoading : state.aiLibrary.openclawLoading));
-        var gatewayName = provider === "hermes" ? "Hermes" : (provider === "odysseus" ? "Odysseus" : (provider === "ollama_gateway" ? "Ollama" : "OpenClaw"));
-        var gatewayEndpoint = provider === "hermes"
-            ? String(getByPath(state.forms, "aiProvider.hermes_port", 8642))
-            : (provider === "odysseus"
-                ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.odysseus_api_base", "http://127.0.0.1:7000")))
-                : (provider === "ollama_gateway"
-                    ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.ollama_api_base", "http://127.0.0.1:11434")))
-                    : String(getByPath(state.forms, "aiProvider.openclaw_port", 18789))));
+        var gatewayStatus = provider === "pi"
+            ? state.aiLibrary.piStatus
+            : (provider === "custom"
+                ? state.aiLibrary.customStatus
+                : (provider === "hermes"
+                    ? state.aiLibrary.hermesStatus
+                    : (provider === "odysseus"
+                        ? state.aiLibrary.odysseusStatus
+                        : (provider === "ollama_gateway"
+                            ? state.aiLibrary.ollamaStatus
+                            : state.aiLibrary.openclawStatus))));
+        var gatewayLoading = provider === "pi"
+            ? state.aiLibrary.piLoading
+            : (provider === "custom"
+                ? state.aiLibrary.customLoading
+                : (provider === "hermes"
+                    ? state.aiLibrary.hermesLoading
+                    : (provider === "odysseus"
+                        ? state.aiLibrary.odysseusLoading
+                        : (provider === "ollama_gateway"
+                            ? state.aiLibrary.ollamaLoading
+                            : state.aiLibrary.openclawLoading))));
+        var gatewayName = provider === "pi"
+            ? "Pi Coding Agent (pi.dev)"
+            : (provider === "custom"
+                ? "Custom API"
+                : (provider === "hermes"
+                    ? "Hermes"
+                    : (provider === "odysseus"
+                        ? "Odysseus"
+                        : (provider === "ollama_gateway"
+                            ? "Ollama"
+                            : "OpenClaw"))));
+        var gatewayEndpoint = provider === "pi"
+            ? String(getByPath(state.forms, "aiProvider.pi_port", 8650))
+            : (provider === "custom"
+                ? String(getByPath(state.forms, "aiProvider.custom_api_base", "http://127.0.0.1:8000"))
+                : (provider === "hermes"
+                    ? String(getByPath(state.forms, "aiProvider.hermes_port", 8642))
+                    : (provider === "odysseus"
+                        ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.odysseus_api_base", "http://127.0.0.1:7000")))
+                        : (provider === "ollama_gateway"
+                            ? String(getByPath(gatewayStatus, "api_base", getByPath(state.forms, "aiProvider.ollama_api_base", "http://127.0.0.1:11434")))
+                            : String(getByPath(state.forms, "aiProvider.openclaw_port", 18789))))));
         var gatewayStatusMarkup = aiProviderUsesGateway(provider)
             ? (gatewayLoading
                 ? "<div class=\"ayu-empty\">Checking " + escapeHtml(gatewayName) + " gateway status...</div>"
                 : renderStatusRows([
                     { label: "Gateway ready", value: (getByPath(gatewayStatus, "running", getByPath(gatewayStatus, "available", false))) ? "Yes" : "No" },
-                    { label: provider === "ollama_gateway" || provider === "odysseus" ? "Gateway endpoint" : "Gateway port", value: gatewayEndpoint },
+                    { label: provider === "ollama_gateway" || provider === "odysseus" || provider === "custom" ? "Gateway endpoint" : "Gateway port", value: gatewayEndpoint },
                     { label: "Reported models", value: Array.isArray(getByPath(gatewayStatus, "models", [])) && getByPath(gatewayStatus, "models", []).length ? getByPath(gatewayStatus, "models", []).join(", ") : getByPath(gatewayStatus, "error", "No model list reported") }
                 ]))
             : "";
@@ -1679,7 +1796,11 @@
                     ? "Hermes manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."
                     : (provider === "odysseus"
                         ? "Odysseus owns its own model/session behavior. Configure its selected endpoint in the gateway settings above."
-                        : "OpenClaw manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."))
+                        : (provider === "pi"
+                            ? "Pi Coding Agent manages its own runtime behavior. AutoYou serves as the communication software."
+                            : (provider === "custom"
+                                ? "Custom API manages its own model responses and behavior. AutoYou acts as the communication bridge."
+                                : "OpenClaw manages its own runtime behavior. AutoYou's sampling presets are not the main control surface in this mode."))))
                 : "These presets apply through the AutoYou runtime for Gemini and other LiteLLM-backed providers.");
         return "<div class=\"ayu-note\">" + escapeHtml(providerNote) + "</div>" + field("Preset", select("modelBehavior.mode", behaviorOptions.length ? behaviorOptions : ["accurate", "human", "creative", "none"])) + "<div class=\"ayu-note ayu-note-green\">Leave a field blank to keep the preset value. Matching the preset no longer saves a fake custom override.</div><div class=\"ayu-grid-2\">" + field("Temperature", input("modelBehavior.temperature", { placeholder: hasValue(getByPath(presetParams, "temperature", "")) ? String(getByPath(presetParams, "temperature", "")) : "preset" })) + field("Top P", input("modelBehavior.top_p", { placeholder: hasValue(getByPath(presetParams, "top_p", "")) ? String(getByPath(presetParams, "top_p", "")) : "preset" })) + field("Top K", input("modelBehavior.top_k", { placeholder: hasValue(getByPath(presetParams, "top_k", "")) ? String(getByPath(presetParams, "top_k", "")) : "preset" })) + field("Repeat penalty", input("modelBehavior.repeat_penalty", { placeholder: hasValue(getByPath(presetParams, "repeat_penalty", "")) ? String(getByPath(presetParams, "repeat_penalty", "")) : "preset" })) + field("Context override", input("modelBehavior.num_ctx", { placeholder: isOllamaProvider(provider) ? "Leave blank for automatic" : "Optional" }), isOllamaProvider(provider) ? "Leave empty to keep Ollama's automatic context recommendation." : "Only used when the runtime honors context overrides.") + "</div>" + thinkingMarkup + checkbox("modelBehavior.show_thinking", "Show model thinking", "Off by default. Reveals the model's internal reasoning in chat replies instead of hiding it.") + "<div class=\"ayu-inline-actions\">" + button("Save model behavior", "save-model-behavior", "primary", "save") + "</div>" + (state.aiLibrary.behaviorLoading ? "<div class=\"ayu-empty\">Loading model behavior details...</div>" : renderStatusRows(overrideRows) + renderJsonNote({
             preset: getByPath(state.aiLibrary, "behavior.label", currentMode),
@@ -2382,21 +2503,29 @@
     }
 
     function localModelNames() {
-        var models = Array.isArray(getByPath(state.aiLibrary, "local.models", [])) ? getByPath(state.aiLibrary, "local.models", []) : [];
+        var models = getByPath(state.aiLibrary, "local.models", getByPath(state.setup.payload, "ollama.local_models", []));
+        models = Array.isArray(models) ? models : [];
         return models.map(function (model) {
-            return String(model.name || model.model || model.digest || "");
-        }).filter(Boolean);
+            return normalizeLocalModelName(typeof model === "string" ? model : (model && (model.name || model.model) || ""));
+        }).filter(function (name, index, names) { return name && names.indexOf(name) === index; });
+    }
+
+    function normalizeLocalModelName(reference) {
+        return String(reference || "").trim().replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").trim();
+    }
+
+    function matchingLocalModels(reference) {
+        var requested = normalizeLocalModelName(reference).toLowerCase();
+        if (!requested) return [];
+        var exact = localModelNames().filter(function (candidate) { return candidate.toLowerCase() === requested; });
+        if (exact.length) return exact;
+        return requested.indexOf(":") !== -1 ? [] : localModelNames().filter(function (candidate) {
+            return candidate.toLowerCase().split(":")[0] === requested;
+        });
     }
 
     function modelAvailableLocally(reference) {
-        var requested = String(reference || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-        if (!requested) {
-            return false;
-        }
-        return localModelNames().some(function (candidate) {
-            var normalized = String(candidate || "").replace(/^(ollama_chat|ollama|ollama_local|ollama-local)\//i, "").toLowerCase();
-            return normalized === requested || (requested.indexOf(":") === -1 && normalized.split(":")[0] === requested);
-        });
+        return matchingLocalModels(reference).length === 1;
     }
 
     function normalizeBehaviorValue(value, fieldName) {
@@ -2715,6 +2844,22 @@
             description: "Use the local Hermes Agent gateway when you want Hermes to own the primary session runtime and tool loop.",
             badgeLabel: "Gateway",
             badgeTone: "amber"
+        },
+        {
+            id: "pi",
+            eyebrow: "Autonomous Agent (pi.dev)",
+            label: "Pi Coding Agent (pi.dev)",
+            description: "Official autonomous coding agent from pi.dev with full tool execution, multi-channel communication (voice, video, datachannel), and CLI fallback.",
+            badgeLabel: "Agent",
+            badgeTone: "purple"
+        },
+        {
+            id: "custom",
+            eyebrow: "Communication Bridge",
+            label: "Custom API Integration",
+            description: "Turn AutoYou into communication software for your custom AI/application backend across audio, video, chat, and control datachannels.",
+            badgeLabel: "Custom",
+            badgeTone: "green"
         }
     ];
 
@@ -2838,7 +2983,7 @@
     }
 
     function aiProviderUsesGateway(provider) {
-        return provider === "ollama_gateway" || provider === "odysseus" || provider === "openclaw" || provider === "hermes";
+        return provider === "ollama_gateway" || provider === "odysseus" || provider === "openclaw" || provider === "hermes" || provider === "pi" || provider === "custom";
     }
 
     function isOllamaProvider(provider) {
@@ -3030,7 +3175,7 @@
             answers[questionId] = optionId;
         }
         if (questionId === "ai_path") {
-            setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", model_picker: "ollama" }[optionId] || "ollama");
+            setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", pi: "pi", custom: "custom", model_picker: "ollama" }[optionId] || "ollama");
         }
         if (questionId === "intents" && answers.permissions) {
             if (answers.intents.indexOf("desktop_automation") === -1) answers.permissions.desktop_control = false;
@@ -3124,6 +3269,14 @@
                 hermes_port: getByPath(cfg, "ai_provider.hermes_port", 8642),
                 hermes_token: "",
                 hermes_model: getByPath(cfg, "ai_provider.hermes_model", "hermes-agent"),
+                pi_port: getByPath(cfg, "ai_provider.pi_port", 8650),
+                pi_token: "",
+                pi_model: getByPath(cfg, "ai_provider.pi_model", "pi-agent"),
+                pi_path: getByPath(cfg, "ai_provider.pi_path", "C:\\Users\\You\\Projects\\Pi"),
+                custom_api_base: getByPath(cfg, "ai_provider.custom_api_base", "http://127.0.0.1:8000"),
+                custom_model: getByPath(cfg, "ai_provider.custom_model", "custom"),
+                custom_token: "",
+                custom_format: getByPath(cfg, "ai_provider.custom_format", "openai"),
                 litellm_model: getByPath(cfg, "ai_provider.litellm_model", ""),
                 litellm_api_key: "",
                 litellm_api_base: getByPath(cfg, "ai_provider.litellm_api_base", ""),
@@ -3169,7 +3322,7 @@
                 auto_start: Boolean(getByPath(cfg, "autoyou_page.auto_start", true)),
                 feed_window_days: getByPath(cfg, "autoyou_page.feed_window_days", 0),
                 theme: getByPath(cfg, "autoyou_page.theme", "light"),
-                remote_access_role: normalizeRemoteAccessRole(getByPath(cfg, "autoyou_page.remote_access_role", "viewer")),
+                remote_access_role: normalizeRemoteAccessRole(getByPath(cfg, "autoyou_page.remote_access_role", "editor")),
                 custom_forward_enabled: Boolean(getByPath(cfg, "autoyou_page.custom_forward_enabled", false)),
                 custom_forward_port: getByPath(cfg, "autoyou_page.custom_forward_port", 8067),
                 advertisedWebsites: clone(getByPath(cfg, "autoyou_page.advertised_websites", [])),
@@ -3374,6 +3527,7 @@
 
     function applyBootstrap(bootstrap) {
         state.bootstrap = bootstrap;
+        if (!state.profileImage.dataUrl && !state.profileImage.loading) state.profileImage.checked = false;
         var updateLocal = getByPath(bootstrap, "status.software_update", {});
         state.softwareUpdate.payload = Object.assign({}, state.softwareUpdate.payload || {}, updateLocal);
         if (!getByPath(updateLocal, "enabled", true) || !getByPath(updateLocal, "signed_in", false)) {
@@ -3597,6 +3751,8 @@
         state.aiLibrary.downloadsLoading = true;
         state.aiLibrary.openclawLoading = true;
         state.aiLibrary.hermesLoading = true;
+        state.aiLibrary.piLoading = true;
+        state.aiLibrary.customLoading = true;
         state.aiLibrary.ollamaLoading = activeAiProvider() === "ollama_gateway";
         state.aiLibrary.odysseusLoading = activeAiProvider() === "odysseus";
         renderApp();
@@ -3608,17 +3764,21 @@
                 safeRequestJson("/api/ai/openclaw/status"),
                 safeRequestJson("/api/ai/hermes/status"),
                 activeAiProvider() === "ollama_gateway" ? safeRequestJson("/api/ai/ollama/status") : Promise.resolve({ ok: true, payload: null }),
-                activeAiProvider() === "odysseus" ? safeRequestJson("/api/ai/odysseus/status") : Promise.resolve({ ok: true, payload: null })
+                activeAiProvider() === "odysseus" ? safeRequestJson("/api/ai/odysseus/status") : Promise.resolve({ ok: true, payload: null }),
+                safeRequestJson("/api/ai/pi/status"),
+                safeRequestJson("/api/ai/custom/status")
             ]);
             state.aiLibrary.behavior = results[0];
             syncModelBehaviorFormFromResponse(results[0]);
             state.aiLibrary.local = results[1];
-            applySelectedOllamaModel(results[1], "");
+            if (state.screen !== "setup") applySelectedOllamaModel(results[1], "");
             state.aiLibrary.downloads = results[2];
             state.aiLibrary.openclawStatus = results[3].ok ? results[3].payload : { running: false, error: results[3].error || "OpenClaw gateway not reachable." };
             state.aiLibrary.hermesStatus = results[4].ok ? results[4].payload : { running: false, error: results[4].error || "Hermes gateway not reachable." };
             state.aiLibrary.ollamaStatus = results[5].ok ? results[5].payload : { available: false, error: results[5].error || "Ollama gateway not reachable." };
             state.aiLibrary.odysseusStatus = results[6].ok ? results[6].payload : { available: false, error: results[6].error || "Odysseus gateway not reachable." };
+            state.aiLibrary.piStatus = results[7].ok ? results[7].payload : { running: false, error: results[7].error || "Pi gateway not reachable." };
+            state.aiLibrary.customStatus = results[8].ok ? results[8].payload : { available: false, error: results[8].error || "Custom API not reachable." };
             if (hasActiveJobs(results[2])) {
                 startModelDownloadPolling();
             } else {
@@ -3632,6 +3792,8 @@
             state.aiLibrary.downloadsLoading = false;
             state.aiLibrary.openclawLoading = false;
             state.aiLibrary.hermesLoading = false;
+            state.aiLibrary.piLoading = false;
+            state.aiLibrary.customLoading = false;
             state.aiLibrary.ollamaLoading = false;
             state.aiLibrary.odysseusLoading = false;
             renderApp();
@@ -3719,8 +3881,19 @@
             state.aiLibrary.local = await requestJson("/api/model-library/local");
             if (modelAvailableLocally(pending.model)) {
                 state.aiLibrary.pendingSelection = null;
-                var selectionResult = await postJson("/api/model-library/select", { model: pending.model });
-                applySelectedOllamaModel(selectionResult, pending.model);
+                if (pending.setupPath) {
+                    if (currentSetupAnswers().ai_path !== pending.setupPath || guidedLocalModelName() !== normalizeLocalModelName(pending.model)) {
+                        setNotice("success", "Model downloaded. Your newer response choice has been kept.");
+                        return;
+                    }
+                    if (!await saveGuidedLocalModel()) {
+                        setNotice("error", "Model downloaded, but AutoYou could not verify the selection. Retry the model check on Responses.");
+                        return;
+                    }
+                } else {
+                    var selectionResult = await postJson("/api/model-library/select", { model: pending.model });
+                    applySelectedOllamaModel(selectionResult, pending.model);
+                }
                 await refreshBootstrap();
                 await ensureAiData(true);
                 setNotice("success", "Model downloaded and selected.");
@@ -3775,6 +3948,7 @@
                 model: pendingSelection.model,
                 reference: pendingSelection.reference,
                 jobId: getByPath(response, "job.job_id", ""),
+                setupPath: pendingSelection.setupPath || "",
                 selecting: false
             };
         }
@@ -4077,6 +4251,7 @@
         return {
             name: firstNonBlank([getByPath(admin, "server_name", ""), viewer.name], "AutoYou-Server"),
             avatarUrl: String(getByPath(admin, "avatar_url", "") || ""),
+            avatarUserId: String(admin.avatar_user_id || admin.server_id || ""),
             surfaceLabel: String(viewer.surface_label || "This computer"),
             deviceName: String(viewer.device_name || ""),
             userId: state.chat.userId || chatDefaultUserId()
@@ -4107,8 +4282,8 @@
     function chatFaceMarkup(identity, size) {
         if (identity && identity.is_self) {
             var self = chatSelfProfile();
-            var photo = self.avatarUrl ? adminAssetUrl(self.avatarUrl) : "";
-            return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " is-self" + (photo ? " has-image" : "") + "\" aria-hidden=\"true\">" + (photo ? "<img src=\"" + escapeHtml(photo) + "\" alt=\"\">" : escapeHtml(avatarText(self.name))) + "</span>";
+            var photo = self.avatarUrl ? adminProfileImageUrl(self.avatarUserId, self.avatarUrl) : "";
+            return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " is-self" + (photo ? " has-image" : "") + "\" aria-hidden=\"true\">" + (photo ? "<img data-admin-profile-image src=\"" + escapeHtml(photo) + "\" alt=\"\">" : escapeHtml(avatarText(self.name))) + "</span>";
         }
         var kind = String((identity && identity.kind) || "device");
         return "<span class=\"ayu-chat-face ayu-chat-face-" + size + " kind-" + escapeHtml(kind) + "\" aria-hidden=\"true\">" + escapeHtml(kind === "room" ? "#" : chatInitials(identity && identity.name)) + "</span>";
@@ -4715,7 +4890,7 @@
         }
         var selected = chat.selected;
         var title = selected && selected.title ? selected.title : (chat.pendingTitle || serverName);
-        var eyebrow = selected ? (chatIdentityLine(chatIdentityFor(selected)) || selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Ready when you are");
+        var eyebrow = selected ? (chatIdentityLine(chatIdentityFor(selected)) || selected.origin || "Session") : (chat.pendingTitle ? "New conversation" : "Conversation");
         var sessionLine = chat.sessionId ? "SessionID " + escapeHtml(chat.sessionId) : "A fresh conversation will be saved automatically";
         if (selected && selected.custom_title && selected.auto_title && selected.auto_title !== selected.title) {
             sessionLine = "Started with “" + escapeHtml(selected.auto_title) + "” · " + sessionLine;
@@ -5139,6 +5314,9 @@
 
     function setScreen(screen, options) {
         options = options || {};
+        if (options.section && (SETTINGS_SECTIONS[screen] || []).some(function (group) { return group[0] === options.section; })) {
+            state.sections[screen] = options.section;
+        }
         if (interactTimer) { clearInterval(interactTimer); interactTimer = null; }
         if (state.screen === "guides" && screen !== "guides" && bootSweepState.running) {
             stopBootSweep({ report: false }).catch(function () {});
@@ -5151,6 +5329,10 @@
         state.profileMenuOpen = false;
         renderApp();
         scrollShellToTop();
+        if (options.section && root) {
+            var sectionTab = root.querySelector(".ayu-section-nav .ayu-tab.active");
+            if (sectionTab) sectionTab.focus({ preventScroll: true });
+        }
         if (screen === "overview" || screen === "live") {
             ensureLocalPairInfo(false);
         }
@@ -5584,11 +5766,12 @@
         var nameFontSize = Math.max(11, Math.min(17, 250 / Math.max(String(serverName).length, 14))).toFixed(1) + "px";
         var avatarUserID = String(getByPath(admin, "avatar_user_id", getByPath(admin, "server_id", "")) || "");
         var avatarUrl = String(getByPath(admin, "avatar_url", "") || "");
+        var displayAvatarUrl = adminProfileImageUrl(avatarUserID, avatarUrl);
         var avatarUploading = isActionPending("profile-image-upload");
         var avatarMarkup = avatarUploading
             ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" disabled aria-busy=\"true\"><span class=\"ayu-btn-spinner\" aria-hidden=\"true\"></span></button>"
-            : (avatarUrl
-                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img src=\"" + escapeHtml(adminAssetUrl(avatarUrl)) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
+            : (displayAvatarUrl
+                ? "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button has-image\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Change profile image\" title=\"Change profile image\"><img data-admin-profile-image src=\"" + escapeHtml(displayAvatarUrl) + "\" alt=\"" + escapeHtml(serverName) + " avatar\"></button>"
                 : "<button type=\"button\" class=\"ayu-avatar ayu-avatar-button\" data-profile-user-id=\"" + escapeHtml(avatarUserID) + "\" data-action=\"profile-image-select\" aria-label=\"Upload profile image\" title=\"Upload profile image\"><span>" + escapeHtml(avatarText(serverName)) + "</span></button>");
         var profileMenu = state.profileMenuOpen ? renderProfileMenu(avatarUrl) : "";
         var updateStatus = state.softwareUpdate.payload || getByPath(state.bootstrap, "status.software_update", {});
@@ -5662,7 +5845,7 @@
     }
 
     function renderHomeNetworkSecurity(home, exposed, httpsNextBoot) {
-        var remoteAccessRole = getByPath(state.forms, "page.remote_access_role", "viewer");
+        var remoteAccessRole = getByPath(state.forms, "page.remote_access_role", "editor");
         var parts = [];
         if (exposed && !httpsNextBoot) {
             parts.push("<div class=\"ayu-note ayu-note-red ayu-network-alert\"><strong>Home network without HTTPS</strong><p>Other devices on your network would open pages, notes and the sign-in page over plain HTTP, readable by anyone on the same Wi-Fi. HTTPS is the default whenever home network access is on.</p><div class=\"ayu-inline-actions\">" + button("Turn on HTTPS (recommended)", "overview-https:enable", "primary", "shield", "sm") + "</div></div>");
@@ -5978,7 +6161,7 @@
         var cfg = bootstrapConfig();
         var status = getByPath(state.bootstrap, "status", {});
         var complete = onboardingCompleted();
-        var identity = "<div class=\"ayu-identity-band\"><div><div class=\"ayu-kicker\">Your local server</div><h1>Make yourself at home.</h1><p>Name your server, choose your theme, and keep the essentials in view.</p></div><div class=\"ayu-identity-fields\">" + field("Server name", input("overview.serverName", { placeholder: "My AutoYou" })) + field("Appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + button("Save", "save-overview", "primary", "save") + "</div></div>";
+        var identity = "<div class=\"ayu-identity-band\"><div><div class=\"ayu-kicker\">Your local server</div><h1>Overview</h1><p>Server identity, appearance, and current status.</p></div><div class=\"ayu-identity-fields\">" + field("Server name", input("overview.serverName", { placeholder: "My AutoYou" })) + field("Appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + button("Save", "save-overview", "primary", "save") + "</div></div>";
         var summaries = [
             { screen: "ai", label: "Responses", value: getByPath(status, "ai_agent.status", "Unknown"), icon: "cpu" },
             { screen: "agents", label: "Agents", value: String((getByPath(state.bootstrap, "agents.agent_overview", []) || []).filter(function (agent) { return agent.installed; }).length) + " installed", icon: "agents" },
@@ -5989,8 +6172,8 @@
             return "<button type=\"button\" class=\"ayu-summary-card\" data-action=\"nav:" + item.screen + "\"><span class=\"ayu-summary-icon\">" + icon(item.icon) + "</span><span><small>" + escapeHtml(item.label) + "</small><strong>" + escapeHtml(item.value) + "</strong></span>" + icon("arrowRight") + "</button>";
         }).join("") + "</div>";
         var next = complete
-            ? panel("Ready when you are", "Open a conversation or see which devices are connected.", "<div class=\"ayu-inline-actions\">" + button("Open chat", "nav:chat", "primary", "msg") + button("Live View", "nav:live", "secondary", "eye") + button("Revisit setup", "nav:setup", "ghost", "bolt") + "</div>")
-            : "<div class=\"ayu-start-banner\"><span class=\"ayu-start-icon\">" + icon("bolt") + "</span><div><strong>A little setup. A lot you can do.</strong><p>Choose your uses, local AI, permissions, and a private connection in one guided flow.</p></div>" + button("Set up AutoYou", "nav:setup", "primary", "arrowRight") + "</div>";
+            ? panel("Quick actions", "Open a conversation or see which devices are connected.", "<div class=\"ayu-inline-actions\">" + button("Open chat", "nav:chat", "primary", "msg") + button("Live View", "nav:live", "secondary", "eye") + button("Revisit setup", "nav:setup", "ghost", "bolt") + "</div>")
+            : "<div class=\"ayu-start-banner\"><span class=\"ayu-start-icon\">" + icon("bolt") + "</span><div><strong>Complete server setup</strong><p>Choose your uses, local AI, permissions, and a private connection in one guided flow.</p></div>" + button("Set up AutoYou", "nav:setup", "primary", "arrowRight") + "</div>";
         return "<div class=\"ayu-screen ayu-overview\">" + identity + next + cards + "<div class=\"ayu-grid-2\">" + panel("Service controls", "Start, stop, or restart your local services.", renderOverviewQuickControls()) + panel("Find the right setting", "Each page has one job.", "<div class=\"ayu-destination-list\">" + [
             ["permissions", "Permissions", "Microphone, webcam, screen, recording and memory", "shield"],
             ["connectivity", "Connectivity", "This computer, home network and remote access", "wifi"],
@@ -6284,12 +6467,12 @@
     }
 
     var GUIDED_SETUP_STEPS = [
-        { id: "welcome", label: "Make it yours", title: "Your AutoYou, your way.", copy: "Start with a name and an everyday preset. Everything stays editable." },
+        { id: "welcome", label: "Identity", title: "Server identity and preset", copy: "Set the server name and choose a configuration preset." },
         { id: "uses", label: "Choose uses", title: "What would you like to do?", copy: "Pick the things you need. Permission to record or control your computer is a separate choice." },
         { id: "responses", label: "Responses", title: "What should power responses?", copy: "Local models are the recommended starting point. Hosted providers and other runtimes are optional." },
         { id: "privacy", label: "Privacy", title: "What can AutoYou access?", copy: "You decide what is shared, recorded, and saved. These choices apply when you save your plan." },
         { id: "connect", label: "Connect", title: "Where should this server be reachable?", copy: "Keep the server on this computer and use Telegram for personal access, or choose another connection." },
-        { id: "review", label: "Review & boot", title: "Your setup, ready to review.", copy: "Check the exact changes, save your plan, then start the local services you chose." }
+        { id: "review", label: "Review & boot", title: "Review configuration", copy: "Check the exact changes, save your plan, then start the local services you chose." }
     ];
 
     var GUIDED_PERMISSION_COPY = [
@@ -6326,7 +6509,7 @@
         var capture = [permissions.share_screen ? "Screen" : "", permissions.share_microphone ? "Microphone" : "", permissions.share_webcam ? "Webcam" : ""].filter(Boolean);
         var ai = (setupQuestion("ai_path").options || []).find(function (option) { return option.id === answers.ai_path; });
         var network = (setupQuestion("network_scope").options || []).find(function (option) { return option.id === answers.network_scope; });
-        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Built around you.</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
+        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Setup summary</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
     }
 
     function renderGuidedTelegram() {
@@ -6339,15 +6522,15 @@
         var cfg = bootstrapConfig();
         var answers = currentSetupAnswers();
         var setup = state.setup.payload || {};
-        var models = getByPath(state.aiLibrary.local, "models", getByPath(setup, "ollama.local_models", []));
         var currentModel = String(getByPath(cfg, "ollama.model", ""));
-        var modelReady = Array.isArray(models) && models.some(function (model) {
-            var name = typeof model === "string" ? model : (model.name || model.model || "");
-            return name === currentModel || name === currentModel + ":latest";
-        });
-        var providerReady = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway" || answers.ai_path === "model_picker"
-            ? modelReady
-            : getByPath(cfg, "ai_provider.provider", "") === ({ cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus" }[answers.ai_path]);
+        var selectedModel = guidedLocalModelName();
+        var installedModel = matchingLocalModels(selectedModel);
+        var configuredModel = matchingLocalModels(currentModel);
+        var modelReady = !state.setup.modelCheckError && installedModel.length === 1 && configuredModel.length === 1 && configuredModel[0] === installedModel[0];
+        var localPath = guidedUsesLocalModel();
+        var providerReady = localPath
+            ? modelReady && getByPath(cfg, "ai_provider.provider", "") === (answers.ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama")
+            : getByPath(cfg, "ai_provider.provider", "") === ({ cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", pi: "pi", custom: "custom" }[answers.ai_path]);
         var passwordReady = Boolean(getByPath(setup, "password_changed", false)) || getByPath(setup, "using_default_password", true) === false;
         return [
             { label: "Custom password", ready: passwordReady && getByPath(cfg, "security.mode", "normal") !== "normal", action: "setup-guided-step:4", copy: "Save a custom password and Secure Mode on Connect." },
@@ -6355,6 +6538,105 @@
             { label: "Personal connection", ready: answers.network_scope !== "telegram" || telegramApprovedSenderIds().length > 0, action: "setup-guided-step:4", copy: "Save your bot token and approve your own sender ID." },
             { label: "Applied setup plan", ready: state.setup.applied, action: "setup-guided-apply", copy: "Apply the reviewed settings and agent choices below." }
         ];
+    }
+
+    function guidedUsesLocalModel() {
+        return ["local_ollama", "native_ollama_gateway", "model_picker"].indexOf(currentSetupAnswers().ai_path) !== -1;
+    }
+
+    function guidedLocalModelName() {
+        return normalizeLocalModelName(getByPath(state.forms, "aiProvider.ollama_model", "") || getByPath(bootstrapConfig(), "ollama.model", "") || localModelNames()[0] || "");
+    }
+
+    function guidedModelDownload() {
+        var reference = guidedLocalModelName().toLowerCase();
+        return activeJobList(state.aiLibrary.downloads).find(function (job) {
+            return normalizeLocalModelName(job.reference || job.title).toLowerCase() === reference && ["queued", "running"].indexOf(String(job.status || "").toLowerCase()) !== -1;
+        });
+    }
+
+    function renderGuidedLocalModel() {
+        var name = guidedLocalModelName();
+        setByPath(state.forms, "aiProvider.ollama_model", name);
+        var matches = matchingLocalModels(name);
+        var known = Array.isArray(getByPath(state.aiLibrary.local, "models", getByPath(state.setup.payload, "ollama.local_models", null)));
+        var options = buildSimpleOptions(localModelNames(), name, function (value) {
+            var variants = matchingLocalModels(value);
+            return value + (variants.length === 1 ? " (installed)" : (variants.length > 1 ? " (choose an exact tag)" : (known ? " (not installed)" : "")));
+        });
+        if (!options.length) options = [{ value: "", label: "Choose a model from the model library" }];
+        var status;
+        if (state.setup.modelCheckError) {
+            status = "<strong>Could not check installed models.</strong><p>" + escapeHtml(state.setup.modelCheckError) + "</p>" + button("Retry model check", "setup-check-local-model", "secondary", "refresh", "sm");
+        } else if (matches.length === 1) {
+            status = "<strong>" + escapeHtml(matches[0]) + " is installed.</strong><p>Continue keeps this model and saves a changed selection. You do not need to press Save local model first.</p>";
+        } else if (matches.length > 1) {
+            status = "<strong>Choose an exact installed model tag.</strong><p>More than one installed version matches " + escapeHtml(name) + ". Select the version you want above.</p>";
+        } else if (!known || state.aiLibrary.localLoading) {
+            status = "<strong>Checking installed models...</strong><p>Your current selection is kept while AutoYou checks the local library.</p>";
+        } else if (guidedModelDownload()) {
+            var job = guidedModelDownload();
+            status = "<strong>Downloading " + escapeHtml(name) + ".</strong><p>" + escapeHtml(job.message || job.status || "Download in progress") + " You can continue setup while this finishes. AutoYou will select the model when it is ready.</p>" + renderProgressTrack(Number(job.progress_percent) || 0);
+        } else {
+            status = "<strong>" + escapeHtml(name ? name + " is not installed on this computer." : "No local model is installed or selected.") + "</strong><p>" + (name ? "Install this model, choose an installed model above, or finish the other setup choices first. Model files can require several GB of download and disk space." : "Open the model library to choose and download a model, then return to this step.") + "</p>" + (name ? button("Install model & continue", "setup-install-local-model", "primary", "download", "sm") : "");
+        }
+        return field("Local model", select("aiProvider.ollama_model", options), "Continue uses this selection. Models that need downloading are marked above.")
+            + "<div id=\"ayu-setup-model-status\" class=\"ayu-note ayu-note-" + (matches.length === 1 && !state.setup.modelCheckError ? "green" : "amber") + "\" role=\"status\" tabindex=\"-1\">" + status + (matches.length !== 1 ? "<div class=\"ayu-inline-actions\">" + button("Set up the rest first", "setup-model-later", "ghost", "arrowRight", "sm") + "</div>" : "") + "</div>"
+            + "<div class=\"ayu-inline-actions\">" + button("Save local model", "setup-save-local-model", "secondary", "save", "sm") + button("Download or manage models", "setup-open-screen:ai:models", "secondary", "download", "sm") + "</div>";
+    }
+
+    function setGuidedSetupStep(index) {
+        state.setup.guidedStep = Math.max(0, Math.min(Number(index) || 0, GUIDED_SETUP_STEPS.length - 1));
+        state.setup.mode = "guided";
+        renderApp();
+        var heading = root && root.querySelector("[data-setup-heading]");
+        if (heading) heading.focus({ preventScroll: true });
+        scrollIntoViewIfPresent("#ayu-setup-current");
+        if (state.setup.guidedStep === 2) ensureAiData(false);
+        if (state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
+    }
+
+    async function refreshGuidedLocalModels() {
+        state.setup.modelCheckError = "";
+        try {
+            state.aiLibrary.local = await requestJson("/api/model-library/local");
+            if (!Array.isArray(getByPath(state.aiLibrary.local, "models", null))) throw new Error("The local model inventory was not returned. Retry or open the model library.");
+            return true;
+        } catch (error) {
+            state.setup.modelCheckError = error.message || String(error);
+            renderApp();
+            return false;
+        }
+    }
+
+    async function saveGuidedLocalModel(options) {
+        options = options || {};
+        var name = guidedLocalModelName();
+        if (!await refreshGuidedLocalModels()) return false;
+        name = name || guidedLocalModelName();
+        setByPath(state.forms, "aiProvider.ollama_model", name);
+        var matches = matchingLocalModels(name);
+        if (matches.length !== 1) {
+            if (options.install && name && matches.length === 0 && !guidedModelDownload()) {
+                await startModelDownload({ source: "ollama", reference: name, title: name }, { model: name, reference: name, setupPath: currentSetupAnswers().ai_path });
+                setNotice("success", "Model download started. Continue setup while it finishes.");
+                return true;
+            }
+            if (guidedModelDownload()) return true;
+            renderApp();
+            var prompt = root && root.querySelector("#ayu-setup-model-status");
+            if (prompt) { prompt.focus({ preventScroll: true }); prompt.scrollIntoView({ block: "nearest" }); }
+            return false;
+        }
+        var cfg = bootstrapConfig();
+        var provider = currentSetupAnswers().ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama";
+        if (normalizeLocalModelName(getByPath(cfg, "ollama.model", "")) !== matches[0] || getByPath(cfg, "ai_provider.provider", "") !== provider || getByPath(cfg, "ollama.enabled", true) === false || getByPath(cfg, "ollama.use_google_api", false)) {
+            await patchConfig({ ollama: { enabled: true, model: matches[0], model_explicit: true, use_google_api: false }, ai_provider: { provider: provider } });
+            state.setup.recipe = null;
+            state.setup.applied = false;
+        }
+        setByPath(state.forms, "aiProvider.ollama_model", matches[0]);
+        return true;
     }
 
     function renderGuidedSetupBody(step) {
@@ -6379,8 +6661,8 @@
             var local = options.filter(function (option) { return option.id === "local_ollama" || option.id === "cloud_provider" || option.id === "google_gemini"; });
             var extra = options.filter(function (option) { return local.indexOf(option) === -1; });
             var optionsMarkup = function (items) { return "<div class=\"ayu-usecase-grid\">" + items.map(function (option) { return guidedChoice("ai_path", option, option.id === answers.ai_path, option.id === "local_ollama" ? "cpu" : "cloud"); }).join("") + "</div>"; };
-            var localPath = answers.ai_path === "local_ollama" || answers.ai_path === "native_ollama_gateway";
-            return optionsMarkup(local) + disclosure("setup-other-runtimes", "Other response runtimes", "Native Ollama gateway, Hermes, OpenClaw and model guidance.", optionsMarkup(extra)) + "<div class=\"ayu-note ayu-note-" + (localPath ? "green" : "amber") + "\">" + (localPath ? "Local Ollama inference runs on this computer. Telegram and optional online tools still use their services." : "Hosted providers receive prompts and conversation context. Local history storage does not make hosted inference private to this computer.") + "</div>" + (localPath ? field("Local model", select("aiProvider.ollama_model", buildSimpleOptions(localModelNames(), getByPath(state.forms, "aiProvider.ollama_model", getByPath(cfg, "ollama.model", "")))) , "Choose an installed model. Download a model below if the list is empty.") + "<div class=\"ayu-inline-actions\">" + button("Save local model", "setup-save-local-model", "secondary", "save", "sm") + button("Download or manage models", "setup-open-screen:ai:models", "primary", "download", "sm") + "</div>" : "<div class=\"ayu-inline-actions\">" + button("Configure this provider", "setup-open-screen:ai:responses", "primary", "key") + "</div>");
+            var localPath = guidedUsesLocalModel();
+            return optionsMarkup(local) + disclosure("setup-other-runtimes", "Other response runtimes", "Native Ollama gateway, Hermes, OpenClaw and model guidance.", optionsMarkup(extra)) + "<div class=\"ayu-note ayu-note-" + (localPath ? "green" : "amber") + "\">" + (localPath ? "Local Ollama inference runs on this computer. Telegram and optional online tools still use their services." : "Hosted providers receive prompts and conversation context. Local history storage does not make hosted inference private to this computer.") + "</div>" + (localPath ? renderGuidedLocalModel() : "<div class=\"ayu-inline-actions\">" + button("Configure this provider", "setup-open-screen:ai:responses", "primary", "key") + "</div>");
         }
         if (step.id === "privacy") {
             var permissions = guidedPermissions();
@@ -6414,12 +6696,12 @@
             return "<div class=\"ayu-setup-modebar\">" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "<span>Detailed setup and existing recipes</span></div>" + renderAdvancedSetupScreen();
         }
         if (state.setup.mode === "boot") {
-            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Start with AutoYou", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
+            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Startup services", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
         }
         var index = Math.max(0, Math.min(Number(state.setup.guidedStep) || 0, GUIDED_SETUP_STEPS.length - 1));
         var step = GUIDED_SETUP_STEPS[index];
         var progress = Math.round(index / (GUIDED_SETUP_STEPS.length - 1) * 100);
-        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>A good start, made simple.</h1><p>One flow from first setup to a ready local server.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan") + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-step:" + (index + 1), "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
+        return "<div class=\"ayu-screen ayu-guided-setup\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><div class=\"ayu-kicker\">Setup & Boot</div><h1>Guided setup</h1><p>Configure use cases, responses, permissions, connectivity, and startup.</p></div><div class=\"ayu-inline-actions\">" + button("Boot & maintenance", "setup-mode:boot", "secondary", "power", "sm") + button("Detailed setup", "setup-mode:advanced", "ghost", "more", "sm") + "</div></div><nav class=\"ayu-setup-progress\" aria-label=\"Setup steps\">" + GUIDED_SETUP_STEPS.map(function (item, position) { return "<button type=\"button\" class=\"" + (index === position ? "current" : position < index ? "visited" : "") + "\" data-action=\"setup-guided-step:" + position + "\"" + (index === position ? " aria-current=\"step\"" : "") + "><span>" + (position < index ? icon("check") : String(position + 1)) + "</span><strong>" + item.label + "</strong></button>"; }).join("") + "</nav><div class=\"ayu-setup-progress-track\" role=\"progressbar\" aria-label=\"Setup navigation progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"" + progress + "\"><span style=\"width:" + progress + "%\"></span></div><div class=\"ayu-guided-layout\"><section id=\"ayu-setup-current\" class=\"ayu-guided-content\"><div class=\"ayu-guided-heading\"><span class=\"ayu-kicker\">Step " + (index + 1) + " of " + GUIDED_SETUP_STEPS.length + "</span><h2 tabindex=\"-1\" data-setup-heading>" + step.title + "</h2><p>" + step.copy + "</p></div><div class=\"ayu-guided-step-body\">" + renderGuidedSetupBody(step) + "</div><div class=\"ayu-guided-footer\"><span>" + (index === 2 && guidedUsesLocalModel() ? "Continue keeps this model and saves a changed selection" : (state.setup.applied ? "Plan saved" : "Your choices are saved when you apply the plan")) + "</span><div class=\"ayu-inline-actions\">" + (index > 0 ? button("Back", "setup-guided-step:" + (index - 1), "secondary", "arrowLeft") : "") + (index < GUIDED_SETUP_STEPS.length - 1 ? button("Continue", "setup-guided-continue", "primary", "arrowRight") : button("Refresh readiness", "setup-refresh", "secondary", "refresh")) + "</div></div></section>" + renderSetupPlanSummary() + "</div></div>";
     }
 
     async function applyGuidedSetup() {
@@ -6466,6 +6748,7 @@
     }
 
     async function bootGuidedSetup() {
+        if (guidedUsesLocalModel()) await refreshGuidedLocalModels();
         if (!guidedReadiness().every(function (item) { return item.ready; })) throw new Error("Complete the setup checks before starting services.");
         var answers = currentSetupAnswers();
         if ((answers.network_scope === "lan" || answers.network_scope === "public_proxy") && Object.keys(getByPath(state.setup.recipe, "guarded_config_patch", {})).some(function (section) {
@@ -7316,7 +7599,19 @@
         var label = isOpen ? "Require OTP" : "Allow without OTP";
         var variant = isOpen ? "secondary" : "ghost";
         return button(label, "agent-website-auth:" + name + ":" + mode, variant, "shield", "sm")
-            + button("Use default", "agent-website-auth:" + name + ":default", "ghost", "bolt", "sm");
+            + button("Reset access", "agent-website-auth:" + name + ":default", "ghost", "refresh", "sm", "title=\"Restore this agent's default access rule\"");
+    }
+
+    function routeOpenActionMarkup(route) {
+        var url = routeLaunchUrl(route);
+        return url ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(url) + "\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Open " + escapeHtml(route.title || route.agent_name || "website") + "\">" + icon("external") + "<span>Open</span></a>" : "";
+    }
+
+    function renderLiveBrowserRoutes(routes) {
+        if (!Array.isArray(routes) || !routes.length) return "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
+        return "<p class=\"ayu-route-list-hint\" id=\"ayu-route-list-hint\">All " + routes.length + " routes are listed below. Scroll down to open any website.</p><div class=\"ayu-route-list\" role=\"region\" aria-label=\"All browser routes\" aria-describedby=\"ayu-route-list-hint\" tabindex=\"0\">" + routes.map(function (route) {
+            return "<article class=\"ayu-list-row ayu-live-route\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions ayu-live-route-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (route.agent_name ? badge(routeAuthBadgeLabel(route), routeAuthBadgeTone(route)) : "") + routeOpenActionMarkup(route) + "</div></article>";
+        }).join("") + "</div>";
     }
 
     function renderBrowserRoutesPanelBody(routes, browser) {
@@ -7338,7 +7633,8 @@
                 } else if (name) {
                     actions += button("Set default", "set-default-website:" + name, "ghost", "bolt", "sm");
                 }
-                return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + actions + "</div></div>";
+                actions += routeOpenActionMarkup(route);
+                return "<div class=\"ayu-list-row ayu-browser-route\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions ayu-route-actions\">" + actions + "</div></div>";
             }).join("") + "</div>"
             : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
         var directoryAction = "<div class=\"ayu-inline-actions\">" + (directoryIsDefault ? badge("Agent Apps is the home page", "green") : button("Use Agent Apps as home", "set-default-website:agent_websites", "secondary", "bolt", "sm")) + "</div>";
@@ -7460,12 +7756,7 @@
         var queuePending = Number(getByPath(queue, "pending_count", 0)) || 0;
         var readyCount = Number(getByPath(queue, "ready_count", 0)) || 0;
         var retryingCount = Number(getByPath(queue, "retrying_count", 0)) || 0;
-        var routeRows = Array.isArray(routes) && routes.length
-            ? "<div class=\"ayu-list\">" + routes.slice(0, 5).map(function (route) {
-                var routeUrl = routeLaunchUrl(route);
-                return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(route.title || route.route_id || "Route") + "</strong><small class=\"ayu-code\">" + escapeHtml(routeDisplayUrl(route)) + "</small></div><div class=\"ayu-inline-actions\">" + badge(routeBadgeLabel(route), routeBadgeTone(route)) + (routeUrl ? "<a class=\"ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm\" href=\"" + escapeHtml(routeUrl) + "\" target=\"_blank\" rel=\"noreferrer\">" + icon("external") + "<span>Open</span></a>" : "") + "</div></div>";
-            }).join("") + (routes.length > 5 ? "<div class=\"ayu-note\">Additional routes are listed in Connectivity.</div>" : "") + "</div>"
-            : "<div class=\"ayu-empty\">No browser routes reported yet.</div>";
+        var routeRows = renderLiveBrowserRoutes(routes);
         var cloudMarkup = renderStatusRows([
             { label: "Cloud Pair", value: cloudStatusText, help: getByPath(cloud, "status_message", getByPath(cloud, "detail", "")) || "Current cloud routing state." },
             { label: "Receives client requests", value: cloudActiveState === null ? "Unknown" : (cloudActiveState ? "Yes" : "No") },
@@ -7492,7 +7783,7 @@
         var routesMarkup = renderStatusRows([
             { label: "Website routes", value: String(Array.isArray(routes) ? routes.length : 0), help: "Path-routed agent websites plus explicit same-port routes." },
             { label: "Tasks route", value: tasksUrl, mono: true }
-        ]) + routeRows + "<div class=\"ayu-inline-actions\">" + button("Open connectivity", "nav:connectivity", "secondary", "wifi", "sm") + "</div>";
+        ]) + routeRows + "<div class=\"ayu-inline-actions\">" + button("Open connectivity", "nav:connectivity:routes", "secondary", "wifi", "sm") + "</div>";
 
         var liveCounts = "<div class=\"ayu-overview-stats\">" + [
             ["Connected clients", getByPath(datachannel, "connected_clients", getByPath(datachannel, "active_sessions", 0)), "nav:connectivity", "wifi"],
@@ -7669,7 +7960,7 @@
             + checkbox("aiAgent.lan_access_enabled", "Open the AI Agent developer API to the home network", "Not needed for AutoYou apps: paired phones and browsers already use AutoYou AI through this computer. This opens the agent runtime's own API on HTTPS port " + aiApiPort + " behind a one-time code, for developer tools. Only on a trusted network.")
             + aiApiNote
             + "<div class=\"ayu-inline-actions\">" + button("Save chat and developer access", "save-permissions-data", "primary", "save") + "</div>";
-        var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "viewer")))
+        var webAccess = field("Paired browser role", select("page.remote_access_role", remoteAccessRoleOptions()), remoteAccessRoleHelp(getByPath(state.forms, "page.remote_access_role", "editor")))
             + checkbox("page.admin_frontend_enabled", "Share this computer's Admin website with paired browsers", "When enabled, paired browsers can open the Admin website. Its password and authenticator checks still apply.")
             + "<div class=\"ayu-inline-actions\">" + button("Save browser permissions", "save-permissions-web", "primary", "save") + "</div>";
         var storagePaths = renderStatusRows([
@@ -7703,7 +7994,7 @@
             { label: "Game mode", value: yesNo(getByPath(video, "remote_desktop.game_enabled", false)) },
             { label: "Chat and event memory", value: yesNo(getByPath(state.forms, "aiAgent.record_messages_in_database", true)) },
             { label: "AI Agent developer API on the home network", value: aiApiSaved ? (machineOnHomeNetwork ? "Open on port " + aiApiPort : "On, but this computer is local-only") : "Off" },
-            { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "viewer")) },
+            { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "editor")) },
             { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) }
         ]);
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
@@ -9051,28 +9342,55 @@
         renderState.passiveQueued = false;
         var activeSnapshot = captureActiveControl();
         if (!state.bootstrap) {
+            renderState.markup = null;
             root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><div class=\"ayu-spinner\"></div><h1>Loading admin shell</h1><p>Fetching the live bootstrap snapshot from the server.</p></div></div>";
             return;
         }
-        root.innerHTML = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
-        root.querySelectorAll('input[type="file"]').forEach(function (input) {
-            input.tabIndex = -1;
-            input.setAttribute("aria-hidden", "true");
-        });
-        organizeSettingsSections();
-        if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
-            var sectionNav = root.querySelector(".ayu-section-nav");
-            var libraryToolbar = document.createElement("div");
-            libraryToolbar.innerHTML = renderAgentLibraryToolbar(getByPath(state.bootstrap, "agents.agent_overview", []));
-            if (sectionNav) sectionNav.insertAdjacentElement("afterend", libraryToolbar);
+        var markup = "<div class=\"ayu-shell" + (state.navOpen ? " nav-open" : "") + "\" data-screen=\"" + escapeHtml(state.screen) + "\">" + renderSidebar() + "<div class=\"ayu-backdrop\" data-action=\"close-nav\"></div><div class=\"ayu-main-wrap\">" + renderMobileBar() + "<main class=\"ayu-main\">" + renderSecureStorageAlert() + renderContextBar() + renderCurrentScreen() + "</main></div></div>" + renderNotice() + renderModal();
+        // Polling often changes data that is not visible on the current screen.
+        // Keep its DOM, scrolling, images, and file inputs mounted in that case.
+        if (markup !== renderState.markup) {
+            renderState.markup = markup;
+            root.innerHTML = markup;
+            root.querySelectorAll('input[type="file"]').forEach(function (input) {
+                input.tabIndex = -1;
+                input.setAttribute("aria-hidden", "true");
+            });
+            organizeSettingsSections();
+            if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
+                var sectionNav = root.querySelector(".ayu-section-nav");
+                var libraryToolbar = document.createElement("div");
+                libraryToolbar.innerHTML = renderAgentLibraryToolbar(getByPath(state.bootstrap, "agents.agent_overview", []));
+                if (sectionNav) sectionNav.insertAdjacentElement("afterend", libraryToolbar);
+            }
+            root.querySelectorAll("details[data-disclosure]").forEach(function (element) {
+                element.addEventListener("toggle", function () {
+                    if (!root.contains(element)) return;
+                    var id = element.getAttribute("data-disclosure");
+                    state.disclosure[id] = element.open;
+                    // Native disclosure toggles already changed the DOM. Keep the
+                    // cached markup aligned so the next poll does not remount it.
+                    var attribute = 'data-disclosure="' + escapeHtml(id) + '"';
+                    renderState.markup = renderState.markup.replace(
+                        attribute + (element.open ? ">" : " open>"),
+                        attribute + (element.open ? " open>" : ">"));
+                });
+            });
+            root.querySelectorAll("img[data-admin-profile-image]").forEach(function (element) {
+                element.addEventListener("error", function () {
+                    var parent = element.parentElement;
+                    parent.classList.remove("has-image");
+                    var initials = document.createElement("span");
+                    initials.textContent = avatarText(getByPath(state.bootstrap, "admin.server_name", "AutoYou-Server"));
+                    element.replaceWith(initials);
+                });
+            });
+            restoreActiveControl(activeSnapshot);
         }
-        root.querySelectorAll("details[data-disclosure]").forEach(function (element) {
-            element.addEventListener("toggle", function () { state.disclosure[element.getAttribute("data-disclosure")] = element.open; });
-        });
-        restoreActiveControl(activeSnapshot);
         syncBootSweepUi();
         syncCropper();
         syncTelegramSenderPolling();
+        syncAdminProfileImage();
         if (state.screen === "guides") {
             ensureBootSweepScores(false).catch(function () {});
         }
@@ -9132,6 +9450,12 @@
                 openclaw_agent_model: source.openclaw_agent_model,
                 hermes_port: source.hermes_port,
                 hermes_model: source.hermes_model,
+                pi_port: source.pi_port,
+                pi_model: source.pi_model,
+                pi_path: source.pi_path,
+                custom_api_base: source.custom_api_base,
+                custom_model: source.custom_model,
+                custom_format: source.custom_format,
                 litellm_model: source.litellm_model,
                 litellm_api_base: source.litellm_api_base,
                 openrouter_model: source.openrouter_model,
@@ -9154,6 +9478,12 @@
         }
         if (hasValue(source.hermes_token)) {
             payload.ai_provider.hermes_token = source.hermes_token;
+        }
+        if (hasValue(source.pi_token)) {
+            payload.ai_provider.pi_token = source.pi_token;
+        }
+        if (hasValue(source.custom_token)) {
+            payload.ai_provider.custom_token = source.custom_token;
         }
         if (hasValue(source.litellm_api_key)) {
             payload.ai_provider.litellm_api_key = source.litellm_api_key;
@@ -9285,7 +9615,8 @@
             return;
         }
         if (action.indexOf("nav:") === 0) {
-            setScreen(action.split(":")[1]);
+            var destination = action.split(":");
+            setScreen(destination[1], { section: destination[2] });
             return;
         }
         if (action === "interact-refresh") { await refreshInteract(); return; }
@@ -9645,14 +9976,24 @@
             return;
         }
         if (action.indexOf("setup-guided-step:") === 0) {
-            state.setup.guidedStep = Math.max(0, Math.min(Number(action.split(":")[1]) || 0, GUIDED_SETUP_STEPS.length - 1));
-            state.setup.mode = "guided";
+            setGuidedSetupStep(action.split(":")[1]);
+            return;
+        }
+        if (action === "setup-guided-continue" || action === "setup-install-local-model") {
+            if (action === "setup-install-local-model" && (state.setup.guidedStep !== 2 || !guidedUsesLocalModel())) return;
+            if (state.setup.guidedStep === 2 && guidedUsesLocalModel() && !await saveGuidedLocalModel({ install: action === "setup-install-local-model" })) return;
+            setGuidedSetupStep((state.setup.guidedStep || 0) + 1);
+            return;
+        }
+        if (action === "setup-model-later") {
+            state.setup.applied = false;
+            state.setup.recipe = null;
+            setGuidedSetupStep(3);
+            return;
+        }
+        if (action === "setup-check-local-model") {
+            await refreshGuidedLocalModels();
             renderApp();
-            var heading = root.querySelector("[data-setup-heading]");
-            if (heading) heading.focus({ preventScroll: true });
-            scrollIntoViewIfPresent("#ayu-setup-current");
-            if (state.setup.guidedStep === 2) ensureAiData(false);
-            if (state.setup.guidedStep === 4) ensureOperationsData(false, { passive: true });
             return;
         }
         if (action.indexOf("setup-permission:") === 0) {
@@ -9667,10 +10008,7 @@
             return;
         }
         if (action === "setup-save-local-model") {
-            var selectedModel = getByPath(state.forms, "aiProvider.ollama_model", "");
-            if (!selectedModel) throw new Error("Choose an installed local model first.");
-            await patchConfig({ ollama: { enabled: true, model: selectedModel, use_google_api: false }, ai_provider: { provider: currentSetupAnswers().ai_path === "native_ollama_gateway" ? "ollama_gateway" : "ollama" } }, "Local response model saved.");
-            await ensureAiData(true);
+            if (await saveGuidedLocalModel()) setNotice("success", "Local response model saved.");
             return;
         }
         if (action === "setup-save-startup") {
@@ -9712,7 +10050,11 @@
         if (action === "setup-refresh") {
             await refreshBootstrap();
             await ensureSetupData(true);
-            setNotice("success", "Setup status refreshed.");
+            if (state.setup.mode === "guided" && guidedUsesLocalModel() && !await refreshGuidedLocalModels()) {
+                setNotice("error", "Setup refreshed, but installed models could not be checked. Retry on Responses.");
+            } else {
+                setNotice("success", "Setup status refreshed.");
+            }
             return;
         }
         if (action.indexOf("setup-step:") === 0) {
@@ -11436,6 +11778,13 @@
         if (target.hasAttribute("data-bind")) {
             var path = target.getAttribute("data-bind");
             var value = getByPath(state.forms, path, "");
+            if (state.screen === "setup" && path === "aiProvider.ollama_model") {
+                state.setup.modelCheckError = "";
+                state.setup.recipe = null;
+                state.setup.applied = false;
+                renderApp();
+                return;
+            }
             if (path === "modelBehavior.mode") {
                 syncModelBehaviorFormFromResponse(state.aiLibrary.behavior);
             }

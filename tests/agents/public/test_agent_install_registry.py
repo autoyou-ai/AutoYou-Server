@@ -89,16 +89,18 @@ def test_refresh_agent_install_registry_applies_default_install_states(tmp_path)
 
 
 def test_release_agent_defaults_match_public_private_policy():
-    # The first-run set is deliberately lean: a small local model has to be able
-    # to pick reliably among these, and every omitted agent is one click away in
-    # Settings. Anything added here widens the root prompt for every install.
+    # Everyday agents are ready on first run. Model-heavy and development
+    # integrations still require an explicit install, and capture permissions
+    # remain separate from installing the Remote Desktop package.
     default_on = {
         "admin_agent",
         "ads_watching_agent",
         "audio_agent",
+        "backup_agent",
         "client_browser_control_agent",
         "donation_agent",
         "earnings_agent",
+        "game_agent",
         "internet_agent",
         "memory_agent",
         "notes_agent",
@@ -106,19 +108,18 @@ def test_release_agent_defaults_match_public_private_policy():
         "page_agent",
         "persona_agent",
         "prompts_agent",
+        "remote_desktop_agent",
         "tasks_agent",
+        "tv_agent",
     }
     opt_in = {
         "build_prompt_agent",
         "browser_agent",
-        "backup_agent",
         "coding_agent",
         "data_collector_agent",
         "education_agent",
         "files_agent",
         "fine_tuning_agent",
-        "game_agent",
-        "tv_agent",
         "hosting_agent",
         "location_agent",
         "mac_security_agent",
@@ -135,7 +136,6 @@ def test_release_agent_defaults_match_public_private_policy():
         "media_generation_agent",
         "openclaw_agent",
         "proxy_agent",
-        "remote_desktop_agent",
         "website_agent",
     }
 

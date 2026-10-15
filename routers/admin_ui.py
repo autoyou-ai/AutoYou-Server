@@ -96,7 +96,7 @@ def register_routes(
         if auth_error:
             return auth_error
         image_path = server._get_admin_profile_image_path()
-        image_bytes = image_path.read_bytes() if image_path is not None and image_path.is_file() else b""
+        image_bytes = server.read_secure_file(image_path) if image_path is not None and image_path.is_file() else b""
         if len(image_bytes) > server._ADMIN_PROFILE_IMAGE_MAX_BYTES:
             image_bytes = b""
         import base64

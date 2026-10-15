@@ -41,8 +41,8 @@ def test_owner_photo_resolves_through_the_secure_remote_web_prefix():
     face = _between(script, "function chatFaceMarkup(identity, size)", "function chatSelfCardMarkup()")
     sidebar = _between(script, "function renderSidebar()", "function renderMobileBar()")
 
-    assert "adminAssetUrl(self.avatarUrl)" in face
-    assert "escapeHtml(adminAssetUrl(avatarUrl))" in sidebar
+    assert "adminProfileImageUrl(self.avatarUserId, self.avatarUrl)" in face
+    assert "adminProfileImageUrl(avatarUserID, avatarUrl)" in sidebar
 
 
 def test_turns_are_attributed_to_the_owner_or_the_conversations_counterpart():

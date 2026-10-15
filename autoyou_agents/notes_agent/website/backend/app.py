@@ -725,9 +725,11 @@ async def api_attach_phone_media(note_id: int, request: Request, file: UploadFil
     existing = next((item for item in attachments if item.get("client_media_id") == media_id), None)
     if existing:
         return _json_response({"success": True, "attachment_id": existing.get("id")})
-    data = await file.read(5 * 1024 * 1024 + 1)
-    if not data or len(data) > 5 * 1024 * 1024:
-        return _json_response({"success": False, "error": "Media must be nonempty and at most 5 MiB."}, status_code=413)
+    data = await file.read(64 * 1024 * 1024 + 1)
+    if not data:
+        return _json_response({"success": False, "error": "The attachment is empty. Choose a non-empty file."}, status_code=400)
+    if len(data) > 64 * 1024 * 1024:
+        return _json_response({"success": False, "error": "Attachments can be up to 64 MiB. Use Media for larger photos or videos."}, status_code=413)
     mime = str(file.content_type or "application/octet-stream")
     if not re.fullmatch(r"[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+", mime):
         return _json_response({"success": False, "error": "Invalid media type."}, status_code=400)

@@ -28,7 +28,7 @@ def prompt_site(tmp_path, monkeypatch):
     collector = PromptsCollector(db)
     monkeypatch.setattr(backend, "get_global_collector", lambda: collector)
     runtime = SimpleNamespace(
-        STATE=SimpleNamespace(config={"agent_websites": {}}),
+        STATE=SimpleNamespace(config={"agent_websites": {}, "agent_ui_security": {"prompts_agent": {"auth_mode": "totp"}}}),
         _default_config=lambda: {},
         _describe_totp_capabilities=lambda config: {"totp_configured": True},
         _get_pairing_totp_secret=lambda config: "synthetic-totp-secret",

@@ -1513,6 +1513,7 @@ from shared.http_proxy_codec import encode_http_proxy_response
 try:
     from shared.remote_access_policy import (
         REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_EDITOR,
         REMOTE_ACCESS_ROLES,
         REMOTE_BROWSER_HEADER,
         REMOTE_BROWSER_VIA_HOME_NETWORK,
@@ -1557,6 +1558,7 @@ except ImportError:
         _rap.server_cloud_action_requires_admin = server_cloud_action_requires_admin
     from shared.remote_access_policy import (
         REMOTE_ACCESS_VIEWER,
+        REMOTE_ACCESS_EDITOR,
         REMOTE_ACCESS_ROLES,
         REMOTE_BROWSER_HEADER,
         REMOTE_BROWSER_VIA_HOME_NETWORK,
@@ -2211,7 +2213,7 @@ def _save_admin_profile_image(payload: bytes) -> Path:
 
 def _get_server_profile_call_payload() -> Dict[str, Any]:
     image_path = _get_admin_profile_image_path()
-    image_bytes = image_path.read_bytes() if image_path is not None else b""
+    image_bytes = read_secure_file(image_path) if image_path is not None else b""
     if len(image_bytes) > _ADMIN_PROFILE_IMAGE_SIGNAL_MAX_BYTES:
         image_bytes = b""
     return {
@@ -3382,11 +3384,10 @@ FRONTEND_DEFAULT_ENABLEMENT_OVERRIDES: Dict[str, bool] = {
     # the admin page must never be advertised or exposed by default.
     "admin_agent": False,
     # These surfaces remain deliberate opt-ins because they expose sensitive
-    # machine telemetry or trading controls.  Installing the agent alone must
+    # machine security telemetry. Installing the agent alone must
     # not publish them to paired browser clients.
     "win_security_agent": False,
     "mac_security_agent": False,
-    "game_agent": False,
 }
 
 FRONTEND_DEFAULT_ENABLEMENT: Dict[str, bool] = {
@@ -4630,7 +4631,7 @@ def _apply_default_autoyou_page_config(cfg: Dict[str, Any]) -> bool:
         "advertised_websites": [],
         "bookmarks": [],
         "theme": "light",
-        "remote_access_role": REMOTE_ACCESS_VIEWER,
+        "remote_access_role": REMOTE_ACCESS_EDITOR,
     }
     for key, value in defaults.items():
         if key not in autoyou_page:
@@ -5874,7 +5875,7 @@ def _default_config() -> Dict[str, Any]:
             "advertised_websites": [],
             "bookmarks": [],
             "theme": "light",
-            "remote_access_role": REMOTE_ACCESS_VIEWER,
+            "remote_access_role": REMOTE_ACCESS_EDITOR,
         },
         "model_behavior": {
             # Mode controls preset LiteLlm parameter bundles.
@@ -5988,6 +5989,16 @@ def _default_config() -> Dict[str, Any]:
             "hermes_port": 8642,
             "hermes_token": "",
             "hermes_model": "hermes-agent",
+            # Pi Coding Agent gateway/CLI settings (official agent from pi.dev)
+            "pi_port": 8650,
+            "pi_token": "",
+            "pi_model": "qwen3.8:27b",
+            "pi_path": "",
+            # Custom API integration settings (communication software mode)
+            "custom_api_base": "http://127.0.0.1:8000",
+            "custom_model": "custom",
+            "custom_token": "",
+            "custom_format": "openai",
             # LiteLLM cloud provider settings
             "litellm_model": "anthropic/claude-sonnet-4-5",
             "litellm_api_key": "",
@@ -6609,7 +6620,7 @@ def _apply_google_api_config_to_env() -> None:
     # ── Active provider ───────────────────────────────────────────────────────
     # Resolve: explicit ai_provider.provider > legacy use_google_api > default ollama
     provider = str(ai_prov_config.get("provider") or "").strip().lower()
-    _valid_providers = {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "openrouter", "litellm", "google", "apple_intelligence"}
+    _valid_providers = {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "pi", "custom", "openrouter", "litellm", "google", "apple_intelligence"}
     if provider not in _valid_providers:
         # Backward compat: if no new key, check old use_google_api flag
         provider = "google" if ollama_config.get("use_google_api", False) else "ollama"
@@ -6644,6 +6655,32 @@ def _apply_google_api_config_to_env() -> None:
     os.environ['HERMES_PORT']  = hm_port
     os.environ['HERMES_TOKEN'] = hm_token
     os.environ['HERMES_MODEL'] = hm_model
+
+    # ── Pi Coding Agent gateway settings (pi.dev) ─────────────────────────────
+    pi_port  = str(ai_prov_config.get("pi_port",  8650) or 8650)
+    pi_token = str(ai_prov_config.get("pi_token", "") or "")
+    pi_model = str(ai_prov_config.get("pi_model", "qwen3.8:27b") or "qwen3.8:27b")
+    pi_path  = str(ai_prov_config.get("pi_path", "") or "")
+    if not pi_path:
+        try:
+            from shared.pi_gateway import get_default_pi_path
+            pi_path = get_default_pi_path()
+        except Exception:
+            pi_path = ""
+    os.environ['PI_PORT']  = pi_port
+    os.environ['PI_TOKEN'] = pi_token
+    os.environ['PI_MODEL'] = pi_model
+    os.environ['PI_PATH']  = pi_path
+
+    # ── Custom API integration settings (communication software mode) ─────────
+    custom_api_base = str(ai_prov_config.get("custom_api_base", "http://127.0.0.1:8000") or "http://127.0.0.1:8000")
+    custom_model = str(ai_prov_config.get("custom_model", "custom") or "custom")
+    custom_token = str(ai_prov_config.get("custom_token", "") or "")
+    custom_format = str(ai_prov_config.get("custom_format", "openai") or "openai")
+    os.environ['CUSTOM_API_BASE'] = custom_api_base
+    os.environ['CUSTOM_MODEL'] = custom_model
+    os.environ['CUSTOM_TOKEN'] = custom_token
+    os.environ['CUSTOM_FORMAT'] = custom_format
 
     # ── LiteLLM cloud provider settings ──────────────────────────────────────
     ll_model    = str(ai_prov_config.get("litellm_model",    "") or "")
@@ -9881,7 +9918,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "chat_memory_enabled": bool(ai_agent.get("record_messages_in_database", True)),
         "ai_agent_lan_access_enabled": bool(ai_agent.get("lan_access_enabled", False)),
         "admin_frontend_enabled": bool(admin_frontend),
-        "remote_access_role": normalize_remote_access_role(autoyou_page.get("remote_access_role", "viewer")),
+        "remote_access_role": normalize_remote_access_role(autoyou_page.get("remote_access_role", REMOTE_ACCESS_EDITOR)),
         "paths": {
             "safety_recording": paths["safety_recording"]["resolved_dir"],
             "video_recording": paths["video_recording"]["resolved_dir"],
@@ -12877,7 +12914,7 @@ def _get_remote_browser_access_role(cfg: Optional[Dict[str, Any]] = None) -> str
     effective_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})
     page_cfg = effective_cfg.get("autoyou_page") if isinstance(effective_cfg, dict) else {}
     page_cfg = page_cfg if isinstance(page_cfg, dict) else {}
-    return normalize_remote_access_role(page_cfg.get("remote_access_role"))
+    return normalize_remote_access_role(page_cfg.get("remote_access_role", REMOTE_ACCESS_EDITOR))
 
 def _build_default_website_payload(
     cfg: Optional[Dict[str, Any]] = None,
@@ -13169,6 +13206,8 @@ def _redact_admin_ai_provider_secrets(cfg: Dict[str, Any]) -> None:
         "openclaw_token",
         "openclaw_agent_token",
         "hermes_token",
+        "pi_token",
+        "custom_token",
         "litellm_api_key",
         "openrouter_api_key",
         "odysseus_token",
@@ -13503,14 +13542,19 @@ def _apply_admin_ui_config_patch(
         ai_provider_cfg = cfg.setdefault("ai_provider", {})
         if "provider" in ai_provider_payload:
             provider = str(ai_provider_payload.get("provider") or "").strip().lower()
-            if provider not in {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "openrouter", "litellm", "google", "apple_intelligence"}:
+            if provider not in {"ollama", "ollama_gateway", "odysseus", "openclaw", "hermes", "pi", "custom", "openrouter", "litellm", "google", "apple_intelligence"}:
                 raise ValueError("Choose a supported AI provider.")
             if provider == "apple_intelligence":
                 from shared.apple_intelligence import helper_path
                 if helper_path() is None:
                     raise ValueError("Apple Intelligence requires the AutoYou Mac app on a supported Mac. Choose another chat mode on this computer.")
             ai_provider_cfg["provider"] = provider
-        for key in {"openclaw_token", "openclaw_model", "openclaw_agent_token", "openclaw_agent_model", "hermes_token", "hermes_model", "litellm_model", "litellm_api_key", "litellm_api_base", "odysseus_api_base", "odysseus_model"}:
+        for key in {
+            "openclaw_token", "openclaw_model", "openclaw_agent_token", "openclaw_agent_model",
+            "hermes_token", "hermes_model", "litellm_model", "litellm_api_key", "litellm_api_base",
+            "odysseus_api_base", "odysseus_model", "pi_token", "pi_model", "pi_path",
+            "custom_api_base", "custom_model", "custom_token", "custom_format",
+        }:
             if key in ai_provider_payload:
                 ai_provider_cfg[key] = str(ai_provider_payload.get(key) or "").strip()
         if "openrouter_model" in ai_provider_payload:
@@ -13531,7 +13575,7 @@ def _apply_admin_ui_config_patch(
             odysseus_token = str(ai_provider_payload.get("odysseus_token") or "").strip()
             if odysseus_token:
                 ai_provider_cfg["odysseus_token"] = odysseus_token
-        for key in {"openclaw_port", "openclaw_agent_port", "hermes_port"}:
+        for key in {"openclaw_port", "openclaw_agent_port", "hermes_port", "pi_port"}:
             if key in ai_provider_payload:
                 ai_provider_cfg[key] = _coerce_admin_ui_int(ai_provider_payload.get(key), f"ai_provider.{key}", minimum=1)
         touched_sections.add("ai_provider")
@@ -17007,6 +17051,16 @@ async def _ai_provider_summary() -> str:
             port  = os.getenv("HERMES_PORT", "8642")
             model = os.getenv("HERMES_MODEL", "hermes-agent")
             return f"Using Hermes Agent Gateway - port {port}, model {model}"
+
+        if provider == "pi":
+            port  = os.getenv("PI_PORT", "8650")
+            model = os.getenv("PI_MODEL", "pi-agent")
+            return f"Using Pi Coding Agent Gateway - port {port}, model {model}"
+
+        if provider == "custom":
+            api_base = os.getenv("CUSTOM_API_BASE", "http://127.0.0.1:8000")
+            model = os.getenv("CUSTOM_MODEL", "custom")
+            return f"Using Custom API Gateway - {api_base}, model {model}"
 
         if provider == "odysseus":
             model = os.getenv("ODYSSEUS_MODEL", "").strip() or "auto"
