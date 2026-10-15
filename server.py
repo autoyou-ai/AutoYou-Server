@@ -5989,11 +5989,11 @@ def _default_config() -> Dict[str, Any]:
             "hermes_port": 8642,
             "hermes_token": "",
             "hermes_model": "hermes-agent",
-            # Pi Coding Agent gateway/CLI settings
+            # Pi Coding Agent gateway/CLI settings (official agent from pi.dev)
             "pi_port": 8650,
             "pi_token": "",
-            "pi_model": "pi-agent",
-            "pi_path": r"C:\Users\You\Projects\Pi",
+            "pi_model": "qwen3.8:27b",
+            "pi_path": "",
             # Custom API integration settings (communication software mode)
             "custom_api_base": "http://127.0.0.1:8000",
             "custom_model": "custom",
@@ -6656,11 +6656,17 @@ def _apply_google_api_config_to_env() -> None:
     os.environ['HERMES_TOKEN'] = hm_token
     os.environ['HERMES_MODEL'] = hm_model
 
-    # ── Pi Coding Agent gateway settings ──────────────────────────────────────
+    # ── Pi Coding Agent gateway settings (pi.dev) ─────────────────────────────
     pi_port  = str(ai_prov_config.get("pi_port",  8650) or 8650)
     pi_token = str(ai_prov_config.get("pi_token", "") or "")
-    pi_model = str(ai_prov_config.get("pi_model", "pi-agent") or "pi-agent")
-    pi_path  = str(ai_prov_config.get("pi_path", r"C:\Users\You\Projects\Pi") or r"C:\Users\You\Projects\Pi")
+    pi_model = str(ai_prov_config.get("pi_model", "qwen3.8:27b") or "qwen3.8:27b")
+    pi_path  = str(ai_prov_config.get("pi_path", "") or "")
+    if not pi_path:
+        try:
+            from shared.pi_gateway import get_default_pi_path
+            pi_path = get_default_pi_path()
+        except Exception:
+            pi_path = ""
     os.environ['PI_PORT']  = pi_port
     os.environ['PI_TOKEN'] = pi_token
     os.environ['PI_MODEL'] = pi_model

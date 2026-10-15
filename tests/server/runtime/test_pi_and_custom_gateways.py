@@ -29,7 +29,7 @@ def mock_app():
 @pytest.mark.asyncio
 async def test_probe_pi_returns_status(monkeypatch):
     monkeypatch.setenv("PI_PORT", "8650")
-    monkeypatch.setenv("PI_PATH", r"C:\Users\You\Projects\Pi")
+    monkeypatch.setenv("PI_PATH", "/synthetic/pi/path")
 
     # Mock successful probe
     with patch("shared.pi_gateway.probe_pi", new_callable=AsyncMock) as mock_probe:
@@ -38,9 +38,9 @@ async def test_probe_pi_returns_status(monkeypatch):
             "running": True,
             "port": 8650,
             "models": ["pi-agent"],
-            "path": r"C:\Users\You\Projects\Pi",
+            "path": "/synthetic/pi/path",
         }
-        res = await pi_gateway.probe_pi(port=8650, path=r"C:\Users\You\Projects\Pi")
+        res = await pi_gateway.probe_pi(port=8650, path="/synthetic/pi/path")
         assert res["running"] is True
         assert "pi-agent" in res["models"]
 
@@ -111,7 +111,7 @@ async def test_call_pi_gateway_cli_fallback(monkeypatch):
                 message="Test CLI",
                 session_id="synthetic-session-cli",
                 api_base="http://127.0.0.1:8650",
-                pi_path=r"C:\Users\You\Projects\Pi",
+                pi_path="/synthetic/pi/path",
             )
             assert res is not None
             assert res["response"] == "CLI synthetic output"

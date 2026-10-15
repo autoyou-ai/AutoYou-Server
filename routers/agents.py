@@ -603,7 +603,7 @@ def register_routes(
             ai_prov = (server.STATE.config or {}).get("ai_provider", {})
             port = int(ai_prov.get("pi_port", server.os.getenv("PI_PORT", "8650")))
             token = ai_prov.get("pi_token", server.os.getenv("PI_TOKEN", "")) or ""
-            pi_path = ai_prov.get("pi_path", server.os.getenv("PI_PATH", r"C:\Users\You\Projects\Pi"))
+            pi_path = ai_prov.get("pi_path") or server.os.getenv("PI_PATH") or ""
             result = await probe_pi(api_base=f"http://127.0.0.1:{port}", pi_path=pi_path, token=token)
             return JSONResponse(result)
         except Exception as exc:

@@ -5,9 +5,10 @@
 
 """Pi Coding Agent Gateway adapter for AutoYou.
 
-Bridges chat, attachments, and tool calls to https://github.com/earendil-works/pi
-running from C:\\Users\\You\\Projects\\Pi (or configured PI_PATH).
-Supports both direct CLI execution and local HTTP gateway (port 8650).
+Official integration for Pi (https://pi.dev / https://github.com/earendil-works/pi).
+Supports both direct CLI execution and local HTTP gateway (default port 8650).
+Auto-detects the Pi installation directory across standard workspace locations
+or configured PI_PATH environment variable.
 """
 
 from __future__ import annotations
@@ -32,22 +33,61 @@ except ImportError:
 
 logger = logging.getLogger("shared.pi_gateway")
 
-DEFAULT_PI_PATH = r"C:\Users\You\Projects\Pi"
 DEFAULT_PI_PORT = 8650
 
 
+def get_default_pi_path() -> str:
+    """Return the preferred default path for Pi Coding Agent (pi.dev), cross-platform."""
+    env_path = (os.environ.get("PI_PATH") or "").strip()
+    if env_path:
+        return env_path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    candidates = [
+        repo_root.parent / "Pi",
+        repo_root.parent / "pi",
+        Path.home() / "Projects" / "Pi",
+        Path.home() / "Projects" / "pi",
+        Path.home() / "pi",
+        Path.home() / ".pi",
+    ]
+    for cand in candidates:
+        try:
+            if cand.exists():
+                return str(cand.resolve())
+        except Exception:
+            continue
+
+    return str(Path.home() / "Projects" / "Pi")
+
+
 def resolve_pi_path(configured_path: Optional[str] = None) -> Path:
+    """Resolve the Pi directory dynamically across platforms with multiple fallbacks."""
     candidates = [
         configured_path,
         os.environ.get("PI_PATH"),
-        DEFAULT_PI_PATH,
     ]
     for cand in candidates:
-        if cand:
-            path = Path(cand).expanduser().resolve()
-            if path.exists():
-                return path
-    return Path(DEFAULT_PI_PATH)
+        if cand and str(cand).strip():
+            try:
+                p = Path(cand).expanduser().resolve()
+                if p.exists():
+                    return p
+            except Exception:
+                pass
+
+    default_str = get_default_pi_path()
+    try:
+        p = Path(default_str).expanduser().resolve()
+        if p.exists():
+            return p
+    except Exception:
+        pass
+
+    if configured_path and str(configured_path).strip():
+        return Path(configured_path).expanduser().resolve()
+
+    return Path(default_str)
 
 
 def resolve_pi_cli(pi_root: Path) -> Optional[Path]:
@@ -104,7 +144,7 @@ async def probe_pi(
             "available": True,
             "port": port,
             "api_base": normalized_base,
-            "models": ["pi-agent", "default", "claude-3-5-sonnet", "gpt-4o"],
+            "models": ["qwen3.8:27b", "ministral-3:8b", "ministral-3:3b", "gemma4:26b", "pi-agent", "default"],
             "mode": "cli_direct",
             "pi_path": str(path),
         }
@@ -114,7 +154,7 @@ async def probe_pi(
         "available": False,
         "port": port,
         "api_base": normalized_base,
-        "error": f"Pi CLI not found at {path}. Build it in C:\\Users\\You\\Projects\\Pi with npm run build.",
+        "error": f"Pi CLI not found at {path}. Build it in your Pi directory with npm run build.",
     }
 
 
@@ -123,14 +163,23 @@ async def _run_pi_cli_direct(
     cli_file: Path,
     prompt: str,
     *,
-    timeout: float = 120.0,
+    timeout: float = 180.0,
     model: str = "",
 ) -> str:
-    """Run Pi CLI as a subprocess and capture its response."""
+    """Run Pi CLI as a subprocess and capture its response using local models like qwen3.8:27b."""
     node_exe = shutil.which("node") or "node"
     args = [node_exe, str(cli_file), "-p", prompt]
-    if model and model != "default":
-        args.extend(["--model", model])
+
+    effective_model = (model or os.environ.get("PI_MODEL", "").strip() or "qwen3.8:27b").strip()
+    if effective_model in {"pi-agent", "default", ""}:
+        effective_model = "qwen3.8:27b"
+
+    if "/" in effective_model:
+        args.extend(["--model", effective_model])
+    else:
+        args.extend(["--provider", "ollama", "--model", effective_model])
+
+    args.append("--no-approve")
 
     env = dict(os.environ)
     env["PI_OFFLINE"] = "0"
@@ -145,6 +194,7 @@ async def _run_pi_cli_direct(
             text=True,
             timeout=timeout,
             env=env,
+            stdin=subprocess.DEVNULL,
         )
         output = proc.stdout.strip()
         if not output and proc.stderr:

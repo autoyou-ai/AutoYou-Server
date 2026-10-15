@@ -1604,9 +1604,9 @@
             providerFields.push(field("Odysseus model", input("aiProvider.odysseus_model", { placeholder: "Leave blank for Odysseus default" }), "Choose a registered Odysseus endpoint model, or leave blank for its first enabled model."));
             providerFields.push(field("Odysseus chat token", input("aiProvider.odysseus_token", { placeholder: "Leave blank to keep saved token", type: "password" }), "Use an Odysseus chat-scoped token. It stays in protected AutoYou configuration."));
         } else if (provider === "pi") {
-            providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650)."));
-            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "C:\\Users\\You\\Projects\\Pi" }), "Path to the Pi coding agent directory (CLI fallback)."));
-            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "pi-agent" }), "Model identifier or routing alias used by Pi."));
+            providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650). Official Pi agent: https://pi.dev"));
+            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent directory (CLI fallback). Auto-detected if left empty."));
+            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "qwen3.8:27b" }), "Model identifier (e.g. qwen3.8:27b, ministral-3:8b, gemma4:26b) routed through local Ollama or cloud provider."));
             providerFields.push(field("Pi gateway token", input("aiProvider.pi_token", { placeholder: "Leave blank if unauthenticated", type: "password" }), "Bearer token for Pi gateway when enabled."));
         } else if (provider === "custom") {
             providerFields.push(field("Custom API Base URL", input("aiProvider.custom_api_base", { placeholder: "http://127.0.0.1:8000" }), "External application or model endpoint. AutoYou routes audio, video, chat, and control commands here."));
@@ -1631,7 +1631,7 @@
                     : (provider === "hermes"
                         ? "Hermes provider mode is gateway-first. Hermes-backed sessions follow the Hermes runtime, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."
                         : (provider === "pi"
-                            ? "Pi Coding Agent mode uses Pi as the primary coding and agent runtime. AutoYou provides full communication channels (voice, video, chat, and control commands)."
+                            ? "Pi Coding Agent (pi.dev) operates as the primary autonomous coding and agent runtime. AutoYou provides full communication channels (voice, video, chat, and control datachannels)."
                             : (provider === "custom"
                                 ? "Custom API mode turns AutoYou into the communication bridge. Audio, video snapshots, chat, and datachannel control commands are relayed to and from your external application."
                                 : "OpenClaw provider mode is gateway-first. OpenClaw-backed sessions follow the OpenClaw conversation flow, so use Ollama, Gemini, or Other AI Providers when you want installed AutoYou agents to remain the primary runtime surface."))))) + "</div>"
@@ -1660,7 +1660,7 @@
                             ? state.aiLibrary.ollamaLoading
                             : state.aiLibrary.openclawLoading))));
         var gatewayName = provider === "pi"
-            ? "Pi Coding Agent"
+            ? "Pi Coding Agent (pi.dev)"
             : (provider === "custom"
                 ? "Custom API"
                 : (provider === "hermes"
@@ -2796,9 +2796,9 @@
         },
         {
             id: "pi",
-            eyebrow: "Coding Agent",
-            label: "Pi Coding Agent",
-            description: "Use Pi from C:\\Users\\You\\Projects\\Pi with full coding capabilities, CLI fallback, and multi-channel communication.",
+            eyebrow: "Autonomous Agent (pi.dev)",
+            label: "Pi Coding Agent (pi.dev)",
+            description: "Official autonomous coding agent from pi.dev with full tool execution, multi-channel communication (voice, video, datachannel), and CLI fallback.",
             badgeLabel: "Agent",
             badgeTone: "purple"
         },
