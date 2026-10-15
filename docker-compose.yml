@@ -25,6 +25,13 @@ services:
       # 8067 is published on the host's loopback only, so the Docker gateway
       # peer the page service sees is this computer's own browser.
       - AUTOYOU_PAGE_TRUST_NETWORK_PEERS=1
+      # The same reasoning for the admin sign-in: its port is published on the
+      # host's loopback only, so a browser on this computer reaches it from the
+      # Docker gateway. Without this, plain http://127.0.0.1:8001 is refused
+      # with "requires localhost or HTTPS". Only a request that addresses
+      # localhost or 127.0.0.1 qualifies; a LAN address still needs HTTPS.
+      # Remove it if you publish 8001 on any other interface.
+      - AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK=1
     depends_on:
       - signal
 
