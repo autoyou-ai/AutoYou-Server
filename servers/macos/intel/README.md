@@ -5,7 +5,7 @@ It does not fork server behavior; it calls `servers/macos/build-all.sh` and asks
 the existing pipeline to write an Intel-named DMG.
 
 Its app metadata uses the same repository `VERSION` value as the Apple Silicon
-server path, currently `81.0.2`.
+server path, currently `81.2.0`.
 
 From the repository root:
 

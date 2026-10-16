@@ -1565,8 +1565,8 @@
     if (!full) {
       return;
     }
-    image.removeAttribute("data-full");
     if (image.getAttribute("src") === full) {
+      image.removeAttribute("data-full");
       return;
     }
     const loader = new Image();
@@ -1574,6 +1574,7 @@
     loader.referrerPolicy = "no-referrer";
     loader.onload = () => {
       if (image.isConnected) {
+        image.removeAttribute("data-full");
         image.src = full;
       }
     };
@@ -2873,10 +2874,16 @@
       } else if (target.classList.contains("reel-backdrop") || target.classList.contains("reel-poster")) {
         target.remove();
       } else if (target.classList.contains("reel-photo")) {
-        target.replaceWith(Object.assign(document.createElement("p"), {
-          className: "reel-note",
-          textContent: "This photo can't be shown here.",
-        }));
+        const full = target.getAttribute("data-full");
+        if (full && target.getAttribute("src") !== full) {
+          target.removeAttribute("data-full");
+          target.src = full;
+        } else {
+          target.replaceWith(Object.assign(document.createElement("p"), {
+            className: "reel-note",
+            textContent: "This photo can't be shown here.",
+          }));
+        }
       }
     }, true);
 
