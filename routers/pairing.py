@@ -21,6 +21,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
 from shared.pairing_cpace import CPaceSessionKey
+from shared.session_transport import SessionDenied
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2"
 
@@ -305,11 +306,10 @@ def register_routes(
         session_id = auth_result.get("session_id")
         server_id = server._get_stable_server_id()
         server_identity_key = server._get_server_identity_key()
-        return {
+        result = {
             "success": True,
             "session_id": session_id,  # Android compatibility
             "sessionId": session_id,   # tunnelmole/python compatibility
-            "iceServers": await server._get_pairing_ice_servers_async(),
             "server_name": server.get_configured_server_name(),
             "serverName": server.get_configured_server_name(),
             "server_id": server_id,
@@ -318,6 +318,11 @@ def register_routes(
             "serverIdentityKey": server_identity_key,
             "session": auth_result.get("session") or {},
         }
+        if auth_result.get("transport") == "iroh":
+            result.update(transport="iroh", iroh=auth_result["iroh"])
+        else:
+            result["iceServers"] = await server._get_pairing_ice_servers_async()
+        return result
 
     @auth_app.post("/signal/{session_id}")
     async def signal_endpoint(session_id: str, request: Request):
@@ -351,6 +356,8 @@ def register_routes(
 
         if not authenticated_session:
             return JSONResponse(status_code=401, content={"success": False, "error": "Session not authenticated"})
+        if not server._legacy_pair_session_allowed(session_id):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Session transport does not permit signaling"})
 
         try:
             if signal_type == "offer":
@@ -383,6 +390,8 @@ def register_routes(
         """Compatibility polling endpoint for trickle ICE clients."""
         if not server._is_authenticated_pair_session(session_id):
             return JSONResponse(status_code=401, content={"success": False, "error": "Session not authenticated"})
+        if not server._legacy_pair_session_allowed(session_id):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Session transport does not permit signaling"})
         messages = server.WEBRTC.pop_outgoing_trickle_candidates(session_id)
         return {"success": True, "messages": messages}
 
@@ -547,7 +556,7 @@ def register_routes(
                     payload["_autoyou_loopback_pairing"] = True
                 payload["_autoyou_same_machine_audio"] = server._is_same_machine_audio_client(request)
                 payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
-                answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
+                answer = await server._handle_verified_autopair_offer(client_sender_id, payload)
                 answer_text = await server.pairing_router._format_autopair_answer(
                     answer,
                     platform=client_platform,
@@ -582,13 +591,16 @@ def register_routes(
             payload["_autoyou_device_ownership"] = server._local_pair_device_ownership(request)
             if server.pairing_router is None:
                 return JSONResponse({"error": "Pairing subsystem not ready"}, status_code=503)
-            # Delegate to WebRTC manager
-            answer = await server.WEBRTC.handle_autopair_offer(client_sender_id, payload)
+            answer = await server._handle_verified_autopair_offer(client_sender_id, payload)
             wrapped_answer = server.pairing_router._build_autopair_answer_payload(answer, client_sender_id)
             answer_text = "/autopair_answer\n" + _json.dumps(wrapped_answer, separators=(",", ":"))
             return PlainTextResponse(answer_text, status_code=200)
-        except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+        except SessionDenied as exc:
+            return JSONResponse({"error": str(exc)}, status_code=403,
+                                headers={"Cache-Control": "no-store"})
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400,
+                                headers={"Cache-Control": "no-store"})
         except Exception as e:
             import traceback
             error_payload = ("\n--- ERROR ---\n" + traceback.format_exc()).encode("utf-8", errors="replace")

@@ -49,9 +49,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from .native_secure_stream import storage_cipher
+from . import native_secure_stream as _native_storage
 
 from .keystore import (
     _backend_name,
@@ -142,6 +144,14 @@ def _fernet_key(raw_key: bytes) -> bytes:
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
+    api = _native_storage.native_api()
+    if api is not None:
+        api.atomic_write_file(str(path), payload)
+        return
+    _legacy_atomic_write(path, payload)
+
+
+def _legacy_atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(
         f".{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
@@ -195,7 +205,7 @@ class _SecureStorageContext:
     service_name: str
     key_source: str
     key: bytes
-    fernet: Fernet
+    fernet: Any
     keyring_backend: str = "none"
     # from __debug_provenance_i__ import or
 
@@ -211,14 +221,13 @@ class _SecureDatabaseState:
         with _STORAGE_LOCK:
             with self.lock:
                 try:
-                    payload = _normalise_sqlite_snapshot(self.anchor.serialize())
+                    payload = self.anchor.serialize()
                 except Exception as exc:  # pragma: no cover - sqlite error text varies by platform.
                     raise SecureStorageError(
                         f"Cannot snapshot protected SQLite database {self.path.name}: {exc}"
                     ) from exc
                 context = _require_context()
-                envelope = SQLITE_HEADER + context.fernet.encrypt(payload)
-                _atomic_write(self.path, envelope)
+                _write_sealed_file(self.path, payload, context.fernet, sqlite=True)
                 _remove_sqlite_sidecars(self.path)
 
 
@@ -239,6 +248,9 @@ def _normalise_sqlite_snapshot(payload: bytes) -> bytes:
     complete, so switching the image back to rollback-compatible header
     values is sufficient and keeps the encrypted on-disk format unchanged.
     """
+    api = _native_storage.native_api()
+    if api is not None:
+        return api.normalise_sqlite_snapshot(payload)
     if len(payload) < 20 or payload[:16] != _SQLITE_DATABASE_MAGIC:
         return payload
     if payload[18] != 2 and payload[19] != 2:
@@ -380,7 +392,7 @@ def enable_secure_storage(
                 service_name=service_name,
                 key_source=key_source,
                 key=key,
-                fernet=Fernet(key),
+                fernet=storage_cipher(key),
                 keyring_backend=backend,
             )
             os.environ["AUTOYOU_SECURE_STORAGE_MODE"] = SECURE_PROFESSIONAL_MAXIMUS_MODE
@@ -626,7 +638,7 @@ def _discover_protected_paths(
     )
 
 
-def _decrypt_rekey_entry(path: Path, fernet: Fernet) -> Tuple[bytes, bytes]:
+def _decrypt_rekey_entry(path: Path, fernet: Any) -> Tuple[bytes, bytes]:
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -705,7 +717,7 @@ def rotate_secure_storage(
                 new_raw_key = secrets.token_bytes(32)
                 new_key = _fernet_key(new_raw_key)
 
-            new_fernet = Fernet(new_key)
+            new_fernet = storage_cipher(new_key)
             skipped_undecryptable: List[str] = []
             try:
                 for path in paths:
@@ -721,7 +733,7 @@ def rotate_secure_storage(
                         skipped_undecryptable.append(str(path))
                         continue
                     staged = path.with_name(f".{path.name}.{uuid.uuid4().hex}.rekey.tmp")
-                    _atomic_write(staged, header + new_fernet.encrypt(payload))
+                    _write_sealed_file(staged, payload, new_fernet, sqlite=header == SQLITE_HEADER)
                     entries.append((path, staged))
             except Exception:
                 _restore_rekey_files([], (entry[1] for entry in entries))
@@ -987,7 +999,7 @@ def recover_stranded_envelopes(
                 service_name="",
                 key_source="recovery",
                 key=key,
-                fernet=Fernet(key),
+                fernet=storage_cipher(key),
                 keyring_backend="none",
             )
     try:
@@ -1062,8 +1074,13 @@ def seal_secure_paths(paths: Iterable[str | Path]) -> Dict[str, Any]:
     return {"sealed": sealed, "skipped": skipped}
 
 
-def _encrypted_file_payload(payload: bytes) -> bytes:
-    return FILE_HEADER + _require_context().fernet.encrypt(payload)
+def _write_sealed_file(path: Path, payload: bytes, cipher, *, sqlite: bool = False) -> None:
+    writer = getattr(cipher, "write_file", None)
+    if writer is not None:
+        writer(path, payload, sqlite=sqlite)
+    else:
+        payload = _normalise_sqlite_snapshot(payload) if sqlite else payload
+        _atomic_write(path, (SQLITE_HEADER if sqlite else FILE_HEADER) + cipher.encrypt(payload))
 
 
 def _decrypt_payload(raw: bytes, header: bytes, path: Path) -> bytes:
@@ -1109,7 +1126,7 @@ def write_secure_file(path: str | Path, payload: bytes) -> None:
     with _STORAGE_LOCK:
         resolved = Path(path)
         if secure_storage_enabled():
-            _atomic_write(resolved, _encrypted_file_payload(payload))
+            _write_sealed_file(resolved, payload, _require_context().fernet)
             with _DATABASES_LOCK:
                 _PROTECTED_FILES.add(resolved.resolve())
         else:
@@ -1121,7 +1138,11 @@ def write_secure_file(path: str | Path, payload: bytes) -> None:
                 raise SecureStorageError(
                     f"Protected file requires Secure Professional Maximus storage: {resolved.name}"
                 )
-            _atomic_write(resolved, payload)
+            api = _native_storage.native_api()
+            if api is None:
+                _atomic_write(resolved, payload)
+            else:
+                api.write_plain_file(str(resolved), payload)
 
 
 def append_secure_file(path: str | Path, payload: bytes) -> None:
@@ -1132,25 +1153,151 @@ def append_secure_file(path: str | Path, payload: bytes) -> None:
         write_secure_file(resolved, existing + bytes(payload))
 
 
+def write_secure_stream(path: str | Path, blocks: Iterable[bytes], *, expected_size: int,
+                        expected_sha256: bytes, before_commit=None, temporary_directory: str | Path | None = None) -> None:
+    """Atomically promote verified bounded bytes in the current storage format."""
+    from .secure_storage_stream import MAX_BYTES
+    if type(expected_size) is not int or not 0 <= expected_size <= MAX_BYTES or len(expected_sha256) != 32:
+        raise ValueError("invalid protected stream descriptor")
+    api = _native_storage.native_api()
+    if api is None:
+        return _legacy_write_secure_stream(path, blocks, expected_size=expected_size, expected_sha256=expected_sha256,
+                                           before_commit=before_commit, temporary_directory=temporary_directory)
+    with _STORAGE_LOCK:
+        resolved = Path(path)
+        if not secure_storage_enabled() and resolved.exists() and _protected_path_header(resolved) is not None:
+            raise SecureStorageError("Protected file requires its original storage boundary")
+        key = base64.urlsafe_b64decode(_fernet_key(_require_context().key)) if secure_storage_enabled() else None
+        owner = api.ProtectedFileWriter(str(resolved), str(temporary_directory) if temporary_directory is not None else None,
+                                        key, expected_size, bytes(expected_sha256))
+        try:
+            for block in blocks:
+                owner.update(block)
+            owner.prepare()
+            if before_commit is not None:
+                before_commit()
+            owner.commit()
+            if key is not None:
+                with _DATABASES_LOCK:
+                    _PROTECTED_FILES.add(resolved.resolve())
+        finally:
+            owner.discard()
+
+
+def _legacy_write_secure_stream(path: str | Path, blocks: Iterable[bytes], *, expected_size: int,
+                               expected_sha256: bytes, before_commit=None, temporary_directory: str | Path | None = None) -> None:
+    from .secure_storage_stream import BLOCK_BYTES, MAX_BYTES, encrypt_to
+    if type(expected_size) is not int or not 0 <= expected_size <= MAX_BYTES or len(expected_sha256) != 32:
+        raise ValueError("invalid protected stream descriptor")
+    with _STORAGE_LOCK:
+        resolved = Path(path)
+        if not secure_storage_enabled() and resolved.exists() and _protected_path_header(resolved) is not None:
+            raise SecureStorageError("Protected file requires its original storage boundary")
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        if temporary_directory is None:
+            temporary = resolved.with_name(f".{resolved.name}.{uuid.uuid4().hex}.tmp")
+        else:
+            scratch = Path(temporary_directory).resolve()
+            if not scratch.is_dir() or not scratch.is_relative_to(resolved.parent.resolve()):
+                raise ValueError("protected stream scratch must remain inside its output directory")
+            test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+            if test_root and not scratch.is_relative_to(Path(test_root).resolve()):
+                raise ValueError("protected stream scratch must remain inside its test root")
+            temporary = scratch / f".promotion-{uuid.uuid4().hex}.tmp"
+        digest, total = hashlib.sha256(), 0
+
+        def verified():
+            nonlocal total
+            for block in blocks:
+                if not isinstance(block, bytes) or not 0 < len(block) <= BLOCK_BYTES:
+                    raise ValueError("protected stream block exceeded its bound")
+                total += len(block)
+                if total > expected_size:
+                    raise ValueError("protected stream exceeded its declared size")
+                digest.update(block); yield block
+            if total != expected_size or digest.digest() != expected_sha256:
+                raise ValueError("protected stream size or digest does not match")
+
+        try:
+            with temporary.open("xb") as output:
+                os.chmod(temporary, 0o600)
+                if secure_storage_enabled():
+                    context = _require_context()
+                    output.write(FILE_HEADER)
+                    encrypt_to(output, verified(), base64.urlsafe_b64decode(_fernet_key(context.key)))
+                else:
+                    for block in verified():
+                        output.write(block)
+                output.flush(); os.fsync(output.fileno())
+            if before_commit is not None:
+                before_commit()
+            os.replace(temporary, resolved)
+            if secure_storage_enabled():
+                with _DATABASES_LOCK:
+                    _PROTECTED_FILES.add(resolved.resolve())
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def iter_secure_file(path: str | Path, *, maximum_bytes: int | None = None):
+    """Read authenticated chunks without migrating an external selected file."""
+    from .secure_storage_stream import BLOCK_BYTES, decrypt_blocks
+    if maximum_bytes is not None and (type(maximum_bytes) is not int or maximum_bytes < 0):
+        raise ValueError("invalid protected stream bound")
+    with _STORAGE_LOCK:
+        resolved = Path(path)
+        with resolved.open("rb") as source:
+            header = source.read(max(len(FILE_HEADER), len(SQLITE_HEADER)))
+            source.seek(0)
+            if header.startswith(SQLITE_HEADER):
+                raise SecureStorageError("Protected SQLite data was read as a file")
+            if header.startswith(FILE_HEADER):
+                context = _require_context()
+                source.seek(len(FILE_HEADER))
+                test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+                directory = Path(test_root) if test_root else context.root
+                directory.mkdir(parents=True, exist_ok=True)
+                try:
+                    yield from decrypt_blocks(source, base64.urlsafe_b64decode(_fernet_key(context.key)),
+                        directory=directory, maximum_bytes=maximum_bytes)
+                except ValueError as error:
+                    raise SecureStorageError("Cannot authenticate protected stream") from error
+            else:
+                total = 0
+                while block := source.read(BLOCK_BYTES):
+                    total += len(block)
+                    if maximum_bytes is not None and total > maximum_bytes:
+                        raise ValueError("selected file exceeded its bound")
+                    yield block
+
+
 @contextmanager
-def materialize_secure_file(path: str | Path):
+def materialize_secure_file(path: str | Path, *, maximum_bytes: int | None = None):
     """Temporarily expose a protected file to libraries that require a path.
 
     The temporary plaintext is removed when the context exits.  Plaintext
     external/user-selected files are yielded unchanged because they are not
     owned by AutoYou's protected storage boundary.
     """
+    if maximum_bytes is not None and (type(maximum_bytes) is not int or maximum_bytes < 0):
+        raise ValueError("invalid materialized file bound")
     resolved = Path(path)
     temporary_directory: Optional[tempfile.TemporaryDirectory[str]] = None
     temporary: Optional[Path] = None
     try:
         with _STORAGE_LOCK:
             if secure_storage_enabled() and resolved.is_file():
-                raw = resolved.read_bytes()
-                if raw.startswith(FILE_HEADER):
-                    temporary_directory = tempfile.TemporaryDirectory(prefix="autoyou-spm-")
+                with resolved.open("rb") as source:
+                    header = source.read(len(FILE_HEADER))
+                if header.startswith(FILE_HEADER):
+                    temporary_directory = tempfile.TemporaryDirectory(prefix="autoyou-spm-", dir=os.environ.get("AUTOYOU_TEST_ROOT"))
                     temporary = Path(temporary_directory.name) / resolved.name
-                    _atomic_write(temporary, _decrypt_payload(raw, FILE_HEADER, resolved))
+                    with temporary.open("xb") as output:
+                        os.chmod(temporary, 0o600)
+                        for block in iter_secure_file(resolved, maximum_bytes=maximum_bytes):
+                            output.write(block)
+        if maximum_bytes is not None and (temporary or resolved).stat().st_size > maximum_bytes:
+            raise ValueError("selected file exceeded its bound")
         yield temporary or resolved
     finally:
         if temporary_directory is not None:

@@ -171,6 +171,7 @@ def _uses_synchronous_macos_keychain(timeout_seconds: Optional[float] = None) ->
 # unlock attempt after it expires asks again, and every write or delete here updates or drops
 # the entry so a changed credential is never served stale.
 _MEMO_LOCK = threading.RLock()
+_MEMO_BACKEND: Any = None
 _MEMO: Dict[Tuple[int, str, str], str] = {}
 _DENIED_UNTIL: Dict[Tuple[int, str, str], float] = {}
 _DENIAL_MEMO_SECONDS = 20.0
@@ -178,12 +179,18 @@ _now = time.monotonic
 
 
 def _memo_key(service_name: str, username: str) -> Tuple[int, str, str]:
-    # A different backend (a test double, a switched keyring) must never share entries.
+    global _MEMO_BACKEND
     try:
-        backend_id = id(_keyring_mod.get_keyring()) if _keyring_mod is not None else 0
+        backend = _keyring_mod.get_keyring() if _keyring_mod is not None else None
     except Exception:
-        backend_id = 0
-    return (backend_id, service_name, username)
+        backend = None
+    with _MEMO_LOCK:
+        # Retain the backend itself: Python can reuse a discarded backend's id.
+        if backend is not _MEMO_BACKEND:
+            _MEMO.clear()
+            _DENIED_UNTIL.clear()
+            _MEMO_BACKEND = backend
+        return (id(backend) if backend is not None else 0, service_name, username)
 
 
 def remember_credential(service_name: str, username: str, value: str) -> None:

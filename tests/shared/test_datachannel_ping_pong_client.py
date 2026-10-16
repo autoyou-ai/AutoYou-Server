@@ -135,6 +135,15 @@ async def test_rtt_is_not_derived_from_peer_wall_clock():
 
 
 @pytest.mark.asyncio
+async def test_pong_within_one_clock_tick_records_zero_milliseconds(monkeypatch):
+    monkeypatch.setattr(time, "monotonic", lambda: 1000.0)
+    manager, channel = _client_manager()
+    assert await manager.send_ping()
+    await manager.handle_received_message(_pong_for(channel.sent_of_type("ping")[0]))
+    assert manager._last_measured_rtt_ms == 0
+
+
+@pytest.mark.asyncio
 async def test_unmatched_pong_does_not_produce_a_sample():
     manager, _ = _client_manager()
     stray = DataChannelMessage(

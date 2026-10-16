@@ -1,0 +1,530 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+
+"""Owned Python endpoint lifecycle with bounded, per-connection dispatch.
+
+The enrollment callback is supplied by AutoYou's existing proof/account owner.
+The transport never derives an owner, role or grant from an application header.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable
+
+from shared.iroh_binding import load_binding
+from shared.iroh_channel import IrohMessageChannel
+from shared.iroh_keys import EndpointKeys
+from shared.session_capacity import SendCapacity
+from shared.session_events import ConnectionEvent, ConnectionEventKind, ConnectionEvents
+from shared.session_transport import SessionBinding, SessionDenied, SessionRegistry, TransportKind
+
+_MAX_DISPATCH_BYTES = 16 * 1024 * 1024
+_MAX_CONNECTIONS = 32
+_LOG = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ConnectionContext:
+    connection_id: int
+    remote_endpoint_id: str
+    local_endpoint_id: str
+    exporter: bytes
+    initiator: bool
+    transport_id: str
+    protocol: str
+
+
+@dataclass
+class _Connection:
+    context: ConnectionContext
+    queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=130))
+    worker: asyncio.Task | None = None
+    channel: IrohMessageChannel | None = None
+    user_disconnected: bool = False
+    ready: bool = False
+    deferred: list[Any] = field(default_factory=list)
+    stream_queues: dict[int, asyncio.Queue] = field(default_factory=dict)
+    stream_workers: dict[int, asyncio.Task] = field(default_factory=dict)
+    cleanup: asyncio.Task | None = None
+
+
+class IrohSessionRuntime:
+    def __init__(self, *, api: Any, endpoint: Any, lease: Any, role: str,
+                 on_connected: Callable[[IrohSessionRuntime, ConnectionContext], Awaitable[None]],
+                 on_enrollment: Callable[[IrohSessionRuntime, ConnectionContext, bytes], Awaitable[None]],
+                 on_closed: Callable[[ConnectionContext, SessionBinding | None, bool], Awaitable[None]],
+                 on_binary_frame: Callable[[IrohMessageChannel, Any], Awaitable[None]] | None = None,
+                 on_dial_failed: Callable[[int, str], Awaitable[None]] | None = None) -> None:
+        if role not in {"server", "client", "lite"}:
+            raise ValueError("unsupported endpoint runtime role")
+        self.api, self.endpoint, self._lease, self.role = api, endpoint, lease, role
+        self.on_connected, self.on_enrollment, self.on_closed = on_connected, on_enrollment, on_closed
+        self.on_binary_frame, self.on_dial_failed = on_binary_frame, on_dial_failed
+        self.registry = SessionRegistry(endpoint=endpoint)
+        self._connections: dict[int, _Connection] = {}
+        self._instance_id = uuid.uuid4().hex
+        self._dispatch_bytes = 0
+        self._poll_task: asyncio.Task | None = None
+        self._closing = False
+        self._shutdown_task: asyncio.Task | None = None
+        self.core_routing: Any = None
+        self._core_lock = asyncio.Lock()
+        self._info = endpoint.endpoint_info()
+        self._send_capacity = SendCapacity()
+        self.events = ConnectionEvents()
+
+    @classmethod
+    async def start(cls, *, policy: dict[str, Any], keys: EndpointKeys, role: str,
+                    enroll: bool = False, unlocked_password: str | None = None,
+                    api: Any | None = None, **callbacks: Any) -> IrohSessionRuntime:
+        api = api if api is not None else load_binding()
+        if role not in {"server", "client", "lite"}:
+            raise ValueError("unsupported endpoint runtime role")
+        if getattr(keys, "role", role) != role or getattr(keys, "purpose", "identity") != "identity":
+            raise ValueError("endpoint key scope does not match the runtime")
+        policy_json = json.dumps(policy, allow_nan=False, separators=(",", ":"))
+
+        def create() -> tuple[Any, Any]:
+            lease = keys.claim_instance()
+            try:
+                seed = keys.load(enroll=enroll, unlocked_password=unlocked_password)
+                endpoint = api.SharedEndpoint(policy_json, seed)
+                return endpoint, lease
+            except BaseException:
+                lease.close()
+                raise
+
+        creation = asyncio.create_task(asyncio.to_thread(create))
+        try:
+            endpoint, lease = await asyncio.shield(creation)
+        except asyncio.CancelledError:
+            # A canceled caller cannot orphan the thread's eventual endpoint.
+            try:
+                endpoint, lease = await creation
+                await asyncio.to_thread(endpoint.shutdown)
+                lease.close()
+            finally:
+                raise
+        try:
+            runtime = cls(api=api, endpoint=endpoint, lease=lease, role=role, **callbacks)
+        except BaseException:
+            try:
+                await asyncio.to_thread(endpoint.shutdown)
+            finally:
+                lease.close()
+            raise
+        runtime._poll_task = asyncio.create_task(runtime._poll_loop(), name="iroh-session-poll")
+        return runtime
+
+    @property
+    def endpoint_info(self) -> Any:
+        if self._closing:
+            raise ConnectionError("endpoint runtime is closed")
+        # Refresh routing hints after interface changes without changing identity.
+        return self.endpoint.endpoint_info()
+
+    async def configure_core_routing(self, **context: Any) -> Any:
+        from shared.iroh_core import CoreRoutingOwner
+        if self._closing:
+            raise SessionDenied("endpoint runtime is closed")
+        async with self._core_lock:
+            if self.core_routing is not None:
+                await self.core_routing.close()
+                self.core_routing = None
+            if self._closing:
+                raise SessionDenied("endpoint runtime is closed")
+            owner = CoreRoutingOwner(api=self.api, endpoint=self.endpoint, **context)
+            self.core_routing = owner
+            owner.start()
+            return owner
+
+    async def clear_core_routing(self) -> None:
+        async with self._core_lock:
+            owner, self.core_routing = self.core_routing, None
+            if owner is not None:
+                await owner.close()
+
+    def dial(self, ticket: str, expected_endpoint: str, *, pairing: bool = False) -> int:
+        if self._closing:
+            raise ConnectionError("endpoint runtime is closed")
+        return self.endpoint.dial(ticket, expected_endpoint, pairing)
+
+    def dial_application(self, ticket: str, expected_endpoint: str, *, protocol: str) -> int:
+        if self._closing:
+            raise ConnectionError("endpoint runtime is closed")
+        dial = getattr(self.endpoint, "dial_application", None)
+        if protocol not in {"autoyou/room-pair/1", "autoyou/room-session/1"} or not callable(dial):
+            raise SessionDenied("native Lobby protocol is unavailable")
+        return dial(ticket, expected_endpoint, protocol)
+
+    def _connection(self, context: ConnectionContext) -> _Connection:
+        connection = self._connections.get(context.connection_id)
+        if self._closing or connection is None or connection.context != context or connection.cleanup is not None:
+            raise SessionDenied("connection is closed or superseded")
+        return connection
+
+    def admit(self, context: ConnectionContext, binding: SessionBinding) -> IrohMessageChannel:
+        connection = self._connection(context)
+        if connection.channel is not None or binding.endpoint_id != context.remote_endpoint_id or \
+                binding.transport_id != context.transport_id or binding.transport != TransportKind.IROH:
+            raise SessionDenied("grant does not match the authenticated connection")
+        channel = IrohMessageChannel(api=self.api, endpoint=self.endpoint, connection_id=context.connection_id,
+            binding=binding, registry=self.registry, role=self.role if context.initiator else "server",
+            activated=False, capacity=self._send_capacity)
+        old = self.registry.install(binding, channel)
+        connection.channel = channel
+        if old is not None:
+            old.disconnect()
+        return channel
+
+    def activate(self, context: ConnectionContext) -> None:
+        connection = self._connection(context)
+        if connection.channel is None:
+            raise SessionDenied("session has not been authorized")
+        self.registry.check(connection.channel.binding)
+        self.endpoint.activate(context.connection_id)
+        connection.channel._activated = True
+        if not connection.ready:
+            self.events.emit(ConnectionEvent(ConnectionEventKind.READY, context.connection_id,
+                context.transport_id, connection.channel.binding.generation,
+                connection.channel.binding.authorization_epoch))
+        connection.ready = True
+
+    def send_enrollment(self, context: ConnectionContext, payload: bytes) -> None:
+        self._connection(context)
+        if not isinstance(payload, bytes) or not payload or len(payload) > 16 * 1024:
+            raise ValueError("invalid enrollment frame")
+        self.endpoint.send(context.connection_id,
+            self.api.TransportFrame(lane=1, generation=0, stream_id=0, sequence=0, payload=payload), None)
+
+    def disconnect(self, context: ConnectionContext, *, user_requested: bool = True) -> None:
+        connection = self._connection(context)
+        _LOG.info("Iroh server disconnect: connection=%s stage=%s user_requested=%s time_unix=%.3f",
+            context.connection_id, "enrollment" if connection.channel is None else "application", user_requested, time.time())
+        connection.user_disconnected = user_requested
+        if connection.channel:
+            connection.channel.disconnect()
+        else:
+            self.endpoint.disconnect(context.connection_id)
+
+    def network_changed(self) -> None:
+        if not self._closing:
+            self.endpoint.network_changed()
+            if self.core_routing is not None:
+                self.core_routing.wake()
+
+    async def join_disconnected(self, context: ConnectionContext) -> None:
+        """Join dispatch, storage and the host cleanup callback after disconnect."""
+        connection = self._connections.get(context.connection_id)
+        if connection is None:
+            return
+        if connection.context != context or asyncio.current_task() in {connection.worker, connection.cleanup}:
+            raise SessionDenied("cannot join a different or executing connection")
+        worker = connection.worker
+        if worker is not None:
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError as cancellation:
+                while not worker.done():
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        continue
+                raise cancellation
+
+    async def _poll_loop(self) -> None:
+        try:
+            while not self._closing:
+                polled_us = time.monotonic_ns() // 1000
+                for event in self.endpoint.poll(64):
+                    if self._closing:
+                        break
+                    if event.kind == self.api.TransportEventKind.CONNECTED:
+                        if len(self._connections) >= _MAX_CONNECTIONS or len(event.exporter) != 32 or event.protocol not in {
+                                "autoyou/pair/1", "autoyou/session/1", "autoyou/room-pair/1", "autoyou/room-session/1"}:
+                            self.endpoint.disconnect(event.connection_id)
+                            continue
+                        context = ConnectionContext(event.connection_id, event.endpoint_id, self._info.endpoint_id,
+                            bytes(event.exporter), event.initiator, f"iroh_{self._instance_id}_{event.connection_id}", event.protocol)
+                        connection = _Connection(context)
+                        self._connections[event.connection_id] = connection
+                        connection.queue.put_nowait(event)
+                        connection.worker = asyncio.create_task(self._dispatch_connection(connection), name="iroh-session-dispatch")
+                    elif event.kind == self.api.TransportEventKind.FAILED:
+                        self.events.emit(ConnectionEvent(ConnectionEventKind.FAILED,
+                            event.connection_id, None, code='connection_failed'))
+                        if self.on_dial_failed:
+                            await self.on_dial_failed(event.connection_id, event.error_code or "connection_failed")
+                    else:
+                        connection = self._connections.get(event.connection_id)
+                        if connection is None or connection.cleanup is not None:
+                            continue
+                        if event.frame and event.frame.lane in {8, 9}:
+                            age, ttl = event.media_age_us, event.media_ttl_us
+                            maximum_age = 200_000 if event.frame.lane == 9 else 2_000_000
+                            if type(age) is not int or type(ttl) is not int or not 0 <= age < maximum_age or not 0 < ttl <= maximum_age:
+                                continue
+                            # Local-only metadata survives deferred and stream
+                            # queues. Wire payloads cannot supply these fields.
+                            event.frame._iroh_arrival_us = max(0, polled_us - age)
+                            event.frame._iroh_deadline_us = polled_us + ttl
+                        size = len(event.frame.payload) if event.frame else 0
+                        urgent = event.frame and event.frame.lane in {1, 2, 9}
+                        budget = _MAX_DISPATCH_BYTES if urgent else _MAX_DISPATCH_BYTES - 1024*1024
+                        limit = 128 if urgent else 112
+                        if event.frame and (connection.queue.qsize() + len(connection.deferred) >= limit or self._dispatch_bytes + size > budget):
+                            if event.frame.lane == 8:
+                                continue
+                            self.disconnect(connection.context, user_requested=False)
+                            continue
+                        self._dispatch_bytes += size
+                        connection.queue.put_nowait(event)
+                self._send_capacity.pulse()
+                await asyncio.sleep(0.005)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A worker/protocol failure has a bounded, terminal owner. Never
+            # reconnect through another transport or leave an orphan endpoint.
+            asyncio.create_task(self.close(), name="iroh-runtime-failure-close")
+
+    async def _dispatch_connection(self, connection: _Connection) -> None:
+        try:
+            while not self._closing:
+                event = await connection.queue.get()
+                size = len(event.frame.payload) if event.frame else 0
+                retained = False
+                try:
+                    if event.kind == self.api.TransportEventKind.CONNECTED:
+                        self.events.emit(ConnectionEvent(ConnectionEventKind.CONNECTED,
+                            connection.context.connection_id, connection.context.transport_id))
+                        await self.on_connected(self, connection.context)
+                    elif event.kind == self.api.TransportEventKind.CLOSED:
+                        _LOG.info("Iroh native close observed: connection=%s stage=%s time_unix=%.3f",
+                            connection.context.connection_id, "enrollment" if connection.channel is None else "application", time.time())
+                        break
+                    elif event.frame.lane == 1:
+                        await self.on_enrollment(self, connection.context, bytes(event.frame.payload))
+                    elif connection.channel is None:
+                        raise SessionDenied("application frame precedes session authorization")
+                    elif not connection.ready:
+                        connection.deferred.append(event.frame)
+                        retained = True
+                    else:
+                        retained = await self._dispatch_frame(connection, event.frame)
+                finally:
+                    if not retained:
+                        self._dispatch_bytes -= size
+                    connection.queue.task_done()
+                if connection.ready:
+                    while connection.deferred:
+                        frame = connection.deferred.pop(0)
+                        retained = False
+                        try:
+                            retained = await self._dispatch_frame(connection, frame)
+                        finally:
+                            if not retained:
+                                self._dispatch_bytes -= len(frame.payload)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            location = error.__traceback__
+            while location is not None and location.tb_next is not None:
+                location = location.tb_next
+            # Only known static reasons and source locations; never log wire data or arbitrary exception text.
+            code = {
+                "pairing confirmation was rejected": "confirmation_rejected",
+                "pairing redemption was rejected": "redemption_rejected",
+                "endpoint association requires authorized recovery": "endpoint_recovery_required",
+                "stale authorization epoch": "stale_authorization_epoch",
+                "endpoint already belongs to another device": "endpoint_already_associated",
+            }.get(str(error), "dispatch_failed") if isinstance(error, SessionDenied) else "dispatch_failed"
+            _LOG.warning("Iroh dispatch rejected: connection=%s stage=%s code=%s error=%s function=%s line=%s time_unix=%.3f",
+                connection.context.connection_id, "enrollment" if connection.channel is None else "application", code,
+                type(error).__name__, location.tb_frame.f_code.co_name if location is not None else "unknown",
+                location.tb_lineno if location is not None else 0, time.time())
+            try:
+                self.disconnect(connection.context, user_requested=False)
+            except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
+                pass
+        finally:
+            await self._join_connection_cleanup(connection)
+
+    async def _join_connection_cleanup(self, connection: _Connection) -> None:
+        if connection.cleanup is None:
+            connection.cleanup = asyncio.create_task(self._cleanup_connection(connection),
+                                                       name="iroh-session-cleanup")
+        cancellation = None
+        while not connection.cleanup.done():
+            try:
+                await asyncio.shield(connection.cleanup)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+        connection.cleanup.result()
+        if cancellation is not None:
+            raise cancellation
+
+    async def _cleanup_connection(self, connection: _Connection) -> None:
+        # Dispatch cancellation must not propagate into physical stream/storage
+        # teardown. The endpoint shutdown owner also joins this task when a
+        # dispatch worker was canceled before it ran its first instruction.
+        for worker in connection.stream_workers.values():
+            if not worker.done() and not worker.cancelling():
+                worker.cancel()
+        if connection.stream_workers:
+            await asyncio.gather(*connection.stream_workers.values(), return_exceptions=True)
+        for queue in connection.stream_queues.values():
+            while not queue.empty():
+                frame = queue.get_nowait()
+                self._dispatch_bytes -= len(frame.payload)
+                queue.task_done()
+        connection.stream_workers.clear()
+        connection.stream_queues.clear()
+        self._dispatch_bytes -= sum(len(frame.payload) for frame in connection.deferred)
+        connection.deferred.clear()
+        while not connection.queue.empty():
+            event = connection.queue.get_nowait()
+            self._dispatch_bytes -= len(event.frame.payload) if event.frame else 0
+            connection.queue.task_done()
+        binding = connection.channel.binding if connection.channel else None
+        error = None
+        try:
+            if connection.channel:
+                await connection.channel.cleanup()
+        except BaseException as exc:
+            error = exc
+        finally:
+            try:
+                await self.on_closed(connection.context, binding, connection.user_disconnected)
+            except BaseException as exc:
+                _LOG.error("Iroh session cleanup callback failed")
+                if error is None:
+                    error = exc
+            # Retain failed teardown as an owned, fenced connection. A later
+            # join/shutdown must surface it rather than approve a replacement
+            # while a physical adapter may still be running.
+            if error is None:
+                self._connections.pop(connection.context.connection_id, None)
+            self.events.emit(ConnectionEvent(ConnectionEventKind.CLOSED,
+                connection.context.connection_id, connection.context.transport_id,
+                binding.generation if binding else None, binding.authorization_epoch if binding else None,
+                user_requested=connection.user_disconnected,
+                code="cleanup_failed" if error is not None else None))
+        if error is not None:
+            raise error
+
+    async def _dispatch_frame(self, connection: _Connection, frame: Any) -> bool:
+        if frame.lane in {8, 9} and self._media_expired(frame):
+            return False
+        if frame.lane in {3, 4, 5, 6, 7, 8}:
+            # A blocked browser writer or file fsync cannot pin cancellation,
+            # pongs, chat or input. Each lane remains ordered and has a bounded
+            # owned queue; all retained bytes still count against the global cap.
+            if frame.lane in {7, 8} and self.on_binary_frame is None:
+                raise SessionDenied("binary capability is not attached")
+            queue = connection.stream_queues.get(frame.lane)
+            if queue is None:
+                queue = connection.stream_queues[frame.lane] = asyncio.Queue(maxsize=64)
+                connection.stream_workers[frame.lane] = asyncio.create_task(
+                    self._dispatch_stream_lane(connection, queue), name="iroh-stream-dispatch")
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                if frame.lane == 8:
+                    return False
+                raise SessionDenied("stream dispatch capacity is exhausted") from None
+            return True
+        if frame.lane == 9:
+            self.registry.check(connection.channel.binding)
+            if self.on_binary_frame is None:
+                raise SessionDenied("binary capability is not attached")
+            await self.on_binary_frame(connection.channel, frame)
+        else:
+            await connection.channel.receive_frame(frame)
+        return False
+
+    @staticmethod
+    def _media_expired(frame: Any) -> bool:
+        deadline = getattr(frame, "_iroh_deadline_us", None)
+        return type(deadline) is not int or time.monotonic_ns() // 1000 >= deadline
+
+    async def _dispatch_stream_lane(self, connection: _Connection, queue: asyncio.Queue) -> None:
+        try:
+            while not self._closing:
+                frame = await queue.get()
+                try:
+                    if frame.lane == 8 and self._media_expired(frame):
+                        continue
+                    self.registry.check(connection.channel.binding,
+                        scope="chat" if frame.lane == 3 else "files" if frame.lane == 7 else "media" if frame.lane == 8 else "browser")
+                    if frame.lane in {7, 8}:
+                        await self.on_binary_frame(connection.channel, frame)
+                    else:
+                        await connection.channel.receive_frame(frame)
+                finally:
+                    self._dispatch_bytes -= len(frame.payload)
+                    queue.task_done()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            location = error.__traceback__
+            while location is not None and location.tb_next is not None:
+                location = location.tb_next
+            _LOG.debug("Stream dispatch failed: lane=%s error=%s function=%s line=%s",
+                getattr(frame, "lane", None), type(error).__name__,
+                location.tb_frame.f_code.co_name if location is not None else "unknown",
+                location.tb_lineno if location is not None else 0)
+            try:
+                self.disconnect(connection.context, user_requested=False)
+            except (SessionDenied, self.api.BindingError.Closed, self.api.BindingError.UnknownConnection):
+                pass
+
+    async def close(self) -> None:
+        if self._shutdown_task is None:
+            self._closing = True
+            self._send_capacity.close()
+            self._shutdown_task = asyncio.create_task(self._close_owned(), name="iroh-runtime-shutdown")
+        cancellation = None
+        while not self._shutdown_task.done():
+            try:
+                await asyncio.shield(self._shutdown_task)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+        self._shutdown_task.result()
+        if cancellation is not None:
+            raise cancellation
+
+    async def _close_owned(self) -> None:
+        try:
+            await self.clear_core_routing()
+            # Stop event production before taking the ownership snapshot.
+            if self._poll_task and self._poll_task is not asyncio.current_task():
+                if not self._poll_task.done() and not self._poll_task.cancelling():
+                    self._poll_task.cancel()
+                await asyncio.gather(self._poll_task, return_exceptions=True)
+            connections = tuple(self._connections.values())
+            tasks = [connection.worker for connection in connections if connection.worker]
+            for task in tasks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*(self._join_connection_cleanup(connection)
+                                           for connection in connections), return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
+        finally:
+            try:
+                await asyncio.to_thread(self.endpoint.shutdown)
+            finally:
+                if self._lease is not None:
+                    self._lease.close()
+                    self._lease = None
+                self.events.close()

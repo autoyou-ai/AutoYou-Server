@@ -1094,18 +1094,23 @@ class RoomBridgeGrantStore:
         if not transport:
             return None
         for grant in self._grants.values():
-            if grant.current_transport_id == transport:
+            if (grant.current_transport_id == transport
+                    and float(self._monotonic_now()) < grant.expires_at_monotonic):
                 return grant
         return None
 
     def revoke_transport(self, trusted_transport_id: str, *, reason: str) -> Tuple[RoomBridgeRevocation, ...]:
         transport = str(trusted_transport_id or "").strip()
+        if not transport:
+            return ()
         matches = [grant for grant in self._grants.values() if grant.current_transport_id == transport]
         return tuple(self._revoke(grant, reason) for grant in matches)
 
     def suspend_transport(self, trusted_transport_id: str) -> Tuple[RoomBridgeRevocation, ...]:
         """Cancel work tied to a dead channel while preserving replay outcomes."""
         transport = str(trusted_transport_id or "").strip()
+        if not transport:
+            return ()
         suspended = []
         for grant in list(self._grants.values()):
             if grant.current_transport_id != transport:
@@ -1123,6 +1128,7 @@ class RoomBridgeGrantStore:
             grant.inflight_tasks.clear()
             grant.inflight_events.clear()
             grant.transport_generation += 1
+            grant.current_transport_id = ""
             suspended.append(
                 RoomBridgeRevocation(
                     grant=grant,

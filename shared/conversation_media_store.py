@@ -127,7 +127,7 @@ def _attachment_bytes(attachment: Dict[str, Any], *, trusted_path: bool) -> Opti
     ``trusted_path`` is for server-side producers (TTS replies, agent tools).
     Anything a client sent may only point into AutoYou's own media folders.
     """
-    from shared.secure_storage import FILE_HEADER, read_secure_file
+    from shared.secure_storage import read_secure_file
 
     data_value = attachment.get("data")
     if isinstance(data_value, str) and data_value:
@@ -137,8 +137,7 @@ def _attachment_bytes(attachment: Dict[str, Any], *, trusted_path: bool) -> Opti
         return base64.b64decode(url_value.split(",", 1)[1], validate=False)
     path_value = str(attachment.get("path") or "").strip()
     if path_value and os.path.isfile(path_value) and (trusted_path or is_servable_media_path(path_value)):
-        raw = Path(path_value).read_bytes()
-        return read_secure_file(path_value) if raw.startswith(FILE_HEADER) else raw
+        return read_secure_file(path_value, migrate_plaintext=False)
     return None
 
 

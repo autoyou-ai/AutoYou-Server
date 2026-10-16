@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, materialize_secure_file, read_secure_file
+from shared.secure_storage import materialize_secure_file, read_secure_file
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-e881dea4f811a773d4ecad83"
 
@@ -399,8 +399,8 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
     try:
         with materialize_secure_file(path) as readable_path:
             segments, _info = model.transcribe(str(readable_path), language=language, beam_size=beam_size)
-            # faster-whisper returns a lazy generator; consume it before the
-            # decrypted temporary file is removed by materialize_secure_file.
+            # Segment iterators may read/decode lazily. Keep the owned plaintext
+            # materialization alive until the provider finishes consuming it.
             text = " ".join((segment.text or "").strip() for segment in segments).strip()
         return text
     except Exception as exc:
@@ -589,8 +589,7 @@ def attachment_from_audio_file(
     else:
         mimetype = "application/octet-stream"
     try:
-        raw = Path(path).read_bytes()
-        data = read_secure_file(path) if raw.startswith(SPM_FILE_HEADER) else raw
+        data = read_secure_file(path, migrate_plaintext=False)
         data_b64 = base64.b64encode(data).decode("ascii")
         size_bytes = len(data)
     except OSError as exc:

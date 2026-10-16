@@ -47,6 +47,8 @@ aiortc>=1.7.0,<2.0.0
 # Native desktop Lobby discovery uses the mobile Bonjour service contract.
 zeroconf==0.151.3
 av>=10.0.0
+# Native media codecs are loaded during pairing endpoint startup.
+numpy>=1.26,<3
 # Floor raised past the 41.x/42.x lines that carried CVE-2023-50782 /
 # CVE-2024-26130 / CVE-2024-12797; pip resolves to the newest anyway.
 cryptography>=50.0.0

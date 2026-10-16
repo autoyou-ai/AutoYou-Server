@@ -10,6 +10,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import os
 import sys
 import asyncio
+import pytest
 
 from tests.support.paths import ensure_repo_on_path
 
@@ -136,3 +137,56 @@ def test_startup_status_elapsed_advances_while_initializing(monkeypatch):
     finally:
         server.STATE.startup_status = original_status
         server.STATE.initialized_services_on_startup = original_initialized
+
+
+@pytest.mark.parametrize("config, locked, expected", [
+    ({"security": {"mode": "SecureProfessional"}}, False, ["pairing", "transport"]),
+    ({"security": {"mode": "SecureProfessional"}}, True, []),
+    ({}, False, []),
+])
+def test_fresh_launch_starts_pairing_only_with_unlocked_config(monkeypatch, config, locked, expected):
+    from types import SimpleNamespace
+    from core_server import iroh_service
+
+    events = []
+    runtime = SimpleNamespace(
+        STATE=SimpleNamespace(config=config),
+        _config_write_block_reason=lambda: "synthetic locked config" if locked else None,
+        _configure_pairing_router_helpers=lambda: events.append("pairing"),
+    )
+
+    async def start_transport(actual):
+        assert actual is runtime
+        events.append("transport")
+
+    monkeypatch.setattr(services, "_runtime", lambda: runtime)
+    monkeypatch.setattr(iroh_service, "start_server_transport", start_transport)
+    asyncio.run(services._start_pairing_transport_if_unlocked())
+    assert events == expected
+
+
+@pytest.mark.parametrize("transport_failure", [False, True])
+def test_deferred_optional_services_still_initialize_native_transport(monkeypatch, transport_failure):
+    from types import SimpleNamespace
+    from core_server import iroh_service
+    import logging
+
+    events, statuses = [], []
+    state = SimpleNamespace(initialized_services_on_startup=False, startup_status={"step": 0})
+    runtime = SimpleNamespace(
+        os=os, STATE=state, LOGGER=logging.getLogger("autoyou.tests.deferred-startup"),
+        _configure_pairing_router_helpers=lambda: events.append("pairing"),
+        _update_startup_status=lambda **value: statuses.append(value),
+    )
+    async def start_transport(actual):
+        assert actual is runtime and not state.initialized_services_on_startup
+        events.append("transport")
+        if transport_failure:
+            raise RuntimeError("synthetic endpoint startup failure")
+    monkeypatch.setenv("AUTOYOU_SKIP_STARTUP_SERVICES", "1")
+    monkeypatch.setattr(services, "_runtime", lambda: runtime)
+    monkeypatch.setattr(iroh_service, "start_server_transport", start_transport)
+    asyncio.run(services._initialize_services_on_startup())
+    assert events[-1] == "transport"
+    assert state.initialized_services_on_startup is (not transport_failure)
+    assert statuses[-1]["status"] == ("error" if transport_failure else "complete")

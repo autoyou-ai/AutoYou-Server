@@ -29,6 +29,10 @@ def _candidate_payload(index: int) -> dict:
 
 @pytest.fixture(autouse=True)
 def _clear_rate_limiters(monkeypatch):
+    monkeypatch.setattr(server.STATE, "config", {"session_transport": {"mode": "legacy"}})
+    monkeypatch.setattr(server.STATE, "session_cache", {
+        "session-1": {"transport": "legacy"}, "session-2": {"transport": "legacy"},
+        "session-a": {"transport": "legacy"}, "session-b": {"transport": "legacy"}})
     monkeypatch.setattr(server, "_get_unlock_state", lambda: "Ready")
     for limiter_name in (
         "AUTH_RATE_LIMITER",
@@ -38,17 +42,10 @@ def _clear_rate_limiters(monkeypatch):
         "SIGNAL_CANDIDATE_RATE_LIMITER",
         "UNAUTHENTICATED_SIGNAL_RATE_LIMITER",
     ):
-        getattr(server, limiter_name)._requests.clear()
+        limiter = getattr(server, limiter_name)
+        monkeypatch.setattr(server, limiter_name, server.RateLimiter(limiter.max_requests,
+            limiter.window_seconds, limiter.max_tracked_keys))
     yield
-    for limiter_name in (
-        "AUTH_RATE_LIMITER",
-        "AUTH_GLOBAL_RATE_LIMITER",
-        "LOGIN_RATE_LIMITER",
-        "SIGNAL_OFFER_RATE_LIMITER",
-        "SIGNAL_CANDIDATE_RATE_LIMITER",
-        "UNAUTHENTICATED_SIGNAL_RATE_LIMITER",
-    ):
-        getattr(server, limiter_name)._requests.clear()
 
 
 def test_auth_uses_trusted_bridge_client_ip_for_rate_limit(monkeypatch):

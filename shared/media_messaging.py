@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file
+from shared.secure_storage import read_secure_file
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-f8a456acec2a2f23966dc8d3"
 
@@ -179,8 +179,7 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
     if path_value and os.path.exists(path_value):
         try:
             path = Path(path_value)
-            raw = path.read_bytes()
-            data = read_secure_file(path) if raw.startswith(SPM_FILE_HEADER) else raw
+            data = read_secure_file(path, migrate_plaintext=False)
             if len(data) > max_bytes:
                 return None, f"{os.path.basename(path_value)} exceeds {max_bytes} byte limit"
             return data, None
@@ -612,6 +611,26 @@ def inline_context_for_client(
         if converted
     ]
     return [{"source": source, "attachments": inline}] if inline else []
+
+
+def application_context_for_client(attachments: Iterable[Dict[str, Any]], *,
+                                   native_files: bool, source: str = "media_reply") -> List[Dict[str, Any]]:
+    """Keep host sources bounded until the native channel commits raw bodies."""
+    if not native_files:
+        return inline_context_for_client(attachments, source=source)
+    references = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict) or not any(attachment.get(key) is not None for key in ("path", "data", "file_ref")):
+            continue
+        item = dict(attachment)
+        mime = attachment_mimetype(item)
+        item["filename"] = safe_filename(item.get("filename") or item.get("path"), mime)
+        item["mimetype"] = mime
+        meta = dict(item.get("meta") or {}) if isinstance(item.get("meta"), dict) else {}
+        meta.setdefault("kind", "video" if mime.startswith("video/") else "image")
+        meta.setdefault("role", "media_reply"); item["meta"] = meta
+        references.append(item)
+    return [{"source": source, "attachments": references}] if references else []
 
 
 def data_url_attachment(attachment: Dict[str, Any]) -> Optional[str]:

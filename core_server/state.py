@@ -15,12 +15,15 @@ import copy
 import time
 import asyncio
 import logging
-from collections import OrderedDict
 from typing import Dict, Any, Optional
 from fastapi.responses import JSONResponse
 
 from shared.tunnelmole_service import TunnelmoleService
 from shared.cloud_entitlements_client import CloudEntitlementsClient
+from shared.runtime_limits import (
+    RATE_LIMITER_MAX_TRACKED_KEYS, RateLimiter,
+    prune_expiring_map as _prune_expiring_map,
+)
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-3139832b40894fe2b417be04"
 
@@ -52,6 +55,8 @@ class ServerState:
     telegram_user_service = None
     initialized_services_on_startup: bool = False
     service_manager = None
+    iroh_service = None
+    iroh_transport_lock: Optional[asyncio.Lock] = None
     agent_process: Optional[Any] = None
     ai_agent_start_task: Optional[asyncio.Task] = None
     _main_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -161,69 +166,6 @@ def _json_config_write_blocked_response(reason: Optional[str] = None) -> JSONRes
     )
 
 
-#: Ceiling on distinct keys a RateLimiter will track at once. Reached only
-#: under a spray of unique source IPs, which is exactly when the limiter must
-#: not become the thing that exhausts memory.
-RATE_LIMITER_MAX_TRACKED_KEYS = max(
-    128,
-    int(os.getenv("AUTOYOU_RATE_LIMITER_MAX_KEYS", "8192") or 8192),
-)
-
-
-class RateLimiter:
-    """In-memory rolling-window rate limiter keyed by IP.
-
-    Keys whose windows have fully drained are evicted, and the tracked-key
-    count is capped: a limiter that grows one entry per distinct source
-    address is itself a memory-exhaustion vector, which defeats the purpose.
-    """
-
-    def __init__(
-        self,
-        max_requests: int = 5,
-        window_seconds: int = 60,
-        max_tracked_keys: int = RATE_LIMITER_MAX_TRACKED_KEYS,
-    ):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
-        self.max_tracked_keys = max(1, int(max_tracked_keys))
-        # from __debug_provenance_w__ import stripe
-        # Insertion-ordered so the oldest-touched key is cheap to evict.
-        self._requests: "OrderedDict[str, list]" = OrderedDict()
-
-    def _drop_expired(self, window_start: float) -> None:
-        """Evict every key with no timestamps left inside the window."""
-        for key in [k for k, stamps in self._requests.items() if not stamps or stamps[-1] <= window_start]:
-            self._requests.pop(key, None)
-
-    def is_allowed(self, key: str) -> bool:
-        now = time.time()
-        window_start = now - self.window_seconds
-
-        self._drop_expired(window_start)
-
-        stamps = [t for t in self._requests.get(key, ()) if t > window_start]
-        if len(stamps) >= self.max_requests:
-            self._requests[key] = stamps
-            self._requests.move_to_end(key)
-            return False
-
-        stamps.append(now)
-        self._requests[key] = stamps
-        self._requests.move_to_end(key)
-
-        # Hard cap after insertion so a unique-IP spray cannot grow the map
-        # without bound even while every window is still live.
-        while len(self._requests) > self.max_tracked_keys:
-            self._requests.popitem(last=False)
-
-        return True
-
-    def tracked_key_count(self) -> int:
-        """Expose the tracked-key count so tests and diagnostics can assert bounds."""
-        return len(self._requests)
-
-
 # --------------------------------------------------------------------------
 # Bounded pairing caches
 # --------------------------------------------------------------------------
@@ -238,57 +180,6 @@ OTP_CACHE_MAX_ENTRIES = max(
 SESSION_CACHE_MAX_ENTRIES = max(
     64, int(os.getenv("AUTOYOU_SESSION_CACHE_MAX_ENTRIES", "4096") or 4096)
 )
-
-
-def _prune_expiring_map(
-    entries: Dict[str, Any],
-    *,
-    expiry_fields: tuple,
-    max_entries: int,
-    now: Optional[float] = None,
-) -> int:
-    """Drop expired entries, then trim the oldest until under ``max_entries``.
-
-    Returns the number of entries removed. Malformed rows (missing or
-    unparseable expiry) are treated as expired rather than kept forever.
-    """
-    if not isinstance(entries, dict) or not entries:
-        return 0
-
-    current = time.time() if now is None else float(now)
-    removed = 0
-
-    for key in list(entries.keys()):
-        value = entries.get(key)
-        if not isinstance(value, dict):
-            entries.pop(key, None)
-            removed += 1
-            continue
-        expires_at = next(
-            (value.get(field) for field in expiry_fields if value.get(field) is not None),
-            None,
-        )
-        try:
-            if expires_at is None or current > float(expires_at):
-                entries.pop(key, None)
-                removed += 1
-        except (TypeError, ValueError):
-            entries.pop(key, None)
-            removed += 1
-
-    if len(entries) > max_entries:
-        def _sort_key(item):
-            payload = item[1] if isinstance(item[1], dict) else {}
-            try:
-                return float(payload.get("created_at") or 0.0)
-            except (TypeError, ValueError):
-                return 0.0
-
-        for key, _ in sorted(entries.items(), key=_sort_key)[: len(entries) - max_entries]:
-            entries.pop(key, None)
-            removed += 1
-
-    return removed
 
 
 def prune_otp_cache(now: Optional[float] = None) -> int:

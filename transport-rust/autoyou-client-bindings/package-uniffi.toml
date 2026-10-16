@@ -1,0 +1,12 @@
+[crates.autoyou_client_bindings.bindings.swift]
+module_name = "AutoYouTransport"
+ffi_module_name = "AutoYouTransportFFI"
+
+[crates.autoyou_client_bindings.bindings.kotlin]
+# JNA's cleaner works on Android API 29 and every supported JVM host.
+disable_java_cleaner = true
+
+[crates.autoyou_client_bindings.bindings.kotlin.rename]
+# Keep explicit lease release separate from Kotlin's AutoCloseable lifecycle.
+"PreparedAuthorizationCommit.close" = "discard"
+"ProtectedStateTransaction.close" = "discard"

@@ -211,11 +211,11 @@ def isolated_server_state(monkeypatch):
     original_server_password = server.STATE.server_password
     original_unlock_password = server.STATE.config_unlock_password
     original_config_store = server.STATE.config_store
-    original_auth_limiter = dict(server.AUTH_RATE_LIMITER._requests)
-    original_login_limiter = dict(server.LOGIN_RATE_LIMITER._requests)
-    original_offer_limiter = dict(server.SIGNAL_OFFER_RATE_LIMITER._requests)
-    original_candidate_limiter = dict(server.SIGNAL_CANDIDATE_RATE_LIMITER._requests)
-    original_unauth_limiter = dict(server.UNAUTHENTICATED_SIGNAL_RATE_LIMITER._requests)
+    for name in ("AUTH_RATE_LIMITER", "LOGIN_RATE_LIMITER", "SIGNAL_OFFER_RATE_LIMITER",
+            "SIGNAL_CANDIDATE_RATE_LIMITER", "UNAUTHENTICATED_SIGNAL_RATE_LIMITER"):
+        limiter = getattr(server, name)
+        monkeypatch.setattr(server, name, server.RateLimiter(limiter.max_requests,
+            limiter.window_seconds, limiter.max_tracked_keys))
 
     try:
         yield
@@ -228,16 +228,6 @@ def isolated_server_state(monkeypatch):
             server_password=original_server_password,
             config_unlock_password=original_unlock_password,
         )
-        server.AUTH_RATE_LIMITER._requests.clear()
-        server.AUTH_RATE_LIMITER._requests.update(original_auth_limiter)
-        server.LOGIN_RATE_LIMITER._requests.clear()
-        server.LOGIN_RATE_LIMITER._requests.update(original_login_limiter)
-        server.SIGNAL_OFFER_RATE_LIMITER._requests.clear()
-        server.SIGNAL_OFFER_RATE_LIMITER._requests.update(original_offer_limiter)
-        server.SIGNAL_CANDIDATE_RATE_LIMITER._requests.clear()
-        server.SIGNAL_CANDIDATE_RATE_LIMITER._requests.update(original_candidate_limiter)
-        server.UNAUTHENTICATED_SIGNAL_RATE_LIMITER._requests.clear()
-        server.UNAUTHENTICATED_SIGNAL_RATE_LIMITER._requests.update(original_unauth_limiter)
 
 
 @pytest.mark.parametrize(

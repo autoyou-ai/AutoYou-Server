@@ -3,10 +3,42 @@
 # See LICENSE in the project root for license information.
 
 from pathlib import Path
+import json
 
 import pytest
 
 import scripts.build_packaged_runtime_modules as runtime_builder
+
+
+@pytest.fixture
+def native_package_inputs(tmp_path, monkeypatch):
+    from shared.iroh_binding import target_tag
+    from shared.iroh_release import IROH_VERSION, SDK_API, TARGETS, digest, python_library_name, source_fingerprints
+
+    target = target_tag()
+    sdk = tmp_path / "sdk"
+    workspace = runtime_builder.SERVER_ROOT / "transport-rust"
+    files = [TARGETS[target][1], python_library_name(target), "generated/autoyou_client_bindings.py",
+             "generated/AutoYouTransport.swift", "generated/AutoYouTransportFFI.h",
+             "generated/AutoYouTransportFFI.modulemap",
+             "generated/uniffi/autoyou_client_bindings/autoyou_client_bindings.kt",
+             "legal/NOTICE.txt", "legal/sbom.cdx.json", "legal/covered-sources.zip"]
+    for name in files:
+        path = sdk / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"synthetic packaging input")
+    (sdk / "sdk-manifest.json").write_text(json.dumps(dict(SDK_API, target_tag=target,
+        target_triple=TARGETS[target][0], lock_sha256=digest(workspace / "Cargo.lock"),
+        source_fingerprints=source_fingerprints(workspace), files={name: digest(sdk / name) for name in files})))
+    config = tmp_path / "release.json"
+    config.write_text(json.dumps(dict(schema_version=1, generation="iroh", version=IROH_VERSION,
+        policy=dict(bind_addresses=["0.0.0.0:0"], brokered_relays=True, allow_lan_peers=True,
+                    relays=[dict(url="https://relay.example.invalid/")]),
+        core=dict(issuer="https://core.example.invalid", public_key="11" * 32))))
+    monkeypatch.setenv("AUTOYOU_RELEASE_GENERATION", "iroh")
+    monkeypatch.setenv("AUTOYOU_IROH_SDK", str(sdk))
+    monkeypatch.setenv("AUTOYOU_IROH_CONFIG", str(config))
+    return target
 
 
 def _write_text(path: Path, content: str = "pass\n") -> None:
@@ -148,7 +180,7 @@ def test_runtime_module_plan_never_reads_a_checkout_beside_it(tmp_path):
     assert not plan.agent_overlay
 
 
-def test_named_agent_roots_add_agents_and_safe_assets(tmp_path, monkeypatch):
+def test_named_agent_roots_add_agents_and_safe_assets(tmp_path, monkeypatch, native_package_inputs):
     server_root = tmp_path / "server"
     _populate_required_runtime_sources(server_root)
     _write_text(server_root / "autoyou_agents" / "notes_agent" / "agent.py")
@@ -312,7 +344,7 @@ def test_emotivoice_modules_are_profile_gated_in_runtime_plan(tmp_path):
     assert "vendor/emotivoice/models/prompt_tts_modified/jets.py" not in default_compiled
 
 
-def test_packaged_runtime_compiles_emotivoice_modules_and_copies_data(tmp_path, monkeypatch):
+def test_packaged_runtime_compiles_emotivoice_modules_and_copies_data(tmp_path, monkeypatch, native_package_inputs):
     repo_root = tmp_path / "repo"
     bundle_root = tmp_path / "bundle"
     _populate_required_runtime_sources(repo_root)
@@ -342,7 +374,7 @@ def test_packaged_runtime_compiles_emotivoice_modules_and_copies_data(tmp_path, 
     assert "runtime_modules/vendor/emotivoice/LICENSE" in manifest["files"]
 
 
-def test_build_packaged_runtime_modules_copies_static_runtime_sidecars(tmp_path, monkeypatch):
+def test_build_packaged_runtime_modules_copies_static_runtime_sidecars(tmp_path, monkeypatch, native_package_inputs):
     repo_root = tmp_path / "repo"
     bundle_root = tmp_path / "bundle"
     build_root = tmp_path / "build"
@@ -366,6 +398,8 @@ def test_build_packaged_runtime_modules_copies_static_runtime_sidecars(tmp_path,
         job_count=1,
         extra_nuitka_args=(),
     )
+
+    assert f"transport/iroh/{native_package_inputs}/binding-manifest.json" in manifest["files"]
 
     sidecar_path = bundle_root / runtime_builder.RUNTIME_MODULES_DIRNAME / "shared" / "tunnelmole_node_launcher.mjs"
     assert sidecar_path.read_text(encoding="utf-8") == "console.log('runtime launcher');\n"
@@ -430,7 +464,7 @@ def test_runtime_module_plan_uses_one_bytecode_package_bridge(tmp_path):
     assert bridge_paths == {"autoyou_agents/__init__.py"}
 
 
-def test_build_packaged_runtime_modules_emits_bytecode_package_bridge(tmp_path, monkeypatch):
+def test_build_packaged_runtime_modules_emits_bytecode_package_bridge(tmp_path, monkeypatch, native_package_inputs):
     repo_root = tmp_path / "repo"
     bundle_root = tmp_path / "bundle"
     build_root = tmp_path / "build"

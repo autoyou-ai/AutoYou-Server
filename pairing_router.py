@@ -90,6 +90,9 @@ AUTOPAIR_FRAGMENT_MAX_TOTAL_LENGTH: int = 131072
 # allocate an unbounded output buffer.
 AUTOPAIR_DECOMPRESSED_MAX_LENGTH: int = 131072
 AUTOPAIR_ANSWER_METADATA_KEYS: Tuple[str, ...] = (
+    "transport",
+    "iroh",
+    "core_device_id",
     "owner_key",
     "canonical_user_id",
     "canonical_session_id",
@@ -453,24 +456,24 @@ class PairingRouter:
             if field not in payload:
                 return f"Missing required field: {field}"
 
-        offer = payload.get("offer")
-        if not isinstance(offer, dict):
-            return "Field 'offer' must be an object"
-
         current_password = self._current_password()
         if current_password is None:
             return "Server password not configured"
-
         expected_hash = self._generate_hash(current_password)
-        provided_hash = str(payload.get("hash") or "")
-        if not hmac.compare_digest(expected_hash, provided_hash):
+        if not hmac.compare_digest(expected_hash, str(payload.get("hash") or "")):
             return "Authentication failed"
 
-        if offer.get("transport") not in (None, "legacy", "webrtc"):
-            return "Unsupported pairing transport; this server requires a WebRTC SDP offer"
-        for field in ("type", "sdp"):
+        offer = payload.get("offer")
+        if not isinstance(offer, dict):
+            return "Field 'offer' must be an object"
+        if offer.get("transport") not in (None, "legacy", "webrtc", "iroh"):
+            return "Unsupported session transport offer"
+
+        required_offer_fields = ("type", "version", "endpoint_id") if offer.get("transport") == "iroh" else ("type", "sdp")
+        for field in required_offer_fields:
             if field not in offer:
                 return f"Missing required offer field: {field}"
+
         if offer.get("type") != "offer":
             return "Invalid offer type. Expected 'offer'"
 
@@ -491,7 +494,7 @@ class PairingRouter:
                 "Error processing autopair offer for %s:%s: %s", platform, sender_id, e
             )
             LOGGER.error(traceback.format_exc())
-            return f"WebRTC processing error: {e}"
+            return "Transport pairing failed" if offer.get("transport") == "iroh" else f"WebRTC processing error: {e}"
 
         return await self._format_autopair_answer(
             answer,
@@ -1417,6 +1420,8 @@ class PairingRouter:
             },
             "session_id": response_session_id,
         }
+        if raw_answer.get("transport") == "iroh":
+            wrapped_payload["answer"] = {"type": "answer", "transport": "iroh", "version": 1}
         for key in AUTOPAIR_ANSWER_METADATA_KEYS:
             value = raw_answer.get(key)
             if isinstance(value, str):
@@ -1549,7 +1554,8 @@ class PairingRouter:
         # A-Tier: this message is encrypted under a session key established via
         # a prior /autopair_hello handshake.
         session = self._get_cpace_session(str(sender_id), identity_sender_id)
-        if session is not None:
+        # A fresh Quick Pair request carries its own proof, even after Enhanced Pair.
+        if session is not None and not is_pake_request(normalized_line):
             if not is_cpace_message(normalized_line):
                 return "Secure mode requires an encrypted payload"
             try:
@@ -1559,9 +1565,8 @@ class PairingRouter:
             except Exception as e:
                 return f"Decryption failed: {e}"
 
-        # No A-Tier session exists yet. B-Tier additionally accepts a
-        # bare pake1-encrypted /autopair with no prior handshake - the server's
-        # Tier setting decides whether this fallback is offered at all.
+        # B-Tier accepts a bare pake1-encrypted /autopair with no prior handshake;
+        # the server's Tier setting decides whether this request is allowed.
         if is_pake_request(normalized_line):
             if self._get_security_tier() != SECURITY_TIER_B:
                 return "This server requires the enhanced pairing handshake - send /autopair_hello first."

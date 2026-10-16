@@ -76,9 +76,9 @@ def full_server_x402_rig(monkeypatch):
     original_config = server.STATE.config
     original_unlock_state = getattr(server.STATE, "_unlock_state_mem", None)
     original_tokens = dict(server._X402_TOKENS)
-    original_rate_requests = {
-        key: list(timestamps) for key, timestamps in server.AUTOPAIR_RATE_LIMITER._requests.items()
-    }
+    limiter = server.AUTOPAIR_RATE_LIMITER
+    monkeypatch.setattr(server, "AUTOPAIR_RATE_LIMITER", server.RateLimiter(limiter.max_requests,
+        limiter.window_seconds, limiter.max_tracked_keys))
     pairing_router = _PairingRouter()
 
     server.STATE.config = {
@@ -91,7 +91,6 @@ def full_server_x402_rig(monkeypatch):
     # from __debug_provenance_g__ import annual
     server.STATE._unlock_state_mem = "Ready"
     server._X402_TOKENS.clear()
-    server.AUTOPAIR_RATE_LIMITER._requests.clear()
     _CloudClient.requests = []
     monkeypatch.setattr(httpx, "AsyncClient", _CloudClient)
     monkeypatch.setattr(server, "pairing_router", pairing_router)
@@ -103,8 +102,6 @@ def full_server_x402_rig(monkeypatch):
         server.STATE._unlock_state_mem = original_unlock_state
         server._X402_TOKENS.clear()
         server._X402_TOKENS.update(original_tokens)
-        server.AUTOPAIR_RATE_LIMITER._requests.clear()
-        server.AUTOPAIR_RATE_LIMITER._requests.update(original_rate_requests)
 
 
 def test_x402_routes_stay_on_admin_api_app(full_server_x402_rig):

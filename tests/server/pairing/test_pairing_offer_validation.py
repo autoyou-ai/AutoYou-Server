@@ -57,11 +57,11 @@ def test_messaging_pair_checks_authentication_before_transport(monkeypatch, auth
     reply = asyncio.run(router._process_autopair_body(
         "", platform="local", sender_id="synthetic-local-client", parsed_payload=(payload, None)))
 
-    assert ("Unsupported pairing transport" if authenticated else "Authentication failed") in reply
+    assert ("Unsupported session transport offer" if authenticated else "Authentication failed") in reply
     callback.assert_not_called()
 
 
-@pytest.mark.parametrize("authenticated, expected_status", [(True, 400), (False, 401)])
+@pytest.mark.parametrize("authenticated, expected_status", [(True, 403), (False, 401)])
 def test_local_pair_reports_transport_error_only_after_authentication(monkeypatch, authenticated, expected_status):
     password = "synthetic-pairing-password"
     cfg = server._default_config()
@@ -81,5 +81,5 @@ def test_local_pair_reports_transport_error_only_after_authentication(monkeypatc
 
     assert response.status_code == expected_status
     error = json.loads(response.body)["error"]
-    assert ("Unsupported pairing transport" if authenticated else "Authentication failed") in error
+    assert ("unsupported session transport offer" if authenticated else "Authentication failed") in error
     peer.assert_not_called()

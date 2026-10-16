@@ -39,6 +39,7 @@ from typing import Dict, List, Optional, Callable, Any, Union
 from dataclasses import dataclass, asdict
 from enum import Enum
 import hashlib
+from shared import application_json
 
 __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-ebc22f033d27b33eba5a9aad"
 
@@ -240,6 +241,12 @@ class MessageType(Enum):
     HTTP_WS_UPGRADE = "http_ws_upgrade"
     HTTP_WS_DATA = "http_ws_data"
     HTTP_WS_CLOSE = "http_ws_close"
+    # Native file records use the binary lane. Only bounded descriptor/status
+    # controls become application envelopes; file bytes never enter JSON.
+    BINARY_TRANSFER_OPEN = "binary_transfer_open"
+    BINARY_TRANSFER_CONTROL = "binary_transfer_control"
+    TRANSPORT_TRANSFER_LIMITS = "transport_transfer_limits"
+    APPLICATION_DELIVERY_CONTROL = "application_delivery_control"
 
 @dataclass
 class MessageHeader:
@@ -284,13 +291,13 @@ class DataChannelMessage:
         }
         if self.chunk_info:
             data["chunk_info"] = asdict(self.chunk_info)
-        return json.dumps(data)
+        return application_json.dumps(data)
 
     @classmethod
     def from_json(cls, json_str: str) -> 'DataChannelMessage':
         """Create message from JSON string"""
         try:
-            data = json.loads(json_str)
+            data = application_json.loads(json_str)
 
             # Parse header
             header_data = data["header"]
@@ -796,6 +803,10 @@ class DataChannelManager:
             self._ack_window_size,
         )
 
+    @property
+    def is_ready(self) -> bool:
+        return self.connection_active and str(getattr(self.datachannel, "readyState", "") or "").lower() == "open"
+
     def register_handler(self, message_type: MessageType, handler: Callable):
         """Register a handler for a specific message type"""
         self.message_handlers[message_type] = handler
@@ -879,7 +890,7 @@ class DataChannelManager:
         if sent_at is None:
             return
         elapsed = time.monotonic() - sent_at
-        if elapsed <= 0 or elapsed > PING_RTT_TRACKING_TIMEOUT_SECONDS:
+        if elapsed < 0 or elapsed > PING_RTT_TRACKING_TIMEOUT_SECONDS:
             return
         self._last_measured_rtt_ms = int(elapsed * 1000)
         self._record_rtt_sample(elapsed)
@@ -1980,8 +1991,8 @@ def create_http_response_message(
             "body": body,
             "request_id": request_id,
             "compressed": compressed,
-            # Preserve duplicates like multiple Set-Cookie headers
-            "raw_headers": raw_headers or [],
+            # Native framing treats this list as authoritative, including when empty.
+            "raw_headers": raw_headers if raw_headers is not None else list(headers.items()),
         },
     )
 

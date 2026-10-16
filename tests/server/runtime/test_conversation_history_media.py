@@ -274,7 +274,7 @@ def _adk_turn(event_id, data):
 
 
 def test_admin_history_lists_names_media_and_serves_files_safely(tmp_path, isolated_media, monkeypatch):
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "root"))
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     user_id, session_id = "user::local:Phone-1", "session::local:Phone-1"
     manager = _manager(tmp_path)
     voice = media_store.archive_attachment(

@@ -9,6 +9,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import atexit
 import os
+import runpy
 import shutil
 import sys
 import tempfile
@@ -48,6 +49,10 @@ os.environ.setdefault("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
 clear_test_runtime_state_overrides(os.environ)
 
 
+def pytest_configure(config):
+    config.option.basetemp = str(_AUTOYOU_TEST_ROOT / "pytest")
+
+
 @atexit.register
 def _cleanup_autoyou_test_root() -> None:
     if _EXTERNAL_AUTOYOU_TEST_ROOT:
@@ -58,6 +63,11 @@ def _cleanup_autoyou_test_root() -> None:
 @pytest.fixture(scope="session")
 def autoyou_test_root() -> Path:
     return _AUTOYOU_TEST_ROOT
+
+
+_native_fixtures = runpy.run_path(str(_SERVER_ROOT / "tests/support/native_sdk.py"))
+protected_state_sdk = _native_fixtures["protected_state_sdk"]
+native_session_identity = _native_fixtures["native_session_identity"]
 
 
 @pytest.fixture(autouse=True)

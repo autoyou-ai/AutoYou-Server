@@ -28,7 +28,7 @@ from shared import first_run
 def setup_test_unlock(tmp_path, monkeypatch):
     # Disable CSRF origin checks for testclient
     monkeypatch.setenv("AUTOYOU_DISABLE_ORIGIN_CSRF", "1")
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "runtime"))
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     
     # Reset memory unlock state
     if hasattr(server.STATE, "_unlock_state_mem"):

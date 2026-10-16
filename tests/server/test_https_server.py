@@ -23,7 +23,12 @@ __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-dbe274be1699b7f7c31abfce"
 from shared import local_tls
 
 
-def test_https_enabled_helper_logic():
+def test_https_enabled_helper_logic(monkeypatch):
+    import server
+
+    monkeypatch.delenv("AUTOYOU_HTTPS_ENABLED", raising=False)
+    monkeypatch.delenv("AUTOYOU_NATIVE_OWNED_SERVER", raising=False)
+    monkeypatch.setattr(server, "SERVER_BIND_HOST", "127.0.0.1")
     # Default without maximus is False
     assert _https_enabled({}) is False
     assert _https_enabled({"server": {"https_enabled": False}}) is False

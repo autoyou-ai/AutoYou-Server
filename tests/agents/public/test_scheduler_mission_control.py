@@ -377,7 +377,7 @@ def test_target_catalog_deduplicates_alias_webrtc_session_and_adds_live_transpor
     monkeypatch.setattr(
         mission_control,
         "get_session_execution_manager",
-        lambda: SimpleNamespace(_owner_aliases={}),
+        lambda: SimpleNamespace(known_owner_keys=lambda: ()),
     )
 
     catalog = mission_control._build_target_catalog()

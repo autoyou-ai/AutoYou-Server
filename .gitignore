@@ -27,6 +27,10 @@ tests/.phase3_test_keys/
 # 2. Virtual Environments, IDE & OS Metadata
 # ------------------------------------------------------------------------------
 .venv/
+# Locally staged Iroh SDK resources; never publish binaries or runtime state as source.
+/transport/
+/iroh/
+.iroh-source-*/
 .venv-build312/
 .venv-wheel-*/
 .run/

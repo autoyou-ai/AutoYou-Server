@@ -1608,8 +1608,6 @@ verify_packaged_backend_imports() {
     run_packaged_backend_verifier() {
         local mode_name="$1"
         shift
-        local verifier_pid=""
-        local elapsed=0
         local libsodium_dir=""
         local dyld_library_path=""
 
@@ -1621,27 +1619,9 @@ verify_packaged_backend_imports() {
             fi
         fi
 
-        if [[ -n "$dyld_library_path" ]]; then
-            env PYTHONDONTWRITEBYTECODE=1 DYLD_LIBRARY_PATH="$dyld_library_path" "$backend_exe" "$@" &
-        else
-            PYTHONDONTWRITEBYTECODE=1 "$backend_exe" "$@" &
-        fi
-        verifier_pid=$!
-
-        while kill -0 "$verifier_pid" 2>/dev/null; do
-            if [[ "$elapsed" -ge "$verify_timeout_seconds" ]]; then
-                log_warning "Packaged backend ${mode_name} verification timed out after ${verify_timeout_seconds}s"
-                kill -TERM "$verifier_pid" 2>/dev/null || true
-                sleep 2
-                kill -KILL "$verifier_pid" 2>/dev/null || true
-                wait "$verifier_pid" 2>/dev/null || true
-                return 124
-            fi
-            sleep 1
-            elapsed=$((elapsed + 1))
-        done
-
-        wait "$verifier_pid"
+        log "Checking ${mode_name} in isolated package state..."
+        DYLD_LIBRARY_PATH="$dyld_library_path" "$PYTHON_CMD" "$PROJECT_ROOT/scripts/verify_packaged_imports.py" \
+            --executable "$backend_exe" --work-root "$BUILD_DIR" --timeout "$verify_timeout_seconds" -- "$@"
     }
 
     local verify_status=0
@@ -2244,6 +2224,7 @@ adhoc_sign_packaged_runtime_dependencies() {
         adhoc_sign_macos_path "$binary" || true
     done < "$sorted_paths"
     rm -f "$sorted_paths"
+    "$PYTHON_CMD" "$PROJECT_ROOT/scripts/stage_iroh_runtime.py" --refresh-signed --bundle "$resources_root"
 }
 
 verify_macos_binary_self_check() {
@@ -3890,6 +3871,8 @@ codesign_binaries() {
         done < "$sorted_paths"
         rm -f "$sorted_paths"
 
+        "$PYTHON_CMD" "$PROJECT_ROOT/scripts/stage_iroh_runtime.py" --refresh-signed --bundle "$app_path/Contents/MacOS"
+
         # ------------------------------------------------------------------ #
         # Step 2: Sign the .app bundle itself (no --deep; contents already signed)
         # ------------------------------------------------------------------ #
@@ -3914,7 +3897,9 @@ codesign_binaries() {
             fi
         done < "$sorted_paths"
         rm -f "$sorted_paths"
-        
+
+        "$PYTHON_CMD" "$PROJECT_ROOT/scripts/stage_iroh_runtime.py" --refresh-signed --bundle "$dist_path"
+
         # Sign the main executable specifically
         if [[ -f "$exe_path" ]]; then
             log "Signing main executable: $exe_path"
@@ -4232,4 +4217,6 @@ main() {
     log_success "Backend build completed in ${BLUE}$((duration / 60))m $((duration % 60))s${NC}"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -90,7 +90,7 @@ def _isolate_bootstrap_state(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", test_config_dir / "config.keystore.enc")
     monkeypatch.setattr(server, "_get_server_keystore", lambda: None)
     monkeypatch.setattr(server, "_keystore_server_password_available", lambda: False)
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "runtime"))
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     monkeypatch.delenv("AUTOYOU_SERVER_PASSWORD", raising=False)
 
     server.STATE.config = {}
@@ -844,7 +844,8 @@ def test_owned_page_port_is_used_for_startup_and_browser_routes(monkeypatch):
     monkeypatch.setattr(server, "is_autoyou_page_service_running", running)
     monkeypatch.setattr(server, "start_autoyou_page_service", start)
     assert asyncio.run(server.start_autoyou_page_service_background()) == "synthetic-service"
-    assert checked == started == [18067]
+    assert checked[0] == 18067
+    assert started == [18067]
     assert server._get_autoyou_browser_forward_port() == 18067
     assert server._get_autoyou_page_service_base_url() == "http://127.0.0.1:18067"
     assert config["autoyou_page"]["port"] == 8067

@@ -1,0 +1,29 @@
+[package]
+name = "autoyou-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license-file.workspace = true
+
+[dependencies]
+autoyou-application-core.workspace = true
+autoyou-protocol.workspace = true
+iroh.workspace = true
+tokio.workspace = true
+bytes.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+iroh-tickets.workspace = true
+sha2.workspace = true
+ring.workspace = true
+zeroize.workspace = true
+rustls.workspace = true
+
+[dev-dependencies]
+fernet.workspace = true
+
+[lints]
+workspace = true

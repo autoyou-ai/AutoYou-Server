@@ -18,6 +18,7 @@ def test_guided_ui_choices_readiness_and_agent_lifecycle():
     fixture = {
         "metadata": {"setup_profiles": build_setup_profile_payload()},
         "config": {
+            "session_transport": {"mode": "prefer_iroh"},
             "server": {"name": "Synthetic server", "bind_host": "127.0.0.1"},
             "security": {"mode": "secure"},
             "ai_provider": {"provider": "ollama"},
@@ -52,7 +53,7 @@ const sandbox = {
 };
 sandbox.window.window = sandbox.window;
 let source = fs.readFileSync(process.argv[1], "utf8");
-source = source.replace(/    boot\(\);\s*\}\(\)\);\s*$/, '    globalThis.admin = {state, initializeForms, updateSetupAnswer, currentSetupAnswers, renderSetupScreen, renderOverview, renderLiveViewScreen, renderLiveBrowserRoutes, renderBrowserRoutesPanelBody, agentMatchesFilter, renderAgentLibraryToolbar, guidedReadiness, applyGuidedSetup, bootGuidedSetup, handleAction};\n}());');
+source = source.replace(/    boot\(\);\s*\}\(\)\);\s*$/, '    globalThis.admin = {state, initializeForms, updateSetupAnswer, currentSetupAnswers, renderSetupScreen, renderOverview, renderLiveViewScreen, renderConnectivityScreen, settingsSectionFor, SETTINGS_SECTIONS, agentMatchesFilter, renderAgentLibraryToolbar, guidedReadiness, applyGuidedSetup, bootGuidedSetup, handleAction, renderLiveBrowserRoutes, renderBrowserRoutesPanelBody};\n}());');
 vm.runInNewContext(source, sandbox);
 const a = sandbox.admin;
 assert(a, "VM must load the real script without calling boot");
@@ -82,6 +83,10 @@ for (let step = 0; step < 6; step++) {
 assert.match(a.renderOverview(), /Server name/);
 assert(a.renderOverview().indexOf("Server name") < a.renderOverview().indexOf("Service controls"));
 assert(!a.renderOverview().includes("Server ID:"));
+assert.equal(a.state.forms.connectivity.transportMode, "prefer_iroh");
+assert.match(a.renderConnectivityScreen(), /Client transport/);
+assert.match(a.renderConnectivityScreen(), /Iroh \+ legacy WebRTC/);
+assert.equal(a.settingsSectionFor("Client transport", a.SETTINGS_SECTIONS.connectivity), "local");
 assert.match(a.renderLiveViewScreen(), /data-disclosure="live-connections"/);
 assert(!a.renderLiveViewScreen().includes('data-disclosure="live-connections" open'));
 a.updateSetupAnswer("intents", "media_center");

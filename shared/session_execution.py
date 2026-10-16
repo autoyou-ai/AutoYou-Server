@@ -6,10 +6,9 @@
 
 """Shared transport identity, queueing, and session execution helpers.
 
-This module centralizes:
-- Canonical user/session identity resolution across transports.
-- Per-session queued execution for long-running chat turns.
-- Session control state helpers shared between the main server and ADK agents.
+The owned Rust SDK holds canonical identities and connection aliases across
+all transports. Python retains scalar input conversion, ADK task execution
+and session control adapters. The private backend requires its staged SDK.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-4295cbefb9e944ea5ad8582c"
@@ -94,34 +94,37 @@ def resolve_timeout_breaker_threshold() -> int:
     return _parse_positive_int(os.getenv("AUTOYOU_SESSION_TIMEOUT_BREAKER_THRESHOLD"), 2)
 
 
-def _normalize_transport(value: Optional[str], fallback: str = "unknown") -> str:
-    normalized = str(value or "").strip().lower()
-    return normalized or fallback
+@lru_cache(maxsize=1)
+def _native_api():
+    from shared.iroh_binding import IrohBindingUnavailable, load_binding
+    api = load_binding()
+    if not callable(getattr(api, "SessionIdentityIndex", None)):
+        raise IrohBindingUnavailable("The owned SDK lacks native session identity support")
+    return api
 
 
-def _normalize_sender_id(value: Optional[str], fallback: str = "unknown") -> str:
-    normalized = str(value or "").strip()
-    return normalized or fallback
+def _input(value):
+    return str(value or "")
 
 
 def build_owner_key(transport: Optional[str], sender_id: Optional[str]) -> str:
-    return f"{_normalize_transport(transport)}:{_normalize_sender_id(sender_id)}"
+    return _native_api().identity_owner_key(_input(transport), _input(sender_id))
 
 
 def build_transport_alias(transport: Optional[str], sender_id: Optional[str]) -> str:
-    return f"transport:{build_owner_key(transport, sender_id)}"
+    return _native_api().identity_transport_alias(_input(transport), _input(sender_id))
 
 
 def build_webrtc_alias(session_id: Optional[str]) -> str:
-    return f"webrtc:{_normalize_sender_id(session_id)}"
+    return _native_api().identity_webrtc_alias(_input(session_id))
 
 
 def build_guest_owner_key(session_id: Optional[str]) -> str:
-    return f"guest:{_normalize_sender_id(session_id)}"
+    return _native_api().identity_guest_owner_key(_input(session_id))
 
 
 def build_canonical_user_id(owner_key: str) -> str:
-    return f"user::{owner_key}"
+    return _native_api().identity_canonical_user_id(str(owner_key))
 
 
 def _normalize_thread_id(value: Any) -> Optional[int]:
@@ -132,11 +135,13 @@ def _normalize_thread_id(value: Any) -> Optional[int]:
     return parsed if parsed > 1 else None
 
 
+def _thread_argument(value):
+    value = _normalize_thread_id(value)
+    return str(value) if value is not None else None
+
+
 def build_canonical_session_id(owner_key: str, thread_id: Optional[int] = None) -> str:
-    normalized_thread_id = _normalize_thread_id(thread_id)
-    if normalized_thread_id is None:
-        return f"session::{owner_key}"
-    return f"session::{owner_key}::{normalized_thread_id}"
+    return _native_api().identity_canonical_session_id(str(owner_key), _thread_argument(thread_id))
 
 
 @dataclass(frozen=True)
@@ -149,6 +154,7 @@ class UnifiedSessionIdentity:
     canonical_session_id: str
     thread_id: Optional[int] = None
     pairing_mode: str = ""
+    destination_session_id: str = ""
 
     def with_thread(self, thread_id: Optional[int]) -> "UnifiedSessionIdentity":
         normalized_thread_id = _normalize_thread_id(thread_id)
@@ -157,6 +163,15 @@ class UnifiedSessionIdentity:
             canonical_session_id=build_canonical_session_id(self.owner_key, normalized_thread_id),
             thread_id=normalized_thread_id,
         )
+
+
+def _identity_result(value):
+    if value is None:
+        return None
+    return UnifiedSessionIdentity(value.transport, value.sender_id, value.raw_session_id,
+        value.owner_key, value.canonical_user_id, value.canonical_session_id,
+        int(value.thread_id) if value.thread_id is not None else None,
+        value.pairing_mode, value.destination_session_id)
 
 
 @dataclass(frozen=True)
@@ -470,112 +485,50 @@ class SessionExecutionManager:
         self.breaker_cooldown_seconds = float(
             breaker_cooldown_seconds or resolve_coding_breaker_cooldown_seconds()
         )
-        self._owner_aliases: Dict[str, str] = {}
-        self._owner_pairing_modes: Dict[str, str] = {}
+        self._identity_index = None
         self._contexts: Dict[str, _RuntimeContext] = {}
         self._shutting_down = False
 
+    def _identities(self):
+        if self._identity_index is None:
+            self._identity_index = _native_api().SessionIdentityIndex()
+        return self._identity_index
+
     def bind_transport_owner(
-        self,
-        transport: str,
-        sender_id: str,
-        *,
-        raw_session_id: Optional[str] = None,
-        thread_id: Optional[int] = None,
-        pairing_mode: Optional[str] = None,
+        self, transport: str, sender_id: str, *, raw_session_id: Optional[str] = None,
+        thread_id: Optional[int] = None, pairing_mode: Optional[str] = None,
+        destination_session_id: Optional[str] = None,
     ) -> UnifiedSessionIdentity:
-        owner_key = build_owner_key(transport, sender_id)
-        self._owner_aliases[build_transport_alias(transport, sender_id)] = owner_key
-        if raw_session_id:
-            self._owner_aliases[build_webrtc_alias(raw_session_id)] = owner_key
-        normalized_pairing_mode = str(pairing_mode or "").strip()
-        if normalized_pairing_mode:
-            self._owner_pairing_modes[owner_key] = normalized_pairing_mode
-        normalized_thread_id = _normalize_thread_id(thread_id)
-        return UnifiedSessionIdentity(
-            transport=_normalize_transport(transport),
-            sender_id=_normalize_sender_id(sender_id),
-            raw_session_id=_normalize_sender_id(raw_session_id or sender_id),
-            owner_key=owner_key,
-            canonical_user_id=build_canonical_user_id(owner_key),
-            canonical_session_id=build_canonical_session_id(owner_key, normalized_thread_id),
-            thread_id=normalized_thread_id,
-            pairing_mode=normalized_pairing_mode,
-        )
+        return _identity_result(self._identities().bind(_input(transport), _input(sender_id),
+            str(raw_session_id) if raw_session_id else None, _thread_argument(thread_id),
+            _input(pairing_mode), _input(destination_session_id)))
+
+    def release_transport_session(self, raw_session_id: str, *, expected_owner_key: str) -> bool:
+        if self._identity_index is None:
+            return False
+        return self._identity_index.release(_input(raw_session_id), str(expected_owner_key))
 
     def alias_webrtc_session(
-        self,
-        existing_session_id: str,
-        alias_session_id: str,
-        *,
-        thread_id: Optional[int] = None,
+        self, existing_session_id: str, alias_session_id: str, *, thread_id: Optional[int] = None,
     ) -> Optional[UnifiedSessionIdentity]:
-        existing_owner = self._owner_aliases.get(build_webrtc_alias(existing_session_id))
-        if not existing_owner:
+        if self._identity_index is None:
             return None
-        current_owner = self._owner_aliases.get(build_webrtc_alias(alias_session_id))
-        if current_owner and current_owner != existing_owner:
-            return None
-        self._owner_aliases[build_webrtc_alias(alias_session_id)] = existing_owner
-        transport, _, sender_id = existing_owner.partition(":")
-        normalized_thread_id = _normalize_thread_id(thread_id)
-        return UnifiedSessionIdentity(
-            transport=_normalize_transport(transport),
-            sender_id=_normalize_sender_id(sender_id),
-            raw_session_id=_normalize_sender_id(alias_session_id),
-            owner_key=existing_owner,
-            canonical_user_id=build_canonical_user_id(existing_owner),
-            canonical_session_id=build_canonical_session_id(existing_owner, normalized_thread_id),
-            thread_id=normalized_thread_id,
-            pairing_mode=self._owner_pairing_modes.get(existing_owner, ""),
-        )
+        return _identity_result(self._identity_index.alias(_input(existing_session_id),
+            _input(alias_session_id), _thread_argument(thread_id)))
 
     def resolve_transport_identity(
-        self,
-        transport: str,
-        sender_id: str,
-        *,
-        thread_id: Optional[int] = None,
+        self, transport: str, sender_id: str, *, thread_id: Optional[int] = None,
     ) -> UnifiedSessionIdentity:
-        owner_key = self._owner_aliases.get(
-            build_transport_alias(transport, sender_id),
-            build_owner_key(transport, sender_id),
-        )
-        transport_name, _, normalized_sender = owner_key.partition(":")
-        normalized_thread_id = _normalize_thread_id(thread_id)
-        return UnifiedSessionIdentity(
-            transport=_normalize_transport(transport_name),
-            sender_id=_normalize_sender_id(normalized_sender),
-            raw_session_id=_normalize_sender_id(sender_id),
-            owner_key=owner_key,
-            canonical_user_id=build_canonical_user_id(owner_key),
-            canonical_session_id=build_canonical_session_id(owner_key, normalized_thread_id),
-            thread_id=normalized_thread_id,
-            pairing_mode=self._owner_pairing_modes.get(owner_key, ""),
-        )
+        return _identity_result(self._identities().resolve_transport(_input(transport),
+            _input(sender_id), _thread_argument(thread_id)))
 
     def resolve_webrtc_identity(
-        self,
-        session_id: str,
-        *,
-        thread_id: Optional[int] = None,
+        self, session_id: str, *, thread_id: Optional[int] = None,
     ) -> UnifiedSessionIdentity:
-        owner_key = self._owner_aliases.get(
-            build_webrtc_alias(session_id),
-            build_guest_owner_key(session_id),
-        )
-        transport_name, _, normalized_sender = owner_key.partition(":")
-        normalized_thread_id = _normalize_thread_id(thread_id)
-        return UnifiedSessionIdentity(
-            transport=_normalize_transport(transport_name, fallback="webrtc"),
-            sender_id=_normalize_sender_id(normalized_sender or session_id),
-            raw_session_id=_normalize_sender_id(session_id),
-            owner_key=owner_key,
-            canonical_user_id=build_canonical_user_id(owner_key),
-            canonical_session_id=build_canonical_session_id(owner_key, normalized_thread_id),
-            thread_id=normalized_thread_id,
-            pairing_mode=self._owner_pairing_modes.get(owner_key, ""),
-        )
+        return _identity_result(self._identities().resolve_webrtc(_input(session_id), _thread_argument(thread_id)))
+
+    def known_owner_keys(self) -> tuple[str, ...]:
+        return tuple(self._identity_index.known_owners()) if self._identity_index is not None else ()
 
     def get_runtime_snapshot(self, canonical_session_id: str) -> Dict[str, Any]:
         ctx = self._contexts.get(str(canonical_session_id))
@@ -979,7 +932,8 @@ class SessionExecutionManager:
                     turn.future.cancel()
                 ctx.queue.task_done()
         self._contexts.clear()
-        self._owner_aliases.clear()
+        if self._identity_index is not None:
+            self._identity_index.clear_sessions()
 
 
 _GLOBAL_SESSION_EXECUTION_MANAGER = SessionExecutionManager()

@@ -24,7 +24,6 @@ from urllib.parse import urlsplit, urlunsplit
 import aiohttp
 
 from shared.secure_storage import (
-    FILE_HEADER as SPM_FILE_HEADER,
     read_secure_file,
     secure_storage_enabled,
     write_secure_file,
@@ -87,7 +86,7 @@ def _safe_path_component(value: Optional[str], fallback: str) -> str:
 
 
 def _get_temp_media_dir() -> str:
-    base = os.path.join(tempfile.gettempdir(), "autoyou_media")
+    base = os.path.join(os.environ.get("AUTOYOU_TEST_ROOT") or tempfile.gettempdir(), "autoyou_media")
     Path(base).mkdir(parents=True, exist_ok=True)
     return base
 
@@ -414,8 +413,7 @@ def _load_attachment_bytes(att: Dict[str, Any]) -> Tuple[Optional[bytes], Option
     if isinstance(path_value, str) and path_value and os.path.exists(path_value):
         try:
             path = Path(path_value)
-            raw = path.read_bytes()
-            return (read_secure_file(path) if raw.startswith(SPM_FILE_HEADER) else raw), None
+            return read_secure_file(path, migrate_plaintext=False), None
         except Exception as exc:
             return None, f"failed to read {os.path.basename(path_value)}: {exc}"
 

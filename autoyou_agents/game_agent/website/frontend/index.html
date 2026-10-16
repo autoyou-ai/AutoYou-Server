@@ -27,7 +27,7 @@
         <div class="eyebrow">Game mode</div>
         <h1 id="hero-title">Play in the native iOS or Android app.</h1>
         <p>Open Chat and choose Games on this computer to play available HTML games on your phone without a video stream. Publish a game below and it appears when the phone reloads the catalog, without a new APK or server build. For host games, the computer streams video and audio to the same native clients over WebRTC; touch, motion, joystick, and buttons reach the local engine.</p>
-        <div class="actions"><a class="button" href="./play">Launch Neon Horizon on the host for iOS / Android play</a><a class="button secondary" href="./api/game/unreal-plugin">Download Unreal plugin</a><a class="button secondary" href="./assets/game_input_client.py" download>Download Python adapter</a><a class="button secondary" href="./api/game/protocol">Read protocol JSON</a></div>
+        <div class="actions"><a class="button" href="./play">Launch Neon Horizon on the host for iOS / Android play</a><a class="button secondary" href="./api/game/unreal-plugin" data-game-download="unreal-plugin">Download Unreal plugin</a><a class="button secondary" href="./api/game/python-adapter" data-game-download="python-adapter">Download Python adapter</a><a class="button secondary" href="./api/game/protocol">Read protocol JSON</a></div><p id="download-status" role="status" aria-live="polite"></p>
       </section>
       <section class="grid" aria-label="Game setup and protocol">
         <article class="card wide"><div class="eyebrow">Game agent</div><h2>Design a game</h2><p>Describe the host game, input mapping, and engine you want to use. The agent can draft a plan and adapter code.</p><div id="chat-log" class="chat-log" role="log" aria-live="polite"></div><form id="chat-form"><label for="chat-input">Your game idea</label><textarea id="chat-input" required maxlength="8000" placeholder="A two-player platformer using touch, tilt, and A/B buttons…"></textarea><div class="actions"><button class="button" type="submit">Ask Game Studio</button></div></form></article>
@@ -40,12 +40,43 @@
     </main>
     <footer>Game Studio is an opt in agent website. Host game controls require an active video session and a valid control lease.</footer>
   </div>
+  <script src="./assets/game_downloads.js"></script>
   <script>
     const form = document.querySelector('#chat-form');
     const log = document.querySelector('#chat-log');
     const publishForm = document.querySelector('#publish-form');
     const publishStatus = document.querySelector('#publish-status');
     let sessionId = '';
+    let downloadController = null;
+    window.addEventListener('pagehide', () => downloadController?.abort());
+    document.querySelectorAll('[data-game-download]').forEach(link => link.addEventListener('click', async event => {
+      event.preventDefault();
+      if (downloadController) return;
+      const controller = new AbortController();
+      downloadController = controller;
+      const timer = setTimeout(() => controller.abort(), 30000);
+      const status = document.querySelector('#download-status');
+      status.textContent = 'Verifying download...';
+      try {
+        const catalog = await fetch('./api/game/downloads', {credentials: 'same-origin', signal: controller.signal});
+        if (!catalog.ok || Number(catalog.headers.get('Content-Length')) > 4096) throw new Error('Game downloads are unavailable.');
+        const bytes = await AutoYouGameDownloads.boundedBytes(catalog, 4096, controller.signal);
+        const text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+        const entry = JSON.parse(text).downloads?.find(item => item.id === link.dataset.gameDownload);
+        if (!entry) throw new Error('Game download is unavailable.');
+        const response = await fetch(link.href, {credentials: 'same-origin', signal: controller.signal,
+          headers: {'X-AutoYou-Game-SHA256': entry.sha256}});
+        const data = await AutoYouGameDownloads.verifiedDownload(response, entry, window.crypto, controller.signal);
+        if (controller.signal.aborted) throw new Error('Download cancelled.');
+        const url = URL.createObjectURL(new Blob([data]));
+        try {
+          const save = document.createElement('a');
+          save.href = url; save.download = entry.filename; document.body.append(save); save.click(); save.remove();
+          status.textContent = 'Verified. Your download is ready.';
+        } finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
+      } catch (error) { status.textContent = controller.signal.aborted ? 'Download cancelled.' : error.message; }
+      finally { clearTimeout(timer); if (downloadController === controller) downloadController = null; }
+    }));
     function append(role, message) {
       const line = document.createElement('p');
       line.className = role;

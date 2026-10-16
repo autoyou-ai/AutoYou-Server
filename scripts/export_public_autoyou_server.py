@@ -43,6 +43,7 @@ PUBLIC_PREFIXES = (
     "servers/",
     "shared/",
     "tests/",
+    "transport-rust/",
     "whatsapp/",
 )
 
@@ -557,6 +558,11 @@ def is_sensitive_path(path: str) -> bool:
     ):
         return True
     parts = set(Path(lowered).parts)
+    if lowered.startswith("transport-rust/") and (
+        parts & {"target", ".cargo", "build", "dist"}
+        or lowered.endswith((".a", ".lib", ".o", ".obj", ".pdb", ".rlib", ".rmeta"))
+    ):
+        return True
     if parts & RUNTIME_PATH_PARTS or any(part.startswith(".test-runtime") for part in parts):
         return True
     if name.startswith(".env"):

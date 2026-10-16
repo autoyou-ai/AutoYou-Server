@@ -147,11 +147,24 @@ def test_the_strict_read_reports_a_just_declined_sheet_without_asking_again(monk
     assert len(fake.get_calls) == 1
 
 
-def test_the_memo_never_crosses_keyring_backends(monkeypatch):
+@pytest.mark.parametrize("reused_identity", [False, True])
+def test_the_memo_never_crosses_keyring_backends(monkeypatch, reused_identity):
+    if reused_identity:
+        monkeypatch.setattr(keystore, "id", lambda backend: 123, raising=False)
     first = _install(monkeypatch, _FakeKeyring({(SERVICE, "pairing-password"): "from-first"}))
     assert keystore.get_keyring_password(SERVICE, "pairing-password") == "from-first"
     second = _install(monkeypatch, _FakeKeyring({(SERVICE, "pairing-password"): "from-second"}))
     assert keystore.get_keyring_password(SERVICE, "pairing-password") == "from-second"
+    assert len(first.get_calls) == 1 and len(second.get_calls) == 1
+
+
+def test_a_replacement_backend_does_not_inherit_a_cached_denial(monkeypatch):
+    monkeypatch.setattr(keystore, "id", lambda backend: 123, raising=False)
+    first = _install(monkeypatch, _FakeKeyring())
+    first.fail_with = _denied()
+    assert keystore.get_keyring_password(SERVICE, "pairing-password") is None
+    second = _install(monkeypatch, _FakeKeyring({(SERVICE, "pairing-password"): "synthetic-replacement"}))
+    assert keystore.get_keyring_password(SERVICE, "pairing-password") == "synthetic-replacement"
     assert len(first.get_calls) == 1 and len(second.get_calls) == 1
 
 

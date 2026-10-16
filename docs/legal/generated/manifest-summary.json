@@ -16,7 +16,7 @@
       ]
     },
     {
-      "componentCount": 102,
+      "componentCount": 103,
       "displayName": "AutoYou Server Windows binary-default build",
       "id": "autoyou-server-windows-default",
       "notice": "docs/legal/generated/autoyou-server-windows-default/NOTICE.txt",
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "componentCount": 102,
+      "componentCount": 103,
       "displayName": "AutoYou Server macOS binary-default build",
       "id": "autoyou-server-macos-default",
       "notice": "docs/legal/generated/autoyou-server-macos-default/NOTICE.txt",
@@ -76,5 +76,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T21:50:12+00:00"
+  "generatedAt": "2026-10-15T04:17:50+00:00"
 }

@@ -2477,6 +2477,20 @@ def _rename_server_conversation(identity: Any, metadata: Any) -> Dict[str, Any]:
 
 
 async def _delete_server_conversation_history(identity: Any) -> Dict[str, Any]:
+    """Fence native delivery before deleting authoritative conversation state."""
+    if not str(getattr(identity, "canonical_session_id", "") or "").strip():
+        return await _delete_server_conversation_history_stores(identity)
+    from core_server.iroh_service import delete_transport_conversation_history
+    try:
+        return await delete_transport_conversation_history(sys.modules[__name__], identity,
+            lambda: _delete_server_conversation_history_stores(identity))
+    except Exception:
+        LOGGER.warning("Conversation deletion could not acquire its durable delivery fence")
+        return {"deleted": False, "scope": "server_conversation", "components": [],
+            "provider_history_retained": True, "reason": "delivery_history_fence_unavailable"}
+
+
+async def _delete_server_conversation_history_stores(identity: Any) -> Dict[str, Any]:
     """Delete one conversation from AutoYou-managed server stores."""
     canonical_session_id = str(getattr(identity, "canonical_session_id", "") or "").strip()
     canonical_user_id = str(getattr(identity, "canonical_user_id", "") or "").strip()
@@ -7017,6 +7031,9 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
                 )
             except Exception as exc:
                 LOGGER.warning(f"AutoYou Cloud: failed to invalidate entitlements cache: {exc}")
+        service = STATE.iroh_service
+        if service is not None:
+            await service.sync_core_cloud()
         return
 
     # ── Remote ICE candidates pushed by the cloud from the mobile client ────
@@ -7076,6 +7093,8 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
     if (invalid_shared_device_profile or shared_device_pin_refusal) and command == "/autopair_candidates":
         LOGGER.warning("AutoYou Cloud: dropped shared-device candidates with invalid or refused key metadata")
         return
+    from core_server.iroh_service import CORE_PAIRING_DEVICE
+    core_context = CORE_PAIRING_DEVICE.set(str(client_device_id or "").strip())
     try:
         if invalid_shared_device_profile:
             response_payload = _json.dumps({"error": "Computer settings have changed. Scan its setup QR and try again."})
@@ -7188,6 +7207,8 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             relay_id,
             command,
         )
+    finally:
+        CORE_PAIRING_DEVICE.reset(core_context)
 
     if len(response_payload.encode("utf-8")) > 131072:
         response_payload = _json.dumps({"error": "Cloud pairing relay response was too large."})
@@ -7391,6 +7412,59 @@ async def _notify_cloud_client(
     except Exception as e:
         return {"success": False, "sent": False, "status_code": 502, "error": str(e)}
 
+def _pairing_transport_preflight(offer: Any) -> str:
+    """Policy check without consuming an OTP or loading a native artifact."""
+    from shared.iroh_release import server_transport_config
+    from shared.session_transport import SessionDenied, TransportPolicy
+    if offer is not None and not isinstance(offer, dict):
+        raise SessionDenied("invalid session transport offer")
+    requested = offer.get("transport") if isinstance(offer, dict) else None
+    if requested is not None and (not isinstance(requested, str) or requested not in {"legacy", "webrtc", "iroh"}):
+        raise SessionDenied("unsupported session transport offer")
+    try:
+        config = server_transport_config(STATE.config or {})
+        policy = TransportPolicy(config.get("mode", "legacy"))
+    except ValueError:
+        raise SessionDenied("invalid session transport policy") from None
+    if requested == "iroh":
+        if policy == TransportPolicy.LEGACY or STATE.iroh_service is None:
+            raise SessionDenied("Iroh transport is unavailable under the current server policy")
+        return "iroh"
+    if policy == TransportPolicy.IROH_ONLY:
+        raise SessionDenied("this server requires Iroh enrollment")
+    return "legacy"
+
+
+def _legacy_pair_session_allowed(session_id: str) -> bool:
+    row = STATE.session_cache.get(session_id)
+    if not isinstance(row, dict) or row.get("transport") == "iroh":
+        return False
+    try:
+        return _pairing_transport_preflight(None) == "legacy"
+    except PermissionError:
+        return False
+
+
+async def _handle_verified_autopair_offer(chat_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Called only after the existing pairing entry point verifies its proof."""
+    offer = payload.get("offer")
+    if _pairing_transport_preflight(offer) == "iroh":
+        from core_server.iroh_service import CORE_PAIRING_DEVICE, VerifiedPairingOrigin
+        from shared.session_transport import SessionDenied
+        service = STATE.iroh_service
+        if service is None:
+            raise SessionDenied("Iroh transport is unavailable under the current server policy")
+        platform = str(payload.get("_autoyou_pairing_platform") or "").strip().lower()
+        sender = str(payload.get("_autoyou_sender_id") or "").strip()
+        if not platform or not sender:
+            raise SessionDenied("verified pairing origin is required")
+        mode = _resolve_pairing_mode_for_transport(platform, payload.get("_autoyou_pairing_mode"))
+        origin = VerifiedPairingOrigin(platform, sender, mode, payload.get("_autoyou_device_ownership"),
+            CORE_PAIRING_DEVICE.get() if platform == "cloud" else "")
+        return await service.issue_after_verified_pairing(offer, origin=origin, raw_session_id=str(chat_id))
+    return await WEBRTC.handle_autopair_offer(chat_id, payload)
+
+
 def _configure_pairing_router_helpers() -> None:
     if pairing_router is None or not hasattr(pairing_router, "configure"):
         return
@@ -7424,7 +7498,7 @@ def _configure_pairing_router_helpers() -> None:
         start_tunnelmole_service_with_timer=start_tunnelmole_service_with_timer,
         ensure_auth_server_running=start_auth_server_background,
         generate_otp_hash_and_cache=generate_otp_hash_and_cache,
-        handle_autopair_offer=WEBRTC.handle_autopair_offer,
+        handle_autopair_offer=_handle_verified_autopair_offer,
         start_new_conversation=_start_new_conversation_for_owner,
         apply_remote_ice_candidates=_cloud_apply_remote_ice,
         get_trickle_candidates=_cloud_get_trickle_candidates,
@@ -10388,6 +10462,7 @@ def _get_outbound_video_available(
 def _create_configured_outbound_video_track(
     *,
     cfg: Optional[Dict[str, Any]] = None,
+    capture_owner: Optional[List[Any]] = None,
 ) -> Any:
     if create_outbound_video_track is None:
         raise RuntimeError("Outbound video track factory is unavailable")
@@ -10395,39 +10470,56 @@ def _create_configured_outbound_video_track(
     if not selected_sources:
         raise RuntimeError("No configured outbound video source is available")
     desktop_profile = _get_remote_desktop_capture_profile(cfg=cfg)
+    if capture_owner is not None:
+        desktop_profile = dict(desktop_profile, max_width=min(3840, desktop_profile["max_width"]),
+            fps=min(30, desktop_profile["fps"]))
+
+    def _own(track: Any) -> Any:
+        if capture_owner is not None:
+            capture_owner.append(track)
+        return track
 
     def _one_track(source: str) -> Any:
         kwargs: Dict[str, Any] = {}
         if source == "remote_desktop":
             if RemoteDesktopVideoStreamTrack is None:
                 raise RuntimeError("Remote Desktop video track is unavailable")
-            return RemoteDesktopVideoStreamTrack(
+            return _own(RemoteDesktopVideoStreamTrack(
                 monitor_id=desktop_profile["monitor_id"],
                 fps=desktop_profile["fps"],
                 max_width=desktop_profile["max_width"],
-            )
+            ))
         if source == "api":
             kwargs["source_id"] = _get_video_api_source_id(cfg=cfg)
         if source == "video_file":
-            _configure_video_file_playback_from_config(cfg=cfg, restart=True)
             kwargs["source_id"] = _get_video_file_source_id(cfg=cfg)
+            if capture_owner is None:
+                _configure_video_file_playback_from_config(cfg=cfg, restart=True)
+            else:
+                from shared.video_call_manager import VideoFilePlaybackRegistry
+                registry = VideoFilePlaybackRegistry()
+                registry.configure(source_id=kwargs["source_id"], file_path=_get_video_file_path(cfg=cfg),
+                    loop=_get_video_file_loop_enabled(cfg=cfg), restart=True)
+                kwargs.update(registry=registry, native_media=True)
         if source == "camera":
             try:
                 device_index = int(_get_video_call_config(cfg=cfg).get("camera_device_id", 0))
             except Exception:
                 device_index = 0
             kwargs["device_index"] = device_index
-        return create_outbound_video_track(source, **kwargs)
+            if capture_owner is not None:
+                kwargs["native_media"] = True
+        return _own(create_outbound_video_track(source, **kwargs))
 
     if len(selected_sources) == 1:
         return _one_track(selected_sources[0])
-    return create_outbound_video_track(
+    return _own(create_outbound_video_track(
         "composite",
         sources=[(source, _one_track(source)) for source in selected_sources],
         fps=desktop_profile["fps"],
         max_width=desktop_profile["max_width"],
         **normalize_video_composite_config(_get_video_call_config(cfg=cfg).get("composite")),
-    )
+    ))
 
 def _ensure_audio_manager_outbound_tracks(
     *,
@@ -10445,7 +10537,8 @@ def _ensure_audio_manager_outbound_tracks(
         setter = getattr(audio_manager, setter_name, None)
         if not callable(setter):
             return None
-        track = TTSAudioStreamTrack()
+        track = (TTSAudioStreamTrack(native_media=True)
+                 if getattr(audio_manager, "_native_media", False) else TTSAudioStreamTrack())
         setter(track)
         return track
 
@@ -10469,13 +10562,18 @@ def _create_configured_outbound_audio_track(
     tts_track: Any = None,
     playback_track: Any = None,
     include_loopback: bool = True,
+    capture_owner: Optional[List[Any]] = None,
+    capture_allowed: Optional[bool] = None,
+    start_video_file_audio: bool = True,
 ) -> Any:
+    if type(start_video_file_audio) is not bool:
+        raise ValueError("Video-file audio admission requires a boolean")
     tracks: List[Tuple[str, Any]] = []
     if tts_track is not None and _get_ai_audio_replies_enabled(cfg=cfg):
         tracks.append(("ai_replies", tts_track))
 
     if playback_track is not None and _get_audio_playback_enabled(cfg=cfg):
-        if "video_file" in _get_video_outbound_sources(cfg=cfg):
+        if start_video_file_audio and "video_file" in _get_video_outbound_sources(cfg=cfg):
             video_file_path = _get_video_file_path(cfg=cfg)
             loop = _get_video_file_loop_enabled(cfg=cfg)
             if video_file_path and Path(video_file_path).expanduser().is_file():
@@ -10495,10 +10593,25 @@ def _create_configured_outbound_audio_track(
     # The same computer must hear AI replies without hearing its own capture.
     # A local call, Lobby, or Peer Link also takes priority over host capture
     # sent to other connected clients.
-    if WEBRTC is not None and hasattr(WEBRTC, "server_capture_allowed_for_session"):
+    if capture_allowed is not None:
+        if type(capture_allowed) is not bool:
+            raise ValueError("Native capture policy requires a boolean")
+        if not capture_allowed:
+            audio_sources = []
+    elif WEBRTC is not None and hasattr(WEBRTC, "server_capture_allowed_for_session"):
         if not WEBRTC.server_capture_allowed_for_session(session_id):
             audio_sources = []
-    capture_tracks: List[Any] = []
+    capture_tracks: List[Any] = [] if capture_owner is None else capture_owner
+    if capture_owner is not None:
+        if capture_owner:
+            raise ValueError("Native audio capture owner must start empty")
+        if not hasattr(STATE, "local_audio_tracks"):
+            STATE.local_audio_tracks = {}
+        if STATE.local_audio_tracks.get(session_id):
+            raise RuntimeError("Local audio capture already has an owner")
+        # Transfer each partially constructed device to the caller before any
+        # enable/mixer operation can fail. The caller physically joins cleanup.
+        STATE.local_audio_tracks[session_id] = capture_tracks
     if audio_sources:
         try:
             from shared.video_call_manager import LocalAudioInputTrack
@@ -10518,9 +10631,10 @@ def _create_configured_outbound_audio_track(
                 else:
                     continue
                 LOGGER.info("Creating LocalAudioInputTrack with source=%s, loopback=%s", device, capture_loopback)
-                track = LocalAudioInputTrack(device_index_or_name=device, capture_loopback=capture_loopback)
-                track.enable()
+                native_kwargs = {"native_media":True} if capture_owner is not None else {}
+                track = LocalAudioInputTrack(device_index_or_name=device, capture_loopback=capture_loopback, **native_kwargs)
                 capture_tracks.append(track)
+                track.enable()
                 tracks.append((label, track))
 
     if capture_tracks:
@@ -10533,6 +10647,8 @@ def _create_configured_outbound_audio_track(
     if len(tracks) == 1:
         return tracks[0][1]
     if MixedAudioStreamTrack is None:
+        if capture_owner is not None:
+            raise RuntimeError("Native audio source mixing is unavailable")
         LOGGER.warning("Audio mixer unavailable; using first outbound audio source for %s", session_id)
         return tracks[0][1]
     mixed_track = MixedAudioStreamTrack(tracks)
@@ -13215,6 +13331,23 @@ def _redact_admin_ai_provider_secrets(cfg: Dict[str, Any]) -> None:
         provider_cfg[key] = ""
 
 
+def _session_transport_status(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    from shared.iroh_release import load_release_config, server_transport_config
+    from shared.session_transport import TransportPolicy
+    policy = TransportPolicy(server_transport_config(cfg if cfg is not None else (STATE.config or {})).get("mode", "legacy"))
+    service = STATE.iroh_service
+    endpoint = getattr(service, "endpoint", None)
+    ready = endpoint is not None and not getattr(endpoint, "_closing", False)
+    return {
+        "mode": policy.value,
+        "iroh_available": load_release_config() is not None,
+        "iroh_ready": ready,
+        "legacy_allowed": policy != TransportPolicy.IROH_ONLY,
+        "iroh_allowed": policy != TransportPolicy.LEGACY,
+        "restart_required": (policy == TransportPolicy.LEGACY and ready) or (policy != TransportPolicy.LEGACY and not ready),
+    }
+
+
 async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
     from shared.apple_intelligence import status as apple_intelligence_status
     cfg = copy.deepcopy(STATE.config or _default_config())
@@ -13231,6 +13364,8 @@ async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
     _apply_default_autoyou_page_config(cfg)
     _apply_default_messaging_partner_config(cfg)
     _apply_default_video_call_config(cfg)
+    transport_status = _session_transport_status(cfg)
+    cfg["session_transport"] = {"mode": transport_status["mode"]}
     if STATE.signal_service is not None:
         cfg.setdefault("signal", {})["enabled"] = True
     if STATE.whatsapp_service is not None:
@@ -13322,13 +13457,14 @@ async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
             "home_network": _home_network_web_status(cfg),
             "runtime": build_runtime_environment_status(),
             "software_update": _software_update_local_status(cfg),
+            "session_transport": transport_status,
         },
         "agents": agents_payload,
         "metadata": {
             "guides": _admin_guide_links(),
             "recording_paths": _build_recording_paths_payload(cfg),
             "security_modes": [
-                {"id": "normal", "label": "Normal Mode (No Encryption)"},
+                {"id": "normal", "label": "Normal Mode (Unprotected Pairing)"},
                 {"id": "secure", "label": "Secure Mode (Password Only)"},
                 {"id": "secure_professional", "label": "Secure Professional (Password + 2FA)"},
                 {
@@ -13961,6 +14097,21 @@ def _apply_admin_ui_config_patch(
             raise ValueError("Connection helper settings must be a list or parseable string.")
         cfg.setdefault("rtc", {})["iceServers"] = dedupe_ice_servers(list(ice_servers))
         touched_sections.add("rtc")
+
+    if "session_transport" in payload:
+        from shared.iroh_release import load_release_config
+        from shared.session_transport import TransportPolicy
+        transport_payload = payload["session_transport"]
+        if not isinstance(transport_payload, dict) or set(transport_payload) != {"mode"}:
+            raise ValueError("Session transport accepts only a transport mode.")
+        try:
+            policy = TransportPolicy(transport_payload["mode"])
+        except (ValueError, TypeError):
+            raise ValueError("Choose legacy, prefer_iroh, or iroh_only transport.") from None
+        if policy != TransportPolicy.LEGACY and load_release_config() is None:
+            raise ValueError("Iroh is not installed in this server. Stage the native SDK before enabling it.")
+        cfg.setdefault("session_transport", {})["mode"] = policy.value
+        touched_sections.add("session_transport")
 
     speech_payload = payload.get("speech")
     if isinstance(speech_payload, dict):
@@ -20701,6 +20852,8 @@ async def handle_auth_request(auth_data: dict) -> dict:
         if not hash_value:
             return {"success": False, "error": "Missing hash parameter"}
 
+        selected_transport = _pairing_transport_preflight(auth_data.get("offer"))
+
         validation_result = validate_otp_hash(hash_value)
 
         if validation_result["valid"]:
@@ -20712,6 +20865,29 @@ async def handle_auth_request(auth_data: dict) -> dict:
             client_display_name = _client_display_name_from_transport(
                 auth_data.get("client_display_name")
             )
+            offer = auth_data.get("offer")
+            if selected_transport == "iroh":
+                from core_server.iroh_service import VerifiedPairingOrigin
+                from shared.session_transport import SessionDenied
+                if STATE.iroh_service is None or not session_id:
+                    raise SessionDenied("Iroh transport is unavailable under the current server policy")
+                origin = VerifiedPairingOrigin("direct", client_id or session_id, "pair", "shared")
+                answer = await STATE.iroh_service.issue_after_verified_pairing(offer,
+                    origin=origin, raw_session_id=session_id)
+                session_payload.update({key: value for key, value in answer.items() if key != "iroh"})
+                if client_id:
+                    session_payload["stable_client_id"] = client_id
+                identity = _resolve_conversation_identity(resolve_webrtc_chat_identity(session_id))
+                try:
+                    session_payload["client_display_name"] = WEBRTC.remember_client_display_name(
+                        identity, client_display_name)
+                except Exception:
+                    session_payload["client_display_name"] = ""
+                session_payload.update(_build_client_session_identity_payload(identity, pairing_mode="pair"))
+                prune_session_cache()
+                STATE.session_cache[session_id] = session_payload
+                return {"success": True, "session_id": session_id, "session": session_payload,
+                        "transport": "iroh", "iroh": answer["iroh"]}
             if session_id:
                 try:
                     if client_id:

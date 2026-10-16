@@ -157,6 +157,21 @@ def launch_bootstrap_server(
         }
     )
 
+    from tests.support.native_sdk import stage_native_runtime
+    sdk = env.get("AUTOYOU_IROH_SDK_DIR")
+    if not sdk:
+        raise RuntimeError("Native source E2E requires AUTOYOU_IROH_SDK_DIR")
+    stage_native_runtime(runtime_root, Path(sdk))
+    env["AUTOYOU_PACKAGED_RESOURCES_ROOT"] = str(runtime_root)
+    # These admin/WebRTC probes use the rollback policy; native fixtures own Iroh coverage.
+    from server import _build_initial_server_config, aead_encrypt
+    config = _build_initial_server_config()
+    config["server"]["name"] = "Synthetic regression server"
+    config["session_transport"] = {"mode": "legacy"}
+    config_dir = runtime_root if runtime_root.name.lower() == "autoyou" else runtime_root / "AutoYou"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "config.encrypted").write_text(aead_encrypt(json.dumps(config), password), encoding="utf-8")
+
     process = subprocess.Popen(
         command,
         cwd=str(REPO_ROOT),

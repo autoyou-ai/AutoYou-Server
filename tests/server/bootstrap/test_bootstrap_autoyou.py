@@ -23,6 +23,33 @@ from shared import process_lifecycle
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e"
 
 
+def test_reused_full_profile_checks_media_and_messaging_without_the_user_site(monkeypatch):
+    commands = []
+    def probe(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(bootstrap.subprocess, "run", probe)
+    bootstrap.verify_reused_profile_dependencies(Path("synthetic-python"), ["desktop-automation", "voice", "messaging"])
+    assert [command[-1] for command in commands] == ["import mss", "import pyaudiowpatch", "import telegram.ext", "import telethon", "import docker", "import pysignalclirestapi"]
+    assert all("-s" in command for command in commands)
+
+
+@pytest.mark.parametrize("component,module", [("desktop-automation", "mss"), ("voice", "pyaudiowpatch"), ("messaging", "telegram.ext"), ("messaging", "telethon")])
+def test_reused_profile_reports_missing_dependency_before_launch(monkeypatch, component, module):
+    monkeypatch.setattr(bootstrap.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(bootstrap.subprocess, "run", lambda command, **kwargs: SimpleNamespace(returncode=int(command[-1] == f"import {module}")))
+    with pytest.raises(bootstrap.BootstrapError, match=module):
+        bootstrap.verify_reused_profile_dependencies(Path("synthetic-python"), [component])
+
+
+def test_reused_base_profile_does_not_require_optional_components(monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("Base startup must not probe optional components")
+    monkeypatch.setattr(bootstrap.subprocess, "run", fail)
+    bootstrap.verify_reused_profile_dependencies(Path("synthetic-python"), ["base"])
+
+
 def test_pyaudio_import_probe_uses_platform_binding(monkeypatch):
     commands = []
 
@@ -1266,6 +1293,29 @@ def test_main_passes_server_password_to_main_server_environment(monkeypatch):
     assert exit_code == 0
     assert captured["command"][1].endswith("server.py")
     assert captured["kwargs"]["env"]["AUTOYOU_SERVER_PASSWORD"] == "1234"
+
+
+def test_main_isolates_dependency_install_and_server_from_user_site(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTHONNOUSERSITE", raising=False)
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
+    observed = []
+
+    def create_venv(_python):
+        observed.append(os.environ.get("PYTHONNOUSERSITE"))
+        return Path(sys.executable)
+
+    def launch(_command, **kwargs):
+        observed.append(kwargs["env"].get("PYTHONNOUSERSITE"))
+        return 0
+
+    monkeypatch.setattr(bootstrap, "create_venv", create_venv)
+    monkeypatch.setattr(bootstrap, "report_autoyou_config_storage_status", lambda: None)
+    monkeypatch.setattr(bootstrap, "warn_on_ports", lambda *_args: [])
+    monkeypatch.setattr(bootstrap, "launch_server_process", launch)
+    assert bootstrap.main(["--profile", "base", "--skip-install", "--skip-node",
+        "--skip-docker", "--skip-ollama", "--skip-playwright", "--skip-tunnelmole"]) == 0
+    assert observed == ["1", "1"]
 
 
 def test_autoyou_lite_service_launches_canonical_package(monkeypatch):

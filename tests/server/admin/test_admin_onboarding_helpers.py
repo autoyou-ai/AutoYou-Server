@@ -270,6 +270,52 @@ def test_search_huggingface_gguf_passes_filter_param():
     assert res["items"][0]["id"] == "synthetic/test-model-gguf"
 
 
+def test_search_huggingface_gguf_supports_legacy_tags_signature(monkeypatch):
+    service = ModelLibraryService()
+    captured = {}
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
+
+    class LegacyHfApi:
+        def list_models(self, *, search, tags, gated, sort, limit, token):
+            captured.update(search=search, tags=tags, gated=gated, sort=sort, limit=limit, token=token)
+            return [SimpleNamespace(id="synthetic/legacy-gguf", downloads=0, likes=0,
+                                    pipeline_tag="text-generation", tags=["gguf"])]
+
+    service._hf_api = LegacyHfApi()
+    result = service.search_huggingface_gguf("synthetic", page_size=5)
+
+    assert captured == {"search": "synthetic", "tags": "gguf", "gated": False,
+                        "sort": "downloads", "limit": 6, "token": None}
+    assert [item["id"] for item in result["items"]] == ["synthetic/legacy-gguf"]
+    assert result["has_more"] is False
+
+
+def test_ollama_local_catalog_retains_models_when_cloud_details_fail(monkeypatch):
+    import httpx
+
+    service = ModelLibraryService()
+    html = """
+    <a href="/library/synthetic-cloud"><h2>synthetic-cloud</h2>
+      <span x-test-capability>Cloud</span></a>
+    <a href="/library/synthetic-local"><h2>synthetic-local</h2>
+      <span x-test-capability>tools</span></a>
+    """
+    original_client = httpx.Client
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, text=html))
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: original_client(transport=transport, **kwargs))
+
+    def unavailable_details(slug):
+        assert slug == "synthetic-cloud"
+        raise RuntimeError("Synthetic catalog detail failure")
+
+    monkeypatch.setattr(service, "get_ollama_model_details", unavailable_details)
+    result = service.search_ollama_catalog("synthetic")
+
+    assert [item["id"] for item in result["items"]] == ["synthetic-local"]
+    assert result["has_more"] is False
+
+
 def test_admin_doc_guides_catalog_has_expected_ids_and_no_autoyou_me_links():
     guides = admin_doc_guides()
     ids = [guide["id"] for guide in guides]

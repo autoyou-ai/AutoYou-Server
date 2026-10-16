@@ -10,11 +10,9 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
-from pathlib import Path
-
 import pytest
 
-from tests.support.paths import ensure_repo_on_path
+from tests.support.paths import REPO_ROOT, ensure_repo_on_path
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-1d4e1f2af359a2dd8fcc6048"
 
@@ -352,7 +350,7 @@ def test_native_gateway_paths_apply_their_distinct_provider_ids():
 
 
 def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
-    asset = Path("assets/admin-ui.js").read_text(encoding="utf-8")
+    asset = (REPO_ROOT / "assets" / "admin-ui.js").read_text(encoding="utf-8")
 
     assert "state.pendingActions[action]" in asset
     assert 'setByPath(state, "pendingActions." + action' not in asset

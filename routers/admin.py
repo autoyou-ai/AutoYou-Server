@@ -2515,6 +2515,7 @@ def register_routes(
                     "session_id": str(sid),
                     "last_ping_timestamp": last_ping,
                     "connected": True,
+                    "transport": "iroh" if getattr(mgr, "transport_kind", "legacy") == "iroh" else "legacy",
                 }
                 describe = getattr(server.WEBRTC, "describe_connected_device", None)
                 if callable(describe):

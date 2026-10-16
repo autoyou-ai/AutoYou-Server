@@ -2944,8 +2944,8 @@
 
     var SECURITY_MODE_HELP = {
         normal: {
-            label: "Normal Mode (No Encryption)",
-            description: "Pairing messages remain plaintext. Use this only for legacy local-first clients."
+            label: "Normal Mode (Unprotected Pairing)",
+            description: "Pairing messages remain plaintext. Iroh session traffic is still encrypted. Use Secure Professional Maximus to encrypt saved server data."
         },
         secure: {
             label: "Secure Mode (Password Only)",
@@ -2953,11 +2953,11 @@
         },
         secure_professional: {
             label: "Secure Professional (Password + 2FA)",
-            description: "Encrypts pairing with password plus the one shared 2FA setup key used by Secure Professional pairing, authenticator-based public URL pairing, and admin-agent elevation."
+            description: "Requires your computer password and a current authenticator code for pairing. The shared authenticator setup also supports authenticator-based public URL pairing and admin-agent elevation."
         },
         secure_professional_maximus: {
             label: "Secure Professional Maximus",
-            description: "Adds encryption to saved sessions, agent data, websites, notes, and settings on this computer. Secure pairing and your existing remote viewer/editor/admin controls continue to work."
+            description: "Requires password plus a current authenticator code, and encrypts AutoYou-owned saved sessions, agent data, attachments, websites, notes, and settings on this computer. Existing remote viewer/editor/admin controls continue to apply."
         }
     };
 
@@ -2966,8 +2966,8 @@
         { value: "A", label: "Enhanced Pairing" }
     ];
     var SECURITY_TIER_HELP = {
-        B: "Single-message pairing: clients can pair with one chat message. Best compatibility.",
-        A: "Requires the enhanced pairing handshake (an extra chat round trip) for every client, making password guessing harder."
+        B: "In Secure modes, pairs with one encrypted chat message for best compatibility. Enhanced Pairing provides stronger protection against offline password guessing.",
+        A: "In Secure modes, requires an interactive password handshake (an extra chat round trip) to resist offline password guessing. Professional modes also require a current authenticator code."
     };
 
     function activeAiProvider() {
@@ -3455,6 +3455,7 @@
                 download_model: ""
             },
             connectivity: {
+                transportMode: getByPath(cfg, "session_transport.mode", "legacy"),
                 iceImportText: "",
                 iceServersText: JSON.stringify(getByPath(cfg, "rtc.iceServers", []), null, 2),
                 tunnelmole: {
@@ -6862,7 +6863,7 @@
         var securityModeOptions = Array.isArray(securityModes) && securityModes.length ? securityModes.map(function (mode) {
             return { value: mode.id, label: mode.label };
         }) : [
-            { value: "normal", label: "Normal Mode (No Encryption)" },
+            { value: "normal", label: "Normal Mode (Unprotected Pairing)" },
             { value: "secure", label: "Secure Mode (Password Only)" },
             { value: "secure_professional", label: "Secure Professional (Password + 2FA)" },
             { value: "secure_professional_maximus", label: "Secure Professional Maximus" }
@@ -7361,6 +7362,7 @@
                 var ownership = String(getByPath(connection, "device_ownership", "") || "");
                 var connectedVia = String(getByPath(connection, "connected_via", "") || "");
                 var ownershipBadge = ownership ? badge(ownership === "own" ? "Own" : "Shared", ownership === "own" ? "green" : "amber") : "";
+                ownershipBadge += badge(getByPath(connection, "transport", "legacy") === "iroh" ? "Iroh" : "Legacy WebRTC", "blue");
                 return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(label) + "</strong><small>" + (connectedVia ? escapeHtml("Via " + connectedVia) + " · " : "") + "Last check-in " + escapeHtml(lastPing ? formatTimestamp(lastPing) : "Not reported") + "</small></div><div class=\"ayu-inline-actions\">" + ownershipBadge + (isSelected ? badge("Selected", "green") : "") + (sessionId ? button("Select client", "live-target-client:" + String(index), isSelected ? "secondary" : "ghost", "bolt", "sm") : "") + "</div></div>";
             }).join("") + "</div>";
         }
@@ -8586,6 +8588,22 @@
         return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Speech</h1><p>Choose the text-to-speech path for this machine first, then manage local speech recognition models separately so only the relevant settings stay on screen.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh speech data", "speech-refresh", "secondary", "refresh") + "</div></div><div class=\"ayu-grid-2\">" + panel("Speech output", "Choose automatic local multilingual speech, a specific voice provider, or disabled output.", renderSpeechProviderSettingsBody()) + panel("Speech recognition & downloads", "Local faster-whisper selection, runtime tuning, and download jobs for speech-to-text.", renderSpeechRecognitionBody()) + "</div></div>";
     }
 
+    function renderSessionTransportPanel() {
+        var transport = getByPath(state.bootstrap, "status.session_transport", {});
+        return panel("Client transport", "Choose which connection protocols this server accepts. Older clients use legacy WebRTC.",
+            field("Allowed transports", select("connectivity.transportMode", [
+                { value: "prefer_iroh", label: "Iroh + legacy WebRTC" },
+                { value: "legacy", label: "Legacy WebRTC only" },
+                { value: "iroh_only", label: "Iroh only" }
+            ]), "Use Iroh + legacy WebRTC when connecting both new and older apps. Iroh only rejects older WebRTC clients.") +
+            renderStatusRows([
+                { label: "Native Iroh", value: transport.iroh_ready ? "Running" : (transport.iroh_available ? "Installed; stopped" : "SDK not installed") },
+                { label: "Legacy WebRTC", value: transport.legacy_allowed ? "Allowed" : "Blocked by server policy" }
+            ]) + "<div class=\"ayu-note\">Password and authenticator checks apply to both transports. Authentication failure never switches transport. Changes apply to new pairings; restart AutoYou to apply native endpoint changes.</div>" +
+            (transport.restart_required ? "<div class=\"ayu-note ayu-note-amber\">Restart AutoYou to apply the saved endpoint policy.</div>" : "") +
+            "<div class=\"ayu-inline-actions\">" + button("Save transport", "save-session-transport", "primary", "save") + "</div>");
+    }
+
     function renderConnectivityScreen() {
         var status = getByPath(state.bootstrap, "status", {});
         var cloud = state.operations.cloudStatus || getByPath(status, "cloud", {});
@@ -8626,7 +8644,7 @@
         ]) + "<div class=\"ayu-note ayu-note-blue\">" + escapeHtml(cloudRoutingNote) + "</div>" + (cloudNeedsRelink ? "<div class=\"ayu-note ayu-note-amber\">This account link was rejected. Use Reconnect AutoYou account above to sign in and replace it.</div>" : "") + cloudActionsMarkup + "<div class=\"ayu-note ayu-note-gray\">Linking signs this server in. Making it active is what moves Cloud Pair client requests away from other linked servers.</div>" + cloudNotificationMarkup;
         cloudMarkup += renderCloudDevicesMarkup();
         var sessionMarkup = "<div class=\"ayu-note\">" + escapeHtml("Connected clients " + String(getByPath(state.operations, "datachannel.connected_clients", getByPath(state.operations, "datachannel.active_sessions", 0))) + ".") + "</div>" + renderDatachannelSessionList(state.operations.datachannel || {}) + renderBluetoothPairPanelMarkup();
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Connectivity</h1><p>Cloud link state, public link pairing modes, connected clients, scheduler queue status, and connection helpers used by paired clients.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div></div><div class=\"ayu-grid-2\">" + panel("AutoYou Cloud", "Only the active linked server receives Cloud Pair client requests. Link signs this server in; Make active moves routing here.", cloudMarkup) + panel("Public link", "Give this server a public link so clients outside your LAN can pair. Configure pair-code and connection modes here.", field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(tunnelmole.status || "")) + "\">" + escapeHtml(tunnelmole.status || "Unknown") + "</div>") + field("Public URL", "<div class=\"ayu-note ayu-note-green ayu-mono\">" + escapeHtml(tunnelmole.public_url || "No public URL") + "</div>") + field("Pair URL", "<div class=\"ayu-note ayu-note-amber ayu-mono\">" + escapeHtml(tunnelmole.pair_url || "No pair URL") + "</div>") + checkbox("connectivity.tunnelmole.enabled", "Enable public link") + "<div class=\"ayu-grid-2\">" + field("Timed lifetime (minutes)", input("connectivity.tunnelmole.timeout_minutes", { type: "number" })) + field("Pairing code timeout", input("connectivity.tunnelmole.otp_timeout_minutes", { type: "number" })) + field("Pair-code mode", select("connectivity.tunnelmole.pair_code_mode", getByPath(metadata, "pair_code_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + field("Connection mode", select("connectivity.tunnelmole.connection_mode", getByPath(metadata, "connection_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + "</div>" + checkbox("connectivity.tunnelmole.otp_multiuse", "Allow pairing code reuse within the configured timeout window") + checkbox("connectivity.tunnelmole.url_only_pair", "Share URL only (most secure)", "Secure Professional + Authenticator pair-code mode: AutoYou sends only the public link. Clients sign in with the shared 2FA setup key and password you handed over separately - nothing secret travels over the message.") + checkbox("connectivity.tunnelmole.auto_start_on_boot", "Auto-connect public URL on startup", "Brings your persistent public link back online automatically each time AutoYou starts. Requires a Public Proxy plan; free servers skip this and keep using on-demand links.") + "<div class=\"ayu-inline-actions\">" + button("Save link settings", "save-tunnelmole", "primary", "save") + button("Start", "service:tunnelmole:start", "green", "play", "sm") + button("Stop", "service:tunnelmole:stop", "secondary", "stop", "sm") + button("Refresh", "service:tunnelmole:refresh", "ghost", "refresh", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Connected clients", "Client reachability and one-click selection for messaging and playback.", sessionMarkup) + panel("Notification queue", "Queued reminder and task deliveries waiting for a connection or retry window.", renderSchedulerQueue(state.operations.queue)) + "</div><div class=\"ayu-grid-2\">" + panel("Connection helpers", "Paste provider details or edit the resolved helper list directly. Use Add to merge with existing entries or Replace to overwrite them from the pasted input.", field("Quick import", textarea("connectivity.iceImportText", { rows: 6, extraClass: "ayu-mono", placeholder: "Paste provider details, connection helper JSON, or connection server URLs" }), "Accepts provider details, connection helper JSON, or connection server URLs.") + "<div class=\"ayu-inline-actions\">" + button("Add to existing", "ice-parse-append", "secondary", "plus", "sm") + button("Replace from input", "ice-parse-replace", "ghost", "refresh", "sm") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary ayu-btn-sm\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div><div class=\"ayu-soft-divider\"></div>" + field("Connection helper JSON", textarea("connectivity.iceServersText", { rows: 12, extraClass: "ayu-mono" }), "AutoYou saves the full list and preserves your exact structure.") + "<div class=\"ayu-inline-actions\">" + button("Save helpers", "save-ice", "primary", "save") + "</div>") + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to AutoYou browser clients. Set which one connected clients open by default.", renderBrowserRoutesPanelBody(routes, getByPath(status, "browser", {}))) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Connectivity</h1><p>Cloud link state, public link pairing modes, connected clients, scheduler queue status, and connection helpers used by paired clients.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open messaging", "nav:messaging", "ghost", "msg") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div></div>" + renderSessionTransportPanel() + "<div class=\"ayu-grid-2\">" + panel("AutoYou Cloud", "Only the active linked server receives Cloud Pair client requests. Link signs this server in; Make active moves routing here.", cloudMarkup) + panel("Public link", "Give this server a public link so clients outside your LAN can pair. Configure pair-code and connection modes here.", field("Status", "<div class=\"ayu-note ayu-note-" + escapeHtml(statusTone(tunnelmole.status || "")) + "\">" + escapeHtml(tunnelmole.status || "Unknown") + "</div>") + field("Public URL", "<div class=\"ayu-note ayu-note-green ayu-mono\">" + escapeHtml(tunnelmole.public_url || "No public URL") + "</div>") + field("Pair URL", "<div class=\"ayu-note ayu-note-amber ayu-mono\">" + escapeHtml(tunnelmole.pair_url || "No pair URL") + "</div>") + checkbox("connectivity.tunnelmole.enabled", "Enable public link") + "<div class=\"ayu-grid-2\">" + field("Timed lifetime (minutes)", input("connectivity.tunnelmole.timeout_minutes", { type: "number" })) + field("Pairing code timeout", input("connectivity.tunnelmole.otp_timeout_minutes", { type: "number" })) + field("Pair-code mode", select("connectivity.tunnelmole.pair_code_mode", getByPath(metadata, "pair_code_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + field("Connection mode", select("connectivity.tunnelmole.connection_mode", getByPath(metadata, "connection_modes", []).map(function (item) { return { value: item.id, label: item.label }; }))) + "</div>" + checkbox("connectivity.tunnelmole.otp_multiuse", "Allow pairing code reuse within the configured timeout window") + checkbox("connectivity.tunnelmole.url_only_pair", "Share URL only (most secure)", "Secure Professional + Authenticator pair-code mode: AutoYou sends only the public link. Clients sign in with the shared 2FA setup key and password you handed over separately - nothing secret travels over the message.") + checkbox("connectivity.tunnelmole.auto_start_on_boot", "Auto-connect public URL on startup", "Brings your persistent public link back online automatically each time AutoYou starts. Requires a Public Proxy plan; free servers skip this and keep using on-demand links.") + "<div class=\"ayu-inline-actions\">" + button("Save link settings", "save-tunnelmole", "primary", "save") + button("Start", "service:tunnelmole:start", "green", "play", "sm") + button("Stop", "service:tunnelmole:stop", "secondary", "stop", "sm") + button("Refresh", "service:tunnelmole:refresh", "ghost", "refresh", "sm") + "</div>") + "</div><div class=\"ayu-grid-2\">" + panel("Connected clients", "Client reachability and one-click selection for messaging and playback.", sessionMarkup) + panel("Notification queue", "Queued reminder and task deliveries waiting for a connection or retry window.", renderSchedulerQueue(state.operations.queue)) + "</div><div class=\"ayu-grid-2\">" + panel("Connection helpers", "Paste provider details or edit the resolved helper list directly. Use Add to merge with existing entries or Replace to overwrite them from the pasted input.", field("Quick import", textarea("connectivity.iceImportText", { rows: 6, extraClass: "ayu-mono", placeholder: "Paste provider details, connection helper JSON, or connection server URLs" }), "Accepts provider details, connection helper JSON, or connection server URLs.") + "<div class=\"ayu-inline-actions\">" + button("Add to existing", "ice-parse-append", "secondary", "plus", "sm") + button("Replace from input", "ice-parse-replace", "ghost", "refresh", "sm") + "<a class=\"ayu-link-btn ayu-btn ayu-btn-secondary ayu-btn-sm\" href=\"/guides/connectivity\" target=\"_blank\" rel=\"noreferrer\">" + icon("book") + "<span>Connectivity Guide</span></a></div><div class=\"ayu-soft-divider\"></div>" + field("Connection helper JSON", textarea("connectivity.iceServersText", { rows: 12, extraClass: "ayu-mono" }), "AutoYou saves the full list and preserves your exact structure.") + "<div class=\"ayu-inline-actions\">" + button("Save helpers", "save-ice", "primary", "save") + "</div>") + panel("Browser routes", "Path-routed agent websites and explicit same-port routes visible to AutoYou browser clients. Set which one connected clients open by default.", renderBrowserRoutesPanelBody(routes, getByPath(status, "browser", {}))) + "</div></div>";
     }
 
     function renderCloudDevicesMarkup() {
@@ -9219,7 +9237,7 @@
         var feed = inputs.slice(-30).reverse().map(function (input) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";
         }).join("");
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", "secondary") + button("All unmuted", "interact-save:all", "secondary") + button("Selected", "interact-save:selected", "primary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", (data.mode || "off") === "off" ? "primary" : "secondary") + button("All unmuted", "interact-save:all", (data.mode || "off") === "all" ? "primary" : "secondary") + button("Selected", "interact-save:selected", (data.mode || "off") === "selected" ? "primary" : "secondary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div></div>";
     }
 
     function renderCurrentScreen() {
@@ -11275,6 +11293,10 @@
             if (Number(getByPath(notifyResult, "apns_sent", 0)) > 0) rails.push("Apple devices " + String(getByPath(notifyResult, "apns_sent", 0)));
             if (Number(getByPath(notifyResult, "fcm_sent", 0)) > 0) rails.push("Android devices " + String(getByPath(notifyResult, "fcm_sent", 0)));
             setNotice("success", rails.length ? ("Notification sent via " + rails.join(", ") + ".") : "Notification request accepted by AutoYou Cloud.");
+            return;
+        }
+        if (action === "save-session-transport") {
+            await patchConfig({ session_transport: { mode: getByPath(state.forms, "connectivity.transportMode", "legacy") } }, "Transport policy saved. Restart AutoYou to apply native endpoint changes.");
             return;
         }
         if (action === "save-tunnelmole") {

@@ -146,6 +146,22 @@ def test_lan_local_pair_completes_with_cpace_and_no_session(secure_server):
     assert secure_server["payload"]["_autoyou_device_ownership"] == server.DEVICE_SHARED
 
 
+def test_native_policy_denial_is_not_an_internal_server_error(secure_server, monkeypatch):
+    monkeypatch.setattr(server.STATE, "iroh_service", None)
+    server.STATE.config["session_transport"] = {"mode": "legacy"}
+    response, handshake = _hello()
+    assert response.status_code == 200
+    session = complete_cpace_handshake(response.body.decode().split("\n", 1)[1], handshake)
+    payload = _offer_payload()
+    payload["offer"] = {"transport": "iroh"}
+    encrypted = encrypt_cpace_message(json.dumps(payload), session)
+    answer = asyncio.run(server.autopair_api(_FakeRequest(encrypted)))
+    assert answer.status_code == 403
+    assert answer.headers["Cache-Control"] == "no-store"
+    assert json.loads(answer.body)["error"] == "Iroh transport is unavailable under the current server policy"
+    assert "sender_id" not in secure_server
+
+
 def test_wrong_password_cannot_finish_the_handshake(secure_server):
     response, handshake = _hello(password="synthetic-wrong-password-1")
     assert response.status_code == 200

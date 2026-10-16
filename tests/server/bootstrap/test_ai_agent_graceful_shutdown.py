@@ -139,6 +139,7 @@ async def test_core_shutdown_cancels_chat_before_stopping_adk_worker(monkeypatch
 
     runtime = SimpleNamespace(
         LOGGER=logging.getLogger("synthetic-shutdown"), _run_shutdown_step=run_step,
+        STATE=SimpleNamespace(iroh_service=SimpleNamespace(stop=noop)),
         _managed_frontend_shutdown_timeout=lambda: 1,
         stop_tunnelmole_service=lambda **kwargs: noop(),
         stop_bluetooth_pairing_service=lambda *args: noop(),
@@ -152,6 +153,8 @@ async def test_core_shutdown_cancels_chat_before_stopping_adk_worker(monkeypatch
         setattr(runtime, name, noop)
     monkeypatch.setattr(services, "_runtime_module", runtime)
     await services._stop_runtime_services_for_shutdown()
+    assert runtime.STATE.iroh_service is None
+    assert labels.index("Iroh session service") < labels.index("Session execution manager")
     assert labels.index("WebRTC manager") < labels.index("Session execution manager") < labels.index("AI Agent Server")
 
 

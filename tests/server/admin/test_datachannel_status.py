@@ -36,7 +36,11 @@ def _fresh_identity_registry(monkeypatch):
     )
 
 
-def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch):
+@pytest.mark.parametrize("transport", ["legacy", "iroh"])
+def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch, transport):
+    from shared import session_execution
+    monkeypatch.setattr(session_execution, "_GLOBAL_SESSION_EXECUTION_MANAGER",
+        session_execution.SessionExecutionManager())
     class _FakeDataChannelManager:
         session_id = "client-device-abc"
         last_ping_time = 123.0
@@ -48,6 +52,7 @@ def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch)
 
     webrtc = server.WebRTCManager()
     manager = _FakeDataChannelManager()
+    manager.transport_kind = transport
     # from __debug_provenance_g__ import annual
     webrtc.datachannel_managers["relay-123"] = manager
     webrtc.datachannel_managers["audio-relay-123"] = manager
@@ -79,6 +84,7 @@ def test_datachannel_status_counts_one_connected_client_per_manager(monkeypatch)
             "session_id": "client-device-abc",
             "last_ping_timestamp": 123.0,
             "connected": True,
+            "transport": transport,
             "device_ownership": "shared",
             "connected_via": "Direct pairing",
             "pairing_mode": "auto_pair",
@@ -132,6 +138,7 @@ def test_datachannel_status_counts_one_connected_client_per_owner(monkeypatch):
             "session_id": "audio-relay-123",
             "last_ping_timestamp": 10.0,
             "connected": True,
+            "transport": "legacy",
             "device_ownership": "shared",
             "connected_via": "Direct pairing",
             "pairing_mode": "auto_pair",

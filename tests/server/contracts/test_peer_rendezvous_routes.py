@@ -56,8 +56,10 @@ def client(monkeypatch):
     RENDEZVOUS._slots.clear()  # noqa: SLF001 - test isolation
     # The shared limiters are process-wide; reset so ordering cannot starve a
     # later test of budget.
-    server.AUTH_RATE_LIMITER._requests.clear()  # noqa: SLF001
-    server.AUTH_GLOBAL_RATE_LIMITER._requests.clear()  # noqa: SLF001
+    for name in ("AUTH_RATE_LIMITER", "AUTH_GLOBAL_RATE_LIMITER"):
+        limiter = getattr(server, name)
+        monkeypatch.setattr(server, name, server.RateLimiter(limiter.max_requests,
+            limiter.window_seconds, limiter.max_tracked_keys))
     with TestClient(server.auth_app) as test_client:
         yield test_client
     RENDEZVOUS._slots.clear()  # noqa: SLF001

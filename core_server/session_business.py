@@ -1,0 +1,171 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+
+"""Attach authenticated connection adapters to current application handlers.
+
+No connection setup, socket, codec or WebRTC object is created here. Canonical
+owners come from the existing session authority. A transport callback cannot
+choose another owner or erase a replacement channel's resources.
+"""
+from __future__ import annotations
+
+import asyncio
+import sys
+from typing import Any
+from core_server.session_dispatch import (bootstrap_application_session,
+    dispatch_application_message, dispatch_bound_control_message)
+from shared.datachannel_manager import MessageType
+from shared.session_transport import SessionDenied
+from shared.session_media import SessionStreamHandler
+
+
+class SessionBusinessAdapter:
+    def __init__(self, *, runtime: Any, engine: Any, grants: Any) -> None:
+        self.runtime, self.engine, self.grants = runtime, engine, grants
+        self._channels: dict[str, Any] = {}
+        self._streams: dict[int, SessionStreamHandler] = {}
+        self.delivery: Any = None
+
+    def attach_stream_handler(self, lane: int, handler: SessionStreamHandler) -> None:
+        if lane not in {7, 8, 9} or lane in self._streams:
+            raise ValueError("invalid or already owned application stream lane")
+        self._streams[lane] = handler
+
+    async def binary(self, channel: Any, frame: Any) -> None:
+        binding = channel.binding
+        if self._channels.get(binding.transport_id) is not channel or \
+                self.engine.datachannel_managers.get(binding.transport_id) is not channel or \
+                frame.generation != binding.generation:
+            raise SessionDenied("application stream adapter is closed or superseded")
+        scope = {7: 'files', 8: 'media', 9: 'control'}.get(frame.lane)
+        handler = self._streams.get(frame.lane)
+        if scope is None or handler is None:
+            raise SessionDenied("application stream capability is not attached")
+        channel.registry.check(binding, scope=scope)
+        await handler.receive(channel, frame)
+
+    async def prepared(self, transport: Any, context: Any, channel: Any) -> None:
+        binding = channel.binding
+        channel.application_loop = asyncio.get_running_loop()
+        grant = self.grants.grant_for_endpoint(context.remote_endpoint_id)
+        identity = self.runtime.bind_transport_chat_owner(grant.origin_transport, grant.origin_sender_id,
+            raw_session_id=context.transport_id, pairing_mode=grant.pairing_mode,
+            destination_session_id=grant.origin_sender_id)
+        if (identity.owner_key, identity.canonical_user_id, identity.canonical_session_id) != (
+                binding.owner_key, binding.canonical_user_id, binding.conversation_key):
+            self.runtime.get_session_execution_manager().release_transport_session(
+                context.transport_id, expected_owner_key=identity.owner_key)
+            raise SessionDenied("paired owner does not match the canonical session authority")
+        if context.transport_id in self.engine.datachannel_managers:
+            raise SessionDenied("application session already has an adapter")
+        self.engine.remember_device_ownership(identity, grant.device_ownership)
+        self._channels[context.transport_id] = channel
+        self.engine.datachannel_managers[context.transport_id] = channel
+        channel.http_request_preflight = getattr(self.engine, "_preflight_native_http_request", None)
+        if self.delivery is not None:
+            await self.delivery.prepared(transport, context, channel)
+        for handler in self._streams.values():
+            prepare = getattr(handler, "prepared", None)
+            if prepare is not None:
+                await prepare(transport, context, channel)
+                transport.registry.check(binding)
+                if self.engine.datachannel_managers.get(context.transport_id) is not channel:
+                    raise SessionDenied("application adapter was replaced during stream preparation")
+
+        async def dispatch(message: Any) -> None:
+            transport.registry.check(binding)
+            if self.engine.datachannel_managers.get(context.transport_id) is not channel:
+                raise SessionDenied("application adapter has been replaced")
+            if message.header.message_type == MessageType.VOICE_CALL_CONTROL and message.payload.get("event") == "media_signal":
+                media = getattr(channel,"native_media",None)
+                if media is None or media.negotiation is None:
+                    raise SessionDenied("native media negotiation is unavailable")
+                await media.negotiation.receive_signal(message.payload.get("control"))
+                return
+            if message.header.message_type == MessageType.VOICE_CALL_CONTROL:
+                from shared.iroh_website_input import dispatch_website_input
+                if await dispatch_website_input(channel, message.payload):
+                    return
+                media = getattr(channel, "native_media", None)
+                if media is not None and media.call_owner is not None:
+                    await media.call_owner.receive(message)
+                    return
+            if message.header.message_type == MessageType.CHAT and message.payload.get("context"):
+                files = getattr(channel, "native_files", None)
+                from shared.iroh_context import incoming_context, needs_file_capability
+                if files is None and needs_file_capability(message.payload["context"]):
+                    raise SessionDenied("attachment capability is unavailable")
+                if files is not None:
+                    message.payload = dict(message.payload, context=await incoming_context(files, message.payload["context"]))
+                transport.registry.check(binding)
+                if self.engine.datachannel_managers.get(context.transport_id) is not channel:
+                    raise SessionDenied("application adapter was replaced during attachment promotion")
+            if await dispatch_bound_control_message(self.engine, message,
+                    trusted_transport_id=context.transport_id, channel=channel):
+                return
+            await dispatch_application_message(self.engine, message,
+                trusted_transport_id=context.transport_id, session_id=context.transport_id)
+
+        async def received(message: Any) -> None:
+            if message.header.message_type == MessageType.CHAT:
+                delivery = getattr(channel, "native_delivery", None)
+                tagged = "delivery" in getattr(message, "wire_extensions", {})
+                if tagged:
+                    if delivery is None:
+                        raise SessionDenied("application delivery capability is unavailable")
+                    await delivery.admit(message, dispatch)
+                    return
+                if delivery is not None and channel.api.delivery_prompt_supported(channel._wire(message)):
+                    raise SessionDenied("ordinary native prompts require durable admission")
+            await dispatch(message)
+
+        for kind in (MessageType.CHAT, MessageType.HTTP_REQUEST, MessageType.HTTP_REQUEST_CANCEL,
+                MessageType.HTTP_STREAM_ABORT, MessageType.ERROR, MessageType.VOICE_CALL_CONTROL,
+                MessageType.HTTP_WS_DATA, MessageType.HTTP_WS_CLOSE, MessageType.PAIRING_CONTROL,
+                MessageType.ROOM_BRIDGE_CONTROL):
+            channel.register_handler(kind, received)
+
+    async def ready(self, _transport: Any, context: Any, channel: Any) -> None:
+        if self._channels.get(context.transport_id) is not channel or not channel.is_ready:
+            raise SessionDenied("application adapter is not ready")
+        if not await self.engine._publish_session_identity(context.transport_id):
+            raise SessionDenied("application conversation identity was not delivered")
+        for handler in self._streams.values():
+            ready = getattr(handler, "ready", None)
+            if ready is not None: await ready(channel)
+        if self.delivery is not None:
+            await self.delivery.ready(channel)
+        bootstrap_application_session(self.engine, context.transport_id, runtime=self.runtime)
+
+    async def closed(self, context: Any, binding: Any, _user_requested: bool) -> None:
+        channel = self._channels.pop(context.transport_id, None)
+        if channel is None or self.engine.datachannel_managers.get(context.transport_id) is not channel:
+            return
+        del self.engine.datachannel_managers[context.transport_id]
+        try:
+            self.engine._suspend_room_bridge_transport(context.transport_id)
+        finally:
+            try:
+                lease = self.engine.remote_desktop_control_leases_by_session.get(context.transport_id)
+                if lease is not None:
+                    await self.engine._release_remote_desktop_control(context.transport_id, expected_lease=lease)
+            finally:
+                try:
+                    cleanup = [self.engine._cancel_session_message_tasks(context.transport_id)]
+                    if binding is not None:
+                        # Creating a view loads its owner. Unrelated disconnects
+                        # must not load the optional media/device stack.
+                        website_input = sys.modules.get("shared.iroh_website_input")
+                        if website_input is not None:
+                            cleanup.append(website_input.close_website_views(binding))
+                        cleanup.extend(handler.closed(binding) for handler in self._streams.values()
+                                       if getattr(handler, "closed", None) is not None)
+                        if self.delivery is not None:
+                            cleanup.append(self.delivery.closed(binding))
+                    results = await asyncio.gather(*cleanup, return_exceptions=True)
+                    if any(isinstance(result, BaseException) for result in results):
+                        raise RuntimeError("application adapter cleanup failed")
+                finally:
+                    if binding is not None:
+                        self.runtime.get_session_execution_manager().release_transport_session(
+                            context.transport_id, expected_owner_key=binding.owner_key)

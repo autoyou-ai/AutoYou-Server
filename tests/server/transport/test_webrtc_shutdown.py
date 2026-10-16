@@ -441,7 +441,7 @@ async def test_forced_shutdown_waits_for_inflight_native_mouse_down(monkeypatch)
         monkeypatch.setattr(
             server,
             "release_remote_desktop_inputs",
-            lambda buttons=(): released.append(set(buttons)),
+            lambda buttons=(), *, strict=False: released.append(set(buttons)),
         )
 
         input_task = asyncio.create_task(

@@ -130,8 +130,15 @@ def _restore_packaged_runtime_hints():
                 os.environ[name] = value
 
 
+@pytest.fixture
+def monkeypatch(_restore_packaged_runtime_hints):
+    """Undo patches before the process-wide packaged-runtime cleanup."""
+    with pytest.MonkeyPatch.context() as patch:
+        yield patch
+
+
 @pytest.fixture(autouse=True)
-def _default_unlocked_runtime():
+def _default_unlocked_runtime(monkeypatch):
     """Default the in-memory server unlock-state to ``Ready`` for each test.
 
     The startup unlock-state guard (added with the LICENSE/terms sequencing)
@@ -153,8 +160,9 @@ def _default_unlocked_runtime():
     # across tests and trip a 429 in a later test that POSTs /login or /verify.
     for limiter_name in ("LOGIN_RATE_LIMITER", "AUTH_GLOBAL_RATE_LIMITER", "LOCAL_PAIR_NETWORK_GLOBAL_RATE_LIMITER"):
         limiter = getattr(srv, limiter_name, None)
-        if limiter is not None and isinstance(getattr(limiter, "_requests", None), dict):
-            limiter._requests.clear()
+        if isinstance(limiter, getattr(srv, "RateLimiter", ())):
+            monkeypatch.setattr(srv, limiter_name, srv.RateLimiter(limiter.max_requests,
+                limiter.window_seconds, limiter.max_tracked_keys))
     try:
         yield
     finally:

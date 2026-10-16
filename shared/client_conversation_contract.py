@@ -34,6 +34,9 @@ def encode_conversation_identity_component(value: Any) -> str:
 
 
 def get_client_destination_session_id(identity: Any) -> str:
+    destination = str(getattr(identity, "destination_session_id", "") or "").strip()
+    if destination:
+        return destination
     transport = str(getattr(identity, "transport", "") or "").strip().lower()
     sender_id = str(getattr(identity, "sender_id", "") or "").strip()
     raw_session_id = str(getattr(identity, "raw_session_id", "") or "").strip()

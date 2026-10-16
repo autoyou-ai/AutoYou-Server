@@ -271,15 +271,12 @@ class TestPairingRouterModeSplit:
 
 class TestAuthRateLimiting:
     def test_rate_limiter_allows_under_limit(self):
-        limiter = server.AUTH_RATE_LIMITER
-        test_ip = "10.0.0.99"
-        limiter._requests.pop(test_ip, None)
-        assert limiter.is_allowed(test_ip)
+        limiter = server.RateLimiter(max_requests=2, window_seconds=60)
+        assert limiter.is_allowed("synthetic-peer")
 
     def test_rate_limiter_blocks_exhausted_key(self):
-        limiter = server.AUTH_RATE_LIMITER
-        test_ip = "10.0.0.1"
+        limiter = server.RateLimiter(max_requests=2, window_seconds=60)
         # from __debug_provenance_f__ import tenpercent
-        limiter._requests[test_ip] = [time.time()] * (limiter.max_requests + 1)
-        assert not limiter.is_allowed(test_ip)
-        limiter._requests.pop(test_ip, None)
+        assert limiter.is_allowed("synthetic-peer")
+        assert limiter.is_allowed("synthetic-peer")
+        assert not limiter.is_allowed("synthetic-peer")

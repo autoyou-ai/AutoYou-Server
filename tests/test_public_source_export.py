@@ -112,6 +112,43 @@ def test_public_export_includes_reviewed_vendor_and_runtime_files() -> None:
     assert not exporter.should_publish_path("autoyou_agents/page_agent/website/frontend/assets/unreviewed.svg")
 
 
+def test_public_export_includes_iroh_workspace_without_build_state() -> None:
+    source_paths = (
+        "transport-rust/.gitignore",
+        "transport-rust/Cargo.toml",
+        "transport-rust/Cargo.lock",
+        "transport-rust/rust-toolchain.toml",
+        "transport-rust/autoyou-client-bindings/package-uniffi.toml",
+        "transport-rust/autoyou-client-bindings/src/lib.rs",
+        "transport-rust/autoyou-protocol/src/lib.rs",
+        "transport-rust/autoyou-session/tests/owned_host.rs",
+        "transport-rust/tests/fixtures/core-routing-v1.json",
+        "transport-rust/third-party/sonora-LICENSE",
+    )
+    assert all(exporter.should_publish_path(path) for path in source_paths)
+    assert exporter.audit_public_repository_paths(list(source_paths)) == []
+    build_paths = (
+        "transport-rust/target/.rustc_info.json",
+        "transport-rust/autoyou-session/target/debug/deps/dependency.d",
+        "transport-rust/.cargo/credentials.toml",
+        "transport-rust/build/generated.rs",
+        "transport-rust/dist/manifest.json",
+        "transport-rust/runtime.lib",
+        "transport-rust/runtime.rlib",
+        "transport-rust/runtime.rmeta",
+        "transport-rust/runtime.o",
+        "transport-rust/runtime.obj",
+        "transport-rust/runtime.a",
+        "transport-rust/runtime.pdb",
+        "transport-rust/runtime.dll",
+        "transport-rust/.env",
+    )
+    assert all(not exporter.should_publish_path(path) for path in build_paths)
+    assert exporter.audit_public_repository_paths(list(build_paths)) == [
+        f"sensitive path committed to public repository: {path}" for path in build_paths
+    ]
+
+
 def test_public_export_excludes_private_release_material() -> None:
     private_paths = (
         "docs/legal/release-compliance-checklist.md",

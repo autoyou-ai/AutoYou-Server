@@ -865,6 +865,8 @@ async def _cloud_sse_listener_loop():
             runtime.STATE.cloud_connected = False
             runtime.STATE.cloud_last_sse_activity_at = 0.0
             runtime.STATE.cloud_token_rejected = True
+            if runtime.STATE.iroh_service is not None:
+                await runtime.STATE.iroh_service.fence_cloud_authority()
             return
         if not _shared_key_registered:
             _shared_key_registered = await runtime._register_shared_device_public_key()
@@ -894,6 +896,8 @@ async def _cloud_sse_listener_loop():
                                 runtime.STATE.cloud_connected = False
                                 runtime.STATE.cloud_last_sse_activity_at = 0.0
                                 runtime.STATE.cloud_token_rejected = False
+                                if runtime.STATE.iroh_service is not None:
+                                    await runtime.STATE.iroh_service.fence_cloud_authority()
                                 return
                             if status_code == 200:
                                 runtime.LOGGER.warning(
@@ -922,6 +926,8 @@ async def _cloud_sse_listener_loop():
                             runtime.STATE.cloud_connected = False
                             runtime.STATE.cloud_last_sse_activity_at = 0.0
                             runtime.STATE.cloud_token_rejected = True
+                            if runtime.STATE.iroh_service is not None:
+                                await runtime.STATE.iroh_service.fence_cloud_authority()
                             return  # Exit the loop entirely; task will be garbage-collected
                         await runtime.asyncio.sleep(_401_backoff)
                         _401_backoff = min(_401_backoff * 2, 600)  # Cap at 10 minutes
@@ -947,6 +953,8 @@ async def _cloud_sse_listener_loop():
                     runtime.STATE.cloud_connected = True
                     runtime.STATE.cloud_token_rejected = False
                     runtime.STATE.cloud_last_sse_activity_at = runtime.time.time()
+                    if runtime.STATE.iroh_service is not None:
+                        await runtime.STATE.iroh_service.sync_core_cloud()
                     _stream_opened_at = runtime.time.monotonic()
                     _stream_superseded = False
                     runtime.LOGGER.info(f"AutoYou Cloud: SSE connected to {url}")
@@ -1023,6 +1031,8 @@ async def _cloud_sse_listener_loop():
 async def _start_cloud_sse_listener():
     """Start or restart the AutoYou Cloud SSE listener task."""
     runtime = _runtime()
+    if runtime.STATE.iroh_service is not None:
+        await runtime.STATE.iroh_service.sync_core_cloud()
     if runtime.STATE.cloud_sse_task and not runtime.STATE.cloud_sse_task.done():
         runtime.STATE.cloud_sse_task.cancel()
         try:
@@ -1084,6 +1094,9 @@ async def _initialize_services_on_startup() -> None:
                 runtime.LOGGER.info("Pairing router configured.")
             except Exception as e:
                 runtime.LOGGER.warning(f"Failed to configure pairing router: {e}")
+            # Native transport remains required when optional services are deferred.
+            from core_server.iroh_service import start_server_transport
+            await start_server_transport(runtime)
             runtime.STATE.initialized_services_on_startup = True
             runtime._update_startup_status(
                 status="complete",
@@ -1157,6 +1170,8 @@ async def _initialize_services_on_startup() -> None:
             )
 
         # Configure pairing router helpers before any messaging services start
+        from core_server.iroh_service import start_server_transport
+        await start_server_transport(runtime)
         runtime._update_startup_status(
             status="initializing",
             headline="Preparing session and pairing services",
@@ -3790,6 +3805,8 @@ async def _stop_runtime_services_for_shutdown() -> None:
     runtime = _runtime()
     runtime.LOGGER.info("Initiating graceful shutdown...")
     all_clean = True
+    from core_server.iroh_service import stop_server_transport
+    all_clean &= await runtime._run_shutdown_step("Iroh session service", stop_server_transport(runtime), 15.0)
     all_clean &= await runtime._run_shutdown_step("Auth Server", runtime.stop_auth_server(), 10.0)
     all_clean &= await runtime._run_shutdown_step(
         "Managed frontend backends",
@@ -3908,6 +3925,15 @@ def launch_bind_host_source(argv: List[str], environ: Any) -> str:
     return "launcher"
 
 
+async def _start_pairing_transport_if_unlocked() -> None:
+    runtime = _runtime()
+    if runtime.STATE.config and runtime._config_write_block_reason() is None:
+        # Pairing must survive a fresh launch without another dashboard login.
+        runtime._configure_pairing_router_helpers()
+        from core_server.iroh_service import start_server_transport
+        await start_server_transport(runtime)
+
+
 async def main():
     """Main async function to handle server startup."""
     runtime = _runtime()
@@ -4013,6 +4039,8 @@ async def main():
 
     apply_native_saved_ai_port()
     args.ai_agent = runtime.AI_AGENT_SERVER_PORT
+
+    await _start_pairing_transport_if_unlocked()
 
     display_host = runtime._normalize_probe_host(args.host)
     bind_note = f" (bound to {args.host})" if display_host != args.host else ""

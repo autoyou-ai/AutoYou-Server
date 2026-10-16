@@ -135,10 +135,12 @@ class NearbyPairingSession:
         send: Callable[[str, str], None],
         clock: Callable[[], float] = time.time,
         timeout_seconds: float = ATTEMPT_TIMEOUT_SECONDS,
+        verification_context: Callable[[], str] = lambda: "",
     ) -> None:
         self._send = send
         self._clock = clock
         self._timeout = max(30.0, float(timeout_seconds))
+        self._verification_context = verification_context
         self._peers: Dict[str, NearbyPeer] = {}
         self._attempt: Optional[NearbyAttempt] = None
         self._state = NearbyState.IDLE
@@ -242,9 +244,11 @@ class NearbyPairingSession:
     def _derive_code(self) -> List[str]:
         attempt = self._active_attempt()
         try:
+            binding = self._verification_context()
             attempt.code = derive_verification_code(
                 extract_dtls_fingerprint(attempt.local_sdp),
                 extract_dtls_fingerprint(attempt.remote_sdp),
+                invitation_id="nearby1:" + binding if binding else "",
             )
         except VerificationError as exc:
             self._fail(str(exc))

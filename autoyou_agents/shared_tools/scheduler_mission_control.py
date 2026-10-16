@@ -1139,11 +1139,7 @@ def _known_owner_keys() -> List[str]:
 
     try:
         manager = get_session_execution_manager()
-        owner_keys.update(
-            str(owner_key).strip()
-            for owner_key in getattr(manager, "_owner_aliases", {}).values()
-            if str(owner_key).strip()
-        )
+        owner_keys.update(manager.known_owner_keys())
     except Exception:
         pass
 

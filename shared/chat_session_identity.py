@@ -42,10 +42,13 @@ def bind_transport_chat_owner(
     raw_session_id: Optional[str] = None,
     thread_id: Optional[int] = None,
     pairing_mode: Optional[str] = None,
+    destination_session_id: Optional[str] = None,
 ) -> UnifiedSessionIdentity:
     kwargs = {"raw_session_id": raw_session_id, "thread_id": thread_id}
     if pairing_mode:
         kwargs["pairing_mode"] = pairing_mode
+    if destination_session_id:
+        kwargs["destination_session_id"] = destination_session_id
     return get_session_execution_manager().bind_transport_owner(
         transport,
         sender_id,

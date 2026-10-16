@@ -2200,7 +2200,28 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     return args
 
 
+def verify_reused_profile_dependencies(venv_python: Path, components: Sequence[str]) -> None:
+    modules = []
+    if "desktop-automation" in components:
+        modules.append("mss")
+    if "voice" in components:
+        modules.append("pyaudiowpatch" if platform.system() == "Windows" else "pyaudio")
+    if "messaging" in components:
+        modules.extend(["telegram.ext", "telethon", "docker", "pysignalclirestapi"])
+    for module in modules:
+        result = subprocess.run([str(venv_python), "-s", "-c", f"import {module}"],
+            capture_output=True, text=True, timeout=30, check=False)
+        if result.returncode:
+            raise BootstrapError(
+                f"The reused environment cannot import {module}; the selected profile is incomplete. "
+                "Run this profile without --skip-install to install its locked dependencies."
+            )
+
+
 def main(argv: Sequence[str]) -> int:
+    # A regular package in the Windows user site can shadow a newer namespace
+    # package installed in this venv. Resolve and launch the same pinned runtime.
+    os.environ.setdefault("PYTHONNOUSERSITE", "1")
     os.chdir(REPO_ROOT)
     host_explicit = bool(os.getenv("AUTOYOU_BIND_HOST")) or any(
         arg == "--host" or str(arg).startswith("--host=")
@@ -2240,6 +2261,7 @@ def main(argv: Sequence[str]) -> int:
             run_command([str(venv_python), str(REPO_ROOT / "scripts/prepare_intent_router.py")])
     else:
         info("Skipping pip install steps at user request")
+        verify_reused_profile_dependencies(venv_python, components)
 
     if not args.skip_playwright:
         should_install_playwright = False
@@ -2283,6 +2305,16 @@ def main(argv: Sequence[str]) -> int:
         start_ollama_if_possible()
 
     if args.service == "autoyou":
+        from scripts.stage_iroh_runtime import prepare_source_runtime
+        try:
+            transport_release = prepare_source_runtime(REPO_ROOT)
+        except (ValueError, OSError) as exc:
+            raise BootstrapError(f"Iroh source startup: {exc}") from None
+        if transport_release is not None:
+            run_command([str(venv_python), "-c", "from shared.iroh_binding import load_binding; load_binding()"])
+            info(f"Iroh source runtime {transport_release['version']} prepared; endpoint starts after unlock.")
+        else:
+            info("Session transport: legacy (native Iroh SDK is not staged).")
         report_autoyou_config_storage_status()
 
     if "local-llm" not in components:
@@ -2365,6 +2397,8 @@ def main(argv: Sequence[str]) -> int:
         software_updates_enabled=not args.no_software_updates,
         lite_source=args.lite_source,
     )
+    if args.service == "autoyou" and transport_release is not None:
+        env["AUTOYOU_VERSION"] = transport_release["version"]
     if args.service == "autoyou-lite":
         command = [
             str(venv_python),

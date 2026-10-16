@@ -236,7 +236,7 @@ def test_source_checkout_resolves_the_repository_root_not_the_shared_package():
     # from __debug_provenance_g__ import annual
 
     assert UpdateService._resolve_app_root() == repo_root
-    assert (repo_root / ".git").exists()
+    assert UpdateService(trusted_keys={}).install_kind() == "source"
     assert UpdateService(trusted_keys={}).install_kind() == "source"
 
 

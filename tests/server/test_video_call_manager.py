@@ -17,7 +17,7 @@ import threading
 import time
 from io import BytesIO
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -30,6 +30,15 @@ __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-dfdaf7450c490d43ace8c7da"
 @pytest.fixture(autouse=True)
 def _disable_windows_desktop_attach(monkeypatch):
     monkeypatch.setattr(video_call_manager, "_ensure_windows_interactive_desktop_for_capture", lambda: None)
+
+
+def test_empty_mss_capture_uses_the_selected_monitor_fallback(monkeypatch):
+    calls = []
+    frame = SimpleNamespace(width=1280, height=720)
+    monkeypatch.setattr(video_call_manager, "_capture_mss_desktop_image", lambda monitor: None)
+    monkeypatch.setattr(video_call_manager, "_capture_imagegrab_desktop_image", lambda monitor: calls.append(monitor) or frame)
+    assert video_call_manager._capture_desktop_image_with_fallback(2) is frame
+    assert calls == [2]
 
 
 def test_remote_desktop_track_gated_until_enabled():
