@@ -286,6 +286,59 @@ async def test_binary_audio_stream_uses_incremental_datachannel_frames(monkeypat
     )
 
 
+@pytest.mark.parametrize(("path", "content_type"), [
+    ("/agent/page_agent/api/blob/synthetic-photo", "image/jpeg"),
+    ("/agent/audio_agent/api/stream/synthetic-track", "audio/mpeg"),
+    ("/agent/tv_agent/api/playback/synthetic-video/v1/original.mp4", "video/mp4"),
+    ("/agent/persona_agent/api/persona/entries/synthetic-entry/media/synthetic-photo", "image/jpeg"),
+    ("/agent/notes_agent/api/media/synthetic-photo", "image/jpeg"),
+])
+@pytest.mark.asyncio
+async def test_mobile_agent_media_preserves_native_binary_bodies(monkeypatch, path, content_type):
+    from shared.binary_http import RESPONSE_BODY, decode_frame, encode_frame
+
+    class NativeDataChannel(_CapturingDataChannelManager):
+        def __init__(self):
+            super().__init__()
+            self.frames = []
+
+        def reliable_binary_http(self):
+            return True
+
+        async def send_binary_http(self, request_id, sequence, body):
+            self.frames.append(encode_frame(RESPONSE_BODY, request_id, sequence, body))
+            return True
+
+    monkeypatch.setattr(server.STATE, "config", server._default_config(), raising=False)
+    webrtc = server.WebRTCManager()
+    channel = NativeDataChannel()
+    webrtc.datachannel_managers["synthetic-session"] = channel
+    body = bytes(range(256)) * 3072
+    webrtc._http_client = _FakeHTTPClient(_FakeStreamResponse(
+        body=body,
+        headers={"Content-Type": content_type, "Content-Length": str(len(body))},
+    ))
+    request = DataChannelMessage(
+        MessageHeader("synthetic-message", MessageType.HTTP_REQUEST, 0, "synthetic-session", "tester"),
+        {"request_id": "synthetic-media", "method": "GET", "url": path,
+         "headers": {}, "body": "", "binary_http": 1},
+    )
+
+    await webrtc._handle_http_request(request)
+
+    assert [message.header.message_type for message in channel.sent_messages] == [
+        MessageType.HTTP_STREAM_OPEN, MessageType.HTTP_STREAM_END,
+    ]
+    headers = channel.sent_messages[0].payload["headers"]
+    assert headers["X-AutoYou-Binary-HTTP"] == "1"
+    assert headers["Content-Type"] == content_type
+    decoded = [decode_frame(frame) for frame in channel.frames]
+    assert len(decoded) > 32
+    assert [frame[2] for frame in decoded] == list(range(1, len(decoded) + 1))
+    assert all(frame[:2] == (RESPONSE_BODY, "synthetic-media") for frame in decoded)
+    assert b"".join(frame[3] for frame in decoded) == body
+
+
 @pytest.mark.asyncio
 async def test_query_request_forwards_content_over_datachannel(monkeypatch):
     cfg = server._default_config()
