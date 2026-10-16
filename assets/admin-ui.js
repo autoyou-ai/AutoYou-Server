@@ -1482,7 +1482,7 @@
         ai: [["responses", "Responses", /provider|runtime/i], ["models", "Models", /model|download/i], ["behavior", "Behavior & memory", /behavior|memory/i]],
         agents: [["library", "Agent library", /installed|available/i], ["studio", "Agent Studio", /studio/i], ["build", "Build & instructions", /prompt|create|draft|builder/i], ["desktop", "Desktop apps", /desktop/i]],
         page: [["websites", "Websites", /website|apps|bookmark|page/i], ["browser", "Browser", /browser|forward/i], ["access", "Access", /security|access|proxy/i]],
-        messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "Tools & delivery", /mcp|webhook|send|queue/i]],
+        messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "MCP & Tools", /mcp|webhook|send|queue/i]],
         permissions: [["capture", "Audio & video", /audio|video|capture/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website|remote/i]],
         video: [["calls", "Calls & playback", /call|playback|background/i], ["sources", "Sharing sources", /source|camera|desktop|layout|device/i], ["recording", "Recording", /record|storage/i], ["connection", "Connection", /webrtc|ice|connection/i]],
         speech: [["voice", "Voice", /provider|tts|speech|voice/i], ["models", "Models", /model|download|recognition|stt/i]],
