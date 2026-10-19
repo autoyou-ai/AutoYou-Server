@@ -715,9 +715,9 @@ docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
     # via google-cloud-aiplatform
-elevenlabs==2.54.0 \
-    --hash=sha256:52aac7d14f7a1557634c8549e6ec28bb0ea8ed8c228b39d6be4647a6f4463766 \
-    --hash=sha256:9f7c89bf10eb22f8407d961a1fd78fd720a5074a9ad0cd63f5975176812def5f
+elevenlabs==2.73.0 \
+    --hash=sha256:20bdfe59601b21c7a545ef8e0118dc47c015c3ae19d952e92551a07a95350b0f \
+    --hash=sha256:47f60f1fe7917e32f5469500b7d89926bc2c52df75292e3fe4ba5380b172b8fd
     # via -r requirements/voice.txt
 fastapi==0.136.3 \
     --hash=sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620 \
