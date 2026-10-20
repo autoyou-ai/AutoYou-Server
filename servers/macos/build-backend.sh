@@ -1396,6 +1396,22 @@ prepare_backend_python_dependencies() {
     fi
 }
 
+install_openblas_scipy() {
+    # SciPy's Accelerate wheel imports private APIs; voice still needs the full SciPy API.
+    if "$PYTHON_CMD" -c 'import scipy; assert scipy.show_config(mode="dicts")["Build Dependencies"]["blas"]["name"] == "scipy-openblas"' >/dev/null 2>&1; then
+        return 0
+    fi
+    local platform_tag scipy_version wheel_dir
+    platform_tag="$("$PYTHON_CMD" -c 'import platform; print({"arm64": "macosx_12_0_arm64", "x86_64": "macosx_10_14_x86_64"}[platform.machine()])')"
+    scipy_version="$("$PYTHON_CMD" -c 'from importlib.metadata import version; print(version("scipy"))')"
+    wheel_dir="$(mktemp -d "${BUILD_DIR}/scipy-openblas.XXXXXX")"
+    "$PYTHON_CMD" -m pip download --only-binary=:all: --no-deps \
+        --platform "$platform_tag" --dest "$wheel_dir" "scipy==$scipy_version"
+    "$PYTHON_CMD" -m pip install --force-reinstall --no-deps "$wheel_dir"/scipy-*.whl
+    rm -rf "$wheel_dir"
+    "$PYTHON_CMD" -c 'import scipy; assert scipy.show_config(mode="dicts")["Build Dependencies"]["blas"]["name"] == "scipy-openblas"'
+}
+
 get_runtime_integrity_allowed_python_files() {
     local bundle_root="$1"
     local manifest_path="${bundle_root}/runtime_integrity.json"
@@ -2111,6 +2127,7 @@ bundle_macos_dylib_closure() {
                     ;;
             esac
         done < <(otool -L "$bundled_path" 2>/dev/null | awk 'NR>1 {print $1}')
+        adhoc_sign_macos_path "$bundled_path"
     done
 }
 
@@ -2339,7 +2356,7 @@ patch_torchaudio_sox() {
 
     # Locate torchaudio/lib in the active (build) venv
     local ta_lib
-    ta_lib=$(python -c "import torchaudio, os; print(os.path.join(os.path.dirname(torchaudio.__file__), 'lib'))" 2>/dev/null || true)
+    ta_lib=$("$PYTHON_CMD" -c "import importlib.util; from pathlib import Path; print(Path(importlib.util.find_spec('torchaudio').origin).parent / 'lib')" 2>/dev/null || true)
 
     if [[ -z "$ta_lib" || ! -d "$ta_lib" ]]; then
         log_warning "torchaudio/lib not found in build venv - skipping sox patch"
@@ -2392,7 +2409,7 @@ patch_pyaudio_portaudio() {
 
     # Locate the pyaudio package directory in the active (build) venv.
     local pyaudio_dir
-    pyaudio_dir=$(python -c "import pyaudio, os; print(os.path.dirname(pyaudio.__file__))" 2>/dev/null || true)
+    pyaudio_dir=$("$PYTHON_CMD" -c "import importlib.util; from pathlib import Path; print(Path(importlib.util.find_spec('pyaudio').origin).parent)" 2>/dev/null || true)
 
     if [[ -z "$pyaudio_dir" || ! -d "$pyaudio_dir" ]]; then
         log_warning "pyaudio package not found in build venv - skipping portaudio patch"
@@ -2421,6 +2438,7 @@ patch_pyaudio_portaudio() {
         | head -1) || true
 
     if [[ -z "$embedded_path" ]]; then
+        adhoc_sign_macos_path "$portaudio_so"
         log_success "_portaudio.so already uses a relative/loader path - no rewrite needed"
         return 0
     fi
@@ -2430,6 +2448,7 @@ patch_pyaudio_portaudio() {
         "$embedded_path" \
         "@loader_path/libportaudio.2.dylib" \
         "$portaudio_so"
+    adhoc_sign_macos_path "$portaudio_so"
 
     log_success "pyaudio portaudio patch applied"
 }
@@ -2442,7 +2461,7 @@ patch_torch_libomp() {
     log "Patching torch: rewriting libomp.dylib install ID if present..."
 
     local torch_lib_dir
-    torch_lib_dir=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))" 2>/dev/null || true)
+    torch_lib_dir=$("$PYTHON_CMD" -c "import importlib.util; from pathlib import Path; print(Path(importlib.util.find_spec('torch').origin).parent / 'lib')" 2>/dev/null || true)
     if [[ -z "$torch_lib_dir" || ! -d "$torch_lib_dir" ]]; then
         log_warning "torch/lib not found in build venv - skipping libomp patch"
         return 0
@@ -2522,7 +2541,7 @@ patch_onnxruntime_dylib() {
 
     # Locate the onnxruntime capi directory in the active (build) venv.
     local onnxruntime_capi_dir
-    onnxruntime_capi_dir=$(python -c "import onnxruntime, os; print(os.path.join(os.path.dirname(onnxruntime.__file__), 'capi'))" 2>/dev/null || true)
+    onnxruntime_capi_dir=$("$PYTHON_CMD" -c "import importlib.util; from pathlib import Path; print(Path(importlib.util.find_spec('onnxruntime').origin).parent / 'capi')" 2>/dev/null || true)
 
     if [[ -z "$onnxruntime_capi_dir" || ! -d "$onnxruntime_capi_dir" ]]; then
         log_warning "onnxruntime capi directory not found in build venv - skipping onnxruntime patch"
@@ -2550,6 +2569,8 @@ patch_onnxruntime_dylib() {
         | head -1) || true
 
     if [[ -z "$rpath_entry" ]]; then
+        adhoc_sign_macos_path "$versioned_dylib"
+        adhoc_sign_macos_path "${onnxruntime_capi_dir}/libonnxruntime.1.dylib"
         log_success "libonnxruntime versioned dylib has no @rpath/libonnxruntime.1.dylib load command - no patch needed"
         return 0
     fi
@@ -2586,6 +2607,8 @@ patch_onnxruntime_dylib() {
         "$rpath_entry" \
         "@loader_path/libonnxruntime.1.dylib" \
         "$versioned_dylib"
+    adhoc_sign_macos_path "$versioned_dylib"
+    adhoc_sign_macos_path "$unversioned_dylib"
 
     log_success "onnxruntime dylib @rpath patch applied"
 }
@@ -4188,12 +4211,28 @@ main() {
 
     step_header "Verify backend runtime pins"
     verify_backend_runtime_pins
+
+    if requirements_has_voice; then
+        step_header "Select OpenBLAS SciPy without private Accelerate APIs"
+        install_openblas_scipy
+    fi
     
     # Save current directory
     pushd "$PROJECT_ROOT" > /dev/null
     
     step_header "Download and bundle Node.js"
     download_and_bundle_nodejs
+
+    if [[ "${AUTOYOU_MACOS_APP_STORE:-0}" == "1" ]]; then
+        if ! requirements_has_voice || [[ "$SKIP_NUITKA" == true ]]; then
+            log_error "App Store dependencies require full voice requirements and a fresh launcher build."
+            exit 1
+        fi
+        step_header "Build App Store dependencies with libuv's public process-title fallback"
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/build_macos_appstore_dependencies.py" \
+            --build-dir "${BUILD_DIR}/appstore-dependencies" --node-root "${ARTIFACTS_DIR}/node" --jobs "$NUITKA_JOBS"
+        patch_torch_libomp
+    fi
     
     step_header "Download Playwright browsers"
     download_playwright_browsers

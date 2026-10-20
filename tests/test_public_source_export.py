@@ -70,6 +70,8 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("core_server/app.py")
     assert exporter.should_publish_path("routers/admin.py")
     assert exporter.should_publish_path("scripts/bootstrap_autoyou.py")
+    assert exporter.should_publish_path("scripts/build_macos_appstore_dependencies.py")
+    assert exporter.should_publish_path("tests/scripts/test_build_macos_appstore_dependencies.py")
     assert exporter.should_publish_path("docs/legal/generated/README.md")
     assert exporter.should_publish_path("docs/legal/generated/manifest-summary.json")
     assert exporter.should_publish_path("docs/legal/messaging-partner-policy.md")
