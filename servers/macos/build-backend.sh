@@ -2476,6 +2476,24 @@ patch_torch_libomp() {
         return 0
     fi
 
+    local torch_library dependency changed
+    for torch_library in "$torch_lib_dir"/*.dylib; do
+        [[ -f "$torch_library" && "$torch_library" != "$libomp_target" ]] || continue
+        changed=false
+        while IFS= read -r dependency; do
+            case "$dependency" in
+                */libomp.dylib)
+                    if [[ "$dependency" != "@loader_path/libomp.dylib" ]]; then
+                        install_name_tool -change "$dependency" "@loader_path/libomp.dylib" "$torch_library"
+                        changed=true
+                    fi
+                    ;;
+            esac
+        done < <(otool -L "$torch_library" | awk 'NR>1 {print $1}')
+        if [[ "$changed" == true ]]; then
+            adhoc_sign_macos_path "$torch_library"
+        fi
+    done
     bundle_macos_dylib_closure "$libomp_target" "$torch_lib_dir" "libomp.dylib"
     log_success "torch libomp patch applied"
 }

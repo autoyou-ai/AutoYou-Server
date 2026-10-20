@@ -216,6 +216,42 @@ def test_app_store_source_dependencies_are_prepared_before_nuitka():
     assert 'App Store dependencies require full voice requirements and a fresh launcher build.' in main
 
 
+@pytest.mark.skipif(os.name == "nt", reason="exercises the macOS shell build step")
+def test_torch_openmp_load_paths_are_relative_and_rewritten_libraries_are_signed(tmp_path):
+    text = BUILD_SCRIPT.read_text()
+    function = "patch_torch_libomp() {" + text.split("patch_torch_libomp() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+    libraries = tmp_path / "synthetic torch" / "lib"
+    libraries.mkdir(parents=True)
+    for name in ("libomp.dylib", "libtorch_cpu.dylib", "libtorch_python.dylib", "libc10.dylib"):
+        (libraries / name).touch()
+    shims = r'''
+fake_python() { printf '%s\n' "$TORCH_TEST_LIB"; }
+log() { :; }
+log_warning() { :; }
+log_success() { :; }
+otool() {
+    printf '%s:\n' "$2"
+    case "$2" in
+        *libtorch_cpu.dylib) printf '\t/opt/llvm-openmp/lib/libomp.dylib (compatibility version 5.0.0)\n' ;;
+        *libtorch_python.dylib) printf '\t@rpath/libomp.dylib (compatibility version 5.0.0)\n' ;;
+        *) printf '\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n' ;;
+    esac
+}
+install_name_tool() { printf 'rewrite:%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >> "$TORCH_TEST_LOG"; }
+adhoc_sign_macos_path() { printf 'sign:%s\n' "$1" >> "$TORCH_TEST_LOG"; }
+bundle_macos_dylib_closure() { printf 'closure:%s\n' "$1" >> "$TORCH_TEST_LOG"; }
+PYTHON_CMD=fake_python
+'''
+    log = tmp_path / "commands.log"
+    subprocess.run(["bash", "-ec", function + shims + "patch_torch_libomp"], check=True,
+                   env=dict(os.environ, TORCH_TEST_LIB=str(libraries), TORCH_TEST_LOG=str(log)))
+    calls = log.read_text()
+    assert "rewrite:-change|/opt/llvm-openmp/lib/libomp.dylib|@loader_path/libomp.dylib|" in calls
+    assert "rewrite:-change|@rpath/libomp.dylib|@loader_path/libomp.dylib|" in calls
+    assert calls.count("sign:") == 2
+    assert f"closure:{libraries / 'libomp.dylib'}" in calls
+
+
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("cc"), reason="requires macOS native signing tools")
 def test_native_dylib_rewrites_are_signed_before_import(tmp_path):
     text = BUILD_SCRIPT.read_text()
