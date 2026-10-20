@@ -76,6 +76,8 @@ def test_torch_wheel_build_preserves_version_target_and_reuses_verified_cache(tm
     def build(command, *, env, check):
         assert env["PYTORCH_BUILD_VERSION"] == "2.13.0"
         assert env["PYTORCH_BUILD_NUMBER"] == "1"
+        assert env["USE_DISTRIBUTED"] == "1"
+        assert env["CMAKE_FRESH"] == "1"
         assert env["MACOSX_DEPLOYMENT_TARGET"] == "14.0"
         assert env["ARCHFLAGS"] == f"-arch {architecture}"
         assert env["_PYTHON_HOST_PLATFORM"] == f"macosx-14.0-{architecture}"
@@ -100,17 +102,28 @@ def test_node_replacement_rejects_private_api_without_changing_destination(tmp_p
     assert destination.read_bytes() == b"original generated helper"
 
 
-def test_source_build_refuses_insufficient_space_before_cloning_or_compiling(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("configured", [False, True])
+def test_source_build_refuses_insufficient_space_before_cloning_or_compiling(tmp_path, monkeypatch, capsys, configured):
     monkeypatch.setattr(store.sys, "platform", "darwin")
     monkeypatch.setattr(store.sys, "argv", ["store-dependencies", "--build-dir", str(tmp_path / "build"),
                                           "--node-root", str(tmp_path / "node")])
     monkeypatch.setattr(store.subprocess, "check_output", lambda *args, **kwargs: "v22.16.0")
     monkeypatch.setattr(store.importlib.metadata, "version", lambda name: {"torch": "2.13.0", "uvloop": "0.23.0"}[name])
-    monkeypatch.setattr(store.shutil, "disk_usage", lambda path: SimpleNamespace(free=1024**3))
+    monkeypatch.setattr(store.shutil, "disk_usage", lambda path: SimpleNamespace(free=(19 if configured else 29) * 1024**3))
+    if configured:
+        import hashlib
+        work = tmp_path / "build" / (hashlib.sha256(Path(store.__file__).read_bytes()).hexdigest()[:12]
+                                     + f"-{store.sys.implementation.cache_tag}-{store.platform.machine()}")
+        node = work / "node-22.16.0/out/Release/node"
+        node.parent.mkdir(parents=True)
+        node.write_bytes(b"synthetic cached node")
+        cache = work / "torch-2.13.0/source/build/CMakeCache.txt"
+        cache.parent.mkdir(parents=True)
+        cache.touch()
     def unexpected_build(*args, **kwargs):
         raise AssertionError("Low-space preflight must stop before cloning or compiling")
     monkeypatch.setattr(store.subprocess, "run", unexpected_build)
     with pytest.raises(SystemExit) as stopped:
         store.main()
     assert stopped.value.code == 2
-    assert "30 GiB" in capsys.readouterr().err
+    assert ("20 GiB" if configured else "30 GiB") in capsys.readouterr().err

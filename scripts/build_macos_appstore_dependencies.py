@@ -63,13 +63,13 @@ def build_wheel(name: str, repository: str, version: str, work: Path, jobs: int)
     wheels.mkdir(parents=True, exist_ok=True)
     built = list(wheels.glob("*.whl"))
     if not built:
-        source = directory / "source"
+        source = (directory / "source").resolve()
         checkout(repository, version, source)
         architecture = platform.machine()
         env = dict(os.environ, MAX_JOBS=str(jobs), BUILD_TEST="0", MACOSX_DEPLOYMENT_TARGET="14.0",
                    ARCHFLAGS=f"-arch {architecture}", _PYTHON_HOST_PLATFORM=f"macosx-14.0-{architecture}")
         if name == "torch":
-            env.update(PYTORCH_BUILD_VERSION=version, PYTORCH_BUILD_NUMBER="1")
+            env.update(PYTORCH_BUILD_VERSION=version, PYTORCH_BUILD_NUMBER="1", USE_DISTRIBUTED="1", CMAKE_FRESH="1")
         subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheels),
                         str(source)], env=env, check=True)
         built = list(wheels.glob("*.whl"))
@@ -108,8 +108,10 @@ def main() -> None:
     node_binary = node_source / "out/Release/node"
     needs_build = not node_binary.is_file() or any(
         not list((work / f"{name}-{version}/wheels").glob("*.whl")) for name, version in versions.items())
-    if needs_build and shutil.disk_usage(work).free < 30 * 1024**3:
-        parser.error("The App Store dependency source builds need at least 30 GiB free on the selected build volume")
+    configured_torch = work / f"torch-{versions['torch']}/source/build/CMakeCache.txt"
+    required_gib = 20 if node_binary.is_file() and configured_torch.is_file() else 30
+    if needs_build and shutil.disk_usage(work).free < required_gib * 1024**3:
+        parser.error(f"The App Store dependency source builds need at least {required_gib} GiB free on the selected build volume")
 
     if not node_binary.is_file():
         checkout("nodejs/node", node_version, node_source)
