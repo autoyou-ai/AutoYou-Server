@@ -10,6 +10,7 @@
   <style>
     :root{font:16px/1.4 system-ui,sans-serif;color:#fff;background:#080b1c}
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}
+    body{position:relative}
     canvas{display:block;width:100%;height:100%;touch-action:none}
     .hud{position:absolute;inset:max(14px,env(safe-area-inset-top)) 18px auto;display:flex;justify-content:space-between;gap:12px;padding-right:42px;pointer-events:none;text-shadow:0 2px 12px #050614}
     .score{font-weight:800;letter-spacing:.12em;font-size:.72rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,3.5rem);line-height:1.1;color:#fff;letter-spacing:-.04em}.score small{display:block;letter-spacing:.04em}
@@ -177,6 +178,8 @@
 
     function resize() {
       width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, 2);
+      // Embedded WebViews can report a visible viewport before resolving the root's percentage height.
+      document.documentElement.style.height = `${height}px`;
       canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
     }

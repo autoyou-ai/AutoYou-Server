@@ -27,6 +27,7 @@ function game(options = {}) {
   const document = element('document');
   Object.assign(document, {
     querySelector: element, querySelectorAll: () => controls,
+    documentElement: element('html'),
     body: {hasAttribute: () => html.includes('<body data-offline>')},
   });
   const window = element('window');
@@ -55,7 +56,7 @@ function game(options = {}) {
     });
   };
   return {
-    run, emit, element, storage, window,
+    run, emit, element, storage, window, sandbox,
     start() {run('start(); spawnTime = 10000');},
     step(dt) {clock += dt * 1000; run(`update(${dt})`);},
     sensor(vector, seconds = 0.033) {clock += seconds * 1000; window.autoYouGameTilt(...vector);},
@@ -66,6 +67,19 @@ function game(options = {}) {
     remote(points) {run(`handleRemoteFrame(${JSON.stringify({event: 'game_input', input_type: 'touch', session_id: 'synthetic-player', points})})`);},
   };
 }
+
+test('the game keeps an explicit viewport height through resize and rotation', () => {
+  const g = game();
+  for (const [width, height, dpr] of [[420, 840, 1], [360, 720, 2], [720, 360, 3]]) {
+    Object.assign(g.sandbox, {innerWidth: width, innerHeight: height, devicePixelRatio: dpr});
+    g.emit('window', 'resize');
+    assert.equal(g.element('html').style.height, `${height}px`);
+    assert.equal(g.element('#game').width, width * Math.min(dpr, 2));
+    assert.equal(g.element('#game').height, height * Math.min(dpr, 2));
+    assert.equal(g.run('width'), width);
+    assert.equal(g.run('height'), height);
+  }
+});
 
 function impact(g, kind, extra = '') {
   g.run(`objects = [{kind: '${kind}', lane: 0, z: 0.898, passed: false ${extra}}];`);
