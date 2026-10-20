@@ -598,7 +598,8 @@
       }
       ctx.fillStyle = '#100b29';
       ctx.beginPath(); ctx.moveTo(0, horizon());
-      for (let x = 0; x <= width; x += width / 12) {
+      for (let i = 0; i <= 12; i++) {
+        const x = width * i / 12;
         ctx.lineTo(x, horizon() - height * (0.04 + ((Math.sin(x * 0.027) + 1) * 0.028)));
       }
       ctx.lineTo(width, horizon()); ctx.fill();

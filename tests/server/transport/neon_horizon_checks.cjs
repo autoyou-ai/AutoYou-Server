@@ -81,6 +81,13 @@ test('the game keeps an explicit viewport height through resize and rotation', (
   }
 });
 
+test('a zero-width initial layout cannot hang the render loop', () => {
+  const g = game();
+  Object.assign(g.sandbox, {innerWidth: 0, innerHeight: 0});
+  g.emit('window', 'resize');
+  vm.runInContext('inspect("frame(0)")', g.sandbox, {timeout: 1000});
+});
+
 function impact(g, kind, extra = '') {
   g.run(`objects = [{kind: '${kind}', lane: 0, z: 0.898, passed: false ${extra}}];`);
   g.step(0.02);
