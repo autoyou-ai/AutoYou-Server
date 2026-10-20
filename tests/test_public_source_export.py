@@ -82,6 +82,7 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("docs/legal/adk-runtime-license-review.md")
     assert exporter.should_publish_path("docs/legal/licenses/google-adk-APACHE-2.0.txt")
     assert exporter.should_publish_path("docs/legal/licenses/google-adk-web-THIRD-PARTY-NOTICES.txt")
+    assert exporter.should_publish_path("docs/legal/licenses/portaudio-MIT.txt")
     assert all(exporter.should_publish_path(path) for path in (
         "docs/images/admin/overview.png",
         "docs/images/admin/live-view.png",

@@ -2938,6 +2938,7 @@ build_minimal_whisper_cpp_cli() {
         -S "$source_dir" \
         -B "${build_root}/build" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}" \
         -DBUILD_SHARED_LIBS=OFF \
         -DWHISPER_BUILD_EXAMPLES=ON \
         -DWHISPER_BUILD_SERVER=OFF \

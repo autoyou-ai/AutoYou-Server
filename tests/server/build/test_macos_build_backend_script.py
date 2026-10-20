@@ -313,6 +313,12 @@ def test_macos_build_backend_bundles_bluetooth_pair_runtime_from_overlay():
     assert "--nofollow-import-to=CoreBluetooth" in text
 
 
+def test_whisper_cpp_build_pins_the_supported_macos_instead_of_the_host():
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    function = text.split("build_minimal_whisper_cpp_cli() {", 1)[1].split("\nbundle_macos_executable_with_dylib_closure()", 1)[0]
+    assert '-DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}"' in function
+
+
 def test_macos_build_backend_reconciles_reused_dependency_drift_before_pip_check():
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
 
