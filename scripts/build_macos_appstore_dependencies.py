@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 
@@ -50,11 +51,49 @@ def checkout(repository: str, version: str, destination: Path) -> None:
     patch_libuv(destination)
 
 
+def minimum_macos(binary: Path) -> tuple[int, int]:
+    output = subprocess.check_output(["xcrun", "vtool", "-show-build", str(binary)], text=True)
+    versions = re.findall(r"^\s*minos\s+(\d+)\.(\d+)", output, re.MULTILINE)
+    versions += re.findall(r"LC_VERSION_MIN_MACOSX\s+cmdsize\s+\d+\s+version\s+(\d+)\.(\d+)", output)
+    if not versions:
+        raise RuntimeError(f"Missing macOS deployment metadata: {binary}")
+    return max((int(major), int(minor)) for major, minor in versions)
+
+
+def prepare_openmp(work: Path, version: str) -> Path:
+    target = work / "openmp/lib/libomp.dylib"
+    if target.is_file() and minimum_macos(target) <= (14, 0):
+        return target
+    downloads = work / "openmp/upstream"
+    downloads.mkdir(parents=True, exist_ok=True)
+    wheels = list(downloads.glob("*.whl"))
+    if not wheels:
+        subprocess.run([sys.executable, "-m", "pip", "download", "--index-url", "https://pypi.org/simple",
+                        "--only-binary=:all:", "--no-deps", "--dest", str(downloads), f"torch=={version}"], check=True)
+        wheels = list(downloads.glob("*.whl"))
+    if len(wheels) != 1:
+        raise RuntimeError(f"Expected one upstream Torch wheel in {downloads}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(wheels[0]) as archive, tempfile.TemporaryDirectory() as directory:
+        candidate = Path(directory) / "libomp.dylib"
+        candidate.write_bytes(archive.read("torch/lib/libomp.dylib"))
+        if minimum_macos(candidate) > (14, 0):
+            raise RuntimeError("Upstream Torch OpenMP runtime requires a newer macOS than 14")
+        shutil.copy2(candidate, target)
+    return target
+
+
 def verify_wheel(wheel: Path) -> None:
-    with zipfile.ZipFile(wheel) as archive:
+    with zipfile.ZipFile(wheel) as archive, tempfile.TemporaryDirectory() as directory:
         for name in archive.namelist():
-            if name.endswith((".so", ".dylib")) and PRIVATE_TITLE_API in archive.read(name):
-                raise RuntimeError(f"Rebuilt wheel still references the private process-title API: {wheel.name}/{name}")
+            if name.endswith((".so", ".dylib")):
+                data = archive.read(name)
+                if PRIVATE_TITLE_API in data:
+                    raise RuntimeError(f"Rebuilt wheel still references the private process-title API: {wheel.name}/{name}")
+                candidate = Path(directory) / "native-library"
+                candidate.write_bytes(data)
+                if minimum_macos(candidate) > (14, 0):
+                    raise RuntimeError(f"Rebuilt wheel requires a newer macOS than 14: {wheel.name}/{name}")
 
 
 def build_wheel(name: str, repository: str, version: str, work: Path, jobs: int) -> Path:
@@ -70,6 +109,7 @@ def build_wheel(name: str, repository: str, version: str, work: Path, jobs: int)
                    ARCHFLAGS=f"-arch {architecture}", _PYTHON_HOST_PLATFORM=f"macosx-14.0-{architecture}")
         if name == "torch":
             env.update(PYTORCH_BUILD_VERSION=version, PYTORCH_BUILD_NUMBER="1", USE_DISTRIBUTED="1", CMAKE_FRESH="1")
+            env["CMAKE_LIBRARY_PATH"] = ";".join(filter(None, (str((work / "openmp/lib").resolve()), env.get("CMAKE_LIBRARY_PATH"))))
         subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheels),
                         str(source)], env=env, check=True)
         built = list(wheels.glob("*.whl"))
@@ -121,6 +161,7 @@ def main() -> None:
     replace_node(node_binary, node_root / "bin/node")
     playwright = importlib.metadata.distribution("playwright")
     replace_node(node_binary, Path(playwright.locate_file("playwright/driver/node")))
+    prepare_openmp(work, versions["torch"])
 
     for name, repository in (("uvloop", "MagicStack/uvloop"), ("torch", "pytorch/pytorch")):
         wheel = build_wheel(name, repository, versions[name], work, args.jobs)

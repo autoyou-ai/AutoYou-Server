@@ -58,7 +58,8 @@ def test_public_branch_compiles_and_executes_without_the_private_api(tmp_path, h
     subprocess.run([str(binary)], check=True)
 
 
-def test_cached_wheel_with_private_api_is_rejected(tmp_path):
+def test_cached_wheel_with_private_api_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (14, 0))
     wheel = tmp_path / "synthetic.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr("torch/lib/libtorch_cpu.dylib", b"\xcf\xfa\xed\xfe" + store.PRIVATE_TITLE_API)
@@ -72,12 +73,14 @@ def test_cached_wheel_with_private_api_is_rejected(tmp_path):
 @pytest.mark.parametrize("architecture", ["arm64", "x86_64"])
 def test_torch_wheel_build_preserves_version_target_and_reuses_verified_cache(tmp_path, monkeypatch, architecture):
     monkeypatch.setattr(store.platform, "machine", lambda: architecture)
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (14, 0))
     monkeypatch.setattr(store, "checkout", lambda repository, version, destination: destination.mkdir())
     def build(command, *, env, check):
         assert env["PYTORCH_BUILD_VERSION"] == "2.13.0"
         assert env["PYTORCH_BUILD_NUMBER"] == "1"
         assert env["USE_DISTRIBUTED"] == "1"
         assert env["CMAKE_FRESH"] == "1"
+        assert env["CMAKE_LIBRARY_PATH"].split(";")[0] == str((tmp_path / "openmp/lib").resolve())
         assert env["MACOSX_DEPLOYMENT_TARGET"] == "14.0"
         assert env["ARCHFLAGS"] == f"-arch {architecture}"
         assert env["_PYTHON_HOST_PLATFORM"] == f"macosx-14.0-{architecture}"
@@ -100,6 +103,51 @@ def test_node_replacement_rejects_private_api_without_changing_destination(tmp_p
     with pytest.raises(RuntimeError, match="still references"):
         store.replace_node(source, destination)
     assert destination.read_bytes() == b"original generated helper"
+
+
+@pytest.mark.parametrize("output, expected", [
+    ("platform MACOS\n minos 11.0\n sdk 11.0\n version 956.6", (11, 0)),
+    ("minos 11.0\nminos 14.0", (14, 0)),
+    ("cmd LC_VERSION_MIN_MACOSX\n cmdsize 16\n version 10.13\n sdk 14.0", (10, 13)),
+])
+def test_minimum_macos_uses_deployment_metadata_not_linker_version(tmp_path, monkeypatch, output, expected):
+    monkeypatch.setattr(store.subprocess, "check_output", lambda *args, **kwargs: output)
+    assert store.minimum_macos(tmp_path / "synthetic.dylib") == expected
+
+
+def test_wheel_requiring_a_newer_macos_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (26, 0))
+    wheel = tmp_path / "synthetic.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("torch/lib/libomp.dylib", b"synthetic public library")
+    with pytest.raises(RuntimeError, match="newer macOS than 14"):
+        store.verify_wheel(wheel)
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+def test_openmp_uses_the_pinned_compatible_runtime_and_reuses_it(tmp_path, monkeypatch, compatible):
+    target = tmp_path / "openmp/lib/libomp.dylib"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"newer macOS library")
+    downloads = tmp_path / "openmp/upstream"
+    downloads.mkdir()
+    wheel = downloads / "synthetic-torch.whl"
+    payload = b"compatible OpenMP" if compatible else b"newer macOS library"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("torch/lib/libomp.dylib", payload)
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (11, 0) if path.read_bytes() == b"compatible OpenMP" else (26, 0))
+    def unexpected_download(*args, **kwargs):
+        raise AssertionError("An existing upstream wheel or verified runtime must be reused")
+    monkeypatch.setattr(store.subprocess, "run", unexpected_download)
+    if compatible:
+        assert store.prepare_openmp(tmp_path, "2.13.0") == target
+        assert target.read_bytes() == payload
+        wheel.unlink()
+        assert store.prepare_openmp(tmp_path, "2.13.0") == target
+    else:
+        with pytest.raises(RuntimeError, match="newer macOS than 14"):
+            store.prepare_openmp(tmp_path, "2.13.0")
+        assert target.read_bytes() == b"newer macOS library"
 
 
 @pytest.mark.parametrize("configured", [False, True])
