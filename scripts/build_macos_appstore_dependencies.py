@@ -65,7 +65,9 @@ def build_wheel(name: str, repository: str, version: str, work: Path, jobs: int)
     if not built:
         source = directory / "source"
         checkout(repository, version, source)
-        env = dict(os.environ, MAX_JOBS=str(jobs), BUILD_TEST="0", MACOSX_DEPLOYMENT_TARGET="14.0")
+        architecture = platform.machine()
+        env = dict(os.environ, MAX_JOBS=str(jobs), BUILD_TEST="0", MACOSX_DEPLOYMENT_TARGET="14.0",
+                   ARCHFLAGS=f"-arch {architecture}", _PYTHON_HOST_PLATFORM=f"macosx-14.0-{architecture}")
         if name == "torch":
             env.update(PYTORCH_BUILD_VERSION=version, PYTORCH_BUILD_NUMBER="1")
         subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheels),

@@ -1128,6 +1128,9 @@ ensure_system_deps() {
             "portaudio"
         )
     fi
+    if [[ "${AUTOYOU_MACOS_APP_STORE:-0}" == "1" ]]; then
+        brew_deps+=("autoconf" "automake" "libtool")  # uvloop's vendored libuv source build
+    fi
 
     if [[ ${#brew_deps[@]} -eq 0 ]]; then
         log_success "No Homebrew runtime dependencies required for requirements profile: $REQUIREMENTS_TYPE"

@@ -69,12 +69,16 @@ def test_cached_wheel_with_private_api_is_rejected(tmp_path):
     store.verify_wheel(wheel)
 
 
-def test_torch_wheel_build_preserves_version_target_and_reuses_verified_cache(tmp_path, monkeypatch):
+@pytest.mark.parametrize("architecture", ["arm64", "x86_64"])
+def test_torch_wheel_build_preserves_version_target_and_reuses_verified_cache(tmp_path, monkeypatch, architecture):
+    monkeypatch.setattr(store.platform, "machine", lambda: architecture)
     monkeypatch.setattr(store, "checkout", lambda repository, version, destination: destination.mkdir())
     def build(command, *, env, check):
         assert env["PYTORCH_BUILD_VERSION"] == "2.13.0"
         assert env["PYTORCH_BUILD_NUMBER"] == "1"
         assert env["MACOSX_DEPLOYMENT_TARGET"] == "14.0"
+        assert env["ARCHFLAGS"] == f"-arch {architecture}"
+        assert env["_PYTHON_HOST_PLATFORM"] == f"macosx-14.0-{architecture}"
         assert env["BUILD_TEST"] == "0" and env["MAX_JOBS"] == "2"
         directory = Path(command[command.index("--wheel-dir") + 1])
         with zipfile.ZipFile(directory / "synthetic-torch.whl", "w") as archive:

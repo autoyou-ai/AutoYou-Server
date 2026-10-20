@@ -206,8 +206,12 @@ PYTHON_CMD=fake_python
 
 
 def test_app_store_source_dependencies_are_prepared_before_nuitka():
-    main = BUILD_SCRIPT.read_text().split("main() {", 1)[1]
+    text = BUILD_SCRIPT.read_text()
+    main = text.split("main() {", 1)[1]
     assert 'AUTOYOU_MACOS_APP_STORE:-0' in main
+    dependencies = text.split("ensure_system_deps() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'if [[ "${AUTOYOU_MACOS_APP_STORE:-0}" == "1" ]]; then' in dependencies
+    assert 'brew_deps+=("autoconf" "automake" "libtool")' in dependencies
     assert main.index('build_macos_appstore_dependencies.py') < main.index('compile_python_backend')
     assert 'App Store dependencies require full voice requirements and a fresh launcher build.' in main
 
