@@ -1129,7 +1129,7 @@ ensure_system_deps() {
         )
     fi
     if [[ "${AUTOYOU_MACOS_APP_STORE:-0}" == "1" ]]; then
-        brew_deps+=("autoconf" "automake" "libtool")  # uvloop's vendored libuv source build
+        brew_deps+=("autoconf" "automake" "libtool" "pkgconf")  # libuv and complete audio codec source builds
     fi
 
     if [[ ${#brew_deps[@]} -eq 0 ]]; then

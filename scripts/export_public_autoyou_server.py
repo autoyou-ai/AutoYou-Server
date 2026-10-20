@@ -103,6 +103,8 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/build_architecture_diagram.py",
     "scripts/build_codec_clean_av.py",
     "scripts/build_macos_appstore_dependencies.py",
+    "scripts/build_macos_appstore_native.py",
+    "scripts/macos_appstore_native.json",
     "scripts/build_neon_horizon.py",
     "scripts/build_packaged_runtime_modules.py",
     "scripts/check_official_build_authorization.py",
