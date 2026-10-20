@@ -83,6 +83,29 @@ def prepare_openmp(work: Path, version: str) -> Path:
     return target
 
 
+def prepare_portaudio(work: Path, jobs: int) -> Path:
+    source = work.resolve() / "portaudio-19.7.0/source"
+    target = source / "lib/.libs/libportaudio.2.dylib"
+    if not target.is_file():
+        url = "https://github.com/PortAudio/portaudio.git"
+        if not source.exists():
+            subprocess.run(["git", "clone", "--depth", "1", "--branch", "v19.7.0", url, str(source)], check=True)
+        remote = subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=source, text=True).strip()
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+        release = subprocess.check_output(["git", "rev-parse", "v19.7.0^{commit}"], cwd=source, text=True).strip()
+        if remote != url or head != release:
+            raise RuntimeError(f"Unexpected PortAudio source checkout: {source}")
+        flags = f"-arch {platform.machine()} -mmacosx-version-min=14.0"
+        # This upstream release treats Clang's newer constant-conversion warning as an error.
+        env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET="14.0",
+                   CFLAGS=flags + " -Wno-error=implicit-const-int-float-conversion", LDFLAGS=flags)
+        subprocess.run(["./configure", "--disable-mac-universal", "--disable-static"], cwd=source, env=env, check=True)
+        subprocess.run(["make", f"-j{jobs}", "lib/libportaudio.la"], cwd=source, env=env, check=True)
+    if minimum_macos(target) > (14, 0):
+        raise RuntimeError(f"PortAudio requires a newer macOS than 14: {target}")
+    return target
+
+
 def verify_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive, tempfile.TemporaryDirectory() as directory:
         for name in archive.namelist():
@@ -168,7 +191,12 @@ def main() -> None:
         subprocess.run([sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", str(wheel)], check=True)
         if importlib.metadata.version(name) != versions[name]:
             raise RuntimeError(f"Rebuilt {name} changed the pinned version")
-    print("App Store Node, Playwright driver, uvloop, and PyTorch dependencies prepared; scan the final signed app.")
+    pyaudio = importlib.metadata.distribution("pyaudio")
+    portaudio = Path(pyaudio.locate_file("pyaudio/libportaudio.2.dylib"))
+    shutil.copy2(prepare_portaudio(args.build_dir, args.jobs), portaudio)
+    subprocess.run(["install_name_tool", "-id", "@loader_path/libportaudio.2.dylib", str(portaudio)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", str(portaudio)], check=True)
+    print("App Store Node, Playwright driver, uvloop, PyTorch, and PortAudio dependencies prepared; scan the final signed app.")
 
 
 if __name__ == "__main__":

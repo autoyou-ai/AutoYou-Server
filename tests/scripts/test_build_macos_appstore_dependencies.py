@@ -25,6 +25,37 @@ int main(void) { return uv__set_process_title("AutoYou synthetic helper") == 7 ?
 '''
 
 
+def test_portaudio_build_uses_the_official_tag_and_supported_target(tmp_path, monkeypatch):
+    source = tmp_path / "portaudio-19.7.0/source"
+    target = source / "lib/.libs/libportaudio.2.dylib"
+    commands = []
+    monkeypatch.setattr(store.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (14, 0))
+    def run(command, **kwargs):
+        commands.append(command)
+        if command[0] == "git":
+            assert command == ["git", "clone", "--depth", "1", "--branch", "v19.7.0",
+                               "https://github.com/PortAudio/portaudio.git", str(source)]
+            source.mkdir(parents=True)
+        else:
+            assert kwargs["env"]["MACOSX_DEPLOYMENT_TARGET"] == "14.0"
+            assert kwargs["env"]["CFLAGS"].startswith("-arch arm64 -mmacosx-version-min=14.0")
+            if command[0] == "make":
+                assert command == ["make", "-j10", "lib/libportaudio.la"]
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"synthetic PortAudio")
+    monkeypatch.setattr(store.subprocess, "run", run)
+    monkeypatch.setattr(store.subprocess, "check_output", lambda command, **kwargs:
+                        "https://github.com/PortAudio/portaudio.git" if command[1] == "remote" else "synthetic-commit")
+    assert store.prepare_portaudio(tmp_path, 10) == target
+    assert len(commands) == 3
+    assert store.prepare_portaudio(tmp_path, 10) == target
+    assert len(commands) == 3
+    monkeypatch.setattr(store, "minimum_macos", lambda path: (26, 0))
+    with pytest.raises(RuntimeError, match="newer macOS than 14"):
+        store.prepare_portaudio(tmp_path, 10)
+
+
 @pytest.mark.parametrize("helper", ["uv__thread_setname", "uv__pthread_setname_np"])
 def test_libuv_patch_is_idempotent_and_preserves_the_source(tmp_path, helper):
     path = tmp_path / "darwin-proctitle.c"
