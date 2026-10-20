@@ -264,6 +264,30 @@
       if (key === 'enter' && mode !== 'running') beginOrResume();
       if ((key === 'p' || key === 'escape') && !event.repeat) pause();
     });
+    // A controller plays like the keyboard: stick or d-pad steers, A or d-pad up jumps, Start starts and pauses.
+    const pads = new Map();
+    let padLoop = false;
+    function pollGamepads() {
+      const list = navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
+      let any = false;
+      for (const pad of list) {
+        if (!pad || !pad.connected) continue;
+        any = true;
+        const was = pads.get(pad.index) || {dir: 0, jump: false, start: false};
+        const x = Number(pad.axes[0]) || 0;
+        const dir = pad.buttons[14]?.pressed || x < -0.55 ? -1 : pad.buttons[15]?.pressed || x > 0.55 ? 1 : 0;
+        if (dir && dir !== was.dir) manualAction(dir < 0 ? 'left' : 'right');
+        const jump = Boolean(pad.buttons[0]?.pressed || pad.buttons[12]?.pressed);
+        if (jump && !was.jump) manualAction('jump');
+        const startPressed = Boolean(pad.buttons[9]?.pressed);
+        if (startPressed && !was.start) { if (mode === 'running') pause(); else beginOrResume(); }
+        pads.set(pad.index, {dir, jump, start: startPressed});
+      }
+      padLoop = any;
+      if (any) requestAnimationFrame(pollGamepads);
+    }
+    addEventListener('gamepadconnected', () => { if (!padLoop) { padLoop = true; requestAnimationFrame(pollGamepads); } });
+    addEventListener('gamepaddisconnected', event => pads.delete(event.gamepad.index));
     document.querySelector('#pause').addEventListener('click', pause);
     document.querySelector('#calibrate').addEventListener('click', () => { resetMotion(); feedback('HOLD STILL TO SET YOUR NEUTRAL TILT'); });
     document.querySelector('#lift').addEventListener('click', event => {
@@ -373,11 +397,16 @@
         const direction = value < -0.55 ? -1 : value > 0.55 ? 1 : 0;
         if (direction && direction !== player.axis) manualAction(direction < 0 ? 'left' : 'right');
         player.axis = direction;
+      } else if (frame.event === 'game_input' && kind === 'axis' && frame.axis === 'left_y') {
+        const up = Number(frame.value) < -0.55;
+        if (up && !player.up) manualAction('jump');
+        player.up = up;
       } else if (frame.event === 'game_input' && kind === 'button') {
         const name = String(frame.button || '').toLowerCase();
         if (frame.phase === 'down' && !player.buttons.has(name)) {
           player.buttons.add(name);
-          const command = {action_a: 'jump', action_b: 'right', jump: 'jump', left: 'left', right: 'right'}[name];
+          if (name === 'start') { if (mode === 'running') pause(); else beginOrResume(); return; }
+          const command = {action_a: 'jump', action_b: 'right', jump: 'jump', up: 'jump', left: 'left', right: 'right'}[name];
           if (command) manualAction(command);
         } else if (frame.phase === 'up') player.buttons.delete(name);
       } else if (frame.event === 'game_input' && kind === 'sensor' && frame.sensor === 'accelerometer') {
@@ -387,6 +416,7 @@
         const key = String(frame.key || '').toLowerCase();
         if (frame.action === 'key' && frame.phase === 'down' && !player.keys.has(key)) {
           player.keys.add(key);
+          if (key === 'enter') { if (mode !== 'running') beginOrResume(); return; }
           const command = {arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right',
             arrowup: 'jump', w: 'jump', space: 'jump'}[key];
           if (command) manualAction(command);
@@ -397,6 +427,8 @@
         else action(frame.button === 'right' ? 'right' : frame.button === 'middle' ? 'left' : 'jump');
       }
     }
+    // AutoYou's hosted-game page delivers players' input frames here when this game runs in its frame.
+    window.autoYouGameInput = handleRemoteFrame;
     function retryNativeInput(delay) {
       clearTimeout(reconnectTimer);
       if (!document.hidden) reconnectTimer = setTimeout(connectNativeInput, delay);

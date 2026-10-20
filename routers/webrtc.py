@@ -17,7 +17,8 @@ from typing import Any, Callable, Dict
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+from shared import game_catalog
 from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50"
@@ -28,7 +29,6 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
-    hosted_game_path = Path(__file__).resolve().parents[1] / "autoyou_agents/game_agent/website/frontend/play.html"
 
     def local_game_page_allowed(connection: Request | WebSocket) -> bool:
         peer = connection.client.host if connection.client else ""
@@ -47,13 +47,38 @@ def register_routes(
             and not server._request_forwarded_from_elsewhere(connection)
         )
 
+    def hosted_game_library() -> Dict[str, Path]:
+        return game_catalog.catalog(game_catalog.catalog_dirs(
+            Path(server.APP_ROOT), server.get_mutable_data_dir("AutoYou", anchor=server.__file__)))
+
     @admin_app.get("/api/webrtc/hosted-game/play")
     async def hosted_game_page(request: Request):
+        """The trusted page that plays one library game; Neon Horizon unless ?game= names another."""
         if not local_game_page_allowed(request):
             return JSONResponse(status_code=403, content={"success": False, "error": "Local computer only"})
         if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
             return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
-        return FileResponse(hosted_game_path, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+        game_id = str(request.query_params.get("game") or game_catalog.DEFAULT_GAME)
+        if not game_catalog.GAME_ID.fullmatch(game_id) or game_id not in hosted_game_library():
+            return JSONResponse(status_code=404, content={"success": False, "error": "That game is not on this computer"})
+        return HTMLResponse(game_catalog.host_page_html(game_id, game_catalog.title_for(game_id)),
+                            headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    @admin_app.get("/api/webrtc/hosted-game/frame/{game_id}")
+    async def hosted_game_frame(request: Request, game_id: str):
+        """The game itself, sandboxed with no network, for the host page's frame only."""
+        if not local_game_page_allowed(request):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Local computer only"})
+        if not server._get_game_mode_available(cfg=(server.STATE.config or {})):
+            return JSONResponse(status_code=409, content={"success": False, "error": "Game mode is disabled"})
+        path = hosted_game_library().get(game_id) if game_catalog.GAME_ID.fullmatch(game_id) else None
+        try:
+            body = game_catalog.frame_html(game_catalog.read_game(path)) if path is not None else None
+        except (OSError, ValueError, UnicodeError):
+            body = None
+        if body is None:
+            return JSONResponse(status_code=404, content={"success": False, "error": "That game is not on this computer"})
+        return Response(body, media_type="text/html; charset=utf-8", headers=dict(game_catalog.FRAME_HEADERS))
 
     @admin_app.get("/api/webrtc/hosted-game/api/game/native-input/status")
     async def hosted_game_input_status(request: Request):
@@ -110,7 +135,13 @@ def register_routes(
         ):
             await websocket.close(code=1008)
             return
-        await serve_game_input_stream(websocket, owner="hosted-neon")
+        game_id = str(websocket.query_params.get("game") or game_catalog.DEFAULT_GAME)
+        if not game_catalog.GAME_ID.fullmatch(game_id):
+            await websocket.close(code=1008)
+            return
+        # Neon Horizon's host page keeps its streamed music; any other hosted game is just "hosted-game".
+        await serve_game_input_stream(
+            websocket, owner="hosted-neon" if game_id == game_catalog.DEFAULT_GAME else "hosted-game")
 
     @admin_app.get("/api/webrtc/game-input/connection")
     async def admin_get_game_input_connection(request: Request):
@@ -123,11 +154,69 @@ def register_routes(
             content={
                 "success": True,
                 "path": "/api/webrtc/game-input/stream",
+                "observe_path": "/api/webrtc/game-input/observe",
                 "token": server.WEBRTC.game_input_hub.token,
                 "engine_connected": server.WEBRTC.game_input_hub.connected,
             },
             headers={"Cache-Control": "no-store"},
         )
+
+    @admin_app.websocket("/api/webrtc/game-input/observe")
+    async def game_input_observe(websocket: WebSocket):
+        """A read-only copy of every input players make, for agents and other programs.
+
+        One engine owns /stream and drives the game; any number of readers (up to the hub's cap)
+        may observe here at the same time. Each message carries the raw protocol frame next to a
+        readable record. A signed-in admin session or, on this computer, the engine token opens it.
+        """
+        peer = websocket.client.host if websocket.client else ""
+        authorization = websocket.headers.get("authorization", "")
+        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        hub = server.WEBRTC.game_input_hub
+        local_token = bool(
+            token
+            and server._is_loopback_client_host(peer)
+            and not any(websocket.headers.get(name) for name in ("forwarded", "x-forwarded-for", "x-real-ip"))
+            and server.secrets.compare_digest(token, hub.token)
+        )
+        if not local_token and not server._is_logged_in(websocket):
+            await websocket.close(code=1008)
+            return
+        queue = hub.observe()
+        if queue is None:
+            await websocket.close(code=1013)
+            return
+        disconnect = queued = None
+        try:
+            await websocket.accept()
+            players = [person for person in server.WEBRTC.screen_listen_snapshot().get("participants", [])
+                       if person.get("mode") == "game"]
+            await websocket.send_json({"event": "observe_ready", "protocol": "autoyou_game_v1", "players": players})
+            disconnect = server.asyncio.create_task(websocket.receive())
+            while True:
+                queued = server.asyncio.create_task(queue.get())
+                done, _ = await server.asyncio.wait(
+                    (queued, disconnect), timeout=15, return_when=server.asyncio.FIRST_COMPLETED,
+                )
+                if disconnect in done:
+                    break
+                if queued in done:
+                    message = queued.result()
+                else:
+                    queued.cancel()
+                    await server.asyncio.gather(queued, return_exceptions=True)
+                    message = {"event": "heartbeat"}
+                await websocket.send_json(message)
+        except (WebSocketDisconnect, OSError, RuntimeError):
+            pass
+        finally:
+            # Free the reader's slot first: a cancelled connection must not keep it.
+            hub.unobserve(queue)
+            for task in (disconnect, queued):
+                if task is not None:
+                    task.cancel()
+            await server.asyncio.gather(*(task for task in (disconnect, queued) if task is not None),
+                                        return_exceptions=True)
 
     @admin_app.websocket("/api/webrtc/game-input/stream")
     async def local_game_input_stream(websocket: WebSocket):

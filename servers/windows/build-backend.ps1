@@ -1858,6 +1858,11 @@ if (-not $compiledDist) {
 Remove-Item $finalBackendRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $finalBackendRoot | Out-Null
 Copy-Item (Join-Path $compiledDist.FullName "*") $finalBackendRoot -Recurse -Force
+# Ensure packaged assets match the repo source assets even when Nuitka's standalone dist cache was reused
+if (Test-Path -LiteralPath (Join-Path $repoRoot "assets")) {
+    Copy-Item (Join-Path $repoRoot "assets\*") (Join-Path $finalBackendRoot "assets") -Recurse -Force
+    Copy-Item (Join-Path $repoRoot "assets\*") (Join-Path $compiledDist.FullName "assets") -Recurse -Force
+}
 
 $runtimeModulesRoot = Join-Path $finalBackendRoot "runtime_modules"
 $runtimeStdlibRoot = Join-Path $finalBackendRoot "runtime_stdlib"

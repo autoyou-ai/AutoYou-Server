@@ -26,9 +26,9 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 # entry point that did not happen to have the repo root on sys.path (packaged
 # build, different cwd) silently disabled the game inside a blanket except.
 # `shared` is a real package and carries no project-internal imports.
-from shared import game_ping_pong
+from shared import game_catalog, game_ping_pong
 from shared.chat_stop_control import stop_acknowledgment, stop_target_error
-from shared.game_input import GameInputHub, normalize_game_input
+from shared.game_input import GameInputHub, describe_game_input, normalize_game_input
 from shared.datachannel_manager import (
     DataChannelMessage as SharedDataChannelMessage,
     MessageHeader as SharedMessageHeader,
@@ -2378,6 +2378,24 @@ class WebRTCManager:
         participants = [dict(session) for session in self.screen_sessions.values()
                         if session["mode"] in {"watch", "interactive"} and
                         self._voice_call_client_active_for_session(str(session["id"]))]
+        # Players in a game session stream this computer without a microphone; Interact shows
+        # them so the person here can read what each player is pressing.
+        listed = {str(person["id"]) for person in participants}
+        seen_leases: set[int] = set()
+        for session_id, lease in list(self.remote_desktop_control_leases_by_session.items()):
+            if lease.get("mode") != "game" or id(lease) in seen_leases:
+                continue
+            seen_leases.add(id(lease))
+            player = str(lease.get("target_session_id") or session_id)
+            if player in listed or not self._voice_call_client_active_for_session(player):
+                continue
+            listed.add(player)
+            name = self.client_display_name_snapshot(player).get("client_display_name") or "Connected device"
+            participants.append({
+                "id": player, "name": str(name)[:64], "mode": "game", "muted": True, "layout": "game",
+                "last_input": str(lease.get("last_input") or ""),
+                "last_input_at": float(lease.get("last_input_at") or 0.0),
+            })
         return {
             **self.screen_listen_mixer.snapshot(),
             "participants": participants,
@@ -3938,11 +3956,38 @@ class WebRTCManager:
           active=True,
         )
 
+    def _note_game_input(self, session_id: str, lease: Dict[str, Any], frame: Dict[str, Any]) -> None:
+      """Record what a player pressed in words for Interact and copy it to every input observer."""
+      labels = lease.get("button_labels")
+      if labels is None:
+        try:
+          layout = _runtime._normalize_game_buttons(
+            _runtime._get_video_remote_desktop_config(cfg=(_runtime.STATE.config or {})).get("game_buttons"))
+        except Exception:
+          layout = []
+        labels = lease["button_labels"] = {button["name"]: button["label"] for button in layout}
+      described = describe_game_input(frame, lease.setdefault("input_memory", {}), labels)
+      if described is None:
+        return
+      player_session = str(lease.get("target_session_id") or session_id)
+      name = str(self.client_display_name_snapshot(session_id).get("client_display_name") or "Connected device")[:64]
+      now = _runtime.time.time()
+      entry = {"session_id": player_session, "name": name, "kind": "game", **described, "timestamp": now}
+      lease["last_input"], lease["last_input_at"] = described["value"], now
+      self.screen_inputs.append(entry)
+      # Observers get the protocol frame for parsing, minus the lease id and any typed text.
+      self.game_input_hub.notify({
+        "event": "game_input_observed", "session_id": player_session, "player": name,
+        "input": entry, "frame": {key: value for key, value in frame.items() if key not in {"control_id", "text"}},
+      })
+
     async def _forward_game_engine_input_locked(
       self, session_id: str, lease: Dict[str, Any], frame: Optional[Dict[str, Any]],
     ) -> bool:
       if lease.get("mode") != "game":
         return False
+      if frame is not None:
+        self._note_game_input(session_id, lease, frame)
       if lease.get("engine_input") and not self.game_input_hub.connected:
         self._stop_hosted_game_audio(lease)
         lease["engine_input"] = False
@@ -9370,14 +9415,30 @@ class WebRTCManager:
                 return
 
             if request_path == "/api/v1/games/hosted/start":
+                # Any game in this computer's library; Neon Horizon unless the body names another.
+                game_id = game_catalog.DEFAULT_GAME
+                try:
+                    raw_request = _runtime._decode_datachannel_http_body(
+                        body, compressed=is_compressed, body_base64=body_base64,
+                    ) if method == "POST" else None
+                    requested = _runtime.json.loads(raw_request) if raw_request and len(raw_request) <= 1024 else {}
+                    if isinstance(requested, dict) and requested.get("game") is not None:
+                        game_id = str(requested.get("game"))
+                except (ValueError, TypeError, UnicodeError):
+                    game_id = ""
                 status_code = 200
-                result = {"success": True}
+                result = {"success": True, "game": game_id}
                 if method != "POST":
                     status_code, result = 405, {"success": False, "error": "Use POST to start a hosted game."}
                 elif not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
                     status_code, result = 409, {"success": False, "error": "Enable Game mode in computer settings first."}
+                elif not game_catalog.GAME_ID.fullmatch(game_id) or game_id not in game_catalog.catalog(
+                        game_catalog.catalog_dirs(Path(_runtime.APP_ROOT),
+                                                  _runtime.get_mutable_data_dir("AutoYou", anchor=_runtime.__file__))):
+                    status_code, result = 404, {"success": False, "error": "That game is not on the connected computer."}
                 elif not self.game_input_hub.connected:
-                    game_url = f"http://127.0.0.1:{_runtime.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"
+                    game_url = (f"http://127.0.0.1:{_runtime.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"
+                                f"?game={game_id}")
                     try:
                         opened = await _runtime.asyncio.to_thread(webbrowser.open_new, game_url)
                     except Exception:
@@ -9390,7 +9451,8 @@ class WebRTCManager:
                     if not opened or not self.game_input_hub.connected:
                         status_code, result = 503, {
                             "success": False,
-                            "error": "Could not open the hosted game on the computer. Open Neon Horizon there and try again.",
+                            "error": ("Could not open the game on the computer. It needs a signed-in desktop there; "
+                                      "open AutoYou on that computer and try again."),
                         }
                 datachannel_manager = self._datachannel_manager_for_session(
                     message.header.session_id, require_send_message=True,

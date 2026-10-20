@@ -105,18 +105,24 @@ async def test_hosted_game_starts_only_for_editor_and_reports_launch_failure(tmp
     opened = []
     monkeypatch.setattr(webrtc_engine.webbrowser, "open_new", lambda url: opened.append(url) or False)
 
-    async def start():
+    async def start(body=""):
         message = DataChannelMessage(
             header=MessageHeader("synthetic-message", MessageType.HTTP_REQUEST, 0.0,
                                  "synthetic-session", "synthetic-user"),
             payload={"request_id": "synthetic-request", "method": "POST",
-                     "url": "/api/v1/games/hosted/start", "headers": {}},
+                     "url": "/api/v1/games/hosted/start", "headers": {}, "body": body},
         )
         await webrtc._handle_http_request(message)
         return channel.send_message.call_args.args[0].payload
 
+    page = f"http://127.0.0.1:{server.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"
     assert (await start())["status_code"] == 503
-    assert opened == [f"http://127.0.0.1:{server.ADMIN_WEB_SERVICE_PORT}/api/webrtc/hosted-game/play"]
+    # With no game named, the computer opens its default game.
+    assert opened == [page + "?game=neon-horizon"]
+    # A game the computer does not have opens nothing.
+    missing = await start(json.dumps({"game": "synthetic-missing"}))
+    assert missing["status_code"] == 404 and len(opened) == 1
+    assert (await start(json.dumps({"game": "../secret"})))["status_code"] == 404
     loop = asyncio.get_running_loop()
     def open_game(url):
         opened.append(url)
@@ -124,8 +130,8 @@ async def test_hosted_game_starts_only_for_editor_and_reports_launch_failure(tmp
         return True
     monkeypatch.setattr(webrtc_engine.webbrowser, "open_new", open_game)
     try:
-        assert (await start())["status_code"] == 200
-        assert json.loads((await start())["body"]) == {"success": True}
+        assert (await start(json.dumps({"game": "neon-horizon"})))["status_code"] == 200
+        assert json.loads((await start())["body"]) == {"success": True, "game": "neon-horizon"}
         assert len(opened) == 2
     finally:
         webrtc.game_input_hub.detach(webrtc.game_input_hub._queue)

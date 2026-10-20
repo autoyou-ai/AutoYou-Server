@@ -191,7 +191,51 @@ def _extra_routes(app, agent_name):
             "button_layout": "Configure up to four label:name buttons in Admin > Video & Calls; clients receive game_buttons in WebRTC capabilities",
             "state_reset": "all_sessions=true clears all players after engine backlog loss",
             "session_start": "A new active player lease; the engine should initialize that session's held state",
+            "observe": "/api/webrtc/game-input/observe",
+            "observe_relay": "./api/game/observe",
+            "observed": ("Read-only, any number of readers: game_input_observed messages carry player, session_id, "
+                         "input (a readable record: name, kind, device, input_type, control, value, phase, timestamp) "
+                         "and frame (the protocol frame without its lease id or typed text). The engine keeps "
+                         "control; observing never takes input away from it."),
         }, headers={"Cache-Control": "no-store"})
+
+    @app.websocket("/api/game/observe")
+    async def observe_inputs(websocket: WebSocket):
+        """Relay the read-only input feed to a signed-in website page, for web app agents."""
+        auth = _smc._describe_chat_auth_state(websocket, agent_name)
+        if not auth.get("authenticated") or auth.get("auth_mode") == "open":
+            await websocket.close(code=1008)
+            return
+        server = _smc._runtime_server()
+        url = f"ws://127.0.0.1:{server.ADMIN_WEB_SERVICE_PORT}/api/webrtc/game-input/observe"
+        try:
+            async with connect(url, additional_headers={
+                "Authorization": f"Bearer {server.WEBRTC.game_input_hub.token}"
+            }, open_timeout=5) as upstream:
+                await websocket.accept()
+                disconnect = asyncio.create_task(websocket.receive())
+                incoming = None
+                try:
+                    while True:
+                        incoming = asyncio.create_task(upstream.recv())
+                        done, _ = await asyncio.wait((incoming, disconnect), return_when=asyncio.FIRST_COMPLETED)
+                        if disconnect in done:
+                            break
+                        await websocket.send_text(incoming.result())
+                finally:
+                    disconnect.cancel()
+                    tasks = [disconnect]
+                    if incoming is not None:
+                        incoming.cancel()
+                        tasks.append(incoming)
+                    await asyncio.gather(*tasks, return_exceptions=True)
+        except (OSError, ConnectionClosed, InvalidStatus, WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            try:
+                await websocket.close()
+            except RuntimeError:
+                pass
 
 
 app = _smc.create_agent_chat_app(
