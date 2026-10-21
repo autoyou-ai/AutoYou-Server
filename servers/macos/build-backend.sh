@@ -1173,7 +1173,7 @@ validate_python() {
         log "Using requested Python: $python_version (command: $PYTHON_CMD)"
     else
         # Try to find compatible Python version (3.11+)
-        local python_candidates=("python3.13" "python3.12" "python3.11" "python3.10" "python3")
+        local python_candidates=("python3.13" "python3.12" "python3.11" "python3")
         local found_python=""
 
         for py_cmd in "${python_candidates[@]}"; do
@@ -1182,8 +1182,8 @@ validate_python() {
                 local major=$(echo "$version" | cut -d. -f1)
                 local minor=$(echo "$version" | cut -d. -f2)
 
-                # Prefer Python 3.10+ for compatibility
-                if [[ $major -gt 3 ]] || [[ ($major -eq 3 && $minor -ge 10) ]]; then
+                # Require Python 3.11+ for the patched image codecs
+                if [[ $major -gt 3 ]] || [[ ($major -eq 3 && $minor -ge 11) ]]; then
                     found_python="$py_cmd"
                     PYTHON_CMD="$py_cmd"
                     python_version="$version"
@@ -1195,7 +1195,7 @@ validate_python() {
 
         if [[ -z "$found_python" ]]; then
             # Fall back to whatever Python is available
-            log_warning "No Python 3.10+ found, using system Python"
+            log_warning "No Python 3.11+ found, using system Python"
             if ! command -v "$PYTHON_CMD" &> /dev/null; then
                 log_error "Python not found: $PYTHON_CMD"
                 exit 1
@@ -1206,6 +1206,11 @@ validate_python() {
         log "Using Python: $python_version (command: $PYTHON_CMD)"
     fi
     
+    if ! "$PYTHON_CMD" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+        log_error "Python 3.11+ is required for the patched image codecs."
+        exit 1
+    fi
+
     # Check if this SDK needs path fixing (common for portable Python builds)
     fix_python_sdk_if_needed
 
@@ -1342,6 +1347,16 @@ verify_backend_runtime_pins() {
         return 1
     fi
     
+    local security_specs=""
+    if ! security_specs="$("$PYTHON_CMD" "$BACKEND_RUNTIME_PIN_READER" \
+        --requirements-file "${PROJECT_ROOT}/requirements/locked.txt" \
+        --packages aiohttp yarl pillow certifi --format lines)"; then
+        return 1
+    fi
+    while IFS= read -r pkg_spec; do
+        [[ -n "$pkg_spec" ]] && expected_packages+=("$pkg_spec")
+    done <<< "$security_specs"
+
     local mismatches=()
     
     for pkg_spec in "${expected_packages[@]}"; do

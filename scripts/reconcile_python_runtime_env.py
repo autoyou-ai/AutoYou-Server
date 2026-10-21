@@ -73,6 +73,8 @@ COMPAT_IF_INSTALLED = {
 }
 
 SYNC_LOCKED_IF_INSTALLED = (
+    "aiohttp",
+    "certifi",
     "fsspec",
     "h2",
     "huggingface-hub",
@@ -81,6 +83,7 @@ SYNC_LOCKED_IF_INSTALLED = (
     "numpy",
     "openai",
     "packaging",
+    "pillow",
     "pydantic",
     "python-dotenv",
     "requests",
@@ -88,6 +91,7 @@ SYNC_LOCKED_IF_INSTALLED = (
     "safetensors",
     "transformers",
     "tzdata",
+    "yarl",
 )
 
 

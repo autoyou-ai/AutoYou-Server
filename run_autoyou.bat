@@ -16,12 +16,11 @@ set "PYTHON_CMD="
 call :try_python "py -3.13"
 call :try_python "py -3.12"
 call :try_python "py -3.11"
-call :try_python "py -3.10"
 call :try_python "py -3"
 call :try_python "python"
 
 if not defined PYTHON_CMD (
-    echo [ERROR] Python 3.10+ is required.
+    echo [ERROR] Python 3.11+ is required.
     echo [INFO] Install Python from https://python.org/ and make sure it is on PATH.
     exit /b 1
 )
@@ -37,7 +36,7 @@ endlocal & exit /b %EXIT_CODE%
 
 :try_python
 if defined PYTHON_CMD goto :eof
-%~1 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+%~1 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
 if errorlevel 1 goto :eof
 set "PYTHON_CMD=%~1"
 goto :eof

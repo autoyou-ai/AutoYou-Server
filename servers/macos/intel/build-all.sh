@@ -98,7 +98,7 @@ python_supports_server_build() {
     local candidate="$1"
     "$candidate" - <<'PY' >/dev/null 2>&1
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
 PY
 }
 
@@ -108,13 +108,10 @@ resolve_python() {
         "${PYTHON:-}"
         "/usr/local/bin/python3.12"
         "/usr/local/bin/python3.11"
-        "/usr/local/bin/python3.10"
         "/opt/homebrew/bin/python3.12"
         "/opt/homebrew/bin/python3.11"
-        "/opt/homebrew/bin/python3.10"
         "python3.12"
         "python3.11"
-        "python3.10"
     )
 
     for candidate in "${candidates[@]}"; do
@@ -184,7 +181,7 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 PYTHON_BIN="$(resolve_python)" || {
-    echo "Unable to find Python 3.10+ for the Intel server build."
+    echo "Unable to find Python 3.11+ for the Intel server build."
     exit 1
 }
 

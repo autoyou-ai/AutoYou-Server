@@ -946,6 +946,11 @@ def create_venv(python_executable: str) -> Path:
     venv_python = venv_python_path()
     if not venv_python.exists():
         raise BootstrapError(f"Virtual environment python not found at {venv_python}")
+    if run_command(
+        [str(venv_python), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"],
+        quiet=True, check=False,
+    ).returncode:
+        raise BootstrapError("Python 3.11+ is required. Recreate .venv with a supported interpreter.")
     return venv_python
 
 

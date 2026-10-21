@@ -12,6 +12,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import hashlib
 import base64
+import io
 import time
 
 import pytest
@@ -19,6 +20,19 @@ import pytest
 import server
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-71906929946515bfa5a81b39"
+
+
+def test_profile_compression_reencodes_and_bounds_a_real_image():
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGBA", (640, 480), (20, 40, 60, 128))
+    output = io.BytesIO()
+    image.save(output, format="PNG", compress_level=0)
+    original = output.getvalue()
+    compressed = server._compress_profile_image_payload(original, max_bytes=4096)
+    assert len(original) > 4096 >= len(compressed)
+    with Image.open(io.BytesIO(compressed)) as result:
+        result.load()
+        assert result.size == (256, 256)
 
 
 def test_profile_image_is_scoped_to_stable_server_user_id(tmp_path, monkeypatch):

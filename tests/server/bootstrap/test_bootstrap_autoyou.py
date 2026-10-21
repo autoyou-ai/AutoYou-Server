@@ -23,6 +23,30 @@ from shared import process_lifecycle
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e"
 
 
+@pytest.mark.parametrize("version", [(3, 10), (3, 11)])
+def test_reused_venv_enforces_the_patched_codecs_python_minimum(tmp_path, monkeypatch, version):
+    environment = tmp_path / ".venv"
+    environment.mkdir()
+    python = environment / "synthetic-python"
+    python.touch()
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: python)
+
+    def version_probe(command, **kwargs):
+        assert command[:2] == [str(python), "-c"]
+        return subprocess.run(
+            [sys.executable, "-c", command[2].replace("sys.version_info", repr(version))],
+            capture_output=True, text=True,
+        )
+
+    monkeypatch.setattr(bootstrap, "run_command", version_probe)
+    if version < (3, 11):
+        with pytest.raises(bootstrap.BootstrapError, match="Python 3.11"):
+            bootstrap.create_venv(sys.executable)
+    else:
+        assert bootstrap.create_venv(sys.executable) == python
+
+
 def test_pyaudio_import_probe_uses_platform_binding(monkeypatch):
     commands = []
 

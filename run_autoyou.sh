@@ -18,19 +18,19 @@ command_exists() {
 }
 
 PYTHON_CMD=""
-for cmd in python3.13 python3.12 python3.11 python3.10 python3 python; do
-    if command_exists "$cmd" && "$cmd" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+for cmd in python3.13 python3.12 python3.11 python3 python; do
+    if command_exists "$cmd" && "$cmd" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
         PYTHON_CMD="$cmd"
         break
     fi
 done
 
 if [ -z "$PYTHON_CMD" ]; then
-    echo "[ERROR] Python 3.10+ is required."
+    echo "[ERROR] Python 3.11+ is required."
     if [ "$(uname -s)" = "Darwin" ]; then
         echo "Install with: brew install python@3.11"
     else
-        echo "Install with: sudo apt-get install python3.10 python3-pip python3-venv"
+        echo "Install with: sudo apt-get install python3.11 python3-pip python3-venv"
     fi
     exit 1
 fi

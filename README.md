@@ -17,7 +17,7 @@ Own your data. Set your rules. Prepare your training workflows.</p>
 <p align="center">
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/public-checks.yml/badge.svg?branch=main" alt="Public checks"></a>
   <a href="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/codeql.yml"><img src="https://github.com/autoyou-ai/AutoYou-Server/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL"></a>
-  <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
   <a href="servers/README.md"><img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-536DFE" alt="Platforms: Windows, macOS, Linux"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-source--available-8B5CF6" alt="Source-available license"></a>
 </p>
@@ -46,8 +46,10 @@ server that you run or compile.
 
 ## Quick start
 
-You need Git and Python 3.10 or newer. Dependencies can require a newer Python
+You need Git and Python 3.11 or newer. Dependencies can require a newer Python
 or a particular platform; see the [dependency profiles](requirements/README.md).
+Dependency security updates require a full launcher rebuild for packaged apps.
+`--skip-nuitka` and `--skip-backend-compile` retain the launcher's embedded libraries.
 
 **1. Get the server**
 

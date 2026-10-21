@@ -52,6 +52,48 @@ for subtract in (False, True):
 ''')
 
 
+def test_certifi_excludes_the_compromised_emsign_g3_root(tmp_path):
+    probe(tmp_path, '''
+import certifi, ssl
+assert certifi.__version__ == "2026.10.19"
+context = ssl.create_default_context(cafile=certifi.where())
+roots = context.get_ca_certs()
+assert roots
+names = {value for root in roots for rdn in root["subject"] for key, value in rdn if key == "commonName"}
+assert "emSign ECC Root CA - G3" not in names
+''')
+
+
+def test_pillow_retains_client_image_operations_and_bounds_oversized_input(tmp_path):
+    probe(tmp_path, '''
+import io
+from PIL import Image, ImageMorph
+assert Image.__version__ == "13.0.0"
+image = Image.new("RGB", (32, 24), (10, 20, 30))
+assert image.resize((8, 6), Image.LANCZOS).size == (8, 6)
+assert list(image.getdata())[0] == (10, 20, 30)
+for format in ("PNG", "JPEG", "WEBP", "TIFF", "GIF"):
+    output = io.BytesIO()
+    image.save(output, format=format)
+    with Image.open(io.BytesIO(output.getvalue())) as decoded:
+        decoded.load()
+        assert decoded.size == image.size
+try:
+    ImageMorph.MorphOp(op_name="dilation8").apply(Image.new("L", (0, 8)))
+except ValueError:
+    pass
+Image.MAX_IMAGE_PIXELS = 1
+output = io.BytesIO()
+image.save(output, format="PNG")
+try:
+    Image.open(io.BytesIO(output.getvalue()))
+except Image.DecompressionBombError:
+    pass
+else:
+    raise AssertionError("Oversized image bypassed the decoder limit")
+''')
+
+
 def test_fsspec_keeps_reference_templates_and_rejects_object_introspection(tmp_path):
     probe(tmp_path, '''
 import os
