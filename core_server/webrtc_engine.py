@@ -6321,6 +6321,7 @@ class WebRTCManager:
 
         # Store in session_peers (unified with sessions)
         self.session_peers[chat_id] = pc
+        self._watch_shared_device_peer(chat_id, pc)
 
         # Apply any candidates provided in the autopair offering
         candidates = offer_data.get("candidates", [])
@@ -6771,6 +6772,7 @@ class WebRTCManager:
 
             # Keep reference
             self.session_peers[session_id] = pc
+            self._watch_shared_device_peer(session_id, pc)
 
             # Apply any pending ICE candidates
             if session_id in self.pending_candidates:
@@ -6829,6 +6831,25 @@ class WebRTCManager:
             import traceback
             _runtime.LOGGER.error(traceback.format_exc())
             raise
+
+    def _watch_shared_device_peer(self, session_id, pc):
+        from shared.shared_device_pairing import current_shared_device_session_check, watch_shared_device_session
+        authority_check = current_shared_device_session_check()
+        if authority_check is None:
+            return
+
+        async def close_shared_session():
+            try:
+                await pc.close()
+            finally:
+                self.cleanup_session(session_id, expected_pc=pc)
+
+        _runtime.track_background_task(watch_shared_device_session(
+            authority_check,
+            lambda: self.session_peers.get(session_id) is pc
+            and getattr(pc, "connectionState", "") not in {"closed", "failed"},
+            close_shared_session,
+        ))
 
     async def handle_session_candidate(self, session_id: str, candidate: Dict[str, Any]) -> bool:
         """Handle ICE candidate for tunnelmole session"""

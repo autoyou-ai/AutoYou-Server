@@ -13,10 +13,17 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import base64
+import asyncio
 import hashlib
 import re
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from time import monotonic
+from typing import Awaitable, Callable
+
+import httpx
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import x25519
@@ -28,6 +35,73 @@ __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-f881a77e27cfb2d3eb0fd29
 _SALT = b"AutoYou Peer Code X25519 v1"
 _INFO_PREFIX = "AutoYou Peer Link code grant v1"
 _PUBLIC_KEY_RE = re.compile(r"^[A-Za-z0-9_-]{43}$")
+_session_check: ContextVar[Callable[[], Awaitable[bool | None]] | None] = ContextVar(
+    "shared_device_session_check", default=None,
+)
+
+
+@contextmanager
+def shared_device_session(check: Callable[[], Awaitable[bool | None]] | None):
+    """Carry authority from the authenticated relay through fragment reassembly."""
+    token = _session_check.set(check)
+    try:
+        yield
+    finally:
+        _session_check.reset(token)
+
+
+def current_shared_device_session_check():
+    return _session_check.get()
+
+
+async def shared_device_session_allowed(base_url: str, server_token: str, metadata: dict) -> bool | None:
+    """None is a transient failure; only an explicit boolean renews authority."""
+    body = {key: metadata.get(key) for key in (
+        "grant_id", "server_device_id", "client_device_id", "server_public_key", "client_public_key",
+    )}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                base_url.rstrip("/") + "/v1/server/shared-session/check", json=body,
+                headers={"Authorization": "Bearer " + server_token},
+            )
+        if response.status_code in (401, 403, 404):
+            return False
+        if response.status_code != 200:
+            return None
+        allowed = response.json().get("allowed")
+        return allowed if type(allowed) is bool else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return None
+
+
+async def watch_shared_device_session(check, is_current, close):
+    """Close revoked sessions promptly and bound cloud outages to a 30s lease."""
+    deadline = monotonic() + 30.0
+    try:
+        while is_current():
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                await close()
+                return
+            try:
+                allowed = await asyncio.wait_for(check(), timeout=min(5.0, remaining))
+            except Exception:
+                allowed = None
+            if not is_current():
+                return
+            now = monotonic()
+            if allowed is False or now >= deadline:
+                await close()
+                return
+            if allowed is True:
+                deadline = now + 30.0
+            await asyncio.sleep(min(10.0, max(0.0, deadline - monotonic())))
+    except asyncio.CancelledError:
+        # Cancelling the guard must never leave its still-current peer unguarded.
+        if is_current():
+            await close()
+        raise
 
 
 @dataclass(frozen=True)

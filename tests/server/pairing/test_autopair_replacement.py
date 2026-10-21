@@ -87,6 +87,33 @@ class _FakeAudioManager:
         self._closed = True
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["autopair", "pair"])
+async def test_shared_grant_revoke_closes_both_offer_paths(monkeypatch, kind):
+    from unittest.mock import AsyncMock
+    from shared.shared_device_pairing import shared_device_session
+
+    manager = server.WebRTCManager()
+    tasks = []
+    closed = []
+    monkeypatch.setattr(server, "RTCPeerConnection", _FakePeerConnection)
+    monkeypatch.setattr(server, "RTCSessionDescription", lambda sdp, type: SimpleNamespace(sdp=sdp, type=type))
+    monkeypatch.setattr(server, "AudioManager", None)
+    monkeypatch.setattr(server, "TTSAudioStreamTrack", None)
+    monkeypatch.setattr(server, "track_background_task", lambda coro: tasks.append(asyncio.create_task(coro)))
+    monkeypatch.setattr(manager, "_arm_session_establishment_timeout", lambda *a, **kw: None)
+    monkeypatch.setattr(manager, "cleanup_session", lambda sid, expected_pc: closed.append((sid, expected_pc)))
+    sid = "synthetic-shared-session"
+    with shared_device_session(AsyncMock(return_value=False)):
+        if kind == "autopair":
+            answer = await manager.handle_autopair_offer(sid, {"offer": {"type": "offer", "sdp": "v=0"}, "iceServers": []})
+        else:
+            answer = await manager.handle_session_offer(sid, {"type": "offer", "sdp": "v=0", "iceServers": []})
+    await asyncio.gather(*tasks)
+    assert answer["type"] == "answer"
+    assert closed == [(sid, manager.session_peers[sid])]
+
+
 class _FakeAudioTrackSink:
     instances = []
 

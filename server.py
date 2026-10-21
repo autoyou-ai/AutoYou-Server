@@ -360,6 +360,8 @@ from shared.lan_direct_access import (
 )
 from shared.pairing_response import parse_otp_response_payload
 from shared.shared_device_pairing import (
+    shared_device_session as _shared_device_session,
+    shared_device_session_allowed as _shared_device_session_allowed,
     pairing_auth_profile as _device_pairing_auth_profile,
     generate_key_material as _generate_shared_device_key_material,
     is_key_material as _is_shared_device_key_material,
@@ -7073,6 +7075,15 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
 
     response_payload = ""
     blocked_default_password_pairing = False
+
+    async def _process_cloud_pairing_message(*args, **kwargs):
+        check = None
+        if shared_device_profile is not None and shared_device_metadata.get("purpose") != "bootstrap":
+            metadata = dict(shared_device_metadata)
+            check = lambda: _shared_device_session_allowed(AUTOYOU_CLOUD_BASE, server_token, metadata)
+        with _shared_device_session(check):
+            return await pairing_router.process_message(*args, **kwargs)
+
     if (invalid_shared_device_profile or shared_device_pin_refusal) and command == "/autopair_candidates":
         LOGGER.warning("AutoYou Cloud: dropped shared-device candidates with invalid or refused key metadata")
         return
@@ -7083,7 +7094,7 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             response_payload = _json.dumps({"error": shared_device_pin_refusal})
         elif command == "/autopair_candidates":
             if pairing_router:
-                await pairing_router.process_message(
+                await _process_cloud_pairing_message(
                     relay_message,
                     platform="cloud",
                     sender_id=pairing_sender_id,
@@ -7097,7 +7108,7 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             elif not pairing_router:
                 response_payload = _json.dumps({"error": "pairing_router not available"})
             else:
-                fragment_response = await pairing_router.process_message(
+                fragment_response = await _process_cloud_pairing_message(
                     relay_message,
                     platform="cloud",
                     sender_id=pairing_sender_id,
@@ -7127,7 +7138,7 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             else:
                 # Keep relay_id as the transport session for signaling/ICE, but
                 # use the stable pairing sender for router state.
-                _cloud_resp = await pairing_router.process_message(
+                _cloud_resp = await _process_cloud_pairing_message(
                     relay_message,
                     platform="cloud",
                     sender_id=pairing_sender_id,
@@ -7161,7 +7172,7 @@ async def _handle_cloud_relay_event(event_type: str, data_str: str, server_token
             elif not pairing_router:
                 response_payload = _json.dumps({"error": "pairing_router not available"})
             else:
-                _cloud_pair_resp = await pairing_router.process_message(
+                _cloud_pair_resp = await _process_cloud_pairing_message(
                     relay_message,
                     platform="cloud",
                     sender_id=pairing_sender_id,
