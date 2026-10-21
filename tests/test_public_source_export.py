@@ -70,6 +70,10 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("core_server/app.py")
     assert exporter.should_publish_path("routers/admin.py")
     assert exporter.should_publish_path("scripts/bootstrap_autoyou.py")
+    assert exporter.should_publish_path("scripts/build_macos_appstore_dependencies.py")
+    assert exporter.should_publish_path("scripts/build_macos_appstore_native.py")
+    assert exporter.should_publish_path("scripts/macos_appstore_native.json")
+    assert exporter.should_publish_path("tests/scripts/test_build_macos_appstore_dependencies.py")
     assert exporter.should_publish_path("docs/legal/generated/README.md")
     assert exporter.should_publish_path("docs/legal/generated/manifest-summary.json")
     assert exporter.should_publish_path("docs/legal/messaging-partner-policy.md")
@@ -80,6 +84,7 @@ def test_public_export_preserves_public_dotfiles() -> None:
     assert exporter.should_publish_path("docs/legal/adk-runtime-license-review.md")
     assert exporter.should_publish_path("docs/legal/licenses/google-adk-APACHE-2.0.txt")
     assert exporter.should_publish_path("docs/legal/licenses/google-adk-web-THIRD-PARTY-NOTICES.txt")
+    assert exporter.should_publish_path("docs/legal/licenses/portaudio-MIT.txt")
     assert all(exporter.should_publish_path(path) for path in (
         "docs/images/admin/overview.png",
         "docs/images/admin/live-view.png",
