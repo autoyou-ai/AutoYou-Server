@@ -341,12 +341,8 @@ install_node_service_deps() {
             echo "Missing package-lock.json for node/${svc}." >&2
             exit 1
         }
-        if [[ -d "${svc_dir}/node_modules" && -n "$(ls -A "${svc_dir}/node_modules" 2>/dev/null)" ]]; then
-            echo "Using existing node_modules for ${svc}..."
-        else
-            echo "Installing locked npm dependencies for ${svc}..."
-            (cd "$svc_dir" && "$npm_cmd" ci --omit=dev)
-        fi
+        echo "Installing locked npm dependencies for ${svc}..."
+        (cd "$svc_dir" && "$npm_cmd" ci --omit=dev)
     done
 }
 

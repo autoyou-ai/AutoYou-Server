@@ -19,6 +19,39 @@ README = REPO_ROOT / "servers" / "wsl" / "README.md"
 REQUIREMENTS = REPO_ROOT / "servers" / "wsl" / "requirements.txt"
 
 
+@pytest.mark.parametrize("install_exit", [0, 17])
+def test_node_packaging_refreshes_existing_trees_and_stops_on_failure(tmp_path, install_exit):
+    source = BUILD_SCRIPT.read_text(encoding="utf-8")
+    function = source.split("install_node_service_deps() {", 1)[1].split("\n}\n", 1)[0]
+    for service in ("whatsapp", "tunnelmole"):
+        folder = tmp_path / "node" / service
+        (folder / "node_modules").mkdir(parents=True)
+        (folder / "node_modules" / "stale-package").write_text("old dependency", encoding="utf-8")
+        (folder / "package-lock.json").write_text("{}", encoding="utf-8")
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    for name, body in {
+        "node": "exit 0",
+        "npm": 'printf \'%s\\n\' "$*" >> "$AUTOYOU_TEST_ROOT/npm-calls"\nexit "$TEST_NPM_EXIT"',
+    }.items():
+        executable = binaries / name
+        executable.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
+        executable.chmod(0o755)
+    environment = {
+        **os.environ, "PATH": str(binaries) + os.pathsep + os.environ.get("PATH", ""),
+        "PROJECT_ROOT": str(tmp_path), "AUTOYOU_TEST_ROOT": str(tmp_path),
+        "TEST_NPM_EXIT": str(install_exit),
+    }
+    result = subprocess.run(
+        ["bash", "-c", "set -e\ninstall_node_service_deps() {" + function + "\n}\ninstall_node_service_deps"],
+        cwd=tmp_path, env=environment, capture_output=True, text=True,
+    )
+    assert result.returncode == install_exit, result.stderr
+    calls = tmp_path / "npm-calls"
+    assert calls.exists(), "Packaging reused an unverified stale dependency tree"
+    assert calls.read_text().splitlines() == ["ci --omit=dev"] * (1 if install_exit else 2)
+
+
 def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
 
@@ -180,7 +213,7 @@ def test_wsl_validation_acknowledgment_option_rejects_conflicting_modes(tmp_path
     assert not (tmp_path / "state").exists()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Exercises the Linux build shell")
+@pytest.mark.skipif(sys.platform != "linux", reason="Exercises the Linux-only build shell")
 def test_wsl_validation_build_does_not_forge_or_call_license_acceptance(tmp_path):
     script = tmp_path / "repo/servers/wsl/build-backend.sh"
     script.parent.mkdir(parents=True)

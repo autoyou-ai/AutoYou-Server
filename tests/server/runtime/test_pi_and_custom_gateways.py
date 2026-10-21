@@ -93,7 +93,11 @@ async def test_call_pi_gateway_http_success():
 
 
 @pytest.mark.asyncio
-async def test_call_pi_gateway_cli_fallback(monkeypatch):
+async def test_call_pi_gateway_cli_fallback(monkeypatch, tmp_path):
+    cli_file = tmp_path / "packages" / "coding-agent" / "dist" / "cli.js"
+    cli_file.parent.mkdir(parents=True)
+    cli_file.write_text("// Synthetic CLI fixture", encoding="utf-8")
+
     class FailingSession:
         def __init__(self, *args, **kwargs):
             pass
@@ -111,7 +115,7 @@ async def test_call_pi_gateway_cli_fallback(monkeypatch):
                 message="Test CLI",
                 session_id="synthetic-session-cli",
                 api_base="http://127.0.0.1:8650",
-                pi_path="/synthetic/pi/path",
+                pi_path=str(tmp_path),
             )
             assert res is not None
             assert res["response"] == "CLI synthetic output"
