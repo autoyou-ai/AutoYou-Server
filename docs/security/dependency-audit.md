@@ -52,21 +52,25 @@ References:
 [LiteLLM proxy validation](https://osv.dev/vulnerability/GHSA-3cv6-jpf6-8222),
 [Datasets](https://osv.dev/vulnerability/GHSA-379c-qx7v-6h59).
 
-## Unresolved advisories
+## Resolved since the review (2026-10-21 UTC)
 
-- **NLTK 3.10.3, voice stack:** [GHSA-8mgp-746c-j5xp](https://osv.dev/vulnerability/GHSA-8mgp-746c-j5xp)
-  lists affected model-artifact import/export APIs and no fixed release.
-  The inspected TTS flow uses text, fixed pronunciation resources, POS tagging,
-  and CMUDict; no caller-controlled use of those affected artifact APIs was
-  established. This is a bounded reachability observation, not a package-wide
-  exemption. The isolated
-  [English TTS resource test](../../tests/server/media/test_nltk_tts_resource_boundary.py)
-  exercised the real frontend, G2p preprocessing, POS tagging, and resource
-  loader with traversal-shaped, Windows-path-shaped, and ordinary speech
-  text. It used synthetic pronunciation data, prohibited downloads, and
-  verified that none of the six affected artifact APIs was called. It passed
-  alongside the 24 existing EmotiVoice tests. This does not cover arbitrary
-  extensions or repair NLTK itself.
+- **NLTK, voice stack:** [GHSA-8mgp-746c-j5xp](https://osv.dev/vulnerability/GHSA-8mgp-746c-j5xp)
+  (CVE-2026-81726) affects NLTK through 3.10.3. NLTK 3.10.4 routes the six
+  named model-artifact APIs (`TransitionParser.train`/`parse`,
+  `AveragedPerceptron.save`/`load`, `PerceptronTagger.save_to_json` and
+  `save_maxent_params`) through `nltk.pathsec`, as confirmed in the published
+  3.10.4 source distribution. The voice floor and the lock now require 3.10.4
+  with the PyPI-published hashes. With real tagger and CMUDict resources
+  installed by the 3.10.4 downloader, the EmotiVoice English frontend produced
+  byte-identical phonemes, raw G2p output, out-of-vocabulary predictions and
+  POS tags compared with 3.10.3. NLTK 3.10.4 refuses a data root that another
+  account can write to; the default per-user model directory is unaffected.
+  The [English TTS resource test](../../tests/server/media/test_nltk_tts_resource_boundary.py)
+  still checks that speech text never reaches artifact persistence APIs or
+  downloads.
+
+## Reviewed decisions
+
 - **Accelerate, optional tuning:** [GHSA-4j2p-28q2-5m79](https://osv.dev/vulnerability/GHSA-4j2p-28q2-5m79)
   lists checkpoint path traversal through 1.14.0 with no fixed release. The
   manifest's minimum is affected. PyPI returned no advisory for 1.15.0, but
@@ -74,15 +78,22 @@ References:
   still joins checkpoint-index filenames to the model directory without
   checking containment before loading them. An empty advisory result is not
   evidence of a fix, so the floor was not raised merely to remove the match.
-  The inspected training flow does not directly call the named Accelerate
-  APIs. It does load model repositories through Transformers and permits
-  remote model code; those paths prevent a package-wide non-applicability
-  conclusion. Use trusted model sources and an isolated training environment.
+  The affected functions are `load_checkpoint_in_model` and
+  `load_checkpoint_and_dispatch`. No AutoYou source calls them, and the locked
+  Transformers 5.12.1 and current PEFT 0.21.2 wheels do not call them either
+  (checked 2026-10-21). The tuning profile is optional: none of the generated
+  release SBOMs include Accelerate or PEFT, and WSL builds add it only with
+  `AUTOYOU_INCLUDE_TUNING`. The training flow loads remote model code, so model
+  sources are already fully trusted; this advisory does not widen that
+  boundary. Use trusted model sources and an isolated training environment.
 
-Neither advisory has been silently suppressed or accepted for release.
-Release reviewers must resolve the affected scope or record an explicit,
-bounded decision. The advisory command continues to return nonzero while these
-matches remain.
+This decision is recorded in
+[requirements/advisory-decisions.json](../../requirements/advisory-decisions.json)
+as `vulnerable_code_not_in_execute_path`, scoped to Accelerate 0.33.0 in
+`requirements/tuning.txt` and to these advisory ids, with a review-by date of
+2026-11-21. The advisory command reports it under `reviewed_advisories` and
+returns nonzero again for any other match, a changed floor or manifest, or once
+the review date passes.
 
 ## Other limits and follow-up
 

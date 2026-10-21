@@ -68,6 +68,64 @@ def test_lookup_filters_withdrawn_advisories(monkeypatch):
     assert [entry["id"] for entry in result["advisories"]] == ["TEST-1"]
 
 
+def _decision(**overrides):
+    decision = {
+        "package": "Example_Package", "versions": ["1.0"], "advisory_ids": ["TEST-ALIAS"],
+        "manifests": ["requirements/tuning.txt"], "justification": "vulnerable_code_not_in_execute_path",
+        "detail": "synthetic", "reviewed_at": "2026-01-01", "review_by": "2026-02-01",
+    }
+    decision.update(overrides)
+    return decision
+
+
+def _result(version="1.0", file="requirements/tuning.txt"):
+    return {"name": "example-package", "version": version, "status": "checked",
+            "sources": [{"file": file, "line": 1, "kind": "minimum"}],
+            "advisories": [{"id": "TEST-1", "aliases": ["TEST-ALIAS"]}]}
+
+
+def test_scoped_decision_moves_advisory_to_reviewed_until_it_expires():
+    result = _result()
+    audit.apply_decisions([result], [_decision()], "2026-01-15")
+    assert result["advisories"] == []
+    assert result["reviewed_advisories"][0]["decision"]["review_by"] == "2026-02-01"
+
+    expired = _result()
+    audit.apply_decisions([expired], [_decision()], "2026-02-02")
+    assert [item["id"] for item in expired["advisories"]] == ["TEST-1"]
+    assert "reviewed_advisories" not in expired
+
+
+def test_decisions_do_not_cover_other_versions_manifests_or_advisories():
+    for result, decision in (
+        (_result(version="2.0"), _decision()),
+        (_result(file="requirements/base.txt"), _decision()),
+        (_result(), _decision(advisory_ids=["OTHER-1"])),
+    ):
+        audit.apply_decisions([result], [decision], "2026-01-15")
+        assert [item["id"] for item in result["advisories"]] == ["TEST-1"]
+
+
+def test_incomplete_decision_file_is_rejected(tmp_path):
+    path = tmp_path / "advisory-decisions.json"
+    path.write_text('{"decisions": [{"package": "example-package"}]}', encoding="utf-8")
+    try:
+        audit.load_decisions(path)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("An incomplete decision must not be honored")
+    assert audit.load_decisions(tmp_path / "missing.json") == []
+
+
+def test_repository_decisions_are_complete_and_time_bounded():
+    decisions = audit.load_decisions(audit.DECISIONS)
+    assert decisions, "Expected the reviewed advisory decisions file"
+    for decision in decisions:
+        assert decision["review_by"] > decision["reviewed_at"]
+        assert all((audit.REPO_ROOT / manifest).is_file() for manifest in decision["manifests"])
+
+
 def test_missing_advisory_fields_are_not_clean_results(monkeypatch):
     import io
 

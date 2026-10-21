@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "description": "Explicit, bounded advisory decisions honored by scripts/audit_dependency_advisories.py. Each decision covers only the listed package versions, manifests and advisory ids, and stops applying after review_by. See docs/security/dependency-audit.md.",
+  "decisions": [
+    {
+      "package": "accelerate",
+      "versions": ["0.33.0"],
+      "advisory_ids": ["GHSA-4j2p-28q2-5m79", "PYSEC-2026-3804"],
+      "manifests": ["requirements/tuning.txt"],
+      "justification": "vulnerable_code_not_in_execute_path",
+      "detail": "The advisory affects load_checkpoint_in_model and load_checkpoint_and_dispatch, which no AutoYou source calls; the locked Transformers 5.12.1 and PEFT 0.21.2 releases do not call them either. Accelerate 1.15.0 still joins weight_map entries without a containment check, so the floor is not raised to hide the match. The tuning profile is optional, excluded from default server builds and the cloud VM images, and already treats model sources as fully trusted because it loads remote model code.",
+      "reviewed_at": "2026-10-21",
+      "review_by": "2026-11-21"
+    }
+  ]
+}

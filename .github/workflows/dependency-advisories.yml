@@ -43,4 +43,9 @@ jobs:
                       if result.get("advisories") or result["status"] == "error":
                           ids = ", ".join(item["id"] for item in result.get("advisories", []))
                           out.write(f"- {result['name']} {result['version']}: {ids or 'lookup error'}\n")
+                  for result in data["results"]:
+                      for item in result.get("reviewed_advisories", []):
+                          decision = item["decision"]
+                          out.write(f"- reviewed: {result['name']} {result['version']}: {item['id']} "
+                                    f"({decision['justification']}, review by {decision['review_by']})\n")
                   out.write("\nThis checks declarations, not a fully resolved environment. See docs/security/dependency-audit.md.\n")
