@@ -83,7 +83,7 @@ pygetwindow>=0.0.9
 
 # Tray app (autoyou_app.py) - required on all platforms
 pystray>=0.19.3
-Pillow>=12.3.0
+Pillow>=13.0.0
 protobuf>=6.33.5,<7
 pyOpenSSL>=26.4.0
 pyasn1>=0.6.4
