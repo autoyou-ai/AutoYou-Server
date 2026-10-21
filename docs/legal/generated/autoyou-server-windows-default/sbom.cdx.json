@@ -354,11 +354,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "Pillow>=12.3.0"
+          "value": "Pillow>=13.0.0"
         },
         {
           "name": "specifier",
-          "value": ">=12.3.0"
+          "value": ">=13.0.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -498,11 +498,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "aiohttp>=3.14.3"
+          "value": "aiohttp>=3.14.4"
         },
         {
           "name": "specifier",
-          "value": ">=3.14.3"
+          "value": ">=3.14.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -835,6 +835,36 @@
         }
       ],
       "purl": "pkg:pypi/bless",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "certifi",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "certifi>=2026.10.19"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2026.10.19"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/certifi",
       "type": "library"
     },
     {
@@ -1335,7 +1365,34 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "lingua-language-detector==2.2.0"
+          "value": "lingua-language-detector==2.1.1; python_version < \"3.12\""
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/lingua-language-detector@2.1.1",
+      "type": "library",
+      "version": "2.1.1"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "lingua-language-detector",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "lingua-language-detector==2.2.0; python_version >= \"3.12\""
         },
         {
           "name": "autoyou:ecosystem",
@@ -2962,7 +3019,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-16T04:35:04+00:00",
+    "timestamp": "2026-10-21T16:35:11+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -2971,7 +3028,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:8c6c5a30-32b5-49d2-88bb-59bc41e861d9",
+  "serialNumber": "urn:uuid:cdb3ddb4-d613-4e76-8162-64147dfcdceb",
   "specVersion": "1.5",
   "version": 1
 }

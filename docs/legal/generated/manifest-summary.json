@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "componentCount": 137,
+      "componentCount": 139,
       "displayName": "AutoYou Server source/full profile",
       "id": "autoyou-server-source-full",
       "notice": "docs/legal/generated/autoyou-server-source-full/NOTICE.txt",
@@ -16,7 +16,7 @@
       ]
     },
     {
-      "componentCount": 102,
+      "componentCount": 104,
       "displayName": "AutoYou Server Windows binary-default build",
       "id": "autoyou-server-windows-default",
       "notice": "docs/legal/generated/autoyou-server-windows-default/NOTICE.txt",
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "componentCount": 102,
+      "componentCount": 104,
       "displayName": "AutoYou Server macOS binary-default build",
       "id": "autoyou-server-macos-default",
       "notice": "docs/legal/generated/autoyou-server-macos-default/NOTICE.txt",
@@ -46,7 +46,7 @@
       ]
     },
     {
-      "componentCount": 138,
+      "componentCount": 140,
       "displayName": "AutoYou Server Windows connector-full build",
       "id": "autoyou-server-windows-connector-full",
       "notice": "docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt",
@@ -61,7 +61,7 @@
       ]
     },
     {
-      "componentCount": 138,
+      "componentCount": 140,
       "displayName": "AutoYou Server macOS connector-full build",
       "id": "autoyou-server-macos-connector-full",
       "notice": "docs/legal/generated/autoyou-server-macos-connector-full/NOTICE.txt",
@@ -76,5 +76,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-16T04:35:04+00:00"
+  "generatedAt": "2026-10-21T16:35:11+00:00"
 }

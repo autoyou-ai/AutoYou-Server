@@ -139,6 +139,7 @@
     "beautifulsoup4": "MIT",
     "bleak": "MIT",
     "bless": "MIT",
+    "certifi": "MPL-2.0",
     "cn2an": "MIT",
     "chat": "MIT",
     "chardet": "LGPL-2.1-or-later",
@@ -443,6 +444,11 @@
           "name": "pyttsx3",
           "license": "MPL-2.0",
           "condition": "Unmodified dependency; include MPL notice."
+        },
+        {
+          "name": "certifi",
+          "license": "MPL-2.0",
+          "condition": "Unmodified CA bundle dependency; include MPL notice."
         }
       ],
       "proprietaryReview": [
@@ -561,6 +567,11 @@
           "name": "pyttsx3",
           "license": "MPL-2.0",
           "condition": "Unmodified dependency; include MPL notice."
+        },
+        {
+          "name": "certifi",
+          "license": "MPL-2.0",
+          "condition": "Unmodified CA bundle dependency; include MPL notice."
         }
       ],
       "proprietaryReview": [
@@ -675,6 +686,11 @@
           "name": "pyttsx3",
           "license": "MPL-2.0",
           "condition": "Unmodified dependency; include MPL notice."
+        },
+        {
+          "name": "certifi",
+          "license": "MPL-2.0",
+          "condition": "Unmodified CA bundle dependency; include MPL notice."
         }
       ],
       "proprietaryReview": [
