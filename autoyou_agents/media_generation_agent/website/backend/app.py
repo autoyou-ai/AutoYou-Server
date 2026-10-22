@@ -47,6 +47,7 @@ from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_
 from shared.secure_storage import read_secure_file
 from shared.media_generation_runtime import probe_wan_runtime
 from shared.http_errors import internal_error_message
+from shared.path_safety import contained_path
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-e9678340342c3c9482dc7803"
 
@@ -552,13 +553,13 @@ def serve_media_file(media_type: str, filename: str, request: Request):
     if not _check_auth(request):
         return HTMLResponse("Not authenticated", status_code=401)
     folder = "images" if media_type == "image" else "videos"
-    file_path = MEDIA_DIR / folder / filename
-    
-    if not file_path.exists() or not file_path.is_file():
+    file_path = contained_path(MEDIA_DIR / folder, filename)
+
+    if file_path is None or not file_path.is_file():
         # Check parent folder as fallback
-        file_path = MEDIA_DIR / filename
-        
-    if not file_path.exists() or not file_path.is_file():
+        file_path = contained_path(MEDIA_DIR, filename)
+
+    if file_path is None or not file_path.is_file():
         return HTMLResponse("Media file not found", status_code=404)
         
     try:
@@ -574,8 +575,8 @@ def serve_media_file(media_type: str, filename: str, request: Request):
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):
     """Serve index.html or other static files in frontend."""
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return FileResponse(candidate)
     
     # Fallback to serving template

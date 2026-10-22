@@ -49,6 +49,7 @@ from autoyou_agents.fine_tuning_agent.fine_tuning_tool import (
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.localhost_auth import get_loopback_totp_auth
 from autoyou_agents.shared_tools.scheduler_mission_control import _agent_app_csrf_guard, install_agent_website_auth
+from shared.path_safety import contained_path
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-fa1faa0ef084ab9a80c5ed54"
 
@@ -652,8 +653,8 @@ def api_delete_model(model_name: str, request: Request) -> JSONResponse:
 
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return FileResponse(candidate, headers=NO_CACHE_HEADERS)
     try:
         response = HTMLResponse(INDEX_HTML_PATH.read_text(encoding="utf-8"))

@@ -47,6 +47,7 @@ from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_
 from shared.media_messaging import is_adts_aac
 from shared.secure_storage import read_secure_file
 from shared.http_errors import internal_error_message
+from shared.path_safety import contained_path
 
 
 LOGGER = logging.getLogger("autoyou.notes_website")
@@ -872,8 +873,8 @@ def api_delete_note_post(note_id: int) -> JSONResponse:
 
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return FileResponse(candidate)
     response = HTMLResponse(render_index_html())
     for header_name, header_value in NO_CACHE_HEADERS.items():

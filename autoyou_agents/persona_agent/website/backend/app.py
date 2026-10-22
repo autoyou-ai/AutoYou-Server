@@ -41,6 +41,7 @@ from autoyou_agents.persona_agent.agent import (
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.media_messaging import is_adts_aac
+from shared.path_safety import contained_path
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-a105923cfc29cabc9fb354fb"
 
@@ -441,7 +442,7 @@ def index() -> FileResponse:
 
 @app.get("/{full_path:path}")
 def spa_fallback(full_path: str) -> FileResponse:
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return FileResponse(candidate, headers=NO_CACHE_HEADERS)
     return FileResponse(INDEX_HTML_PATH, headers=NO_CACHE_HEADERS)

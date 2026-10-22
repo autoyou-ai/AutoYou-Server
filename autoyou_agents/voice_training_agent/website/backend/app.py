@@ -39,6 +39,7 @@ from shared.voice_training_storage import (
 )
 from shared.secure_storage import SecureStorageError, load_secure_json, read_secure_file, save_secure_json, write_secure_file
 from shared.http_errors import internal_error_message
+from shared.path_safety import contained_path
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-b1e66bf09933e4226f139b17"
 
@@ -459,8 +460,8 @@ def serve_recording(filename: str, request: Request):
     if not _check_auth(request):
         return HTMLResponse("Not authenticated", status_code=401)
     _, _, recordings_dir = _get_paths()
-    file_path = recordings_dir / filename
-    if not file_path.exists() or not file_path.is_file():
+    file_path = contained_path(recordings_dir, filename)
+    if file_path is None or not file_path.is_file():
         return HTMLResponse("File not found", status_code=404)
     return Response(content=read_secure_file(file_path), media_type="audio/wav", headers={"Cache-Control": "no-store, max-age=0"})
 
@@ -469,15 +470,15 @@ def serve_synthesized_file(filename: str, request: Request):
     if not _check_auth(request):
         return HTMLResponse("Not authenticated", status_code=401)
     vt_dir, _, _ = _get_paths()
-    file_path = vt_dir / "test_syntheses" / filename
-    if not file_path.exists() or not file_path.is_file():
+    file_path = contained_path(vt_dir / "test_syntheses", filename)
+    if file_path is None or not file_path.is_file():
         return HTMLResponse("File not found", status_code=404)
     return Response(content=read_secure_file(file_path), media_type="audio/wav", headers={"Cache-Control": "no-store, max-age=0"})
 
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return FileResponse(candidate)
     
     try:

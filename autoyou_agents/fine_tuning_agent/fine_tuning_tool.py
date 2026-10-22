@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from shared.http_errors import internal_error_message
+from shared.path_safety import contained_path
 from shared.platform_runtime import (
     find_bundled_browser_executable,
     get_node_command,
@@ -743,7 +744,9 @@ def create_dataset_from_datacollector_export(
     if manifest_path:
         manifest_file = _ensure_data_collector_child(Path(manifest_path))
     elif export_id:
-        manifest_file = exports_dir / str(export_id).strip() / "manifest.json"
+        manifest_file = contained_path(exports_dir, str(export_id).strip(), "manifest.json")
+        if manifest_file is None:
+            return {"status": "error", "message": "export_id is not a valid DataCollector export id."}
     else:
         return {"status": "error", "message": "export_id or manifest_path is required."}
     if not manifest_file.exists():

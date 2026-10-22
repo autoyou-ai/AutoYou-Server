@@ -45,6 +45,7 @@ from autoyou_agents.data_collector_agent.collector import (
 from autoyou_agents.shared_tools.localhost_auth import get_loopback_totp_auth
 from autoyou_agents.shared_tools.scheduler_mission_control import _agent_app_csrf_guard, install_agent_website_auth
 from shared.http_errors import internal_error_message
+from shared.path_safety import contained_path
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-548701397bbdf0798b252ce4"
 
@@ -558,8 +559,8 @@ async def consume_handoff(request: Request) -> Response:
 
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str) -> Response:
-    candidate = FRONTEND_DIR / full_path
-    if full_path and candidate.is_file():
+    candidate = contained_path(FRONTEND_DIR, full_path) if full_path else None
+    if candidate is not None and candidate.is_file():
         return Response(content=candidate.read_bytes(), headers=_NO_CACHE)
     response = HTMLResponse(INDEX_HTML_PATH.read_text(encoding="utf-8"))
     for name, value in _NO_CACHE.items():
