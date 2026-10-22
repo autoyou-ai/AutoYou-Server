@@ -4,12 +4,12 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+  # The root entry reads requirements.txt and every file in requirements/, for
+  # version updates and the dependency graph alike. A separate /requirements
+  # entry submitted empty graph snapshots, so the root snapshot (and the alerts
+  # raised from it) stayed on an old lockfile, and it opened duplicate PRs.
   - package-ecosystem: pip
     directory: "/"
-    schedule:
-      interval: weekly
-  - package-ecosystem: pip
-    directory: "/requirements"
     schedule:
       interval: weekly
   - package-ecosystem: npm
