@@ -84,6 +84,11 @@ def _default_workspace_root() -> Path:
     return normalize_local_filesystem_path(get_mutable_data_dir("AutoYou", anchor=__file__))
 
 
+def _os_error_reason(exc: OSError) -> str:
+    """The OS reason for a failed file operation, without the paths it names."""
+    return exc.strerror or "The file system refused this operation."
+
+
 def _resolve_path(raw_path: str | None = None) -> Path:
     value = str(raw_path or "").strip()
     return normalize_local_filesystem_path(value) if value else _default_workspace_root()
@@ -235,7 +240,7 @@ def _extra_routes(app, agent_name: str) -> None:
         except PermissionError:
             return _error("Permission denied.", 403)
         except OSError as exc:
-            return _error(str(exc), 400)
+            return _error(_os_error_reason(exc), 400)
 
         entries.sort(key=lambda row: (row["kind"] != "directory", str(row["name"]).lower()))
         payload = _entry_payload(target)
@@ -286,7 +291,7 @@ def _extra_routes(app, agent_name: str) -> None:
         except PermissionError:
             return _error("Permission denied.", 403)
         except OSError as exc:
-            return _error(str(exc), 400)
+            return _error(_os_error_reason(exc), 400)
 
 
 app = create_agent_website_app(

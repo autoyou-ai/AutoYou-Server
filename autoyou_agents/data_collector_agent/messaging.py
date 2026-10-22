@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from shared.http_errors import internal_error_message
 from shared.platform_runtime import (
     find_bundled_browser_executable,
     get_node_command,
@@ -594,7 +595,7 @@ def collect_whatsapp_history(
                 except subprocess.TimeoutExpired:
                     continue
         except OSError as exc:
-            return {"status": "error", "message": f"WhatsApp collection could not start: {exc}"}
+            return {"status": "error", "message": f"WhatsApp collection could not start. {internal_error_message(exc)}"}
         finally:
             if paused:
                 _restart_whatsapp_bridge()

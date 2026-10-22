@@ -51,6 +51,7 @@ from autoyou_agents.shared_tools.website_handoff import (
     WEBSITE_HANDOFF_STATE_KEY,
     build_website_handoff_payload,
 )
+from shared.http_errors import internal_error_message
 
 __debug_provenance_m__ = "AUTOYOU-PROVENANCE-M-of-a2d164a991f3e8a95320d87e"
 
@@ -337,8 +338,7 @@ def patch_root_agent(agent_name: str, description: str) -> Dict[str, Any]:
             ),
         }
     except Exception as exc:
-        logger.exception("patch_root_agent failed")
-        return {"status": "error", "message": str(exc)}
+        return {"status": "error", "message": internal_error_message(exc, context="patch_root_agent")}
 
 
 # ─── Tool 4: restart_ai_agent_server ─────────────────────────────────────────
