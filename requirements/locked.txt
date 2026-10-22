@@ -192,9 +192,9 @@ aiosqlite==0.22.1 \
     # via
     #   -r requirements/base.txt
     #   google-adk
-annotated-doc==0.0.4 \
-    --hash=sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320 \
-    --hash=sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4
+annotated-doc==0.0.5 \
+    --hash=sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101 \
+    --hash=sha256:c7e58ce09192557605d8bbd92836d7e1d520ac9580096042c0bfd197efacf1bb
     # via
     #   fastapi
     #   typer
@@ -1877,9 +1877,9 @@ modelscope==1.40.1 \
     --hash=sha256:6f135fe80903e7bfcd6ccc707f4f6f85c8e445cf497b624bd07299582486e2c1 \
     --hash=sha256:7b46d74fc3905a0a34a60bdefe774677d709d9ee2ada8cf85401a50ea533f9ae
     # via -r requirements/voice.txt
-modelscope-hub==0.4.5 \
-    --hash=sha256:9157bbc34d93a70d099c8ab87a113fc9a4149e31ab79e8eb8f7563884043f082 \
-    --hash=sha256:b8606176af5be9b6437e2dcb119bd3de9f25862b32e56ff71096af99e545aaaf
+modelscope-hub==0.4.6 \
+    --hash=sha256:361bcec229bfbed645a9291ec5b167d76cd94b795207dc2eceba628108f4023a \
+    --hash=sha256:c54de09be2ccb27b9214f7c3ebe5751121f335f5016643f789589d0547e78c52
     # via modelscope
 more-itertools==11.1.0 \
     --hash=sha256:48e8f4d9e7e5878571ecf6f2b4e57634f93cd474cc8cfbd2376f2d11b396e30d \
@@ -3709,9 +3709,9 @@ typing-extensions==4.16.0 \
     #   typeguard
     #   typing-inspection
     #   winrt-runtime
-typing-inspection==0.4.2 \
-    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
-    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
+typing-inspection==0.4.4 \
+    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
+    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
     # via
     #   fastapi
     #   mcp
