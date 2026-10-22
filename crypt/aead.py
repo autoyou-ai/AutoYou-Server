@@ -16,22 +16,22 @@ from cryptography.hazmat.backends import default_backend
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-ccd0d4b365936922a71baf33"
 
 
-def _derive_key(password: str, kdf: str, salt: typing.Optional[bytes], iterations: int = 150_000) -> bytes:
-    pw = password.encode('utf-8')
-    if kdf == 'PBKDF2-HMAC-SHA256':
-        if salt is None:
-            raise ValueError('salt required for PBKDF2')
-        kdf_obj = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=iterations, backend=default_backend())
-        return kdf_obj.derive(pw)
-    elif kdf == 'SHA-256':
-        digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-        digest.update(pw)
-        return digest.finalize()
-    else:
-        raise ValueError('unsupported kdf')
+_KDF = 'PBKDF2-HMAC-SHA256'
+_ITERATIONS = 600_000
 
-def aead_encrypt(plaintext: str, password: str, kdf: str='SHA-256', iterations: int=150_000) -> str:
-    salt = os.urandom(16) if kdf == 'PBKDF2-HMAC-SHA256' else None
+
+def _derive_key(password: str, kdf: str, salt: typing.Optional[bytes], iterations: int) -> bytes:
+    # Envelopes keyed by a bare SHA-256 of the password could be brute-forced
+    # at hash speed; only salted PBKDF2 is accepted.
+    if kdf != _KDF:
+        raise ValueError('unsupported kdf')
+    if salt is None:
+        raise ValueError('salt required for PBKDF2')
+    kdf_obj = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=iterations, backend=default_backend())
+    return kdf_obj.derive(password.encode('utf-8'))
+
+def aead_encrypt(plaintext: str, password: str, kdf: str=_KDF, iterations: int=_ITERATIONS) -> str:
+    salt = os.urandom(16)
     key = _derive_key(password, kdf, salt, iterations)
     aesgcm = AESGCM(key)
     iv = os.urandom(12)
@@ -40,15 +40,16 @@ def aead_encrypt(plaintext: str, password: str, kdf: str='SHA-256', iterations: 
     tag = ct[-16:]
     ct_only = ct[:-16]
     env = {
-        "v": 1, "alg": "AES-256-GCM", "kdf": kdf,
+        "v": 1, "alg": "AES-256-GCM", "kdf": kdf, "iter": iterations,
         "iv": base64.b64encode(iv).decode(),
-        "salt": base64.b64encode(salt).decode() if salt is not None else None,
+        "salt": base64.b64encode(salt).decode(),
         "ct": base64.b64encode(ct_only).decode(),
         "tag": base64.b64encode(tag).decode()
     }
     return json.dumps(env)
 
 def aead_decrypt(envelope_str: str, password: str, iterations: int=150_000) -> str:
+    """Decrypt an envelope; ``iterations`` applies to envelopes that predate the ``iter`` field."""
     env = json.loads(envelope_str)
     if env.get("alg") != "AES-256-GCM":
         raise ValueError("unsupported alg")
@@ -59,7 +60,7 @@ def aead_decrypt(envelope_str: str, password: str, iterations: int=150_000) -> s
     salt = None if salt_b64 in (None, 'null') else base64.b64decode(salt_b64)
     ct = base64.b64decode(env["ct"])
     tag = base64.b64decode(env["tag"])
-    key = _derive_key(password, kdf, salt, iterations)
+    key = _derive_key(password, kdf, salt, int(env.get("iter") or iterations))
     aesgcm = AESGCM(key)
     pt = aesgcm.decrypt(iv, ct + tag, None)
     return pt.decode('utf-8')
