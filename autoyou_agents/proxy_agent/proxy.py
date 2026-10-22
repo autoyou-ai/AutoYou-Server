@@ -17,9 +17,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import quote, urljoin, urlparse, urlunsplit
 
-import requests
-
-from shared.url_safety import UnsafeURLError, assert_safe_http_url
+from shared.url_safety import UnsafeURLError, assert_safe_http_url, build_safe_requests_session
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-0d9336fe758b372c591cde00"
 
@@ -120,8 +118,9 @@ def fetch_target(
     if len(body) > MAX_REQUEST_BYTES:
         raise ValueError("Request body is too large.")
     current = normalize_target(target)
-    session = requests.Session()
-    session.trust_env = False
+    # Each hop is validated, and the connection itself goes to the address
+    # that passed validation, so DNS rebinding cannot redirect it inward.
+    session = build_safe_requests_session()
     try:
         for _ in range(MAX_REDIRECTS + 1):
             assert_safe_http_url(current)

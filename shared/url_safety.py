@@ -251,6 +251,64 @@ def build_safe_httpx_transport(
     return _SafeTransport()
 
 
+def build_safe_requests_session(*, allow_loopback: bool = False):
+    """Return a ``requests`` session that connects only to validated addresses.
+
+    The synchronous counterpart of :func:`build_safe_httpx_transport`: every
+    new TCP connection resolves its host through :func:`resolve_safe_http_ip`
+    and connects to that address, so DNS rebinding cannot swap the destination
+    after validation. TLS keeps the original hostname for SNI and certificate
+    checks. Environment proxies are ignored and proxied fetches are refused.
+    """
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.connection import HTTPConnection, HTTPSConnection
+    from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+
+    def pin(connection) -> None:
+        host = str(connection._dns_host or "")
+        normalized = host.strip("[]").split("%", 1)[0].lower()
+        is_loopback = normalized == "localhost"
+        if not is_loopback:
+            try:
+                is_loopback = ipaddress.ip_address(normalized).is_loopback
+            except ValueError:
+                pass
+        if not (allow_loopback and is_loopback):
+            connection._dns_host = resolve_safe_http_ip(host)
+
+    class _PinnedHTTPConnection(HTTPConnection):
+        def _new_conn(self):
+            pin(self)
+            return super()._new_conn()
+
+    class _PinnedHTTPSConnection(HTTPSConnection):
+        def _new_conn(self):
+            pin(self)
+            return super()._new_conn()
+
+    class _PinnedHTTPPool(HTTPConnectionPool):
+        ConnectionCls = _PinnedHTTPConnection
+
+    class _PinnedHTTPSPool(HTTPSConnectionPool):
+        ConnectionCls = _PinnedHTTPSConnection
+
+    class _PinnedAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {"http": _PinnedHTTPPool, "https": _PinnedHTTPSPool}
+
+        def proxy_manager_for(self, *args, **kwargs):
+            raise UnsafeURLError("Validated fetches do not use proxies")
+
+    session = requests.Session()
+    session.trust_env = False
+    adapter = _PinnedAdapter()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
 def is_safe_http_url(url: str, *, allowed_schemes: Optional[Iterable[str]] = None) -> bool:
     """Boolean wrapper over `assert_safe_http_url` for callers that
     prefer conditionals over exceptions."""
