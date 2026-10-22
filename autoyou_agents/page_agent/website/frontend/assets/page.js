@@ -103,15 +103,18 @@
     }
   }
 
-  // Media addresses read back from data attributes are checked again and
-  // rebuilt from their parts, so the scheme is always one this page chose.
+  // Media addresses this page wrote into data-src/data-full, keyed by value.
+  // Reading an attribute back only selects one of them, so text that reached
+  // the DOM some other way never becomes a media address.
+  const renderedMedia = new Map();
+
+  function rememberMedia(url) {
+    if (url) renderedMedia.set(url, url);
+    return url;
+  }
+
   function mediaSrc(value) {
-    const url = safeUrl(value);
-    if (url.startsWith("./api/")) return `./api/${url.slice("./api/".length)}`;
-    if (url.startsWith("./assets/")) return `./assets/${url.slice("./assets/".length)}`;
-    const parsed = parseUrl(url);
-    if (!parsed) return "";
-    return `${parsed.protocol === "https:" ? "https" : "http"}://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return renderedMedia.get(String(value || "")) || "";
   }
 
   // Saved times are server-local and zoneless; build them from their parts
@@ -285,7 +288,7 @@
     }
     const videoThumb = safeUrl(view.video_thumb);
     if (videoThumb) {
-      return `<span class="feed-thumb"><video data-src="${escapeHtml(videoThumb)}#t=0.1" muted playsinline preload="none" tabindex="-1" aria-hidden="true"></video>${play}</span>`;
+      return `<span class="feed-thumb"><video data-src="${escapeHtml(rememberMedia(`${videoThumb}#t=0.1`))}" muted playsinline preload="none" tabindex="-1" aria-hidden="true"></video>${play}</span>`;
     }
     const parts = [`<span class="feed-thumb tile accent-${safeAccent(view.accent)}">`];
     const favicon = safeUrl(view.favicon);
@@ -967,7 +970,7 @@
       const sources = photoSources(item);
       if (sources.preview) {
         return '<div class="media-stage photo"><button class="photo-open" type="button" data-action="view-photo" aria-label="View the full photo">'
-          + `<img src="${escapeHtml(sources.preview)}" data-full="${escapeHtml(sources.full)}" alt="${escapeHtml(title)}" decoding="async" referrerpolicy="no-referrer">`
+          + `<img src="${escapeHtml(sources.preview)}" data-full="${escapeHtml(rememberMedia(sources.full))}" alt="${escapeHtml(title)}" decoding="async" referrerpolicy="no-referrer">`
           + `<span class="photo-open-hint" aria-hidden="true">${icon("expand")}</span></button></div>`;
       }
     }
@@ -1637,7 +1640,7 @@
     image.style.width = "";
     image.alt = title;
     image.src = sources.preview;
-    image.setAttribute("data-full", sources.full);
+    image.setAttribute("data-full", rememberMedia(sources.full));
     upgradePhoto(image);
     $("photo-title").textContent = title;
     syncPhotoZoom();
@@ -1854,7 +1857,7 @@
     if (kind === "photo") {
       const sources = photoSources(item);
       return reelBackdrop(sources.preview)
-        + `<img class="reel-photo" src="${escapeHtml(sources.preview)}" data-full="${escapeHtml(sources.full)}" `
+        + `<img class="reel-photo" src="${escapeHtml(sources.preview)}" data-full="${escapeHtml(rememberMedia(sources.full))}" `
         + `alt="${escapeHtml(title)}" decoding="async" referrerpolicy="no-referrer">`;
     }
     if (kind === "video") {
