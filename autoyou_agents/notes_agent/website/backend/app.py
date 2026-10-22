@@ -18,6 +18,7 @@ import html
 import json
 import mimetypes
 import re
+import sqlite3
 from email.utils import formatdate
 from datetime import datetime
 from pathlib import Path
@@ -40,11 +41,12 @@ except ImportError:
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from autoyou_agents.notes_agent.notes_tool import NotesTool
+from autoyou_agents.notes_agent.notes_tool import NotesStorageSealedError, NotesTool
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.media_messaging import is_adts_aac
 from shared.secure_storage import read_secure_file
+from shared.http_errors import internal_error_message
 
 
 LOGGER = logging.getLogger("autoyou.notes_website")
@@ -184,13 +186,31 @@ def get_notes_tool() -> Optional[NotesTool]:
         _notes_tool = NotesTool()
         _notes_tool_error = None
     except Exception as exc:
-        # Keep the reason: a sealed database, a read-only path and a missing
+        # Name the reason: a sealed database, a read-only path and a missing
         # directory all reach here, and "unavailable" alone tells the user
-        # nothing about which one they are looking at or how to fix it.
-        _notes_tool_error = str(exc).strip() or exc.__class__.__name__
+        # nothing about which one they are looking at or how to fix it. The
+        # exception text itself can include the database path, so it stays
+        # in the log.
+        _notes_tool_error = _storage_error_reason(exc)
         LOGGER.error("Notes storage could not be opened: %s", exc)
         _notes_tool = None
     return _notes_tool
+
+
+def _storage_error_reason(exc: Exception) -> str:
+    if isinstance(exc, NotesStorageSealedError):
+        return (
+            "The notes database is sealed by Secure Professional Maximus storage. Re-enable "
+            "Secure Professional Maximus to unseal it, or move the file aside to start a new "
+            "notes database."
+        )
+    if isinstance(exc, PermissionError):
+        return "Notes storage is read-only. Check that AutoYou can write to its data folder."
+    if isinstance(exc, FileNotFoundError):
+        return "The notes data folder is missing."
+    if isinstance(exc, sqlite3.DatabaseError):
+        return "The notes database could not be opened. It may be damaged."
+    return STORAGE_UNAVAILABLE_MESSAGE
 
 
 def storage_unavailable_error() -> str:
@@ -757,7 +777,7 @@ def api_serve_media(attachment_id: int, request: Request) -> Any:
                 (int(attachment_id),),
             ).fetchone()
     except Exception as exc:
-        return _json_response({"success": False, "error": str(exc)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(exc)}, status_code=500)
     if not row:
         return _json_response({"success": False, "error": "Attachment not found."}, status_code=404)
     file_path = Path(str(row["path"] or ""))

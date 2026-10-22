@@ -46,6 +46,7 @@ from autoyou_agents.shared_tools.agent_install_registry import load_agent_instal
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.secure_storage import read_secure_file
 from shared.media_generation_runtime import probe_wan_runtime
+from shared.http_errors import internal_error_message
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-e9678340342c3c9482dc7803"
 
@@ -312,7 +313,7 @@ def api_history(request: Request, media_type: Optional[str] = None) -> JSONRespo
         public_items = [sanitize_media_history_item_for_api(item) for item in items]
         return _json_response({"success": True, "history": public_items})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.get("/api/history/{item_id}")
 def api_history_item(item_id: int, request: Request) -> JSONResponse:
@@ -368,7 +369,7 @@ def api_get_config(request: Request) -> JSONResponse:
             "diagnostic": diagnostic,
         })
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/config")
 async def api_save_config(request: Request) -> JSONResponse:
@@ -383,7 +384,7 @@ async def api_save_config(request: Request) -> JSONResponse:
         save_wan2gp_config(payload)
         return _json_response({"success": True, "message": "Settings saved successfully."})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.get("/api/wan2gp/environment")
 def api_wan2gp_environment(request: Request) -> JSONResponse:
@@ -393,7 +394,7 @@ def api_wan2gp_environment(request: Request) -> JSONResponse:
     try:
         return _json_response({"success": True, "environment": wan2gp_environment_status()})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/wan2gp/detect")
 async def api_wan2gp_detect(request: Request) -> JSONResponse:
@@ -404,7 +405,7 @@ async def api_wan2gp_detect(request: Request) -> JSONResponse:
         result = detect_and_apply_wan2gp_paths()
         return _json_response({"success": result.get("status") == "applied", **result})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/wan2gp/install")
 async def api_wan2gp_install(request: Request) -> JSONResponse:
@@ -415,7 +416,7 @@ async def api_wan2gp_install(request: Request) -> JSONResponse:
         result = start_wan2gp_install()
         return _json_response({"success": result.get("status") == "started", **result})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.get("/api/wan2gp/install/status")
 def api_wan2gp_install_status(request: Request) -> JSONResponse:
@@ -424,7 +425,7 @@ def api_wan2gp_install_status(request: Request) -> JSONResponse:
     try:
         return _json_response({"success": True, "install": get_wan2gp_install_status()})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/enhance-prompt")
 async def api_enhance(request: Request) -> JSONResponse:
@@ -444,7 +445,7 @@ async def api_enhance(request: Request) -> JSONResponse:
     except ValueError as e:
         return _json_response({"success": False, "error": str(e)}, status_code=400)
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 def run_background_generation(
     prompt: str,
@@ -543,7 +544,7 @@ async def api_generate(request: Request) -> JSONResponse:
     except Exception as e:
         if item_id is not None:
             update_history_status(item_id, "failed", f"Could not start generation: {e}")
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.get("/media/{media_type}/{filename}")
 def serve_media_file(media_type: str, filename: str, request: Request):
@@ -568,7 +569,7 @@ def serve_media_file(media_type: str, filename: str, request: Request):
             headers=NO_CACHE_HEADERS,
         )
     except Exception as exc:
-        return HTMLResponse(f"Media file could not be opened: {exc}", status_code=500)
+        return HTMLResponse(f"Media file could not be opened. {internal_error_message(exc)}", status_code=500)
 
 @app.get("/{full_path:path}")
 def serve_frontend(full_path: str):

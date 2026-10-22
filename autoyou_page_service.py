@@ -65,6 +65,7 @@ from shared.url_safety import (
     is_safe_http_url,
     safe_follow_redirects,
 )
+from shared.http_errors import internal_error_message
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-2d657c5918cf8e9f4e95664b"
 
@@ -1428,7 +1429,7 @@ class AutoYouPageService:
                         "content_type": content_type,
                     })
             except Exception as e:
-                return JSONResponse({"error": str(e)}, status_code=500)
+                return JSONResponse({"error": internal_error_message(e)}, status_code=500)
         
         @self.app.get("/health")
         async def health_check():

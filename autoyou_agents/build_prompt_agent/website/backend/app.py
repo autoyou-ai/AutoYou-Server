@@ -36,6 +36,7 @@ from autoyou_agents.build_prompt_agent.build_prompt_tool import (
     run_tool,
     status_prompt,
 )
+from shared.http_errors import internal_error_message
 
 
 _AGENT_NAME = "build_prompt_agent"
@@ -143,7 +144,11 @@ def _extra_routes(app: Any, agent_name: str) -> None:
                 result = await result
             return {"success": True, "telegram_user": _telegram_user_config(), "admin": result}
         except Exception as exc:
-            return _json_error(str(exc), 409)
+            blocked = getattr(server_module, "ConfigWriteBlocked", None)
+            if isinstance(blocked, type) and isinstance(exc, blocked):
+                # These carry fixed sign-in guidance, not exception detail.
+                return _json_error(internal_error_message(exc), 409)
+            return _json_error(internal_error_message(exc), 500)
 
 
 app = create_agent_chat_app(

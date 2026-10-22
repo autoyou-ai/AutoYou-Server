@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from autoyou_agents.shared_tools.conversation_refs import title_from_content
+from shared.http_errors import internal_error_message
 from shared.secure_storage import (
     FILE_HEADER as SPM_FILE_HEADER,
     SecureStorageError,
@@ -798,7 +799,7 @@ class NotesTool:
                 note_id = cur.lastrowid
             return {"success": True, "note_id": int(note_id), "title": title}
         except Exception as exc:
-            return {"success": False, "error": str(exc)}
+            return {"success": False, "error": internal_error_message(exc)}
 
     def search_notes(self, query: str, limit: Optional[int] = None) -> list[Dict[str, Any]]:
         """Search notes by title/content substring match."""

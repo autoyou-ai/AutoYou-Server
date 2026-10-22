@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from shared.http_errors import internal_error_message
 from shared.ollama_capabilities import resolve_installed_ollama_model
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-f4a92447ce16c964e465d950"
@@ -80,7 +81,7 @@ def register_routes(
             payload["success"] = True
             return JSONResponse(payload)
         except Exception as exc:
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.get("/api/model-library/details")
     async def admin_model_library_details(request: Request):
@@ -117,7 +118,7 @@ def register_routes(
             payload["success"] = True
             return JSONResponse(payload)
         except Exception as exc:
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.post("/api/model-library/download")
     async def admin_model_library_download(request: Request):
@@ -155,8 +156,10 @@ def register_routes(
                 api_base=api_base,
             )
             return JSONResponse({"success": True, "job": job})
-        except Exception as exc:
+        except ValueError as exc:
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=400)
 
     @admin_app.get("/api/model-library/downloads")
     async def admin_model_library_downloads(request: Request):
@@ -259,8 +262,10 @@ def register_routes(
             else:
                 job = await server.asyncio.to_thread(server.speech_model_library_service.start_download_job, model_name)
             return JSONResponse({"success": True, "job": job})
-        except Exception as exc:
+        except ValueError as exc:
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=400)
 
     @admin_app.get("/api/speech-models/downloads")
     async def admin_speech_model_downloads(request: Request):
@@ -377,7 +382,7 @@ def register_routes(
                         "selected_model": model_name,
                         "provider": cfg["ai_provider"]["provider"],
                         "restarted_ai": False,
-                        "error": f"Model was saved, but the AI Agent Server did not restart: {exc}",
+                        "error": f"Model was saved, but the AI Agent Server did not restart. {internal_error_message(exc)}",
                     },
                     status_code=503,
                 )
@@ -422,8 +427,10 @@ def register_routes(
                     "total_count": len(merged.get("iceServers", [])),
                 }
             )
-        except Exception as exc:
+        except ValueError as exc:
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=400)
 
     return {
         "admin_model_library_local": admin_model_library_local,

@@ -15,6 +15,7 @@ import importlib.util
 import inspect
 import io
 import json
+import logging
 import os
 import platform
 import re
@@ -33,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from shared.http_errors import internal_error_message
 from shared.platform_runtime import (
     find_bundled_browser_executable,
     get_node_command,
@@ -992,7 +994,7 @@ def get_live_whatsapp_snapshot() -> Dict[str, Any]:
                 if key in raw_status
             }
     except Exception as exc:
-        status = {"status_error": str(exc)}
+        status = {"status_error": internal_error_message(exc, context="WhatsApp runtime status", level=logging.WARNING)}
     if not status.get("websocket_connected") or status.get("status") not in {"connected", "authenticated"}:
         probe = _probe_whatsapp_websocket_status(port=int(getattr(service, "websocket_port", 8083) or 8083))
         probe_status = probe.get("status", {}) if probe.get("available") else {}

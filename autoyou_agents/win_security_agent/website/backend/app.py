@@ -38,6 +38,7 @@ from ...network_tool import (
 from ...enrichment import EnrichmentError, enrich_ip
 from ...privileged import get_privileged_capabilities
 from ...bios import collect_bios_inventory
+from shared.http_errors import internal_error_message
 
 __debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-db86b149e20d78ed74c531d9"
 
@@ -96,7 +97,7 @@ def _extra_routes(app, agent_name: str) -> None:
         try:
             data = await asyncio.to_thread(json.loads, _MAP_DATA_FILE.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            return _json_response({"success": False, "error": f"Earth map asset unavailable: {exc}"}, status_code=503)
+            return _json_response({"success": False, "error": f"Earth map asset unavailable. {internal_error_message(exc)}"}, status_code=503)
         return _json_response(data)
 
     @app.get("/api/network/snapshot")
@@ -113,7 +114,7 @@ def _extra_routes(app, agent_name: str) -> None:
             )
             snapshot_id = await asyncio.to_thread(store.save, snapshot)
         except CollectorError as exc:
-            return _json_response({"success": False, "error": str(exc)}, status_code=503)
+            return _json_response({"success": False, "error": internal_error_message(exc)}, status_code=503)
         return _json_response({"success": True, "snapshot_id": snapshot_id, "snapshot": snapshot})
 
     @app.get("/api/network/capabilities")
@@ -142,8 +143,8 @@ def _extra_routes(app, agent_name: str) -> None:
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
         try:
             body = await request.json()
-        except Exception as exc:  # noqa: BLE001 - malformed client input
-            return _json_response({"success": False, "error": f"Invalid JSON body: {exc}"}, status_code=400)
+        except Exception:  # noqa: BLE001 - malformed client input
+            return _json_response({"success": False, "error": "Invalid JSON body"}, status_code=400)
         ips = body.get("ips") if isinstance(body, dict) else None
         if not isinstance(ips, list):
             return _json_response({"success": False, "error": "ips must be a list"}, status_code=400)
@@ -171,7 +172,7 @@ def _extra_routes(app, agent_name: str) -> None:
         try:
             inventory = await asyncio.to_thread(collect_bios_inventory)
         except (OSError, ValueError) as exc:
-            return _json_response({"success": False, "error": str(exc)}, status_code=503)
+            return _json_response({"success": False, "error": internal_error_message(exc)}, status_code=503)
         return _json_response({"success": True, "inventory": inventory})
 
 

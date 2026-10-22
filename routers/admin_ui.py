@@ -24,6 +24,8 @@ from fastapi.responses import (
     Response,
 )
 
+from shared.http_errors import internal_error_message
+
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-d578109c2fb80bd5eddd4fee"
 
 
@@ -135,7 +137,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_upload_profile_image failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         finally:
             close_method = getattr(uploaded, "close", None)
             if callable(close_method):
@@ -157,7 +159,7 @@ def register_routes(
             return server._json_response_no_store(server._with_admin_request_metadata(payload, request))
         except Exception as exc:
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/admin/desktop-assets")
     async def admin_ui_desktop_assets(request: Request):
@@ -171,7 +173,7 @@ def register_routes(
             return server._json_response_no_store(get_desktop_asset_agent_catalog(anchor))
         except Exception as exc:
             server.LOGGER.error("admin_ui_desktop_assets failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/admin/desktop-assets/{agent_name}/setup-prompt")
     async def admin_ui_desktop_asset_setup_prompt(agent_name: str, request: Request):
@@ -202,7 +204,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_desktop_asset_setup_prompt failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/desktop-assets/{agent_name}/preferences")
     async def admin_ui_save_desktop_asset_preferences(agent_name: str, request: Request):
@@ -226,7 +228,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_save_desktop_asset_preferences failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/desktop-assets/{agent_name}/import")
     async def admin_ui_import_desktop_asset_pack(agent_name: str, request: Request):
@@ -261,7 +263,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_import_desktop_asset_pack failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         finally:
             close_method = getattr(uploaded, "close", None)
             if callable(close_method):
@@ -292,7 +294,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_remove_desktop_asset_pack failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     # The owner's photo on the admin origin. Viewers never need this route:
     # the Page site serves its own copy under /agent/page_agent/, gated by the
@@ -356,7 +358,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("page_agent_save_avatar failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         finally:
             close_method = getattr(uploaded, "close", None)
             if callable(close_method):
@@ -376,7 +378,7 @@ def register_routes(
             return JSONResponse({"success": True, "has_photo": False}, headers={"Cache-Control": "no-store"})
         except Exception as exc:
             server.LOGGER.error("page_agent_delete_avatar failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/LICENSE", response_class=PlainTextResponse)
     @auth_app.get("/LICENSE", response_class=PlainTextResponse)

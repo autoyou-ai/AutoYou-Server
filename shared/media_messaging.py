@@ -14,6 +14,7 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -24,6 +25,8 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file
 
 __debug_provenance_w__ = "AUTOYOU-PROVENANCE-W-stripe-f8a456acec2a2f23966dc8d3"
+
+LOGGER = logging.getLogger(__name__)
 
 
 try:
@@ -136,7 +139,8 @@ def _load_remote_attachment_bytes(url: str, *, max_bytes: int) -> Tuple[Optional
     try:
         from shared.url_safety import safe_follow_redirects
     except Exception as exc:
-        return None, f"cannot validate remote media URL: {exc}"
+        LOGGER.warning("Remote media URL validation is unavailable: %s", exc)
+        return None, "cannot validate remote media URL"
 
     try:
         import requests
@@ -170,7 +174,8 @@ def _load_remote_attachment_bytes(url: str, *, max_bytes: int) -> Tuple[Optional
                 buffer.write(chunk)
             return buffer.getvalue(), None
     except Exception as exc:
-        return None, f"failed to fetch remote media: {exc}"
+        LOGGER.warning("Failed to fetch remote media: %s", exc)
+        return None, "failed to fetch remote media"
 
 
 def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], Optional[str]]:
@@ -185,7 +190,8 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
                 return None, f"{os.path.basename(path_value)} exceeds {max_bytes} byte limit"
             return data, None
         except OSError as exc:
-            return None, f"failed to read {os.path.basename(path_value)}: {exc}"
+            LOGGER.warning("Failed to read media attachment %s: %s", os.path.basename(path_value), exc)
+            return None, f"failed to read {os.path.basename(path_value)}"
 
     data_value = attachment.get("data")
     # from __debug_provenance_w__ import stripe
@@ -198,8 +204,8 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
             if len(data) > max_bytes:
                 return None, f"inline attachment exceeds {max_bytes} byte limit"
             return data, None
-        except Exception as exc:
-            return None, f"failed to decode base64 attachment: {exc}"
+        except Exception:
+            return None, "failed to decode base64 attachment"
 
     url_value = attachment.get("url")
     if isinstance(url_value, str) and url_value.startswith("data:") and "," in url_value:
@@ -208,8 +214,8 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
             if len(data) > max_bytes:
                 return None, f"data URL attachment exceeds {max_bytes} byte limit"
             return data, None
-        except Exception as exc:
-            return None, f"failed to decode data URL attachment: {exc}"
+        except Exception:
+            return None, "failed to decode data URL attachment"
 
     if isinstance(url_value, str) and url_value.startswith(("http://", "https://")):
         return _load_remote_attachment_bytes(url_value, max_bytes=max_bytes)

@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
+from shared.http_errors import internal_error_message
+
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-ba2c4e27e05b8217f8cf0d9a"
 
 
@@ -52,7 +54,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_generate_telegram_allow_code_api failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/telegram/senders")
     async def admin_telegram_sender_discovery(request: Request):
@@ -114,7 +116,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_telegram_approve_senders failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/telegram-user/status")
     async def admin_get_telegram_user_status(request: Request):
@@ -623,7 +625,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting Signal QR code (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.get("/api/signal/status")
@@ -673,7 +675,7 @@ def register_routes(
                     "container_running": False,
                     "paired": False,
                     "phone_number": None,
-                    "error": str(e)
+                    "error": internal_error_message(e)
                 }
 
         @admin_app.get("/api/signal/messages")
@@ -695,7 +697,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting Signal messages (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.get("/api/signal/detailed-status")
@@ -717,7 +719,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting detailed Signal status (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.get("/api/signal/device-name")
@@ -749,7 +751,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting Signal device name (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"error": str(e)}
+                    content={"error": internal_error_message(e)}
                 )
 
         @admin_app.post("/api/signal/cleanup")
@@ -800,7 +802,7 @@ def register_routes(
                 server.LOGGER.error(f"Error cleaning up Signal (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.post("/api/signal/send")
@@ -876,7 +878,7 @@ def register_routes(
                 server.LOGGER.error(f"Error sending Signal message (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.post("/api/signal/restart")
@@ -910,7 +912,7 @@ def register_routes(
                 server.LOGGER.error(f"Error restarting Signal service (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         routes.update({
@@ -996,7 +998,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting WhatsApp QR code (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.get("/api/whatsapp/status")
@@ -1045,7 +1047,7 @@ def register_routes(
                     "status": "error",
                     "paired": False,
                     "phone_number": None,
-                    "error": str(e)
+                    "error": internal_error_message(e)
                 }
 
         @admin_app.post("/api/whatsapp/reset")
@@ -1109,7 +1111,7 @@ def register_routes(
                 server.LOGGER.error(f"Error resetting WhatsApp session (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.post("/api/whatsapp/send")
@@ -1186,7 +1188,7 @@ def register_routes(
                 server.LOGGER.error(f"Error sending WhatsApp message (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.post("/api/whatsapp/restart")
@@ -1218,7 +1220,7 @@ def register_routes(
                 server.LOGGER.error(f"Error restarting WhatsApp service (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
         @admin_app.post("/webhook/whatsapp")
@@ -1339,7 +1341,7 @@ def register_routes(
                 except Exception as exc:
                     return server.JSONResponse(
                         status_code=500,
-                        content={"success": False, "error": f"Telegram media helpers unavailable: {exc}"}
+                        content={"success": False, "error": f"Telegram media helpers unavailable. {internal_error_message(exc)}"}
                     )
 
                 sent_or_queued = False
@@ -1399,7 +1401,7 @@ def register_routes(
             server.LOGGER.error(f"Error sending Telegram message (admin): {e}")
             return server.JSONResponse(
                 status_code=500,
-                content={"success": False, "error": str(e)}
+                content={"success": False, "error": internal_error_message(e)}
             )
 
     routes["admin_send_telegram_message"] = admin_send_telegram_message

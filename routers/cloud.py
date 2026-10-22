@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
+from shared.http_errors import connection_error_text, internal_error_message
+
 __debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-2785802c6ba799b803f0b609"
 
 
@@ -132,7 +134,7 @@ def register_routes(
       try:
         merged = await server._get_pairing_ice_servers_async()
       except Exception as exc:  # never 500 a diagnostic
-        return JSONResponse({"error": str(exc), "base": base})
+        return JSONResponse({"error": internal_error_message(exc), "base": base})
       return JSONResponse({
         "base_admin_iceservers": base,
         "advertised_iceservers": merged,
@@ -239,7 +241,7 @@ def register_routes(
                 return server._clear_cloud_link_cookie(server._set_no_store_headers(HTMLResponse(f"<h2>Registration failed: {server.html.escape(resp.text)}</h2>", status_code=502)))
             data = resp.json()
         except Exception as e:
-            return server._clear_cloud_link_cookie(server._set_no_store_headers(HTMLResponse(f"<h2>Could not reach AutoYou Cloud: {server.html.escape(str(e))}</h2>", status_code=502)))
+            return server._clear_cloud_link_cookie(server._set_no_store_headers(HTMLResponse(f"<h2>Could not reach AutoYou Cloud: {server.html.escape(connection_error_text(e))}</h2>", status_code=502)))
 
         # Save registration data to the already-unlocked config. Never synthesize a
         # default config here, because that would disconnect existing local settings.
@@ -674,7 +676,7 @@ def register_routes(
                     except Exception:
                         cloud_sync_error = f"HTTP {_resp.status_code}"
             except Exception as exc:
-                cloud_sync_error = str(exc)
+                cloud_sync_error = connection_error_text(exc)
         elif enabled:
             cloud_sync_error = "Server is not registered with AutoYou Cloud yet; link the server first."
 

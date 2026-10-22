@@ -12,11 +12,13 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
+import logging
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from shared.http_errors import connection_error_text, internal_error_message
 from shared.ollama_capabilities import THINKING_LEVELS
 from shared.ollama_gateway import probe_ollama, reset_ollama_model_cache
 from shared.odysseus_gateway import probe_odysseus, reset_odysseus_cache
@@ -165,7 +167,7 @@ def register_routes(
             if isinstance(exc, server.ConfigWriteBlocked):
                 return server._json_config_write_blocked_response(str(exc))
             server.LOGGER.error("Failed to update frontend state for %s: %s", agent_name, exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/agent-websites/security")
     async def admin_get_agent_websites_security(request: Request):
@@ -444,8 +446,10 @@ def register_routes(
             result = server._persist_autoyou_bookmarks(current + [created])
             result["bookmark"] = result["bookmarks"][-1] if result["bookmarks"] else created
             return JSONResponse(result)
-        except Exception as exc:
+        except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.patch("/api/bookmarks/{bookmark_id}")
     async def admin_update_bookmark(bookmark_id: str, request: Request):
@@ -486,8 +490,10 @@ def register_routes(
             result = server._persist_autoyou_bookmarks(updated)
             result["bookmark"] = next((item for item in result["bookmarks"] if item.get("id") == bookmark_key), None)
             return JSONResponse(result)
-        except Exception as exc:
+        except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
+        except Exception as exc:
+            return JSONResponse(status_code=400, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.delete("/api/bookmarks/{bookmark_id}")
     async def admin_delete_bookmark(bookmark_id: str, request: Request):
@@ -541,7 +547,7 @@ def register_routes(
             return JSONResponse({"running": True, "port": port, "models": models})
         except Exception as exc:
             port_val = (server.STATE.config or {}).get("ai_provider", {}).get("openclaw_port", 18789)
-            return JSONResponse({"running": False, "port": port_val, "error": str(exc)})
+            return JSONResponse({"running": False, "port": port_val, "error": connection_error_text(exc)})
 
     @admin_app.get("/api/ai/hermes/status")
     async def hermes_gateway_status(request: Request):
@@ -565,7 +571,7 @@ def register_routes(
             return JSONResponse({"running": True, "port": port, "models": models})
         except Exception as exc:
             port_val = (server.STATE.config or {}).get("ai_provider", {}).get("hermes_port", 8642)
-            return JSONResponse({"running": False, "port": port_val, "error": str(exc)})
+            return JSONResponse({"running": False, "port": port_val, "error": connection_error_text(exc)})
 
     @admin_app.get("/api/ai/ollama/status")
     async def ollama_gateway_status(request: Request):
@@ -607,7 +613,7 @@ def register_routes(
             result = await probe_pi(api_base=f"http://127.0.0.1:{port}", pi_path=pi_path, token=token)
             return JSONResponse(result)
         except Exception as exc:
-            return JSONResponse({"running": False, "error": str(exc)})
+            return JSONResponse({"running": False, "error": connection_error_text(exc)})
 
     @admin_app.get("/api/ai/custom/status")
     async def custom_gateway_status(request: Request):
@@ -623,7 +629,7 @@ def register_routes(
             result = await probe_custom(api_base=base_url, token=token)
             return JSONResponse(result)
         except Exception as exc:
-            return JSONResponse({"running": False, "error": str(exc)})
+            return JSONResponse({"running": False, "error": connection_error_text(exc)})
 
     @admin_app.post("/api/custom/relay")
     async def custom_api_relay(request: Request):
@@ -675,7 +681,7 @@ def register_routes(
 
             return JSONResponse({"success": True, "delivered": delivered, "channel": channel, "session_id": session_id})
         except Exception as exc:
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.post("/api/ai/restart")
     async def admin_restart_ai_agent(request: Request):
@@ -703,7 +709,7 @@ def register_routes(
             return {"success": True, "message": "AI agent reloaded in-process successfully"}
         except Exception as e:
             server.LOGGER.error("admin_restart_ai_agent failed: %s", e)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/model-behavior")
     async def get_model_behavior(request: Request):
@@ -766,7 +772,7 @@ def register_routes(
                         thinking_capability.setdefault("available", False)
                         break
             except Exception as exc:
-                thinking_capability["capability_error"] = str(exc)
+                thinking_capability["capability_error"] = connection_error_text(exc)
         return {
             "mode": mode,
             "label": preset["label"],
@@ -869,13 +875,17 @@ def register_routes(
                     reload_result = {"success": True, "agent": new_root.name if new_root else None}
                     server.LOGGER.info("model_behavior: AI agent hot-reloaded with new params")
                 except Exception as reload_err:
-                    reload_result = {"success": False, "error": str(reload_err)}
-                    server.LOGGER.warning("model_behavior: AI agent reload failed: %s", reload_err)
+                    reload_result = {
+                        "success": False,
+                        "error": internal_error_message(
+                            reload_err, context="model_behavior: AI agent reload", level=logging.WARNING
+                        ),
+                    }
 
             return {"success": True, "mode": mode, "reload": reload_result}
         except Exception as e:
             server.LOGGER.error("set_model_behavior failed: %s", e)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.post("/api/builder/create")
     async def admin_builder_create(request: Request):
@@ -933,7 +943,7 @@ def register_routes(
             return JSONResponse(status_code=409, content={"success": False, "error": str(exc)})
         except Exception as e:
             server.LOGGER.error("admin_builder_create failed: %s", e)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/builder/status/{agent_name}")
     async def admin_builder_status(agent_name: str, request: Request):
@@ -951,7 +961,7 @@ def register_routes(
                 "detail": detail_payload.get("detail"),
             }
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/builder/agents")
     async def admin_builder_list_agents(request: Request):
@@ -965,7 +975,7 @@ def register_routes(
                 server._sync_frontend_registry_from_builder_payload(result)
             return result
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/agents/manage")
     async def admin_manage_agents(request: Request):
@@ -979,7 +989,7 @@ def register_routes(
                 server._sync_frontend_registry_from_builder_payload(result)
             return result
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.post("/api/agents/draft/{agent_name}/discard")
     async def admin_discard_agent_draft(agent_name: str, request: Request):
@@ -1004,7 +1014,7 @@ def register_routes(
         except FileNotFoundError as exc:
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/draft/{agent_name}/publish")
     async def admin_publish_agent_draft(agent_name: str, request: Request):
@@ -1033,7 +1043,7 @@ def register_routes(
         except ValueError as exc:
             return JSONResponse(status_code=422, content={"success": False, "error": str(exc)})
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/install")
     async def admin_install_agent(request: Request):
@@ -1085,7 +1095,7 @@ def register_routes(
             if patch_result.get("status") != "success":
                 return JSONResponse(status_code=422, content={"success": False, "error": patch_result.get("message"), "detail": patch_result})
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
         await server.sync_managed_frontend_backends()
         result = server._build_agent_builder_listing_payload()
@@ -1238,7 +1248,7 @@ def register_routes(
         except server.SecureStorageError as exc:
             return _agent_registry_storage_error(exc)
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
         server.STATE.dynamic_agent_proxy_ports.pop(agent_name, None)
         await server.sync_managed_frontend_backends()
@@ -1328,7 +1338,7 @@ def register_routes(
                 "detail": detail_payload.get("detail"),
             }
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/clone")
     async def admin_workbench_clone(agent_name: str, request: Request):
@@ -1348,7 +1358,7 @@ def register_routes(
             return JSONResponse(status_code=409, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_clone failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/instructions")
     async def admin_workbench_save_instructions(agent_name: str, request: Request):
@@ -1378,7 +1388,7 @@ def register_routes(
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_save_instructions failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/test")
     async def admin_workbench_test_draft(agent_name: str, request: Request):
@@ -1400,7 +1410,7 @@ def register_routes(
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_test failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/publish")
     async def admin_workbench_publish_draft(agent_name: str, request: Request):
@@ -1434,7 +1444,7 @@ def register_routes(
             return JSONResponse(status_code=422, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_publish failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/discard")
     async def admin_workbench_discard_draft(agent_name: str, request: Request):
@@ -1452,7 +1462,7 @@ def register_routes(
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_discard failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/frontend/scaffold")
     async def admin_workbench_scaffold_frontend(agent_name: str, request: Request):
@@ -1493,7 +1503,7 @@ def register_routes(
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_scaffold_frontend failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/agents/workbench/{agent_name}/frontend/manifest")
     async def admin_workbench_save_manifest(agent_name: str, request: Request):
@@ -1527,7 +1537,7 @@ def register_routes(
             return JSONResponse(status_code=404, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_workbench_save_manifest failed: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/agent-instructions")
     async def get_agent_instructions(request: Request):
@@ -1578,7 +1588,7 @@ def register_routes(
 
         except Exception as e:
             server.LOGGER.error(f"Error reading agent instructions: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": internal_error_message(e)}
 
     @admin_app.post("/api/agent-instructions")
     async def update_agent_instructions(request: Request):
@@ -1613,7 +1623,7 @@ def register_routes(
 
         except Exception as e:
             server.LOGGER.error(f"Error updating agent instructions: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": internal_error_message(e)}
 
     @admin_app.post("/api/agent-instructions/sections")
     async def update_agent_instruction_sections(request: Request):
@@ -1661,7 +1671,7 @@ def register_routes(
 
         except Exception as e:
             server.LOGGER.error(f"Error updating prompt sections: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": internal_error_message(e)}
 
     @admin_app.post("/api/agent-instructions/revert")
     async def revert_agent_instructions(request: Request):
@@ -1693,7 +1703,7 @@ def register_routes(
 
         except Exception as e:
             server.LOGGER.error(f"Error reverting agent instructions: {e}")
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": internal_error_message(e)}
 
     @admin_app.get("/api/jailbreak/status")
     async def jailbreak_status(request: Request):
@@ -1738,7 +1748,7 @@ def register_routes(
             return JSONResponse({"success": True, "message": "Prompt Override enabled."})
         except Exception as exc:
             server.LOGGER.error("Failed to enable Prompt Override: %s", exc)
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.post("/api/jailbreak/deactivate")
     async def jailbreak_deactivate(request: Request):
@@ -1754,7 +1764,7 @@ def register_routes(
             server.LOGGER.info("Prompt Override disabled")
             return JSONResponse({"success": True, "message": "Prompt Override disabled."})
         except Exception as exc:
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.get("/api/jailbreak/prompt")
     async def jailbreak_get_prompt(request: Request):
@@ -1804,7 +1814,7 @@ def register_routes(
             return JSONResponse({"success": True})
         except Exception as exc:
             server.LOGGER.error("Failed to save Prompt Override prompt: %s", exc)
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.get("/api/agent-security/profiles")
     async def agent_security_list_profiles(request: Request):
@@ -1860,7 +1870,7 @@ def register_routes(
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)
         except Exception as exc:
             server.LOGGER.error("agent_security_create_profile failed: %s", exc)
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.post("/api/agent-security/profiles/{profile_id}/verify")
     async def agent_security_verify_profile(profile_id: str, request: Request):
@@ -1933,7 +1943,7 @@ def register_routes(
             return JSONResponse({"success": False, "error": str(exc)}, status_code=400)
         except Exception as exc:
             server.LOGGER.error("agent_security_assign_profile failed: %s", exc)
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
 
     @admin_app.post("/api/agent-security/profiles/{profile_id}/wipe")
     async def agent_security_wipe_profile(profile_id: str, request: Request):

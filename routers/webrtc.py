@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from shared import game_catalog
+from shared.http_errors import internal_error_message
 from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
 
 __debug_provenance_l__ = "AUTOYOU-PROVENANCE-L-because-c9d5a81993c0ca1570232b50"
@@ -290,7 +291,7 @@ def register_routes(
                 "music_library_dirs": music_library_dirs,
             }
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/webrtc/capabilities")
     async def admin_get_webrtc_capabilities(request: Request):
@@ -303,7 +304,7 @@ def register_routes(
                 "capabilities": server._build_webrtc_capabilities(cfg=(server.STATE.config or {}), include_admin=True),
             }
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/webrtc/audio-devices")
     async def admin_get_webrtc_audio_devices(request: Request, refresh: bool = False):
@@ -313,7 +314,7 @@ def register_routes(
         try:
             return await server.asyncio.to_thread(server._enumerate_webrtc_audio_devices_payload, refresh=refresh)
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/webrtc/camera-devices")
     async def admin_get_webrtc_camera_devices(request: Request, refresh: bool = False):
@@ -327,7 +328,7 @@ def register_routes(
                 refresh=refresh,
             )
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/webrtc/monitors")
     async def admin_get_webrtc_monitors(request: Request, refresh: bool = False):
@@ -341,7 +342,7 @@ def register_routes(
                 refresh=refresh,
             )
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/webrtc/video-files")
     async def admin_get_webrtc_video_files(request: Request):
@@ -365,7 +366,7 @@ def register_routes(
                 "files": files,
             }
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.post("/api/webrtc/video-input/{source_id}/frame")
     async def admin_publish_realtime_video_input_frame(source_id: str, request: Request):
@@ -419,7 +420,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.warning("Failed to publish realtime video input frame for %s: %s", source_id, exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/webrtc/video-file/upload")
     async def admin_upload_video_file(request: Request):
@@ -430,7 +431,7 @@ def register_routes(
             form = await request.form()
             uploaded = form.get("video")
         except Exception as exc:
-            return JSONResponse(status_code=400, content={"success": False, "error": f"Invalid upload form: {exc}"})
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid upload form"})
         if uploaded is None or not hasattr(uploaded, "read"):
             return JSONResponse(status_code=400, content={"success": False, "error": "Missing video file field"})
 
@@ -476,7 +477,7 @@ def register_routes(
             }
         except Exception as exc:
             server.LOGGER.warning("Failed to upload video file: %s", exc)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         finally:
             close_method = getattr(uploaded, "close", None)
             if callable(close_method):
@@ -507,7 +508,7 @@ def register_routes(
             )
             return {"success": True, "status": status}
         except Exception as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/webrtc/video-file/pause")
     async def admin_pause_video_file(request: Request):
@@ -558,7 +559,7 @@ def register_routes(
             if isinstance(e, server.ConfigWriteBlocked):
                 return server._json_config_write_blocked_response(str(e))
             server.LOGGER.error(f"Error setting audio playback enabled: {e}")
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     routes = {
         "admin_get_microphone_sharing": admin_get_microphone_sharing,
@@ -640,7 +641,7 @@ def register_routes(
         server.LOGGER.error(f"Error sending browser message (admin): {e}")
         return server.JSONResponse(
           status_code=500,
-          content={"success": False, "error": str(e)}
+          content={"success": False, "error": internal_error_message(e)}
         )
 
     @admin_app.post("/api/webrtc/rewarded-ad")
@@ -702,7 +703,7 @@ def register_routes(
         server.LOGGER.error(f"Error triggering WebRTC rewarded ad (admin): {e}")
         return server.JSONResponse(
           status_code=500,
-          content={"success": False, "error": str(e)}
+          content={"success": False, "error": internal_error_message(e)}
         )
 
     @admin_app.post("/api/webrtc/client-browser-control")
@@ -764,7 +765,7 @@ def register_routes(
         server.LOGGER.error(f"Error triggering WebRTC client browser control (admin): {e}")
         return server.JSONResponse(
           status_code=500,
-          content={"success": False, "error": str(e)}
+          content={"success": False, "error": internal_error_message(e)}
         )
 
     @admin_app.post("/api/webrtc/playback/play")
@@ -808,7 +809,7 @@ def register_routes(
                 server.LOGGER.error(f"Error playing WebRTC audio (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
     @admin_app.post("/api/webrtc/playback/pause")
@@ -845,7 +846,7 @@ def register_routes(
                 server.LOGGER.error(f"Error pausing WebRTC audio (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
     @admin_app.post("/api/webrtc/playback/resume")
@@ -882,7 +883,7 @@ def register_routes(
                 server.LOGGER.error(f"Error resuming WebRTC audio (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
     @admin_app.post("/api/webrtc/playback/stop")
@@ -919,7 +920,7 @@ def register_routes(
                 server.LOGGER.error(f"Error stopping WebRTC audio (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
     @admin_app.post("/api/webrtc/playback/status")
@@ -951,7 +952,7 @@ def register_routes(
                 server.LOGGER.error(f"Error getting WebRTC audio status (admin): {e}")
                 return server.JSONResponse(
                     status_code=500,
-                    content={"success": False, "error": str(e)}
+                    content={"success": False, "error": internal_error_message(e)}
                 )
 
     routes.update({

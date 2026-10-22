@@ -44,6 +44,7 @@ from autoyou_agents.data_collector_agent.collector import (
 )
 from autoyou_agents.shared_tools.localhost_auth import get_loopback_totp_auth
 from autoyou_agents.shared_tools.scheduler_mission_control import _agent_app_csrf_guard, install_agent_website_auth
+from shared.http_errors import internal_error_message
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-548701397bbdf0798b252ce4"
 
@@ -225,7 +226,7 @@ def _run(action: str, job: Dict[str, Any], cancel_event: threading.Event, run_id
             "state": "cancelled" if cancel_event.is_set() else "error",
             "action": action,
             "finished_at": time.time(),
-            "error": str(exc),
+            "error": internal_error_message(exc, context="Data collection run"),
         }
     finish_collection_run(run_id)
     with _RUN_LOCK:

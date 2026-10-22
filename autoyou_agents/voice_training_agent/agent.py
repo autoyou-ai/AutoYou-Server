@@ -33,6 +33,7 @@ from shared.custom_voice_tts import (
     custom_voice_model_ready,
     synthesize_custom_voice_to_file,
 )
+from shared.http_errors import internal_error_message
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
 
 __debug_provenance_o__ = "AUTOYOU-PROVENANCE-O-breach-ac3f37681261601844d80b6a"
@@ -96,7 +97,7 @@ def list_voice_transcripts(limit: int = 20) -> dict:
     except SecureStorageError:
         raise
     except Exception as e:
-        return {"status": "error", "message": f"Failed to list transcripts: {e}"}
+        return {"status": "error", "message": f"Failed to list transcripts. {internal_error_message(e)}"}
 
 def get_voice_transcript(transcript_id: str) -> dict:
     """Retrieve details of a specific voice recording transcript.
@@ -157,7 +158,7 @@ def delete_voice_transcript(transcript_id: str) -> dict:
     except SecureStorageError:
         raise
     except Exception as e:
-        return {"status": "error", "message": f"Failed to delete transcript: {e}"}
+        return {"status": "error", "message": f"Failed to delete transcript. {internal_error_message(e)}"}
 
 def start_voice_training(epochs: int = train_model.DEFAULT_TRAINING_EPOCHS) -> dict:
     """Start local custom voice fine-tuning in the background.
@@ -408,7 +409,7 @@ def test_synthesize_voice(text: str) -> dict:
             "file_path": str(output_file)
         }
     except Exception as e:
-        return {"status": "error", "message": f"Synthesis failed: {e}"}
+        return {"status": "error", "message": f"Synthesis failed. {internal_error_message(e)}"}
 
 def install_custom_voice_tts_provider() -> dict:
     """Install the prepared custom voice as the active AutoYou TTS provider."""

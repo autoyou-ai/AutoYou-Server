@@ -42,6 +42,7 @@ from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.tasks_agent.agent import _extract_send_message_action
 from shared.adk_state import derive_reply_target_from_owner_key, normalize_reply_target
+from shared.http_errors import internal_error_message
 from shared.scheduler_service import (
     OUTBOUND_NOTIFICATION_QUEUE_FILE,
     REMINDERS_FILE,
@@ -2344,7 +2345,7 @@ def create_agent_chat_app(
                             data = await resp.json(content_type=None)
                             yield ("data: " + json.dumps(data) + "\n\n").encode()
             except Exception as exc:
-                yield ("data: " + json.dumps({"error": str(exc)}) + "\n\n").encode()
+                yield ("data: " + json.dumps({"error": internal_error_message(exc)}) + "\n\n").encode()
 
         from fastapi.responses import StreamingResponse
         return StreamingResponse(_stream_generator(), media_type="text/event-stream")

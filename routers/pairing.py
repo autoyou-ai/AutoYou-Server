@@ -20,6 +20,7 @@ import binascii
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
+from shared.http_errors import internal_error_message
 from shared.pairing_cpace import CPaceSessionKey
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-849b6aaf9452f2ea0d150ba2"
@@ -100,7 +101,7 @@ def register_routes(
             server.record_license_acknowledgement(anchor=server.__file__, accepted_by="server_unlock_setup")
         except Exception as e:
             server.LOGGER.error("Failed to write first-run unlock agreement: %s", e)
-            return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to save unlock agreement: {str(e)}"})
+            return JSONResponse(status_code=500, content={"success": False, "error": f"Failed to save unlock agreement. {internal_error_message(e)}"})
 
         try:
             ks = server._get_server_keystore()
@@ -376,7 +377,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": f"Unsupported signal type: {signal_type}"})
         except Exception as e:
             server.LOGGER.error(f"Signaling error for session {session_id}: {e}")
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @auth_app.get("/signal/{session_id}")
     async def signal_poll_endpoint(session_id: str):
@@ -408,7 +409,7 @@ def register_routes(
             info["success"] = True
             return JSONResponse(info)
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/bluetooth-pairing/status")
     async def bluetooth_pairing_status_endpoint(request: Request):
@@ -601,7 +602,7 @@ def register_routes(
                         ef.write(error_payload)
             except server.SecureStorageError as storage_exc:
                 server.LOGGER.error("Could not persist protected pairing error log: %s", storage_exc)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": internal_error_message(e)}, status_code=500)
 
     @admin_app.post("/api/autopair_hello")
     async def autopair_hello_api(request: Request):
@@ -694,7 +695,7 @@ def register_routes(
             return server._html_page(f"""
             <div class='card'>
               <h2>Failed to change password</h2>
-              <pre class='mono'>{str(e)}</pre>
+              <pre class='mono'>{internal_error_message(e)}</pre>
               <a href='/'>Back</a>
             </div>
             """)
@@ -736,7 +737,7 @@ def register_routes(
             return server._html_page(f"""
             <div class='card'>
               <h2>Failed to save security mode</h2>
-              <pre class='mono'>{str(e)}</pre>
+              <pre class='mono'>{internal_error_message(e)}</pre>
               <a href='/'>Back</a>
             </div>
             """)
@@ -761,7 +762,7 @@ def register_routes(
             server._persist_state_config(cfg)
             return JSONResponse(server._totp_payload(secret=secret, target=target))
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.post("/admin/security/totp/show")
     async def admin_totp_show(request: Request):
@@ -778,7 +779,7 @@ def register_routes(
                 return JSONResponse({"success": False, "error": "No saved 2FA secret."}, status_code=404)
             return JSONResponse(server._totp_payload(secret=secret, target="pairing"))
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/admin/security/totp/current-code")
     async def admin_totp_current_code(request: Request):
@@ -804,7 +805,7 @@ def register_routes(
                 "period": 30,
             })
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.post("/admin/security/totp/import")
     async def admin_totp_import(request: Request):
@@ -825,9 +826,9 @@ def register_routes(
         except ValueError as e:
             return JSONResponse({"success": False, "error": str(e)}, status_code=400)
         except RuntimeError as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.post("/admin/security/totp/delete")
     async def admin_totp_delete(request: Request):
@@ -845,7 +846,7 @@ def register_routes(
             server._persist_state_config(cfg)
             return JSONResponse({"success": True, "target": "pairing"})
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/settings/export-qr")
     async def admin_export_settings_qr(request: Request):
@@ -1112,7 +1113,7 @@ def register_routes(
 
         except Exception as e:
             server.LOGGER.exception("Failed to build settings QR payload")
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": internal_error_message(e)}, status_code=500)
 
     @admin_app.post("/api/admin/session/verify")
     async def admin_session_verify(request: Request):
@@ -1147,7 +1148,7 @@ def register_routes(
             return JSONResponse({"valid": True, "client_id": "admin", "token": token})
         except Exception as e:
             server.LOGGER.error("admin_session_verify error: %s", e)
-            return JSONResponse({"valid": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"valid": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/admin/session/capabilities")
     async def admin_session_capabilities():
@@ -1157,7 +1158,7 @@ def register_routes(
             return JSONResponse(server._describe_totp_capabilities(cfg))
         except Exception as e:
             server.LOGGER.error("admin_session_capabilities error: %s", e)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": internal_error_message(e)}, status_code=500)
 
     return {
         "get_unlock_status": get_unlock_status,

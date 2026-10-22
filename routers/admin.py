@@ -14,6 +14,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import os
 import json
+import logging
 import re
 import time
 import uuid
@@ -36,6 +37,7 @@ from shared.chat_history_identity import (
     conversation_origin,
     describe_conversation,
 )
+from shared.http_errors import internal_error_message
 from shared.remote_access_policy import REMOTE_BROWSER_HEADER, REMOTE_BROWSER_VIA_HOME_NETWORK
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e"
@@ -1090,7 +1092,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_update_config failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.get("/api/admin/permissions")
     async def admin_ui_read_permissions(request: Request):
@@ -1128,7 +1130,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_update_permissions failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/setup/recipe/apply")
     async def admin_setup_recipe_apply(request: Request):
@@ -1191,7 +1193,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_setup_recipe_apply failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/security/mode")
     async def admin_ui_update_security_mode(request: Request):
@@ -1263,7 +1265,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_ui_update_security_mode failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/native/security/totp/setup")
     async def native_security_totp_setup(request: Request):
@@ -1393,7 +1395,7 @@ def register_routes(
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except RuntimeError as exc:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         except Exception as exc:
             server.LOGGER.warning("Native authenticator secret could not be imported: %s", exc)
             return JSONResponse(status_code=500, content={"success": False, "error": "Authenticator secret could not be imported."})
@@ -1451,7 +1453,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_ui_update_security_tier failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/security/storage/rotate")
     async def admin_ui_rotate_storage_key(request: Request):
@@ -1482,7 +1484,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_ui_rotate_storage_key failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/password")
     async def admin_ui_change_password(request: Request):
@@ -1539,7 +1541,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_ui_change_password failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/api/admin/password/generate")
     async def admin_ui_generate_password(request: Request):
@@ -1603,9 +1605,13 @@ def register_routes(
                     "game_key": server.LOGIN_MINIGAME_KEY,
                 }
             )
-        except Exception as e:
-            server.LOGGER.warning("Unable to save login minigame high score: %s", e)
+        except ValueError as e:
             return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+        except Exception as e:
+            return JSONResponse(
+                {"success": False, "error": internal_error_message(e, context="Save login minigame high score", level=logging.WARNING)},
+                status_code=400,
+            )
 
     @admin_app.delete("/api/login-minigame/high-score")
     async def admin_login_minigame_reset_high_score(request: Request):
@@ -1632,9 +1638,13 @@ def register_routes(
                 finally:
                     conn.close()
             return JSONResponse({"success": True, "high_score": 0, "high_scores": [], "game_key": server.LOGIN_MINIGAME_KEY})
-        except Exception as e:
-            server.LOGGER.warning("Unable to reset login minigame high score: %s", e)
+        except ValueError as e:
             return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+        except Exception as e:
+            return JSONResponse(
+                {"success": False, "error": internal_error_message(e, context="Reset login minigame high score", level=logging.WARNING)},
+                status_code=400,
+            )
 
     @admin_app.get("/api/ai/internet/search_enabled")
     async def admin_get_internet_search_enabled(request: Request):
@@ -1648,7 +1658,7 @@ def register_routes(
             installed = server._is_internet_agent_installed()
             return {"success": True, "enabled": enabled, "installed": installed}
         except Exception as e:
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.post("/api/ai/internet/search_enabled")
     async def admin_set_internet_search_enabled(request: Request):
@@ -1697,7 +1707,7 @@ def register_routes(
             if isinstance(e, server.ConfigWriteBlocked):
                 return server._json_config_write_blocked_response(str(e))
             server.LOGGER.error(f"Error setting internet search enabled: {e}")
-            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
 
     @admin_app.get("/api/admin/profile-image")
     async def admin_ui_get_profile_image(request: Request):
@@ -1745,7 +1755,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("admin_ui_upload_profile_image failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
         finally:
             close_method = getattr(uploaded, "close", None)
             if callable(close_method):
@@ -1768,7 +1778,7 @@ def register_routes(
             )
         except Exception as exc:
             server.LOGGER.error("admin_ui_delete_profile_image failed: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/save-config")
     async def save_config_endpoint(
@@ -2424,7 +2434,7 @@ def register_routes(
             return server._html_page(f"""
             <div class='card'>
               <h2>Save failed</h2>
-              <pre class='mono'>{str(e)}</pre>
+              <pre class='mono'>{internal_error_message(e)}</pre>
               <a href='/'>Back</a>
             </div>
             """)
@@ -2455,7 +2465,7 @@ def register_routes(
                 persist_config=server._can_persist_config(),
             )
         except Exception as exc:
-            return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(exc)}, status_code=500)
         return JSONResponse({"success": True, "theme": persisted_theme})
 
     @admin_app.get("/ollama-status")
@@ -2489,7 +2499,7 @@ def register_routes(
                 "ai_provider_summary": ai_provider_summary
             })
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/datachannel-status")
     async def datachannel_status(request: Request):
@@ -2534,7 +2544,7 @@ def register_routes(
                 "successful_recoveries": successful_recoveries,
             })
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/scheduler/notification-queue")
     async def scheduler_notification_queue_status(request: Request):
@@ -2547,7 +2557,7 @@ def register_routes(
             queue_snapshot = _scheduler_svc.get_pending_notification_queue_snapshot(limit=6)
             return JSONResponse({"success": True, "queue": queue_snapshot})
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     @admin_app.get("/api/scheduler/live-summary")
     async def scheduler_live_summary_status(request: Request):
@@ -2559,7 +2569,7 @@ def register_routes(
 
             return JSONResponse(_mission_control.build_tasks_live_summary(queue_limit=6))
         except Exception as e:
-            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            return JSONResponse({"success": False, "error": internal_error_message(e)}, status_code=500)
 
     return {
         "simulate_pair_command": simulate_pair_command,

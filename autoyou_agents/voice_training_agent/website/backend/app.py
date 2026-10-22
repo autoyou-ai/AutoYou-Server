@@ -38,6 +38,7 @@ from shared.voice_training_storage import (
     set_voice_training_dir,
 )
 from shared.secure_storage import SecureStorageError, load_secure_json, read_secure_file, save_secure_json, write_secure_file
+from shared.http_errors import internal_error_message
 
 __debug_provenance_s__ = "AUTOYOU-PROVENANCE-S-btc-b1e66bf09933e4226f139b17"
 
@@ -342,7 +343,7 @@ async def api_upload_transcript(
 
         return _json_response({"success": True, "entry": new_entry})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/train")
 async def api_trigger_train(request: Request) -> JSONResponse:
@@ -373,7 +374,7 @@ def api_storage_status(request: Request) -> JSONResponse:
     try:
         return _json_response({"success": True, "storage": get_voice_training_storage_info()})
     except Exception as e:
-        return _json_response({"success": False, "error": str(e)}, status_code=500)
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 
 @app.post("/api/storage")
 async def api_set_storage(request: Request) -> JSONResponse:
@@ -402,8 +403,10 @@ async def api_set_storage(request: Request) -> JSONResponse:
         migration = copy_voice_training_data(source_dir, path) if migrate_existing else None
         storage = set_voice_training_dir(path)
         return _json_response({"success": True, "storage": storage, "migration": migration})
-    except Exception as e:
+    except ValueError as e:
         return _json_response({"success": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=400)
 
 @app.post("/api/storage/reset")
 async def api_reset_storage(request: Request) -> JSONResponse:
@@ -422,8 +425,10 @@ async def api_reset_storage(request: Request) -> JSONResponse:
     try:
         storage = reset_voice_training_dir()
         return _json_response({"success": True, "storage": storage})
-    except Exception as e:
+    except ValueError as e:
         return _json_response({"success": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=400)
 
 @app.post("/api/synthesize")
 async def api_trigger_synthesis(request: Request) -> JSONResponse:

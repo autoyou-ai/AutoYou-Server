@@ -20,6 +20,8 @@ from typing import Any, Callable, Dict
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from shared.http_errors import internal_error_message
+
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-9199bb88fee39eb4b5dfd402"
 
 
@@ -41,7 +43,7 @@ def register_routes(
             return {"status": "Error: AI Agent Server did not become healthy on startup."}
         except Exception as e:
             server.LOGGER.error(f"Error starting AI Agent Server: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.post("/ai-agent-server/stop")
     async def stop_ai_agent_server_endpoint(request: Request):
@@ -55,7 +57,7 @@ def register_routes(
             return {"status": "AI Agent Server stopped successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error stopping AI Agent Server: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.post("/ai-agent-server/restart")
     async def restart_ai_agent_server_endpoint(request: Request):
@@ -70,7 +72,7 @@ def register_routes(
             return {"status": "AI Agent Server restarted successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error restarting AI Agent Server: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.get("/api/ai-agent-server/status")
     async def get_ai_agent_server_status_endpoint(request: Request):
@@ -154,7 +156,7 @@ def register_routes(
             return {"status": "For AutoYou Page Service started successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error starting For AutoYou Page Service: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.post("/autoyou-page-service/stop")
     async def stop_autoyou_page_service_endpoint(request: Request):
@@ -168,7 +170,7 @@ def register_routes(
             return {"status": "For AutoYou Page Service stopped successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error stopping For AutoYou Page Service: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.post("/autoyou-page-service/restart")
     async def restart_autoyou_page_service_endpoint(request: Request):
@@ -182,7 +184,7 @@ def register_routes(
             return {"status": "For AutoYou Page Service restarted successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error restarting For AutoYou Page Service: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.get("/api/autoyou-page-service/status")
     async def get_autoyou_page_service_status_endpoint(request: Request):
@@ -246,7 +248,7 @@ def register_routes(
             return JSONResponse(status_code=400, content={"success": False, "error": str(exc)})
         except Exception as exc:
             server.LOGGER.error("Failed to update public website hosting: %s", exc, exc_info=True)
-            return JSONResponse(status_code=500, content={"success": False, "error": str(exc)})
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
 
     @admin_app.post("/tunnelmole/start")
     async def start_tunnelmole_endpoint(request: Request):
@@ -269,7 +271,7 @@ def register_routes(
             server.LOGGER.error(f"Error starting Tunnelmole service: {e}")
             return JSONResponse(
                 status_code=500,
-                content={"status": "Error", "message": str(e)},
+                content={"status": "Error", "message": internal_error_message(e)},
             )
 
     @admin_app.post("/tunnelmole/stop")
@@ -286,7 +288,7 @@ def register_routes(
             return {"status": "Public reverse proxy service stopped successfully"}
         except Exception as e:
             server.LOGGER.error(f"Error stopping Tunnelmole service: {e}")
-            return {"status": f"Error: {str(e)}"}
+            return {"status": f"Error: {internal_error_message(e)}"}
 
     @admin_app.post("/tunnelmole/refresh")
     async def refresh_tunnelmole_endpoint(request: Request):
