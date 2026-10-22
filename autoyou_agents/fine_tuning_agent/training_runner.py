@@ -460,6 +460,40 @@ def _target_modules_for_model(model: Any) -> List[str]:
     ]
     return text_targets or sorted(target_leaf_names)
 
+def _training_arguments(
+    args: argparse.Namespace,
+    *,
+    output_dir: Path,
+    accelerator: str,
+    has_eval: bool,
+    bf16_supported: bool,
+    eval_keyword: str = "eval_strategy",
+) -> Dict[str, Any]:
+    """Keyword arguments for transformers.TrainingArguments."""
+    max_steps = int(args.max_steps or 0)
+    return {
+        "output_dir": str(output_dir),
+        "num_train_epochs": float(args.epochs),
+        "max_steps": max_steps if max_steps > 0 else -1,
+        "per_device_train_batch_size": int(args.batch_size),
+        "gradient_accumulation_steps": int(args.gradient_accumulation_steps),
+        "learning_rate": float(args.learning_rate),
+        "logging_steps": 1,
+        "save_strategy": "epoch",
+        eval_keyword: "steps" if has_eval else "no",
+        "eval_steps": max(5, int(args.eval_steps)),
+        "save_total_limit": 2,
+        "report_to": [],
+        # The vision collator builds pixel_values and the token ids itself from
+        # each row's text, prompt and images. Left at its default, Trainer
+        # strips every field the model's forward() does not name before the
+        # collator runs, so image jobs failed on the first batch with
+        # KeyError: 'text'. The text path's rows already hold only model inputs.
+        "remove_unused_columns": False,
+        "fp16": bool(accelerator == "cuda" and not bf16_supported),
+        "bf16": bool(bf16_supported),
+    }
+
 def prepare_only(args: argparse.Namespace) -> int:
     train_rows = _read_jsonl(Path(args.train_data))
     eval_rows = _read_jsonl(Path(args.eval_data)) if args.eval_data and Path(args.eval_data).is_file() else []
@@ -663,28 +697,20 @@ def train_adapter(args: argparse.Namespace) -> int:
         train_dataset = build_dataset(train_rows, "train")
         eval_dataset = build_dataset(eval_rows, "eval") if eval_rows else None
 
-    max_steps = int(args.max_steps or 0)
     eval_keyword = (
         "eval_strategy"
         if "eval_strategy" in inspect.signature(TrainingArguments.__init__).parameters
         else "evaluation_strategy"
     )
-    training_kwargs: Dict[str, Any] = {
-        "output_dir": str(output_dir),
-        "num_train_epochs": float(args.epochs),
-        "max_steps": max_steps if max_steps > 0 else -1,
-        "per_device_train_batch_size": int(args.batch_size),
-        "gradient_accumulation_steps": int(args.gradient_accumulation_steps),
-        "learning_rate": float(args.learning_rate),
-        "logging_steps": 1,
-        "save_strategy": "epoch",
-        eval_keyword: "steps" if eval_dataset is not None else "no",
-        "eval_steps": max(5, int(args.eval_steps)),
-        "save_total_limit": 2,
-        "report_to": [],
-        "fp16": bool(accelerator == "cuda" and not torch.cuda.is_bf16_supported()),
-        "bf16": bool(accelerator in {"cuda", "rocm"} and torch.cuda.is_bf16_supported()),
-    }
+    bf16_supported = bool(accelerator in {"cuda", "rocm"} and torch.cuda.is_bf16_supported())
+    training_kwargs = _training_arguments(
+        args,
+        output_dir=output_dir,
+        accelerator=accelerator,
+        has_eval=eval_dataset is not None,
+        bf16_supported=bf16_supported,
+        eval_keyword=eval_keyword,
+    )
     training_args = TrainingArguments(**training_kwargs)
     collator = (
         VisionCollator(processor=processor, max_seq_length=int(args.max_seq_length))

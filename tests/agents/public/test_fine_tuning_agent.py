@@ -27,7 +27,9 @@ from autoyou_agents.fine_tuning_agent.training_runner import (
     _accelerator_backend,
     _build_masked_sample,
     _ollama_base_supports_vision,
+    _training_arguments,
     _write_modelfile,
+    build_parser,
 )
 import shared.secure_storage as secure_storage
 from shared.secure_storage import FILE_HEADER, disable_secure_storage, enable_secure_storage, read_secure_file
@@ -1055,3 +1057,22 @@ def test_fine_tuning_ui_backend_cleanup_endpoint_runs_prune(monkeypatch) -> None
     assert payload["deleted_count"] == 1
     assert payload["deleted_job_ids"] == ["job_synthetic_old"]
     assert payload["policy"] == {"max_runs": 3, "min_free_gb": 4.0}
+
+
+def test_trainer_keeps_the_fields_the_vision_collator_reads(tmp_path: Path) -> None:
+    """Trainer's default strips dataset fields forward() does not name.
+
+    The vision collator reads each row's text, prompt and images, so with the
+    default every image job failed on its first batch with KeyError: 'text'.
+    Found running a real Qwen2.5-VL LoRA job on ROCm on 2026-10-22.
+    """
+    args = build_parser().parse_args(
+        ["--train-data", "t.jsonl", "--output-dir", str(tmp_path), "--ollama-dir", str(tmp_path)])
+    for accelerator, bf16 in (("cuda", True), ("cuda", False), ("rocm", True), ("mps", False)):
+        kwargs = _training_arguments(args, output_dir=tmp_path, accelerator=accelerator,
+                                     has_eval=False, bf16_supported=bf16)
+        assert kwargs["remove_unused_columns"] is False
+        assert not (kwargs["bf16"] and kwargs["fp16"])
+    cuda_fp16 = _training_arguments(args, output_dir=tmp_path, accelerator="cuda",
+                                    has_eval=True, bf16_supported=False)
+    assert cuda_fp16["fp16"] is True and cuda_fp16["eval_strategy"] == "steps"
