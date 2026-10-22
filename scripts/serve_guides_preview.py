@@ -30,9 +30,29 @@ __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-76404b29fb2c796a8ef7fb03"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAX_BODY_BYTES = 4096
-EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+# Domain labels exclude dots, so the pattern has one way to split an address.
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$")
 # from __debug_provenance_r__ import via
 SOURCE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+
+
+def _loopback_origin(origin: str) -> str:
+    """Rebuild an http loopback Origin from checked parts, or return ""."""
+    try:
+        parsed = urlparse(origin)
+        port = parsed.port
+    except ValueError:
+        return ""
+    if parsed.scheme != "http":
+        return ""
+    if parsed.hostname == "127.0.0.1":
+        host = "127.0.0.1"
+    elif parsed.hostname == "localhost":
+        host = "localhost"
+    else:
+        return ""
+    # The header is built from constants and an integer, never the request text.
+    return f"http://{host}:{int(port)}" if port is not None else f"http://{host}"
 
 
 class PreviewServer(ThreadingHTTPServer):
@@ -47,17 +67,11 @@ class GuidePreviewHandler(SimpleHTTPRequestHandler):
 
     def _cors_headers(self) -> dict[str, str]:
         origin = self.headers.get("Origin", "")
-        allowed = {"http://127.0.0.1", "http://localhost"}
-        parsed_origin = urlparse(origin) if origin else None
-        origin_base = (
-            f"{parsed_origin.scheme}://{parsed_origin.hostname}"
-            if parsed_origin and parsed_origin.scheme and parsed_origin.hostname
-            else ""
-        )
-        if origin and origin_base not in allowed:
+        allow_origin = _loopback_origin(origin) if origin else "http://127.0.0.1"
+        if not allow_origin:
             return {}
         return {
-            "Access-Control-Allow-Origin": origin or "http://127.0.0.1",
+            "Access-Control-Allow-Origin": allow_origin,
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Accept",
             "Vary": "Origin",
@@ -112,7 +126,7 @@ class GuidePreviewHandler(SimpleHTTPRequestHandler):
 
         email = str(body.get("email", "")).strip()
         source = str(body.get("source", "landing")).strip().lower()
-        if not EMAIL_PATTERN.fullmatch(email) or len(email) > 254:
+        if len(email) > 254 or not EMAIL_PATTERN.fullmatch(email):
             self._send_json(422, {"ok": False, "error": "Please enter a valid email address."})
             return
         if not SOURCE_PATTERN.fullmatch(source):

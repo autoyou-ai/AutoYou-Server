@@ -1017,7 +1017,9 @@ def _clean_prompt_text(prompt: str, *, max_chars: int = PROMPT_MAX_CHARS) -> str
     text = str(prompt or "").strip()
     text = text.replace("\r", " ").replace("\n", " ")
     text = re.sub(r"[*_`#>\[\]{}]+", "", text)
-    text = re.sub(r"\s*[-•]\s+", ", ", text)
+    # Collapse whitespace first so the bullet pattern never rescans a long run of spaces.
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r" ?[-•] ", ", ", text)
     text = re.sub(r"\s+", " ", text).strip(" ,;")
     if len(text) > max_chars:
         cutoff = text.rfind(".", 0, max_chars)

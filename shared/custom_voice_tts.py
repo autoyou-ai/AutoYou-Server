@@ -36,7 +36,8 @@ CUSTOM_VOICE_ACTIVE_MODEL_FILENAME = "active_custom_voice_model.json"
 
 _MODEL_CACHE_LOCK = threading.Lock()
 _MODEL_CACHE: Dict[Tuple[str, str, float], Tuple[Any, Any]] = {}
-_TTS_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+# Neither group may contain "[", so a failed match never rescans the text after it.
+_TTS_MARKDOWN_LINK_RE = re.compile(r"\[([^\[\]]+)\]\(([^)\[]+)\)")
 _TTS_HEADING_RE = re.compile(r"(?m)^\s*#{1,6}\s*")
 _TTS_BULLET_RE = re.compile(r"(?m)^\s*[-*+]\s+")
 _TTS_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
@@ -329,7 +330,7 @@ def _normalize_custom_voice_tts_text(text: str) -> str:
     cleaned = "".join(sanitized)
     cleaned = re.sub(r"https?://\S+", " link ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned)
-    cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
+    cleaned = re.sub(r" ([,.!?;:])", r"\1", cleaned)
     cleaned = re.sub(r"([,.!?;:]){2,}", r"\1", cleaned)
     return cleaned.strip(" .")
 

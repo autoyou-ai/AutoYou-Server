@@ -35,7 +35,7 @@ from datetime import datetime
 import os
 import re
 import unicodedata
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, quote, urlparse
 import urllib.request
 from contextlib import suppress
 import requests
@@ -1291,13 +1291,16 @@ class AutoYouPageService:
 
         @self.app.get("/agent/{agent_name}")
         async def agent_frontend_root(request: Request, agent_name: str):
-            if agent_name not in self._frontend_registry_map():
+            frontend = self._frontend_registry_map().get(agent_name)
+            if frontend is None:
                 return self._agent_website_fail_closed(
                     request,
                     agent_name=agent_name,
                     reason="No installed frontend is registered for the requested agent path.",
                 )
-            return RedirectResponse(url=f"/agent/{agent_name}/", status_code=307)
+            # Redirect to the registered name rather than echoing the request path.
+            registered_name = quote(str(frontend.get("agent_name") or ""), safe="")
+            return RedirectResponse(url=f"/agent/{registered_name}/", status_code=307)
 
         @self.app.api_route(
             "/agent/{agent_name}/{proxy_path:path}",

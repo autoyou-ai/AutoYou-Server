@@ -501,10 +501,12 @@ def _maybe_upgrade_shared_session_cookie(response: Response, request: Request) -
     ):
         return
     for cookie_name, token in request.cookies.items():
-        match = re.fullmatch(r"autoyou_([a-z0-9_]+)_(mission|chat)_session", cookie_name)
-        if not match:
+        # autoyou_<agent>_(mission|chat)_session, parsed without a backtracking regex.
+        if not (cookie_name.startswith("autoyou_") and cookie_name.endswith("_session")):
             continue
-        agent_name, kind = match.groups()
+        agent_name, _, kind = cookie_name[len("autoyou_"):-len("_session")].rpartition("_")
+        if kind not in ("mission", "chat") or not re.fullmatch(r"[a-z0-9_]+", agent_name):
+            continue
         bucket = f"__chat__{agent_name}" if kind == "chat" else agent_name
         if not _agent_session_is_valid(bucket, token):
             continue
