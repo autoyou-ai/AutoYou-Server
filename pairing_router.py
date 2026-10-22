@@ -50,6 +50,7 @@ from shared.pairing_pake import (
     encrypt_pake_response,
     is_pake_request,
 )
+from shared.log_redaction import redact_identifier
 from shared.remote_access_policy import DEVICE_OWN, DEVICE_SHARED
 from shared.secure_storage import is_secure_professional_mode
 
@@ -133,6 +134,25 @@ class PairingRouter:
     # buffered autopair fragment but the full payload is not yet assembled.
     # Callers MUST NOT forward the message to AI or other handlers on receipt.
     FRAGMENT_CONSUMED: str = "__autopair_fragment_consumed__"
+
+    # Commands a pairing reply can start with. Logs name the command only;
+    # the rest of a reply can carry pairing material.
+    RESPONSE_KINDS: Tuple[str, ...] = (
+        "/autopair_answer",
+        "/autopair_hello_answer",
+        "/autopair_candidates",
+        "/pair_hello_answer",
+        "/otp_pair",
+        "/otp",
+        "/pair",
+    )
+
+    @classmethod
+    def response_kind(cls, response: Optional[str]) -> str:
+        """Name a pairing reply for logs without echoing any of it."""
+        tokens = str(response or "").split(maxsplit=1)
+        first = tokens[0] if tokens else ""
+        return next((kind for kind in cls.RESPONSE_KINDS if kind == first), "text")
 
     def __init__(self) -> None:
         # Helper callbacks provided by server.py
@@ -313,10 +333,10 @@ class PairingRouter:
                 await self._apply_remote_ice_candidates(session_id, candidates)
             except Exception as exc:
                 LOGGER.warning(
-                    "add_remote_ice_candidates: callback raised for session %s: %s", session_id, exc
+                    "add_remote_ice_candidates: callback raised for session %s: %s", redact_identifier(session_id), exc
                 )
         else:
-            LOGGER.debug("add_remote_ice_candidates: no callback configured (session=%s)", session_id)
+            LOGGER.debug("add_remote_ice_candidates: no callback configured (session=%s)", redact_identifier(session_id))
 
     async def get_trickle_candidates(self, session_id: str, platform: str = "") -> List[Dict[str, Any]]:
         """Return and drain queued server-side trickle ICE candidates for the session.
@@ -330,7 +350,7 @@ class PairingRouter:
                 return await self._get_trickle_candidates(session_id) or []
             except Exception as exc:
                 LOGGER.warning(
-                    "get_trickle_candidates: callback raised for session %s: %s", session_id, exc
+                    "get_trickle_candidates: callback raised for session %s: %s", redact_identifier(session_id), exc
                 )
         return []
 
@@ -488,7 +508,7 @@ class PairingRouter:
         except Exception as e:
             import traceback
             LOGGER.error(
-                "Error processing autopair offer for %s:%s: %s", platform, sender_id, e
+                "Error processing autopair offer for %s:%s: %s", platform, redact_identifier(sender_id), e
             )
             LOGGER.error(traceback.format_exc())
             return f"WebRTC processing error: {e}"
@@ -538,7 +558,7 @@ class PairingRouter:
                 "[AUTOPAIR] Fragment buffer exceeded %d bytes for %s:%s; discarding",
                 AUTOPAIR_FRAGMENT_MAX_TOTAL_LENGTH,
                 platform,
-                sender_id,
+                redact_identifier(sender_id),
             )
             return self.FRAGMENT_CONSUMED
 
@@ -549,7 +569,7 @@ class PairingRouter:
 
         LOGGER.info(
             "[AUTOPAIR] Fragment %d received for %s:%s (assembled_len=%d)",
-            n_parts, platform, sender_id, len(assembled),
+            n_parts, platform, redact_identifier(sender_id), len(assembled),
         )
 
         # Attempt to parse the assembled payload.
@@ -563,13 +583,13 @@ class PairingRouter:
                 LOGGER.warning(
                     "[AUTOPAIR] Max fragments (%d) reached for %s:%s without valid payload - "
                     "discarding buffer. Last parse error: %s",
-                    AUTOPAIR_FRAGMENT_MAX_PARTS, platform, sender_id, test_parsed,
+                    AUTOPAIR_FRAGMENT_MAX_PARTS, platform, redact_identifier(sender_id), test_parsed,
                 )
                 # Consume silently so malformed/truncated autopair chunks do not reach AI.
                 return self.FRAGMENT_CONSUMED
             LOGGER.debug(
                 "[AUTOPAIR] Fragment %d still incomplete for %s:%s, waiting. Error: %s",
-                n_parts, platform, sender_id, test_parsed,
+                n_parts, platform, redact_identifier(sender_id), test_parsed,
             )
             return self.FRAGMENT_CONSUMED
 
@@ -579,13 +599,13 @@ class PairingRouter:
 
         LOGGER.info(
             "[AUTOPAIR] Complete autopair payload assembled from %d fragment(s) for %s:%s",
-            n_parts, platform, sender_id,
+            n_parts, platform, redact_identifier(sender_id),
         )
 
         if not (self._generate_hash and self._get_current_password and self._handle_autopair_offer):
             LOGGER.warning(
                 "[AUTOPAIR] Helpers not configured for reassembled /autopair from %s:%s",
-                platform, sender_id,
+                platform, redact_identifier(sender_id),
             )
             return "Internal server error during autopair"
 
@@ -725,7 +745,7 @@ class PairingRouter:
             LOGGER.warning(
                 "Conversation reset helpers not configured; cannot process /new for %s:%s",
                 platform,
-                sender_id,
+                redact_identifier(sender_id),
             )
             return "Unable to start a new conversation right now."
 
@@ -735,7 +755,7 @@ class PairingRouter:
             LOGGER.warning(
                 "Conversation reset callback failed for %s:%s: %s",
                 platform,
-                sender_id,
+                redact_identifier(sender_id),
                 exc,
             )
             return "Unable to start a new conversation right now."
@@ -771,7 +791,7 @@ class PairingRouter:
             LOGGER.warning(
                 "Failed to load secure-professional pairing TOTP secret for /pair on %s:%s: %s",
                 platform,
-                auth_sender_id,
+                redact_identifier(auth_sender_id),
                 exc,
             )
             return None
@@ -1020,7 +1040,7 @@ class PairingRouter:
                 hello, current_password, json.dumps(body)
             )
         except Exception as exc:
-            LOGGER.warning("CPace pair-hello answer failed for %s:%s: %s", platform, sender_id, exc)
+            LOGGER.warning("CPace pair-hello answer failed for %s:%s: %s", platform, redact_identifier(sender_id), exc)
             return "Authentication failed"
         return f"{PAIR_HELLO_ANSWER_PREFIX}{answer_env}"
 
@@ -1107,7 +1127,7 @@ class PairingRouter:
                     return True, None
             except Exception as exc:
                 LOGGER.warning(
-                    "Authenticator verification raised for %s:%s: %s", platform, auth_sender_id, exc
+                    "Authenticator verification raised for %s:%s: %s", platform, redact_identifier(auth_sender_id), exc
                 )
         return False, "That authenticator code isn't right."
 
@@ -1159,7 +1179,7 @@ class PairingRouter:
         try:
             answer_env, session = build_cpace_hello_answer(hello, current_password)
         except Exception as exc:
-            LOGGER.warning("CPace hello-answer failed for %s:%s: %s", platform, sender_id, exc)
+            LOGGER.warning("CPace hello-answer failed for %s:%s: %s", platform, redact_identifier(sender_id), exc)
             return "Authentication failed"
 
         self._remember_cpace_session(
@@ -1203,7 +1223,7 @@ class PairingRouter:
             LOGGER.info(
                 "[AUTOPAIR] /autopair received without payload from %s:%s - "
                 "Telegram message split detected; buffering continuation messages.",
-                platform, sender_id,
+                platform, redact_identifier(sender_id),
             )
             return self.FRAGMENT_CONSUMED
 
@@ -1229,7 +1249,7 @@ class PairingRouter:
                 "(message_len=%d, payload_len=%d); buffering continuation messages. "
                 "Initial parse error: %s",
                 platform,
-                sender_id,
+                redact_identifier(sender_id),
                 len(text),
                 len(payload_text),
                 parsed,
@@ -1488,7 +1508,7 @@ class PairingRouter:
         try:
             return self._aead_encrypt(payload_text, password=password_to_use), None
         except Exception as exc:
-            LOGGER.warning("Failed to encrypt pairing payload for %s:%s in mode %s: %s", platform, sender_id, mode, exc)
+            LOGGER.warning("Failed to encrypt pairing payload for %s:%s in mode %s: %s", platform, redact_identifier(sender_id), mode, exc)
             return None, "Failed to encrypt pairing payload"
 
     async def _format_otp_response(
@@ -1622,13 +1642,13 @@ class PairingRouter:
             try:
                 env = encrypt_cpace_message(payload_text, session)
             except Exception as exc:
-                LOGGER.warning("Failed to encrypt pairing response for %s:%s: %s", platform, sender_id, exc)
+                LOGGER.warning("Failed to encrypt pairing response for %s:%s: %s", platform, redact_identifier(sender_id), exc)
                 return "Failed to encrypt pairing response"
         elif isinstance(session, PakeServerReplyContext):
             try:
                 env = encrypt_pake_response(payload_text, session)
             except Exception as exc:
-                LOGGER.warning("Failed to encrypt B-Tier pairing response for %s:%s: %s", platform, sender_id, exc)
+                LOGGER.warning("Failed to encrypt B-Tier pairing response for %s:%s: %s", platform, redact_identifier(sender_id), exc)
                 return "Failed to encrypt pairing response"
         elif mode == "normal":
             env = payload_text
@@ -1639,12 +1659,12 @@ class PairingRouter:
             "Formatted /autopair_answer for %s:%s raw_len=%d payload_len=%d compressed=%s "
             "mode=%s response_session_id=%s reply_len=%d",
             platform,
-            sender_id,
+            redact_identifier(sender_id),
             len(response_json),
             len(payload_text),
             str(payload_text != response_json),
             mode,
-            response_session_id,
+            redact_identifier(response_session_id),
             len(reply),
         )
         return reply

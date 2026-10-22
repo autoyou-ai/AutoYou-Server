@@ -113,7 +113,7 @@ async def test_whatsapp_state_handling():
                     status_data = data.get('data', {})
                     print(f"📊 Status Response:")
                     print(f"   Ready: {status_data.get('ready', False)}")
-                    print(f"   Phone Number: {status_data.get('phone_number', 'unknown')}")
+                    print(f"   Phone Number: {'linked' if status_data.get('phone_number') else 'unknown'}")
                     print(f"   QR Available: {status_data.get('qr_available', False)}")
                 else:
                     print(f"📨 Received: {data}")

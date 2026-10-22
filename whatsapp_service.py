@@ -1913,9 +1913,11 @@ class WhatsAppNodeService:
                 # A real pairing reply (e.g. /autopair_answer or /otp): send it back.
                 if message_text.startswith("/autopair") and not response.startswith("/autopair_answer"):
                     LOGGER.warning("WhatsApp /autopair rejected len=%d", len(response))
-                response_tokens = str(response or "").split()
-                response_kind = response_tokens[0] if response_tokens else "-"
-                LOGGER.info("Sending WhatsApp pairing response kind=%s len=%d", response_kind, len(response))
+                LOGGER.info(
+                    "Sending WhatsApp pairing response kind=%s len=%d",
+                    PairingRouter.response_kind(response),
+                    len(response),
+                )
                 # Send pairing response back without signature to preserve exact protocol format
                 await self._send_message_to_self(response, append_signature=False)
                 return

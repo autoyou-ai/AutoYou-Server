@@ -66,6 +66,7 @@ except ImportError:
     docker = None  # type: ignore[assignment]
 
 from pairing_router import PairingRouter, pairing_router
+from shared.log_redaction import redact_identifier
 from shared.platform_runtime import get_mutable_data_dir, get_service_data_dir
 from shared.session_execution import (
     STATUS_QUEUED,
@@ -454,7 +455,7 @@ class WhatsAppDockerService:
                 number = str(result).split("@")[0].lstrip("+")
                 if number:
                     self.phone_number = number
-                    LOGGER.info("WhatsApp Docker phone number: %s", self.phone_number)
+                    LOGGER.info("WhatsApp Docker phone number: %s", redact_identifier(self.phone_number))
         except Exception as exc:
             LOGGER.debug("Could not fetch phone number: %s", exc)
 
@@ -549,7 +550,7 @@ class WhatsAppDockerService:
                 LOGGER.debug(
                     "WhatsApp Docker autopair fragment consumed for sender=%s - "
                     "waiting for continuation.",
-                    self.phone_number or "unknown",
+                    redact_identifier(self.phone_number or "unknown"),
                 )
                 return
             # Guard against orphaned autopair payload fragments reaching the AI.
@@ -632,7 +633,7 @@ class WhatsAppDockerService:
                     json={"chatId": chat_id, "contentType": "string", "content": message},
                 )
                 if resp.status_code == 200:
-                    LOGGER.info("Sent WhatsApp Docker message to %s", chat_id)
+                    LOGGER.info("Sent WhatsApp Docker message to %s", redact_identifier(chat_id))
                     return True
                 else:
                     LOGGER.error(

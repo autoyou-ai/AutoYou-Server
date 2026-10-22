@@ -1145,9 +1145,9 @@ class SignalService:
                             if response and response != PairingRouter.FRAGMENT_CONSUMED:
                                 # A real pairing reply: send it back without agent signature.
                                 LOGGER.info(
-                                    "Sending Signal pairing response to %s prefix=%s len=%d",
+                                    "Sending Signal pairing response to %s kind=%s len=%d",
                                     _redact_signal_id(phone_number),
-                                    response.splitlines()[0] if response else "-",
+                                    PairingRouter.response_kind(response),
                                     len(response),
                                 )
                                 await self._send_signal_message(phone_number, response)

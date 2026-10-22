@@ -25,6 +25,7 @@ from types import SimpleNamespace
 from typing import Dict, Any, List, Optional
 
 from shared.adk_state import derive_reply_target_from_owner_key, normalize_reply_target
+from shared.log_redaction import redact_identifier
 from shared.platform_runtime import get_mutable_data_dir
 from shared.secure_storage import (
     FILE_HEADER,
@@ -1729,7 +1730,7 @@ async def _deliver_reply_target_message(
                 delivery_metadata = _build_webrtc_notification_metadata(notification, reply_target)
             LOGGER.info(
                 "_deliver_reply_target_message: attempting WebRTC delivery to reply_target=%s, datachannel_managers_keys=%s",
-                reply_target,
+                redact_identifier(reply_target),
                 list(manager.datachannel_managers.keys()) if hasattr(manager, "datachannel_managers") else "N/A",
             )
             # The scheduler has its own retry queue and backoff; do not also
@@ -1750,7 +1751,7 @@ async def _deliver_reply_target_message(
                     user_id=server.get_configured_server_name(),
                 )
             if not sent:
-                LOGGER.warning("_deliver_reply_target_message: send_chat_to_reply_target returned False for %s", reply_target)
+                LOGGER.warning("_deliver_reply_target_message: send_chat_to_reply_target returned False for %s", redact_identifier(reply_target))
                 
                 # 2. Fallback: If no datachannel exists but the user is connected via WebRTC voice, speak it aloud!
                 if hasattr(manager, "_resolve_audio_manager_for_reply_target"):
@@ -1764,7 +1765,7 @@ async def _deliver_reply_target_message(
                             LOGGER.error("Failed to speak reminder via audio_manager: %s", e)
 
                 return {"status": "error", "message": "Connected WebRTC client not available."}
-            LOGGER.info("_deliver_reply_target_message: WebRTC delivery succeeded for %s", reply_target)
+            LOGGER.info("_deliver_reply_target_message: WebRTC delivery succeeded for %s", redact_identifier(reply_target))
             return {"status": "success", "message": "Sent message via webrtc."}
     except Exception as exc:
         LOGGER.warning("Failed to deliver scheduled reply-target message: %s", exc)
@@ -2040,7 +2041,7 @@ async def broadcast_alert(text: str):
                     result.get("message") or "unknown delivery error",
                 )
         except Exception as e:
-            LOGGER.warning("%s broadcast failed: %s", _reply_target_display_label(reply_target), e)
+            LOGGER.warning("%s broadcast failed: %s", redact_identifier(reply_target), e)
 
     # Notes - persist every alert as a note so the user has a record
     try:

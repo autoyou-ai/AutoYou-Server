@@ -61,11 +61,7 @@ def test_autopair_json_format():
     }
 
     print("=== Autopair Test ===")
-    print(f"Server password: {server_password}")
-    print(f"Generated hash: {password_hash}")
     print(f"JSON message size: {len(json.dumps(autopair_json))} bytes")
-    print("\nSample autopair JSON:")
-    print(json.dumps(autopair_json, indent=2))
 
     # Verify JSON can be parsed
     json_str = json.dumps(autopair_json)
@@ -107,8 +103,6 @@ def test_telegram_message_format():
     telegram_message = f"/autopair\n{json.dumps(autopair_json)}"
 
     print("\n=== Telegram Message Format Test ===")
-    print("Expected Telegram message format:")
-    print(telegram_message)
     print(f"\nMessage length: {len(telegram_message)} characters")
 
     # Test parsing
@@ -122,7 +116,6 @@ def test_telegram_message_format():
 
     parsed_json = json.loads(json_part)
     print("✓ Telegram message format is valid")
-    print(f"✓ Command: {command}")
     print(f"✓ JSON payload parsed successfully")
     assert parsed_json is not None
 
