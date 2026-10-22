@@ -11,6 +11,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import json
+from urllib.parse import urlsplit
 
 from .enrichment import EnrichmentError, enrich_ip
 from .privileged import get_privileged_capabilities
@@ -199,7 +200,7 @@ def test_public_ip_enrichment_merges_ipquery_and_ripestat_and_caches(tmp_path):
 
     def fake_fetch(url):
         calls.append(url)
-        if "ipquery.io" in url:
+        if urlsplit(url).hostname == "api.ipquery.io":
             return {
                 "isp": {"asn": "AS15169", "org": "Synthetic Search", "isp": "Synthetic Search", "domain": "example.test"},
                 "location": {"country": "United States", "country_code": "US", "state": "Synthetic", "city": "Example", "zipcode": "00000", "timezone": "UTC", "latitude": 1, "longitude": 2},

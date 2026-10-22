@@ -47,6 +47,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
+from shared.url_hosts import host_matches, social_platform
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.remote_access_policy import (
     REMOTE_BROWSER_HEADER,
@@ -528,9 +529,9 @@ class PageFeedService:
         try:
             parsed = urlparse(str(url or "").strip())
             host = (parsed.hostname or "").lower()
-            if "youtu.be" in host:
+            if host_matches(host, "youtu.be"):
                 return parsed.path.lstrip("/")
-            if "youtube.com" in host:
+            if host_matches(host, "youtube.com", "youtube-nocookie.com"):
                 query = parse_qs(parsed.query or "")
                 video_id = (query.get("v") or [""])[0].strip()
                 if video_id:
@@ -1008,17 +1009,10 @@ class PageFeedService:
 
     def _classify_url(self, url: str) -> str:
         """Classify the URL into a feed item type."""
+        platform = social_platform(url)
+        if platform:
+            return platform
         u = url.lower()
-        if "youtube.com" in u or "youtu.be" in u:
-            return "youtube"
-        if "tiktok.com" in u:
-            return "tiktok"
-        if "threads.net" in u or "threads.com" in u:
-            return "threads"
-        if "instagram.com" in u:
-            return "instagram"
-        if "twitter.com" in u or "x.com" in u:
-            return "twitter"
         if any(x in u for x in [".mp4", "/shorts/", "hls", "/video/"]):
             return "video"
         return "article"
@@ -1140,7 +1134,7 @@ class PageFeedService:
             # Canonicalize path and drop query for stability
             with suppress(Exception):
                 p = urlparse(u)
-                if p.hostname and "tiktok.com" in p.hostname:
+                if host_matches(p.hostname or "", "tiktok.com"):
                     path = p.path
                     if not path.endswith("/"):
                         path = path + "/"
@@ -2133,7 +2127,7 @@ class PageFeedService:
                     fwd_headers["Range"] = rng
                 fwd_headers["User-Agent"] = "Mozilla/5.0 (AutoYou)"
                 host = urlparse(url).hostname or ""
-                if "tiktok.com" in host:
+                if host_matches(host, "tiktok.com"):
                     fwd_headers["Referer"] = "https://www.tiktok.com/"
 
                 try:

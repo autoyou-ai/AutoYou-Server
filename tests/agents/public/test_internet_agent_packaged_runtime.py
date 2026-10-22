@@ -16,6 +16,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import sys
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -138,7 +139,7 @@ async def test_search_works_without_the_optional_playwright_extra(packaged_runti
 
     def _fake_get(url, **kwargs):
         response = type("FakeResponse", (), {})()
-        response.text = _BING_RSS if "bing.com" in url else _DDG_CHALLENGE_HTML
+        response.text = _BING_RSS if urlsplit(url).hostname == "www.bing.com" else _DDG_CHALLENGE_HTML
         response.content = response.text.encode()
         response.raise_for_status = lambda: None
         return response

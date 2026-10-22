@@ -39,6 +39,7 @@ import os
 import urllib.error
 
 from shared.secure_storage import FILE_HEADER as SPM_FILE_HEADER, read_secure_file, write_secure_file
+from shared.url_hosts import social_platform
 
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-67e26a61f52c5ec9acd45c29"
 
@@ -503,17 +504,10 @@ class PageTool:
 
     def classify_url(self, url: str) -> str:
         """Classify the URL into a feed item type (article/video/instagram/etc.)."""
+        platform = social_platform(url)
+        if platform:
+            return platform
         u = (url or '').lower()
-        if "youtube.com" in u or "youtu.be" in u:
-            return "youtube"
-        if "tiktok.com" in u:
-            return "tiktok"
-        if "threads.net" in u or "threads.com" in u:
-            return "threads"
-        if "instagram.com" in u:
-            return "instagram"
-        if "twitter.com" in u or "x.com" in u:
-            return "twitter"
         if any(x in u for x in [".mp4", "/shorts/", "hls", "/video/"]):
             return "video"
         return "article"

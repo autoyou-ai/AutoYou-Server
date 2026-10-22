@@ -183,13 +183,35 @@
     return type === "x" ? "twitter" : (type || "article");
   }
 
+  // Compare parsed hostnames: a substring test also matches netflix.com for
+  // x.com, or a query string that merely mentions youtube.com.
+  const SOCIAL_DOMAINS = [
+    ["youtube", ["youtube.com", "youtu.be", "youtube-nocookie.com"]],
+    ["tiktok", ["tiktok.com"]],
+    ["threads", ["threads.net", "threads.com"]],
+    ["instagram", ["instagram.com"]],
+    ["twitter", ["twitter.com", "x.com"]],
+  ];
+
+  function hostMatches(host, ...domains) {
+    const value = String(host || "").toLowerCase().replace(/\.$/, "");
+    return Boolean(value) && domains.some((domain) => value === domain || value.endsWith(`.${domain}`));
+  }
+
+  function linkHost(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : text.startsWith("//") ? `https:${text}` : `https://${text}`;
+    const url = parseUrl(absolute);
+    return url ? url.hostname.toLowerCase() : "";
+  }
+
   function classifyUrl(value) {
+    const host = linkHost(value);
+    for (const [platform, domains] of SOCIAL_DOMAINS) {
+      if (hostMatches(host, ...domains)) return platform;
+    }
     const url = String(value || "").toLowerCase();
-    if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
-    if (url.includes("tiktok.com")) return "tiktok";
-    if (url.includes("threads.net") || url.includes("threads.com")) return "threads";
-    if (url.includes("instagram.com")) return "instagram";
-    if (url.includes("twitter.com") || url.includes("x.com")) return "twitter";
     if (url.includes(".mp4") || url.includes("/shorts/") || url.includes("/video/")) return "video";
     return "article";
   }
@@ -209,8 +231,8 @@
   function youtubeId(value) {
     const url = parseUrl(value);
     if (!url) return "";
-    if (url.hostname.includes("youtu.be")) return cleanId(url.pathname.slice(1));
-    if (!url.hostname.includes("youtube.com")) return "";
+    if (hostMatches(url.hostname, "youtu.be")) return cleanId(url.pathname.slice(1));
+    if (!hostMatches(url.hostname, "youtube.com", "youtube-nocookie.com")) return "";
     const fromQuery = url.searchParams.get("v");
     if (fromQuery) return cleanId(fromQuery);
     const parts = url.pathname.split("/").filter(Boolean);
@@ -227,7 +249,7 @@
 
   function instagramEmbed(value) {
     const url = parseUrl(value);
-    if (!url || !url.hostname.includes("instagram.com")) return "";
+    if (!url || !hostMatches(url.hostname, "instagram.com")) return "";
     const parts = url.pathname.split("/").filter(Boolean);
     return parts.length >= 2 && ["p", "reel", "tv"].includes(parts[0])
       ? `https://www.instagram.com/${parts[0]}/${cleanId(parts[1])}/embed/`
@@ -236,7 +258,7 @@
 
   function tiktokId(value) {
     const url = parseUrl(value);
-    if (!url || !url.hostname.includes("tiktok.com")) return "";
+    if (!url || !hostMatches(url.hostname, "tiktok.com")) return "";
     const match = url.pathname.match(/\/video\/(\d+)/);
     return match ? match[1] : String(url.searchParams.get("share_item_id") || url.searchParams.get("item_id") || "").replace(/\D/g, "");
   }
