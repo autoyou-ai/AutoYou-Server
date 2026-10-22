@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const {test} = require('node:test');
 const html = fs.readFileSync(process.argv[2], 'utf8');
-const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const source = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/i)[1];
 
 function game(options = {}) {
   let clock = 0;

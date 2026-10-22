@@ -2662,13 +2662,10 @@
     function generateRandomPassword(length) {
         var size = Math.max(16, Math.min(128, Number(length) || 24));
         var values = new Uint32Array(size);
-        if (window.crypto && window.crypto.getRandomValues) {
-            window.crypto.getRandomValues(values);
-        } else {
-            for (var fallbackIndex = 0; fallbackIndex < size; fallbackIndex += 1) {
-                values[fallbackIndex] = Math.floor(Math.random() * 4294967296);
-            }
+        if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
+            throw new Error("Secure password generation is unavailable in this browser.");
         }
+        window.crypto.getRandomValues(values);
         var password = "";
         for (var index = 0; index < size; index += 1) {
             password += PASSWORD_GENERATOR_ALPHABET[values[index] % PASSWORD_GENERATOR_ALPHABET.length];
@@ -4256,9 +4253,17 @@
     }
 
     function chatUuid(prefix) {
-        var id = (window.crypto && typeof window.crypto.randomUUID === "function")
-            ? window.crypto.randomUUID()
-            : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+        // randomUUID needs a secure context; plain-HTTP LAN pages still have getRandomValues.
+        var id;
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            id = window.crypto.randomUUID();
+        } else {
+            var bytes = new Uint8Array(16);
+            window.crypto.getRandomValues(bytes);
+            id = Array.prototype.map.call(bytes, function (value) {
+                return ("0" + value.toString(16)).slice(-2);
+            }).join("");
+        }
         return (prefix || "chat") + "-" + id;
     }
 
@@ -9985,7 +9990,11 @@
             return;
         }
         if (action.indexOf("open-guide:") === 0) {
-            window.location.href = action.slice("open-guide:".length);
+            // Guides are pages on this server; any other target is ignored.
+            var guide = action.slice("open-guide:".length);
+            if (/^\/guides\/[A-Za-z0-9_\-\/]*$/.test(guide)) {
+                window.location.assign("/guides/" + guide.slice("/guides/".length));
+            }
             return;
         }
         if (state.setup.applying && /^(setup-profile:|setup-answer:|setup-permission:|setup-apply-)/.test(action)) {

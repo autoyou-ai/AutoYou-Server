@@ -44,7 +44,7 @@ test('multipart input rejects excessive field nesting and still accepts ordinary
     const multer = require('multer');
     const upload = multer({ limits: { fieldNestingDepth: 8 } }).none();
     const server = createServer((req, res) => upload(req, res, (error) => {
-        res.writeHead(error ? 400 : 200);
+        res.writeHead(error ? 400 : 200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(error ? error.code : req.body.name);
     }));
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

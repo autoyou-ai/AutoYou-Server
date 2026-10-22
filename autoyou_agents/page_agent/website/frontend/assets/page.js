@@ -17,6 +17,7 @@
   const ACCENTS = new Set(["blue", "purple", "green", "amber", "teal", "rose", "slate"]);
   const ICONS = new Set(["globe", "play", "chat", "image", "wave", "doc", "layers"]);
   const DEFAULT_FILTERS = { view: "feed", tab: "latest", query: "", order: "desc", range: "default", dateFrom: "", dateTo: "", sites: "" };
+  const RANGE_OPTIONS = ["default", "all", "7", "30", "custom"];
   const TYPE_TAB_LABELS = { latest: "Feed", articles: "Articles", videos: "Videos", social: "Social", photos: "Photos", audio: "Audio", files: "Files" };
   // Items kept ready on each side of the one on screen in the full-screen feed.
   const REEL_KEEP = 2;
@@ -100,6 +101,17 @@
     } catch (_) {
       return "";
     }
+  }
+
+  // Media addresses read back from data attributes are checked again and
+  // rebuilt from their parts, so the scheme is always one this page chose.
+  function mediaSrc(value) {
+    const url = safeUrl(value);
+    if (url.startsWith("./api/")) return `./api/${url.slice("./api/".length)}`;
+    if (url.startsWith("./assets/")) return `./assets/${url.slice("./assets/".length)}`;
+    const parsed = parseUrl(url);
+    if (!parsed) return "";
+    return `${parsed.protocol === "https:" ? "https" : "http"}://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
   }
 
   // Saved times are server-local and zoneless; build them from their parts
@@ -413,8 +425,10 @@
     let text = "";
     if (state.query) {
       text = `Results for “${escapeHtml(state.query)}” across your whole Page.`;
-    } else if (state.range === "7" || state.range === "30") {
-      text = `Showing the last ${state.range} days.`;
+    } else if (state.range === "7") {
+      text = "Showing the last 7 days.";
+    } else if (state.range === "30") {
+      text = "Showing the last 30 days.";
     } else if (state.range === "custom" && (state.dateFrom || state.dateTo)) {
       text = `Showing ${escapeHtml(state.dateFrom || "the beginning")} to ${escapeHtml(state.dateTo || "today")}.`;
     } else if (state.range === "default" && state.windowDays > 0) {
@@ -535,7 +549,7 @@
 
   // The first frame of a saved video is its thumbnail.
   function loadVideoThumb(video) {
-    const source = video.getAttribute("data-src");
+    const source = mediaSrc(video.getAttribute("data-src"));
     if (!source) {
       return;
     }
@@ -718,13 +732,20 @@
     } catch (_) {}
   }
 
+  // Return the matching entry of `allowed` itself, never the input, so a
+  // value read from the URL or the DOM can't carry anything else into markup.
+  function oneOf(value, allowed, fallback) {
+    const match = allowed.find((option) => option === value);
+    return match === undefined ? fallback : match;
+  }
+
   function restoreFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const pick = (key, allowed, fallback) => (allowed.includes(params.get(key)) ? params.get(key) : fallback);
+    const pick = (key, allowed, fallback) => oneOf(params.get(key), allowed, fallback);
     state.view = pick("view", ["feed", "favourites", "uploads"], "feed");
     state.tab = pick("tab", Object.keys(boot.type_tabs || { latest: [] }), "latest");
     state.order = pick("order", ["asc", "desc"], "desc");
-    state.range = pick("range", ["default", "all", "7", "30", "custom"], "default");
+    state.range = pick("range", RANGE_OPTIONS, "default");
     state.query = String(params.get("q") || params.get("tag_search") || "").trim().slice(0, 200);
     const dateOnly = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? value : "");
     state.dateFrom = dateOnly(params.get("from"));
@@ -1583,7 +1604,7 @@
 
   // Swap in the original once it has loaded; the preview stays until then.
   function upgradePhoto(image) {
-    const full = image ? image.getAttribute("data-full") : "";
+    const full = image ? mediaSrc(image.getAttribute("data-full")) : "";
     if (!full) {
       return;
     }
@@ -2846,7 +2867,7 @@
       if (!button || button.getAttribute("data-range") === state.range) {
         return;
       }
-      state.range = button.getAttribute("data-range");
+      state.range = oneOf(button.getAttribute("data-range"), RANGE_OPTIONS, state.range);
       renderFilters();
       if (state.range !== "custom" || state.dateFrom || state.dateTo) {
         reloadFeed();
@@ -2896,7 +2917,7 @@
       } else if (target.classList.contains("reel-backdrop") || target.classList.contains("reel-poster")) {
         target.remove();
       } else if (target.classList.contains("reel-photo")) {
-        const full = target.getAttribute("data-full");
+        const full = mediaSrc(target.getAttribute("data-full"));
         if (full && target.getAttribute("src") !== full) {
           target.removeAttribute("data-full");
           target.src = full;

@@ -112,8 +112,14 @@ function bindKeyboardAwareFocus(input, scrollTarget) {
     });
   }
 }
+function randomSessionSuffix() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  var bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.prototype.map.call(bytes, function(value) { return ('0' + value.toString(16)).slice(-2); }).join('');
+}
 function ensureSessionId() {
-  if (!sessionId) sessionId = 'website-' + Math.random().toString(36).slice(2) + Date.now();
+  if (!sessionId) sessionId = 'website-' + randomSessionSuffix();
   return sessionId;
 }
 
