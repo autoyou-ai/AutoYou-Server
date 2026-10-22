@@ -1038,9 +1038,9 @@ google-cloud-aiplatform==1.156.0 \
     --hash=sha256:ae78ee795b571d3801ac472e155ba66e7de9e7243ffe3092382329f230df5533 \
     --hash=sha256:b2f8c92d7e3fd50a1570e433d596fb863f8ced528ede657e85d46e25b8445a25
     # via -r requirements/base.txt
-google-cloud-bigquery==3.42.1 \
-    --hash=sha256:159143c1b7248858f35549c09efea5d031c2883145623419ea7c505a50c0899a \
-    --hash=sha256:3c6878f424fc2b21f0bb414ca7262abd008465575a7b7c44c552105278a18914
+google-cloud-bigquery==3.46.2 \
+    --hash=sha256:5e9a4e15f778cc00ee88167de9934a4c1bbb7fc20058e8f573f2bfdaf0d99052 \
+    --hash=sha256:a87e2e8026133e709deab9ebf537a6a2eee3fbcf4befa334a2f9f6164435b331
     # via google-cloud-aiplatform
 google-cloud-core==2.6.0 \
     --hash=sha256:6d63ac8e5eca6d9e4319d0a1e2265fadcd7f1049904378caecfa01cf52dd869e \
