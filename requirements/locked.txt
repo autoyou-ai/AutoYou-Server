@@ -178,9 +178,9 @@ aioice==0.10.2 \
     --hash=sha256:14911c15ab12d096dd14d372ebb4aecbb7420b52c9b76fdfcf54375dec17fcbf \
     --hash=sha256:bf236c6829ee33c8e540535d31cd5a066b531cb56de2be94c46be76d68b1a806
     # via aiortc
-aiortc==1.14.0 \
-    --hash=sha256:4b244d7e482f4e1f67e685b3468269628eca1ec91fa5b329ab517738cfca086e \
-    --hash=sha256:adc8a67ace10a085721e588e06a00358ed8eaf5f6b62f0a95358ff45628dd762
+aiortc==1.15.0 \
+    --hash=sha256:4e1e54bff31a9c2cb654c7b7edc068085a7df53365e5df24a5cb24168e3f95f7 \
+    --hash=sha256:ee6c0757ca070cf6d6bee441936d6ede24eef51211bbff6653409c540f72e625
     # via -r requirements/base.txt
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
