@@ -55,7 +55,7 @@ Helps users prepare message datasets, start local training jobs, watch progress,
 
 ## `voice_training_agent`
 
-A specialized assistant for local voice datasets, custom TTS fine-tuning, and call transcript management.
+A specialized assistant for the owner's voice recordings, consented local voice cloning, and call transcript management.
 
 - **Location:** `autoyou_agents/voice_training_agent/`
 
@@ -64,12 +64,16 @@ A specialized assistant for local voice datasets, custom TTS fine-tuning, and ca
 | `list_voice_transcripts` | List the captured voice recordings and call transcripts used for custom voice preparation. |
 | `get_voice_transcript` | Retrieve details of a specific voice recording transcript. |
 | `delete_voice_transcript` | Delete a voice recording transcript and its corresponding WAV audio file. |
-| `start_voice_training` | Start local custom voice fine-tuning in the background. |
-| `get_training_status` | Check the status and progress of local custom voice fine-tuning. |
+| `get_voice_cloning_consent_status` | Show the voice cloning consent statement and whether the owner has accepted it. |
+| `record_voice_cloning_consent` | Record the owner's consent to clone their own voice. |
+| `withdraw_voice_cloning_consent` | Withdraw voice cloning consent and delete every cloned voice built from it. |
+| `check_voice_clone_engine` | Check whether the voice-clone runtime (Chatterbox) is installed and which GPU it would use. |
+| `start_voice_training` | Build the owner's cloned voice in the background (Chatterbox zero-shot cloning). |
+| `get_training_status` | Check the status and progress of the cloned voice build. |
 | `get_training_chat_update` | Return a compact, nonblocking voice training update optimized for chat turns. |
 | `get_voice_training_storage` | Return the active voice training storage directory and available disk space. |
 | `set_voice_training_storage_path` | Set a custom voice training storage directory. |
 | `reset_voice_training_storage_path` | Reset voice training storage back to the default AutoYou location. |
 | `test_synthesize_voice` | Test synthesis of text using the current custom voice provider. |
-| `install_custom_voice_tts_provider` | Install the prepared custom voice as the active AutoYou TTS provider. |
+| `install_custom_voice_tts_provider` | Make the owner's cloned voice the active AutoYou TTS provider. |
 | `get_current_datetime` | &nbsp; |

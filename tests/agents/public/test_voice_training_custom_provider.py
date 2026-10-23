@@ -12,200 +12,549 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import asyncio
 import json
-import math
 import os
-import struct
+import sys
 import time
 import wave
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+import pytest
+
 from autoyou_agents.voice_training_agent import agent as voice_agent
+from autoyou_agents.voice_training_agent import reference_selection as refsel
 from autoyou_agents.voice_training_agent import train_model
+from shared import custom_voice_tts
 from shared.custom_voice_tts import (
     CUSTOM_VOICE_ACTIVE_MODEL_FILENAME,
     CUSTOM_VOICE_METADATA_FILENAME,
+    VOICE_CLONE_CONSENT_PHRASE,
+    VOICE_CLONE_CONSENT_VERSION,
+    VOICE_CLONE_PREVIEW_FILENAME,
+    VOICE_CLONE_REFERENCE_FILENAME,
+    VoiceCloneEngineError,
+    VoiceCloneWorker,
     custom_voice_model_ready,
+    custom_voice_status,
     get_custom_voice_model_dir,
-    set_active_custom_voice_model_dir,
+    load_voice_clone_consent,
+    record_voice_clone_consent,
+    reference_key,
+    revoke_voice_clone_consent,
+    synthesize_custom_voice_to_file,
+    voice_clone_outputs_dir,
 )
 from shared.speech_config import normalize_speech_config
 from shared.voice_training_quality import analyze_pcm16_audio, voice_training_rejection_reasons
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-0d552ed9e06a4299d2206d8b"
 
-
-def _fake_user_llm_request(text: str):
-    return SimpleNamespace(
-        config=SimpleNamespace(system_instruction=None),
-        contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text=text)])],
-    )
+SYNTHETIC_TRANSCRIPT = "Synthetic phrase for a cloned voice test."
 
 
-class _FakeModel:
-    @classmethod
-    def from_pretrained(cls, model_name: str):
-        assert model_name
-        return cls()
-
-    def to(self, device: str):
-        assert device in {"cpu", "cuda"}
-        return self
-
-    def save_pretrained(self, output_dir: str) -> None:
-        path = Path(output_dir)
-        path.mkdir(parents=True, exist_ok=True)
-        (path / "config.json").write_text("{}", encoding="utf-8")
-        (path / "model.safetensors").write_bytes(b"synthetic-model")
+@pytest.fixture
+def voice_root(monkeypatch, tmp_path):
+    """A private AutoYou state root, so no test sees another's consent or voices."""
+    root = tmp_path / "autoyou-root"
+    root.mkdir()
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(root))
+    monkeypatch.delenv("AUTOYOU_VOICE_TRAINING_DIR", raising=False)
+    monkeypatch.delenv("AUTOYOU_VOICE_CLONE_PYTHON", raising=False)
+    vt_dir, _, _, _ = train_model._get_voice_training_dirs()
+    assert root.resolve() in vt_dir.resolve().parents
+    return vt_dir
 
 
-class _FakeTokenizer:
-    @classmethod
-    def from_pretrained(cls, model_name: str):
-        assert model_name
-        return cls()
+def _voice_like(seconds: float, *, sample_rate: int = 16000, top_hz: float = 6000.0, rms: float = 0.1, seed: int = 1):
+    """Harmonics of 150 Hz up to ``top_hz`` with random phases: a stand-in for voiced speech."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(int(seconds * sample_rate)) / sample_rate
+    audio = np.zeros_like(t)
+    harmonic = 150.0
+    while harmonic <= top_hz and harmonic < sample_rate / 2:
+        audio += np.sin(2 * np.pi * harmonic * t + rng.uniform(0, 2 * np.pi))
+        harmonic += 150.0
+    audio *= rms / max(float(np.sqrt(np.mean(audio**2))), 1e-9)
+    return audio.astype(np.float32)
 
-    def save_pretrained(self, output_dir: str) -> None:
-        Path(output_dir, "tokenizer_config.json").write_text("{}", encoding="utf-8")
 
-
-def _write_synthetic_wav(path: Path, *, seconds: float = 0.25, sample_rate: int = 16000) -> None:
+def _write_wav(path: Path, audio, sample_rate: int = 16000) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    frame_count = int(seconds * sample_rate)
+    pcm = (np.clip(np.asarray(audio, dtype=np.float32), -1, 1) * 32767).astype("<i2")
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
-        for i in range(frame_count):
-            value = int(10000 * math.sin(2.0 * math.pi * 220.0 * i / sample_rate))
-            wf.writeframes(struct.pack("<h", value))
+        wf.writeframes(pcm.tobytes())
 
 
-def test_training_finetunes_custom_voice_artifacts_under_test_root(monkeypatch, autoyou_test_root):
-    vt_dir, _, _, transcripts_file = train_model._get_voice_training_dirs()
-    recordings_dir = vt_dir / "recordings"
-    _write_synthetic_wav(recordings_dir / "sample-001.wav")
-    transcripts_file.parent.mkdir(parents=True, exist_ok=True)
-    transcripts_file.write_text(
-        json.dumps(
-            [
-                {
-                    "id": "sample-001",
-                    "filename": "sample-001.wav",
-                    "transcript": "Synthetic training phrase.",
-                    "source": "upload",
-                }
-            ]
-        ),
-        encoding="utf-8",
+def _seed_dataset(vt_dir: Path, clips) -> None:
+    """clips: (id, audio, source, user_id) tuples."""
+    entries = []
+    for clip_id, audio, source, user_id in clips:
+        filename = f"{clip_id}.wav"
+        _write_wav(vt_dir / "recordings" / filename, audio)
+        entry = {"id": clip_id, "filename": filename, "transcript": SYNTHETIC_TRANSCRIPT, "source": source}
+        if user_id:
+            entry["user_id"] = user_id
+        entries.append(entry)
+    (vt_dir / "transcripts.json").write_text(json.dumps(entries), encoding="utf-8")
+
+
+def _standard_dataset(vt_dir: Path) -> None:
+    _seed_dataset(
+        vt_dir,
+        [
+            ("clear-a", _voice_like(4.0, seed=1), "voice_call", "synthetic::caller-one"),
+            ("clear-b", _voice_like(4.0, seed=2), "voice_call", "synthetic::caller-one"),
+            ("clear-c", _voice_like(4.0, seed=3), "upload", ""),
+            ("muffled", _voice_like(4.0, top_hz=900.0, seed=4), "voice_call", "synthetic::caller-one"),
+            ("silent", np.zeros(16000 * 3, dtype=np.float32), "voice_call", "synthetic::caller-one"),
+        ],
     )
 
-    def fake_fine_tune(*, model_dir, examples, epochs):
-        assert epochs == 2
-        assert len(examples) == 1
-        _FakeModel().save_pretrained(str(model_dir))
-        _FakeTokenizer().save_pretrained(str(model_dir))
-        return {
-            "training_strategy": train_model.TRAINING_STRATEGY_INTERNAL,
-            "fine_tuning_applied": True,
-            "loss_history": [{"epoch": 1, "loss": 0.5}, {"epoch": 2, "loss": 0.25}],
-            "best_loss": 0.25,
-        }
 
-    monkeypatch.setattr(train_model, "_fine_tune_vits_model", fake_fine_tune)
+class _FakeWorker:
+    """Stands in for the Chatterbox runtime: writes a tone and reports a watermark score."""
 
-    train_model.run_training_sync(epochs=2)
+    def __init__(self, *, preview_score: float = 0.97, reference_score: float = 0.02) -> None:
+        self.preview_score = preview_score
+        self.reference_score = reference_score
+        self.calls = []
+        self.closed = False
 
-    model_dir = get_custom_voice_model_dir()
-    assert Path(autoyou_test_root).resolve() in model_dir.resolve().parents
-    assert custom_voice_model_ready(model_dir)
-    metadata = json.loads((model_dir / CUSTOM_VOICE_METADATA_FILENAME).read_text(encoding="utf-8"))
-    assert metadata["dataset_sample_count"] == 1
-    assert metadata["training_strategy"] == train_model.TRAINING_STRATEGY_INTERNAL
-    assert metadata["fine_tuning_applied"] is True
-    assert Path(metadata["dataset_artifacts"]["manifest_jsonl"]).exists()
+    def ensure_loaded(self, *, allow_download, timeout=None):
+        self.calls.append(("load", allow_download))
+        return {"device": "cpu", "accelerator": "CPU", "chatterbox_version": "0.1.7", "load_seconds": 0.1}
+
+    def use_reference(self, reference_path, *, key, exaggeration=0.5):
+        assert Path(reference_path).is_file()
+        self.calls.append(("reference", key))
+        return {"key": key}
+
+    def synthesize(self, texts, output_path, *, options=None):
+        self.calls.append(("synthesize", list(texts), dict(options or {})))
+        _write_wav(Path(output_path), _voice_like(1.0, sample_rate=24000), 24000)
+        return {"audio_seconds": 1.0, "wall_seconds": 2.9, "realtime_factor": 2.9, "device": "cpu"}
+
+    def detect_watermark(self, audio_path):
+        is_preview = Path(audio_path).name == VOICE_CLONE_PREVIEW_FILENAME
+        self.calls.append(("detect", Path(audio_path).name))
+        return {"score": self.preview_score if is_preview else self.reference_score}
+
+    def close(self):
+        self.closed = True
+
+
+def _use_fake_worker(monkeypatch, worker: _FakeWorker) -> _FakeWorker:
+    monkeypatch.setattr(train_model, "open_voice_clone_worker", lambda **kwargs: worker)
+    monkeypatch.setattr(train_model, "resolve_voice_clone_python", lambda: ("synthetic-python", "runtime"))
+    return worker
+
+
+def _consent() -> None:
+    record_voice_clone_consent(accepted_via="website", statement_version=VOICE_CLONE_CONSENT_VERSION)
+
+
+def _read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+# ── Building the cloned voice ───────────────────────────────────────────────
+
+
+def test_build_refuses_without_consent(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    monkeypatch.setattr(
+        train_model, "open_voice_clone_worker", lambda **kwargs: pytest.fail("worker must not start without consent")
+    )
+
+    train_model.run_training_sync()
 
     status = train_model.get_status()
-    assert status["status"] == "completed"
-    assert status["custom_voice"]["ready"] is True
-    assert status["fine_tuning_applied"] is True
+    assert status["status"] == "failed"
+    assert status["failure_reason"] == "consent_required"
+    assert not custom_voice_model_ready()
+    assert not voice_clone_outputs_dir().exists() or not any(voice_clone_outputs_dir().iterdir())
 
 
-def test_training_can_activate_versioned_model_artifact(monkeypatch, autoyou_test_root):
-    vt_dir, _, _, transcripts_file = train_model._get_voice_training_dirs()
-    recordings_dir = vt_dir / "recordings"
-    _write_synthetic_wav(recordings_dir / "sample-versioned.wav")
-    transcripts_file.parent.mkdir(parents=True, exist_ok=True)
-    transcripts_file.write_text(
-        json.dumps(
-            [
-                {
-                    "id": "sample-versioned",
-                    "filename": "sample-versioned.wav",
-                    "transcript": "Synthetic versioned training phrase.",
-                    "source": "upload",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
+def test_build_creates_watermarked_clone_from_clean_clips(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    worker = _use_fake_worker(monkeypatch, _FakeWorker())
 
-    def fake_fine_tune(*, model_dir, examples, epochs):
-        output_dir = model_dir.parent / "_training_outputs" / "custom_voice_test_version"
-        _FakeModel().save_pretrained(str(output_dir))
-        _FakeTokenizer().save_pretrained(str(output_dir))
-        return {
-            "training_strategy": train_model.TRAINING_STRATEGY_INTERNAL,
-            "fine_tuning_applied": True,
-            "trained_model_dir": str(output_dir),
-            "fine_tune_sample_count": len(examples),
-            "dataset_quality": {"install_recommended": True, "install_blocking_reasons": []},
-            "loss_history": [{"epoch": 1, "loss": 0.5}],
-            "best_loss": 0.5,
-        }
+    train_model.run_training_sync()
 
-    monkeypatch.setattr(train_model, "_fine_tune_vits_model", fake_fine_tune)
-
-    train_model.run_training_sync(epochs=1)
-
-    pointer_path = vt_dir / "models" / CUSTOM_VOICE_ACTIVE_MODEL_FILENAME
-    model_dir = vt_dir / "models" / "_training_outputs" / "custom_voice_test_version"
-    metadata = json.loads((model_dir / CUSTOM_VOICE_METADATA_FILENAME).read_text(encoding="utf-8"))
-
-    assert pointer_path.exists()
-    assert custom_voice_model_ready(get_custom_voice_model_dir())
-    assert metadata["artifact_model_dir"] == str(model_dir)
-    assert metadata["fine_tuning_applied"] is True
-    assert train_model.get_status()["artifact_model_dir"] == str(model_dir)
-
-
-def test_training_prepare_only_is_explicitly_not_cloned(monkeypatch, autoyou_test_root):
-    vt_dir, _, _, transcripts_file = train_model._get_voice_training_dirs()
-    recordings_dir = vt_dir / "recordings"
-    _write_synthetic_wav(recordings_dir / "sample-prepare.wav")
-    transcripts_file.parent.mkdir(parents=True, exist_ok=True)
-    transcripts_file.write_text(
-        json.dumps(
-            [
-                {
-                    "id": "sample-prepare",
-                    "filename": "sample-prepare.wav",
-                    "transcript": "Synthetic compatibility phrase.",
-                    "source": "upload",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setenv("AUTOYOU_VOICE_TRAINING_PREPARE_ONLY", "1")
-    monkeypatch.setattr(train_model, "load_vits_model_components", lambda: (_FakeModel, _FakeTokenizer))
-
-    train_model.run_training_sync(epochs=1)
-
-    metadata = json.loads((get_custom_voice_model_dir() / CUSTOM_VOICE_METADATA_FILENAME).read_text(encoding="utf-8"))
-    assert metadata["training_strategy"] == train_model.TRAINING_STRATEGY_PREPARE_ONLY
+    status = train_model.get_status()
+    assert status["status"] == "completed", status
+    assert status["voice_cloned"] is True
+    assert custom_voice_model_ready()
+    model_dir = custom_voice_tts.resolve_custom_voice_model_dir()
+    assert voice_clone_outputs_dir().resolve() in model_dir.parents
+    metadata = _read_json(model_dir / CUSTOM_VOICE_METADATA_FILENAME)
+    assert metadata["engine"] == "chatterbox"
+    assert metadata["model_revision"] == custom_voice_tts.VOICE_CLONE_MODEL_REVISION
+    assert metadata["voice_cloned"] is True
     assert metadata["fine_tuning_applied"] is False
+    assert metadata["watermark"] == {
+        "method": "perth_implicit",
+        "enabled": True,
+        "verified": True,
+        "preview_score": 0.97,
+        "reference_score": 0.02,
+        "min_score": 0.5,
+    }
+    chosen = [clip["sample_id"] for clip in metadata["reference"]["clips"]]
+    assert chosen[0] == "clear-c"  # the curated upload ranks first
+    assert set(chosen) <= {"clear-a", "clear-b", "clear-c"}
+    assert metadata["reference"]["selection"]["rejected"]["muffled"] == 1
+    assert metadata["consent"]["version"] == VOICE_CLONE_CONSENT_VERSION
+    # Metadata keeps measurements, never what was said or who called.
+    serialized = json.dumps(metadata)
+    assert SYNTHETIC_TRANSCRIPT not in serialized
+    assert "caller-one" not in serialized
+
+    with wave.open(str(model_dir / VOICE_CLONE_REFERENCE_FILENAME), "rb") as wf:
+        assert wf.getframerate() == 24000
+        assert 8.0 < wf.getnframes() / 24000 <= 15.0
+    assert (model_dir / VOICE_CLONE_PREVIEW_FILENAME).is_file()
+    assert ("load", True) in worker.calls
+    assert worker.closed is True
+    assert (voice_root / "models" / CUSTOM_VOICE_ACTIVE_MODEL_FILENAME).exists()
+
+
+def test_rebuild_replaces_the_previous_reference(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+    train_model.run_training_sync()
+    first = custom_voice_tts.resolve_custom_voice_model_dir()
+
+    train_model.run_training_sync(["clear-a", "clear-b"])
+
+    second = custom_voice_tts.resolve_custom_voice_model_dir()
+    assert second != first
+    assert not first.exists()
+    assert [path.name for path in voice_clone_outputs_dir().iterdir()] == [second.name]
+
+
+def test_build_fails_closed_when_watermark_is_not_detected(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker(preview_score=0.1))
+
+    train_model.run_training_sync()
+
+    status = train_model.get_status()
+    assert status["status"] == "failed"
+    assert status["failure_reason"] == "watermark_not_detected"
+    assert not custom_voice_model_ready()
+    assert list(voice_clone_outputs_dir().iterdir()) == []
+
+
+def test_build_explains_when_clips_are_not_clean_enough(monkeypatch, voice_root):
+    _seed_dataset(
+        voice_root,
+        [
+            ("muffled", _voice_like(6.0, top_hz=900.0), "voice_call", ""),
+            ("silent", np.zeros(16000 * 6, dtype=np.float32), "voice_call", ""),
+            ("short", _voice_like(0.5), "voice_call", ""),
+        ],
+    )
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+
+    train_model.run_training_sync()
+
+    status = train_model.get_status()
+    assert status["status"] == "failed"
+    assert status["failure_reason"] == "not_enough_clean_speech"
+    assert "Upload a 10-20 second WAV" in status["message"]
+    assert status["reference_selection"]["rejected"] == {
+        "muffled": 1,
+        "too_much_silence": 1,
+        "too_quiet": 1,
+        "too_short": 1,
+    }
+
+
+def test_build_uses_pinned_clips_in_order_and_warns_about_failed_checks(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+
+    train_model.run_training_sync(["clear-b", "muffled", "clear-a"])
+
+    metadata = _read_json(custom_voice_tts.resolve_custom_voice_model_dir() / CUSTOM_VOICE_METADATA_FILENAME)
+    assert [clip["sample_id"] for clip in metadata["reference"]["clips"]] == ["clear-b", "muffled", "clear-a"]
+    assert metadata["reference"]["pinned"] is True
+    assert "pinned_clip_muffled_muffled" in metadata["install_warnings"]
+
+
+def test_build_reports_unknown_pinned_clip(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+
+    train_model.run_training_sync(["does-not-exist"])
+
+    status = train_model.get_status()
+    assert status["failure_reason"] == "pinned_clips_not_found"
+    assert "does-not-exist" in status["message"]
+
+
+def test_reference_candidates_ignore_missing_and_external_audio(tmp_path):
+    vt_dir = tmp_path / "voice_training"
+    _write_wav(vt_dir / "recordings" / "usable.wav", _voice_like(2.0))
+    external_wav = tmp_path / "outside.wav"
+    _write_wav(external_wav, _voice_like(2.0))
+
+    candidates = train_model.collect_reference_candidates(
+        vt_dir,
+        [
+            {"id": "usable", "filename": "usable.wav"},
+            {"id": "missing", "filename": "missing.wav"},
+            {"id": "external", "audio_path": str(external_wav)},
+        ],
+    )
+
+    assert [candidate.sample_id for candidate in candidates] == ["usable"]
+
+
+# ── Consent ────────────────────────────────────────────────────────────────
+
+
+def test_consent_needs_the_exact_phrase_or_the_current_website_statement(voice_root):
+    with pytest.raises(ValueError):
+        record_voice_clone_consent(accepted_via="agent", confirmation="yes go ahead")
+    with pytest.raises(ValueError):
+        record_voice_clone_consent(accepted_via="website", statement_version="2000-01-01")
+    with pytest.raises(ValueError):
+        record_voice_clone_consent(accepted_via="agent", statement_version=VOICE_CLONE_CONSENT_VERSION)
+    assert load_voice_clone_consent() is None
+
+    record = record_voice_clone_consent(accepted_via="agent", confirmation="  i consent to cloning MY OWN voice. ")
+
+    assert record["version"] == VOICE_CLONE_CONSENT_VERSION
+    assert load_voice_clone_consent()["consent_id"] == record["consent_id"]
+
+
+def test_consent_for_an_older_statement_does_not_count(voice_root):
+    _consent()
+    path = custom_voice_tts.voice_clone_consent_path()
+    record = _read_json(path)
+    record["version"] = "2000-01-01"
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    assert load_voice_clone_consent() is None
+
+
+def test_withdrawing_consent_deletes_the_clone_and_keeps_recordings(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+    train_model.run_training_sync()
+    assert custom_voice_model_ready()
+
+    result = revoke_voice_clone_consent()
+
+    assert result["revoked"] is True
+    assert len(result["removed_voices"]) == 1
+    assert load_voice_clone_consent() is None
+    assert not custom_voice_model_ready()
+    assert list(voice_clone_outputs_dir().iterdir()) == []
+    assert not (voice_root / "models" / CUSTOM_VOICE_ACTIVE_MODEL_FILENAME).exists()
+    assert len(list((voice_root / "recordings").glob("*.wav"))) == 5
+
+
+def test_voice_stops_working_when_consent_file_is_removed(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+    train_model.run_training_sync()
+    custom_voice_tts.voice_clone_consent_path().unlink()
+
+    status = custom_voice_status()
+
+    assert status["ready"] is False
+    assert status["not_ready_reason"] == "consent_missing"
+    with pytest.raises(FileNotFoundError, match="consent_missing"):
+        synthesize_custom_voice_to_file("Hello.", voice_root / "out.wav")
+
+
+def test_status_flags_retired_mms_artifacts(voice_root):
+    model_dir = get_custom_voice_model_dir()
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_bytes(b"synthetic-model")
+
+    status = custom_voice_status()
+
+    assert status["ready"] is False
+    assert status["not_ready_reason"] == "legacy_vits_artifact"
+    assert status["legacy_artifact"] is True
+    assert custom_voice_tts.list_custom_voice_statuses() == []
+
+
+# ── Speaking ───────────────────────────────────────────────────────────────
+
+
+def test_synthesis_conditions_the_worker_on_the_reference(monkeypatch, voice_root):
+    _standard_dataset(voice_root)
+    _consent()
+    _use_fake_worker(monkeypatch, _FakeWorker())
+    train_model.run_training_sync()
+    speaker = _FakeWorker()
+    monkeypatch.setattr(custom_voice_tts, "get_voice_clone_worker", lambda: speaker)
+    output = voice_root / "spoken.wav"
+
+    synthesize_custom_voice_to_file("**Hello** there. This is a [second](https://example.test) sentence.", output)
+
+    reference = custom_voice_tts.resolve_custom_voice_model_dir() / VOICE_CLONE_REFERENCE_FILENAME
+    assert speaker.calls[0] == ("load", False)  # never downloads during a conversation
+    assert speaker.calls[1] == ("reference", reference_key(reference))
+    kind, texts, options = speaker.calls[2]
+    assert kind == "synthesize"
+    assert texts == ["Hello there. This is a second sentence"]
+    assert options["exaggeration"] == 0.5
+    assert output.is_file()
+
+
+def test_worker_and_provider_pin_the_same_model_revision():
+    from shared import voice_clone_worker
+
+    assert voice_clone_worker.MODEL_REPO == custom_voice_tts.VOICE_CLONE_MODEL_REPO
+    assert voice_clone_worker.MODEL_REVISION == custom_voice_tts.VOICE_CLONE_MODEL_REVISION
+    assert voice_clone_worker.WATERMARK_METHOD == custom_voice_tts.WATERMARK_METHOD
+
+
+def test_worker_speaks_the_line_protocol_without_chatterbox():
+    script = custom_voice_tts.voice_clone_worker_script()
+    assert script is not None
+    worker = VoiceCloneWorker(sys.executable, script, idle_seconds=60)
+    try:
+        pong = worker.request("ping", timeout=60)
+        assert pong["protocol"] == 1
+        assert pong["model_loaded"] is False
+        with pytest.raises(VoiceCloneEngineError, match="not loaded"):
+            worker.request("synthesize", texts=["Hello"], output="unused.wav", timeout=60)
+        with pytest.raises(VoiceCloneEngineError, match="Unknown op"):
+            worker.request("format_disk", timeout=60)
+        assert worker.alive
+    finally:
+        worker.close()
+    assert not worker.alive
+
+
+def test_runtime_lookup_order(monkeypatch, voice_root, tmp_path):
+    monkeypatch.setenv("AUTOYOU_VOICE_CLONE_PYTHON", str(tmp_path / "missing-python.exe"))
+    assert custom_voice_tts.resolve_voice_clone_python()[0] is None
+
+    configured = tmp_path / "configured-python.exe"
+    configured.write_bytes(b"")
+    monkeypatch.setenv("AUTOYOU_VOICE_CLONE_PYTHON", str(configured))
+    assert custom_voice_tts.resolve_voice_clone_python() == (str(configured), "environment")
+
+    monkeypatch.delenv("AUTOYOU_VOICE_CLONE_PYTHON")
+    runtime_python = custom_voice_tts._venv_python(custom_voice_tts.voice_clone_runtime_dir() / ".venv")
+    runtime_python.parent.mkdir(parents=True)
+    runtime_python.write_bytes(b"")
+    assert custom_voice_tts.resolve_voice_clone_python() == (str(runtime_python), "runtime")
+
+    runtime_python.unlink()
+    monkeypatch.setattr(custom_voice_tts.importlib.util, "find_spec", lambda name: None)
+    python, reason = custom_voice_tts.resolve_voice_clone_python()
+    assert python is None
+    assert reason == "not_installed"
+    status = custom_voice_tts.voice_clone_engine_status()
+    assert status["installed"] is False
+    assert "install_voice_clone_runtime.py" in status["reason"]
+
+
+def test_worker_environment_drops_secrets(monkeypatch):
+    monkeypatch.setenv("AUTOYOU_SECURE_STORAGE_PASSWORD", "synthetic-secret")
+    monkeypatch.setenv("AUTOYOU_SOME_SETTING", "synthetic")
+    monkeypatch.setenv("SYNTHETIC_API_KEY", "synthetic-key")
+    monkeypatch.setenv("AUTOYOU_VOICE_CLONE_DEVICE", "cpu")
+    monkeypatch.setenv("HF_HOME", "synthetic-hf-home")
+
+    env = custom_voice_tts._worker_environment()
+
+    assert env["AUTOYOU_VOICE_CLONE_DEVICE"] == "cpu"
+    assert env["HF_HOME"] == "synthetic-hf-home"
+    assert "AUTOYOU_SECURE_STORAGE_PASSWORD" not in env
+    assert "AUTOYOU_SOME_SETTING" not in env
+    assert "SYNTHETIC_API_KEY" not in env
+
+
+def test_installer_default_target_matches_runtime_lookup(voice_root):
+    from scripts import install_voice_clone_runtime as installer
+
+    assert installer.default_target() == custom_voice_tts.voice_clone_runtime_dir()
+    assert installer.WORKER_SCRIPT == custom_voice_tts.voice_clone_worker_script()
+    lines = installer.REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines()
+    requirements = [line.split("=")[0].split(">")[0] for line in lines if line.strip() and not line.startswith("#")]
+    assert "chatterbox-tts" not in requirements  # installed separately with --no-deps
+    assert "torch" not in requirements  # chosen per machine before this file
+    assert "resemble-perth" in requirements
+
+
+# ── Reference selection ────────────────────────────────────────────────────
+
+
+def test_bandwidth_separates_clear_and_muffled_speech():
+    assert refsel.bandwidth_hz(_voice_like(3.0), 16000) > 4000
+    assert refsel.bandwidth_hz(_voice_like(3.0, top_hz=900.0), 16000) < 1500
+
+
+def test_measure_clip_names_each_problem(tmp_path):
+    def reasons(audio):
+        return refsel.measure_clip(audio, 16000, sample_id="x", audio_path=tmp_path / "x.wav", source="voice_call").reasons
+
+    assert reasons(_voice_like(3.0)) == ()
+    assert set(reasons(np.zeros(48000, dtype=np.float32))) >= {"too_much_silence", "too_quiet"}
+    assert "too_short" in reasons(_voice_like(0.4))
+    assert "clipped" in reasons(np.sign(_voice_like(3.0)).astype(np.float32))
+    assert "muffled" in reasons(_voice_like(3.0, top_hz=900.0))
+
+
+def test_selection_prefers_uploads_and_flags_mixed_callers(tmp_path):
+    def candidate(sample_id, source, user_id, seconds=4.0, seed=1):
+        return refsel.measure_clip(
+            _voice_like(seconds, seed=seed), 16000, sample_id=sample_id, audio_path=tmp_path / sample_id,
+            source=source, user_id=user_id,
+        )
+
+    candidates = [
+        candidate("call-1", "voice_call", "synthetic::one", seed=1),
+        candidate("call-2", "voice_call", "synthetic::two", seed=2),
+        candidate("upload-1", "upload", "", seed=3),
+        candidate("call-3", "voice_call", "synthetic::one", seed=4),
+    ]
+
+    selected, report = refsel.select_reference_clips(candidates)
+
+    assert selected[0].sample_id == "upload-1"
+    assert report["ok"] is True
+    assert report["selected_speech_seconds"] >= 10.0
+    assert len(selected) == 3  # stops once there is enough speech
+    if report["caller_count"] > 1:
+        assert "clips_from_more_than_one_caller" in report["warnings"]
+    assert "phone_quality_reference" not in report["warnings"]
+
+
+def test_reference_audio_is_trimmed_levelled_and_resampled():
+    padded = np.concatenate([np.zeros(16000), _voice_like(2.0), np.zeros(16000)]).astype(np.float32)
+
+    reference = refsel.build_reference_audio([(padded, 16000), (_voice_like(1.0, sample_rate=48000), 48000)])
+
+    seconds = reference.size / refsel.REFERENCE_SAMPLE_RATE
+    assert 3.1 < seconds < 3.6  # 2 s + 1 s of voice, a 0.25 s gap, small margins
+    assert abs(float(np.abs(reference).max()) - 0.9) < 0.02
+
+
+# ── Background start ───────────────────────────────────────────────────────
 
 
 def test_training_status_marks_orphaned_training_as_interrupted(monkeypatch):
@@ -218,7 +567,7 @@ def test_training_status_marks_orphaned_training_as_interrupted(monkeypatch):
                 "status": "training",
                 "progress": 35.0,
                 "current_epoch": 2,
-                "total_epochs": 10,
+                "total_epochs": 5,
                 "message": "Synthetic in-progress status.",
                 "timestamp": time.time() - 60,
                 "worker_pid": 99999999,
@@ -244,7 +593,7 @@ def test_start_training_async_rejects_live_worker_status(monkeypatch):
                 "status": "training",
                 "progress": 10.0,
                 "current_epoch": 1,
-                "total_epochs": 10,
+                "total_epochs": 5,
                 "message": "Synthetic active worker.",
                 "timestamp": time.time() - 3600,
                 "worker_pid": os.getpid(),
@@ -255,10 +604,10 @@ def test_start_training_async_rejects_live_worker_status(monkeypatch):
     monkeypatch.setattr(
         train_model,
         "_launch_training_subprocess",
-        lambda epochs: (_ for _ in ()).throw(AssertionError("should not launch")),
+        lambda clip_ids: (_ for _ in ()).throw(AssertionError("should not launch")),
     )
 
-    assert train_model.start_training_async(epochs=3) is False
+    assert train_model.start_training_async() is False
 
 
 def test_start_training_async_restarts_stale_status_with_worker_process(monkeypatch):
@@ -275,7 +624,7 @@ def test_start_training_async_restarts_stale_status_with_worker_process(monkeypa
                 "status": "training",
                 "progress": 10.0,
                 "current_epoch": 1,
-                "total_epochs": 10,
+                "total_epochs": 5,
                 "message": "Synthetic orphan worker.",
                 "timestamp": time.time() - 60,
                 "worker_pid": 99999999,
@@ -285,14 +634,14 @@ def test_start_training_async_restarts_stale_status_with_worker_process(monkeypa
     )
     launched = {}
 
-    def fake_launch(epochs: int):
-        launched["epochs"] = epochs
+    def fake_launch(clip_ids):
+        launched["clip_ids"] = clip_ids
         return _FakeProcess()
 
     monkeypatch.setattr(train_model, "_launch_training_subprocess", fake_launch)
 
-    assert train_model.start_training_async(epochs=7) is True
-    assert launched == {"epochs": 7}
+    assert train_model.start_training_async("clip-1, clip-2") is True
+    assert launched == {"clip_ids": ["clip-1", "clip-2"]}
     status = json.loads(status_file.read_text(encoding="utf-8"))
     assert status["status"] == "training"
     assert status["worker_pid"] == _FakeProcess.pid
@@ -324,126 +673,37 @@ def test_start_training_async_defaults_to_thread_backend_in_compiled_mode(monkey
     monkeypatch.setattr(
         train_model,
         "_launch_training_subprocess",
-        lambda epochs: (_ for _ in ()).throw(AssertionError("should not launch subprocess")),
+        lambda clip_ids: (_ for _ in ()).throw(AssertionError("should not launch subprocess")),
     )
     monkeypatch.setattr(train_model.threading, "Thread", _FakeThread)
 
-    assert train_model.start_training_async(epochs=4) is True
-    assert launched["args"] == (4,)
+    assert train_model.start_training_async(["clip-1"]) is True
+    assert launched["args"] == (["clip-1"],)
     assert launched["daemon"] is True
     assert launched["name"] == "VoiceTrainingWorker"
     assert launched["started"] is True
 
 
-def test_prepare_resume_model_source_copies_checkpoint_to_separate_dir(tmp_path):
-    model_dir = tmp_path / "voice_training" / "models" / "custom_voice"
-    model_dir.mkdir(parents=True)
-    (model_dir / "config.json").write_text("{}", encoding="utf-8")
-    (model_dir / "model.safetensors").write_bytes(b"synthetic checkpoint")
+def test_worker_process_command_passes_pinned_clips(monkeypatch, voice_root):
+    captured = {}
 
-    resume_source = train_model._prepare_resume_model_source(model_dir)
+    class _FakePopen:
+        pid = 4321
+        stdout = None
 
-    assert resume_source != model_dir
-    assert resume_source.parent == model_dir.parent / "_resume_sources"
-    assert (resume_source / "config.json").read_text(encoding="utf-8") == "{}"
-    assert (resume_source / "model.safetensors").read_bytes() == b"synthetic checkpoint"
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
 
+    monkeypatch.setattr(train_model.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(train_model, "secure_storage_enabled", lambda: False)
 
-def test_configure_torch_training_runtime_disables_mkldnn_for_cpu(monkeypatch):
-    threads = {"num": 8, "interop": 8}
+    train_model._launch_training_subprocess(["clip-1", "clip-2"])
 
-    fake_torch = SimpleNamespace(
-        backends=SimpleNamespace(mkldnn=SimpleNamespace(enabled=True)),
-        set_num_threads=lambda value: threads.__setitem__("num", value),
-        set_num_interop_threads=lambda value: threads.__setitem__("interop", value),
-        get_num_threads=lambda: threads["num"],
-    )
-    monkeypatch.delenv("AUTOYOU_VOICE_TRAINING_DISABLE_MKLDNN", raising=False)
-    monkeypatch.setenv("AUTOYOU_VOICE_TRAINING_TORCH_THREADS", "2")
-
-    runtime = train_model._configure_torch_training_runtime(fake_torch, "cpu")
-
-    assert fake_torch.backends.mkldnn.enabled is False
-    assert runtime["mkldnn_before"] is True
-    assert runtime["mkldnn_enabled"] is False
-    assert runtime["torch_threads"] == 2
-    assert threads == {"num": 2, "interop": 2}
+    assert captured["command"][-2:] == ["--reference-clips", "clip-1,clip-2"]
+    assert "--epochs" not in captured["command"]
 
 
-def test_active_custom_voice_pointer_resolves_default_alias(tmp_path, monkeypatch):
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
-    default_dir = get_custom_voice_model_dir()
-    versioned_dir = default_dir.parent / "_training_outputs" / "custom_voice_ready"
-    _FakeModel().save_pretrained(str(versioned_dir))
-    _FakeTokenizer().save_pretrained(str(versioned_dir))
-
-    pointer_path = set_active_custom_voice_model_dir(versioned_dir)
-
-    assert pointer_path.name == CUSTOM_VOICE_ACTIVE_MODEL_FILENAME
-    assert custom_voice_model_ready(default_dir)
-
-
-def test_select_fine_tune_examples_prefers_clear_quality_samples(tmp_path):
-    examples = [
-        train_model.VoiceTrainingExample(
-            sample_id="too-short",
-            text="Synthetic short phrase with enough text.",
-            audio_path=tmp_path / "too-short.wav",
-            source="test",
-            duration_seconds=1.0,
-            quality={"speech_frame_ratio": 0.9, "rms_dbfs": -20.0},
-        ),
-        train_model.VoiceTrainingExample(
-            sample_id="long-audio",
-            text="Synthetic long audio phrase.",
-            audio_path=tmp_path / "long-audio.wav",
-            source="test",
-            duration_seconds=40.0,
-            quality={"speech_frame_ratio": 0.9, "rms_dbfs": -20.0},
-        ),
-        train_model.VoiceTrainingExample(
-            sample_id="quiet",
-            text="Synthetic quiet phrase with enough text.",
-            audio_path=tmp_path / "quiet.wav",
-            source="test",
-            duration_seconds=6.0,
-            quality={"speech_frame_ratio": 0.9, "rms_dbfs": -50.0},
-        ),
-        train_model.VoiceTrainingExample(
-            sample_id="clear-upload",
-            text="Synthetic uploaded phrase with enough useful phonetic coverage.",
-            audio_path=tmp_path / "clear-upload.wav",
-            source="upload",
-            duration_seconds=7.0,
-            quality={"speech_frame_ratio": 0.8, "rms_dbfs": -23.0},
-        ),
-        train_model.VoiceTrainingExample(
-            sample_id="clear-call",
-            text="Synthetic voice call phrase with enough useful content.",
-            audio_path=tmp_path / "clear-call.wav",
-            source="test",
-            duration_seconds=8.0,
-            quality={"speech_frame_ratio": 0.85, "rms_dbfs": -24.0},
-        ),
-    ]
-
-    selected, selection = train_model._select_fine_tune_examples(
-        examples,
-        max_examples=2,
-        min_example_seconds=2.5,
-        max_example_seconds=20.0,
-        min_text_chars=18,
-        max_text_chars=240,
-        min_speech_frame_ratio=0.25,
-        min_rms_dbfs=-38.0,
-    )
-
-    assert [example.sample_id for example in selected] == ["clear-upload", "clear-call"]
-    assert selection["full_dataset_sample_count"] == 5
-    assert selection["fine_tune_sample_count"] == 2
-    assert selection["skipped_duration_count"] == 1
-    assert selection["skipped_short_count"] == 1
-    assert selection["skipped_quiet_count"] == 1
+# ── Capture quality and speech config (unchanged by cloning) ───────────────
 
 
 def test_voice_training_quality_rejects_silent_short_capture():
@@ -463,26 +723,6 @@ def test_voice_training_quality_rejects_silent_short_capture():
     assert {"too_short", "too_much_silence", "too_quiet"}.issubset(set(reasons))
 
 
-def test_training_examples_ignore_missing_and_external_audio(tmp_path):
-    vt_dir = tmp_path / "voice_training"
-    recordings_dir = vt_dir / "recordings"
-    _write_synthetic_wav(recordings_dir / "usable.wav")
-    external_wav = tmp_path / "outside.wav"
-    _write_synthetic_wav(external_wav)
-
-    examples = train_model._build_training_examples(
-        vt_dir,
-        [
-            {"id": "usable", "filename": "usable.wav", "transcript": "Usable sample."},
-            {"id": "missing", "filename": "missing.wav", "transcript": "Missing sample."},
-            {"id": "external", "audio_path": str(external_wav), "transcript": "External sample."},
-            {"id": "blank", "filename": "usable.wav", "transcript": "  "},
-        ],
-    )
-
-    assert [example.sample_id for example in examples] == ["usable"]
-
-
 def test_speech_config_accepts_custom_tts_provider():
     speech = normalize_speech_config({"tts": {"provider": "custom", "rate": 1.25}})
 
@@ -499,119 +739,124 @@ def test_speech_config_accepts_voice_training_capture_toggle():
     assert disabled["voice_training"]["capture_enabled"] is False
 
 
+# ── Agent tools ────────────────────────────────────────────────────────────
+
+
+class _FakeRuntimeServer:
+    def __init__(self) -> None:
+        self.STATE = SimpleNamespace(
+            config={"speech": {"tts": {"provider": "system", "rate": 1.0}}},
+            audio_managers={},
+        )
+        self.applied = False
+
+    def _default_config(self):
+        return {"speech": {"tts": {"provider": "system", "rate": 1.0}}}
+
+    def _config_write_block_reason(self):
+        return ""
+
+    def _save_and_reload_state_config(self, cfg):
+        self.STATE.config = cfg
+        return cfg
+
+    def _apply_speech_config_to_active_audio_managers(self):
+        self.applied = True
+
+
+def _patch_agent_paths(monkeypatch, vt_dir: Path) -> None:
+    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
+
+
 def test_install_custom_voice_provider_uses_runtime_config(monkeypatch, tmp_path):
     from autoyou_agents.shared_tools import scheduler_mission_control
 
-    class _FakeRuntimeServer:
-        def __init__(self) -> None:
-            self.STATE = SimpleNamespace(
-                config={"speech": {"tts": {"provider": "system", "rate": 1.0}}},
-                audio_managers={},
-            )
-            self.applied = False
-
-        def _default_config(self):
-            return {"speech": {"tts": {"provider": "system", "rate": 1.0}}}
-
-        def _config_write_block_reason(self):
-            return ""
-
-        def _save_and_reload_state_config(self, cfg):
-            self.STATE.config = cfg
-            return cfg
-
-        def _apply_speech_config_to_active_audio_managers(self):
-            self.applied = True
-
     fake_server = _FakeRuntimeServer()
-    vt_dir = tmp_path / "voice_training"
-    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
+    _patch_agent_paths(monkeypatch, tmp_path / "voice_training")
     monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: True)
     monkeypatch.setattr(
         voice_agent,
         "custom_voice_status",
-        lambda model_path: {
-            "metadata": {
-                "fine_tuning_applied": True,
-                "dataset_quality": {"install_recommended": True},
-            }
-        },
+        lambda model_path: {"metadata": {"voice_cloned": True, "watermark": {"verified": True}}},
     )
     monkeypatch.setattr(scheduler_mission_control, "_runtime_server", lambda: fake_server)
 
     result = voice_agent.install_custom_voice_tts_provider()
 
     assert result["status"] == "success"
+    assert "watermark" in result["message"]
     assert fake_server.STATE.config["speech"]["tts"]["provider"] == "custom"
     assert fake_server.applied is True
 
 
-def test_install_custom_voice_provider_rejects_untrained_artifact(monkeypatch, tmp_path):
-    vt_dir = tmp_path / "voice_training"
-    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
+def test_install_custom_voice_provider_explains_missing_consent(monkeypatch, tmp_path):
+    _patch_agent_paths(monkeypatch, tmp_path / "voice_training")
+    monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: False)
+    monkeypatch.setattr(voice_agent, "custom_voice_status", lambda model_path: {"not_ready_reason": "consent_missing"})
+
+    result = voice_agent.install_custom_voice_tts_provider()
+
+    assert result["status"] == "error"
+    assert "consent" in result["message"].lower()
+
+
+def test_install_custom_voice_provider_rejects_unverified_watermark(monkeypatch, tmp_path):
+    _patch_agent_paths(monkeypatch, tmp_path / "voice_training")
     monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: True)
     monkeypatch.setattr(
         voice_agent,
         "custom_voice_status",
-        lambda model_path: {"metadata": {"fine_tuning_applied": False}},
+        lambda model_path: {"metadata": {"voice_cloned": True, "watermark": {"verified": False}}},
     )
 
     result = voice_agent.install_custom_voice_tts_provider()
 
     assert result["status"] == "error"
-    assert "not a fine-tuned clone" in result["message"]
+    assert "verified" in result["message"]
 
 
-def test_install_custom_voice_provider_rejects_failed_quality_gate(monkeypatch, tmp_path):
-    vt_dir = tmp_path / "voice_training"
-    # from __debug_provenance_g__ import annual
-    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
-    monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: True)
-    monkeypatch.setattr(
-        voice_agent,
-        "custom_voice_status",
-        lambda model_path: {
-            "metadata": {
-                "fine_tuning_applied": True,
-                "dataset_quality": {
-                    "install_recommended": False,
-                    "install_blocking_reasons": ["not_enough_curated_samples"],
-                },
-            }
-        },
-    )
+def test_install_custom_voice_provider_rejects_retired_mms_voice(monkeypatch, tmp_path):
+    _patch_agent_paths(monkeypatch, tmp_path / "voice_training")
+    monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: False)
+    monkeypatch.setattr(voice_agent, "custom_voice_status", lambda model_path: {"not_ready_reason": "legacy_vits_artifact"})
 
     result = voice_agent.install_custom_voice_tts_provider()
 
     assert result["status"] == "error"
-    assert "quality gates" in result["message"]
-
-
-def test_install_custom_voice_provider_rejects_missing_quality_metadata(monkeypatch, tmp_path):
-    vt_dir = tmp_path / "voice_training"
-    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
-    monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: True)
-    monkeypatch.setattr(
-        voice_agent,
-        "custom_voice_status",
-        lambda model_path: {"metadata": {"fine_tuning_applied": True}},
-    )
-
-    result = voice_agent.install_custom_voice_tts_provider()
-
-    assert result["status"] == "error"
-    assert "missing_dataset_quality_metadata" in result["message"]
+    assert "MMS" in result["message"]
 
 
 def test_synthesize_voice_errors_when_custom_model_missing(monkeypatch, tmp_path):
-    vt_dir = tmp_path / "voice_training"
-    monkeypatch.setattr(voice_agent, "_get_paths", lambda: (vt_dir, vt_dir / "transcripts.json", vt_dir / "recordings"))
+    _patch_agent_paths(monkeypatch, tmp_path / "voice_training")
     monkeypatch.setattr(voice_agent, "custom_voice_model_ready", lambda model_path: False)
+    monkeypatch.setattr(voice_agent, "custom_voice_status", lambda model_path: {"not_ready_reason": "not_built"})
 
     result = voice_agent.test_synthesize_voice("Synthetic synthesis check.")
 
     assert result["status"] == "error"
-    assert "not ready" in result["message"]
+    assert "No cloned voice" in result["message"]
+
+
+def test_agent_consent_tools_require_the_owners_phrase(voice_root):
+    status = voice_agent.get_voice_cloning_consent_status()
+    assert status["consent_recorded"] is False
+    assert status["confirmation_phrase"] == VOICE_CLONE_CONSENT_PHRASE
+
+    refused = voice_agent.start_voice_training()
+    assert refused["status"] == "error"
+    assert "consent" in refused["message"]
+
+    wrong = voice_agent.record_voice_cloning_consent("sure")
+    assert wrong["status"] == "error"
+    assert load_voice_clone_consent() is None
+
+    right = voice_agent.record_voice_cloning_consent(VOICE_CLONE_CONSENT_PHRASE)
+    assert right["status"] == "success"
+    assert voice_agent.get_voice_cloning_consent_status()["consent_recorded"] is True
+
+    withdrawn = voice_agent.withdraw_voice_cloning_consent()
+    assert withdrawn["status"] == "success"
+    assert load_voice_clone_consent() is None
 
 
 def test_training_chat_update_returns_compact_nonblocking_status(monkeypatch):
@@ -621,8 +866,8 @@ def test_training_chat_update_returns_compact_nonblocking_status(monkeypatch):
         lambda: {
             "status": "training",
             "progress": 15.0,
-            "current_epoch": 4,
-            "total_epochs": 200,
+            "current_epoch": 2,
+            "total_epochs": 5,
             "message": "Synthetic training status.",
             "worker_pid": 12345,
             "async_backend": "process",
@@ -639,17 +884,24 @@ def test_training_chat_update_returns_compact_nonblocking_status(monkeypatch):
     assert result["training_status"] == {
         "status": "training",
         "progress": 15.0,
-        "current_epoch": 4,
-        "total_epochs": 200,
+        "current_epoch": 2,
+        "total_epochs": 5,
         "message": "Synthetic training status.",
         "async_backend": "process",
         "worker_pid": 12345,
         "training_stale": False,
     }
     assert "running at 15.0%" in result["message"]
-    assert "epoch 4/200" in result["message"]
+    assert "step 2/5" in result["message"]
     assert "+2.5 points" in result["message"]
     assert tool_context.state[voice_agent._LAST_TRAINING_PROGRESS_STATE_KEY] == 15.0
+
+
+def _fake_user_llm_request(text: str):
+    return SimpleNamespace(
+        config=SimpleNamespace(system_instruction=None),
+        contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text=text)])],
+    )
 
 
 def test_voice_before_model_callback_short_circuits_training_status(monkeypatch):
@@ -659,8 +911,8 @@ def test_voice_before_model_callback_short_circuits_training_status(monkeypatch)
         lambda: {
             "status": "training",
             "progress": 20.0,
-            "current_epoch": 8,
-            "total_epochs": 200,
+            "current_epoch": 3,
+            "total_epochs": 5,
             "message": "Synthetic live update.",
             "worker_pid": 12345,
         },
@@ -672,8 +924,9 @@ def test_voice_before_model_callback_short_circuits_training_status(monkeypatch)
 
     assert response is not None
     text = response.content.parts[0].text
-    assert "Voice training is running at 20.0%" in text
-    assert "epoch 8/200" in text
+    # from __debug_provenance_g__ import annual
+    assert "Voice cloning is running at 20.0%" in text
+    assert "step 3/5" in text
     assert "[SYSTEM CLOCK]" in llm_request.config.system_instruction
     assert callback_context.state[voice_agent._LAST_TRAINING_PROGRESS_STATE_KEY] == 20.0
 
@@ -686,3 +939,12 @@ def test_voice_before_model_callback_leaves_dataset_requests_for_model():
 
     assert response is None
     assert "[SYSTEM CLOCK]" in llm_request.config.system_instruction
+
+
+def test_voice_before_model_callback_leaves_build_requests_for_model():
+    callback_context = SimpleNamespace(state={}, invocation_id="voice-build")
+    llm_request = _fake_user_llm_request("Please build my cloned voice")
+
+    response = asyncio.run(voice_agent._voice_before_model_callback(callback_context, llm_request))
+
+    assert response is None

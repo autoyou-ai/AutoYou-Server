@@ -28,6 +28,16 @@ from autoyou_agents.voice_training_agent.agent import (
     test_synthesize_voice,
 )
 from autoyou_agents.voice_training_agent import train_model
+from shared.custom_voice_tts import (
+    VOICE_CLONE_PREVIEW_FILENAME,
+    custom_voice_status,
+    load_voice_clone_consent,
+    record_voice_clone_consent,
+    resolve_custom_voice_model_dir,
+    revoke_voice_clone_consent,
+    voice_clone_consent_terms,
+    voice_clone_engine_status,
+)
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.voice_training_storage import (
@@ -354,12 +364,106 @@ async def api_trigger_train(request: Request) -> JSONResponse:
         payload = await request.json()
     except Exception:
         payload = {}
-    epochs = int(payload.get("epochs") or train_model.DEFAULT_TRAINING_EPOCHS)
-    success = train_model.start_training_async(epochs=epochs)
+    if not isinstance(payload, dict):
+        payload = {}
+    if load_voice_clone_consent() is None:
+        return _json_response(
+            {"success": False, "error": "Give consent to clone your own voice before building it.", "consent_required": True},
+            status_code=409,
+        )
+    clip_ids = train_model.parse_reference_clip_ids(payload.get("reference_clip_ids"))
+    success = train_model.start_training_async(reference_clip_ids=clip_ids or None)
     if success:
-        return _json_response({"success": True, "message": "Voice training started in the background."})
+        return _json_response({"success": True, "message": "Building your cloned voice in the background."})
     else:
-        return _json_response({"success": False, "error": "Training is already in progress."}, status_code=409)
+        return _json_response({"success": False, "error": "A cloned voice build is already in progress."}, status_code=409)
+
+@app.get("/api/clone/consent")
+def api_clone_consent(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    record = load_voice_clone_consent()
+    return _json_response(
+        {
+            "success": True,
+            "consent_recorded": record is not None,
+            "accepted_at": record.get("accepted_at") if record else None,
+            **voice_clone_consent_terms(),
+        }
+    )
+
+@app.post("/api/clone/consent")
+async def api_record_clone_consent(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict) or payload.get("accepted") is not True:
+        return _json_response({"success": False, "error": "Tick the statement to give consent."}, status_code=400)
+    try:
+        record = record_voice_clone_consent(
+            accepted_via="website",
+            statement_version=str(payload.get("statement_version") or ""),
+        )
+    except ValueError as e:
+        return _json_response({"success": False, "error": str(e)}, status_code=400)
+    return _json_response({"success": True, "consent_recorded": True, "accepted_at": record.get("accepted_at")})
+
+@app.delete("/api/clone/consent")
+def api_revoke_clone_consent(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    if train_model.get_status().get("status") == "training":
+        return _json_response({"success": False, "error": "Wait for the current build to finish first."}, status_code=409)
+    try:
+        result = revoke_voice_clone_consent()
+    except Exception as e:
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
+    return _json_response({"success": True, **result})
+
+@app.get("/api/clone/engine")
+def api_clone_engine(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    try:
+        return _json_response({"success": True, "engine": voice_clone_engine_status(probe=True)})
+    except Exception as e:
+        return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
+
+@app.get("/api/clone/voice")
+def api_clone_voice(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+    status = custom_voice_status()
+    metadata = status.get("metadata") if isinstance(status.get("metadata"), dict) else {}
+    reference = metadata.get("reference") if isinstance(metadata.get("reference"), dict) else {}
+    model_dir = resolve_custom_voice_model_dir()
+    return _json_response(
+        {
+            "success": True,
+            "ready": status.get("ready"),
+            "not_ready_reason": status.get("not_ready_reason"),
+            "consent_recorded": status.get("consent_recorded"),
+            "watermark": status.get("watermark"),
+            "reference_seconds": reference.get("seconds"),
+            "reference_clips": [clip.get("sample_id") for clip in reference.get("clips") or [] if isinstance(clip, dict)],
+            "warnings": metadata.get("install_warnings") or [],
+            "runtime": metadata.get("runtime") or {},
+            "verification": metadata.get("verification") or {},
+            "has_preview": (model_dir / VOICE_CLONE_PREVIEW_FILENAME).is_file(),
+        }
+    )
+
+@app.get("/api/clone/preview")
+def api_clone_preview(request: Request):
+    if not _check_auth(request):
+        return HTMLResponse("Not authenticated", status_code=401)
+    preview = resolve_custom_voice_model_dir() / VOICE_CLONE_PREVIEW_FILENAME
+    if not preview.is_file():
+        return HTMLResponse("No preview yet", status_code=404)
+    return Response(content=read_secure_file(preview), media_type="audio/wav", headers={"Cache-Control": "no-store, max-age=0"})
 
 @app.get("/api/train/status")
 def api_train_status(request: Request) -> JSONResponse:

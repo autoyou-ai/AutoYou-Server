@@ -29,9 +29,15 @@ from shared.voice_training_storage import (
 )
 from shared.custom_voice_tts import (
     CUSTOM_VOICE_PROVIDER,
+    VOICE_CLONE_CONSENT_PHRASE,
     custom_voice_status,
     custom_voice_model_ready,
+    load_voice_clone_consent,
+    record_voice_clone_consent,
+    revoke_voice_clone_consent,
     synthesize_custom_voice_to_file,
+    voice_clone_consent_terms,
+    voice_clone_engine_status,
 )
 from shared.http_errors import internal_error_message
 from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json
@@ -68,10 +74,15 @@ _TRAINING_CONTEXT_TERMS = (
     "fine-tune",
     "finetune",
     "voice clone",
+    "voice cloning",
+    "cloned voice",
     "custom voice",
     "tts",
 )
-_TRAINING_START_PATTERN = re.compile(r"\b(start|begin|kick off|launch|run)\b.*\b(training|fine[- ]?tune|voice)\b", re.IGNORECASE)
+_TRAINING_START_PATTERN = re.compile(
+    r"\b(start|begin|kick off|launch|run|build|make|create)\b.*\b(training|fine[- ]?tune|voice|clone)\b",
+    re.IGNORECASE,
+)
 
 def _get_paths():
     vt_dir = get_voice_training_dir()
@@ -160,20 +171,82 @@ def delete_voice_transcript(transcript_id: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Failed to delete transcript. {internal_error_message(e)}"}
 
-def start_voice_training(epochs: int = train_model.DEFAULT_TRAINING_EPOCHS) -> dict:
-    """Start local custom voice fine-tuning in the background.
-    
+def get_voice_cloning_consent_status() -> dict:
+    """Show the voice cloning consent statement and whether the owner has accepted it."""
+    record = load_voice_clone_consent()
+    return {
+        "status": "success",
+        "consent_recorded": record is not None,
+        "accepted_at": record.get("accepted_at") if record else None,
+        **voice_clone_consent_terms(),
+    }
+
+def record_voice_cloning_consent(confirmation: str) -> dict:
+    """Record the owner's consent to clone their own voice.
+
+    Only call this after the owner has read the consent statement and typed the
+    confirmation phrase themselves in this chat. Never type it on their behalf.
+
     Args:
-        epochs: Number of fine-tuning epochs to run.
+        confirmation: The exact phrase the owner typed.
     """
-    success = train_model.start_training_async(epochs=epochs)
+    try:
+        record = record_voice_clone_consent(accepted_via="agent", confirmation=confirmation)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc), "confirmation_phrase": VOICE_CLONE_CONSENT_PHRASE}
+    return {
+        "status": "success",
+        "message": "Consent recorded. You can now build your cloned voice.",
+        "consent_version": record.get("version"),
+    }
+
+def withdraw_voice_cloning_consent() -> dict:
+    """Withdraw voice cloning consent and delete every cloned voice built from it.
+
+    The original recordings are kept; delete them separately if wanted. If the
+    cloned voice was the active speech provider, speech falls back to the
+    system voice.
+    """
+    try:
+        result = revoke_voice_clone_consent()
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to withdraw consent. {internal_error_message(e)}"}
+    return {
+        "status": "success",
+        "message": "Consent withdrawn and the cloned voice deleted. Your original recordings were kept.",
+        **result,
+    }
+
+def check_voice_clone_engine() -> dict:
+    """Check whether the voice-clone runtime (Chatterbox) is installed and which GPU it would use."""
+    try:
+        return {"status": "success", "engine": voice_clone_engine_status(probe=True)}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to check the voice-clone runtime. {internal_error_message(e)}"}
+
+def start_voice_training(reference_clip_ids: str = "") -> dict:
+    """Build the owner's cloned voice in the background (Chatterbox zero-shot cloning).
+
+    Requires recorded consent. AutoYou picks the clearest clips automatically
+    unless clip IDs are given.
+
+    Args:
+        reference_clip_ids: Optional comma-separated clip IDs to use as the reference.
+    """
+    if load_voice_clone_consent() is None:
+        return {
+            "status": "error",
+            "message": "Voice cloning needs the owner's consent first. Show the statement from "
+            "get_voice_cloning_consent_status and ask the owner to type the confirmation phrase.",
+        }
+    success = train_model.start_training_async(reference_clip_ids=reference_clip_ids or None)
     if success:
-        return {"status": "success", "message": "Custom voice fine-tuning started in the background."}
+        return {"status": "success", "message": "Building your cloned voice in the background."}
     else:
-        return {"status": "error", "message": "Custom voice fine-tuning is already in progress."}
+        return {"status": "error", "message": "A cloned voice build is already in progress."}
 
 def get_training_status() -> dict:
-    """Check the status and progress of local custom voice fine-tuning."""
+    """Check the status and progress of the cloned voice build."""
     try:
         status_data = train_model.get_status()
         return {"status": "success", "training_status": status_data}
@@ -288,7 +361,8 @@ def _compact_training_status(status_data: Dict[str, Any]) -> Dict[str, Any]:
         "worker_pid": status_data.get("worker_pid"),
         "training_stale": bool(status_data.get("training_stale") or False),
         "error": status_data.get("error"),
-        "fine_tuning_applied": status_data.get("fine_tuning_applied"),
+        "failure_reason": status_data.get("failure_reason"),
+        "voice_cloned": status_data.get("voice_cloned"),
         "custom_voice_ready": custom_voice.get("ready") if isinstance(custom_voice, dict) else None,
     }
     return {key: value for key, value in compact.items() if value not in (None, "")}
@@ -317,27 +391,27 @@ def _render_training_chat_message(
     total_epochs = compact.get("total_epochs")
     epoch_text = ""
     if current_epoch is not None and total_epochs is not None:
-        epoch_text = f", epoch {current_epoch}/{total_epochs}"
+        epoch_text = f", step {current_epoch}/{total_epochs}"
     worker_pid = compact.get("worker_pid")
     worker_text = f", worker PID {worker_pid}" if worker_pid else ""
     message = str(compact.get("message") or "").strip()
     delta_text = _training_delta_text(previous_progress, compact.get("progress"))
 
     if status == "training":
-        line = f"Voice training is running at {progress}{epoch_text}{worker_text}."
+        line = f"Voice cloning is running at {progress}{epoch_text}{worker_text}."
     elif status == "completed":
         ready = compact.get("custom_voice_ready")
-        ready_text = " Custom voice artifacts are ready." if ready is True else ""
-        line = f"Voice training is completed at {progress}.{ready_text}"
+        ready_text = " Your cloned voice is ready." if ready is True else ""
+        line = f"Voice cloning is completed at {progress}.{ready_text}"
     elif status == "interrupted":
-        line = f"Voice training looks interrupted at {progress}{epoch_text}. The previous worker is stale or gone."
+        line = f"Voice cloning looks interrupted at {progress}{epoch_text}. The previous worker is stale or gone."
     elif status in {"error", "failed"}:
         error = str(compact.get("error") or message or "unknown error").strip()
-        line = f"Voice training failed at {progress}{epoch_text}: {error}"
+        line = f"Voice cloning failed at {progress}{epoch_text}: {error}"
     elif status in {"idle", "not_started", "none"}:
-        line = "Voice training is not currently running."
+        line = "Voice cloning is not currently running."
     else:
-        line = f"Voice training status is {status or 'unknown'} at {progress}{epoch_text}."
+        line = f"Voice cloning status is {status or 'unknown'} at {progress}{epoch_text}."
 
     if message and status not in {"error", "failed"}:
         line = f"{line} Latest: {message}"
@@ -345,7 +419,7 @@ def _render_training_chat_message(
         line = f"{line}{delta_text}"
     if include_async_note:
         line = (
-            f"{line} This is nonblocking: training runs in a background worker, and chat only reads the "
+            f"{line} This is nonblocking: the build runs in a background worker, and chat only reads the "
             'latest status snapshot. Ask "training update" any time for another chat message.'
         )
     return line
@@ -392,15 +466,13 @@ def test_synthesize_voice(text: str) -> dict:
         model_path = vt_dir / "models" / "custom_voice"
         
         if not custom_voice_model_ready(model_path):
-            return {"status": "error", "message": "Custom voice model is not ready. Run voice fine-tuning first."}
+            return {"status": "error", "message": _not_ready_message(custom_voice_status(model_path))}
 
-        synthesize_custom_voice_to_file(text, output_file, model_dir=model_path)
-        status = custom_voice_status(model_path)
-        metadata = status.get("metadata") if isinstance(status, dict) else {}
-        if isinstance(metadata, dict) and metadata.get("fine_tuning_applied") is False:
-            msg = "Base VITS provider synthesis succeeded, but this artifact is not a cloned voice."
-        else:
-            msg = "Custom cloned voice synthesis succeeded."
+        result = synthesize_custom_voice_to_file(text, output_file, model_dir=model_path)
+        msg = "Spoken in your cloned voice. The audio carries an inaudible AI-speech watermark."
+        device = result.get("device") if isinstance(result, dict) else None
+        if device:
+            msg += f" Generated on {device}."
             
         return {
             "status": "success",
@@ -411,49 +483,41 @@ def test_synthesize_voice(text: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"Synthesis failed. {internal_error_message(e)}"}
 
+_NOT_READY_MESSAGES = {
+    "not_built": "No cloned voice has been built yet. Record consent, then start voice cloning.",
+    "consent_missing": "Voice cloning consent is not recorded (or was withdrawn). Record consent and rebuild the voice.",
+    "legacy_vits_artifact": (
+        "The saved custom voice is from the retired MMS fine-tuning, which is no longer supported. "
+        "Build a new cloned voice."
+    ),
+    "unknown_engine": "The saved custom voice was made by an unsupported engine. Build a new cloned voice.",
+    "reference_missing": "The cloned voice's reference recording is missing. Build the voice again.",
+    "watermark_not_verified": "The cloned voice was never checked for its AI-speech watermark. Build the voice again.",
+}
+
+def _not_ready_message(status: Any) -> str:
+    reason = str(status.get("not_ready_reason") or "not_built") if isinstance(status, dict) else "not_built"
+    return _NOT_READY_MESSAGES.get(reason, f"The cloned voice is not ready ({reason}).")
+
 def install_custom_voice_tts_provider() -> dict:
-    """Install the prepared custom voice as the active AutoYou TTS provider."""
+    """Make the owner's cloned voice the active AutoYou TTS provider."""
     try:
         vt_dir, _, _ = _get_paths()
         model_path = vt_dir / "models" / "custom_voice"
         if not custom_voice_model_ready(model_path):
-            return {
-                "status": "error",
-                "message": "Custom voice model is not ready. Run voice fine-tuning first.",
-            }
+            return {"status": "error", "message": _not_ready_message(custom_voice_status(model_path))}
         status = custom_voice_status(model_path)
         metadata = status.get("metadata") if isinstance(status, dict) else {}
-        allow_untrained = os.environ.get("AUTOYOU_ALLOW_UNTRAINED_CUSTOM_VOICE_INSTALL", "").strip().lower()
-        if isinstance(metadata, dict) and metadata.get("fine_tuning_applied") is not True and allow_untrained not in {"1", "true", "yes"}:
-            return {
-                "status": "error",
-                "message": (
-                    "Custom voice artifacts exist, but they are only a base provider and not a fine-tuned clone. "
-                    "Run voice fine-tuning before installing, or set AUTOYOU_ALLOW_UNTRAINED_CUSTOM_VOICE_INSTALL=1 "
-                    "for compatibility testing."
-                ),
-            }
-        dataset_quality = metadata.get("dataset_quality") if isinstance(metadata, dict) else None
-        allow_unrecommended = os.environ.get("AUTOYOU_ALLOW_UNRECOMMENDED_CUSTOM_VOICE_INSTALL", "").strip().lower()
-        quality_recommended = isinstance(dataset_quality, dict) and dataset_quality.get("install_recommended") is True
-        if (
+        watermark = metadata.get("watermark") if isinstance(metadata, dict) else None
+        if not (
             isinstance(metadata, dict)
-            and metadata.get("fine_tuning_applied") is True
-            and not quality_recommended
-            and allow_unrecommended not in {"1", "true", "yes"}
+            and metadata.get("voice_cloned") is True
+            and isinstance(watermark, dict)
+            and watermark.get("verified") is True
         ):
-            reasons = (
-                dataset_quality.get("install_blocking_reasons")
-                if isinstance(dataset_quality, dict)
-                else ["missing_dataset_quality_metadata"]
-            ) or ["dataset_quality_gate_failed"]
             return {
                 "status": "error",
-                "message": (
-                    "Custom voice artifacts exist, but the training dataset did not pass quality gates "
-                    f"({', '.join(str(reason) for reason in reasons)}). Upload clearer curated samples with exact "
-                    "transcripts and retrain, or set AUTOYOU_ALLOW_UNRECOMMENDED_CUSTOM_VOICE_INSTALL=1 for testing."
-                ),
+                "message": "This voice was not built and verified by AutoYou's voice cloning. Build the voice again.",
             }
 
         from shared.speech_config import normalize_speech_config
@@ -485,12 +549,15 @@ def install_custom_voice_tts_provider() -> dict:
             runtime_server._apply_speech_config_to_active_audio_managers()
         return {
             "status": "success",
-            "message": "Custom cloned voice installed as the active TTS provider. Restart the AI runtime if you want every agent process to pick it up immediately.",
+            "message": (
+                "Your cloned voice is now the active TTS provider. Everything it says carries an inaudible "
+                "AI-speech watermark. Restart the AI runtime if you want every agent process to pick it up immediately."
+            ),
             "provider": CUSTOM_VOICE_PROVIDER,
         }
     except Exception as e:
         LOGGER.error("Failed to install custom voice TTS provider: %s", e, exc_info=True)
-        return {"status": "error", "message": f"Failed to install custom voice provider: {e}"}
+        return {"status": "error", "message": f"Failed to install custom voice provider. {internal_error_message(e)}"}
 
 def _extract_text_from_llm_request(llm_request: Any) -> str:
     for content in reversed(getattr(llm_request, "contents", []) or []):
@@ -548,6 +615,10 @@ def create_voice_training_agent(model_config: Any) -> Agent:
         list_voice_transcripts,
         get_voice_transcript,
         delete_voice_transcript,
+        get_voice_cloning_consent_status,
+        record_voice_cloning_consent,
+        withdraw_voice_cloning_consent,
+        check_voice_clone_engine,
         start_voice_training,
         get_training_status,
         get_training_chat_update,

@@ -3500,8 +3500,8 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
         "when you do not want the watch flow available. Enabled by default."
     ),
     "voice_training_agent": (
-        "Open the Voice Training app to review saved call samples and train a "
-        "custom voice. Recording samples from calls does not require this app page "
+        "Open the Voice Training app to review saved call samples and, with your "
+        "consent, clone your own voice. Recording samples from calls does not require this app page "
         "to be open. Enabled by default."
     ),
     "education_agent": (

@@ -197,4 +197,62 @@ def test_voice_training_frontend_uses_prefixed_media_urls() -> None:
     assert 'synthesisAudio.setAttribute("src", `${audioUrl}?t=${Date.now()}`);' in html
     assert 'fetch(apiPath("/api/storage"))' in html
     assert 'fetch(apiPath("/api/storage/reset")' in html
-    assert "Test Custom Voice Provider" in html
+    assert "Hear Your Cloned Voice" in html
+    assert 'fetch(apiPath("/api/clone/consent")' in html
+    assert 'id="epochs-input"' not in html
+
+def test_voice_clone_endpoints_require_authentication() -> None:
+    client = TestClient(voice_ui_backend.app)
+    assert client.post("/api/train", json={}).status_code == 401
+    assert client.get("/api/clone/consent").status_code == 401
+    assert client.post("/api/clone/consent", json={"accepted": True}).status_code == 401
+    assert client.delete("/api/clone/consent").status_code == 401
+    assert client.get("/api/clone/engine").status_code == 401
+    assert client.get("/api/clone/voice").status_code == 401
+    assert client.get("/api/clone/preview").status_code == 401
+
+def test_voice_clone_consent_flow_and_build_gate(monkeypatch, tmp_path) -> None:
+    root = tmp_path / "autoyou-root"
+    root.mkdir()
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(root))
+    monkeypatch.delenv("AUTOYOU_VOICE_TRAINING_DIR", raising=False)
+    monkeypatch.setattr(voice_ui_backend, "_check_auth", lambda request: True)
+    monkeypatch.setattr(voice_ui_backend.train_model, "get_status", lambda: {"status": "idle"})
+    started = []
+    monkeypatch.setattr(
+        voice_ui_backend.train_model,
+        "start_training_async",
+        lambda reference_clip_ids=None: started.append(reference_clip_ids) or True,
+    )
+    client = TestClient(voice_ui_backend.app)
+
+    blocked = client.post("/api/train", json={})
+    assert blocked.status_code == 409
+    assert blocked.json()["consent_required"] is True
+    assert started == []
+
+    terms = client.get("/api/clone/consent").json()
+    assert terms["consent_recorded"] is False
+    assert "my own voice" in terms["statement"]
+
+    unticked = client.post("/api/clone/consent", json={"statement_version": terms["version"]})
+    assert unticked.status_code == 400
+    stale = client.post("/api/clone/consent", json={"accepted": True, "statement_version": "2000-01-01"})
+    assert stale.status_code == 400
+    given = client.post("/api/clone/consent", json={"accepted": True, "statement_version": terms["version"]})
+    assert given.status_code == 200
+    assert client.get("/api/clone/consent").json()["consent_recorded"] is True
+
+    built = client.post("/api/train", json={"reference_clip_ids": "clip-1, clip-2"})
+    assert built.status_code == 200
+    assert started == [["clip-1", "clip-2"]]
+
+    voice = client.get("/api/clone/voice").json()
+    assert voice["ready"] is False
+    assert voice["not_ready_reason"] == "not_built"
+    assert client.get("/api/clone/preview").status_code == 404
+
+    withdrawn = client.delete("/api/clone/consent")
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["revoked"] is True
+    assert client.get("/api/clone/consent").json()["consent_recorded"] is False

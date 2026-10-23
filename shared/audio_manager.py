@@ -793,7 +793,7 @@ print(json.dumps(voices))
         if not has_custom and custom_voice_model_ready():
             voices_list.append({
                 "id": CUSTOM_VOICE_SYSTEM_VOICE_ID,
-                "name": "Custom Trained Voice (Local Cloned)",
+                "name": "My Cloned Voice (Local)",
                 "gender": "user",
                 "languages": "en",
             })
@@ -3155,7 +3155,7 @@ class AudioManager:
         fallback_to_system: bool = True,
     ):
         try:
-            LOGGER.info("Synthesizing custom voice using local VITS model")
+            LOGGER.info("Synthesizing with the cloned voice (Chatterbox)")
             synthesize_custom_voice_to_file(text, temp_path)
             LOGGER.info("Custom voice synthesis completed successfully")
         except Exception as exc:

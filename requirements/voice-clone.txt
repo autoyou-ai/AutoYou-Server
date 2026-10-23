@@ -1,0 +1,23 @@
+# Voice-clone runtime: a separate Python environment for Chatterbox
+# (Resemble AI, MIT), the engine behind the custom voice TTS provider.
+#
+# Installed by scripts/install_voice_clone_runtime.py, never into the server
+# environment: Chatterbox pins transformers and diffusers releases the server
+# does not use. The installer puts torch and torchaudio in first, chosen for the
+# machine's GPU, installs this file under a constraint that keeps that torch,
+# then installs chatterbox-tts==0.1.7 with --no-deps so its torch==2.6.0 pin
+# cannot replace the GPU build.
+#
+# Only what the English model imports is listed; the multilingual tokenizers,
+# Gradio demo and loudness tools are left out.
+transformers==5.2.0
+diffusers==0.29.0
+safetensors==0.5.3
+conformer==0.3.2
+resemble-perth==1.0.1
+s3tokenizer==0.3.0
+librosa==0.11.0
+omegaconf==2.4.0
+einops==0.8.2
+soundfile>=0.13.1
+scipy>=1.13

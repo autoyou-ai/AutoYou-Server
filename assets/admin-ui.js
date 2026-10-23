@@ -8522,13 +8522,15 @@
             var customVoice = getByPath(state.speechLibrary, "status.custom_voice", {});
             var customVoices = getByPath(state.speechLibrary, "status.custom_voices", []);
             var ready = Boolean(getByPath(customVoice, "ready", false));
-            fields.push("<div class=\"ayu-note ayu-note-" + (ready ? "green" : "amber") + "\">" + escapeHtml(ready ? "Custom voice model artifacts are ready for local synthesis." : "Prepare the custom voice in the Voice Training app before using this provider.") + "</div>");
+            fields.push("<div class=\"ayu-note ayu-note-" + (ready ? "green" : "amber") + "\">" + escapeHtml(ready ? "Your cloned voice is ready. Its speech carries an inaudible AI-speech watermark." : "Give consent and build your cloned voice in the Voice Training app before using this provider.") + "</div>");
             if (Array.isArray(customVoices) && customVoices.length) {
                 fields.push("<div class=\"ayu-list\">" + customVoices.map(function (voice) {
                     var label = getByPath(voice, "display_name", getByPath(voice, "name", "Custom trained voice"));
-                    var detail = getByPath(voice, "fine_tuning_applied", false)
-                        ? "Fine-tuned custom voice"
-                        : "Prepared provider; fine-tuning has not been applied";
+                    var detail = getByPath(voice, "voice_cloned", false)
+                        ? "Cloned from your recordings (Chatterbox, watermarked)"
+                        : (getByPath(voice, "legacy_artifact", false)
+                            ? "Retired MMS fine-tune; rebuild it as a cloned voice"
+                            : "Not ready: " + String(getByPath(voice, "not_ready_reason", "not built")).replace(/_/g, " "));
                     return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(label) + "</strong><small>" + escapeHtml(detail) + "</small></div>" + badge(getByPath(voice, "ready", false) ? "Ready" : "Not ready", getByPath(voice, "ready", false) ? "green" : "amber") + "</div>";
                 }).join("") + "</div>");
             }

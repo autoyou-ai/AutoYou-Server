@@ -554,6 +554,9 @@ def test_runtime_module_plan_includes_voice_training_agent_runtime(tmp_path):
     assert "autoyou_agents/voice_training_agent/website/backend/app.py" in compiled_paths
     assert "autoyou_agents/voice_training_agent/website/index.html" in asset_paths
     assert "autoyou_agents/voice_training_agent/website/manifest.json" in asset_paths
+    static_paths = {path.as_posix() for path in plan.static_files}
+    assert "shared/voice_clone_worker.py" in static_paths
+    assert "shared/voice_clone_worker.py" not in compiled_paths
 
 
 def test_runtime_module_plan_includes_fine_tuning_agent_runtime_and_dump_worker(tmp_path):

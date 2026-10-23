@@ -848,7 +848,7 @@
         </div>
         <div class="brand-text">
           <h1>Voice Training Dashboard</h1>
-          <p>Local custom voice provider, recordings dataset, and TTS install manager</p>
+          <p>Your recordings, consented local voice cloning, and the speech provider switch</p>
         </div>
       </div>
       <div class="header-actions">
@@ -888,7 +888,7 @@
           <svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 14c-6.1 0-8 4-8 4v2h16v-2s-1.9-4-8-4Z"/></svg>
           Add Custom Sample
         </h2>
-        <p class="auth-tagline" style="text-align: left;">Upload high quality audio recording of your own voice (WAV mono, 16kHz) with corresponding transcription to enrich the voice dataset.</p>
+        <p class="auth-tagline" style="text-align: left;">Upload a clear recording of your own voice: a 10-20 second WAV of you reading aloud in a quiet room. Recordings at 24 kHz or higher clone better than phone audio.</p>
         
         <form id="upload-form" class="form-group" style="gap: 16px;">
           <div id="upload-dropzone" class="upload-area">
@@ -918,16 +918,32 @@
       <div class="glass-card" style="max-width: 700px; margin: 0 auto; width: 100%;">
         <h2 class="card-title">
           <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
-          Fine-Tune Custom Voice Provider
+          Clone Your Voice
         </h2>
         <p class="auth-tagline" style="text-align: left; margin-bottom: 10px;">
-          Fine-tune the local VITS custom voice provider from your captured voice transcripts and uploaded samples.
-          Longer runs and cleaner recordings produce better cloned-voice quality.
+          AutoYou picks about 10 seconds of your clearest recordings and clones your voice from them with
+          Chatterbox, on this computer. Nothing is uploaded. Everything the cloned voice says carries an
+          inaudible watermark that marks it as AI speech.
         </p>
+
+        <div class="training-status-card" id="consent-card">
+          <p id="consent-statement" style="font-size: 14px; line-height: 1.5; margin: 0;">Loading the consent statement...</p>
+          <label class="checkbox-row">
+            <input id="consent-checkbox" type="checkbox">
+            This is my own voice, and I agree to the statement above.
+          </label>
+          <div class="storage-actions">
+            <button id="btn-consent" class="btn-submit" type="button">Give Consent</button>
+            <button id="btn-revoke-consent" class="btn-logout" type="button" style="display: none;">Withdraw Consent and Delete Cloned Voice</button>
+          </div>
+          <p id="consent-status" style="font-size: 14px; font-weight: 600; margin: 0;"></p>
+        </div>
+
+        <p id="engine-status" style="font-size: 13px; color: var(--text-muted); margin: 12px 0;">Checking the voice-clone runtime...</p>
 
         <div class="training-status-card">
           <div class="status-meta">
-            <span class="status-text-desc" id="training-message">Loading training status...</span>
+            <span class="status-text-desc" id="training-message">Loading status...</span>
             <span id="training-percentage">0%</span>
           </div>
           <div class="progress-bar-container">
@@ -943,19 +959,25 @@
             <div class="wave-bar"></div>
           </div>
           <div class="status-meta" style="font-size: 12px;">
-            <span id="training-epoch-label">Pass 0 / 0</span>
+            <span id="training-epoch-label">Step 0 / 0</span>
             <span id="training-status-badge" class="meta-badge badge-upload">Status: Idle</span>
           </div>
         </div>
 
         <form id="train-form" class="form-group" style="margin-top: 14px; gap: 16px;">
           <div class="form-group">
-            <label for="epochs-input">Fine-Tuning Epochs</label>
-            <input id="epochs-input" class="input-field" type="number" min="1" max="10000" value="200" required>
+            <label for="reference-clips-input">Reference clips (optional)</label>
+            <input id="reference-clips-input" class="input-field" type="text" placeholder="Leave empty to pick your clearest clips, or list clip IDs">
           </div>
-          <button id="btn-start-train" class="btn-submit" type="submit">Start Fine-Tuning</button>
+          <button id="btn-start-train" class="btn-submit" type="submit" disabled>Build Cloned Voice</button>
         </form>
-        <button id="btn-install-provider" class="btn-submit" type="button" style="margin-top: 12px;">Install as AutoYou TTS Provider</button>
+
+        <div id="voice-preview-card" class="training-status-card" style="display: none; margin-top: 14px;">
+          <span class="status-text-desc" id="voice-summary"></span>
+          <audio id="voice-preview-audio" controls preload="none"></audio>
+        </div>
+
+        <button id="btn-install-provider" class="btn-submit" type="button" style="margin-top: 12px;">Use My Cloned Voice for Speech</button>
         <p id="install-provider-status" style="font-size: 14px; font-weight: 600; color: var(--success);"></p>
       </div>
 
@@ -1001,15 +1023,15 @@
       <div class="glass-card" style="max-width: 700px; margin: 0 auto; width: 100%;">
         <h2 class="card-title">
           <svg viewBox="0 0 24 24"><path d="M12 3v18M17 5v14M22 8v8M7 6v12M2 9v6"/></svg>
-          Test Custom Voice Provider
+          Hear Your Cloned Voice
         </h2>
         <p class="auth-tagline" style="text-align: left; margin-bottom: 10px;">
-          Enter any text to convert it into speech using your prepared local provider.
+          Type anything to hear it in your cloned voice. It is generated on this computer and carries the AI-speech watermark.
         </p>
 
         <form id="synthesis-form" class="synthesis-input-container">
-          <input id="synthesis-text" class="input-field" type="text" placeholder="Hello there! This is my own cloned voice speaking completely locally." required>
-          <button id="btn-synthesis-submit" class="btn-synthesize" type="submit">Synthesize Custom Voice</button>
+          <input id="synthesis-text" class="input-field" type="text" placeholder="Hello there! This is my own cloned voice, speaking from my own computer." required>
+          <button id="btn-synthesis-submit" class="btn-synthesize" type="submit">Speak in My Cloned Voice</button>
         </form>
 
         <div id="synthesis-result-card" class="synthesis-result">
@@ -1079,7 +1101,19 @@
     const uploadSubmitBtn = document.getElementById("upload-submit-btn");
 
     const trainForm = document.getElementById("train-form");
-    const epochsInput = document.getElementById("epochs-input");
+    const referenceClipsInput = document.getElementById("reference-clips-input");
+    const consentStatement = document.getElementById("consent-statement");
+    const consentCheckbox = document.getElementById("consent-checkbox");
+    const btnConsent = document.getElementById("btn-consent");
+    const btnRevokeConsent = document.getElementById("btn-revoke-consent");
+    const consentStatus = document.getElementById("consent-status");
+    const engineStatus = document.getElementById("engine-status");
+    const voicePreviewCard = document.getElementById("voice-preview-card");
+    const voiceSummary = document.getElementById("voice-summary");
+    const voicePreviewAudio = document.getElementById("voice-preview-audio");
+    let consentVersion = "";
+    let consentRecorded = false;
+    let lastTrainingState = "";
     const btnStartTrain = document.getElementById("btn-start-train");
     const trainingMessage = document.getElementById("training-message");
     const trainingPercentage = document.getElementById("training-percentage");
@@ -1176,8 +1210,11 @@
 
     function loadDashboardData() {
       fetchTranscripts();
+      fetchConsent();
       fetchTrainingStatus();
       fetchStorageStatus();
+      fetchVoice();
+      fetchEngine();
     }
 
     // ── Call Transcripts Dataset ──────────────────────────────────────────────
@@ -1214,6 +1251,7 @@
               <div class="meta-badge-row">
                 <span class="meta-badge ${badgeClass}">${badgeText}</span>
                 <span class="transcript-time">${timeLabel}</span>
+                <span class="transcript-time">ID ${escapeHTML(String(t.id || ""))}</span>
               </div>
               <button class="btn-delete" onclick="deleteTranscript('${t.id}')" title="Delete sample">
                 <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
@@ -1380,7 +1418,7 @@
       storagePathInput.disabled = isTraining;
       storageMigrateCheckbox.disabled = isTraining;
       if (isTraining && !storageStatus.textContent) {
-        storageStatus.textContent = "Storage changes are locked while fine-tuning is running.";
+        storageStatus.textContent = "Storage changes are locked while your voice is being built.";
       }
     }
 
@@ -1413,10 +1451,12 @@
       isTrainingActive = isTraining;
       updateStorageControlsForTraining(isTraining);
 
-      trainingMessage.textContent = status.message || "Model is idle.";
+      trainingMessage.textContent = status.error && status.status === "failed"
+        ? `${status.message || "Build failed."} ${status.error === status.message ? "" : status.error}`.trim()
+        : (status.message || "No cloned voice build is running.");
       trainingPercentage.textContent = `${Math.round(status.progress || 0)}%`;
       trainingProgressFill.style.width = `${status.progress || 0}%`;
-      trainingEpochLabel.textContent = `Epoch ${status.current_epoch || 0} / ${status.total_epochs || 0}`;
+      trainingEpochLabel.textContent = `Step ${status.current_epoch || 0} / ${status.total_epochs || 0}`;
 
       trainingStatusBadge.textContent = `Status: ${status.status.toUpperCase()}`;
       if (status.status === "completed") {
@@ -1436,13 +1476,129 @@
       if (isTraining) {
         trainingWave.style.display = "flex";
         btnStartTrain.disabled = true;
-        btnStartTrain.textContent = "Fine-Tuning in Progress...";
+        btnStartTrain.textContent = "Building Your Voice...";
         setTrainingPollInterval(1500);
       } else {
         trainingWave.style.display = "none";
-        btnStartTrain.disabled = false;
-        btnStartTrain.textContent = "Start Fine-Tuning";
+        btnStartTrain.disabled = !consentRecorded;
+        btnStartTrain.textContent = "Build Cloned Voice";
         setTrainingPollInterval(5000);
+      }
+      if (lastTrainingState && lastTrainingState !== status.status && !isTraining) {
+        fetchVoice();
+      }
+      lastTrainingState = status.status;
+    }
+
+    // ── Consent, runtime and the cloned voice ────────────────────────────────
+
+    async function fetchConsent() {
+      try {
+        const response = await fetch(apiPath("/api/clone/consent"));
+        const res = await response.json();
+        if (!res.success) return;
+        consentVersion = res.version || "";
+        consentRecorded = Boolean(res.consent_recorded);
+        consentStatement.textContent = res.statement || "";
+        consentCheckbox.checked = consentRecorded;
+        consentCheckbox.disabled = consentRecorded;
+        btnConsent.style.display = consentRecorded ? "none" : "";
+        btnRevokeConsent.style.display = consentRecorded ? "" : "none";
+        consentStatus.style.color = consentRecorded ? "var(--success)" : "var(--text-muted)";
+        consentStatus.textContent = consentRecorded
+          ? `Consent given${res.accepted_at ? " " + new Date(res.accepted_at * 1000).toLocaleString() : ""}.`
+          : "Your consent is needed before AutoYou can clone your voice.";
+        if (!isTrainingActive) btnStartTrain.disabled = !consentRecorded;
+      } catch (err) {
+        consentStatus.textContent = "Connection error loading the consent statement.";
+      }
+    }
+
+    btnConsent.addEventListener("click", async () => {
+      if (!consentCheckbox.checked) {
+        alert("Tick the box to confirm this is your own voice and you agree to the statement.");
+        return;
+      }
+      btnConsent.disabled = true;
+      try {
+        const response = await fetch(apiPath("/api/clone/consent"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accepted: true, statement_version: consentVersion })
+        });
+        const res = await response.json();
+        if (!res.success) alert(res.error || "Consent was not recorded.");
+      } catch (err) {
+        alert("Connection error recording consent.");
+      } finally {
+        btnConsent.disabled = false;
+        fetchConsent();
+      }
+    });
+
+    btnRevokeConsent.addEventListener("click", async () => {
+      if (!confirm("Withdraw consent? This deletes your cloned voice. Your recordings are kept.")) return;
+      btnRevokeConsent.disabled = true;
+      try {
+        const response = await fetch(apiPath("/api/clone/consent"), { method: "DELETE" });
+        const res = await response.json();
+        if (!res.success) alert(res.error || "Could not withdraw consent.");
+      } catch (err) {
+        alert("Connection error withdrawing consent.");
+      } finally {
+        btnRevokeConsent.disabled = false;
+        fetchConsent();
+        fetchVoice();
+      }
+    });
+
+    async function fetchEngine() {
+      try {
+        const response = await fetch(apiPath("/api/clone/engine"));
+        const res = await response.json();
+        const engine = res.engine || {};
+        if (res.success && engine.available) {
+          const where = engine.accelerator || engine.device || "this computer";
+          engineStatus.style.color = "var(--success)";
+          engineStatus.textContent = `Voice-clone runtime ready on ${where}.` +
+            (engine.model_cached ? "" : " The first build downloads the 3 GB Chatterbox model.");
+        } else {
+          engineStatus.style.color = "var(--error)";
+          engineStatus.textContent = engine.reason || res.error || "The voice-clone runtime is not available.";
+        }
+      } catch (err) {
+        engineStatus.textContent = "Connection error checking the voice-clone runtime.";
+      }
+    }
+
+    const VOICE_WARNINGS = {
+      phone_quality_reference: "Built from phone-quality audio; a clear 10-20 second upload will sound better.",
+      clips_from_more_than_one_caller: "The clips came from more than one caller ID; listen and check it is you.",
+      short_reference: "The reference is shorter than 10 seconds; more clear speech will help."
+    };
+
+    async function fetchVoice() {
+      try {
+        const response = await fetch(apiPath("/api/clone/voice"));
+        const res = await response.json();
+        if (!res.success || !res.ready) {
+          voicePreviewCard.style.display = "none";
+          return;
+        }
+        const clips = res.reference_clips || [];
+        const notes = (res.warnings || []).map(w => VOICE_WARNINGS[w]).filter(Boolean);
+        voiceSummary.textContent = `Your cloned voice: ${res.reference_seconds || "?"}s reference from ` +
+          `${clips.length} clip${clips.length === 1 ? "" : "s"} (${clips.join(", ")}). Watermark verified.` +
+          (notes.length ? " " + notes.join(" ") : "");
+        if (res.has_preview) {
+          voicePreviewAudio.setAttribute("src", `${apiPath("/api/clone/preview")}?t=${Date.now()}`);
+          voicePreviewAudio.style.display = "";
+        } else {
+          voicePreviewAudio.style.display = "none";
+        }
+        voicePreviewCard.style.display = "flex";
+      } catch (err) {
+        voicePreviewCard.style.display = "none";
       }
     }
 
@@ -1512,28 +1668,29 @@
 
     trainForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const epochs = parseInt(epochsInput.value) || 200;
+      const referenceClipIds = referenceClipsInput.value.trim();
 
       try {
         const response = await fetch(apiPath("/api/train"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ epochs })
+          body: JSON.stringify({ reference_clip_ids: referenceClipIds })
         });
         const res = await response.json();
         if (res.success) {
           fetchTrainingStatus();
         } else {
-          alert(`Could not start training: ${res.error}`);
+          alert(`Could not build your voice: ${res.error}`);
+          if (res.consent_required) fetchConsent();
         }
       } catch (err) {
-        alert("Connection failure triggering training.");
+        alert("Connection failure starting the build.");
       }
     });
 
     btnInstallProvider.addEventListener("click", async () => {
       btnInstallProvider.disabled = true;
-      installProviderStatus.textContent = "Installing provider...";
+      installProviderStatus.textContent = "Switching speech to your cloned voice...";
       try {
         const response = await fetch(apiPath("/api/install-provider"), {
           method: "POST",
@@ -1541,7 +1698,7 @@
         });
         const res = await response.json();
         if (res.success || res.status === "success") {
-          installProviderStatus.textContent = res.message || "Custom voice provider installed.";
+          installProviderStatus.textContent = res.message || "Your cloned voice is now used for speech.";
         } else {
           installProviderStatus.textContent = res.message || res.error || "Install failed.";
         }
@@ -1592,7 +1749,7 @@
         alert("Connection error during voice synthesis.");
       } finally {
         btnSynthesisSubmit.disabled = false;
-        btnSynthesisSubmit.textContent = "Synthesize Custom Voice";
+        btnSynthesisSubmit.textContent = "Speak in My Cloned Voice";
       }
     });
 

@@ -64,6 +64,8 @@ PACKAGE_RUNTIME_ROOTS = (
 STATIC_RUNTIME_FILES = (
     Path("shared") / "tunnelmole_node_launcher.mjs",
     Path("autoyou_agents") / "shared_tools" / "desktop_asset_schema.json",
+    # Runs under the separate voice-clone Python, which cannot load compiled modules.
+    Path("shared") / "voice_clone_worker.py",
 )
 STATIC_RUNTIME_DIRECTORIES = (
     Path("shared") / "native" / "libsodium",

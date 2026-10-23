@@ -139,12 +139,13 @@ autoyou_agents/prompts_agent/data/
 !/autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
 
 
-shared/voice_training/recordings/
-shared/voice_training/models/emotivoice/
+# Owner voice data in dev runs: recordings, consent, cloned-voice references.
+shared/voice_training/
+# Separate Python environment for Chatterbox voice cloning (scripts/install_voice_clone_runtime.py).
+/voice_clone_runtime/
 shared/audio_agent/library_settings.json
 shared/earnings_agents/pending_ad_credits.json
 shared/earnings_agent/pending_ad_credits.json
-shared/voice_training/transcripts.json
 # ------------------------------------------------------------------------------
 # 8. Server Build & Native Packaging Artifacts
 # ------------------------------------------------------------------------------
