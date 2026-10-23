@@ -11,7 +11,7 @@
 # Only what the English model imports is listed; the multilingual tokenizers,
 # Gradio demo and loudness tools are left out.
 transformers==5.2.0
-diffusers==0.29.0
+diffusers==0.38.0
 safetensors==0.5.3
 conformer==0.3.2
 resemble-perth==1.0.1
