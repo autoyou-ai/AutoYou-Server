@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import time
 import wave
@@ -486,6 +487,30 @@ def test_worker_environment_drops_secrets(monkeypatch):
     assert "AUTOYOU_SECURE_STORAGE_PASSWORD" not in env
     assert "AUTOYOU_SOME_SETTING" not in env
     assert "SYNTHETIC_API_KEY" not in env
+
+
+def test_voice_agent_and_website_import_without_numpy():
+    """Some build profiles have no numpy; only building a voice may need it."""
+    code = "\n".join(
+        [
+            "import sys",
+            "sys.modules['numpy'] = None",  # this child process only: `import numpy` now fails
+            "import autoyou_agents.voice_training_agent.website.backend.app",
+            "from autoyou_agents.voice_training_agent import train_model",
+            "assert 'autoyou_agents.voice_training_agent.reference_selection' not in sys.modules",
+            "try:",
+            "    train_model._reference_tools()",
+            "except train_model.VoiceClonePreparationError as exc:",
+            "    print(exc.code)",
+        ]
+    )
+    repo_root = Path(train_model.__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [sys.executable, "-c", code], cwd=str(repo_root), capture_output=True, text=True, timeout=300
+    )
+
+    assert completed.returncode == 0, completed.stderr[-2000:]
+    assert completed.stdout.strip().splitlines()[-1] == "numpy_missing"
 
 
 def test_installer_default_target_matches_runtime_lookup(voice_root):

@@ -32,7 +32,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence
 
 from shared.custom_voice_tts import (
     CUSTOM_VOICE_DISPLAY_NAME,
@@ -65,17 +65,9 @@ from shared.secure_storage import (
     write_secure_file,
 )
 
-from autoyou_agents.voice_training_agent.reference_selection import (
-    REFERENCE_SAMPLE_RATE,
-    ReferenceCandidate,
-    ReferenceThresholds,
-    build_reference_audio,
-    describe_selection_problem,
-    load_wav_mono,
-    measure_clip,
-    select_reference_clips,
-    wav_bytes,
-)
+
+if TYPE_CHECKING:
+    from autoyou_agents.voice_training_agent.reference_selection import ReferenceCandidate, ReferenceThresholds
 
 __debug_provenance_q__ = "AUTOYOU-PROVENANCE-Q-payment-186baf8826570343b3b3eb48"
 
@@ -306,6 +298,22 @@ def _resolve_recording_path(vt_dir: Path, recordings_dir: Path, item: Dict[str, 
             return resolved
     return None
 
+def _reference_tools():
+    """Load the clip measuring code only when a voice is built.
+
+    It needs numpy, which some build profiles leave out, and the agent and its
+    website must still import there.
+    """
+    try:
+        from autoyou_agents.voice_training_agent import reference_selection
+    except ImportError as exc:
+        raise VoiceClonePreparationError(
+            "numpy_missing",
+            "This AutoYou build cannot measure recordings because numpy is not installed.",
+        ) from exc
+    return reference_selection
+
+
 def parse_reference_clip_ids(value: Any) -> List[str]:
     """Accept a list or a comma/space separated string of clip IDs."""
     if value is None:
@@ -320,6 +328,7 @@ def collect_reference_candidates(
     thresholds: Optional[ReferenceThresholds] = None,
 ) -> List[ReferenceCandidate]:
     """Measure every recording in the dataset. Transcripts are not needed for cloning."""
+    tools = _reference_tools()
     recordings_dir = vt_dir / "recordings"
     candidates: List[ReferenceCandidate] = []
     seen_paths: set[str] = set()
@@ -336,14 +345,14 @@ def collect_reference_candidates(
         sample_id = _safe_sample_id(item.get("id"), index)
         try:
             with materialize_secure_file(audio_path) as readable:
-                audio, sample_rate = load_wav_mono(readable)
+                audio, sample_rate = tools.load_wav_mono(readable)
         except SecureStorageError:
             raise
         except Exception as exc:
             LOGGER.info("Skipping unreadable voice clip %s: %s", sample_id, exc)
             continue
         candidates.append(
-            measure_clip(
+            tools.measure_clip(
                 audio,
                 sample_rate,
                 sample_id=sample_id,
@@ -358,7 +367,7 @@ def collect_reference_candidates(
 
 def _load_clip(candidate: ReferenceCandidate):
     with materialize_secure_file(candidate.audio_path) as readable:
-        return load_wav_mono(readable)
+        return _reference_tools().load_wav_mono(readable)
 
 
 def _new_output_dir() -> Path:
@@ -411,7 +420,8 @@ def run_training_sync(reference_clip_ids: Optional[Sequence[str]] = None) -> Non
             )
 
         _update_status("training", 8.0, 1, steps, "Measuring your recordings...", training_strategy=TRAINING_STRATEGY)
-        thresholds = ReferenceThresholds.from_environment()
+        tools = _reference_tools()
+        thresholds = tools.ReferenceThresholds.from_environment()
         candidates = collect_reference_candidates(vt_dir, _load_transcripts(transcripts_file), thresholds)
         if not candidates:
             raise VoiceClonePreparationError(
@@ -419,17 +429,17 @@ def run_training_sync(reference_clip_ids: Optional[Sequence[str]] = None) -> Non
                 "No recordings were found. Upload a 10-20 second WAV of you reading aloud, "
                 "or turn on voice call capture.",
             )
-        selected, selection = select_reference_clips(candidates, pinned_ids=pinned, thresholds=thresholds)
+        selected, selection = tools.select_reference_clips(candidates, pinned_ids=pinned, thresholds=thresholds)
         if not selection.get("ok"):
             raise VoiceClonePreparationError(
                 str(selection.get("problem") or "selection_failed"),
-                describe_selection_problem(selection),
+                tools.describe_selection_problem(selection),
                 reference_selection=selection,
             )
 
         clips = [_load_clip(candidate) for candidate in selected]
-        reference_audio = build_reference_audio(clips, max_seconds=thresholds.max_reference_seconds)
-        reference_seconds = float(reference_audio.size) / float(REFERENCE_SAMPLE_RATE)
+        reference_audio = tools.build_reference_audio(clips, max_seconds=thresholds.max_reference_seconds)
+        reference_seconds = float(reference_audio.size) / float(tools.REFERENCE_SAMPLE_RATE)
         _update_status(
             "training",
             18.0,
@@ -441,7 +451,7 @@ def run_training_sync(reference_clip_ids: Optional[Sequence[str]] = None) -> Non
         )
         output_dir = _new_output_dir()
         reference_path = output_dir / VOICE_CLONE_REFERENCE_FILENAME
-        write_secure_file(reference_path, wav_bytes(reference_audio, REFERENCE_SAMPLE_RATE))
+        write_secure_file(reference_path, tools.wav_bytes(reference_audio, tools.REFERENCE_SAMPLE_RATE))
 
         _update_status(
             "training",
@@ -501,7 +511,7 @@ def run_training_sync(reference_clip_ids: Optional[Sequence[str]] = None) -> Non
             },
             "reference": {
                 "seconds": round(reference_seconds, 2),
-                "sample_rate": REFERENCE_SAMPLE_RATE,
+                "sample_rate": tools.REFERENCE_SAMPLE_RATE,
                 "pinned": bool(pinned),
                 "clips": [candidate.summary() for candidate in selected],
                 "selection": selection,
