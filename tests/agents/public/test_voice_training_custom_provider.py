@@ -519,10 +519,20 @@ def test_installer_default_target_matches_runtime_lookup(voice_root):
     assert installer.default_target() == custom_voice_tts.voice_clone_runtime_dir()
     assert installer.WORKER_SCRIPT == custom_voice_tts.voice_clone_worker_script()
     lines = installer.REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines()
-    requirements = [line.split("=")[0].split(">")[0] for line in lines if line.strip() and not line.startswith("#")]
-    assert "chatterbox-tts" not in requirements  # installed separately with --no-deps
-    assert "torch" not in requirements  # chosen per machine before this file
-    assert "resemble-perth" in requirements
+    pins = {}
+    for line in lines:
+        if line.strip() and not line.startswith("#"):
+            name, _, version = line.partition("==")
+            pins[name.split(">")[0].strip()] = version.strip()
+    assert "chatterbox-tts" not in pins  # installed separately with --no-deps
+    assert "torch" not in pins  # chosen per machine before this file
+    assert "resemble-perth" in pins
+    # Chatterbox's own transformers/diffusers pins carry advisories; keep the patched ones.
+    locked = (installer.REPO_ROOT / "requirements" / "locked.txt").read_text(encoding="utf-8")
+    assert f"transformers=={pins['transformers']} " in locked
+    assert tuple(int(part) for part in pins["diffusers"].split(".")) >= (0, 38, 0)
+    # The watermarker needs pkg_resources, which setuptools 82 removed.
+    assert int(pins["setuptools"].split(".")[0]) < 82
 
 
 # ── Reference selection ────────────────────────────────────────────────────

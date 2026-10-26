@@ -2,17 +2,22 @@
 # (Resemble AI, MIT), the engine behind the custom voice TTS provider.
 #
 # Installed by scripts/install_voice_clone_runtime.py, never into the server
-# environment: Chatterbox pins transformers and diffusers releases the server
-# does not use. The installer puts torch and torchaudio in first, chosen for the
+# environment. The installer puts torch and torchaudio in first, chosen for the
 # machine's GPU, installs this file under a constraint that keeps that torch,
 # then installs chatterbox-tts==0.1.7 with --no-deps so its torch==2.6.0 pin
 # cannot replace the GPU build.
 #
+# chatterbox-tts 0.1.7 asks for transformers==5.2.0 and diffusers==0.29.0,
+# which have published advisories (remote-code and path-traversal issues). The
+# patched releases below were checked on 2026-10-25 with a full GPU build and
+# speech run: same clip choice, watermark, intelligibility and speed.
+# transformers matches the server's audited lock.
+#
 # Only what the English model imports is listed; the multilingual tokenizers,
 # Gradio demo and loudness tools are left out.
-transformers==5.2.0
-diffusers==0.29.0
-safetensors==0.5.3
+transformers==5.12.1
+diffusers==0.38.0
+safetensors==0.8.0
 conformer==0.3.2
 resemble-perth==1.0.1
 s3tokenizer==0.3.0
@@ -21,3 +26,6 @@ omegaconf==2.4.0
 einops==0.8.2
 soundfile>=0.13.1
 scipy>=1.13
+# resemble-perth 1.0.1 imports pkg_resources, which setuptools 82 removed.
+# Without it the watermarker fails to import and AutoYou refuses to clone.
+setuptools==81.0.0
