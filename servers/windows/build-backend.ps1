@@ -314,6 +314,10 @@ $realtimeSttRuntimeInstallerScript = Join-Path $repoRoot "scripts\install_realti
 if (-not (Test-Path $realtimeSttRuntimeInstallerScript)) {
     throw "Expected RealtimeSTT runtime installer at '$realtimeSttRuntimeInstallerScript'."
 }
+$gpuTorchInstallerScript = Join-Path $repoRoot "scripts\install_gpu_torch.py"
+if (-not (Test-Path $gpuTorchInstallerScript)) {
+    throw "Expected GPU PyTorch installer at '$gpuTorchInstallerScript'."
+}
 $nonCommercialAssetPrunerScript = Join-Path $repoRoot "scripts\prune_noncommercial_release_assets.py"
 if (-not (Test-Path $nonCommercialAssetPrunerScript)) {
     throw "Expected non-commercial asset pruner at '$nonCommercialAssetPrunerScript'."
@@ -1602,6 +1606,26 @@ if ($ignoreLock -notin @("1", "true", "yes", "on")) {
         $pipInstallArgs += @("-c", $lockedConstraints)
     }
 }
+$gpuTorchRequirementsFile = Join-Path $backendArtifactRoot "gpu-torch-requirements.txt"
+if ($requirementsIncludesTuning) {
+    # PyPI's Windows torch wheel is CPU-only. Install the CUDA or ROCm build that
+    # suits this build machine first (AUTOYOU_TORCH_BACKEND=cpu keeps a portable
+    # CPU package), then pin it so the requirements install below keeps it.
+    Write-Host "Selecting the PyTorch build for Fine Tuning on this machine..."
+    $gpuTorchConstraints = Join-Path $backendArtifactRoot "gpu-torch-constraints.txt"
+    Invoke-CheckedCommand -FilePath $pythonExe -Arguments @(
+        $gpuTorchInstallerScript,
+        "--python", $pythonExe,
+        "--constraints-out", $gpuTorchConstraints,
+        "--gpu-requirements-out", $gpuTorchRequirementsFile
+    )
+    if (Test-Path $gpuTorchConstraints) {
+        $lockedConstraints = $gpuTorchConstraints
+        $pipInstallArgs = @("-m", "pip", "install", "-r", $backendRuntimeRequirementsFile, "-c", $lockedConstraints)
+    }
+} elseif (Test-Path $gpuTorchRequirementsFile) {
+    Remove-Item -LiteralPath $gpuTorchRequirementsFile -Force
+}
 if ($requirementsIncludesVoice) {
     if (-not (Test-Path $realtimeSttRuntimeRequirementsFile)) {
         throw "Voice requirements requested, but '$realtimeSttRuntimeRequirementsFile' was not found."
@@ -1966,6 +1990,11 @@ if ($requirementsIncludesVoice) {
 }
 if ($includeCogneeRuntime) {
     $activeRuntimeRequirementsFiles += $cogneeRequirementsFile
+}
+if ($requirementsIncludesTuning -and (Test-Path $gpuTorchRequirementsFile)) {
+    # AMD device kernels arrive through a torch extra the requirements files do
+    # not name; list the installed GPU build so pruning keeps them.
+    $activeRuntimeRequirementsFiles += $gpuTorchRequirementsFile
 }
 $runtimePruneArguments = @(
     $runtimeSitePackagesPrunerScript,

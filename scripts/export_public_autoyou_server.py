@@ -120,6 +120,7 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/generate_reference_docs.py",
     "scripts/generate_release_legal_artifacts.py",
     "scripts/generate_windows_server_tiles.py",
+    "scripts/install_gpu_torch.py",
     "scripts/install_realtimestt_runtime.py",
     "scripts/patch_adk_web_ui.py",
     "scripts/prepare_intent_router.py",

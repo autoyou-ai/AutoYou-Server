@@ -36,11 +36,13 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from shared.http_errors import internal_error_message
 from shared.path_safety import contained_path
+from shared import torch_wheel_selection as torch_wheels
 from shared.platform_runtime import (
     find_bundled_browser_executable,
     get_node_command,
     get_node_service_dir,
     get_service_data_dir,
+    is_compiled,
 )
 from shared.secure_storage import (
     SecureStorageError,
@@ -2731,6 +2733,53 @@ def _mlx_capability_status() -> Dict[str, Any]:
         "message": message,
     }
 
+def _gpu_torch_guidance(wheel: Dict[str, Any]) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Name the installed torch wheel and how to get one that trains on this GPU."""
+    version = str(wheel.get("version") or "")
+    label = str(wheel.get("label") or "a torch build")
+    if wheel.get("build") in {"cuda", "rocm"}:
+        return (
+            f"This interpreter has {label}, but it does not see a GPU. Check that the "
+            f"{'NVIDIA' if wheel.get('build') == 'cuda' else 'AMD'} driver is installed and the GPU is enabled.",
+            None,
+        )
+    numbers = torch_wheels.public_version(version)
+    torch_version = ".".join(str(part) for part in numbers) if len(numbers) >= 2 else torch_wheels.DEFAULT_TORCH_VERSION
+    try:
+        gpus = torch_wheels.detect_gpus_cached()
+        plan = torch_wheels.select_torch_plan(
+            gpus,
+            request=os.getenv(torch_wheels.TORCH_BACKEND_ENV),
+            rocm_arch=os.getenv(torch_wheels.ROCM_ARCH_ENV),
+            torch_version=torch_version,
+        )
+    except Exception as exc:  # detection is advice only; never fail the status call
+        logging.getLogger(__name__).debug("GPU torch guidance unavailable: %s", exc)
+        return (
+            f"This interpreter has {label}. For speed, install a Torch build matching this machine: "
+            "CUDA for NVIDIA, ROCm for a supported AMD GPU, or the Apple Silicon MPS build on macOS.",
+            None,
+        )
+    details: Dict[str, Any] = {"installed": wheel, "gpus": gpus.to_dict(), "recommended": plan.to_dict()}
+    if plan.action != "install":
+        if plan.backend == "mps":
+            advice = "Apple's MPS backend needs an Apple Silicon Mac running macOS 14 or later with an arm64 Python."
+        else:
+            advice = " ".join(part for part in (plan.reason, plan.hint) if part)
+        return f"This interpreter has {label}. {advice}", details
+    if is_compiled():
+        how = (
+            "Rebuild the training-full package on this machine; its build installs that wheel "
+            f"({torch_wheels.TORCH_BACKEND_ENV} overrides the choice)."
+        )
+    else:
+        command = plan.pip_command(sys.executable)
+        details["bootstrap_command"] = torch_wheels.bootstrap_command()
+        details["pip_command"] = command
+        how = f"Re-run `{details['bootstrap_command']}` to install it, or run: {command}"
+    return f"This interpreter has {label}. {plan.reason}. {how}", details
+
+
 def _training_capability_status() -> Dict[str, Any]:
     dependencies = _dependency_status()
     missing = [name for name in ("torch", "transformers", "peft", "datasets", "accelerate") if not dependencies.get(name)]
@@ -2764,6 +2813,7 @@ def _training_capability_status() -> Dict[str, Any]:
                     "accelerator_available": accelerator in {"cuda", "rocm", "mps"},
                     "device_count": device_count,
                     "devices": [str(torch.cuda.get_device_name(index)) for index in range(device_count)],
+                    "wheel": torch_wheels.describe_torch_module(torch),
                 }
             )
         except Exception as exc:
@@ -2794,12 +2844,13 @@ def _training_capability_status() -> Dict[str, Any]:
     accelerator = str(torch_status.get("accelerator") or "unavailable")
     cpu_training_available = not missing and bool(torch_status.get("available"))
     real_training_ready = not missing and bool(torch_status.get("accelerator_available"))
+    gpu_torch: Optional[Dict[str, Any]] = None
     if missing:
         message = "Missing trainer dependencies: " + ", ".join(missing)
         next_action = "Install the missing Python packages in the interpreter that starts the AutoYou server."
     elif not torch_status.get("accelerator_available"):
         message = "CPU LoRA training is available with explicit opt-in; an accelerated Torch backend is not exposed by this interpreter."
-        next_action = "For speed, install a Torch build matching this machine: CUDA for NVIDIA, ROCm for a supported AMD setup, or the Apple Silicon MPS build on macOS."
+        next_action, gpu_torch = _gpu_torch_guidance(torch_status.get("wheel") or {})
     else:
         message = f"Real LoRA training is available through the {accelerator.upper()} backend."
         next_action = "Use the conservative profile first, then increase context or batch size only after a successful smoke run."
@@ -2816,6 +2867,7 @@ def _training_capability_status() -> Dict[str, Any]:
         "mlx": _mlx_capability_status(),
         "nvidia_smi": nvidia_smi,
         "host_nvidia_not_exposed_to_torch": bool(nvidia_smi.get("available") and not torch_status.get("cuda_available")),
+        "gpu_torch": gpu_torch,
         "next_action": next_action,
         "cpu_training_override": str(os.getenv("AUTOYOU_FINE_TUNING_ALLOW_CPU_TRAINING", "")).strip().lower()
         in {"1", "true", "yes", "on"},

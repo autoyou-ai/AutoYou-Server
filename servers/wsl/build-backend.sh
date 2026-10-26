@@ -249,6 +249,21 @@ fi
     --output-root "$RUNTIME_GUIDES_ROOT"
 
 LOCKED_CONSTRAINTS="$(resolve_locked_constraints)"
+GPU_TORCH_REQUIREMENTS_FILE="${BUILD_ROOT}/gpu-torch-requirements.txt"
+rm -f "$GPU_TORCH_REQUIREMENTS_FILE"
+if include_tuning_enabled; then
+    # Install the CUDA or ROCm torch build for this machine before any
+    # requirements install pulls PyPI's wheel, then pin it for every later
+    # install. AUTOYOU_TORCH_BACKEND overrides the choice (cpu keeps PyPI's).
+    GPU_TORCH_CONSTRAINTS="${BUILD_ROOT}/gpu-torch-constraints.txt"
+    "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/install_gpu_torch.py" \
+        --python "$PYTHON_CMD" \
+        --constraints-out "$GPU_TORCH_CONSTRAINTS" \
+        --gpu-requirements-out "$GPU_TORCH_REQUIREMENTS_FILE"
+    if [[ -f "$GPU_TORCH_CONSTRAINTS" ]]; then
+        LOCKED_CONSTRAINTS="$GPU_TORCH_CONSTRAINTS"
+    fi
+fi
 
 if [[ ! -f "$REALTIMESTT_RUNTIME_INSTALLER" || ! -f "$REALTIMESTT_RUNTIME_REQUIREMENTS_FILE" ]]; then
     echo "RealtimeSTT runtime installer or requirements pin is missing." >&2
@@ -620,6 +635,10 @@ if [[ -d "$SITE_PACKAGES_ROOT" ]]; then
     fi
     if include_tuning_enabled; then
         runtime_prune_args+=(--requirements-file "$TUNING_REQUIREMENTS_FILE")
+        if [[ -f "$GPU_TORCH_REQUIREMENTS_FILE" ]]; then
+            # AMD device kernels arrive through a torch extra no requirements file names.
+            runtime_prune_args+=(--requirements-file "$GPU_TORCH_REQUIREMENTS_FILE")
+        fi
     fi
     "$PYTHON_CMD" "${runtime_prune_args[@]}"
     prune_noncommercial_release_assets "${FINAL_BACKEND_ROOT}/runtime_site_packages"

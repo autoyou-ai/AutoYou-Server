@@ -106,6 +106,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from shared import torch_wheel_selection as torch_wheels
 from shared.process_lifecycle import (
     OwnedProcessJob,
     add_parent_pid_environment,
@@ -983,7 +984,10 @@ def upgrade_packaging_tools(venv_python: Path) -> None:
 LOCKFILE_PATH = REQUIREMENTS_DIR / "locked.txt"
 
 
-def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
+def build_locked_constraints(
+    lockfile: Path = LOCKFILE_PATH,
+    torch_pins: dict[str, str] | None = None,
+) -> Path | None:
     """Derive a plain ``name==version`` constraints file from the pinned, hashed
     ``requirements/locked.txt`` produced by pip-compile.
 
@@ -992,13 +996,14 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
     strip those down to bare pins for matching packages in profile installs.
     This does not enforce hashes or cover packages absent from the lock, and
     does not certify advisory status. Set ``AUTOYOU_IGNORE_LOCKFILE=1`` to opt out.
+
+    ``torch_pins`` replaces the lock's torch entries with an installed CUDA or
+    ROCm build, so no later install swaps it for PyPI's wheel.
     """
-    if str(os.environ.get("AUTOYOU_IGNORE_LOCKFILE", "")).strip().lower() in {"1", "true", "yes", "on"}:
-        return None
-    if not lockfile.exists():
-        return None
     specs: set[str] = set()
-    for raw in lockfile.read_text(encoding="utf-8").splitlines():
+    ignore_lock = str(os.environ.get("AUTOYOU_IGNORE_LOCKFILE", "")).strip().lower() in {"1", "true", "yes", "on"}
+    raw_lines = [] if ignore_lock or not lockfile.exists() else lockfile.read_text(encoding="utf-8").splitlines()
+    for raw in raw_lines:
         line = raw.strip()
         if not line or line.startswith("#") or line.startswith("--"):
             continue
@@ -1011,6 +1016,8 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
         version = version.strip()
         if name and version:
             specs.add(f"{name}=={version}")
+    if torch_pins:
+        specs = set(torch_wheels.apply_torch_pins(specs, torch_pins))
     if not specs:
         return None
     dest = REQUIREMENTS_DIR / ".locked.constraints.generated.txt"
@@ -1018,6 +1025,8 @@ def build_locked_constraints(lockfile: Path = LOCKFILE_PATH) -> Path | None:
         "# AUTO-GENERATED from requirements/locked.txt by bootstrap_autoyou.py.\n"
         "# Version constraints only; no hash enforcement or advisory certification. Do not edit.\n"
     )
+    if torch_pins:
+        header += "# The installed GPU torch build replaces the lock's torch pins.\n"
     dest.write_text(header + "\n".join(sorted(specs)) + "\n", encoding="utf-8")
     return dest
 
@@ -1171,14 +1180,122 @@ def verified_pip_install(
         run_command(base + ["--no-deps", requirement], env=env)
 
 
+def probe_installed_torch(venv_python: Path) -> torch_wheels.InstalledTorch | None:
+    """Read the torch build in ``venv_python`` without importing torch."""
+    try:
+        result = subprocess.run(
+            [str(venv_python), "-I", "-c", torch_wheels.INSTALLED_TORCH_PROBE],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return torch_wheels.parse_installed_torch(result.stdout)
+
+
+def install_gpu_torch(venv_python: Path, plan: torch_wheels.TorchWheelPlan) -> None:
+    """Install a CUDA or ROCm torch build from its vendor's index, hash-checked.
+
+    pip resolves the plan against the vendor index alone, never mixed with
+    PyPI, so no package name can be shadowed from the other index. torch and
+    the runtime it pulls in (ROCm SDK, device kernels, NVIDIA libraries) are
+    installed at the sha256 the index reported. Shared dependencies the
+    lockfile covers are left to the component installs, which take them from
+    PyPI at audited hashes.
+    """
+    base = [str(venv_python), "-m", "pip", "install", "--index-url", plan.index_url]
+    if env_flag("AUTOYOU_ALLOW_UNVERIFIED_PACKAGES"):
+        warn("AUTOYOU_ALLOW_UNVERIFIED_PACKAGES is set; installing the GPU torch build without hash verification.")
+        run_command(base + list(plan.requirements))
+        return
+    work_dir = venv_native_dir(venv_python) / "pip-verify"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    report_path = work_dir / "gpu-torch-report.json"
+    report_path.unlink(missing_ok=True)
+    result = subprocess.run(
+        base + ["--dry-run", "--quiet", "--report", str(report_path), *plan.requirements],
+        cwd=str(REPO_ROOT),
+        check=False,
+    )
+    if result.returncode != 0 or not report_path.exists():
+        raise BootstrapError(
+            f"Could not resolve {' '.join(plan.requirements)} from {plan.index_url} (pip exit {result.returncode})."
+        )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    items = torch_wheels.gpu_index_items(report, parse_locked_hashes())
+    lines, _vendor_packages, unhashable = plan_verified_install({"install": items}, {})
+    if unhashable:
+        raise BootstrapError("The GPU wheel index served packages without a sha256: " + ", ".join(unhashable))
+    if not lines:
+        success("The GPU torch build is already installed")
+        return
+    hashed = work_dir / "gpu-torch-requirements.txt"
+    hashed.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    info(
+        f"Installing {len(lines)} package(s) from {plan.index_url} at the sha256 the index reported "
+        "(vendor GPU builds are outside the PyPI lockfile). This is a large download."
+    )
+    run_command(base + ["--require-hashes", "--no-deps", "-r", str(hashed)])
+    success(f"Installed the {plan.backend.upper()} PyTorch build ({plan.variant})")
+
+
+def prepare_gpu_torch(venv_python: Path, components: Sequence[str]) -> dict[str, str]:
+    """Put a GPU torch build in place for Fine Tuning; return pins that protect one.
+
+    This runs before any component install, so the voice and tuning
+    requirements find ``torch`` already satisfied by the GPU build. Whatever
+    the profile, an installed CUDA or ROCm build is pinned for every later
+    install, so pip never swaps it for PyPI's wheel.
+    """
+    installed = probe_installed_torch(venv_python)
+    if "tuning" in components:
+        requested = os.environ.get(torch_wheels.TORCH_BACKEND_ENV, "")
+        try:
+            plan = torch_wheels.select_torch_plan(
+                torch_wheels.detect_gpus(),
+                installed=installed,
+                request=requested,
+                rocm_arch=os.environ.get(torch_wheels.ROCM_ARCH_ENV, ""),
+                torch_version=torch_wheels.read_locked_version(LOCKFILE_PATH) or torch_wheels.DEFAULT_TORCH_VERSION,
+            )
+        except ValueError as exc:
+            raise BootstrapError(str(exc)) from exc
+        info(f"PyTorch for Fine Tuning: {plan.reason}")
+        if plan.hint:
+            info(plan.hint)
+        if plan.action == "install":
+            try:
+                install_gpu_torch(venv_python, plan)
+            except BootstrapError as exc:
+                if torch_wheels.parse_backend_request(requested).explicit:
+                    raise
+                warn(f"The {plan.backend.upper()} PyTorch build was not installed: {exc}")
+                warn(
+                    "Continuing with PyPI's torch wheel; Fine Tuning will report CPU only. Re-run bootstrap to "
+                    f"retry, or set {torch_wheels.TORCH_BACKEND_ENV}=cpu to skip this step."
+                )
+            installed = probe_installed_torch(venv_python)
+        elif plan.backend == "cpu" and not (installed is not None and installed.is_gpu_build):
+            warn("Fine Tuning will train on the CPU in this environment.")
+    if installed is not None and installed.is_gpu_build:
+        info(f"Keeping {installed.label} for every package install")
+        return installed.pins()
+    return {}
+
+
 def install_requirements(
     venv_python: Path,
     components: Sequence[str],
     component_env: dict[str, dict[str, str]] | None = None,
     before_component: Callable[[str], dict[str, str]] | None = None,
     upgrade: bool = False,
+    torch_pins: dict[str, str] | None = None,
 ) -> None:
-    constraints = build_locked_constraints()
+    constraints = build_locked_constraints(torch_pins=torch_pins)
     if constraints is not None:
         info(f"Pinning installs to audited lockfile versions via {constraints.name}")
     for component in components:
@@ -1216,11 +1333,15 @@ def install_realtimestt_runtime(venv_python: Path) -> None:
     run_command([str(venv_python), str(script)])
 
 
-def reconcile_runtime_dependency_drift(venv_python: Path, components: Sequence[str] = ()) -> None:
+def reconcile_runtime_dependency_drift(
+    venv_python: Path,
+    components: Sequence[str] = (),
+    torch_pins: dict[str, str] | None = None,
+) -> None:
     script = REPO_ROOT / "scripts" / "reconcile_python_runtime_env.py"
     if not script.exists():
         return
-    constraints = build_locked_constraints()
+    constraints = build_locked_constraints(torch_pins=torch_pins)
     command = [str(venv_python), str(script)]
     if constraints is not None:
         command += ["--constraints", str(constraints)]
@@ -2152,6 +2273,13 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
               python scripts/bootstrap_autoyou.py --profile full --with tuning
               python scripts/bootstrap_autoyou.py --profile training-full
               python scripts/bootstrap_autoyou.py --profile recommended --install-only
+
+            PyTorch for Fine Tuning (profiles with the tuning component):
+              The GPU is detected and torch comes from its vendor's index: PyTorch's
+              CUDA wheels for NVIDIA, AMD's ROCm wheels for AMD, PyPI (MPS) on macOS.
+              An installed CUDA or ROCm build is never replaced by a CPU wheel.
+              AUTOYOU_TORCH_BACKEND=auto|cpu|cuda|cu126|cu130|cu132|rocm|default
+              AUTOYOU_TORCH_ROCM_ARCH=gfx1151   AMD gfx target when it cannot be detected
             """
         ),
     )
@@ -2229,6 +2357,8 @@ def main(argv: Sequence[str]) -> int:
         if "voice" in components:
             maybe_install_voice_system_dependencies()
 
+        torch_pins = prepare_gpu_torch(venv_python, components)
+
         def before_component_install(component: str) -> dict[str, str]:
             if component == "voice":
                 return ensure_voice_native_dependencies(venv_python)
@@ -2239,8 +2369,9 @@ def main(argv: Sequence[str]) -> int:
             components,
             before_component=before_component_install,
             upgrade=upgrade_requested,
+            torch_pins=torch_pins,
         )
-        reconcile_runtime_dependency_drift(venv_python, components)
+        reconcile_runtime_dependency_drift(venv_python, components, torch_pins=torch_pins)
         if "local-llm" in components:
             run_command([str(venv_python), str(REPO_ROOT / "scripts/prepare_intent_router.py")])
     else:
