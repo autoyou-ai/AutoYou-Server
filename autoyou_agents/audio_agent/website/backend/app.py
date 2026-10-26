@@ -22,7 +22,8 @@ from threading import Lock
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import aiohttp
-from fastapi import Body, FastAPI, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-d96f5d6897b1d65b5898cc82"
 
@@ -47,6 +48,7 @@ from shared.audio_agent_library import (
 )
 from shared.audio_playback_settings import MUSIC_LIBRARY_DIRS_ENV
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
+from .uploads import Uploads, import_root, upload_owner
 
 _AGENT_NAME = "audio_agent"
 _SESSION_TTL_DAYS = 7
@@ -375,6 +377,8 @@ def _normalize_roots(explicit_roots: Optional[str] = None) -> List[str]:
         roots = [value.strip().strip('"').strip("'") for value in configured_values if value.strip()]
     else:
         roots = resolve_audio_library_roots(_current_settings(), anchor=__file__)
+    if explicit_roots in (None, "") and import_root().is_dir():
+        roots = list(roots) + [str(import_root())]
     normalized: List[str] = []
     seen: set[str] = set()
     for root in roots:
@@ -424,6 +428,9 @@ def _audio_content_type(file_path: Path) -> str:
 def _build_track_payload(path_value: Path, root_value: Path) -> Dict[str, Any]:
     absolute_path = str(path_value.resolve())
     metadata = _parse_display_metadata(path_value)
+    imported = Uploads().metadata(path_value) if path_value.parent == import_root() else {}
+    if imported:
+        metadata["title"] = imported["title"] or Path(imported["filename"]).stem
     track_id = hashlib.sha1(os.path.normcase(absolute_path).encode("utf-8")).hexdigest()[:16]
     try:
         relative_path = str(path_value.resolve().relative_to(root_value.resolve())).replace("\\", "/")
@@ -434,12 +441,68 @@ def _build_track_payload(path_value: Path, root_value: Path) -> Dict[str, Any]:
         "id": track_id,
         "title": metadata["title"],
         "artist": metadata["artist"],
-        "file_name": path_value.name,
+        "file_name": imported.get("filename", path_value.name),
         "relative_path": relative_path,
         "directory": str(path_value.parent),
         "stream_url": f"api/stream/{track_id}",
         "content_type": _audio_content_type(path_value),
+        "size": path_value.stat().st_size,
+        "download_url": f"api/stream/{track_id}",
     }
+
+
+class AudioUploadInput(BaseModel):
+    filename: str = Field(min_length=1, max_length=128)
+    title: str = Field(default="", max_length=200)
+    size: int = Field(gt=0, le=1024 ** 3)
+
+
+def _require_import_auth(request: Request):
+    if not _check_auth(request):
+        raise HTTPException(401, "Verify the Audio Agent authenticator before uploading music")
+
+
+@app.post("/api/upload-sessions")
+async def begin_audio_upload(request: Request, payload: AudioUploadInput):
+    _require_import_auth(request)
+    return await asyncio.to_thread(Uploads().begin, upload_owner(request), payload.filename, payload.size, payload.title)
+
+
+@app.get("/api/upload-sessions/{upload_id}")
+async def audio_upload_status(request: Request, upload_id: str):
+    _require_import_auth(request)
+    return await asyncio.to_thread(Uploads().status, upload_id, upload_owner(request))
+
+
+@app.put("/api/upload-sessions/{upload_id}")
+async def append_audio_upload(request: Request, upload_id: str, offset: int = Query(ge=0)):
+    _require_import_auth(request)
+    return await Uploads().append(request, upload_id, upload_owner(request), offset)
+
+
+@app.post("/api/upload-sessions/{upload_id}/complete")
+async def complete_audio_upload(request: Request, upload_id: str):
+    _require_import_auth(request)
+    path = await asyncio.to_thread(Uploads().complete, upload_id, upload_owner(request))
+    with _library_lock:
+        _library_cache["scanned"] = False
+    return {"item": _build_track_payload(path, import_root())}
+
+
+@app.delete("/api/upload-sessions/{upload_id}")
+async def cancel_audio_upload(request: Request, upload_id: str):
+    _require_import_auth(request)
+    await asyncio.to_thread(Uploads().cancel, upload_id, upload_owner(request))
+    return {"success": True}
+
+
+@app.get("/api/items/{track_id}")
+async def audio_track_detail(track_id: str):
+    state = await asyncio.to_thread(_library_state, False, MAX_SCAN_TRACKS)
+    track = next((track for track in state["tracks"] if track["id"] == track_id), None)
+    if not track:
+        raise HTTPException(404, "Track not found")
+    return track
 
 
 def _track_matches_query(payload: Dict[str, Any], query: str) -> bool:
@@ -1181,7 +1244,10 @@ async def api_stream(track_id: str, request: Request):
 
     content_type = _audio_content_type(file_path)
     file_size = int(file_path.stat().st_size)
+    etag = f'"{file_path.stat().st_mtime_ns:x}-{file_size:x}"'
     range_header = request.headers.get("range", "")
+    if request.headers.get("if-range") and request.headers["if-range"] != etag:
+        range_header = ""
     parsed_range = _parse_http_range(range_header, file_size)
 
     if range_header and parsed_range is None:
@@ -1196,6 +1262,7 @@ async def api_stream(track_id: str, request: Request):
         response = FileResponse(path=file_path, media_type=content_type)
         response.headers["Accept-Ranges"] = "bytes"
         response.headers["Content-Length"] = str(file_size)
+        response.headers["ETag"] = etag
         for header_name, header_value in NO_CACHE_HEADERS.items():
             response.headers[header_name] = header_value
         return response
@@ -1216,6 +1283,7 @@ async def api_stream(track_id: str, request: Request):
     response.headers["Accept-Ranges"] = "bytes"
     response.headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     response.headers["Content-Length"] = str(content_length)
+    response.headers["ETag"] = etag
     for header_name, header_value in NO_CACHE_HEADERS.items():
         response.headers[header_name] = header_value
     return response

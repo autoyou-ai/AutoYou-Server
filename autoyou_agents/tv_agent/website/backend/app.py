@@ -105,6 +105,7 @@ def public_item(item: dict) -> dict:
         result["artwork_url"] = f"api/stream/{item['id']}"
     result["is_remote"] = bool(item.get("source_url"))
     result["is_hls"] = bool(version or (item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8")))
+    result["download_url"] = f"api/download/{item['id']}" if item.get("file_path") else ""
     return result
 
 
@@ -143,7 +144,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
 
     @application.middleware("http")
     async def response_headers(request: Request, call_next):
-        media_request = request.url.path.startswith(("/api/stream/", "/api/playback/", "/api/subtitles/"))
+        media_request = request.url.path.startswith(("/api/stream/", "/api/playback/", "/api/subtitles/", "/api/download/"))
         response = Response(status_code=204) if media_request and request.method == "OPTIONS" else await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -514,6 +515,17 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
                 await asyncio.sleep(2)
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+    @application.api_route("/api/download/{item_id}", methods=["GET", "HEAD"])
+    async def download(item_id: str, request: Request):
+        store, _, _ = services()
+        item = store.item(item_id)
+        if item["status"] == "deleted" or not item.get("file_path"):
+            raise HTTPException(404, "Only files in this computer's library can be saved offline")
+        path = item["technical"]["browser_path"] if playback.browser_ready(store, item) else item["file_path"]
+        response = file_stream(permitted_path(store, path), request)
+        response.headers["Content-Disposition"] = "attachment"
+        return response
 
     @application.api_route("/api/stream/{item_id}", methods=["GET", "HEAD"])
     async def stream(item_id: str, request: Request, ticket: str = Query("", max_length=16000)):
