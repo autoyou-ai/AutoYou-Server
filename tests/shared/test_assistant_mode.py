@@ -333,3 +333,97 @@ def test_wake_word_in_calls_is_opt_in_and_needs_assistant_mode():
         assert am.capability_payload("AutoYou-Server", available=True)["wake_word_in_calls"] is True
     finally:
         hub.close()
+
+
+def _run_device(hub, event_name, payload=None, *, streaming=False):
+    import asyncio
+
+    replies = []
+
+    async def send(body):
+        replies.append(body)
+
+    asyncio.run(am.handle_device_control(
+        hub, session_id="pi", event_name=event_name, payload=payload or {},
+        server_name="AutoYou-Server", streaming=streaming, send=send,
+    ))
+    return replies
+
+
+def _b64(pcm):
+    import base64
+
+    return base64.b64encode(ww.pcm16_to_wav_bytes(pcm)).decode()
+
+
+def test_devices_get_the_model_only_when_it_is_ready_and_on():
+    rng = np.random.default_rng(30)
+    recorder = Recorder()
+    hub = make_hub(recorder)
+    try:
+        assert _run_device(hub, "assistant_model_request")[0]["reason"] == "disabled"
+        am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+        hub.reload()
+        first = _run_device(hub, "assistant_model_request")[0]
+        assert first["event"] == "assistant_model" and first["available"] is False
+        train_voice_model(rng)
+        model = _run_device(hub, "assistant_model_request")[0]["model"]
+        assert model["format"] == ww.MODEL_FORMAT and len(model["templates"]) == 3
+        assert model["wake_phrase"] == "Hey AutoYou" and model["confirm"] == "voice"
+        assert ww.WakeWordModel.from_dict(model).distance_threshold > 0
+    finally:
+        hub.close()
+
+
+def test_a_device_can_teach_the_word_by_upload_without_streaming():
+    rng = np.random.default_rng(31)
+    am.save_settings({"enabled": True})
+    hub = make_hub(Recorder())
+    try:
+        recordings = enroll(rng)
+        states = []
+        for index, pcm in enumerate(recordings):
+            replies = _run_device(hub, "assistant_sample", {
+                "audio_base64": _b64(pcm), "wake_phrase": "Hey AutoYou", "train": index == len(recordings) - 1,
+            })
+            states.extend(r["state"] for r in replies)
+        assert states == ["captured", "captured", "captured", "done"]
+        assert am.load_settings()["wake_phrase"] == "Hey AutoYou"
+        assert am.public_status("AutoYou-Server")["ready"] is True
+        rejected = _run_device(hub, "assistant_sample", {"audio_base64": _b64(ww.float_to_pcm16(silence(1.0)))})
+        assert rejected[0]["state"] == "rejected"
+    finally:
+        hub.close()
+
+
+def test_an_uploaded_utterance_after_an_on_device_wake_reaches_the_conversation():
+    rng = np.random.default_rng(32)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "confirm": "both"})
+    recorder = Recorder(transcripts=["hey auto you dim the lights", "what a nice day"])
+    hub = make_hub(recorder)
+    try:
+        audio = ww.float_to_pcm16(with_noise(synth_word(WAKE + OTHER, rng=rng), rng=rng))
+        _run_device(hub, "assistant_utterance", {"audio_base64": _b64(audio), "score": 0.8})
+        assert recorder.wait_for(lambda r: len(r.commands) == 1)
+        assert recorder.commands[0][1] == "dim the lights"
+        assert recorder.commands[0][2]["wake"] == "device"
+        assert recorder.commands[0][2]["wake_score"] == 0.8
+        # "both" still needs the phrase in the transcript of an uploaded clip.
+        _run_device(hub, "assistant_utterance", {"pcm16_base64": __import__("base64").b64encode(audio).decode()})
+        assert recorder.wait_for(lambda r: ("idle", "not_confirmed") in r.states("pi"))
+        assert len(recorder.commands) == 1
+        assert _run_device(hub, "assistant_utterance", {"audio_base64": "not base64!"})[0]["reason"] == "bad_audio"
+    finally:
+        hub.close()
+
+
+def test_server_side_wakes_still_need_a_stream():
+    am.save_settings({"enabled": True})
+    hub = make_hub(Recorder())
+    try:
+        assert _run_device(hub, "assistant_wake")[0]["reason"] == "not_streaming"
+        assert _run_device(hub, "assistant_enroll")[0]["state"] == "failed"
+        assert _run_device(hub, "assistant_wake", streaming=True) == []
+        assert am.capability_payload("AutoYou-Server", available=True)["client_detection"] is True
+    finally:
+        hub.close()

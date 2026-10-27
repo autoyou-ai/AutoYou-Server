@@ -582,6 +582,11 @@ def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
         # (while streaming) or assistant_utterance (the recorded words, without
         # streaming), and fetch the model with assistant_model_request.
         "client_wake": True,
+        # On-device detection: devices fetch the model (assistant_model_request),
+        # upload only what was said after their own wake (assistant_utterance),
+        # and can teach the word without streaming (assistant_sample).
+        "client_detection": True,
+        "device_samples": True,
         # Devices can teach the word over their stream (assistant_enroll).
         "enrollment": True,
         "model_version": ww.MODEL_VERSION if status["model"] else 0,
@@ -1196,3 +1201,149 @@ def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]
                 LOGGER.debug("Could not remove temporary assistant audio")
 
     return transcribe
+
+
+# ---------------------------------------------------------------------------
+# Device control events (shared by the full server and AutoYou Lite)
+# ---------------------------------------------------------------------------
+
+DEVICE_EVENTS = frozenset({
+    "assistant_wake",
+    "assistant_enroll",
+    "assistant_cancel",
+    "assistant_utterance",
+    "assistant_model_request",
+    "assistant_sample",
+})
+
+Send = Callable[[Dict[str, Any]], Any]
+
+
+def _score(value: Any) -> Optional[float]:
+    return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else None
+
+
+async def handle_device_control(
+    hub: "AssistantModeHub",
+    *,
+    session_id: str,
+    event_name: str,
+    payload: Mapping[str, Any],
+    server_name: str,
+    streaming: bool,
+    send: Send,
+    after_training: Optional[Callable[[], Any]] = None,
+) -> None:
+    """Answer one ``assistant_*`` control from a paired device.
+
+    ``streaming`` says whether this device's microphone currently reaches the
+    server (assistant listening or Safety Recording). Wakes heard by the server
+    and enrolment over the stream need it; on-device detection does not: the
+    device asks for the model, and after its own wake uploads only the words it
+    recorded. ``send`` delivers one event payload back to the device.
+    """
+    import asyncio
+
+    if not session_id or event_name not in DEVICE_EVENTS:
+        return
+    if not hub.enabled:
+        reply = "assistant_model" if event_name == "assistant_model_request" else "assistant_state"
+        body: Dict[str, Any] = {"event": reply, "state": "idle", "reason": "disabled"}
+        if reply == "assistant_model":
+            body.update({"available": False, "model": None})
+        await _maybe_await(send(body))
+        return
+    if event_name == "assistant_cancel":
+        hub.cancel(session_id, "cancelled")
+        return
+    if event_name == "assistant_model_request":
+        model = await asyncio.to_thread(device_model_payload, server_name)
+        await _maybe_await(send({"event": "assistant_model", "available": model is not None, "model": model}))
+        return
+    if event_name == "assistant_utterance":
+        pcm = decode_device_utterance(payload)
+        if not pcm:
+            await _maybe_await(send({"event": "assistant_state", "state": "idle", "reason": "bad_audio"}))
+            return
+        hub.device_utterance(session_id, pcm, score=_score(payload.get("score")))
+        return
+    if event_name == "assistant_sample":
+        await _handle_device_sample(hub, payload=payload, server_name=server_name, send=send, after_training=after_training)
+        return
+    if not streaming:
+        # Nothing to listen to: the device must stream (assistant listening
+        # or Safety Recording) before a server-side wake or enrolment works.
+        reply_event = "assistant_enroll" if event_name == "assistant_enroll" else "assistant_state"
+        await _maybe_await(send({
+            "event": reply_event,
+            "state": "failed" if reply_event == "assistant_enroll" else "idle",
+            "reason": "not_streaming",
+        }))
+        return
+    if event_name == "assistant_wake":
+        hub.client_wake(session_id, score=_score(payload.get("score")))
+        return
+    action = str(payload.get("action") or "start").strip().lower()
+    if action == "cancel":
+        hub.cancel(session_id, "cancelled")
+        return
+    try:
+        count = int(payload.get("count") or ww.MIN_TEMPLATES)
+    except (TypeError, ValueError):
+        count = ww.MIN_TEMPLATES
+    hub.start_enrollment(session_id, phrase=str(payload.get("wake_phrase") or ""), count=count)
+
+
+async def _handle_device_sample(
+    hub: "AssistantModeHub",
+    *,
+    payload: Mapping[str, Any],
+    server_name: str,
+    send: Send,
+    after_training: Optional[Callable[[], Any]],
+) -> None:
+    """One recording of the wake word from a device that does not stream.
+
+    With ``train: true`` the model is rebuilt from every stored recording once
+    at least ``MIN_TEMPLATES`` are usable.
+    """
+    import asyncio
+
+    phrase_text = clean_phrase_text(payload.get("wake_phrase"))
+    pcm = decode_device_utterance(payload)
+    if pcm:
+        result = await asyncio.to_thread(add_sample, pcm, source="device", phrase=phrase_text)
+        stored = len(list_samples())
+        await _maybe_await(send({
+            "event": "assistant_enroll",
+            "state": "captured" if result.get("stored") else "rejected",
+            "captured": stored,
+            "needed": ww.MIN_TEMPLATES,
+            "problems": list(result.get("problems") or []),
+            "duration_seconds": result.get("duration_seconds"),
+        }))
+    if not payload.get("train"):
+        return
+    settings = await asyncio.to_thread(load_settings)
+    if phrase_text and not settings.get("wake_phrase"):
+        settings = await asyncio.to_thread(save_settings, {"wake_phrase": phrase_text})
+    phrase = phrase_text or effective_phrase(settings, server_name)
+    try:
+        result = await asyncio.to_thread(
+            train, phrase=phrase, use_voice_training=bool(settings.get("use_voice_training_clips", True))
+        )
+        body = {"event": "assistant_enroll", "state": "done", "report": result["report"], "wake_phrase": phrase}
+    except ValueError as exc:
+        body = {"event": "assistant_enroll", "state": "failed", "reason": str(exc)}
+    hub.reload()
+    await _maybe_await(send(body))
+    if after_training is not None and body["state"] == "done":
+        await _maybe_await(after_training())
+
+
+async def _maybe_await(value: Any) -> Any:
+    import inspect
+
+    if inspect.isawaitable(value):
+        return await value
+    return value

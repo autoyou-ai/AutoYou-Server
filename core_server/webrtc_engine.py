@@ -55,7 +55,12 @@ from shared.room_bridge import (
     revoked_control_payload,
 )
 from shared.call_listener_coordinator import CallListenerCoordinator
-from shared.assistant_mode import AssistantModeHub, local_transcriber
+from shared.assistant_mode import (
+    DEVICE_EVENTS as ASSISTANT_DEVICE_EVENTS,
+    AssistantModeHub,
+    handle_device_control as handle_assistant_device_control,
+    local_transcriber,
+)
 from shared.screen_listen import ScreenListenMixer
 from shared.remote_access_policy import (
     DEVICE_OWN,
@@ -935,38 +940,16 @@ class WebRTCManager:
         if not session_id:
             return
         self._remember_assistant_loop()
-        if not self.assistant_mode.enabled:
-            await self._send_assistant_event(session_id, {"event": "assistant_state", "state": "idle", "reason": "disabled"})
-            return
-        streaming = self._session_streams_microphone(session_id)
-        if event_name == "assistant_cancel":
-            self.assistant_mode.cancel(session_id, "cancelled")
-            return
-        if not streaming:
-            # Nothing to listen to: the device must stream (assistant listening
-            # or Safety Recording) before a wake or enrollment can work.
-            reply_event = "assistant_enroll" if event_name == "assistant_enroll" else "assistant_state"
-            await self._send_assistant_event(
-                session_id,
-                {"event": reply_event, "state": "failed" if reply_event == "assistant_enroll" else "idle", "reason": "not_streaming"},
-            )
-            return
-        if event_name == "assistant_wake":
-            score = payload.get("score")
-            self.assistant_mode.client_wake(
-                session_id,
-                score=float(score) if isinstance(score, (int, float)) else None,
-            )
-            return
-        action = str(payload.get("action") or "start").strip().lower()
-        if action == "cancel":
-            self.assistant_mode.cancel(session_id, "cancelled")
-            return
-        try:
-            count = int(payload.get("count") or 3)
-        except (TypeError, ValueError):
-            count = 3
-        self.assistant_mode.start_enrollment(session_id, phrase=str(payload.get("wake_phrase") or ""), count=count)
+        await handle_assistant_device_control(
+            self.assistant_mode,
+            session_id=session_id,
+            event_name=event_name,
+            payload=payload,
+            server_name=_runtime.get_configured_server_name(),
+            streaming=self._session_streams_microphone(session_id),
+            send=lambda body: self._send_assistant_event(session_id, body),
+            after_training=self.broadcast_webrtc_capabilities,
+        )
 
     async def broadcast_webrtc_capabilities(self) -> None:
         """Push fresh capabilities to every live device (assistant mode changed)."""
@@ -11134,7 +11117,7 @@ class WebRTCManager:
                     },
                 )
             return
-        if event_name in {"assistant_wake", "assistant_enroll", "assistant_cancel"}:
+        if event_name in ASSISTANT_DEVICE_EVENTS:
             await self._handle_assistant_control(str(session_id or "").strip(), event_name, payload)
             return
         if event_name == "video_state":
