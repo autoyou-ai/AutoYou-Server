@@ -424,7 +424,16 @@ def _append_turn(turns: List[Dict[str, str]], role: object, content: Any, timest
     text = _content_text(content)
     if not text:
         return
-    if text.startswith(("<permissions instructions>", "<environment_context>", "<automation_context>")):
+    if text.startswith((
+        "<permissions instructions>",
+        "<environment_context>",
+        "<automation_context>",
+        "<user_instructions>",
+        "# Collaboration Mode",
+        "<system-reminder>",
+        "<claude_desktop_context>",
+        "<worktree_context>",
+    )):
         return
     turns.append(
         {
@@ -449,28 +458,49 @@ def parse_codex(path: Path) -> Optional[Dict[str, Any]]:
     session_id: Optional[str] = None
     project = ""
     created_at = ""
+    model = ""
+    ui_meta: Dict[str, Any] = {}
     for row in _iter_jsonl(path):
         timestamp = row.get("timestamp") or row.get("created_at")
         created_at = created_at or _timestamp(timestamp)
         payload = row.get("payload") if isinstance(row.get("payload"), dict) else row
         row_type = str(row.get("type") or payload.get("type") or "").lower()
-        if row_type in {"session_meta", "session"}:
+        if row_type in {"session_meta", "session", "turn_context"}:
             session_id = session_id or payload.get("id") or payload.get("session_id")
             project = project or str(payload.get("cwd") or payload.get("project") or "")
+            model = str(payload.get("model") or model or "").strip()
+            for key in ("effort", "reasoning_effort", "approval_policy", "sandbox_mode", "permissions", "cli_version", "app_version", "worktree"):
+                if payload.get(key) is not None:
+                    ui_meta["effort" if key == "reasoning_effort" else key] = payload.get(key)
+            git_info = payload.get("git")
+            if isinstance(git_info, dict):
+                if git_info.get("branch"):
+                    ui_meta["git_branch"] = str(git_info["branch"])
+                if git_info.get("worktree"):
+                    ui_meta["worktree"] = str(git_info["worktree"])
+            elif payload.get("git_branch"):
+                ui_meta["git_branch"] = str(payload["git_branch"])
             continue
         if row_type == "event_msg":
             event_type = str(payload.get("type") or "").lower()
             if event_type in {"user_message", "agent_message", "assistant_message"}:
                 _append_turn(turns, event_type, payload.get("message") or payload.get("content"), timestamp)
+            elif event_type == "task_complete" and payload.get("last_agent_message"):
+                last_text = _content_text(payload.get("last_agent_message"))
+                if not turns or turns[-1].get("role") != "assistant" or turns[-1].get("text") != last_text:
+                    _append_turn(turns, "assistant", last_text, timestamp)
             continue
         if row_type in {"response_item", "message"}:
             item_type = str(payload.get("type") or "").lower()
             role = payload.get("role")
             if item_type == "message" or role:
-                _append_turn(turns, role, payload.get("content") or payload.get("message"), timestamp)
+                text = _content_text(payload.get("content") or payload.get("message"))
+                if turns and turns[-1].get("role") == ("user" if str(role).lower() == "user" else "assistant") and turns[-1].get("text") == text:
+                    continue
+                _append_turn(turns, role, text, timestamp)
     if not turns:
         return None
-    return {
+    session: Dict[str, Any] = {
         "id": _session_id("codex", path, session_id),
         "app": "codex",
         "title": path.stem,
@@ -478,6 +508,12 @@ def parse_codex(path: Path) -> Optional[Dict[str, Any]]:
         "created_at": created_at or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
         "turns": turns,
     }
+    if model:
+        session["model"] = model
+        ui_meta.setdefault("model", model)
+    if ui_meta:
+        session["ui_meta"] = ui_meta
+    return session
 
 
 def parse_claude(path: Path) -> Optional[Dict[str, Any]]:
@@ -485,26 +521,63 @@ def parse_claude(path: Path) -> Optional[Dict[str, Any]]:
     session_id: Optional[str] = None
     project = ""
     created_at = ""
+    title = ""
+    model = ""
+    ui_meta: Dict[str, Any] = {}
     for row in _iter_jsonl(path):
         row_type = str(row.get("type") or "").lower()
         timestamp = row.get("timestamp") or row.get("created_at")
         created_at = created_at or _timestamp(timestamp)
         session_id = session_id or row.get("sessionId") or row.get("session_id")
         project = project or str(row.get("cwd") or row.get("project") or "")
-        if row_type not in {"user", "assistant", "system"}:
+        if row_type == "ai-title" and row.get("aiTitle"):
+            title = title or str(row.get("aiTitle")).strip()
+            continue
+        if row_type == "custom-title" and row.get("customTitle"):
+            title = str(row.get("customTitle")).strip()
             continue
         message = row.get("message") if isinstance(row.get("message"), dict) else row
+        row_model = str(message.get("model") or row.get("model") or "").strip()
+        if row_model:
+            model = row_model
+        for src in (row, message):
+            if not isinstance(src, dict):
+                continue
+            if src.get("effort") is not None:
+                ui_meta["effort"] = src.get("effort")
+            if src.get("fastMode") is not None or src.get("fast_mode") is not None:
+                ui_meta["fast_mode"] = bool(src.get("fastMode") if src.get("fastMode") is not None else src.get("fast_mode"))
+            if src.get("ultracode") is not None:
+                ui_meta["ultracode"] = bool(src.get("ultracode"))
+            elif "ultracode" in str(src.get("effort") or "").lower():
+                ui_meta["ultracode"] = True
+            if src.get("permissionMode") is not None or src.get("permission_mode") is not None:
+                ui_meta["permission_mode"] = str(src.get("permissionMode") or src.get("permission_mode"))
+            if src.get("gitBranch") is not None or src.get("git_branch") is not None:
+                ui_meta["git_branch"] = str(src.get("gitBranch") or src.get("git_branch"))
+            if src.get("worktree") is not None or src.get("worktreeName") is not None:
+                ui_meta["worktree"] = str(src.get("worktree") or src.get("worktreeName"))
+            if src.get("version") is not None or src.get("appVersion") is not None:
+                ui_meta["version"] = str(src.get("version") or src.get("appVersion"))
+        if row_type not in {"user", "assistant", "system"}:
+            continue
         _append_turn(turns, row_type, message.get("content") or message.get("text"), timestamp)
     if not turns:
         return None
-    return {
+    session: Dict[str, Any] = {
         "id": _session_id("claude", path, session_id),
         "app": "claude",
-        "title": path.stem,
+        "title": title or path.stem,
         "project": project,
         "created_at": created_at or datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
         "turns": turns,
     }
+    if model:
+        session["model"] = model
+        ui_meta.setdefault("model", model)
+    if ui_meta:
+        session["ui_meta"] = ui_meta
+    return session
 
 
 def _chatgpt_mapping_turns(mapping: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -1178,18 +1251,42 @@ def application_capabilities(job: Optional[Dict[str, Any]] = None) -> Dict[str, 
             message = "Choose a local ChatGPT conversations export folder to enable this source."
         else:
             message = f"{labels[app]} local conversation files were not found on this machine."
-        applications.append(
-            {
-                "id": app,
-                "label": labels[app],
-                "available": bool(found_roots),
-                "enabled": bool(normalized["apps"].get(app)),
-                "message": message,
-                "source_root_count": len(roots),
-                "found_root_count": found_roots,
-                "supports": {"projects": True, "worktrees": app in {"codex", "claude"}, "all_available_history": True},
-            }
-        )
+        modern_ui_map = {
+            "claude": {
+                "app_version_family": "3.6556+",
+                "models": ["Opus 5.5", "Sonnet 5.5", "Fable 5.1", "Haiku 5.5", "Opus 4.7 (Legacy)", "Sonnet 4.6 (Legacy)", "Haiku 4.5 (Legacy)"],
+                "efforts": ["low", "medium", "high", "extra", "max"],
+                "features": ["nested_effort_flyout", "fast_mode", "ultracode", "worktree_selector", "project_selector", "usage_ring"],
+                "permissions": ["ask_permissions", "accept_edits", "plan_mode", "auto_mode", "bypass_permissions"],
+            },
+            "codex": {
+                "app_version_family": "26.1021+",
+                "models": ["Default", "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6.1 Terra", "GPT-6 Sol", "GPT-6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5 (Legacy)"],
+                "efforts": ["low", "medium", "high", "extra_high", "max"],
+                "features": ["nine_row_model_menu", "effort_slider", "inline_question_card", "diff_summary_pill", "usage_ring", "worktree_selector", "project_selector"],
+                "permissions": ["read_only", "auto", "full_access"],
+            },
+            "antigravity": {
+                "app_version_family": "2.24.0+",
+                "models": ["Gemini 4 Argon", "Gemini 3.8 Flash", "Claude Opus 5.5", "Claude Sonnet 5.5", "GPT-OSS 120B (Medium)"],
+                "efforts": ["low", "medium", "high"],
+                "features": ["nested_effort_flyout", "view_usage_menu", "voice_dictation", "inline_question_card", "wsl_docker_compatible"],
+                "permissions": ["request_review", "default", "turbo"],
+            },
+        }
+        app_entry: Dict[str, Any] = {
+            "id": app,
+            "label": labels[app],
+            "available": bool(found_roots),
+            "enabled": bool(normalized["apps"].get(app)),
+            "message": message,
+            "source_root_count": len(roots),
+            "found_root_count": found_roots,
+            "supports": {"projects": True, "worktrees": app in {"codex", "claude"}, "all_available_history": True},
+        }
+        if app in modern_ui_map:
+            app_entry["modern_ui"] = modern_ui_map[app]
+        applications.append(app_entry)
     for app, capability in messaging_capabilities().items():
         applications.append({**capability, "enabled": bool(normalized["apps"].get(app))})
     return {"status": "success", "applications": applications}

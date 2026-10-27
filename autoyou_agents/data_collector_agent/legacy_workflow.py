@@ -64,6 +64,9 @@ _NOISE_PREFIXES = (
     "<user_instructions>",
     "# Collaboration Mode",
     "<automation_context>",
+    "<system-reminder>",
+    "<claude_desktop_context>",
+    "<worktree_context>",
 )
 _USER_REQUEST_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*(?:</USER_REQUEST>|\Z)", re.S)
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -627,17 +630,20 @@ def parse_codex(path: Path, machine_id: str, archive_path: Path, stamp: dict[str
         record_type = row.get("type")
         payload_type = payload.get("type")
         timestamp = row.get("timestamp")
-        if record_type == "session_meta":
-            session["conv_id"] = str(payload.get("id") or session["conv_id"])
+        if record_type in ("session_meta", "turn_context"):
+            if record_type == "session_meta":
+                session["conv_id"] = str(payload.get("id") or session["conv_id"])
             session["cwd"] = str(payload.get("cwd") or session["cwd"])
             session["model"] = str(payload.get("model") or session["model"])
-            for key in ("originator", "cli_version", "source"):
+            for key in ("originator", "cli_version", "app_version", "source", "effort", "reasoning_effort", "approval_policy", "sandbox_mode", "permissions", "worktree", "git_branch"):
                 if payload.get(key) is not None:
-                    session["meta"][key] = payload[key]
-            continue
-        if record_type == "turn_context":
-            session["cwd"] = session["cwd"] or str(payload.get("cwd") or "")
-            session["model"] = str(payload.get("model") or session["model"])
+                    session["meta"]["effort" if key == "reasoning_effort" else key] = payload[key]
+            git_info = payload.get("git")
+            if isinstance(git_info, dict):
+                if git_info.get("branch"):
+                    session["meta"]["git_branch"] = git_info["branch"]
+                if git_info.get("worktree"):
+                    session["meta"]["worktree"] = git_info["worktree"]
             continue
         if record_type == "event_msg":
             if payload_type == "user_message":
@@ -675,18 +681,23 @@ def parse_claude(path: Path, machine_id: str, archive_path: Path, stamp: dict[st
         if row_type == "custom-title":
             custom_title = str(row.get("customTitle") or custom_title)
             continue
+        for key in ("version", "appVersion", "gitBranch", "git_branch", "worktree", "worktreeName", "entrypoint", "effort", "fastMode", "fast_mode", "ultracode", "permissionMode", "permission_mode"):
+            if row.get(key) is not None:
+                session["meta"][key] = row[key]
         if row_type == "system":
             session["cwd"] = session["cwd"] or str(row.get("cwd") or "")
-            for key in ("version", "gitBranch", "entrypoint"):
-                if row.get(key) is not None:
-                    session["meta"][key] = row[key]
             continue
         if row_type not in ("user", "assistant"):
             continue
         session["cwd"] = session["cwd"] or str(row.get("cwd") or "")
         message = row.get("message") if isinstance(row.get("message"), dict) else {}
-        session["model"] = session["model"] or str(message.get("model") or "")
+        session["model"] = str(message.get("model") or row.get("model") or session["model"] or "")
+        for key in ("effort", "fastMode", "fast_mode", "ultracode", "permissionMode", "permission_mode"):
+            if message.get(key) is not None:
+                session["meta"][key] = message[key]
         for text in claude_text_blocks(message.get("content")):
+            if row_type == "user" and is_noise(text):
+                continue
             append_turn(session, row_type, text, timestamp)
     session["title"] = custom_title or ai_title
     return finalize_session(session, stamp["mtime_ns"])
