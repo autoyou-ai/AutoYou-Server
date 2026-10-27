@@ -15,11 +15,14 @@ from typing import Any
 from google.adk.agents import Agent
 
 from .build_prompt_tool import (
+    answer_question,
     build_prompt,
+    get_question,
     configure_prompt,
     delete_prompt,
     execute_prompt,
     get_prompt,
+    inspect_desktop_config,
     new_prompt,
     result_prompt,
     status_prompt,
@@ -47,5 +50,8 @@ def create_build_prompt_agent(model_config: Any) -> Any:
             execute_prompt,
             stop_prompt,
             configure_prompt,
+            inspect_desktop_config,
+            get_question,
+            answer_question,
         ],
     )

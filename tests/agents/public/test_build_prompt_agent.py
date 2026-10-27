@@ -358,3 +358,117 @@ def test_prompt_builder_website_serves_otp_shell_before_unlock(monkeypatch):
     assert 'id="prompt-builder-content" hidden inert' in response.text
     assert 'id="autoyou-auth-gate"' in response.text
     assert "setProtectedContentVisible" in response.text
+def test_configure_prompt_forwards_speed_and_advanced_and_inspect_desktop_config(monkeypatch):
+    from fastapi.testclient import TestClient
+    from autoyou_agents.build_prompt_agent.website.backend import app as website
+
+    calls = []
+
+    def fake_call(target, function_name, **kwargs):
+        calls.append((target, function_name, kwargs))
+        return {"status": "success", "action": function_name, **kwargs}
+
+    monkeypatch.setattr(prompt_tool, "_call_target", fake_call)
+
+    res = prompt_tool.configure_prompt(
+        "claude_desktop_agent",
+        model="Opus 5.5",
+        effort="extra",
+        speed="fast",
+        advanced="ultracode",
+        permissions="auto_mode",
+        project_name="AutoYou",
+        launch_if_needed=False,
+    )
+    assert res["success"] is True
+    model_call = next(c for c in calls if c[1] == "select_claude_desktop_model")
+    assert model_call[2]["model"] == "Opus 5.5"
+    assert model_call[2]["effort"] == "extra"
+    assert model_call[2]["speed"] == "fast"
+    assert model_call[2]["advanced"] == "ultracode"
+
+    inspected = prompt_tool.inspect_desktop_config("claude_desktop_agent", probe_live_ocr=False)
+    assert inspected["success"] is True
+    opts = inspected["configuration_options"]
+    model_ids = [m["id"] for m in opts["models"]]
+    assert "opus_5_5" in model_ids
+    assert "fable_5_1" in model_ids
+    assert opts["supports_speed"] is True
+    assert opts["supports_advanced"] is True
+    assert opts["supports_worktree"] is True
+
+    monkeypatch.setattr(website, "_auth_error", lambda _request: None)
+    with TestClient(website.app) as client:
+        resp = client.get("/api/desktop-config?application_agent=codex_desktop_agent")
+    assert resp.status_code == 200
+    codex_opts = resp.json()["configuration_options"]
+    codex_model_ids = [m["id"] for m in codex_opts["models"]]
+    assert "default" in codex_model_ids
+    assert "gpt_6_1_terra" in codex_model_ids
+
+    with TestClient(website.app) as client:
+        ag_resp = client.get("/api/desktop-config?application_agent=antigravity_agent")
+    assert ag_resp.status_code == 200
+    ag_opts = ag_resp.json()["configuration_options"]
+    ag_model_ids = [m["id"] for m in ag_opts["models"]]
+    assert "gemini-4-argon" in ag_model_ids
+    assert "claude-opus-5.5" in ag_model_ids
+    assert "gpt-oss-120b" in ag_model_ids
+    ag_perm_ids = [p["id"] for p in ag_opts["permissions"]]
+    assert "request_review" in ag_perm_ids
+    assert "default" in ag_perm_ids
+    assert "turbo" in ag_perm_ids
+
+
+def test_build_prompt_agent_handles_inline_codex_question(monkeypatch):
+    calls = []
+
+    def fake_call(target, function_name, **kwargs):
+        calls.append((target, function_name, kwargs))
+        if function_name == "get_codex_desktop_prompt_status":
+            return {
+                "status": "success",
+                "prompt_status": "awaiting_question_response",
+                "processing": True,
+                "pending_question": True,
+                "question_text": "Should I run the live e2e test now?",
+            }
+        if function_name == "get_codex_desktop_question":
+            return {
+                "status": "success",
+                "pending_question": True,
+                "question_text": "Should I run the live e2e test now?",
+            }
+        if function_name == "answer_codex_desktop_question":
+            return {
+                "status": "success",
+                "action": "skip_question" if kwargs.get("skip") else "answer_question",
+                "skipped": bool(kwargs.get("skip")),
+                "response": kwargs.get("response"),
+            }
+        return {"status": "success", "text": "test", "images": 0, "attachments": 0}
+
+    monkeypatch.setattr(prompt_tool, "_call_target", fake_call)
+    prompt_tool.build_prompt("run tests", application_agent="codex_desktop_agent", launch_if_needed=False)
+    prompt_tool.execute_prompt("codex_desktop_agent", launch_if_needed=False)
+
+    res = prompt_tool.result_prompt("codex_desktop_agent", launch_if_needed=False)
+    assert res["success"] is False
+    assert res["status"] == "awaiting_question_response"
+    assert res["pending_question"] is True
+    assert "Should I run the live e2e test now?" in res["question_text"]
+
+    q_info = prompt_tool.get_question("codex_desktop_agent", launch_if_needed=False)
+    assert q_info["success"] is True
+    assert q_info["pending_question"] is True
+
+    ans = prompt_tool.answer_question(
+        "codex_desktop_agent",
+        response="Yes, run the live e2e test now.",
+        skip=False,
+        launch_if_needed=False,
+    )
+    assert ans["success"] is True
+    assert ans["answered_question"] is True
+    assert ans["question_response"] == "Yes, run the live e2e test now."
+

@@ -1149,6 +1149,7 @@ _ROUTABLE_PROMPT_AGENT_NAMES = {
     "agent_builder_agent",
     "autoyou_website_agent",
     "coding_agent",
+    "pi_agent",
     "memory_agent",
 }
 
@@ -1182,8 +1183,10 @@ for _install_name in (
     "claude_cli_agent",
     "claude_desktop_agent",
     "cli_agent",
+    "antigravity_agent",
     "codex_desktop_agent",
     "coding_agent",
+    "pi_agent",
     "data_collector_agent",
     "donation_agent",
     "earnings_agent",
@@ -1232,8 +1235,10 @@ _AGENT_BUILDER_RUNTIME_AGENT_NAME = (
 _CLAUDE_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_cli_agent") or "claude_cli_agent"
 _CLAUDE_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_desktop_agent") or "claude_desktop_agent"
 _CLI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("cli_agent") or "autoyou_cli_agent"
+_ANTIGRAVITY_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("antigravity_agent") or "antigravity_agent"
 _CODEX_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("codex_desktop_agent") or "codex_desktop_agent"
 _CODING_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("coding_agent") or "autoyou_coding_agent"
+_PI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("pi_agent") or "autoyou_pi_agent"
 _DATA_COLLECTOR_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("data_collector_agent") or "autoyou_data_collector_agent"
 _FILES_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("files_agent") or "autoyou_files_agent"
 _BACKUP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("backup_agent") or "autoyou_backup_agent"
@@ -1348,6 +1353,7 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "coding_agent",
         "code agent",
     ),
+    _PI_RUNTIME_AGENT_NAME: ("pi agent", "pi_agent", "pi coding agent"),
     _DATA_COLLECTOR_RUNTIME_AGENT_NAME: (
         "data collector agent",
         "data_collector_agent",
@@ -1412,6 +1418,16 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "claude gui",
         "claude app",
         "claude code desktop",
+    ),
+    _ANTIGRAVITY_RUNTIME_AGENT_NAME: (
+        "antigravity agent",
+        "antigravity_agent",
+        "antigravity desktop agent",
+        "antigravity_desktop_agent",
+        "antigravity desktop",
+        "antigravity",
+        "agy agent",
+        "agy",
     ),
     _CODEX_DESKTOP_RUNTIME_AGENT_NAME: (
         "codex desktop agent",
@@ -1627,6 +1643,30 @@ def _looks_like_notes_request(user_text: str) -> bool:
         return False
     return any(pattern.search(normalized) for pattern in _NOTES_INTENT_PATTERNS)
 
+_ADMIN_SENSITIVE_INTENT_PATTERNS = (
+    re.compile(
+        r"\b(?:restart|stop|start|enable|disable|configure)\s+"
+        r"(?:the\s+)?(?:whatsapp|telegram|signal|tunnelmole|admin\s+service)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:show|reveal|expose|list|dump|get)\s+(?:any\s+|all\s+|my\s+|the\s+)?"
+        r"(?:saved\s+|stored\s+)?(?:api\s+tokens?|api\s+keys?|admin\s+passwords?|totp\s+secrets?)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bwithout\s+asking\s+(?:me\s+)?for\s+(?:a\s+)?(?:2fa|totp|two[- ]factor)\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _looks_like_admin_sensitive_request(user_text: str) -> bool:
+    normalized = " ".join(str(user_text or "").split())
+    if not normalized or _is_memory_recall_request(normalized):
+        return False
+    return any(pattern.search(normalized) for pattern in _ADMIN_SENSITIVE_INTENT_PATTERNS)
+
 # ── Static agent imports (Nuitka-friendly) ────────────────────────────────────
 # importlib.import_module() with a runtime string cannot be traced by Nuitka's
 # static analyser even when --include-package=autoyou_agents is set.  These
@@ -1682,6 +1722,12 @@ except Exception as _import_err:
     _create_coding_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.pi_agent.agent import create_pi_agent as _create_pi_agent
+except Exception as _import_err:
+    logger.warning("pi_agent static import failed: %s", _import_err)
+    _create_pi_agent = None
+
+try:
     from autoyou_agents.data_collector_agent.agent import create_data_collector_agent as _create_data_collector_agent
 except Exception as _import_err:
     logger.warning("data_collector_agent static import failed: %s", _import_err)
@@ -1704,6 +1750,12 @@ try:
 except Exception as _import_err:
     logger.warning("cli_agent static import failed: %s", _import_err)
     _create_cli_agent = None  # type: ignore[assignment]
+
+try:
+    from autoyou_agents.antigravity_agent.agent import create_antigravity_agent as _create_antigravity_agent
+except Exception as _import_err:
+    logger.warning("antigravity_agent static import failed: %s", _import_err)
+    _create_antigravity_agent = None  # type: ignore[assignment]
 
 try:
     from autoyou_agents.codex_desktop_agent.agent import create_codex_desktop_agent as _create_codex_desktop_agent
@@ -1901,8 +1953,10 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "claude_cli_agent": _create_claude_cli_agent,
     "claude_desktop_agent": _create_claude_desktop_agent,
     "cli_agent": _create_cli_agent,
+    "antigravity_agent": _create_antigravity_agent,
     "codex_desktop_agent": _create_codex_desktop_agent,
     "coding_agent": _create_coding_agent,
+    "pi_agent": _create_pi_agent,
     "data_collector_agent": _create_data_collector_agent,
     "donation_agent": _create_donation_agent,
     "earnings_agent": _create_earnings_agent,
@@ -4199,6 +4253,8 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
         "autoyou_agents.claude_desktop_agent.agent",
         (
             "get_claude_desktop_status",
+            "get_claude_desktop_prompt",
+            "get_claude_desktop_prompt_status",
             "get_claude_desktop_release_status",
             "list_claude_desktop_asset_packs",
             "select_claude_desktop_project",
@@ -4207,10 +4263,12 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
             "add_to_claude_desktop_prompt",
             "replace_claude_desktop_prompt",
             "add_claude_desktop_attachments",
+            "new_claude_desktop_prompt",
             "send_current_claude_desktop_prompt",
             "queue_claude_desktop_prompt",
             "copy_claude_desktop_final_response",
             "send_prompt_to_claude_desktop",
+            "stop_claude_desktop_prompt",
             "wait_for_claude_desktop_final_response",
             "get_claude_usage",
             "find_claude_desktop_screenshot_attachments",
@@ -4221,6 +4279,10 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
         "autoyou_agents.codex_desktop_agent.agent",
         (
             "get_codex_desktop_status",
+            "get_codex_desktop_prompt",
+            "get_codex_desktop_prompt_status",
+            "get_codex_desktop_question",
+            "answer_codex_desktop_question",
             "get_codex_desktop_release_status",
             "list_codex_desktop_asset_packs",
             "select_codex_desktop_project",
@@ -4229,14 +4291,66 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
             "add_to_codex_desktop_prompt",
             "replace_codex_desktop_prompt",
             "add_codex_desktop_attachments",
+            "new_codex_desktop_prompt",
             "send_current_codex_desktop_prompt",
             "queue_codex_desktop_prompt",
             "copy_codex_desktop_final_response",
             "send_prompt_to_codex_desktop",
+            "stop_codex_desktop_prompt",
             "wait_for_codex_desktop_final_response",
             "get_codex_usage",
             "find_codex_desktop_screenshot_attachments",
             "capture_codex_desktop_screenshot",
+        ),
+    ),
+    _ANTIGRAVITY_RUNTIME_AGENT_NAME: (
+        "autoyou_agents.antigravity_agent.agent",
+        (
+            "get_antigravity_status",
+            "get_antigravity_desktop_status",
+            "get_antigravity_prompt",
+            "get_antigravity_desktop_prompt",
+            "get_antigravity_prompt_status",
+            "get_antigravity_desktop_prompt_status",
+            "get_antigravity_question",
+            "get_antigravity_desktop_question",
+            "answer_antigravity_question",
+            "answer_antigravity_desktop_question",
+            "get_antigravity_release_status",
+            "get_antigravity_desktop_release_status",
+            "list_antigravity_asset_packs",
+            "list_antigravity_desktop_asset_packs",
+            "select_antigravity_project",
+            "select_antigravity_desktop_project",
+            "select_antigravity_permissions",
+            "select_antigravity_desktop_permissions",
+            "select_antigravity_model",
+            "select_antigravity_desktop_model",
+            "add_to_antigravity_prompt",
+            "add_to_antigravity_desktop_prompt",
+            "replace_antigravity_prompt",
+            "replace_antigravity_desktop_prompt",
+            "add_antigravity_attachments",
+            "add_antigravity_desktop_attachments",
+            "new_antigravity_prompt",
+            "new_antigravity_desktop_prompt",
+            "send_current_antigravity_prompt",
+            "send_current_antigravity_desktop_prompt",
+            "queue_antigravity_prompt",
+            "queue_antigravity_desktop_prompt",
+            "copy_antigravity_final_response",
+            "copy_antigravity_desktop_final_response",
+            "send_prompt_to_antigravity",
+            "send_prompt_to_antigravity_desktop",
+            "stop_antigravity_prompt",
+            "stop_antigravity_desktop_prompt",
+            "wait_for_antigravity_final_response",
+            "wait_for_antigravity_desktop_final_response",
+            "get_antigravity_usage",
+            "find_antigravity_screenshot_attachments",
+            "find_antigravity_desktop_screenshot_attachments",
+            "capture_antigravity_screenshot",
+            "capture_antigravity_desktop_screenshot",
         ),
     ),
 }
@@ -4749,6 +4863,23 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             )
         if notes_runtime and _is_runtime_agent_installed_but_unavailable(notes_runtime):
             return _unavailable_agent_response(notes_runtime)
+
+    if _provider_requires_explicit_agent_tools() and _looks_like_admin_sensitive_request(user_text):
+        if _is_runtime_agent_enabled(_ADMIN_RUNTIME_AGENT_NAME):
+            _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
+            _set_root_preferred_agent(callback_context.state, _ADMIN_RUNTIME_AGENT_NAME)
+            _set_root_last_routed_agent(callback_context.state, _ADMIN_RUNTIME_AGENT_NAME)
+            return _dispatch_specialist_tool_call(
+                _ADMIN_RUNTIME_AGENT_NAME,
+                {"request": user_text},
+                custom_metadata={
+                    "response_author": root_prompt.AGENT_NAME,
+                    "route_target": _ADMIN_RUNTIME_AGENT_NAME,
+                    "route_reason": "deterministic_admin_sensitive_intent",
+                },
+            )
+        if _is_runtime_agent_installed_but_unavailable(_ADMIN_RUNTIME_AGENT_NAME):
+            return _unavailable_agent_response(_ADMIN_RUNTIME_AGENT_NAME)
 
     pinned_agent = _get_root_pinned_agent(callback_context.state)
     if (

@@ -13,7 +13,7 @@ AGENT_NAME = "autoyou_build_prompt_agent"
 
 AGENT_DESCRIPTION = (
     "Builds one exact, unsent prompt from Telegram Saved Messages or the website, "
-    "attaches images without AI rewriting, and controls a Codex or Claude Desktop app."
+    "attaches images without AI rewriting, and controls a Codex Desktop, Claude Desktop, or Antigravity app."
 )
 
 AGENT_INSTRUCTION = """\
@@ -27,8 +27,10 @@ You are the AutoYou Prompt Builder Agent. Your job is mechanical prompt assembly
 - Use result_prompt only after processing has finished to copy the latest desktop response.
 - Use delete_prompt or new_prompt to clear the unsent composer.
 - Use stop_prompt only for a currently processing submission.
-- Use configure_prompt for native model, effort, permissions, project, and related controls.
-- The supported application agents are codex_desktop_agent and claude_desktop_agent.
+- Use inspect_desktop_config to discover available models, efforts, speeds, advanced toggles, permissions, and live window state from the running desktop instance.
+- Use configure_prompt for native model, effort, speed, advanced (e.g. Ultracode), permissions, project, and related controls.
+- Use get_question and answer_question when Codex pauses mid-turn with an inline Question card (reply with text or set skip=True).
+- The supported application agents are codex_desktop_agent, claude_desktop_agent, and antigravity_agent.
 - The exact Telegram mode exit phrase is `exit confirm`; after it, return to the main agent.
 
 Never claim a desktop result unless result_prompt returned it. Do not use an LLM to process

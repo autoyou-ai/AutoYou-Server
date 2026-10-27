@@ -58,6 +58,7 @@ _DRAFT_PROMPT_BY_AGENT: Dict[str, str] = {}
 _SUBMITTED_PROMPT_BY_AGENT: Dict[str, str] = {}
 _OCR_BUSY_MARKERS = (
     "thinking",
+    "working for",
     "stop generating",
     "generating",
     "usage limit",
@@ -70,6 +71,8 @@ _OCR_COMPOSER_MARKERS = (
     "ask for follow-up changes",
     "describe a task or ask a question",
     "type / for commands",
+    "work with codex",
+    "do anything",
 )
 
 
@@ -324,6 +327,19 @@ def _windows_msix_package_version(exe_path: str) -> Optional[str]:
     return None
 
 
+def _windows_squirrel_app_version(exe_path: str) -> Optional[str]:
+    """Extract the app version from a Squirrel/Velopack app-<version> folder path (e.g. AnthropicClaude/app-3.6556.2/claude.exe)."""
+    try:
+        parts = Path(exe_path).parts
+    except Exception:
+        return None
+    for part in reversed(parts):
+        match = re.match(r"^app-(\d+(?:\.\d+)+)$", str(part).strip(), re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
 def detect_installed_app_version(
     manifest: Dict[str, Any],
     platform_tag: str,
@@ -364,6 +380,9 @@ def detect_installed_app_version(
             package_version = _windows_msix_package_version(exe)
             if package_version:
                 return package_version
+            squirrel_version = _windows_squirrel_app_version(exe)
+            if squirrel_version:
+                return squirrel_version
             try:
                 script = f"(Get-Item -LiteralPath {json.dumps(exe)}).VersionInfo.ProductVersion"
                 completed = _run_command(["powershell", "-NoProfile", "-Command", script], timeout_seconds=6)
@@ -553,6 +572,33 @@ def _list_running_processes(process_names: Iterable[str]) -> List[Dict[str, Any]
                 )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+    if not matches and os.environ.get("WSL_DISTRO_NAME") and shutil.which("tasklist.exe"):
+        try:
+            completed = _run_command(["tasklist.exe", "/FO", "CSV", "/NH"], timeout_seconds=5)
+            if completed.returncode == 0:
+                import csv
+
+                for row in csv.reader((completed.stdout or "").splitlines()):
+                    if len(row) < 2:
+                        continue
+                    proc_name = str(row[0] or "").strip()
+                    proc_lower = proc_name.lower()
+                    haystacks = {proc_lower, proc_lower[:-4] if proc_lower.endswith(".exe") else proc_lower}
+                    if any(name in haystacks for name in desired):
+                        try:
+                            pid_val = int(str(row[1] or "0").strip())
+                        except ValueError:
+                            pid_val = 0
+                        matches.append(
+                            {
+                                "pid": pid_val,
+                                "name": proc_name,
+                                "exe": proc_name,
+                                "cmdline": [proc_name],
+                            }
+                        )
+        except Exception:
+            pass
     return matches
 
 
@@ -1327,6 +1373,79 @@ def _list_windows_windows(process_hints: List[str]) -> List[Dict[str, Any]]:
             )
         if windows:
             return windows
+
+    if getattr(_run_command, '__module__', '') == __name__:
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            dwmapi = ctypes.windll.dwmapi
+            hint_set = set(normalized_hints)
+
+            class _RECT(ctypes.Structure):
+                _fields_ = [
+                    ("Left", ctypes.c_long),
+                    ("Top", ctypes.c_long),
+                    ("Right", ctypes.c_long),
+                    ("Bottom", ctypes.c_long),
+                ]
+
+            proc_map: Dict[int, str] = {}
+            for proc in psutil.process_iter(["pid", "name"]):
+                try:
+                    pname = str(proc.info.get("name") or "").strip()
+                    if pname:
+                        proc_map[int(proc.info["pid"])] = pname
+                except Exception:
+                    continue
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+            def _enum_cb(hwnd, lparam):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = buf.value.strip()
+                if not title:
+                    return True
+                rect = _RECT()
+                if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    return True
+                if (rect.Right - rect.Left) < 120 or (rect.Bottom - rect.Top) < 120:
+                    return True
+                cloaked = ctypes.c_int(0)
+                try:
+                    dwmapi.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), 4)
+                    if cloaked.value != 0:
+                        return True
+                except Exception:
+                    pass
+                pid_c = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_c))
+                pname = proc_map.get(int(pid_c.value), "")
+                pl = pname.lower()
+                pl_no_exe = pl[:-4] if pl.endswith(".exe") else pl
+                if not hint_set or pl in hint_set or pl_no_exe in hint_set or (pl_no_exe + ".exe") in hint_set:
+                    windows.append(
+                        {
+                            "title": title,
+                            "process_name": pname[:-4] if pname.lower().endswith(".exe") else pname,
+                            "pid": int(pid_c.value),
+                            "bounds": [int(rect.Left), int(rect.Top), int(rect.Right), int(rect.Bottom)],
+                        }
+                    )
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+            if windows:
+                return windows
+        except Exception:
+            pass
 
     try:
         import pygetwindow as gw  # type: ignore[import-not-found]
@@ -2829,6 +2948,8 @@ def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False)
             "coordinate fallbacks will be used where defined, and image-only targets may be unavailable."
         )
     release_action_coverage = _release_action_coverage(manifest, pack)
+    installed_app_version = detect_installed_app_version(manifest, details["platform"], process_hints)
+    configuration_options = _extract_pack_configuration_options(pack)
 
     screenshot_path = None
     if capture_screenshot:
@@ -2843,6 +2964,7 @@ def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False)
         "platform": details["platform"],
         "platform_variant": details["platform_variant"],
         "architecture": details["architecture"],
+        "installed_app_version": installed_app_version,
         "process_names": process_hints,
         "window_title_hints": title_hints,
         "running_processes": running_processes,
@@ -2850,12 +2972,311 @@ def get_desktop_app_status(agent_dir: Path, *, capture_screenshot: bool = False)
         "active_window": active_window,
         "window_bounds": list(bounds) if bounds else None,
         "asset_pack": pack,
+        "configuration_options": configuration_options,
         "release_action_coverage": release_action_coverage,
         "screen_size": list(screen_size),
         "monitor_count": monitor_count,
         "ready": bool(running_processes or active_window),
         "warnings": warnings,
         "screenshot_path": str(screenshot_path) if screenshot_path else None,
+    }
+
+
+def _humanize_option_id(option_id: str) -> str:
+    raw = str(option_id or "").strip()
+    if not raw:
+        return ""
+    tokens = raw.split("_")
+    out: List[str] = []
+    idx = 0
+    while idx < len(tokens):
+        tok = tokens[idx]
+        if tok.lower() == "gpt" and idx + 1 < len(tokens) and tokens[idx + 1].isdigit():
+            if idx + 2 < len(tokens) and tokens[idx + 2].isdigit():
+                out.append(f"GPT-{tokens[idx + 1]}.{tokens[idx + 2]}")
+                idx += 3
+                continue
+            out.append(f"GPT-{tokens[idx + 1]}")
+            idx += 2
+            continue
+        if tok.isdigit() and idx + 1 < len(tokens) and tokens[idx + 1].isdigit() and out:
+            out.append(f"{tok}.{tokens[idx + 1]}")
+            idx += 2
+            continue
+        out.append(tok.capitalize())
+        idx += 1
+    return " ".join(out)
+
+
+def _extract_option_group_items(group: Any) -> List[Dict[str, Any]]:
+    if not isinstance(group, dict):
+        return []
+    primary: List[Dict[str, Any]] = []
+    legacy: List[Dict[str, Any]] = []
+    for opt_id, raw in group.items():
+        if not isinstance(raw, dict):
+            continue
+        is_legacy = bool(raw.get("legacy", False))
+        label = str(raw.get("label") or _humanize_option_id(str(opt_id))).strip()
+        aliases = [str(a).strip() for a in (raw.get("aliases") or []) if str(a).strip()]
+        item: Dict[str, Any] = {
+            "id": str(opt_id),
+            "label": label,
+            "aliases": aliases,
+            "legacy": is_legacy,
+            "nested": bool(raw.get("steps")),
+        }
+        if raw.get("description"):
+            item["description"] = str(raw.get("description"))
+        if is_legacy:
+            legacy.append(item)
+        else:
+            primary.append(item)
+    return primary + legacy
+
+
+def _extract_pack_configuration_options(pack: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(pack, dict):
+        return {
+            "asset_pack_id": None,
+            "models": [],
+            "efforts": [],
+            "speeds": [],
+            "advanced": [],
+            "permissions": [],
+            "supports_project": False,
+            "supports_worktree": False,
+            "supports_speed": False,
+            "supports_advanced": False,
+        }
+    controls = _selection_controls(pack)
+    model_ctrl = controls.get("model") if isinstance(controls.get("model"), dict) else {}
+    speed_ctrl = controls.get("speed") if isinstance(controls.get("speed"), dict) else {}
+    advanced_ctrl = controls.get("advanced") if isinstance(controls.get("advanced"), dict) else {}
+    perm_ctrl = controls.get("permissions") if isinstance(controls.get("permissions"), dict) else {}
+
+    models = _extract_option_group_items(model_ctrl.get("options"))
+    efforts = _extract_option_group_items(model_ctrl.get("effort_options"))
+    speeds = _extract_option_group_items(speed_ctrl.get("options"))
+    advanced = _extract_option_group_items(advanced_ctrl.get("options"))
+    permissions = _extract_option_group_items(perm_ctrl.get("options"))
+    target_ids = {
+        str(t.get("target_id") or "").strip()
+        for t in (pack.get("targets") or [])
+        if isinstance(t, dict)
+    }
+    supports_project = isinstance(controls.get("project"), dict) or "project_selector" in target_ids
+    supports_worktree = isinstance(controls.get("worktree"), dict) or "worktree_selector" in target_ids
+    supports_inline_question = bool({"question_reply_input", "question_skip_button"} & target_ids)
+
+    return {
+        "asset_pack_id": pack.get("asset_pack_id"),
+        "app_version_captured": pack.get("app_version_captured"),
+        "app_version_min": pack.get("app_version_min"),
+        "valid_until": pack.get("valid_until"),
+        "models": models,
+        "efforts": efforts,
+        "speeds": speeds,
+        "advanced": advanced,
+        "permissions": permissions,
+        "supports_project": supports_project,
+        "supports_worktree": supports_worktree,
+        "supports_speed": bool(speeds),
+        "supports_advanced": bool(advanced),
+        "supports_inline_question": supports_inline_question,
+    }
+
+
+def _match_option_from_ocr_text(normalized_ocr: str, options: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    best_match: Optional[Dict[str, Any]] = None
+    best_len = 0
+    for item in options:
+        candidates = [str(item.get("label") or "").split("(")[0].strip(), str(item.get("id") or "")]
+        candidates.extend(str(a) for a in (item.get("aliases") or []))
+        for cand in candidates:
+            norm_cand = _normalize_selection_value(cand)
+            if len(norm_cand) < 3:
+                continue
+            if re.search(r"\b" + re.escape(norm_cand) + r"\b", normalized_ocr):
+                score = len(norm_cand) + (0 if item.get("legacy") else 100)
+                if score > best_len:
+                    best_len = score
+                    best_match = item
+    return best_match
+
+
+_INLINE_QUESTION_HEADER_RE = re.compile(
+    r"^(?:[?@❓❔oO07•*]+\s*)?question(?:\s+\d+\s*(?:of|/)\s*\d+)?\b\s*:?\s*(.*)$",
+    re.IGNORECASE,
+)
+_INLINE_QUESTION_FOOTER_LINE_RE = re.compile(
+    r"^(?:reply(?:\s*\.{1,3}|…)?|type\s+a\s+reply(?:\s*\.{1,3}|…)?|skip|send|skip\s+send)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_inline_question_from_ocr_text(ocr_text: str) -> Dict[str, Any]:
+    """Detect an inline Codex Question card and extract its prompt text from OCR output."""
+    lines = [re.sub(r"\s+", " ", ln).strip() for ln in str(ocr_text or "").splitlines() if ln.strip()]
+    full_text = " ".join(lines)
+    lowered = full_text.lower()
+
+    has_question_word = bool(re.search(r"\bquestion\b", lowered))
+    has_reply_marker = bool(re.search(r"\breply\b", lowered))
+    has_skip_marker = bool(re.search(r"\bskip\b", lowered))
+    has_send_marker = bool(re.search(r"\bsend\b", lowered))
+
+    is_question_card = (
+        (has_question_word and (has_reply_marker or has_skip_marker or (has_send_marker and "?" in full_text)))
+        or (has_reply_marker and has_skip_marker and "?" in full_text)
+    )
+    if not is_question_card:
+        return {
+            "pending_question": False,
+            "question_text": "",
+            "has_reply_input": False,
+            "has_skip_button": False,
+            "has_send_button": False,
+        }
+
+    collected: List[str] = []
+    if len(lines) > 1:
+        header_idx: Optional[int] = None
+        for idx, ln in enumerate(lines):
+            match = _INLINE_QUESTION_HEADER_RE.match(ln)
+            if match:
+                header_idx = idx
+                trailing = re.sub(
+                    r"\s+\b(?:reply(?:\s*\.{1,3}|…)?|skip(?:\s+send)?|send)\b.*$",
+                    "",
+                    match.group(1).strip(),
+                    flags=re.IGNORECASE,
+                ).strip()
+                if trailing and not _INLINE_QUESTION_FOOTER_LINE_RE.match(trailing):
+                    collected = [trailing]
+                else:
+                    collected = []
+        if header_idx is not None:
+            for ln in lines[header_idx + 1 :]:
+                if _INLINE_QUESTION_FOOTER_LINE_RE.match(ln):
+                    break
+                compact_ln = _compact_text(ln)
+                if any(marker in compact_ln for marker in _OCR_COMPOSER_MARKERS):
+                    break
+                cleaned_ln = re.sub(
+                    r"\s+\b(?:reply(?:\s*\.{1,3}|…)?|skip\s+send)\b.*$",
+                    "",
+                    ln,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if cleaned_ln and not _INLINE_QUESTION_FOOTER_LINE_RE.match(cleaned_ln):
+                    collected.append(cleaned_ln)
+
+    if not collected:
+        single_match = re.search(
+            r"\bquestion(?:\s+\d+\s*(?:of|/)\s*\d+)?\b\s*:?\s*(.*?)(?=\s+\b(?:reply(?:\s*\.{1,3}|…)?|type\s+a\s+reply|skip(?:\s+send)?|work\s+with\s+codex|ask\s+for\s+follow)\b|$)",
+            full_text,
+            flags=re.IGNORECASE,
+        )
+        if single_match:
+            candidate = single_match.group(1).strip()
+            candidate = re.sub(r"^[?:\-–—]+\s*", "", candidate).strip()
+            if candidate and not _INLINE_QUESTION_FOOTER_LINE_RE.match(candidate):
+                collected = [candidate]
+
+    if not collected and has_reply_marker and has_skip_marker and len(lines) > 1:
+        for idx, ln in enumerate(lines):
+            if _INLINE_QUESTION_FOOTER_LINE_RE.match(ln):
+                for prev in reversed(lines[:idx]):
+                    if re.search(r"\bfiles?\s+changed\b", prev, re.IGNORECASE):
+                        break
+                    if "?" in prev or prev:
+                        collected.insert(0, prev)
+                        if "?" in prev and len(collected) >= 1:
+                            break
+                break
+
+    question_text = "\n".join(part for part in collected if part).strip()
+    return {
+        "pending_question": True,
+        "question_text": question_text,
+        "has_reply_input": has_reply_marker,
+        "has_skip_button": has_skip_marker,
+        "has_send_button": has_send_marker,
+    }
+
+
+def _parse_live_control_bar_ocr(ocr_text: str, config_options: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = _normalize_selection_value(ocr_text)
+    matched_model = _match_option_from_ocr_text(normalized, config_options.get("models") or [])
+    matched_effort = _match_option_from_ocr_text(normalized, config_options.get("efforts") or [])
+    matched_perm = _match_option_from_ocr_text(normalized, config_options.get("permissions") or [])
+    matched_speed = _match_option_from_ocr_text(normalized, config_options.get("speeds") or [])
+    matched_adv = _match_option_from_ocr_text(normalized, config_options.get("advanced") or [])
+    question_info = _extract_inline_question_from_ocr_text(ocr_text)
+    pending_question = bool(
+        question_info.get("pending_question")
+        or ("question" in normalized and ("reply" in normalized or "skip" in normalized))
+    )
+    return {
+        "model": matched_model["id"] if matched_model else None,
+        "model_label": matched_model["label"] if matched_model else None,
+        "effort": matched_effort["id"] if matched_effort else None,
+        "effort_label": matched_effort["label"] if matched_effort else None,
+        "permissions": matched_perm["id"] if matched_perm else None,
+        "permissions_label": matched_perm["label"] if matched_perm else None,
+        "speed": matched_speed["id"] if matched_speed else None,
+        "advanced": matched_adv["id"] if matched_adv else None,
+        "worktree_visible": "worktree" in normalized,
+        "pending_question": pending_question,
+        "question_text": str(question_info.get("question_text") or ""),
+        "diff_summary_visible": bool("files changed" in normalized or "file changed" in normalized),
+        "raw_text": str(ocr_text or "").strip(),
+    }
+
+
+def inspect_live_desktop_app_config(
+    agent_dir: Path,
+    *,
+    probe_control_bar_ocr: bool = False,
+) -> Dict[str, Any]:
+    """Inspect a desktop agent's manifest pack and running window (without clicking or moving the pointer)."""
+    status = get_desktop_app_status(Path(agent_dir), capture_screenshot=False)
+    if status.get("status") != "success":
+        return status
+    config_options = status.get("configuration_options") or _extract_pack_configuration_options(status.get("asset_pack"))
+    live_detected: Optional[Dict[str, Any]] = None
+    bounds = status.get("window_bounds")
+    if probe_control_bar_ocr and status.get("ready") and isinstance(bounds, list) and len(bounds) == 4:
+        try:
+            capture_path = _build_artifact_path(str(status.get("agent_name") or "desktop"), "config-probe")
+            shot = _capture_desktop_screenshot(capture_path)
+            if shot.get("status") == "success":
+                crop_path = _crop_region_from_capture(
+                    capture_path,
+                    tuple(int(x) for x in bounds),
+                    [0.05, 0.60, 0.95, 1.0],
+                )
+                ocr = _ocr_image_file(crop_path or capture_path)
+                if str(ocr.get("text") or "").strip():
+                    live_detected = _parse_live_control_bar_ocr(str(ocr.get("text") or ""), config_options)
+                    live_detected["ocr_engine"] = ocr.get("engine")
+        except Exception as exc:
+            LOGGER.debug("Live control bar OCR probe failed: %s", exc)
+    return {
+        "status": "success",
+        "agent_name": status.get("agent_name"),
+        "title": status.get("title"),
+        "app_id": status.get("app_id"),
+        "platform": status.get("platform"),
+        "installed_app_version": status.get("installed_app_version"),
+        "ready": bool(status.get("ready")),
+        "active_window": status.get("active_window"),
+        "window_bounds": status.get("window_bounds"),
+        "asset_pack_id": (status.get("asset_pack") or {}).get("asset_pack_id"),
+        "configuration_options": config_options,
+        "live_detected": live_detected,
+        "warnings": status.get("warnings") or [],
     }
 
 
@@ -3171,7 +3592,10 @@ def select_desktop_app_project(
     if not isinstance(control, dict):
         control = {"open_target_id": "sidebar_recents_search", "post_open_delay_seconds": 0.2}
     open_target_id = str(control.get("open_target_id") or "sidebar_recents_search")
+    fallback_target_id = str(control.get("fallback_target_id") or "").strip()
     open_result = _click_target_id(prepared, open_target_id)
+    if open_result.get("status") != "success" and fallback_target_id and fallback_target_id != open_target_id:
+        open_result = _click_target_id(prepared, fallback_target_id)
     if open_result.get("status") != "success" and open_target_id != "sidebar_recents":
         open_result = _click_target_id(prepared, "sidebar_recents")
     if open_result.get("status") != "success":
@@ -3692,11 +4116,85 @@ def _detect_processing_from_stop_sprite(prepared: Dict[str, Any]) -> Dict[str, A
     return {"processing": None, "source": "stop_sprite"}
 
 
+def _detect_inline_question_card(
+    prepared: Dict[str, Any],
+    capture_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Check whether the desktop app is displaying an inline Question card (e.g. Codex mid-turn prompt)."""
+    pack = prepared.get("pack") or {}
+    if _resolve_target(pack, "question_reply_input") is None and _resolve_target(pack, "question_skip_button") is None:
+        return {"pending_question": False, "question_text": "", "source": None, "ocr_engine": None}
+
+    pyautogui = prepared.get("pyautogui")
+    manifest = prepared.get("manifest") or {}
+    window_bounds = prepared.get("window_bounds")
+    sprite_matched = False
+    skip_target = _resolve_target(pack, "question_skip_button")
+    if pyautogui is not None and skip_target is not None and skip_target.get("expected_image_path"):
+        try:
+            if _locate_target_by_image(pyautogui, manifest, skip_target, window_bounds=window_bounds):
+                sprite_matched = True
+        except Exception:
+            pass
+
+    ocr_engine: Optional[str] = None
+    if capture_path is not None:
+        try:
+            crop_path = _crop_region_from_capture(
+                capture_path,
+                window_bounds,
+                [0.24, 0.52, 0.95, 0.92],
+            )
+            ocr = _ocr_image_file(crop_path or capture_path)
+            ocr_engine = ocr.get("engine")
+            if ocr.get("status") == "success" and str(ocr.get("text") or "").strip():
+                parsed = _extract_inline_question_from_ocr_text(str(ocr.get("text") or ""))
+                if parsed.get("pending_question"):
+                    return {
+                        **parsed,
+                        "source": "question_card_ocr_and_sprite" if sprite_matched else "question_card_ocr",
+                        "ocr_engine": ocr_engine,
+                    }
+        except Exception as exc:
+            LOGGER.debug("Inline question card OCR check failed: %s", exc)
+
+    if sprite_matched:
+        return {
+            "pending_question": True,
+            "question_text": "",
+            "has_reply_input": _resolve_target(pack, "question_reply_input") is not None,
+            "has_skip_button": True,
+            "has_send_button": _resolve_target(pack, "question_send_button") is not None,
+            "source": "question_skip_button_sprite",
+            "ocr_engine": None,
+        }
+
+    return {"pending_question": False, "question_text": "", "source": None, "ocr_engine": None}
+
+
 def _inspect_desktop_prompt_status(prepared: Dict[str, Any]) -> Dict[str, Any]:
     capture_path = _build_artifact_path(prepared["manifest"]["agent_name"], "prompt-status")
     capture = _capture_desktop_screenshot(capture_path)
     if capture.get("status") != "success":
         return {**capture, "prompt_status": "unknown", "processing": None}
+
+    question = _detect_inline_question_card(prepared, capture_path)
+    if question.get("pending_question"):
+        sprite_metrics = _detect_processing_from_stop_sprite(prepared)
+        return {
+            "status": "success",
+            "prompt_status": "awaiting_question_response",
+            "processing": True,
+            "pending_question": True,
+            "question_text": str(question.get("question_text") or ""),
+            "detection_source": str(question.get("source") or "question_card_ocr"),
+            "busy_markers": ["question"],
+            "ocr_engine": question.get("ocr_engine"),
+            "screenshot": str(capture_path),
+            "focused": prepared["focused"],
+            "warnings": prepared["warnings"],
+            "visual_metrics": sprite_metrics,
+        }
 
     # Sprite state first. OCR is not available on every platform (no Vision, no tesseract), and
     # when it is missing every text-based check silently returns empty - which previously left
@@ -3707,6 +4205,8 @@ def _inspect_desktop_prompt_status(prepared: Dict[str, Any]) -> Dict[str, Any]:
             "status": "success",
             "prompt_status": "processing" if sprite["processing"] else "idle",
             "processing": bool(sprite["processing"]),
+            "pending_question": False,
+            "question_text": "",
             "detection_source": str(sprite.get("source")),
             "busy_markers": [],
             "ocr_engine": None,
@@ -3788,6 +4288,165 @@ def get_desktop_app_prompt_status(
     result["platform"] = prepared["details"]["platform"]
     result["asset_pack_id"] = prepared["pack"].get("asset_pack_id")
     return result
+
+
+def get_desktop_app_question(
+    agent_dir: Path,
+    *,
+    launch_if_needed: bool = False,
+) -> Dict[str, Any]:
+    """Inspect the desktop app for an active inline Question card (e.g. Codex mid-turn question)."""
+    prepared = _prepare_desktop_app_interaction(agent_dir, launch_if_needed=launch_if_needed)
+    if prepared.get("status") != "success":
+        return prepared
+    capture_path = _build_artifact_path(prepared["manifest"]["agent_name"], "question-status")
+    capture = _capture_desktop_screenshot(capture_path)
+    if capture.get("status") != "success":
+        return {**capture, "pending_question": False, "question_text": ""}
+    question = _detect_inline_question_card(prepared, capture_path)
+    return {
+        "status": "success",
+        "agent_name": prepared["manifest"].get("agent_name"),
+        "app_id": prepared["manifest"].get("app_id"),
+        "platform": prepared["details"]["platform"],
+        "asset_pack_id": prepared["pack"].get("asset_pack_id"),
+        "pending_question": bool(question.get("pending_question")),
+        "question_text": str(question.get("question_text") or ""),
+        "detection_source": question.get("source"),
+        "has_reply_input": bool(question.get("has_reply_input")),
+        "has_skip_button": bool(question.get("has_skip_button")),
+        "has_send_button": bool(question.get("has_send_button")),
+        "ocr_engine": question.get("ocr_engine"),
+        "screenshot": str(capture_path),
+        "focused": prepared["focused"],
+        "warnings": prepared["warnings"],
+    }
+
+
+def answer_desktop_app_question(
+    agent_dir: Path,
+    *,
+    response: Optional[str] = None,
+    skip: bool = False,
+    launch_if_needed: bool = True,
+    capture_after: bool = True,
+) -> Dict[str, Any]:
+    """Reply to or skip an inline Question card in the desktop app (such as Codex Desktop)."""
+    cleaned_response = str(response or "").strip()
+    if not skip and not cleaned_response:
+        return {
+            "status": "error",
+            "message": "Provide a non-empty response or set skip=True to dismiss the inline question.",
+        }
+
+    prepared = _prepare_desktop_app_interaction(agent_dir, launch_if_needed=launch_if_needed)
+    if prepared.get("status") != "success":
+        return prepared
+
+    manifest = prepared["manifest"]
+    pack = prepared["pack"]
+    details = prepared["details"]
+    pyautogui = prepared["pyautogui"]
+
+    before_path = _build_artifact_path(manifest["agent_name"], "before-question-action")
+    before_shot = _capture_desktop_screenshot(before_path)
+    question_info = (
+        _detect_inline_question_card(prepared, before_path)
+        if before_shot.get("status") == "success"
+        else {"pending_question": False, "question_text": ""}
+    )
+    screenshots: Dict[str, str] = {}
+    if before_shot.get("status") == "success":
+        screenshots["before_action"] = str(before_path)
+
+    if skip:
+        skip_click = _click_target_id(prepared, "question_skip_button", prefer_image_match=True)
+        if skip_click.get("status") != "success":
+            return {
+                **skip_click,
+                "action": "skip_question",
+                "agent_name": manifest.get("agent_name"),
+                "asset_pack_id": pack.get("asset_pack_id"),
+            }
+        time.sleep(0.3)
+        if capture_after:
+            after_path = _build_artifact_path(manifest["agent_name"], "after-question-skip")
+            if _capture_desktop_screenshot(after_path).get("status") == "success":
+                screenshots["after_action"] = str(after_path)
+        return {
+            "status": "success",
+            "action": "skip_question",
+            "skipped": True,
+            "response": None,
+            "question_text": str(question_info.get("question_text") or ""),
+            "click": skip_click,
+            "agent_name": manifest.get("agent_name"),
+            "app_id": manifest.get("app_id"),
+            "platform": details["platform"],
+            "asset_pack_id": pack.get("asset_pack_id"),
+            "screenshots": screenshots,
+            "focused": prepared["focused"],
+            "warnings": prepared["warnings"],
+        }
+
+    reply_focus = _click_target_id(prepared, "question_reply_input", prefer_image_match=False)
+    if reply_focus.get("status") != "success":
+        return {
+            **reply_focus,
+            "action": "answer_question",
+            "agent_name": manifest.get("agent_name"),
+            "asset_pack_id": pack.get("asset_pack_id"),
+        }
+    time.sleep(0.2)
+    paste_result = _paste_text_into_focused_prompt(prepared, cleaned_response, replace=True)
+    if paste_result.get("status") != "success":
+        return {
+            **paste_result,
+            "action": "answer_question",
+            "reply_click": reply_focus.get("point"),
+            "agent_name": manifest.get("agent_name"),
+            "asset_pack_id": pack.get("asset_pack_id"),
+        }
+    time.sleep(0.25)
+
+    if _resolve_target(pack, "question_send_button") is not None:
+        send_click = _click_target_id(prepared, "question_send_button", prefer_image_match=True)
+        if send_click.get("status") == "success":
+            submit_action: Dict[str, Any] = {
+                "type": "click",
+                "target_id": "question_send_button",
+                "point": send_click.get("point"),
+            }
+        else:
+            pyautogui.press("enter")
+            submit_action = {"type": "press", "key": "enter", "fallback_from": send_click}
+    else:
+        pyautogui.press("enter")
+        submit_action = {"type": "press", "key": "enter"}
+
+    time.sleep(0.3)
+    if capture_after:
+        after_path = _build_artifact_path(manifest["agent_name"], "after-question-answer")
+        if _capture_desktop_screenshot(after_path).get("status") == "success":
+            screenshots["after_action"] = str(after_path)
+
+    return {
+        "status": "success",
+        "action": "answer_question",
+        "skipped": False,
+        "response": cleaned_response,
+        "question_text": str(question_info.get("question_text") or ""),
+        "reply_click": reply_focus.get("point"),
+        "used_clipboard": paste_result.get("used_clipboard"),
+        "submit_action": submit_action,
+        "agent_name": manifest.get("agent_name"),
+        "app_id": manifest.get("app_id"),
+        "platform": details["platform"],
+        "asset_pack_id": pack.get("asset_pack_id"),
+        "screenshots": screenshots,
+        "focused": prepared["focused"],
+        "warnings": prepared["warnings"],
+    }
 
 
 def _extract_visible_response_from_ocr_text(ocr_text: str, *, expected_prompt: str) -> Dict[str, Any]:
@@ -3980,6 +4639,8 @@ def wait_until_idle_and_copy_desktop_response(
     launch_if_needed: bool = False,
     expected_prompt: Optional[str] = None,
     max_consecutive_failures: int = 3,
+    auto_answer_question: Optional[str] = None,
+    auto_skip_question: bool = False,
 ) -> Dict[str, Any]:
     """Poll-until-idle: copy the desktop app's latest response until the text stabilizes.
 
@@ -4027,6 +4688,35 @@ def wait_until_idle_and_copy_desktop_response(
             }
 
         prompt_status = str(state.get("prompt_status") or "unknown")
+        if prompt_status == "awaiting_question_response" or state.get("pending_question"):
+            question_text = str(state.get("question_text") or "").strip()
+            if (auto_answer_question and str(auto_answer_question).strip()) or auto_skip_question:
+                answer_res = answer_desktop_app_question(
+                    agent_dir,
+                    response=auto_answer_question,
+                    skip=auto_skip_question,
+                    launch_if_needed=launch_if_needed,
+                )
+                if answer_res.get("status") == "success":
+                    idle_streak = 0
+                    consecutive_failures = 0
+                    time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
+                    continue
+            return {
+                "status": "awaiting_question_response",
+                "prompt_status": "awaiting_question_response",
+                "pending_question": True,
+                "question_text": question_text,
+                "response_text": question_text,
+                "polls": polls,
+                "stabilized": True,
+                "last_copy": {},
+                "message": (
+                    f"{agent_dir.name} is paused on an inline Question card"
+                    + (f": {question_text}" if question_text else ".")
+                    + " Call answer_codex_desktop_question(response=...) to reply or answer_codex_desktop_question(skip=True) to skip."
+                ),
+            }
         if prompt_status == "processing":
             idle_streak = 0
             consecutive_failures = 0

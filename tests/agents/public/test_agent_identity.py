@@ -35,6 +35,7 @@ def test_resolve_runtime_agent_name_normalizes_builtin_directory_names():
     assert resolve_runtime_agent_name("browser_agent") == "autoyou_browser_agent"
     assert resolve_runtime_agent_name("cli_agent") == "autoyou_cli_agent"
     assert resolve_runtime_agent_name("coding_agent") == "autoyou_coding_agent"
+    assert resolve_runtime_agent_name("pi_agent") == "autoyou_pi_agent"
     assert resolve_runtime_agent_name("data_collector_agent") == "autoyou_data_collector_agent"
     assert resolve_runtime_agent_name("donation_agent") == "autoyou_donation_agent"
     assert resolve_runtime_agent_name("earnings_agent") == "autoyou_earnings_agent"

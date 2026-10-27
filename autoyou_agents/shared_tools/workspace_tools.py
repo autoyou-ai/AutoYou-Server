@@ -27,6 +27,7 @@ import shlex
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Deque, Iterator, List, Optional
 
@@ -735,6 +736,14 @@ def run_command(command: str, cwd: str = ".", timeout_seconds: int = 120) -> Dic
     Uses a rolling line buffer so large outputs are captured without OOM risk.
     On timeout, returns whatever partial output was collected.
     """
+    return _run_command_with_cancel(command, cwd, timeout_seconds)
+
+
+def _run_command_with_cancel(
+    command: str, cwd: str = ".", timeout_seconds: int = 120,
+    cancel_event: Optional[threading.Event] = None,
+) -> Dict[str, Any]:
+    """Same command policy, with cancellation for an owning coding subprocess."""
     try:
         if not command or not command.strip():
             return {"status": "error", "message": "command is required"}
@@ -770,6 +779,7 @@ def run_command(command: str, cwd: str = ".", timeout_seconds: int = 120) -> Dic
         else:
             argv = ["/bin/sh", "-c", command]
 
+        from shared.process_lifecycle import process_spawn_kwargs, force_kill_process_tree
         proc = subprocess.Popen(
             argv,
             cwd=str(cwd_path),
@@ -778,6 +788,7 @@ def run_command(command: str, cwd: str = ".", timeout_seconds: int = 120) -> Dic
             stderr=subprocess.PIPE,
             text=True,
             env=env,
+            **(process_spawn_kwargs(hide_window=True) if cancel_event is not None else {}),
         )
 
         def _drain(stream: io.TextIOWrapper, buf: Deque[str], overflow: List[int]) -> None:
@@ -793,12 +804,27 @@ def run_command(command: str, cwd: str = ".", timeout_seconds: int = 120) -> Dic
         t_err.start()
 
         timed_out = False
+        cancelled = False
         try:
-            proc.wait(timeout=timeout)
+            if cancel_event is None:
+                proc.wait(timeout=timeout)
+            else:
+                deadline = time.monotonic() + timeout
+                while proc.poll() is None:
+                    if cancel_event.wait(timeout=min(0.2, max(0.0, deadline - time.monotonic()))):
+                        cancelled = True
+                        force_kill_process_tree(proc.pid, process_group=True)
+                        proc.wait(timeout=3)
+                        break
+                    if time.monotonic() >= deadline:
+                        raise subprocess.TimeoutExpired(argv, timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
             try:
-                proc.kill()
+                if cancel_event is not None:
+                    force_kill_process_tree(proc.pid, process_group=True)
+                else:
+                    proc.kill()
             except OSError:
                 pass
 
@@ -816,16 +842,17 @@ def run_command(command: str, cwd: str = ".", timeout_seconds: int = 120) -> Dic
         stdout_text = _buf_to_str(stdout_buf, stdout_overflow[0])
         stderr_text = _buf_to_str(stderr_buf, stderr_overflow[0])
 
-        if timed_out:
+        if timed_out or cancelled:
             return {
                 "status": "error",
-                "message": f"Command timed out after {timeout} seconds (partial output captured)",
+                "message": "Command cancelled when the coding turn ended (partial output captured)" if cancelled else f"Command timed out after {timeout} seconds (partial output captured)",
                 "command": command,
                 "cwd": _relative_path(cwd_path),
                 "exit_code": None,
                 "stdout": stdout_text,
                 "stderr": stderr_text,
-                "timed_out": True,
+                "timed_out": timed_out,
+                "cancelled": cancelled,
             }
 
         return {

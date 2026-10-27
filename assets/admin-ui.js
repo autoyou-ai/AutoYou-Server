@@ -1686,8 +1686,8 @@
             providerFields.push(field("Odysseus chat token", input("aiProvider.odysseus_token", { placeholder: "Leave blank to keep saved token", type: "password" }), "Use an Odysseus chat-scoped token. It stays in protected AutoYou configuration."));
         } else if (provider === "pi") {
             providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650). Official Pi agent: https://pi.dev"));
-            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent directory (CLI fallback). Auto-detected if left empty."));
-            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "qwen3.8:27b" }), "Model identifier (e.g. qwen3.8:27b, ministral-3:8b, gemma4:26b) routed through local Ollama or cloud provider."));
+            providerFields.push(field("Pi installation directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent installation (CLI fallback). Auto-detected if left empty."));
+            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "Use Pi profile default" }), "Use default or pi-agent to keep Pi's profile model. A concrete model name or provider/model overrides it."));
             providerFields.push(field("Pi gateway token", input("aiProvider.pi_token", { placeholder: "Leave blank if unauthenticated", type: "password" }), "Bearer token for Pi gateway when enabled."));
         } else if (provider === "custom") {
             providerFields.push(field("Custom API Base URL", input("aiProvider.custom_api_base", { placeholder: "http://127.0.0.1:8000" }), "External application or model endpoint. AutoYou routes audio, video, chat, and control commands here."));
@@ -1699,6 +1699,11 @@
             ], getByPath(state.forms, "aiProvider.custom_format", "openai")), "Format of payloads dispatched to the Custom API endpoint."));
         }
 
+        var codingMarkup = "<div class=\"ayu-soft-divider\"></div><h3>Coding Agent and Pi</h3><div class=\"ayu-grid-2\">" +
+            field("Coding backend", select("aiProvider.coding_backend", [{ value: "auto", label: "Auto - prefer installed Pi" }, { value: "pi", label: "Pi required" }, { value: "builtin", label: "Built-in AutoYou" }]), "Auto selects Pi when its local CLI and Node.js are available. Failed Pi turns are never replayed automatically.") +
+            field("Pi turn timeout (seconds)", input("aiProvider.pi_timeout_seconds", { type: "number", min: 10, max: 3600 })) +
+            (provider === "pi" ? "" : field("Pi installation directory", input("aiProvider.pi_path", { placeholder: "Auto-detect installed Pi" })) + field("Pi model", input("aiProvider.pi_model", { placeholder: "Inherit current Ollama model" }), "Leave blank, default or pi-agent to share AutoYou's current Ollama model. A concrete model name or provider/model overrides it.")) +
+            "</div><div class=\"ayu-note\">Coding Agent and the optional Pi sub-agent share these settings and AutoYou workspace tools. Install Coding Agent from Agents to use automatic routing. Pi keeps the conversation in AutoYou and runs without a separate Pi session file.</div>";
         var bridgeInstalled = getByPath(state.bootstrap, "agents.agent_overview", []).some(function (agent) { return agent.agent_name === "openclaw_agent" && agent.installed; });
         var bridgeMarkup = provider === "openclaw" || bridgeInstalled
             ? "<div class=\"ayu-soft-divider\"></div><div><h3 style=\"margin:0 0 10px;font-size:15px;\">Optional OpenClaw sub-agent bridge</h3><div class=\"ayu-grid-2\">" + field("Bridge port", input("aiProvider.openclaw_agent_port", { type: "number" }), "The local OpenClaw instance used by the installed bridge, independently of your main AI provider.") + field("Bridge model", input("aiProvider.openclaw_agent_model", { placeholder: "openclaw/default" }), "Use openclaw:main for the main agent and its workspace, or openclaw/default for the gateway's default agent.") + field("Bridge token", input("aiProvider.openclaw_agent_token", { placeholder: "Leave blank to keep saved token", type: "password" })) + "</div></div>"
@@ -1772,7 +1777,7 @@
                 ]))
             : "";
 
-        return renderChoiceCards(availableProviders, provider, "select-ai-provider") + compatibilityNote + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(providerOption.label) + ". " + escapeHtml(providerOption.description) + "</div><div class=\"ayu-grid-2\">" + providerFields.join("") + "</div>" + gatewayStatusMarkup + bridgeMarkup + "<div class=\"ayu-inline-actions\">" + button("Save provider settings", "save-ai-provider", "primary", "save") + button("Refresh runtime data", "ai-refresh", "secondary", "refresh") + "</div>";
+        return renderChoiceCards(availableProviders, provider, "select-ai-provider") + compatibilityNote + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(providerOption.label) + ". " + escapeHtml(providerOption.description) + "</div><div class=\"ayu-grid-2\">" + providerFields.join("") + "</div>" + gatewayStatusMarkup + codingMarkup + bridgeMarkup + "<div class=\"ayu-inline-actions\">" + button("Save provider settings", "save-ai-provider", "primary", "save") + button("Refresh runtime data", "ai-refresh", "secondary", "refresh") + "</div>";
     }
 
     function renderModelBehaviorBody() {
@@ -3299,7 +3304,9 @@
                 pi_port: getByPath(cfg, "ai_provider.pi_port", 8650),
                 pi_token: "",
                 pi_model: getByPath(cfg, "ai_provider.pi_model", "pi-agent"),
-                pi_path: getByPath(cfg, "ai_provider.pi_path", "C:\\Users\\You\\Projects\\Pi"),
+                pi_path: getByPath(cfg, "ai_provider.pi_path", ""),
+                coding_backend: getByPath(cfg, "ai_provider.coding_backend", "auto"),
+                pi_timeout_seconds: getByPath(cfg, "ai_provider.pi_timeout_seconds", 180),
                 custom_api_base: getByPath(cfg, "ai_provider.custom_api_base", "http://127.0.0.1:8000"),
                 custom_model: getByPath(cfg, "ai_provider.custom_model", "custom"),
                 custom_token: "",
@@ -4510,6 +4517,7 @@
                 if (fresh) state.chat.selected = Object.assign({}, state.chat.selected, fresh);
             }
             state.chat.loaded = true;
+            assistantLoadStatus(false).catch(function () {});
         } catch (error) {
             setNotice("error", error.message || "Chat history is unavailable.");
         } finally {
@@ -4517,7 +4525,6 @@
             renderApp({ passive: true });
         }
     }
-            assistantLoadStatus(false).catch(function () {});
 
     async function loadChatSession(userId, sessionId) {
         state.chat.loading = true;
@@ -4941,13 +4948,6 @@
         return '<header class="ayu-chat-thread-head"><div class="ayu-chat-thread-title"><span class="ayu-chat-eyebrow">' + escapeHtml(eyebrow) + '</span>' + heading + '</div><div class="ayu-chat-thread-actions">' + threadBadge + '</div></header>';
     }
 
-    function renderChatHistoryScreen() {
-        var chat = state.chat;
-        var serverName = firstNonBlank([
-            getByPath(state.bootstrap, "admin.server_name", ""),
-            getByPath(bootstrapConfig(), "server.name", "")
-        ], "AutoYou-Server");
-        var filters = ["all", "voice", "files", "training"].map(function (filter) {
     // <autoyou-wake-word-engine v1>
     // JavaScript port of shared/wake_word.py (model format 1). The parent repo's
     // tests/fixtures/wake_word/v1.json pins it to the Python reference; keep the
@@ -5646,6 +5646,13 @@
         return true;
     }
 
+    function renderChatHistoryScreen() {
+        var chat = state.chat;
+        var serverName = firstNonBlank([
+            getByPath(state.bootstrap, "admin.server_name", ""),
+            getByPath(bootstrapConfig(), "server.name", "")
+        ], "AutoYou-Server");
+        var filters = ["all", "voice", "files", "training"].map(function (filter) {
             var label = { all: "All", voice: "Voice", files: "Files", training: "Training" }[filter];
             return '<button type="button" class="' + (chat.filter === filter ? "active" : "") + '" data-action="chat-filter:' + filter + '">' + label + '</button>';
         }).join("");
@@ -7197,7 +7204,7 @@
             { label: "Status", value: prettyLabel(summary.displayStatus), help: summary.connected ? "Connected to your Saved Messages." : "Connect your own Telegram account to use Saved Messages." },
             { label: "Connected", value: summary.connected ? "Yes" : "No" },
             { label: "Saved Messages only", value: getByPath(status, "saved_messages_only", true) ? "Yes" : "No" }
-        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
+        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }, { value: "antigravity_agent", label: "Antigravity" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
     }
 
     var GUIDED_SETUP_STEPS = [
@@ -7797,7 +7804,7 @@
         var promptFields = field("Desktop agent", select("desktopAssets.agent_name", agents.map(function (agent) { return { value: agent.agent_name, label: agent.title || agent.agent_name }; })))
             + field("Target platform", select("desktopAssets.platform", [{ value: "windows", label: "Windows" }, { value: "macos", label: "macOS" }, { value: "linux", label: "Linux" }]))
             + field("Installed app version", input("desktopAssets.app_version", { placeholder: "Leave blank to have your assistant inspect it" }), "The assistant can identify the installed version if you leave this blank.");
-        var body = "<div class=\"ayu-note ayu-note-blue\"><strong>Use your own coding assistant to prepare a local pack.</strong><p>AutoYou gives you a prompt to copy into your existing Claude, ChatGPT, or Codex workspace. It does not contact those services. Import the resulting ZIP here. Generated manifests and cropped control images stay in this computer's private AutoYou data folder and are excluded from source and compiled release bundles.</p></div>"
+        var body = "<div class=\"ayu-note ayu-note-blue\"><strong>Use your own coding assistant to prepare a local pack.</strong><p>AutoYou gives you a prompt to copy into your existing Claude, ChatGPT, Codex, or Antigravity workspace. It does not contact those services. Import the resulting ZIP here. Generated manifests and cropped control images stay in this computer's private AutoYou data folder and are excluded from source and compiled release bundles.</p></div>"
             + "<div class=\"ayu-grid-2\">" + promptFields + "</div><div class=\"ayu-grid-2\">" + preferences + "</div>"
             + "<div class=\"ayu-inline-actions\">" + button("Save preferences", "desktop-asset-save-preferences", "secondary", "save", "sm") + button("Prepare setup prompt", "desktop-asset-generate-prompt", "primary", "copy", "sm") + button("Import ZIP", "desktop-pack-select", "ghost", "file", "sm") + button("Refresh packs", "desktop-assets-refresh", "ghost", "refresh", "sm") + fileInput + "</div>"
             + "<div class=\"ayu-field-hint\">Only use a blank or synthetic app state. Keep chat text, account details, full-screen captures, and other personal content out of the ZIP. A local pack may still be subject to the desktop app's terms and rights in its interface.</div>"
@@ -7807,7 +7814,7 @@
 
     function agentCategoryOf(agent) {
         var name = String(agent.agent_name || "");
-        if (/coding|codex|claude|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
+        if (/coding|codex|claude|antigravity|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
         if (/audio|media|voice|tv_|game_/.test(name)) return "media";
         if (/desktop|browser|security_/.test(name)) return "desktop";
         if (/education/.test(name)) return "learning";
@@ -10195,6 +10202,8 @@
                 pi_port: source.pi_port,
                 pi_model: source.pi_model,
                 pi_path: source.pi_path,
+                coding_backend: source.coding_backend,
+                pi_timeout_seconds: source.pi_timeout_seconds,
                 custom_api_base: source.custom_api_base,
                 custom_model: source.custom_model,
                 custom_format: source.custom_format,
@@ -10353,6 +10362,7 @@
 
     async function handleAction(action, element) {
         if (action === "live-pair") { await openLivePairing(); return; }
+        if (action && action.indexOf("assistant-") === 0) { await handleAssistantAction(action); return; }
         if (!action) {
             return;
         }
@@ -10362,7 +10372,6 @@
             return;
         }
         if (action === "interact-refresh") { await refreshInteract(); return; }
-        if (action && action.indexOf("assistant-") === 0) { await handleAssistantAction(action); return; }
         if (action.indexOf("interact-select:") === 0) {
             var chosen = decodeURIComponent(action.slice("interact-select:".length));
             var connected = ((state.interact.payload || {}).participants || []).some(function (person) {
@@ -12383,6 +12392,11 @@
             state.chat.composer = target.value;
             return;
         }
+        if (target.getAttribute("data-assistant-field")) {
+            assistantFieldChanged(target);
+            if (target.type === "range") renderApp({ passive: true });
+            return;
+        }
         if (target.getAttribute("data-role") === "chat-search") {
             state.chat.search = target.value;
             renderApp({ passive: true });
@@ -12392,11 +12406,6 @@
             if (state.profileCropper) {
                 state.profileCropper.zoom = Math.max(state.profileCropper.minZoom, Math.min(state.profileCropper.maxZoom, parseFloat(target.value) || 1.0));
                 updateCropperZoomUi();
-        if (target.getAttribute("data-assistant-field")) {
-            assistantFieldChanged(target);
-            if (target.type === "range") renderApp({ passive: true });
-            return;
-        }
                 drawCropperCanvas();
             }
             return;
@@ -12465,15 +12474,6 @@
         if (!root || !root.contains(target)) {
             return;
         }
-        if (target.getAttribute("data-role") === "chat-file-input") {
-            var chatFiles = target.files && target.files.length ? target.files : null;
-            target.value = "";
-            if (chatFiles) {
-                chatReadSelectedFiles(chatFiles).catch(function (error) {
-                    setNotice("error", error.message || "Could not attach the selected files.");
-                });
-            }
-            return;
         if (target.getAttribute("data-assistant-field")) {
             assistantFieldChanged(target);
             if (target.getAttribute("data-assistant-field") === "enabled") {
@@ -12486,6 +12486,15 @@
             renderApp({ passive: true });
             return;
         }
+        if (target.getAttribute("data-role") === "chat-file-input") {
+            var chatFiles = target.files && target.files.length ? target.files : null;
+            target.value = "";
+            if (chatFiles) {
+                chatReadSelectedFiles(chatFiles).catch(function (error) {
+                    setNotice("error", error.message || "Could not attach the selected files.");
+                });
+            }
+            return;
         }
         if (target.getAttribute("data-role") === "profile-image-input") {
             var selectedFile = target.files && target.files[0] ? target.files[0] : null;

@@ -1,0 +1,1975 @@
+{
+  "schema_version": 2,
+  "agent_name": "antigravity_agent",
+  "title": "Antigravity",
+  "description": "Cross-platform desktop and CLI bridge for Google Antigravity (Antigravity.exe / agy) across Windows, macOS, Linux, WSL, and Docker.",
+  "app_id": "antigravity_desktop",
+  "transport": "desktop_gui",
+  "process_names": {
+    "windows": [
+      "Antigravity.exe",
+      "Antigravity",
+      "agy.exe"
+    ],
+    "macos": [
+      "Antigravity",
+      "agy"
+    ],
+    "linux": [
+      "antigravity",
+      "agy"
+    ],
+    "any": [
+      "Antigravity.exe",
+      "Antigravity",
+      "antigravity",
+      "agy"
+    ]
+  },
+  "window_title_hints": {
+    "windows": [
+      "Antigravity",
+      "AutoYou"
+    ],
+    "macos": [
+      "Antigravity",
+      "AutoYou"
+    ],
+    "linux": [
+      "Antigravity",
+      "AutoYou"
+    ],
+    "any": [
+      "Antigravity",
+      "AutoYou"
+    ]
+  },
+  "launch_commands": {
+    "windows": [
+      [
+        "cmd",
+        "/c",
+        "start",
+        "",
+        "%LOCALAPPDATA%\\Programs\\antigravity\\Antigravity.exe"
+      ],
+      [
+        "agy"
+      ]
+    ],
+    "macos": [
+      [
+        "open",
+        "-a",
+        "Antigravity"
+      ],
+      [
+        "agy"
+      ]
+    ],
+    "linux": [
+      [
+        "antigravity"
+      ],
+      [
+        "agy"
+      ]
+    ]
+  },
+  "working_directory_strategy": {
+    "mode": "prefix_prompt",
+    "template": "[Workspace: {working_directory}]\n{prompt}"
+  },
+  "preferred_prompt_target_id": "composer_box",
+  "preferred_submit_target_id": "send_button",
+  "preferred_copy_response_target_id": "copy_response_button",
+  "asset_packs": [
+    {
+      "asset_pack_id": "antigravity-windows-2.24.0-2026-10",
+      "label": "Antigravity Windows 2.24.0+ (Gemini 4 Argon / Opus 5.5 / Sonnet 5.5 / Turbo)",
+      "platform": "windows",
+      "platform_variants": [
+        "windows",
+        "win11",
+        "win10"
+      ],
+      "architecture": "any",
+      "app_version_min": "2.24.0",
+      "theme": "dark",
+      "display_scale": "any",
+      "priority": 360,
+      "bootstrap_only": false,
+      "targets": [
+        {
+          "target_id": "composer_box",
+          "label": "Antigravity Prompt Composer",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.48,
+          "y": 0.9,
+          "calibration_status": "calibrated",
+          "notes": "Main Antigravity prompt composer text box above the model and Turbo controls.",
+          "expected_image_path": "windows/2.24.0/sprites/composer_box.png",
+          "reference_sprite": "windows/2.24.0/sprites/composer_box.png",
+          "search_region": [
+            0.05,
+            0.72,
+            0.95,
+            0.99
+          ],
+          "match_confidence": 0.8
+        },
+        {
+          "target_id": "attach_button",
+          "label": "Add Context / Attachment (+)",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.115,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Plus (+) button at bottom-left of composer bar to attach files or context.",
+          "expected_image_path": "windows/2.24.0/sprites/attach_button.png",
+          "reference_sprite": "windows/2.24.0/sprites/attach_button.png",
+          "search_region": [
+            0.02,
+            0.78,
+            0.35,
+            0.99
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "open_model_picker",
+          "label": "Open Model Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.205,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Model selector button next to + on the bottom-left of the composer bar (e.g. 'Gemini 4 Argon High ^').",
+          "expected_image_path": "windows/2.24.0/sprites/model_picker_button.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_picker_button.png",
+          "search_region": [
+            0.05,
+            0.78,
+            0.55,
+            0.99
+          ],
+          "match_confidence": 0.8
+        },
+        {
+          "target_id": "select_gemini_4_argon_model",
+          "label": "Gemini 4 Argon",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 4 Argon row in the Model popup menu (supports nested Low/Medium/High effort fly-out).",
+          "expected_image_path": "windows/2.24.0/sprites/model_select_gemini_4_argon.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_select_gemini_4_argon.png",
+          "search_region": [
+            0.02,
+            0.4,
+            0.65,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_gemini_3_8_flash_model",
+          "label": "Gemini 3.8 Flash",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 3.8 Flash row in the Model popup menu (supports nested Low/Medium/High effort fly-out).",
+          "expected_image_path": "windows/2.24.0/sprites/model_select_gemini_3_8_flash.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_select_gemini_3_8_flash.png",
+          "search_region": [
+            0.02,
+            0.4,
+            0.65,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_claude_opus_5_5_model",
+          "label": "Claude Opus 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "Claude Opus 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out).",
+          "expected_image_path": "windows/2.24.0/sprites/model_select_claude_opus_5_5.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_select_claude_opus_5_5.png",
+          "search_region": [
+            0.02,
+            0.4,
+            0.65,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_claude_sonnet_5_5_model",
+          "label": "Claude Sonnet 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.825,
+          "calibration_status": "calibrated",
+          "notes": "Claude Sonnet 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out).",
+          "expected_image_path": "windows/2.24.0/sprites/model_select_claude_sonnet_5_5.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_select_claude_sonnet_5_5.png",
+          "search_region": [
+            0.02,
+            0.4,
+            0.65,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_gpt_oss_120b_model",
+          "label": "GPT-OSS 120B (Medium)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "GPT-OSS 120B (Medium) row in the Model popup menu.",
+          "expected_image_path": "windows/2.24.0/sprites/model_select_gpt_oss_120b.png",
+          "reference_sprite": "windows/2.24.0/sprites/model_select_gpt_oss_120b.png",
+          "search_region": [
+            0.02,
+            0.4,
+            0.65,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "view_usage_menu_item",
+          "label": "View Usage",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.895,
+          "calibration_status": "calibrated",
+          "notes": "'View Usage >' item at the bottom of the Model popup menu.",
+          "expected_image_path": "windows/2.24.0/sprites/view_usage_menu_item.png",
+          "reference_sprite": "windows/2.24.0/sprites/view_usage_menu_item.png",
+          "search_region": [
+            0.02,
+            0.5,
+            0.65,
+            0.98
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "open_effort_submenu",
+          "label": "Open Nested Effort Submenu",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.355,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Chevron (>) on the right edge of the active model row in the Model popup menu that opens the Low/Medium/High fly-out."
+        },
+        {
+          "target_id": "select_low_effort",
+          "label": "Low Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "'Low' option in the nested Effort fly-out submenu.",
+          "expected_image_path": "windows/2.24.0/sprites/effort_low.png",
+          "reference_sprite": "windows/2.24.0/sprites/effort_low.png",
+          "search_region": [
+            0.15,
+            0.4,
+            0.8,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_medium_effort",
+          "label": "Medium Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "'Medium' option in the nested Effort fly-out submenu.",
+          "expected_image_path": "windows/2.24.0/sprites/effort_medium.png",
+          "reference_sprite": "windows/2.24.0/sprites/effort_medium.png",
+          "search_region": [
+            0.15,
+            0.4,
+            0.8,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_high_effort",
+          "label": "High Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "'High' option in the nested Effort fly-out submenu.",
+          "expected_image_path": "windows/2.24.0/sprites/effort_high.png",
+          "reference_sprite": "windows/2.24.0/sprites/effort_high.png",
+          "search_region": [
+            0.15,
+            0.4,
+            0.8,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "open_permissions_picker",
+          "label": "Open Execution Mode / Permissions Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Shield execution-mode button on the bottom-right of the composer bar (Request Review / Default / Turbo).",
+          "expected_image_path": "windows/2.24.0/sprites/permissions_picker_button.png",
+          "reference_sprite": "windows/2.24.0/sprites/permissions_picker_button.png",
+          "search_region": [
+            0.45,
+            0.78,
+            0.96,
+            0.99
+          ],
+          "match_confidence": 0.8
+        },
+        {
+          "target_id": "select_request_review_mode",
+          "label": "Request Review (Every command requires approval)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.74,
+          "calibration_status": "calibrated",
+          "notes": "'Request Review - Every command requires approval.' in the execution mode popup.",
+          "expected_image_path": "windows/2.24.0/sprites/permissions_request_review.png",
+          "reference_sprite": "windows/2.24.0/sprites/permissions_request_review.png",
+          "search_region": [
+            0.35,
+            0.45,
+            0.98,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_default_permissions_mode",
+          "label": "Default (Ask before sensitive operations)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "'Default - Ask before sensitive operations.' in the execution mode popup.",
+          "expected_image_path": "windows/2.24.0/sprites/permissions_default.png",
+          "reference_sprite": "windows/2.24.0/sprites/permissions_default.png",
+          "search_region": [
+            0.35,
+            0.45,
+            0.98,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "select_turbo_mode",
+          "label": "Turbo (Run all commands without restrictions)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "'Turbo - Run all commands without restrictions.' in the execution mode popup.",
+          "expected_image_path": "windows/2.24.0/sprites/permissions_turbo.png",
+          "reference_sprite": "windows/2.24.0/sprites/permissions_turbo.png",
+          "search_region": [
+            0.35,
+            0.45,
+            0.98,
+            0.96
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "voice_button",
+          "label": "Voice Dictation Microphone",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.84,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Microphone voice-input icon next to the Turbo mode selector.",
+          "expected_image_path": "windows/2.24.0/sprites/voice_button.png",
+          "reference_sprite": "windows/2.24.0/sprites/voice_button.png",
+          "search_region": [
+            0.55,
+            0.78,
+            0.98,
+            0.99
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "send_button",
+          "label": "Send Prompt Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Blue circular right-arrow send button at bottom-right of composer bar.",
+          "expected_image_path": "windows/2.24.0/sprites/send_button.png",
+          "reference_sprite": "windows/2.24.0/sprites/send_button.png",
+          "search_region": [
+            0.6,
+            0.78,
+            0.99,
+            0.99
+          ],
+          "match_confidence": 0.82
+        },
+        {
+          "target_id": "stop_button",
+          "label": "Stop Generation Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Stop button occupying the send button slot while Antigravity is generating."
+        },
+        {
+          "target_id": "copy_response_button",
+          "label": "Copy Final Response Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.78,
+          "calibration_status": "calibrated",
+          "notes": "Copy action on the bottom of the latest Antigravity assistant response."
+        },
+        {
+          "target_id": "question_reply_input",
+          "label": "Inline Question Reply Input",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.45,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Write-in reply input when Antigravity displays an interactive question card above the composer."
+        },
+        {
+          "target_id": "question_skip_button",
+          "label": "Inline Question Skip Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Skip button on an interactive question card."
+        },
+        {
+          "target_id": "question_send_button",
+          "label": "Inline Question Submit/Send Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Submit/Send button on an interactive question card."
+        }
+      ],
+      "selection_controls": {
+        "permissions": {
+          "open_target_id": "open_permissions_picker",
+          "pause_ms": 220,
+          "options": {
+            "request_review": {
+              "target_id": "select_request_review_mode",
+              "aliases": [
+                "request review",
+                "request_review",
+                "review",
+                "approve",
+                "every command requires approval",
+                "ask permissions"
+              ],
+              "description": "Request Review - Every command requires approval."
+            },
+            "default": {
+              "target_id": "select_default_permissions_mode",
+              "aliases": [
+                "default",
+                "ask",
+                "ask before sensitive operations",
+                "standard",
+                "auto"
+              ],
+              "description": "Default - Ask before sensitive operations."
+            },
+            "turbo": {
+              "target_id": "select_turbo_mode",
+              "aliases": [
+                "turbo",
+                "full access",
+                "full_access",
+                "bypass",
+                "bypass permissions",
+                "unrestricted",
+                "run all commands without restrictions"
+              ],
+              "description": "Turbo - Run all commands without restrictions."
+            }
+          }
+        },
+        "model": {
+          "open_target_id": "open_model_picker",
+          "pause_ms": 240,
+          "options": {
+            "gemini-4-argon": {
+              "target_id": "select_gemini_4_argon_model",
+              "aliases": [
+                "gemini 4 argon",
+                "gemini-4-argon",
+                "gemini 4 argon high",
+                "argon",
+                "gemini 4"
+              ],
+              "description": "Gemini 4 Argon (supports Low, Medium, High effort)."
+            },
+            "gemini-3.8-flash": {
+              "target_id": "select_gemini_3_8_flash_model",
+              "aliases": [
+                "gemini 3.8 flash",
+                "gemini-3.8-flash",
+                "gemini 3.8 flash medium",
+                "3.8 flash",
+                "flash"
+              ],
+              "description": "Gemini 3.8 Flash (supports Low, Medium, High effort)."
+            },
+            "claude-opus-5.5": {
+              "target_id": "select_claude_opus_5_5_model",
+              "aliases": [
+                "claude opus 5.5",
+                "claude-opus-5.5",
+                "opus 5.5",
+                "opus"
+              ],
+              "description": "Claude Opus 5.5 (supports Low, Medium, High effort)."
+            },
+            "claude-sonnet-5.5": {
+              "target_id": "select_claude_sonnet_5_5_model",
+              "aliases": [
+                "claude sonnet 5.5",
+                "claude-sonnet-5.5",
+                "sonnet 5.5",
+                "sonnet"
+              ],
+              "description": "Claude Sonnet 5.5 (supports Low, Medium, High effort)."
+            },
+            "gpt-oss-120b": {
+              "target_id": "select_gpt_oss_120b_model",
+              "aliases": [
+                "gpt-oss 120b",
+                "gpt-oss-120b",
+                "gpt oss 120b",
+                "gpt-oss 120b (medium)",
+                "120b"
+              ],
+              "description": "GPT-OSS 120B (Medium)."
+            }
+          },
+          "effort_options": {
+            "low": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_low_effort",
+              "aliases": [
+                "low",
+                "minimal",
+                "fast"
+              ]
+            },
+            "medium": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_medium_effort",
+              "aliases": [
+                "medium",
+                "standard",
+                "balanced"
+              ]
+            },
+            "high": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_high_effort",
+              "aliases": [
+                "high",
+                "max",
+                "extra",
+                "deep"
+              ]
+            }
+          }
+        }
+      },
+      "usage_controls": {
+        "release_ready": true,
+        "open_steps": [
+          {
+            "type": "click_target",
+            "target_id": "open_model_picker",
+            "pause_ms": 260
+          },
+          {
+            "type": "click_target",
+            "target_id": "view_usage_menu_item",
+            "pause_ms": 400
+          }
+        ],
+        "close_steps": [
+          {
+            "type": "press_keys",
+            "keys": [
+              "escape"
+            ]
+          }
+        ],
+        "ocr_region": [
+          0.05,
+          0.15,
+          0.95,
+          0.92
+        ]
+      },
+      "submit_actions": [
+        {
+          "type": "click_target",
+          "target_id": "send_button"
+        },
+        {
+          "type": "press_keys",
+          "keys": [
+            "enter"
+          ]
+        }
+      ]
+    },
+    {
+      "asset_pack_id": "antigravity-macos-2.24.0-2026-10",
+      "label": "Antigravity macOS 2.24.0+ (Gemini 4 Argon / Opus 5.5 / Sonnet 5.5 / Turbo)",
+      "platform": "macos",
+      "architecture": "any",
+      "app_version_min": "2.24.0",
+      "theme": "dark",
+      "display_scale": "any",
+      "priority": 350,
+      "bootstrap_only": false,
+      "targets": [
+        {
+          "target_id": "composer_box",
+          "label": "Antigravity Prompt Composer",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.48,
+          "y": 0.9,
+          "calibration_status": "calibrated",
+          "notes": "Main Antigravity prompt composer text box above the model and Turbo controls."
+        },
+        {
+          "target_id": "attach_button",
+          "label": "Add Context / Attachment (+)",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.115,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Plus (+) button at bottom-left of composer bar to attach files or context."
+        },
+        {
+          "target_id": "open_model_picker",
+          "label": "Open Model Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.205,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Model selector button next to + on the bottom-left of the composer bar (e.g. 'Gemini 4 Argon High ^')."
+        },
+        {
+          "target_id": "select_gemini_4_argon_model",
+          "label": "Gemini 4 Argon",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 4 Argon row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gemini_3_8_flash_model",
+          "label": "Gemini 3.8 Flash",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 3.8 Flash row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_opus_5_5_model",
+          "label": "Claude Opus 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "Claude Opus 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_sonnet_5_5_model",
+          "label": "Claude Sonnet 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.825,
+          "calibration_status": "calibrated",
+          "notes": "Claude Sonnet 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gpt_oss_120b_model",
+          "label": "GPT-OSS 120B (Medium)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "GPT-OSS 120B (Medium) row in the Model popup menu."
+        },
+        {
+          "target_id": "view_usage_menu_item",
+          "label": "View Usage",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.895,
+          "calibration_status": "calibrated",
+          "notes": "'View Usage >' item at the bottom of the Model popup menu."
+        },
+        {
+          "target_id": "open_effort_submenu",
+          "label": "Open Nested Effort Submenu",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.355,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Chevron (>) on the right edge of the active model row in the Model popup menu that opens the Low/Medium/High fly-out."
+        },
+        {
+          "target_id": "select_low_effort",
+          "label": "Low Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "'Low' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_medium_effort",
+          "label": "Medium Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "'Medium' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_high_effort",
+          "label": "High Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "'High' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "open_permissions_picker",
+          "label": "Open Execution Mode / Permissions Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Shield execution-mode button on the bottom-right of the composer bar (Request Review / Default / Turbo)."
+        },
+        {
+          "target_id": "select_request_review_mode",
+          "label": "Request Review (Every command requires approval)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.74,
+          "calibration_status": "calibrated",
+          "notes": "'Request Review - Every command requires approval.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_default_permissions_mode",
+          "label": "Default (Ask before sensitive operations)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "'Default - Ask before sensitive operations.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_turbo_mode",
+          "label": "Turbo (Run all commands without restrictions)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "'Turbo - Run all commands without restrictions.' in the execution mode popup."
+        },
+        {
+          "target_id": "voice_button",
+          "label": "Voice Dictation Microphone",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.84,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Microphone voice-input icon next to the Turbo mode selector."
+        },
+        {
+          "target_id": "send_button",
+          "label": "Send Prompt Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Blue circular right-arrow send button at bottom-right of composer bar."
+        },
+        {
+          "target_id": "stop_button",
+          "label": "Stop Generation Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Stop button occupying the send button slot while Antigravity is generating."
+        },
+        {
+          "target_id": "copy_response_button",
+          "label": "Copy Final Response Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.78,
+          "calibration_status": "calibrated",
+          "notes": "Copy action on the bottom of the latest Antigravity assistant response."
+        },
+        {
+          "target_id": "question_reply_input",
+          "label": "Inline Question Reply Input",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.45,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Write-in reply input when Antigravity displays an interactive question card above the composer."
+        },
+        {
+          "target_id": "question_skip_button",
+          "label": "Inline Question Skip Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Skip button on an interactive question card."
+        },
+        {
+          "target_id": "question_send_button",
+          "label": "Inline Question Submit/Send Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Submit/Send button on an interactive question card."
+        }
+      ],
+      "selection_controls": {
+        "permissions": {
+          "open_target_id": "open_permissions_picker",
+          "pause_ms": 220,
+          "options": {
+            "request_review": {
+              "target_id": "select_request_review_mode",
+              "aliases": [
+                "request review",
+                "request_review",
+                "review",
+                "approve",
+                "every command requires approval",
+                "ask permissions"
+              ],
+              "description": "Request Review - Every command requires approval."
+            },
+            "default": {
+              "target_id": "select_default_permissions_mode",
+              "aliases": [
+                "default",
+                "ask",
+                "ask before sensitive operations",
+                "standard",
+                "auto"
+              ],
+              "description": "Default - Ask before sensitive operations."
+            },
+            "turbo": {
+              "target_id": "select_turbo_mode",
+              "aliases": [
+                "turbo",
+                "full access",
+                "full_access",
+                "bypass",
+                "bypass permissions",
+                "unrestricted",
+                "run all commands without restrictions"
+              ],
+              "description": "Turbo - Run all commands without restrictions."
+            }
+          }
+        },
+        "model": {
+          "open_target_id": "open_model_picker",
+          "pause_ms": 240,
+          "options": {
+            "gemini-4-argon": {
+              "target_id": "select_gemini_4_argon_model",
+              "aliases": [
+                "gemini 4 argon",
+                "gemini-4-argon",
+                "gemini 4 argon high",
+                "argon",
+                "gemini 4"
+              ],
+              "description": "Gemini 4 Argon (supports Low, Medium, High effort)."
+            },
+            "gemini-3.8-flash": {
+              "target_id": "select_gemini_3_8_flash_model",
+              "aliases": [
+                "gemini 3.8 flash",
+                "gemini-3.8-flash",
+                "gemini 3.8 flash medium",
+                "3.8 flash",
+                "flash"
+              ],
+              "description": "Gemini 3.8 Flash (supports Low, Medium, High effort)."
+            },
+            "claude-opus-5.5": {
+              "target_id": "select_claude_opus_5_5_model",
+              "aliases": [
+                "claude opus 5.5",
+                "claude-opus-5.5",
+                "opus 5.5",
+                "opus"
+              ],
+              "description": "Claude Opus 5.5 (supports Low, Medium, High effort)."
+            },
+            "claude-sonnet-5.5": {
+              "target_id": "select_claude_sonnet_5_5_model",
+              "aliases": [
+                "claude sonnet 5.5",
+                "claude-sonnet-5.5",
+                "sonnet 5.5",
+                "sonnet"
+              ],
+              "description": "Claude Sonnet 5.5 (supports Low, Medium, High effort)."
+            },
+            "gpt-oss-120b": {
+              "target_id": "select_gpt_oss_120b_model",
+              "aliases": [
+                "gpt-oss 120b",
+                "gpt-oss-120b",
+                "gpt oss 120b",
+                "gpt-oss 120b (medium)",
+                "120b"
+              ],
+              "description": "GPT-OSS 120B (Medium)."
+            }
+          },
+          "effort_options": {
+            "low": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_low_effort",
+              "aliases": [
+                "low",
+                "minimal",
+                "fast"
+              ]
+            },
+            "medium": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_medium_effort",
+              "aliases": [
+                "medium",
+                "standard",
+                "balanced"
+              ]
+            },
+            "high": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_high_effort",
+              "aliases": [
+                "high",
+                "max",
+                "extra",
+                "deep"
+              ]
+            }
+          }
+        }
+      },
+      "usage_controls": {
+        "release_ready": true,
+        "open_steps": [
+          {
+            "type": "click_target",
+            "target_id": "open_model_picker",
+            "pause_ms": 260
+          },
+          {
+            "type": "click_target",
+            "target_id": "view_usage_menu_item",
+            "pause_ms": 400
+          }
+        ],
+        "close_steps": [
+          {
+            "type": "press_keys",
+            "keys": [
+              "escape"
+            ]
+          }
+        ],
+        "ocr_region": [
+          0.05,
+          0.15,
+          0.95,
+          0.92
+        ]
+      },
+      "submit_actions": [
+        {
+          "type": "click_target",
+          "target_id": "send_button"
+        },
+        {
+          "type": "press_keys",
+          "keys": [
+            "enter"
+          ]
+        }
+      ]
+    },
+    {
+      "asset_pack_id": "antigravity-linux-2.24.0-2026-10",
+      "label": "Antigravity Linux / WSL2 / Docker 2.24.0+",
+      "platform": "linux",
+      "platform_variants": [
+        "linux",
+        "ubuntu",
+        "wsl2",
+        "docker"
+      ],
+      "architecture": "any",
+      "app_version_min": "2.24.0",
+      "theme": "any",
+      "display_scale": "any",
+      "priority": 340,
+      "bootstrap_only": false,
+      "targets": [
+        {
+          "target_id": "composer_box",
+          "label": "Antigravity Prompt Composer",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.48,
+          "y": 0.9,
+          "calibration_status": "calibrated",
+          "notes": "Main Antigravity prompt composer text box above the model and Turbo controls."
+        },
+        {
+          "target_id": "attach_button",
+          "label": "Add Context / Attachment (+)",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.115,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Plus (+) button at bottom-left of composer bar to attach files or context."
+        },
+        {
+          "target_id": "open_model_picker",
+          "label": "Open Model Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.205,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Model selector button next to + on the bottom-left of the composer bar (e.g. 'Gemini 4 Argon High ^')."
+        },
+        {
+          "target_id": "select_gemini_4_argon_model",
+          "label": "Gemini 4 Argon",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 4 Argon row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gemini_3_8_flash_model",
+          "label": "Gemini 3.8 Flash",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 3.8 Flash row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_opus_5_5_model",
+          "label": "Claude Opus 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "Claude Opus 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_sonnet_5_5_model",
+          "label": "Claude Sonnet 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.825,
+          "calibration_status": "calibrated",
+          "notes": "Claude Sonnet 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gpt_oss_120b_model",
+          "label": "GPT-OSS 120B (Medium)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "GPT-OSS 120B (Medium) row in the Model popup menu."
+        },
+        {
+          "target_id": "view_usage_menu_item",
+          "label": "View Usage",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.895,
+          "calibration_status": "calibrated",
+          "notes": "'View Usage >' item at the bottom of the Model popup menu."
+        },
+        {
+          "target_id": "open_effort_submenu",
+          "label": "Open Nested Effort Submenu",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.355,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Chevron (>) on the right edge of the active model row in the Model popup menu that opens the Low/Medium/High fly-out."
+        },
+        {
+          "target_id": "select_low_effort",
+          "label": "Low Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "'Low' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_medium_effort",
+          "label": "Medium Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "'Medium' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_high_effort",
+          "label": "High Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "'High' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "open_permissions_picker",
+          "label": "Open Execution Mode / Permissions Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Shield execution-mode button on the bottom-right of the composer bar (Request Review / Default / Turbo)."
+        },
+        {
+          "target_id": "select_request_review_mode",
+          "label": "Request Review (Every command requires approval)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.74,
+          "calibration_status": "calibrated",
+          "notes": "'Request Review - Every command requires approval.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_default_permissions_mode",
+          "label": "Default (Ask before sensitive operations)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "'Default - Ask before sensitive operations.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_turbo_mode",
+          "label": "Turbo (Run all commands without restrictions)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "'Turbo - Run all commands without restrictions.' in the execution mode popup."
+        },
+        {
+          "target_id": "voice_button",
+          "label": "Voice Dictation Microphone",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.84,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Microphone voice-input icon next to the Turbo mode selector."
+        },
+        {
+          "target_id": "send_button",
+          "label": "Send Prompt Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Blue circular right-arrow send button at bottom-right of composer bar."
+        },
+        {
+          "target_id": "stop_button",
+          "label": "Stop Generation Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Stop button occupying the send button slot while Antigravity is generating."
+        },
+        {
+          "target_id": "copy_response_button",
+          "label": "Copy Final Response Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.78,
+          "calibration_status": "calibrated",
+          "notes": "Copy action on the bottom of the latest Antigravity assistant response."
+        },
+        {
+          "target_id": "question_reply_input",
+          "label": "Inline Question Reply Input",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.45,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Write-in reply input when Antigravity displays an interactive question card above the composer."
+        },
+        {
+          "target_id": "question_skip_button",
+          "label": "Inline Question Skip Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Skip button on an interactive question card."
+        },
+        {
+          "target_id": "question_send_button",
+          "label": "Inline Question Submit/Send Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Submit/Send button on an interactive question card."
+        }
+      ],
+      "selection_controls": {
+        "permissions": {
+          "open_target_id": "open_permissions_picker",
+          "pause_ms": 220,
+          "options": {
+            "request_review": {
+              "target_id": "select_request_review_mode",
+              "aliases": [
+                "request review",
+                "request_review",
+                "review",
+                "approve",
+                "every command requires approval",
+                "ask permissions"
+              ],
+              "description": "Request Review - Every command requires approval."
+            },
+            "default": {
+              "target_id": "select_default_permissions_mode",
+              "aliases": [
+                "default",
+                "ask",
+                "ask before sensitive operations",
+                "standard",
+                "auto"
+              ],
+              "description": "Default - Ask before sensitive operations."
+            },
+            "turbo": {
+              "target_id": "select_turbo_mode",
+              "aliases": [
+                "turbo",
+                "full access",
+                "full_access",
+                "bypass",
+                "bypass permissions",
+                "unrestricted",
+                "run all commands without restrictions"
+              ],
+              "description": "Turbo - Run all commands without restrictions."
+            }
+          }
+        },
+        "model": {
+          "open_target_id": "open_model_picker",
+          "pause_ms": 240,
+          "options": {
+            "gemini-4-argon": {
+              "target_id": "select_gemini_4_argon_model",
+              "aliases": [
+                "gemini 4 argon",
+                "gemini-4-argon",
+                "gemini 4 argon high",
+                "argon",
+                "gemini 4"
+              ],
+              "description": "Gemini 4 Argon (supports Low, Medium, High effort)."
+            },
+            "gemini-3.8-flash": {
+              "target_id": "select_gemini_3_8_flash_model",
+              "aliases": [
+                "gemini 3.8 flash",
+                "gemini-3.8-flash",
+                "gemini 3.8 flash medium",
+                "3.8 flash",
+                "flash"
+              ],
+              "description": "Gemini 3.8 Flash (supports Low, Medium, High effort)."
+            },
+            "claude-opus-5.5": {
+              "target_id": "select_claude_opus_5_5_model",
+              "aliases": [
+                "claude opus 5.5",
+                "claude-opus-5.5",
+                "opus 5.5",
+                "opus"
+              ],
+              "description": "Claude Opus 5.5 (supports Low, Medium, High effort)."
+            },
+            "claude-sonnet-5.5": {
+              "target_id": "select_claude_sonnet_5_5_model",
+              "aliases": [
+                "claude sonnet 5.5",
+                "claude-sonnet-5.5",
+                "sonnet 5.5",
+                "sonnet"
+              ],
+              "description": "Claude Sonnet 5.5 (supports Low, Medium, High effort)."
+            },
+            "gpt-oss-120b": {
+              "target_id": "select_gpt_oss_120b_model",
+              "aliases": [
+                "gpt-oss 120b",
+                "gpt-oss-120b",
+                "gpt oss 120b",
+                "gpt-oss 120b (medium)",
+                "120b"
+              ],
+              "description": "GPT-OSS 120B (Medium)."
+            }
+          },
+          "effort_options": {
+            "low": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_low_effort",
+              "aliases": [
+                "low",
+                "minimal",
+                "fast"
+              ]
+            },
+            "medium": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_medium_effort",
+              "aliases": [
+                "medium",
+                "standard",
+                "balanced"
+              ]
+            },
+            "high": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_high_effort",
+              "aliases": [
+                "high",
+                "max",
+                "extra",
+                "deep"
+              ]
+            }
+          }
+        }
+      },
+      "usage_controls": {
+        "release_ready": true,
+        "open_steps": [
+          {
+            "type": "click_target",
+            "target_id": "open_model_picker",
+            "pause_ms": 260
+          },
+          {
+            "type": "click_target",
+            "target_id": "view_usage_menu_item",
+            "pause_ms": 400
+          }
+        ],
+        "close_steps": [
+          {
+            "type": "press_keys",
+            "keys": [
+              "escape"
+            ]
+          }
+        ],
+        "ocr_region": [
+          0.05,
+          0.15,
+          0.95,
+          0.92
+        ]
+      },
+      "submit_actions": [
+        {
+          "type": "click_target",
+          "target_id": "send_button"
+        },
+        {
+          "type": "press_keys",
+          "keys": [
+            "enter"
+          ]
+        }
+      ]
+    },
+    {
+      "asset_pack_id": "antigravity-any-default",
+      "label": "Antigravity Cross-Platform Default Pack",
+      "platform": "any",
+      "architecture": "any",
+      "theme": "any",
+      "display_scale": "any",
+      "priority": 100,
+      "bootstrap_only": false,
+      "targets": [
+        {
+          "target_id": "composer_box",
+          "label": "Antigravity Prompt Composer",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.48,
+          "y": 0.9,
+          "calibration_status": "calibrated",
+          "notes": "Main Antigravity prompt composer text box above the model and Turbo controls."
+        },
+        {
+          "target_id": "attach_button",
+          "label": "Add Context / Attachment (+)",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.115,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Plus (+) button at bottom-left of composer bar to attach files or context."
+        },
+        {
+          "target_id": "open_model_picker",
+          "label": "Open Model Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.205,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Model selector button next to + on the bottom-left of the composer bar (e.g. 'Gemini 4 Argon High ^')."
+        },
+        {
+          "target_id": "select_gemini_4_argon_model",
+          "label": "Gemini 4 Argon",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 4 Argon row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gemini_3_8_flash_model",
+          "label": "Gemini 3.8 Flash",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "Gemini 3.8 Flash row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_opus_5_5_model",
+          "label": "Claude Opus 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "Claude Opus 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_claude_sonnet_5_5_model",
+          "label": "Claude Sonnet 5.5",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.825,
+          "calibration_status": "calibrated",
+          "notes": "Claude Sonnet 5.5 row in the Model popup menu (supports nested Low/Medium/High effort fly-out)."
+        },
+        {
+          "target_id": "select_gpt_oss_120b_model",
+          "label": "GPT-OSS 120B (Medium)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "GPT-OSS 120B (Medium) row in the Model popup menu."
+        },
+        {
+          "target_id": "view_usage_menu_item",
+          "label": "View Usage",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.245,
+          "y": 0.895,
+          "calibration_status": "calibrated",
+          "notes": "'View Usage >' item at the bottom of the Model popup menu."
+        },
+        {
+          "target_id": "open_effort_submenu",
+          "label": "Open Nested Effort Submenu",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.355,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "Chevron (>) on the right edge of the active model row in the Model popup menu that opens the Low/Medium/High fly-out."
+        },
+        {
+          "target_id": "select_low_effort",
+          "label": "Low Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.72,
+          "calibration_status": "calibrated",
+          "notes": "'Low' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_medium_effort",
+          "label": "Medium Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.755,
+          "calibration_status": "calibrated",
+          "notes": "'Medium' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "select_high_effort",
+          "label": "High Effort",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.455,
+          "y": 0.79,
+          "calibration_status": "calibrated",
+          "notes": "'High' option in the nested Effort fly-out submenu."
+        },
+        {
+          "target_id": "open_permissions_picker",
+          "label": "Open Execution Mode / Permissions Picker",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Shield execution-mode button on the bottom-right of the composer bar (Request Review / Default / Turbo)."
+        },
+        {
+          "target_id": "select_request_review_mode",
+          "label": "Request Review (Every command requires approval)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.74,
+          "calibration_status": "calibrated",
+          "notes": "'Request Review - Every command requires approval.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_default_permissions_mode",
+          "label": "Default (Ask before sensitive operations)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "'Default - Ask before sensitive operations.' in the execution mode popup."
+        },
+        {
+          "target_id": "select_turbo_mode",
+          "label": "Turbo (Run all commands without restrictions)",
+          "kind": "menu_item",
+          "coordinate_mode": "window_relative",
+          "x": 0.65,
+          "y": 0.86,
+          "calibration_status": "calibrated",
+          "notes": "'Turbo - Run all commands without restrictions.' in the execution mode popup."
+        },
+        {
+          "target_id": "voice_button",
+          "label": "Voice Dictation Microphone",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.84,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Microphone voice-input icon next to the Turbo mode selector."
+        },
+        {
+          "target_id": "send_button",
+          "label": "Send Prompt Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Blue circular right-arrow send button at bottom-right of composer bar."
+        },
+        {
+          "target_id": "stop_button",
+          "label": "Stop Generation Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.885,
+          "y": 0.94,
+          "calibration_status": "calibrated",
+          "notes": "Stop button occupying the send button slot while Antigravity is generating."
+        },
+        {
+          "target_id": "copy_response_button",
+          "label": "Copy Final Response Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.78,
+          "calibration_status": "calibrated",
+          "notes": "Copy action on the bottom of the latest Antigravity assistant response."
+        },
+        {
+          "target_id": "question_reply_input",
+          "label": "Inline Question Reply Input",
+          "kind": "input",
+          "coordinate_mode": "window_relative",
+          "x": 0.45,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Write-in reply input when Antigravity displays an interactive question card above the composer."
+        },
+        {
+          "target_id": "question_skip_button",
+          "label": "Inline Question Skip Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.79,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Skip button on an interactive question card."
+        },
+        {
+          "target_id": "question_send_button",
+          "label": "Inline Question Submit/Send Button",
+          "kind": "button",
+          "coordinate_mode": "window_relative",
+          "x": 0.86,
+          "y": 0.8,
+          "calibration_status": "calibrated",
+          "notes": "Submit/Send button on an interactive question card."
+        }
+      ],
+      "selection_controls": {
+        "permissions": {
+          "open_target_id": "open_permissions_picker",
+          "pause_ms": 220,
+          "options": {
+            "request_review": {
+              "target_id": "select_request_review_mode",
+              "aliases": [
+                "request review",
+                "request_review",
+                "review",
+                "approve",
+                "every command requires approval",
+                "ask permissions"
+              ],
+              "description": "Request Review - Every command requires approval."
+            },
+            "default": {
+              "target_id": "select_default_permissions_mode",
+              "aliases": [
+                "default",
+                "ask",
+                "ask before sensitive operations",
+                "standard",
+                "auto"
+              ],
+              "description": "Default - Ask before sensitive operations."
+            },
+            "turbo": {
+              "target_id": "select_turbo_mode",
+              "aliases": [
+                "turbo",
+                "full access",
+                "full_access",
+                "bypass",
+                "bypass permissions",
+                "unrestricted",
+                "run all commands without restrictions"
+              ],
+              "description": "Turbo - Run all commands without restrictions."
+            }
+          }
+        },
+        "model": {
+          "open_target_id": "open_model_picker",
+          "pause_ms": 240,
+          "options": {
+            "gemini-4-argon": {
+              "target_id": "select_gemini_4_argon_model",
+              "aliases": [
+                "gemini 4 argon",
+                "gemini-4-argon",
+                "gemini 4 argon high",
+                "argon",
+                "gemini 4"
+              ],
+              "description": "Gemini 4 Argon (supports Low, Medium, High effort)."
+            },
+            "gemini-3.8-flash": {
+              "target_id": "select_gemini_3_8_flash_model",
+              "aliases": [
+                "gemini 3.8 flash",
+                "gemini-3.8-flash",
+                "gemini 3.8 flash medium",
+                "3.8 flash",
+                "flash"
+              ],
+              "description": "Gemini 3.8 Flash (supports Low, Medium, High effort)."
+            },
+            "claude-opus-5.5": {
+              "target_id": "select_claude_opus_5_5_model",
+              "aliases": [
+                "claude opus 5.5",
+                "claude-opus-5.5",
+                "opus 5.5",
+                "opus"
+              ],
+              "description": "Claude Opus 5.5 (supports Low, Medium, High effort)."
+            },
+            "claude-sonnet-5.5": {
+              "target_id": "select_claude_sonnet_5_5_model",
+              "aliases": [
+                "claude sonnet 5.5",
+                "claude-sonnet-5.5",
+                "sonnet 5.5",
+                "sonnet"
+              ],
+              "description": "Claude Sonnet 5.5 (supports Low, Medium, High effort)."
+            },
+            "gpt-oss-120b": {
+              "target_id": "select_gpt_oss_120b_model",
+              "aliases": [
+                "gpt-oss 120b",
+                "gpt-oss-120b",
+                "gpt oss 120b",
+                "gpt-oss 120b (medium)",
+                "120b"
+              ],
+              "description": "GPT-OSS 120B (Medium)."
+            }
+          },
+          "effort_options": {
+            "low": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_low_effort",
+              "aliases": [
+                "low",
+                "minimal",
+                "fast"
+              ]
+            },
+            "medium": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_medium_effort",
+              "aliases": [
+                "medium",
+                "standard",
+                "balanced"
+              ]
+            },
+            "high": {
+              "submenu_open_target_id": "open_effort_submenu",
+              "target_id": "select_high_effort",
+              "aliases": [
+                "high",
+                "max",
+                "extra",
+                "deep"
+              ]
+            }
+          }
+        }
+      },
+      "usage_controls": {
+        "release_ready": true,
+        "open_steps": [
+          {
+            "type": "click_target",
+            "target_id": "open_model_picker",
+            "pause_ms": 260
+          },
+          {
+            "type": "click_target",
+            "target_id": "view_usage_menu_item",
+            "pause_ms": 400
+          }
+        ],
+        "close_steps": [
+          {
+            "type": "press_keys",
+            "keys": [
+              "escape"
+            ]
+          }
+        ],
+        "ocr_region": [
+          0.05,
+          0.15,
+          0.95,
+          0.92
+        ]
+      },
+      "submit_actions": [
+        {
+          "type": "click_target",
+          "target_id": "send_button"
+        },
+        {
+          "type": "press_keys",
+          "keys": [
+            "enter"
+          ]
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "desktop-control",
+    "antigravity",
+    "agy",
+    "wsl-compatible",
+    "docker-compatible"
+  ]
+}

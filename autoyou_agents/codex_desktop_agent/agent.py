@@ -20,10 +20,12 @@ from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from autoyou_agents.shared_tools.desktop_app_agent_shortcuts import make_desktop_exact_tool_callback
 from autoyou_agents.shared_tools.desktop_app_control import (
     add_text_to_desktop_app_prompt,
+    answer_desktop_app_question,
     attach_files_to_desktop_app_prompt,
     capture_desktop_app_screenshot,
     clear_desktop_app_prompt,
     copy_final_response_from_desktop_app,
+    get_desktop_app_question,
     get_desktop_app_release_status,
     get_desktop_app_prompt,
     get_desktop_app_prompt_status,
@@ -53,6 +55,8 @@ _EXACT_TOOL_CALLBACK = make_desktop_exact_tool_callback(
         "get_codex_desktop_status",
         "get_codex_desktop_prompt",
         "get_codex_desktop_prompt_status",
+        "get_codex_desktop_question",
+        "answer_codex_desktop_question",
         "get_codex_desktop_release_status",
         "list_codex_desktop_asset_packs",
         "select_codex_desktop_project",
@@ -134,8 +138,8 @@ def select_codex_desktop_model(
     Works on legacy Codex, 26.707 "ChatGPT Codex", and modern 26.803 builds (the right pack
     is chosen automatically from the installed version). Any argument is optional.
 
-    Models: "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6 Sol", "GPT-6 Luna", "GPT-5.6 Sol",
-      "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
+    Models: "Default", "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6.1 Terra", "GPT-6 Sol",
+      "GPT-6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
     Effort: low, medium, high, extra high, max (or ultra). On modern 26.803 builds,
       effort is selected via the 5-point slider popup (Low, Medium, High, Extra High, Max).
     Speed: "standard".
@@ -420,14 +424,50 @@ def ask_codex_and_return(
         ),
     }
 
+def get_codex_desktop_question(launch_if_needed: bool = False) -> Dict[str, Any]:
+    """Inspect Codex Desktop for an active mid-turn inline Question card above the composer.
+
+    Returns ``pending_question`` (bool) and ``question_text`` (str) so callers can see whether
+    Codex is waiting for a clarifying answer or Skip action before continuing its turn.
+    """
+    return get_desktop_app_question(_AGENT_DIR, launch_if_needed=launch_if_needed)
+
+
+def answer_codex_desktop_question(
+    response: Optional[str] = None,
+    skip: bool = False,
+    launch_if_needed: bool = True,
+    capture_after: bool = True,
+) -> Dict[str, Any]:
+    """Reply to or skip an inline Question card in Codex Desktop.
+
+    Pass ``response`` to focus the inline ``Reply...`` input, paste the answer, and click ``Send``.
+    Pass ``skip=True`` to click the inline ``Skip`` button on the Question card.
+    """
+    return answer_desktop_app_question(
+        _AGENT_DIR,
+        response=response,
+        skip=skip,
+        launch_if_needed=launch_if_needed,
+        capture_after=capture_after,
+    )
+
+
 def wait_for_codex_desktop_final_response(
     poll_interval_seconds: float = 12.0,
     stable_polls: int = 2,
     max_wait_seconds: float = 900.0,
     initial_wait_seconds: float = 0.0,
     expected_prompt: Optional[str] = None,
+    auto_answer_question: Optional[str] = None,
+    auto_skip_question: bool = False,
 ) -> Dict[str, Any]:
-    """Wait until Codex's latest answer stops changing, then return the copied final text."""
+    """Wait until Codex's latest answer stops changing, then return the copied final text.
+
+    If Codex pauses on an inline Question card mid-turn, returns immediately with
+    ``status="awaiting_question_response"`` and ``question_text`` unless ``auto_answer_question``
+    or ``auto_skip_question=True`` is supplied.
+    """
     return wait_until_idle_and_copy_desktop_response(
         _AGENT_DIR,
         poll_interval_seconds=poll_interval_seconds,
@@ -436,6 +476,8 @@ def wait_for_codex_desktop_final_response(
         min_initial_wait_seconds=initial_wait_seconds,
         launch_if_needed=True,
         expected_prompt=expected_prompt,
+        auto_answer_question=auto_answer_question,
+        auto_skip_question=auto_skip_question,
     )
 
 def get_codex_usage() -> Dict[str, Any]:
@@ -482,6 +524,8 @@ def create_codex_desktop_agent(model_config):
             get_codex_desktop_status,
             get_codex_desktop_prompt,
             get_codex_desktop_prompt_status,
+            get_codex_desktop_question,
+            answer_codex_desktop_question,
             get_codex_desktop_release_status,
             list_codex_desktop_asset_packs,
             select_codex_desktop_project,

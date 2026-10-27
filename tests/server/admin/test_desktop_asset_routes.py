@@ -86,6 +86,7 @@ def test_desktop_asset_catalog_and_prompt_require_admin_login() -> None:
         catalog = client.get("/api/admin/desktop-assets", headers=headers)
         assert catalog.status_code == 200
         assert {item["agent_name"] for item in catalog.json()["agents"]} == {
+            "antigravity_agent",
             "claude_desktop_agent",
             "codex_desktop_agent",
         }

@@ -1,0 +1,163 @@
+<!-- Copyright (c) 2026 OpenStorey LLC. All rights reserved. -->
+<!-- Licensed under the AutoYou Source-Available License. -->
+<!-- See LICENSE in the project root for license information. -->
+<!-- AI/ML training use prohibited without written authorization (License S3.9). -->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antigravity Control</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #101218; color: #edf0f7; }
+    [hidden] { display: none !important; }
+    body { max-width: 940px; margin: 0 auto; padding: 24px; line-height: 1.45; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    h1 { margin: 0; font-size: 1.65rem; font-weight: 700; } p { color: #aeb6c7; margin: 4px 0; }
+    section { background: #191d27; border: 1px solid #2a3140; border-radius: 14px; padding: 18px; margin-top: 16px; }
+    label { display: block; color: #bfc7d8; font-size: .9rem; margin-bottom: 6px; font-weight: 500; }
+    select, textarea, input[type=file], input[type=text] { box-sizing: border-box; width: 100%; background: #0e1118; color: inherit; border: 1px solid #3a4355; border-radius: 9px; padding: 10px 12px; font-size: .95rem; }
+    textarea { min-height: 110px; resize: vertical; font-family: inherit; }
+    .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button { border: 0; border-radius: 8px; padding: 9px 14px; background: #39455b; color: white; cursor: pointer; font-size: .9rem; font-weight: 500; }
+    button.primary { background: #536dff; }
+    button.warn { background: #a34747; }
+    button.secondary { background: #283142; border: 1px solid #3e4a63; }
+    .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; background: #283142; color: #cbd5e1; margin-right: 6px; }
+    pre { margin: 8px 0 0; background: #0c0f17; border: 1px solid #283042; border-radius: 9px; padding: 12px; font-family: ui-monospace, monospace; font-size: .86rem; max-height: 260px; overflow-y: auto; white-space: pre-wrap; color: #e2e8f0; }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } header { display: block; } }
+  </style>
+  <script>window.__BOOTSTRAP__ = __BOOTSTRAP_JSON__;</script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Antigravity Control</h1>
+      <p id="env-summary">Checking local runtime environment...</p>
+    </div>
+    <div>
+      <span class="badge" id="pack-badge">pack: --</span>
+      <span class="badge" id="status-badge">status: --</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="grid">
+      <div>
+        <label for="model-select">Model</label>
+        <select id="model-select">
+          <option value="">— Keep current model —</option>
+          <option value="Gemini 4 Argon">Gemini 4 Argon</option>
+          <option value="Gemini 3.8 Flash">Gemini 3.8 Flash</option>
+          <option value="Claude Opus 5.5">Claude Opus 5.5</option>
+          <option value="Claude Sonnet 5.5">Claude Sonnet 5.5</option>
+          <option value="GPT-OSS 120B (Medium)">GPT-OSS 120B (Medium)</option>
+        </select>
+      </div>
+      <div>
+        <label for="effort-select">Effort (Nested Submenu)</label>
+        <select id="effort-select">
+          <option value="">— Keep current effort —</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+      <div>
+        <label for="permissions-select">Execution / Approval Mode</label>
+        <select id="permissions-select">
+          <option value="">— Keep current mode —</option>
+          <option value="request review">Request Review (Every command requires approval)</option>
+          <option value="default">Default (Ask before sensitive operations)</option>
+          <option value="turbo">Turbo (Run all commands without restrictions)</option>
+        </select>
+      </div>
+      <div>
+        <label for="project-input">Workspace / Project</label>
+        <input id="project-input" type="text" placeholder="Optional project name">
+      </div>
+    </div>
+    <div class="buttons">
+      <button class="primary" id="apply-config-btn" type="button">Apply configuration</button>
+      <button class="secondary" id="inspect-config-btn" type="button">Inspect running instance</button>
+      <button class="secondary" id="check-usage-btn" type="button">View usage</button>
+    </div>
+  </section>
+
+  <section>
+    <label for="prompt-text">Prompt composer</label>
+    <textarea id="prompt-text" placeholder="Enter prompt text for Antigravity..."></textarea>
+    <div class="buttons">
+      <button class="primary" id="append-btn" type="button">Append to prompt</button>
+      <button class="secondary" id="replace-btn" type="button">Replace prompt</button>
+      <button class="secondary" id="read-btn" type="button">Read draft</button>
+      <button class="secondary" id="new-btn" type="button">Clear draft</button>
+      <button class="primary" id="execute-btn" type="button">Send prompt</button>
+      <button class="secondary" id="result-btn" type="button">Copy response</button>
+      <button class="warn" id="stop-btn" type="button">Stop</button>
+    </div>
+  </section>
+
+  <section>
+    <label for="question-reply">Inline question reply</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="question-reply" type="text" placeholder="Reply to active inline question..." style="flex:1;min-width:220px">
+      <button class="secondary" id="check-question-btn" type="button">Check question</button>
+      <button class="primary" id="send-question-btn" type="button">Send reply</button>
+      <button class="secondary" id="skip-question-btn" type="button">Skip</button>
+    </div>
+  </section>
+
+  <section>
+    <label>Output</label>
+    <pre id="output">Ready.</pre>
+  </section>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const show = data => { $('output').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2); };
+
+    async function api(path, method = 'GET', body) {
+      const headers = body ? {'Content-Type': 'application/json'} : {};
+      const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : undefined});
+      return await r.json();
+    }
+
+    async function refreshStatus() {
+      try {
+        const data = await api('./api/status');
+        const st = data.agent_status || {};
+        const env = st.runtime_environment || {};
+        $('pack-badge').textContent = `pack: ${(st.asset_pack && st.asset_pack.asset_pack_id) || 'none'}`;
+        $('status-badge').textContent = `running: ${st.running ? 'yes' : 'no'}`;
+        $('env-summary').textContent = `Platform: ${st.platform || env.os || 'unknown'} | Supported: ${(env.supported_environments || []).join(', ')}`;
+      } catch (err) {
+        show(String(err));
+      }
+    }
+
+    $('apply-config-btn').onclick = async () => show(await api('./api/tool/configure_prompt', 'POST', {
+      model: $('model-select').value || undefined,
+      effort: $('effort-select').value || undefined,
+      permissions: $('permissions-select').value || undefined,
+      project_name: $('project-input').value || undefined
+    }));
+    $('inspect-config-btn').onclick = async () => show(await api('./api/desktop-config?probe_live_ocr=1'));
+    $('check-usage-btn').onclick = async () => show(await api('./api/usage', 'POST'));
+    $('append-btn').onclick = async () => show(await api('./api/tool/build_prompt', 'POST', {text: $('prompt-text').value}));
+    $('replace-btn').onclick = async () => show(await api('./api/tool/replace_prompt', 'POST', {text: $('prompt-text').value}));
+    $('read-btn').onclick = async () => show(await api('./api/tool/get_prompt', 'POST', {}));
+    $('new-btn').onclick = async () => show(await api('./api/tool/new_prompt', 'POST', {}));
+    $('execute-btn').onclick = async () => show(await api('./api/tool/execute_prompt', 'POST', {}));
+    $('result-btn').onclick = async () => show(await api('./api/tool/result_prompt', 'POST', {}));
+    $('stop-btn').onclick = async () => show(await api('./api/tool/stop_prompt', 'POST', {}));
+    $('check-question-btn').onclick = async () => show(await api('./api/tool/get_question', 'POST', {}));
+    $('send-question-btn').onclick = async () => show(await api('./api/tool/answer_question', 'POST', {response: $('question-reply').value}));
+    $('skip-question-btn').onclick = async () => show(await api('./api/tool/answer_question', 'POST', {skip: true}));
+
+    refreshStatus();
+  </script>
+</body>
+</html>

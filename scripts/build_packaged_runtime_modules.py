@@ -99,6 +99,7 @@ EMOTIVOICE_RUNTIME_FILES = tuple(Path(path) for path in (
 AGENT_SIDECAR_FILENAMES = frozenset(
     {
         "whatsapp_history_dump.mjs",
+        "runtime_tools.mjs",
     }
 )
 # Agent instruction files are not executable Python and are never compiled.

@@ -281,6 +281,7 @@ def test_setup_prompt_is_self_contained_and_uses_selected_compatibility_values(u
     server_anchor = Path(__file__).resolve().parents[3] / "server.py"
     catalog = get_desktop_asset_agent_catalog(server_anchor)
     assert {item["agent_name"] for item in catalog["agents"]} == {
+        "antigravity_agent",
         "claude_desktop_agent",
         "codex_desktop_agent",
     }

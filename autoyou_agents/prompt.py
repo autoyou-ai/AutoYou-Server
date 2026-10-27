@@ -89,6 +89,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Remote Desktop: `autoyou_remote_desktop_agent`
 - Claude Desktop: `claude_desktop_agent`
 - Codex Desktop: `codex_desktop_agent`
+- Antigravity: `antigravity_agent`
 - Prompt Builder: `autoyou_build_prompt_agent`
 - OpenClaw: `autoyou_openclaw_agent`
 - Client Browser Control: `autoyou_client_browser_control_agent`
@@ -121,6 +122,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Display remote screen or cast application windows, and interactively control mouse/keyboard inputs: call `autoyou_remote_desktop_agent`.
 - Local Claude desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Claude model/permissions): call `claude_desktop_agent`.
 - Local Codex desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Codex model/approval/effort): call `codex_desktop_agent`.
+- Local Antigravity desktop app or agy CLI tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Antigravity model/effort/execution mode): call `antigravity_agent`.
 - Prompt assembly from Telegram Saved Messages or the Prompt Builder website, including exact text/image counts, draft/send/status/result/clear/stop/configure operations: call `autoyou_build_prompt_agent`.
 - Scheduled AI jobs, cron-style automation, recurring tasks, one-time scheduled AI runs, or task-result delivery: call `autoyou_tasks_agent`.
 - When summarizing available agents or capabilities, keep Notify and Tasks separate. Do not describe reminders as part of `autoyou_tasks_agent`.
@@ -233,6 +235,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Remote Desktop: `autoyou_remote_desktop_agent`
 - Claude Desktop: `claude_desktop_agent`
 - Codex Desktop: `codex_desktop_agent`
+- Antigravity: `antigravity_agent`
 - Prompt Builder: `autoyou_build_prompt_agent`
 - OpenClaw: `autoyou_openclaw_agent`
 - Client Browser Control: `autoyou_client_browser_control_agent`
@@ -262,6 +265,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Display remote screen or cast application windows, and interactively control mouse/keyboard inputs: call `autoyou_remote_desktop_agent`.
 - Local Claude desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Claude model/permissions): call `claude_desktop_agent`.
 - Local Codex desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Codex model/approval/effort): call `codex_desktop_agent`.
+- Local Antigravity desktop app or agy CLI tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Antigravity model/effort/execution mode): call `antigravity_agent`.
 - Prompt assembly from Telegram Saved Messages or the Prompt Builder website, including exact text/image counts, draft/send/status/result/clear/stop/configure operations: call `autoyou_build_prompt_agent`.
 - Scheduled AI jobs, cron-style automation, recurring tasks, one-time scheduled AI runs, or task-result delivery: call `autoyou_tasks_agent`.
 - When summarizing available agents or capabilities, keep Notify and Tasks separate. Do not describe reminders as part of `autoyou_tasks_agent`.
@@ -343,6 +347,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Remote Desktop: `autoyou_remote_desktop_agent`
 - Claude Desktop: `claude_desktop_agent`
 - Codex Desktop: `codex_desktop_agent`
+- Antigravity: `antigravity_agent`
 - Prompt Builder: `autoyou_build_prompt_agent`
 - OpenClaw: `autoyou_openclaw_agent`
 - Client Browser Control: `autoyou_client_browser_control_agent`
@@ -372,6 +377,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Display remote screen or cast application windows, and interactively control mouse/keyboard inputs: call `autoyou_remote_desktop_agent`.
 - Local Claude desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Claude model/permissions): call `claude_desktop_agent`.
 - Local Codex desktop app tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Codex model/approval/effort): call `codex_desktop_agent`.
+- Local Antigravity desktop app or agy CLI tasks (build a prompt, attach screenshots/media, send, read final output, check usage, or select Antigravity model/effort/execution mode): call `antigravity_agent`.
 - Prompt assembly from Telegram Saved Messages or the Prompt Builder website, including exact text/image counts, draft/send/status/result/clear/stop/configure operations: call `autoyou_build_prompt_agent`.
 - Scheduled AI jobs, cron-style automation, recurring tasks, one-time scheduled AI runs, or task-result delivery: call `autoyou_tasks_agent`.
 - When summarizing available agents or capabilities, keep Notify and Tasks separate. Do not describe reminders as part of `autoyou_tasks_agent`.

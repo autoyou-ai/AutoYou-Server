@@ -144,13 +144,23 @@ def select_claude_desktop_permissions(permissions: str, launch_if_needed: bool =
 def select_claude_desktop_model(
     model: Optional[str] = None,
     effort: Optional[str] = None,
+    speed: Optional[str] = None,
+    advanced: Optional[str] = None,
     launch_if_needed: bool = True,
 ) -> Dict[str, Any]:
-    """Select Claude model and/or effort. Models include Opus 4.7, Sonnet 4.6, Haiku 4.5, and Opus 4.6 Legacy."""
+    """Select Claude model, effort, speed, and/or advanced mode.
+
+    Models include Opus 5.5, Sonnet 5.5, Fable 5.1, Haiku 5.5 (plus legacy Opus 4.7, Sonnet 4.6,
+    Haiku 4.5, and Opus 4.6 Legacy). Effort options on modern packs open the nested Effort
+    fly-out submenu: low, medium (recommended), high, extra, max. Speed toggles Fast mode
+    ('fast' / 'standard'), and advanced toggles Ultracode ('ultracode' / 'off').
+    """
     return select_desktop_app_model(
         _AGENT_DIR,
         model=model,
         effort=effort,
+        speed=speed,
+        advanced=advanced,
         launch_if_needed=launch_if_needed,
     )
 
