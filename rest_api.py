@@ -1953,7 +1953,7 @@ async def send_message_to_pi(
     from shared.pi_gateway import call_pi_gateway
     port = os.environ.get("PI_PORT", "8650").strip() or "8650"
     base_url = f"http://127.0.0.1:{port}"
-    model = os.environ.get("PI_MODEL", "qwen3.8:27b").strip() or "qwen3.8:27b"
+    model = os.environ.get("PI_MODEL", "pi-agent").strip() or "pi-agent"
     token = os.environ.get("PI_TOKEN", "").strip()
     pi_path = os.environ.get("PI_PATH", "").strip()
     return await call_pi_gateway(
