@@ -37,6 +37,7 @@ from __future__ import annotations
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
+import base64
 import logging
 import math
 import os
@@ -89,6 +90,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # video/audio recording) carries on as usual but AI answers only after the
     # wake word.
     "wake_word_in_calls": False,
+    # During a video call the turn after the wake word also carries the
+    # latest camera frame, so "what am I holding?" can be answered. The frame
+    # is handled like a picture sent in chat.
+    "use_live_video": True,
     "updated_at": 0.0,
 }
 
@@ -185,7 +190,7 @@ def normalize_settings(raw: Optional[Mapping[str, Any]], *, previous: Optional[M
         except (TypeError, ValueError):
             seconds = int(base["listen_seconds"])
         result["listen_seconds"] = max(3, min(30, seconds))
-    for key in ("listen_during_safety_recording", "use_voice_training_clips", "wake_word_in_calls"):
+    for key in ("listen_during_safety_recording", "use_voice_training_clips", "wake_word_in_calls", "use_live_video"):
         if key in source:
             result[key] = _as_bool(source.get(key))
     result["enabled"] = bool(result["enabled"])
@@ -496,6 +501,7 @@ def public_status(server_name: str, *, include_samples: bool = False) -> Dict[st
         "listen_during_safety_recording": settings["listen_during_safety_recording"],
         "use_voice_training_clips": settings["use_voice_training_clips"],
         "wake_word_in_calls": settings["wake_word_in_calls"],
+        "use_live_video": settings["use_live_video"],
         "model": None,
         "sample_count": len(list_samples()),
         "min_samples": ww.MIN_TEMPLATES,
@@ -1201,6 +1207,48 @@ def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]
                 LOGGER.debug("Could not remove temporary assistant audio")
 
     return transcribe
+
+
+# Live camera frame for a wake-word turn (server process)
+def live_frame_attachment(
+    session_ids: List[str],
+    *,
+    registry: Any = None,
+    max_age_seconds: float = 3.0,
+    now: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """The newest camera frame for a device as a chat image, if fresh.
+
+    Runs in the server process, where the WebRTC engine publishes frames.
+    """
+    if registry is None:
+        try:
+            from shared.video_call_manager import VIDEO_FRAME_REGISTRY as registry
+        except Exception:
+            return None
+    current = time.time() if now is None else float(now)
+    for session_id in [s for s in session_ids if s]:
+        try:
+            frame = registry.latest(session_id)
+        except Exception:
+            frame = None
+        if frame is None:
+            continue
+        published = float(getattr(frame, "timestamp_ms", 0) or 0) / 1000.0
+        if published and current - published > max_age_seconds:
+            continue
+        jpeg = getattr(frame, "jpeg_bytes", None)
+        if not jpeg:
+            continue
+        return {
+            "filename": "assistant-live-camera.jpg",
+            "mimetype": "image/jpeg",
+            "data": base64.b64encode(bytes(jpeg)).decode("ascii"),
+            "source": "assistant_live_frame",
+            "width": int(getattr(frame, "width", 0) or 0),
+            "height": int(getattr(frame, "height", 0) or 0),
+        }
+    return None
 
 
 # ---------------------------------------------------------------------------

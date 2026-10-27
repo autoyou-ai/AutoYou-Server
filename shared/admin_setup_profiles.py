@@ -59,6 +59,7 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "antigravity_agent": "Antigravity Agent",
     "audio_agent": "Audio Agent",
     "backup_agent": "Backup Agent",
+    "assistant_agent": "Assistant Agent",
     "browser_agent": "Browser Agent",
     "claude_cli_agent": "Claude CLI Agent",
     "claude_desktop_agent": "Claude Desktop Agent",

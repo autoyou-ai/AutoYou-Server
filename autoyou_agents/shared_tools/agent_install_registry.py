@@ -76,6 +76,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "ads_watching_agent": True,
     "agent_builder_agent": False,    # Opt-in: advanced scaffolding tool
     "antigravity_agent": False,      # Opt-in: Antigravity desktop and CLI bridge
+    "assistant_agent": True,         # Acts only on wake-word Assistant mode turns (off until enabled)
     "audio_agent": True,
     "backup_agent": True,
     "build_prompt_agent": False,     # Opt-in: Telegram/website prompt assembly

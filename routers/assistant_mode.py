@@ -37,7 +37,7 @@ MAX_TRANSCRIBE_SECONDS = 30.0
 
 
 def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[str, Callable[..., Any]]:
-    def _refuse(request: Request) -> Optional[JSONResponse]:
+    def _require_admin_login(request: Request) -> Optional[JSONResponse]:
         return server._require_api_login(request)
 
     def _error(status: int, message: str) -> JSONResponse:
@@ -110,7 +110,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.get("/api/assistant-mode")
     async def assistant_mode_status(request: Request):
         """Settings, readiness, recordings, Voice Training matches, and which devices are listening."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         return server._json_response_no_store({"success": True, **await asyncio.to_thread(_status)})
@@ -118,7 +118,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.post("/api/assistant-mode/settings")
     async def assistant_mode_settings(request: Request):
         """Turn Assistant mode on or off and choose the wake word, how it is confirmed, and sensitivity."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
@@ -132,7 +132,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.post("/api/assistant-mode/samples")
     async def assistant_mode_add_sample(request: Request):
         """Store one recording of the wake word (base64 WAV), after checking its length and level."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
@@ -149,7 +149,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.delete("/api/assistant-mode/samples")
     async def assistant_mode_clear_samples(request: Request):
         """Delete every stored wake word recording."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         removed = await asyncio.to_thread(am.clear_samples)
@@ -158,7 +158,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.delete("/api/assistant-mode/samples/{sample_id}")
     async def assistant_mode_delete_sample(sample_id: str, request: Request):
         """Delete one wake word recording."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         removed = await asyncio.to_thread(am.delete_sample, sample_id)
@@ -169,7 +169,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.get("/api/assistant-mode/samples/{sample_id}/audio")
     async def assistant_mode_sample_audio(sample_id: str, request: Request):
         """Play back one wake word recording as WAV."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         pcm = await asyncio.to_thread(am.read_sample_pcm, sample_id)
@@ -184,7 +184,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.post("/api/assistant-mode/train")
     async def assistant_mode_train(request: Request):
         """Train the wake word from the recordings and, when enabled, Voice Training clips."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         settings = await asyncio.to_thread(am.load_settings)
@@ -203,7 +203,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.delete("/api/assistant-mode/model")
     async def assistant_mode_delete_model(request: Request):
         """Forget the trained wake word."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         await asyncio.to_thread(am.delete_model)
@@ -213,7 +213,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.get("/api/assistant-mode/model")
     async def assistant_mode_model(request: Request):
         """The full model, for detectors that run in the browser or on a device."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         model = await asyncio.to_thread(am.load_model)
@@ -224,7 +224,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.post("/api/assistant-mode/test")
     async def assistant_mode_test(request: Request):
         """Say whether a recording would wake the assistant, with the match score and transcript."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
@@ -255,7 +255,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     @admin_app.post("/api/assistant-mode/transcribe")
     async def assistant_mode_transcribe(request: Request):
         """Local transcription for a wake heard by the admin page's own detector."""
-        refused = _refuse(request)
+        refused = _require_admin_login(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)

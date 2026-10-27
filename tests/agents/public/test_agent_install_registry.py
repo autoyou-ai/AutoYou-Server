@@ -99,6 +99,8 @@ def test_release_agent_defaults_match_public_private_policy():
     default_on = {
         "admin_agent",
         "ads_watching_agent",
+        # Acts only on wake-word turns; Assistant mode itself starts off.
+        "assistant_agent",
         "audio_agent",
         "backup_agent",
         "client_browser_control_agent",

@@ -951,6 +951,39 @@ class WebRTCManager:
             after_training=self.broadcast_webrtc_capabilities,
         )
 
+    def _assistant_turn_request(
+        self,
+        text: str,
+        extra: Dict[str, Any],
+        request_metadata: Dict[str, Any],
+        session_ids: List[str],
+    ) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Mark a wake-word turn for the Assistant agent and add the live frame.
+
+        During a video call the newest camera frame goes along as a picture,
+        exactly like one sent in chat, unless "Let it see the camera" is off.
+        """
+        metadata = dict(request_metadata)
+        context: List[Dict[str, Any]] = []
+        frame = None
+        try:
+            from shared.assistant_mode import live_frame_attachment, load_settings as load_assistant_settings
+
+            if load_assistant_settings().get("use_live_video", True):
+                frame = live_frame_attachment(session_ids)
+        except Exception as exc:
+            _runtime.LOGGER.debug("Assistant mode live frame skipped: %s", exc)
+        if frame:
+            context.append({"source": "assistant_live_frame", "attachments": [frame]})
+        metadata["assistant_mode"] = True
+        metadata["assistant_turn"] = {
+            "text": text,
+            "at": _runtime.time.time(),
+            "wake": str(extra.get("wake") or ""),
+            "live_frame": bool(frame),
+        }
+        return metadata, context
+
     async def broadcast_webrtc_capabilities(self) -> None:
         """Push fresh capabilities to every live device (assistant mode changed)."""
         sent: Set[int] = set()
@@ -5027,6 +5060,7 @@ class WebRTCManager:
                     text = item
                     transcript_already_mirrored = False
                     queued_identity = None
+                    queued_metadata = None
                     if isinstance(item, tuple):
                         if item:
                             text = item[0]
@@ -5034,12 +5068,16 @@ class WebRTCManager:
                             transcript_already_mirrored = bool(item[1])
                         if len(item) > 2:
                             queued_identity = item[2]
+                        if len(item) > 3 and isinstance(item[3], dict):
+                            queued_metadata = item[3]
 
+                    extra_kwargs = {"metadata_extra": queued_metadata} if queued_metadata else {}
                     await self._process_voice_command(
                         session_id,
                         text,
                         transcript_already_mirrored=bool(transcript_already_mirrored),
                         identity=queued_identity,
+                        **extra_kwargs,
                     )
                 except Exception as e:
                     _runtime.LOGGER.error(f"Voice command worker error for {session_id}: {e}")
@@ -5137,7 +5175,7 @@ class WebRTCManager:
             except Exception:
                 _runtime.LOGGER.warning(f"Voice command queue full for {session_id}; failed to drop oldest item")
 
-        queue_ref.put_nowait((normalized, transcript_already_mirrored, identity))
+        queue_ref.put_nowait((normalized, transcript_already_mirrored, identity, dict(metadata_extra or {})))
         _runtime.LOGGER.info(f"Queued voice transcript for {session_id}; pending={queue_ref.qsize()}")
 
     def _enqueue_voice_command_threadsafe(self, session_id: str, text: str, loop: asyncio.AbstractEventLoop):
@@ -8782,6 +8820,7 @@ class WebRTCManager:
         text: str,
         transcript_already_mirrored: bool = False,
         identity: Any = None,
+        metadata_extra: Optional[Dict[str, Any]] = None,
     ):
         """Process voice command text via chat API, speak, and mirror to chat UI."""
         voice_reply_message_id = str(_runtime.uuid.uuid4())
@@ -8899,13 +8938,18 @@ class WebRTCManager:
                 reply_target = self._build_webrtc_reply_target(dc_session_id, identity)
                 if reply_target:
                     request_metadata["reply_target"] = reply_target
+                request_context: List[Dict[str, Any]] = []
+                if (metadata_extra or {}).get("assistant_mode"):
+                    request_metadata, request_context = self._assistant_turn_request(
+                        text, metadata_extra or {}, request_metadata, [raw_session_id, dc_session_id]
+                    )
 
                 chat_req = ChatRequest(
                     message=text,
                     user_id=identity.canonical_user_id,
                     session_id=identity.canonical_session_id,
                     metadata=request_metadata,
-                    context=[],
+                    context=request_context,
                 )
                 url = f"http://127.0.0.1:{_runtime.STATE.main_server_port}"
                 return await process_chat_message(chat_req, ai_agent_url=url, on_chunk=_on_chunk)

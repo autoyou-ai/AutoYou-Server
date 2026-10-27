@@ -1,0 +1,102 @@
+# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+# Licensed under the AutoYou Source-Available License.
+# See LICENSE in the project root for license information.
+#
+# Browser desktop for the Browser and Assistant agents: a Chromium desktop
+# (Xvfb + noVNC) driven by the auto-browser controller, both MIT-licensed
+# third-party images (https://github.com/LvcidPsyche/auto-browser) that run as a
+# separate service, like signal-cli-rest-api. AutoYou does not bundle them.
+#
+#   docker compose -f servers/browser-desktop/docker-compose.yml up -d
+#
+# Everything is published on this computer's loopback only. The controller API
+# answers at http://127.0.0.1:8000 (AutoYou's AUTO_BROWSER_BASE_URL default) and
+# you can watch or take over the desktop at
+# http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=scale
+#
+# ALLOWED_HOSTS limits which sites the browser may open (comma-separated host
+# names). It starts with example.com only; add the sites you want it to use.
+
+name: autoyou-browser-desktop
+
+services:
+  browser-node:
+    image: ${AUTO_BROWSER_NODE_IMAGE:-ghcr.io/lvcidpsyche/auto-browser-browser-node:1.9.1}
+    shm_size: 2gb
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -s "$${BROWSER_WS_ENDPOINT_FILE:-/data/profile/browser-ws-endpoint.txt}"
+          && curl -s --max-time 3 -o /dev/null http://127.0.0.1:9223/
+          && curl -fsS --max-time 3 http://127.0.0.1:6080/ >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    environment:
+      BROWSER_WIDTH: ${BROWSER_WIDTH:-1280}
+      BROWSER_HEIGHT: ${BROWSER_HEIGHT:-800}
+      BROWSER_URL: about:blank
+      BROWSER_WS_ENDPOINT_FILE: /data/profile/browser-ws-endpoint.txt
+      PLAYWRIGHT_SERVER_HOST: 0.0.0.0
+      PLAYWRIGHT_SERVER_PORT: 9223
+      PLAYWRIGHT_SERVER_ADVERTISED_HOST: browser-node
+      # Set when 6080/5900 are published beyond loopback (first 8 characters count).
+      VNC_PASSWORD: ${VNC_PASSWORD:-}
+    volumes:
+      - browser-profile:/data/profile
+      - browser-downloads:/data/downloads
+    ports:
+      - "127.0.0.1:${NOVNC_PORT:-6080}:6080"
+      - "127.0.0.1:${VNC_PORT:-5900}:5900"
+
+  controller:
+    image: ${AUTO_BROWSER_CONTROLLER_IMAGE:-ghcr.io/lvcidpsyche/auto-browser-controller:1.9.1}
+    restart: unless-stopped
+    stop_grace_period: 60s
+    depends_on:
+      browser-node:
+        condition: service_healthy
+    environment:
+      # "production" also requires share/auth-state secrets and operator ids;
+      # upstream runs a loopback-only desktop as "development".
+      APP_ENV: ${APP_ENV:-development}
+      # Loopback-only publish below is what allows running without a token.
+      # Set API_BEARER_TOKEN (and AUTO_BROWSER_BEARER_TOKEN for AutoYou) before
+      # publishing the API anywhere else.
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-}
+      API_BIND_SCOPE: ${API_BIND_SCOPE:-loopback}
+      CONTROLLER_ALLOWED_HOSTS: ${CONTROLLER_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-example.com,www.example.com}
+      BROWSER_WS_ENDPOINT_FILE: /data/browser-profile/browser-ws-endpoint.txt
+      TAKEOVER_URL: http://127.0.0.1:${NOVNC_PORT:-6080}/vnc.html?autoconnect=true&resize=scale
+      ARTIFACT_ROOT: /data/artifacts
+      UPLOAD_ROOT: /data/uploads
+      AUTH_ROOT: /data/auth
+      APPROVAL_ROOT: /data/approvals
+      AUDIT_ROOT: /data/audit
+      JOB_STORE_ROOT: /data/jobs
+      SESSION_STORE_ROOT: /data/sessions
+      MEMORY_ROOT: /data/memory
+      DEFAULT_VIEWPORT_WIDTH: ${BROWSER_WIDTH:-1280}
+      DEFAULT_VIEWPORT_HEIGHT: ${BROWSER_HEIGHT:-800}
+      MAX_SESSIONS: ${MAX_SESSIONS:-1}
+      REQUIRE_APPROVAL_FOR_UPLOADS: "true"
+      STEALTH_ENABLED: "false"
+      # The controller's own autonomous loop (browser_run_goal) needs a model
+      # provider; AutoYou's agents read pages without one.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - controller-data:/data
+      - browser-profile:/data/browser-profile
+    ports:
+      - "127.0.0.1:${AUTO_BROWSER_API_PORT:-8000}:8000"
+
+volumes:
+  browser-profile:
+  browser-downloads:
+  controller-data:

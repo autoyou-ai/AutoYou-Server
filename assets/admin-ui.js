@@ -5200,7 +5200,8 @@
             listen_seconds: Number(status.listen_seconds || 8),
             listen_during_safety_recording: Boolean(status.listen_during_safety_recording),
             use_voice_training_clips: status.use_voice_training_clips !== false,
-            wake_word_in_calls: Boolean(status.wake_word_in_calls)
+            wake_word_in_calls: Boolean(status.wake_word_in_calls),
+            use_live_video: status.use_live_video !== false
         };
     }
 
@@ -5232,7 +5233,8 @@
             listen_seconds: Math.max(3, Math.min(30, Number(draft.listen_seconds || 8))),
             listen_during_safety_recording: Boolean(draft.listen_during_safety_recording),
             use_voice_training_clips: Boolean(draft.use_voice_training_clips),
-            wake_word_in_calls: Boolean(draft.wake_word_in_calls)
+            wake_word_in_calls: Boolean(draft.wake_word_in_calls),
+            use_live_video: Boolean(draft.use_live_video)
         }, extra || {});
     }
 
@@ -5578,6 +5580,7 @@
             + '<div class="ayu-assistant-grid">'
             + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="listen_during_safety_recording"' + (draft.listen_during_safety_recording ? " checked" : "") + '><div><span>Listen during Safety Recording</span><small>Devices already recording can also wake the assistant. Recording itself is unchanged.</small></div></label>'
             + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="wake_word_in_calls"' + (draft.wake_word_in_calls ? " checked" : "") + '><div><span>Wake word in calls too</span><small>Calls and their video or audio recordings carry on as usual, but AI answers only after the wake word.</small></div></label>'
+            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_live_video"' + (draft.use_live_video ? " checked" : "") + '><div><span>Let it see the camera</span><small>In a video call, what you ask after the wake word includes the latest camera picture, handled like a photo sent in chat.</small></div></label>'
             + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_voice_training_clips"' + (draft.use_voice_training_clips ? " checked" : "") + '><div><span>Learn from Voice Training clips</span><small>' + escapeHtml((training.matching.length === 1 ? "1 clip says" : training.matching.length + " clips say") + " the word; " + (training.other_clips === 1 ? "1 other teaches" : training.other_clips + " others teach") + " it what to ignore.") + '</small></div></label>'
             + '</div>'
             + '<div class="ayu-assistant-actions">' + button("Save", "assistant-save", "primary", "save", "sm") + '</div>'

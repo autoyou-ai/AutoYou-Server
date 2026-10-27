@@ -248,3 +248,69 @@ def test_calls_keep_normal_transcription_unless_the_owner_gates_them(env, monkey
     env.webrtc._handle_inbound_voice_audio_chunk("phone", audio_manager, b"\x01\x00" * 160)
     assert fed_to_stt == [320]
     assert env.hub.fed == [("phone", 320)]
+
+
+def test_wake_turns_reach_the_agent_marked_with_the_live_frame(env, monkeypatch):
+    """The words after the wake word keep their Assistant mode marker all the
+    way to the chat request, and a video call's newest frame rides along."""
+    import shared.assistant_mode as assistant_mode
+
+    processed = []
+
+    async def fake_deliver(session_id, message, *, label=""):
+        return "sent"
+
+    async def fake_process(session_id, text, **kwargs):
+        processed.append((session_id, text, kwargs.get("metadata_extra")))
+
+    monkeypatch.setattr(env.webrtc, "_deliver_voice_chat_message", fake_deliver)
+    monkeypatch.setattr(env.webrtc, "_process_voice_command", fake_process)
+    monkeypatch.setattr(server, "_get_video_call_agent_processing_enabled", lambda cfg=None: True, raising=False)
+
+    async def run():
+        await env.webrtc._enqueue_voice_command(
+            "phone", "open example.com and read the title", metadata_extra={"assistant_mode": True, "wake": "device"}
+        )
+        await env.webrtc.voice_command_queues["phone"].join()
+
+    asyncio.run(run())
+    assert processed == [("phone", "open example.com and read the title", {"assistant_mode": True, "wake": "device"})]
+
+    frame = {"filename": "assistant-live-camera.jpg", "mimetype": "image/jpeg", "data": "c3ludGhldGlj"}
+    seen_sessions = []
+    monkeypatch.setattr(assistant_mode, "load_settings", lambda: {"use_live_video": True})
+    monkeypatch.setattr(assistant_mode, "live_frame_attachment", lambda ids: seen_sessions.append(ids) or frame)
+    metadata, context = env.webrtc._assistant_turn_request(
+        "what am I holding", {"assistant_mode": True, "wake": "voice"}, {"source": "voice_call"}, ["phone", "phone-uuid"]
+    )
+    assert metadata["source"] == "voice_call" and metadata["assistant_mode"] is True
+    assert metadata["assistant_turn"]["text"] == "what am I holding"
+    assert metadata["assistant_turn"]["live_frame"] is True and metadata["assistant_turn"]["wake"] == "voice"
+    assert context == [{"source": "assistant_live_frame", "attachments": [frame]}]
+    assert seen_sessions == [["phone", "phone-uuid"]]
+
+    # "Let it see the camera" off: the turn is still marked, no picture.
+    monkeypatch.setattr(assistant_mode, "load_settings", lambda: {"use_live_video": False})
+    metadata, context = env.webrtc._assistant_turn_request("what am I holding", {"assistant_mode": True}, {}, ["phone"])
+    assert context == [] and metadata["assistant_turn"]["live_frame"] is False
+
+
+def test_ordinary_voice_turns_carry_no_assistant_marker(env, monkeypatch):
+    processed = []
+
+    async def fake_deliver(session_id, message, *, label=""):
+        return "sent"
+
+    async def fake_process(session_id, text, **kwargs):
+        processed.append(kwargs.get("metadata_extra"))
+
+    monkeypatch.setattr(env.webrtc, "_deliver_voice_chat_message", fake_deliver)
+    monkeypatch.setattr(env.webrtc, "_process_voice_command", fake_process)
+    monkeypatch.setattr(server, "_get_video_call_agent_processing_enabled", lambda cfg=None: True, raising=False)
+
+    async def run():
+        await env.webrtc._enqueue_voice_command("phone", "hello there")
+        await env.webrtc.voice_command_queues["phone"].join()
+
+    asyncio.run(run())
+    assert processed == [None]

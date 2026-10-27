@@ -1175,6 +1175,7 @@ for _install_name in (
     "admin_agent",
     "ads_watching_agent",
     "agent_builder_agent",
+    "assistant_agent",
     "audio_agent",
     "tv_agent",
     "browser_agent",
@@ -1239,6 +1240,7 @@ _ANTIGRAVITY_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("antigravity_agent"
 _CODEX_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("codex_desktop_agent") or "codex_desktop_agent"
 _CODING_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("coding_agent") or "autoyou_coding_agent"
 _PI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("pi_agent") or "autoyou_pi_agent"
+_ASSISTANT_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("assistant_agent") or "autoyou_assistant_agent"
 _DATA_COLLECTOR_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("data_collector_agent") or "autoyou_data_collector_agent"
 _FILES_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("files_agent") or "autoyou_files_agent"
 _BACKUP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("backup_agent") or "autoyou_backup_agent"
@@ -1472,6 +1474,11 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "skills_agent",
         "skills",
         "skill agent",
+    ),
+    resolve_runtime_agent_name("assistant_agent") or "autoyou_assistant_agent": (
+        "assistant agent",
+        "assistant_agent",
+        "assistant mode",
     ),
     resolve_runtime_agent_name("remote_desktop_agent") or "autoyou_remote_desktop_agent": (
         "remote desktop agent",
@@ -1878,6 +1885,12 @@ except Exception as _import_err:
     _create_skills_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.assistant_agent.agent import create_assistant_agent as _create_assistant_agent
+except Exception as _import_err:
+    logger.warning("assistant_agent static import failed: %s", _import_err)
+    _create_assistant_agent = None  # type: ignore[assignment]
+
+try:
     from autoyou_agents.remote_desktop_agent.agent import create_remote_desktop_agent as _create_remote_desktop_agent
 except Exception as _import_err:
     logger.warning("remote_desktop_agent static import failed: %s", _import_err)
@@ -1981,6 +1994,7 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "tasks_agent": _create_tasks_agent,
     "website_agent": _create_website_agent,
     "remote_desktop_agent": _create_remote_desktop_agent,
+    "assistant_agent": _create_assistant_agent,
     "education_agent": _create_education_agent,
     "media_generation_agent": _create_media_generation_agent,
     "voice_training_agent": _create_voice_training_agent,
@@ -4627,6 +4641,76 @@ def _root_conversation_note(callback_context: Any) -> str:
     return " ".join(parts)
 
 
+async def _route_assistant_mode_turn(callback_context: Any, user_text: str, invocation_id: str) -> Any:
+    """Hand a wake-word Assistant mode turn to the Assistant agent.
+
+    The server marks the turn in session state; it applies only to the message
+    it was made for. Web reads and window steps run here and reply at once;
+    code-to-automate goes to Pi (or the Coding agent) and web tasks beyond
+    reading go to the Browser agent. Anything else - including questions about
+    what the live camera shows - returns None, so the model answers with the
+    attached picture and the conversation as usual.
+    """
+    state = getattr(callback_context, "state", None)
+    try:
+        from autoyou_agents.assistant_agent import assistant_tool
+    except Exception as exc:  # pragma: no cover - package missing from a build
+        logger.warning("Assistant agent unavailable: %s", exc)
+        return None
+    turn = assistant_tool.claim_turn(state, user_text, invocation_id)
+    if not turn or not _is_runtime_agent_enabled(_ASSISTANT_RUNTIME_AGENT_NAME):
+        return None
+    plan = assistant_tool.plan_request(turn["text"])
+    metadata = {
+        "response_author": _ASSISTANT_RUNTIME_AGENT_NAME,
+        "route_target": _ASSISTANT_RUNTIME_AGENT_NAME,
+        "route_reason": f"assistant_mode_{plan.route}",
+        "assistant_mode": True,
+    }
+
+    def _hand_to(target: str) -> Any:
+        _mark_tool_dispatched_for_invocation(state, invocation_id)
+        _set_root_last_routed_agent(state, target)
+        return _dispatch_specialist_tool_call(
+            target,
+            {"request": plan.request},
+            custom_metadata={**metadata, "route_target": target},
+        )
+
+    if plan.route == assistant_tool.ROUTE_CODE:
+        for target in (_PI_RUNTIME_AGENT_NAME, _CODING_RUNTIME_AGENT_NAME):
+            if _is_runtime_agent_enabled(target):
+                return _hand_to(target)
+        return None
+    if plan.route == assistant_tool.ROUTE_BROWSER:
+        if not _is_runtime_agent_enabled(_BROWSER_RUNTIME_AGENT_NAME):
+            _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+            return create_text_llm_response(assistant_tool.BROWSER_AGENT_MISSING_REPLY, custom_metadata=metadata)
+        if plan.needs_browser_agent:
+            return _hand_to(_BROWSER_RUNTIME_AGENT_NAME)
+    if plan.route == assistant_tool.ROUTE_DESKTOP and not _is_runtime_agent_enabled(
+        resolve_runtime_agent_name("remote_desktop_agent") or "autoyou_remote_desktop_agent"
+    ):
+        _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+        return create_text_llm_response(
+            "Working with desktop windows needs the Remote Desktop agent. Install it under Agents on the Admin Page.",
+            custom_metadata=metadata,
+        )
+    try:
+        result = await assistant_tool.run_plan(plan)
+    except Exception as exc:  # noqa: BLE001 - reported, never hidden
+        logger.warning("Assistant mode %s step failed: %s", plan.route, exc)
+        result = {"status": "error", "reply": "That didn't work, and nothing was changed."}
+    if not result:
+        return None
+    _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+    _set_root_last_routed_agent(state, _ASSISTANT_RUNTIME_AGENT_NAME)
+    return create_text_llm_response(
+        str(result.get("reply") or ""),
+        custom_metadata={**metadata, "assistant_status": str(result.get("status") or "")},
+    )
+
+
 async def _root_router_before_model_callback(callback_context: Any, llm_request: Any) -> Any:
     """Deterministic routing shortcuts that fire before the LLM.
 
@@ -4675,6 +4759,10 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
                 },
             )
         return None
+
+    assistant_reply = await _route_assistant_mode_turn(callback_context, user_text, invocation_id)
+    if assistant_reply is not None:
+        return assistant_reply
 
     explicit_route = _extract_explicit_route_request(routing_user_text)
     current_active_agent = _get_root_active_agent_name(getattr(callback_context, "state", {}))

@@ -12,10 +12,12 @@ transcribed and nothing reaches the model. Storage is redirected to
 
 from __future__ import annotations
 
+import base64
 import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -427,3 +429,30 @@ def test_server_side_wakes_still_need_a_stream():
         assert am.capability_payload("AutoYou-Server", available=True)["client_detection"] is True
     finally:
         hub.close()
+
+
+def test_live_frame_is_the_newest_fresh_camera_picture():
+    from shared.assistant_mode import live_frame_attachment
+
+    now = 1_000.0
+
+    class Registry:
+        def __init__(self, frames):
+            self.frames = frames
+
+        def latest(self, session_id):
+            return self.frames.get(session_id)
+
+    fresh = SimpleNamespace(timestamp_ms=int((now - 1) * 1000), jpeg_bytes=b"\xff\xd8synthetic", width=640, height=480)
+    stale = SimpleNamespace(timestamp_ms=int((now - 10) * 1000), jpeg_bytes=b"\xff\xd8old", width=640, height=480)
+    attachment = live_frame_attachment(["raw", "device"], registry=Registry({"device": fresh}), now=now)
+    assert attachment["mimetype"] == "image/jpeg" and attachment["width"] == 640
+    assert base64.b64decode(attachment["data"]) == b"\xff\xd8synthetic"
+    assert live_frame_attachment(["device"], registry=Registry({"device": stale}), now=now) is None
+    assert live_frame_attachment(["device"], registry=Registry({}), now=now) is None
+
+
+def test_live_video_setting_defaults_on_and_saves(isolated_store):
+    assert am.load_settings()["use_live_video"] is True
+    am.save_settings({"use_live_video": False})
+    assert am.load_settings()["use_live_video"] is False

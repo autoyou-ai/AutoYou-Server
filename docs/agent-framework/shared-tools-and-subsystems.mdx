@@ -201,6 +201,7 @@ Reusable desktop automation helpers for bridge agents.
 | `handle_desktop_modal_dialogs` | function | Dismiss any modal dialog the app raised in response to the last action. |
 | `get_desktop_app_prompt` | function | Read the live unsent composer by selecting and copying its contents. |
 | `get_desktop_app_status` | function | &nbsp; |
+| `inspect_live_desktop_app_config` | function | Inspect a desktop agent's manifest pack and running window (without clicking or moving the pointer). |
 | `capture_desktop_app_screenshot` | function | &nbsp; |
 | `refresh_desktop_agent_llm_reference` | function | &nbsp; |
 | `send_prompt_to_desktop_app` | function | &nbsp; |
@@ -215,6 +216,8 @@ Reusable desktop automation helpers for bridge agents.
 | `send_current_desktop_app_prompt` | function | &nbsp; |
 | `queue_current_desktop_app_prompt` | function | &nbsp; |
 | `get_desktop_app_prompt_status` | function | Inspect the active desktop prompt window for processing/idle state. |
+| `get_desktop_app_question` | function | Inspect the desktop app for an active inline Question card (e.g. Codex mid-turn question). |
+| `answer_desktop_app_question` | function | Reply to or skip an inline Question card in the desktop app (such as Codex Desktop). |
 | `copy_final_response_from_desktop_app` | function | &nbsp; |
 | `wait_until_idle_and_copy_desktop_response` | function | Poll-until-idle: copy the desktop app's latest response until the text stabilizes. |
 | `parse_desktop_usage_text` | function | Parse a Codex-style usage blob into structured windows with absolute local reset times. |

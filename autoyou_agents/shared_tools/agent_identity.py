@@ -37,6 +37,7 @@ _RUNTIME_AGENT_NAME_OVERRIDES = {
     "antigravity_desktop_agent": "antigravity_agent",
     "audio_agent": "autoyou_audio_agent",
     "tv_agent": "autoyou_tv_agent",
+    "assistant_agent": "autoyou_assistant_agent",
     "backup_agent": "autoyou_backup_agent",
     "browser_agent": "autoyou_browser_agent",
     "build_prompt_agent": "autoyou_build_prompt_agent",
