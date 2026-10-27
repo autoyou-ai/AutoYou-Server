@@ -19,7 +19,6 @@ import logging
 import os
 import shutil
 import ssl as _ssl
-import subprocess
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -36,6 +35,42 @@ logger = logging.getLogger("shared.pi_gateway")
 DEFAULT_PI_PORT = 8650
 
 
+def resolve_pi_node() -> Optional[str]:
+    """Use the native host's bundled Node before consulting the developer PATH."""
+    configured = (os.getenv("AUTOYOU_NODE_EXE") or "").strip()
+    if configured:
+        candidate = Path(os.path.expandvars(configured)).expanduser()
+        return str(candidate.resolve()) if candidate.is_file() else None
+    return shutil.which("node")
+
+
+def managed_pi_path() -> Path:
+    """The per-user npm prefix populated by Windows Easy Setup."""
+    roaming = Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+    return roaming / "AutoYou" / "tools" / "pi"
+
+
+def _bounded_text_context(context: Optional[List[Dict[str, Any]]]) -> List[Dict[str, str]]:
+    """Keep prior text turns in order without forwarding binary attachments."""
+    turns: List[Dict[str, str]] = []
+    remaining = 16000
+    for item in reversed((context or [])[-12:]):
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content", item.get("text", ""))
+        if isinstance(content, list):
+            content = "\n".join(str(part.get("text") or "") for part in content if isinstance(part, dict) and part.get("type") in {"text", "input_text", "output_text"})
+        if not isinstance(content, str) or not content.strip():
+            continue
+        text = content[:min(4000, remaining)]
+        role = "assistant" if item.get("role") in {"assistant", "model"} else "user"
+        turns.append({"role": role, "content": text})
+        remaining -= len(text)
+        if remaining <= 0:
+            break
+    return list(reversed(turns))
+
+
 def get_default_pi_path() -> str:
     """Return the preferred default path for Pi Coding Agent (pi.dev), cross-platform."""
     env_path = (os.environ.get("PI_PATH") or "").strip()
@@ -44,6 +79,7 @@ def get_default_pi_path() -> str:
 
     repo_root = Path(__file__).resolve().parent.parent
     candidates = [
+        managed_pi_path(),
         repo_root.parent / "Pi",
         repo_root.parent / "pi",
         Path.home() / "Projects" / "Pi",
@@ -70,9 +106,8 @@ def resolve_pi_path(configured_path: Optional[str] = None) -> Path:
     for cand in candidates:
         if cand and str(cand).strip():
             try:
-                p = Path(cand).expanduser().resolve()
-                if p.exists():
-                    return p
+                p = Path(os.path.expandvars(str(cand))).expanduser().resolve()
+                return p
             except Exception:
                 pass
 
@@ -91,12 +126,19 @@ def resolve_pi_path(configured_path: Optional[str] = None) -> Path:
 
 
 def resolve_pi_cli(pi_root: Path) -> Optional[Path]:
-    cli_candidate = pi_root / "packages" / "coding-agent" / "dist" / "bundle" / "cli.js"
-    if cli_candidate.exists():
-        return cli_candidate
-    alt_cli = pi_root / "packages" / "coding-agent" / "dist" / "cli.js"
-    if alt_cli.exists():
-        return alt_cli
+    if pi_root.is_file() and pi_root.suffix.lower() in {".js", ".mjs"}:
+        return pi_root
+    for relative in (
+        "packages/coding-agent/dist/bundle/cli.js", "packages/coding-agent/dist/cli.js",
+        "node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+        "node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+        "@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+        "@earendil-works/pi-coding-agent/dist/cli.js",
+        "dist/bundle/cli.js", "dist/cli.js",
+    ):
+        candidate = pi_root / relative
+        if candidate.is_file():
+            return candidate
     return None
 
 
@@ -138,13 +180,13 @@ async def probe_pi(
         pass
 
     # 2. Check if local CLI is built and executable
-    if cli_file and cli_file.exists():
+    if cli_file and cli_file.exists() and resolve_pi_node():
         return {
             "running": True,
             "available": True,
             "port": port,
             "api_base": normalized_base,
-            "models": ["qwen3.8:27b", "ministral-3:8b", "ministral-3:3b", "gemma4:26b", "pi-agent", "default"],
+            "models": [os.getenv("PI_MODEL", "").strip() or "default"],
             "mode": "cli_direct",
             "pi_path": str(path),
         }
@@ -165,50 +207,10 @@ async def _run_pi_cli_direct(
     *,
     timeout: float = 180.0,
     model: str = "",
-) -> str:
-    """Run Pi CLI as a subprocess and capture its response using local models like qwen3.8:27b."""
-    node_exe = shutil.which("node") or "node"
-    args = [node_exe, str(cli_file), "-p", prompt]
-
-    effective_model = (model or os.environ.get("PI_MODEL", "").strip() or "qwen3.8:27b").strip()
-    if effective_model in {"pi-agent", "default", ""}:
-        effective_model = "qwen3.8:27b"
-
-    if "/" in effective_model:
-        args.extend(["--model", effective_model])
-    else:
-        args.extend(["--provider", "ollama", "--model", effective_model])
-
-    args.append("--no-approve")
-
-    env = dict(os.environ)
-    env["PI_OFFLINE"] = "0"
-
-    loop = asyncio.get_running_loop()
-
-    def _exec() -> str:
-        proc = subprocess.run(
-            args,
-            cwd=str(pi_root),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            stdin=subprocess.DEVNULL,
-        )
-        output = proc.stdout.strip()
-        if not output and proc.stderr:
-            output = proc.stderr.strip()
-        return output
-
-    try:
-        result = await loop.run_in_executor(None, _exec)
-        return result or "Pi executed the request."
-    except subprocess.TimeoutExpired:
-        return "Pi execution timed out."
-    except Exception as exc:
-        logger.error("Direct Pi CLI execution failed: %s", exc)
-        return f"Pi execution error: {exc}"
+) -> Dict[str, Any]:
+    """Run the local CLI with validated AutoYou tools and structured exit status."""
+    from autoyou_agents.pi_agent.runtime import run_pi
+    return await run_pi(cli_file, prompt, timeout=timeout, model=model)
 
 
 async def call_pi_gateway(
@@ -224,7 +226,11 @@ async def call_pi_gateway(
     pi_path: Optional[str] = None,
     timeout: float = 120.0,
 ) -> Optional[Dict[str, Any]]:
-    """Call Pi via local HTTP gateway with automatic fallback to direct CLI execution."""
+    """Use the gateway, or the local CLI only if no HTTP connection was made.
+
+    A timeout or server error after submission can follow actual file edits.
+    Such requests must never be duplicated through a second backend.
+    """
     port = int(os.environ.get("PI_PORT", str(DEFAULT_PI_PORT)) or DEFAULT_PI_PORT)
     path = resolve_pi_path(pi_path)
     cli_file = resolve_pi_cli(path)
@@ -232,6 +238,11 @@ async def call_pi_gateway(
     normalized_base = (api_base or f"http://127.0.0.1:{port}").strip().rstrip("/")
     if not normalized_base.startswith("http"):
         normalized_base = f"http://127.0.0.1:{normalized_base}"
+
+    skipped_attachments = sum(
+        len(item.get("attachments") or []) for item in context or []
+        if isinstance(item, dict) and isinstance(item.get("attachments"), list)
+    )
 
     # Try HTTP gateway first
     headers = {
@@ -243,7 +254,7 @@ async def call_pi_gateway(
 
     payload = {
         "model": model or "pi-agent",
-        "messages": [{"role": "user", "content": message}],
+        "messages": [*_bounded_text_context(context), {"role": "user", "content": message}],
         "stream": False,
         "user": session_id,
     }
@@ -267,6 +278,9 @@ async def call_pi_gateway(
                                 if part.get("type") == "output_text":
                                     reply = part.get("text", "")
                     if reply:
+                        finish_reason = choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else data.get("status")
+                        if finish_reason not in {None, "stop", "completed"}:
+                            return {"response": "Pi gateway did not finish the request successfully.", "provider": "pi", "finish_reason": "error", "error": "pi_gateway_incomplete"}
                         if on_chunk:
                             res = on_chunk({"content": reply, "type": "content"})
                             if asyncio.iscoroutine(res):
@@ -279,15 +293,30 @@ async def call_pi_gateway(
                             "usage": data.get("usage", {}),
                             "provider": "pi",
                             "openclaw_endpoint": "pi.chat.completions",
-                            "attachments_forwarded": len(context or []),
-                            "attachments_skipped": 0,
+                            "attachments_forwarded": 0,
+                            "attachments_skipped": skipped_attachments,
                         }
-    except Exception as exc:
-        logger.debug("Pi HTTP gateway request failed (%s): %s; falling back to direct CLI", url, exc)
+                return {
+                    "response": "Pi gateway did not complete the request. It was not replayed through the CLI.",
+                    "provider": "pi", "finish_reason": "error", "error": "pi_gateway_failed",
+                }
+    except aiohttp.ClientConnectorError:
+        logger.debug("Pi gateway could not connect; checking local CLI")
+    except Exception:
+        logger.warning("Pi gateway request failed after submission; refusing duplicate CLI execution")
+        return {
+            "response": "Pi gateway response failed. Review the request state before retrying; the request was not replayed through the CLI.",
+            "provider": "pi", "finish_reason": "error", "error": "pi_gateway_outcome_unknown",
+        }
 
     # Fallback to direct Pi CLI execution
     if cli_file and cli_file.exists():
-        reply = await _run_pi_cli_direct(path, cli_file, message, timeout=timeout, model=model)
+        previous = _bounded_text_context(context)
+        cli_prompt = ("Previous conversation context (not a new request):\n" + json.dumps(previous, ensure_ascii=True) + "\n\nCurrent user request:\n" + message) if previous else message
+        result = await _run_pi_cli_direct(path, cli_file, cli_prompt, timeout=timeout, model=model)
+        if not result.get("ok"):
+            return {"response": str(result.get("error") or "Pi CLI failed."), "provider": "pi", "finish_reason": "error", "error": "pi_cli_failed"}
+        reply = str(result.get("response") or "")
         if on_chunk and reply:
             res = on_chunk({"content": reply, "type": "content"})
             if asyncio.iscoroutine(res):
@@ -297,11 +326,11 @@ async def call_pi_gateway(
             "model": model or "pi-cli",
             "agent_name": "Pi (Direct CLI)",
             "finish_reason": "stop",
-            "usage": {"prompt_tokens": len(message), "completion_tokens": len(reply)},
+            "usage": result.get("usage", {}),
             "provider": "pi",
             "openclaw_endpoint": "pi.cli",
-            "attachments_forwarded": len(context or []),
-            "attachments_skipped": 0,
+            "attachments_forwarded": 0,
+            "attachments_skipped": skipped_attachments,
         }
 
     logger.error("Pi gateway unavailable: neither HTTP gateway nor CLI is reachable at %s", path)

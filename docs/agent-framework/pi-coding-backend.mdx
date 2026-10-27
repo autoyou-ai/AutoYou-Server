@@ -1,0 +1,79 @@
+---
+title: Pi coding backend
+description: Use Pi through the existing AutoYou coding workflow.
+---
+
+Coding Agent can use the installed Pi runtime for source work while the root
+and other specialist agents keep their existing routing. Builder handoffs still
+target `autoyou_coding_agent`. The optional `pi_agent` is also available in Agent
+Management for explicit Pi steering.
+
+In AI & Models, Coding Agent and Pi share the Coding backend, Pi installation
+directory, Pi model and timeout controls. These controls use the existing Save
+provider settings action; saving restarts the AI worker with the updated settings.
+
+- `auto` prefers Pi when Pi Agent is installed, its CLI passes the version check,
+  and its selected model is available. Uninstalling Pi Agent opts out of this
+  preference. If Pi cannot start, AutoYou uses its built-in coding agent. A
+  started Pi request is never replayed automatically, because it may already
+  have edited files.
+- `pi` requires Pi and reports an unavailable runtime or failed request.
+- `builtin` keeps AutoYou's existing coding implementation.
+
+The equivalent environment variables are `AUTOYOU_CODING_BACKEND`, `PI_PATH`,
+`PI_MODEL` and `AUTOYOU_PI_TIMEOUT_SECONDS`. The timeout is also limited by the
+coding turn's remaining time budget. Both agents remain opt-in installations.
+When the main provider is Ollama, an empty Pi model, `default` or `pi-agent`
+shares the current `OLLAMA_MODEL`. A concrete Pi model wins. When Pi itself is
+the whole-chat provider, these sentinel values retain Pi's profile default.
+The inherited Ollama endpoint is checked for the chosen model before a request
+starts. Other explicitly selected providers use Pi's offline model/auth catalog
+for their configuration check; provider errors during a started request remain
+errors and do not trigger a second execution.
+
+Windows Easy Setup installs Pi under `%APPDATA%\AutoYou\tools\pi`. AutoYou
+discovers the npm package under that prefix as well as development checkouts.
+The native host's `AUTOYOU_NODE_EXE` selects its bundled Node; a system `node`
+on PATH is the fallback. Pi 1.2 or newer and Node 22.19 or newer are required.
+There is no Pi HTTP service dependency for this sub-agent path.
+The native Windows installer offers Easy Setup with Pi as an optional component;
+the ecosystem installer also offers Pi. Setup validates the runtime before
+enabling Coding Agent and Pi Agent and keeps the main AI provider as configured.
+Coding Agent is enabled first; an optional Pi download or validation failure
+leaves the Built-in coding fallback available.
+Auto mode can use Built-in until the existing Ollama model becomes ready. A
+protected registry that setup cannot safely update requires enabling Pi from
+AutoYou's Agents screen after setup.
+
+Pi runs in AutoYou's configured workspace with its own built-in tools, discovered
+extensions, MCP servers and context files disabled. A bundled extension calls
+AutoYou's scoped file and verification tools over a short-lived authenticated
+loopback bridge. Command opt-in, protected paths and coding tool budgets remain
+enforced by AutoYou. Move and delete tools are not exported by this bridge.
+Cancellation stops the Pi process tree, cancels active command tools, and drains
+in-flight bridge calls with a bounded cleanup period.
+
+Earlier coding turns, the root's relevant conversation context and pending
+builder briefs are carried through AutoYou state. ADK forwards each temporary
+AgentTool child's state changes into its parent conversation, so the bounded
+Pi transcript survives separate sub-agent calls and, with conversation recording
+enabled, server restarts. A conversation/owner scope guard prevents a copied
+state from carrying another conversation's Pi transcript. With recording off,
+the normal AutoYou in-memory session policy applies.
+
+Pi runs with `--no-session`, so this integration does not create a second
+plaintext Pi session store. When inheriting the main Ollama settings, AutoYou
+creates a temporary local-only Pi model profile using that endpoint and model.
+This also works on a fresh machine with no custom Pi Ollama provider. The
+temporary profile uses only dummy Ollama authentication, contains no chat
+history, and is removed after the turn. The user's regular Pi profile and
+credentials are not copied or modified. Other explicitly selected models use
+Pi's own configured profile authentication. AutoYou's server credentials are
+scrubbed from the child environment. Unqualified explicit model names select
+the `ollama` provider.
+
+The legacy whole-chat Pi gateway also forwards bounded prior text context and
+reports unsuccessful exits. Only connection failures before HTTP submission can
+select its CLI fallback. HTTP errors, malformed responses and timeouts are
+returned as errors without replay. Binary attachments are not forwarded by this
+adapter and are reported as skipped.
