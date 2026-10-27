@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const settingsPython = document.getElementById("settings-python");
   const settingsModel = document.getElementById("settings-model");
   const settingsImageModel = document.getElementById("settings-image-model");
+  const settingsMemoryProfile = document.getElementById("settings-memory-profile");
   const settingsResolution = document.getElementById("settings-resolution");
   const settingsImageResolution = document.getElementById("settings-image-resolution");
   const settingsSteps = document.getElementById("settings-steps");
@@ -886,6 +887,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     settingsModel.value = configData.model_type || "ltx2_distilled_gguf_q4_k_m";
     settingsImageModel.value = configData.image_model_type || "flux_schnell";
+    settingsMemoryProfile.value = String(configData.memory_profile || "auto");
     settingsResolution.value = settingsEngine.value === "draw_things"
       ? (configData.draw_things_resolution || "768x512")
       : (configData.resolution || "416x240");
@@ -930,6 +932,7 @@ document.addEventListener("DOMContentLoaded", () => {
       python: settingsPython.value.trim(),
       model_type: settingsModel.value.trim(),
       image_model_type: settingsImageModel.value.trim(),
+      memory_profile: settingsMemoryProfile.value,
       resolution: settingsResolution.value.trim(),
       image_resolution: settingsImageResolution.value.trim(),
       num_inference_steps: parseInt(settingsSteps.value),

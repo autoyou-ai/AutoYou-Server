@@ -313,6 +313,20 @@
                 <label for="settings-image-model">Default Image Model</label>
                 <input type="text" id="settings-image-model" placeholder="flux_schnell">
               </div>
+              <div class="form-group col">
+                <label for="settings-memory-profile">Memory Use</label>
+                <select id="settings-memory-profile">
+                  <option value="auto">Use Wan2GP setting</option>
+                  <option value="5">Low memory - stream model weights</option>
+                  <option value="4">Balanced</option>
+                  <option value="4.5">Balanced with less GPU memory</option>
+                  <option value="3.5">Load whole models without reserved RAM</option>
+                  <option value="3">Fast - load whole models on GPU</option>
+                  <option value="2">Keep models in reserved RAM</option>
+                  <option value="1">Fastest - uses most RAM and GPU memory</option>
+                </select>
+                <span class="field-hint">Low memory helps when a model fails to load before generation starts.</span>
+              </div>
             </div>
 
             <div class="form-row">
