@@ -23,8 +23,104 @@ from .store import Store, uid
 
 
 def executable(name: str) -> str | None:
-    configured = os.getenv("AUTOYOU_TV_" + name.replace("-", "_").upper())
-    return configured or shutil.which(name)
+    env_key = "AUTOYOU_TV_" + name.replace("-", "_").upper()
+    configured = os.getenv(env_key)
+    if configured and Path(configured).is_file():
+        return configured
+
+    found = shutil.which(name)
+    if found:
+        return found
+
+    import sys
+    exe_name = name + (".exe" if sys.platform == "win32" else "")
+    candidates: list[Path] = []
+
+    res_root = os.getenv("AUTOYOU_PACKAGED_RESOURCES_ROOT")
+    if res_root:
+        candidates.extend([
+            Path(res_root) / "runtime" / "ffmpeg" / "bin" / exe_name,
+            Path(res_root) / "runtime" / "ffmpeg" / exe_name,
+            Path(res_root) / "bin" / exe_name,
+        ])
+
+    py_dir = Path(sys.executable).resolve().parent
+    candidates.extend([
+        py_dir / "runtime" / "ffmpeg" / "bin" / exe_name,
+        py_dir / "runtime" / "ffmpeg" / exe_name,
+        py_dir.parent / "runtime" / "ffmpeg" / "bin" / exe_name,
+        py_dir.parent / "runtime" / "ffmpeg" / exe_name,
+    ])
+
+    try:
+        repo_dir = Path(__file__).resolve().parents[4]
+        candidates.extend([
+            repo_dir / "runtime" / "ffmpeg" / "bin" / exe_name,
+            repo_dir / "runtime" / "ffmpeg" / exe_name,
+        ])
+    except Exception:
+        pass
+
+    if sys.platform == "win32":
+        local_app = os.getenv("LOCALAPPDATA", "")
+        if local_app:
+            candidates.append(Path(local_app) / "Microsoft" / "WinGet" / "Links" / exe_name)
+            winget_pkgs = Path(local_app) / "Microsoft" / "WinGet" / "Packages"
+            if winget_pkgs.is_dir():
+                try:
+                    for sub in winget_pkgs.glob(f"*{name}*/**/{exe_name}"):
+                        if sub.is_file():
+                            candidates.append(sub)
+                    for sub in winget_pkgs.glob(f"*FFmpeg*/**/{exe_name}"):
+                        if sub.is_file():
+                            candidates.append(sub)
+                except Exception:
+                    pass
+        candidates.extend([
+            Path("C:/ffmpeg/bin") / exe_name,
+            Path("C:/Program Files/ffmpeg/bin") / exe_name,
+            Path.home() / "scoop" / "shims" / exe_name,
+            Path("C:/ProgramData/chocolatey/bin") / exe_name,
+            Path.home() / "AppData" / "Local" / "AutoYou" / "tools" / "ffmpeg" / "bin" / exe_name,
+            Path.home() / "AppData" / "Local" / "AutoYou" / "tools" / "ffmpeg" / exe_name,
+        ])
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+                user_path, _ = winreg.QueryValueEx(key, "Path")
+            found_reg = shutil.which(name, path=user_path)
+            if found_reg and Path(found_reg).is_file():
+                os.environ[env_key] = found_reg
+                return found_reg
+        except Exception:
+            pass
+    elif sys.platform == "darwin":
+        candidates.extend([
+            Path("/opt/homebrew/bin") / name,
+            Path("/usr/local/bin") / name,
+            Path("/opt/local/bin") / name,
+            Path.home() / ".autoyou" / "tools" / "ffmpeg" / "bin" / name,
+            Path.home() / ".autoyou" / "tools" / "ffmpeg" / name,
+        ])
+    else:
+        candidates.extend([
+            Path("/usr/bin") / name,
+            Path("/usr/local/bin") / name,
+            Path("/snap/bin") / name,
+            Path.home() / ".autoyou" / "tools" / "ffmpeg" / "bin" / name,
+            Path.home() / ".autoyou" / "tools" / "ffmpeg" / name,
+        ])
+
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                resolved = str(candidate.resolve())
+                os.environ[env_key] = resolved
+                return resolved
+        except (OSError, PermissionError):
+            continue
+
+    return None
 
 
 def probe(path: Path) -> dict:

@@ -691,6 +691,21 @@ internal sealed class BackendHostService : IDisposable
         {
             environmentVariables["AUTOYOU_WHISPER_MODELS_DIR"] = whisperModelsRoot;
         }
+
+        var ffmpegExe = Path.Combine(runtimeRoot, "ffmpeg", "bin", "ffmpeg.exe");
+        if (!File.Exists(ffmpegExe))
+        {
+            ffmpegExe = Path.Combine(runtimeRoot, "ffmpeg", "ffmpeg.exe");
+        }
+        if (File.Exists(ffmpegExe))
+        {
+            environmentVariables["AUTOYOU_TV_FFMPEG"] = ffmpegExe;
+            var ffprobeExe = Path.Combine(Path.GetDirectoryName(ffmpegExe)!, "ffprobe.exe");
+            if (File.Exists(ffprobeExe))
+            {
+                environmentVariables["AUTOYOU_TV_FFPROBE"] = ffprobeExe;
+            }
+        }
     }
 
     private static (string? ReleaseProfile, string? DependencyProfile) ReadReleaseProfileMetadata(string backendDirectory)

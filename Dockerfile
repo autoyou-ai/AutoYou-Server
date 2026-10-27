@@ -106,7 +106,9 @@ USER autoyou
 
 ENV AUTOYOU_PACKAGED_RUNTIME=1 \
     AUTOYOU_BIND_HOST=0.0.0.0 \
-    AUTOYOU_AI_AGENT_LAN_ACCESS=1
+    AUTOYOU_AI_AGENT_LAN_ACCESS=1 \
+    AUTOYOU_TV_FFMPEG=/usr/bin/ffmpeg \
+    AUTOYOU_TV_FFPROBE=/usr/bin/ffprobe
 
 # Expose the ports the server and its services will run on
 EXPOSE 8001
