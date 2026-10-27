@@ -62,6 +62,7 @@ PACKAGE_RUNTIME_ROOTS = (
     Path("routers"),
 )
 STATIC_RUNTIME_FILES = (
+    Path("shared") / "game_sdk.js",
     Path("shared") / "tunnelmole_node_launcher.mjs",
     Path("autoyou_agents") / "shared_tools" / "desktop_asset_schema.json",
     # Runs under the separate voice-clone Python, which cannot load compiled modules.

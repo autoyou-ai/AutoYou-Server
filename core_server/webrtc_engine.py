@@ -9490,6 +9490,18 @@ class WebRTCManager:
                     ))
                 return
 
+            if request_path == "/api/v1/game-packages" or request_path.startswith("/api/v1/game-packages/"):
+                from shared.game_package_catalog import GamePackages
+                library = GamePackages(_runtime.APP_ROOT, _runtime.get_mutable_data_dir("AutoYou", anchor=_runtime.__file__))
+                code, headers, body = await _runtime.asyncio.to_thread(library.response, method.upper(), request_path, message.payload.get("headers") or {})
+                encoded = _runtime.encode_http_proxy_response(body, headers=headers)
+                channel = self._datachannel_manager_for_session(message.header.session_id, require_send_message=True)
+                if channel:
+                    await channel.send_message(_runtime.create_http_response_message(status_code=code, headers=encoded.headers,
+                        body=encoded.body, request_id=request_id, session_id=message.header.session_id,
+                        user_id=message.header.user_id, compressed=encoded.compressed))
+                return
+
             if request_path == "/api/v1/games" or request_path.startswith("/api/v1/games/"):
                 status_code = 200 if method == "GET" else 405
                 response_headers = {"Content-Type": "application/json", "Cache-Control": "no-store"}

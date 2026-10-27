@@ -11,7 +11,7 @@ import time
 from fastapi import HTTPException, Request
 
 from .auth import COOKIE_NAME
-from .media import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, parse_name
+from .media import MEDIA_EXTENSIONS, media_kind, parse_name
 from .store import Store, digest, uid
 
 MAX_UPLOAD_BYTES = 20 * 1024 ** 3
@@ -44,8 +44,8 @@ class Uploads:
     def begin(self, owner: str, filename: str, size: int, title: str, kind: str, folder_id: str | None):
         suffix = Path(filename).suffix.lower()
         if suffix not in MEDIA_EXTENSIONS:
-            raise HTTPException(415, "Choose a photo (JPEG, PNG, GIF, WebP, AVIF) or video (MP4, MOV, MKV, WebM)")
-        kind = "photo" if suffix in IMAGE_EXTENSIONS else ("video" if kind == "photo" else kind)
+            raise HTTPException(415, "Choose a supported photo, video, audio file, PDF or EPUB")
+        kind = media_kind(suffix, kind)
         if not 0 < size <= MAX_UPLOAD_BYTES:
             raise HTTPException(413, "Choose a non-empty media file up to 20 GB")
         if folder_id:
@@ -131,7 +131,7 @@ class Uploads:
                     raise HTTPException(409, "Upload data is unavailable. Cancel this upload and start again.")
                 info = parse_name(row["filename"])
                 info["title"] = row["title"] or info["title"]
-                info["kind"] = row["kind"] if row["kind"] == "photo" else ("episode" if info["episode"] is not None else row["kind"])
+                info["kind"] = media_kind(destination.suffix.lower(), "episode" if info["episode"] is not None else row["kind"])
                 item_id, now = uid(), time.time()
                 db.execute("""INSERT INTO items(id,source_key,folder_id,title,kind,year,season,episode,series,
                            file_path,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",

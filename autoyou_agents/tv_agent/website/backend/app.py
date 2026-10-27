@@ -19,7 +19,7 @@ from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
 from .jobs import Jobs, executable, probe
 from . import playback
-from .media import (IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, CONTENT_TYPES, file_stream, parse_name, permitted_path, public_url,
+from .media import (MEDIA_EXTENSIONS, CONTENT_TYPES, file_stream, media_kind, parse_name, permitted_path, public_url,
                     read_ticket, remote_stream, subtitle_content, subtitles)
 from .store import Store, uid
 from .uploads import MAX_UPLOAD_BYTES, Uploads, upload_owner
@@ -57,7 +57,7 @@ class ImportInput(BaseModel):
 
 class ItemEdit(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
-    kind: Literal["movie", "episode", "video", "photo"] | None = None
+    kind: Literal["movie", "episode", "video", "photo", "audio", "document"] | None = None
     folder_id: str | None = None
     year: int | None = Field(default=None, ge=1880, le=2200)
     series: str | None = Field(default=None, max_length=300)
@@ -86,7 +86,7 @@ class UploadInput(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     size: int = Field(gt=0, le=MAX_UPLOAD_BYTES)
     title: str = Field(default="", max_length=300)
-    kind: Literal["movie", "episode", "video", "photo"] = "movie"
+    kind: Literal["movie", "episode", "video", "photo", "audio", "document"] = "movie"
     folder_id: str | None = None
 
 
@@ -313,7 +313,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
 
     @application.post("/api/uploads")
     async def upload(request: Request, folder_id: str | None = None,
-                     title: str = Query("", max_length=300), kind: Literal["movie", "episode", "video", "photo"] = "movie"):
+                     title: str = Query("", max_length=300), kind: Literal["movie", "episode", "video", "photo", "audio", "document"] = "movie"):
         store, auth, jobs = services()
         auth.require_editor(request)
         if folder_id:
@@ -321,7 +321,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         filename = unquote(request.headers.get("X-File-Name", "video.mp4"))
         suffix = Path(filename).suffix.lower()
         if suffix not in MEDIA_EXTENSIONS:
-            raise HTTPException(415, "Choose a photo (JPEG, PNG, GIF, WebP, AVIF) or video (MP4, MOV, MKV, WebM)")
+            raise HTTPException(415, "Choose a supported photo, video, audio file, PDF or EPUB")
         destination = store.media_dir / (uid() + suffix)
         temporary = destination.with_suffix(suffix + ".uploading")
         written = 0
@@ -339,7 +339,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
             temporary.unlink(missing_ok=True)
         info = parse_name(filename)
         info["title"] = title.strip() or info["title"]
-        info["kind"] = "photo" if suffix in IMAGE_EXTENSIONS else ("episode" if info["episode"] is not None else kind)
+        info["kind"] = media_kind(suffix, "episode" if info["episode"] is not None else kind)
         item, _ = store.add_item(source_key="file:" + str(destination), file_path=str(destination), folder_id=folder_id,
                                  technical={"size": written, "extension": suffix}, **info)
         await jobs.enqueue("prepare", {"item_id": item["id"]})
@@ -406,7 +406,8 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
     async def transcode(request: Request, item_id: str):
         store, auth, jobs = services()
         auth.require_editor(request)
-        store.item(item_id)
+        if store.item(item_id)["kind"] in {"photo", "audio", "document"}:
+            raise HTTPException(400, "Only videos need a browser version")
         if any(j["kind"] == "transcode" and j["payload"].get("item_id") == item_id and j["status"] in {"queued", "running"} for j in store.jobs()):
             raise HTTPException(409, "This title already has a rendition in progress")
         return await jobs.enqueue("transcode", {"item_id": item_id})
@@ -416,6 +417,8 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         store, auth, jobs = services()
         auth.require_editor(request)
         item = store.item(item_id)
+        if item["kind"] in {"photo", "audio", "document"}:
+            raise HTTPException(400, "Only videos need streaming optimization")
         if not item.get("file_path") or item["status"] == "deleted":
             raise ValueError("Download this title before optimizing streaming")
         if any(j["kind"] == "streaming" and j["payload"].get("item_id") == item_id and j["status"] in {"queued", "running"} for j in store.jobs()):
@@ -429,7 +432,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         if item["status"] == "deleted":
             raise HTTPException(404, "This title was removed")
         optimized = playback.ready(store, item)
-        if (compatible and item.get("file_path") and item["kind"] != "photo" and not optimized
+        if (compatible and item.get("file_path") and item["kind"] not in {"photo", "audio", "document"} and not optimized
                 and not item["technical"].get("video_codec") and not item["technical"].get("probe_error")):
             technical = await asyncio.to_thread(probe, permitted_path(store, item["file_path"]))
             item = store.update_item(item_id, {"technical": {**item["technical"], **technical}})

@@ -72,12 +72,12 @@ function UploadImport({ folders, onChanged, notify }: { folders: Folder[]; onCha
     setBusy(true); setError(''); setProgress(0);
     const task = uploadFile(file, String(form.get('folder') || ''), String(form.get('title') || ''), String(form.get('kind')), setProgress);
     cancel.current = task.cancel;
-    try { await task.promise; notify('Video uploaded and added to your library.'); setFile(null); node.reset(); onChanged(); }
+    try { await task.promise; notify('File uploaded and added to your library.'); setFile(null); node.reset(); onChanged(); }
     catch (error) { setError(errorMessage(error)); } finally { cancel.current = null; setBusy(false); }
   }
   return <form className="form" onSubmit={submit}>
-    <label className="upload-drop"><Upload size={29} /><strong>{file?.name || 'Choose a photo or video'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB . Ready to upload` : 'Photos, MP4, MOV, MKV and more . Up to 20 GB'}</span>
-      <input aria-label="Media file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,video/*,.mkv,.m4v,.avi,.ts,.mpg,.mpeg,.ogv" disabled={busy} onChange={event => { setFile(event.target.files?.[0] || null); setError(''); }} /></label>
+    <label className="upload-drop"><Upload size={29} /><strong>{file?.name || 'Choose media or a book'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB . Ready to upload` : 'Photos, video, audio, PDF and EPUB . Up to 20 GB'}</span>
+      <input aria-label="Media file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,video/*,audio/*,application/pdf,application/epub+zip,.epub,.mkv,.m4v,.avi,.ts,.mpg,.mpeg,.ogv" disabled={busy} onChange={event => { setFile(event.target.files?.[0] || null); setError(''); }} /></label>
     <label>Title<input name="title" placeholder="Uses the file name if left blank" maxLength={300} disabled={busy} /></label><div className="form-grid"><TypeSelect /><FolderSelect folders={folders} /></div>
     {busy && <div className="upload-progress" role="status"><progress value={progress} max={1} /><span>{progress < 1 ? `Uploading . ${Math.round(progress * 100)}%` : 'Finishing your upload...'} </span><button type="button" className="text-button" onClick={() => cancel.current?.()}>Cancel</button></div>}
     {error && <p className="inline-error" role="alert">{error}</p>}

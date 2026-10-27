@@ -17,7 +17,7 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import HTTPException
 
-from .media import IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, fetch_response, http_session, parse_name, permitted_path, public_url, subtitles, subtitle_content
+from .media import MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, fetch_response, http_session, media_kind, parse_name, permitted_path, public_url, subtitles, subtitle_content
 from . import playback
 from .store import Store, uid
 
@@ -216,7 +216,7 @@ class Jobs:
     async def prepare(self, job: dict) -> dict:
         item = self.store.item(job["payload"]["item_id"])
         source = permitted_path(self.store, item["file_path"])
-        if item["kind"] == "photo":
+        if item["kind"] in {"photo", "audio", "document"}:
             self.store.update_item(item["id"], {"technical": {"extension": source.suffix.lower().lstrip("."), "size": source.stat().st_size, "file_name": source.name}})
             return {"item_id": item["id"]}
         technical = await asyncio.to_thread(probe, source)
@@ -260,15 +260,18 @@ class Jobs:
                     continue
                 try:
                     path = permitted_path(self.store, str(path))
-                    technical = await asyncio.to_thread(probe, path)
+                    is_video = path.suffix.lower() in VIDEO_EXTENSIONS
+                    technical = await asyncio.to_thread(probe, path) if is_video else {"size": path.stat().st_size, "extension": path.suffix.lower().lstrip("."), "file_name": filename}
+                    info = parse_name(filename)
+                    info["kind"] = media_kind(path.suffix.lower(), info["kind"])
                     item, is_new = self.store.add_item(source_key="file:" + str(path), folder_id=parent_id,
-                                                      file_path=str(path), technical=technical, **({**parse_name(filename), "kind": "photo"} if path.suffix.lower() in IMAGE_EXTENSIONS else parse_name(filename)))
+                                                      file_path=str(path), technical=technical, **info)
                     seen.add(item["id"])
                     await self.auto_streaming(item)
                     added += int(is_new)
-                    if not item["technical"].get("artwork") and await asyncio.to_thread(make_artwork, self.store, item):
+                    if is_video and not item["technical"].get("artwork") and await asyncio.to_thread(make_artwork, self.store, item):
                         item = self.store.update_item(item["id"], {"technical": {**item["technical"], "artwork": True}})
-                    if item["kind"] != "photo" and (is_new or item["metadata"].get("status") in {None, "missing_key", "error"}):
+                    if is_video and (is_new or item["metadata"].get("status") in {None, "missing_key", "error"}):
                         await self.enrich_item(item["id"])
                     matched += 1
                     if not self.cancelled(job["id"]):
@@ -365,7 +368,7 @@ class Jobs:
         return {"item_id": item["id"]}
 
     async def auto_streaming(self, item: dict):
-        if (item["kind"] == "photo" or not self.store.setting("adaptive_streaming", True) or not executable("ffmpeg") or not executable("ffprobe")
+        if (item["kind"] in {"photo", "audio", "document"} or not self.store.setting("adaptive_streaming", True) or not executable("ffmpeg") or not executable("ffprobe")
                 or playback.ready(self.store, item)):
             return
         if not any(j["kind"] == "streaming" and j["payload"].get("item_id") == item["id"]

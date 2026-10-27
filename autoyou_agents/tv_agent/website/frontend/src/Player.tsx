@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Maximize, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { ArrowLeft, Download, Maximize, Play, RotateCcw, SkipForward } from 'lucide-react';
 import type Hls from 'hls.js';
 import { api, apiUrl, artwork, assetUrl, authHeaders, clock, errorMessage, navigate } from './api';
 import { Modal } from './components';
@@ -27,7 +27,7 @@ export default function Player({ item, config, progress, record, notify }: {
   const [optimized, setOptimized] = useState(!!item.technical.streaming_ready);
 
   useEffect(() => {
-    if (item.kind === 'photo') return;
+    if (['photo', 'audio', 'document'].includes(item.kind)) return;
     const node = video.current!;
     const controller = new AbortController();
     let cancelled = false;
@@ -132,6 +132,13 @@ export default function Player({ item, config, progress, record, notify }: {
   }
   if (item.kind === 'photo') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
     <div className="photo-stage"><img src={assetUrl(item.stream_url)} alt={item.title} /></div>
+  </Modal>;
+  if (item.kind === 'audio' || item.kind === 'document') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
+    {item.kind === 'audio' ? <audio controls autoPlay preload="metadata" src={assetUrl(item.stream_url)} aria-label={`Audio player for ${item.title}`} />
+      : item.technical.extension?.replace(/^\./, '').toLowerCase() === 'pdf'
+        ? <iframe title={item.title} src={assetUrl(item.stream_url)} style={{ width: '100%', height: '70vh', border: 0 }} />
+        : <p>Download this EPUB to read it in your device's book reader.</p>}
+    {item.download_url && <a className="button" href={assetUrl(item.download_url)} download><Download size={19} />Download {item.kind === 'audio' ? 'audio' : 'document'}</a>}
   </Modal>;
 
   return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide className="player-modal">

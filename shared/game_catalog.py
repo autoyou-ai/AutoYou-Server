@@ -32,7 +32,7 @@ from typing import Iterable
 
 DEFAULT_GAME = "neon-horizon"
 GAME_ID = re.compile(r"[a-z0-9-]{1,64}")
-MAX_GAME_BYTES = 512 * 1024
+MAX_GAME_BYTES = 8 * 1024 * 1024
 # The same policy the phones apply to a downloaded game: inline code only, no network.
 FRAME_CSP_META = (b'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
                   b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '

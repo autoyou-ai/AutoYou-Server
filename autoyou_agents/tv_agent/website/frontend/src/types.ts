@@ -1,4 +1,4 @@
-export type Kind = 'movie' | 'episode' | 'video' | 'photo';
+export type Kind = 'movie' | 'episode' | 'video' | 'photo' | 'audio' | 'document';
 export interface AuthState { role: 'viewer' | 'editor' | 'admin'; otp_unlocked: boolean; expires?: number; otp_expires?: number }
 export interface Config { library_name: string; autoplay_next: boolean; auth: AuthState; capabilities: { download: boolean; transcode: boolean; probe: boolean } }
 export interface Metadata {
@@ -11,7 +11,7 @@ export interface Item {
   season?: number | null; episode?: number | null; series?: string | null; status: string;
   metadata: Metadata; technical: { duration?: number; width?: number; height?: number; video_codec?: string;
     audio_codec?: string; extension?: string; size?: number; file_name?: string; browser_ready?: boolean; artwork?: boolean; streaming_ready?: boolean };
-  created: number; updated: number; stream_url: string; artwork_url?: string; is_remote: boolean; is_hls: boolean;
+  created: number; updated: number; stream_url: string; download_url?: string; artwork_url?: string; is_remote: boolean; is_hls: boolean;
   subtitles?: { id: string; label: string; language: string }[]; episodes?: Item[]; next_episode?: Item | null;
 }
 export interface Folder { id: string; name: string; parent_id: string | null; source: boolean; item_count?: number; folder_count?: number; created: number }

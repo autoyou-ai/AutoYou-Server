@@ -14,6 +14,63 @@ from autoyou_agents.tv_agent.website.backend.jobs import Jobs
 from autoyou_agents.tv_agent.website.backend.store import Store
 
 
+@pytest.mark.parametrize("suffix,mime,kind", [("pdf", "application/pdf", "document"), ("epub", "application/epub+zip", "document"), ("wav", "audio/wav", "audio")])
+@pytest.mark.parametrize("resumable", [False, True])
+def test_documents_and_audio_round_trip_without_video_preparation(tmp_path, monkeypatch, suffix, mime, kind, resumable):
+    import io
+    import wave
+    import zipfile
+    import autoyou_agents.tv_agent.website.backend.app as app_module
+    import autoyou_agents.tv_agent.website.backend.jobs as jobs_module
+
+    def no_video_probe(*_):
+        raise AssertionError("Documents and audio must not be prepared as videos")
+
+    monkeypatch.setattr(app_module, "probe", no_video_probe)
+    monkeypatch.setattr(jobs_module, "probe", no_video_probe)
+    content = b"%PDF-1.4\n% synthetic transport fixture\n%%EOF"
+    if suffix == "epub":
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("mimetype", "application/epub+zip")
+            archive.writestr("chapter.xhtml", "<html><head></head><body>Synthetic book</body></html>")
+        content = output.getvalue()
+    elif suffix == "wav":
+        output = io.BytesIO()
+        with wave.open(output, "wb") as audio:
+            audio.setnchannels(1); audio.setsampwidth(2); audio.setframerate(8000); audio.writeframes(b"\0\0" * 80)
+        content = output.getvalue()
+    with TestClient(create_app(tmp_path)) as client:
+        auth = {"Authorization": "Bearer " + client.app.state.auth._new_session("editor")}
+        filename = "synthetic.S01E02." + suffix
+        if resumable:
+            response = client.post("/api/upload-sessions", headers=auth, json={"filename": filename, "size": len(content), "kind": "video"})
+            assert response.status_code == 200, response.text
+            route = "/api/upload-sessions/" + response.json()["id"]
+            assert client.put(route + "?offset=0", headers=auth, content=content).status_code == 200
+            uploaded = client.post(route + "/complete", headers=auth)
+        else:
+            uploaded = client.post("/api/uploads?kind=video", headers={**auth, "X-File-Name": filename}, content=content)
+        assert uploaded.status_code == 200, uploaded.text
+        item = uploaded.json()["item"]
+        assert item["kind"] == kind
+        assert client.get("/api/library?kind=" + kind).json()["items"][0]["id"] == item["id"]
+        playback_info = client.get(f"/api/items/{item['id']}/playback?compatible=true").json()
+        assert playback_info["ready"] and playback_info["mime_type"] == mime and playback_info["preparation"] is None
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and any(j["status"] in {"queued", "running"} for j in client.app.state.store.jobs()):
+            time.sleep(.01)
+        jobs = client.app.state.store.jobs()
+        assert jobs and all(j["kind"] == "prepare" and j["status"] == "completed" for j in jobs), jobs
+        for route in ["stream", "download"]:
+            served = client.get(f"/api/{route}/{item['id']}", headers={"Range": "bytes=0-15"})
+            assert served.status_code == 206 and served.content == content[:16]
+            assert served.headers["Content-Type"].startswith(mime)
+        assert client.get(f"/api/download/{item['id']}").content == content
+        assert client.post(f"/api/items/{item['id']}/transcode", headers=auth).status_code == 400
+        assert client.post(f"/api/items/{item['id']}/streaming", headers=auth).status_code == 400
+
+
 def test_photo_upload_is_resumable_owned_and_readable(tmp_path):
     with TestClient(create_app(tmp_path)) as client:
         auth = client.app.state.auth

@@ -31,7 +31,7 @@
       </section>
       <section class="grid" aria-label="Game setup and protocol">
         <article class="card wide"><div class="eyebrow">Game agent</div><h2>Design a game</h2><p>Describe the host game, input mapping, and engine you want to use. The agent can draft a plan and adapter code.</p><div id="chat-log" class="chat-log" role="log" aria-live="polite"></div><form id="chat-form"><label for="chat-input">Your game idea</label><textarea id="chat-input" required maxlength="8000" placeholder="A two-player platformer using touch, tilt, and A/B buttons…"></textarea><div class="actions"><button class="button" type="submit">Ask Game Studio</button></div></form></article>
-        <article class="card wide"><h2>Publish a phone game</h2><p>Choose one self-contained UTF-8 HTML file with a <code>&lt;head&gt;</code> element, under 511 KB. Publishing a file with the same name replaces that game's server copy. The paired Android and iOS apps download it when selected.</p><form id="publish-form"><label for="game-file">Game HTML</label><input id="game-file" type="file" accept=".html,text/html" required><div class="actions"><button class="button" type="submit">Publish game</button></div></form><p id="publish-status" role="status" aria-live="polite"></p></article>
+        <article class="card wide"><h2>Offline game library</h2><p>Complete game packages include artwork, music, code and SQLite data, up to 5 GiB. Open Agents → Games in the native iOS, Android, macOS or Windows app to download, play offline or publish a package back to this computer. Updates preserve each device's private progress.</p><div id="package-list" aria-live="polite"></div><h3>Publish a single-file game</h3><p>Choose a complete UTF-8 HTML file with a <code>&lt;head&gt;</code> element, up to 8 MiB. Larger games use a complete game package.</p><form id="publish-form"><label for="game-file">Game HTML</label><input id="game-file" type="file" accept=".html,text/html" required><div class="actions"><button class="button" type="submit">Publish game</button></div></form><p id="publish-status" role="status" aria-live="polite"></p></article>
         <article class="card wide"><h2>Start a native session</h2><ol><li>For on-device play, publish the HTML game above, then reopen Games on this computer in the paired Android or iOS app.</li><li>For host play, enable Remote Desktop video, screen control, Game mode, and Share this computer's sound in Video &amp; Calls. Set up to four Game buttons with labels and engine names there.</li><li>Launch Neon Horizon on the captured monitor and make it full screen. It connects to the local game input stream so the native joystick, touch, tilt, and buttons drive the game.</li><li>On a connected iOS or Android device, choose Play game. The native session opens full screen with camera and microphone off.</li></ol></article>
         <article class="card"><div class="eyebrow">Input contract</div><h2>Full state where it matters</h2><p>Touch frames contain the complete active pointer set, up to ten IDs, with coordinates from 0 to 1. Sensors send x/y/z in SI units. Joystick axes range from −1 to 1. Buttons send down and up transitions. <code>state_reset</code> with <code>all_sessions</code> clears every player's held state after backlog loss; <code>session_end</code> clears one player.</p></article>
         <article class="card"><div class="eyebrow">Engine boundary</div><h2>One loopback subscriber</h2><p>An admin authenticated request to <code>/api/webrtc/game-input/connection</code> returns a process scoped stream credential. The local engine connects to <code>/api/webrtc/game-input/stream</code> over WebSocket. Browser games can use the host's mouse and keyboard directly; Unreal and other engines can parse the local JSON stream for player IDs, touch, motion, joystick, custom button names, mouse, and keyboard. The stream accepts one consumer and never exposes input directly to the public website.</p></article>
@@ -46,6 +46,20 @@
     const publishForm = document.querySelector('#publish-form');
     const publishStatus = document.querySelector('#publish-status');
     let sessionId = '';
+    async function refreshPackages() {
+      try {
+        const response = await fetch('./api/game/packages', {credentials: 'same-origin'});
+        if (!response.ok) return;
+        const value = await response.json(), list = document.querySelector('#package-list'); list.replaceChildren();
+        for (const game of value.games || []) {
+          const row = document.createElement('p'), link = document.createElement('a');
+          link.textContent = `${game.title} · Version ${game.version} ↓`;
+          link.href = `./api/game/packages/${encodeURIComponent(game.id)}/download`; link.setAttribute('download', `${game.id}.aygame`);
+          row.append(link); list.append(row);
+        }
+      } catch (_) {}
+    }
+    refreshPackages();
     function append(role, message) {
       const line = document.createElement('p');
       line.className = role;
@@ -84,7 +98,7 @@
       try {
         const id = file.name.replace(/\.html$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         if (!id || id.length > 64) throw new Error('Choose a short HTML filename.');
-        if (file.size > 511 * 1024) throw new Error('Game exceeds 511 KB.');
+        if (file.size > 8 * 1024 * 1024 - 1024) throw new Error('Move large assets into a complete game package.');
         const response = await fetch(`./api/game/publish/${id}`, {
           method: 'POST', headers: {'Content-Type': 'text/html; charset=utf-8'},
           credentials: 'same-origin', body: file
@@ -92,6 +106,7 @@
         const payload = await response.json();
         if (!response.ok || !payload.success) throw new Error(payload.error || 'Could not publish game.');
         publishStatus.textContent = `${id} is ready. Reopen Games on this computer in the paired app.`;
+        refreshPackages();
       } catch (error) { publishStatus.textContent = error.message; }
       finally { button.disabled = false; }
     });

@@ -30,7 +30,7 @@ def browser_ready(store, item: dict) -> bool:
 
 
 def requires_compatibility(item: dict) -> bool:
-    if not item.get("file_path") or item["kind"] == "photo":
+    if not item.get("file_path") or item["kind"] in {"photo", "audio", "document"}:
         return False
     technical = item["technical"]
     return (Path(item["file_path"]).suffix.lower() not in {".mp4", ".m4v"}

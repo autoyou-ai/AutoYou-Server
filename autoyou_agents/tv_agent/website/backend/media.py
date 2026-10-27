@@ -23,12 +23,28 @@ from .store import Store
 
 VIDEO_EXTENSIONS = {".mp4", ".m4v", ".webm", ".mov", ".mkv", ".avi", ".ts", ".mpg", ".mpeg", ".ogv"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"}
-MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
+AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".oga", ".opus", ".flac", ".amr", ".caf", ".weba"}
+DOCUMENT_EXTENSIONS = {".pdf", ".epub"}
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS | AUDIO_EXTENSIONS | DOCUMENT_EXTENSIONS
 CONTENT_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
                  ".mkv": "video/x-matroska", ".ts": "video/mp2t", ".m3u8": "application/vnd.apple.mpegurl",
                  ".vtt": "text/vtt", ".m4s": "video/iso.segment", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                 ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif"}
+                 ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif",
+                 ".pdf": "application/pdf", ".epub": "application/epub+zip", ".mp3": "audio/mpeg",
+                 ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg",
+                 ".oga": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".amr": "audio/amr",
+                 ".caf": "audio/x-caf", ".weba": "audio/webm"}
 CHUNK_BYTES = 256 * 1024
+
+
+def media_kind(suffix: str, requested: str = "video") -> str:
+    if suffix in IMAGE_EXTENSIONS:
+        return "photo"
+    if suffix in AUDIO_EXTENSIONS:
+        return "audio"
+    if suffix in DOCUMENT_EXTENSIONS:
+        return "document"
+    return requested if requested in {"movie", "episode", "video"} else "video"
 
 
 def parse_name(name: str) -> dict:
