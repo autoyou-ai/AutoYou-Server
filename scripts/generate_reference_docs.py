@@ -53,6 +53,7 @@ ROUTER_FILES = (
     ("routers/pairing.py", "Pairing, unlock, and signaling", "First-run setup, unlock, device pairing, and WebRTC signaling."),
     ("routers/peer_rendezvous.py", "Peer Link rendezvous", "Invitation slots used to link one AutoYou app to another."),
     ("routers/webrtc.py", "WebRTC and media", "Live sessions, calls, microphone and screen sharing, and DataChannel status."),
+    ("routers/assistant_mode.py", "Assistant mode", "The wake word: settings, recordings, training, testing, the model for in-browser detection, and local transcription after a wake."),
     ("routers/messaging.py", "Messaging connectors", "Telegram, Signal, and WhatsApp connector control."),
     ("routers/models.py", "Models and speech", "The model library, speech models, and WebRTC configuration parsing."),
     ("routers/services.py", "Companion services", "Start, stop, and inspect the AI Agent worker, the page service, and the Tunnelmole public link, plus status and shutdown."),

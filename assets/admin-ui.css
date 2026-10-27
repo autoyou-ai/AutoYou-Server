@@ -4841,3 +4841,222 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
         justify-content: center;
     }
 }
+
+
+/* Assistant mode (Chat & History) */
+.ayu-chat-assistant-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 0 13px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    background: var(--ayu-surface-strong);
+    color: var(--ayu-muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ayu-chat-assistant-pill span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ayu-faint);
+}
+
+.ayu-chat-assistant-pill.on {
+    color: var(--ayu-primary);
+    border-color: var(--ayu-border-strong);
+}
+
+.ayu-chat-assistant-pill.on span {
+    background: var(--ayu-green);
+}
+
+.ayu-assistant-panel {
+    display: grid;
+    gap: 16px;
+    margin: 0 0 14px;
+    padding: 18px;
+    border: 1px solid var(--ayu-border-strong);
+    border-radius: var(--ayu-radius-lg);
+    background: var(--ayu-surface);
+    color: var(--ayu-text);
+}
+
+.ayu-assistant-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ayu-assistant-head h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.ayu-assistant-head p {
+    max-width: 62ch;
+    margin: 5px 0 0;
+    color: var(--ayu-muted);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ayu-assistant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+
+.ayu-assistant-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.ayu-assistant-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 11px 12px;
+    border: 1px solid var(--ayu-border);
+    border-radius: var(--ayu-radius-sm);
+    background: var(--ayu-surface-strong);
+    cursor: pointer;
+}
+
+.ayu-assistant-choice.selected {
+    border-color: var(--ayu-border-strong);
+    background: var(--ayu-primary-soft);
+}
+
+.ayu-assistant-choice span {
+    display: grid;
+    gap: 3px;
+}
+
+.ayu-assistant-choice strong {
+    font-size: 13px;
+}
+
+.ayu-assistant-choice small,
+.ayu-assistant-note {
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ayu-assistant-note,
+.ayu-assistant-warning {
+    margin: 0;
+}
+
+.ayu-assistant-warning {
+    padding: 10px 12px;
+    border-radius: var(--ayu-radius-sm);
+    background: var(--ayu-amber-soft);
+    color: var(--ayu-amber);
+    font-size: 12px;
+}
+
+.ayu-assistant-samples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-assistant-sample {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 6px 12px;
+    border: 1px solid var(--ayu-border);
+    border-radius: 999px;
+    background: var(--ayu-surface-muted);
+    font-size: 12px;
+}
+
+.ayu-assistant-sample audio {
+    width: 150px;
+    max-width: 100%;
+    height: 28px;
+}
+
+.ayu-assistant-x {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--ayu-muted);
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.ayu-assistant-x:hover {
+    background: var(--ayu-red-soft);
+    color: var(--ayu-red);
+}
+
+.ayu-assistant-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-assistant-capture,
+.ayu-chat-listening {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--ayu-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.ayu-chat-listening span:last-child {
+    color: var(--ayu-faint);
+    font-weight: 500;
+    font-size: 12px;
+}
+
+.ayu-assistant-test {
+    display: grid;
+    gap: 3px;
+    padding: 10px 12px;
+    border-radius: var(--ayu-radius-sm);
+    font-size: 13px;
+}
+
+.ayu-assistant-test.ok {
+    background: var(--ayu-green-soft);
+    color: var(--ayu-green);
+}
+
+.ayu-assistant-test.miss {
+    background: var(--ayu-amber-soft);
+    color: var(--ayu-amber);
+}
+
+.ayu-assistant-test span {
+    color: var(--ayu-muted);
+}
+
+.ayu-chat-composer-tools .ayu-chat-assistant-tool.active {
+    color: var(--ayu-green);
+    background: var(--ayu-green-soft);
+}
+
+@media (max-width: 640px) {
+    .ayu-assistant-panel {
+        padding: 14px;
+    }
+}

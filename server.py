@@ -51,6 +51,7 @@ from routers.mcp import register_routes as register_mcp_routes
 from routers.peer_rendezvous import register_routes as register_peer_rendezvous_routes
 from routers.moderation import register_routes as register_moderation_routes
 from routers.website_gateway import register_routes as register_website_gateway_routes
+from routers.assistant_mode import register_routes as register_assistant_mode_routes
 from routers.ai_opt_out import register_ai_opt_out_routes
 from routers.ai_agent import (
     attach_ai_agent_endpoints,
@@ -7605,6 +7606,7 @@ globals().update(register_website_gateway_routes(admin_app, auth_app, sys.module
 register_ai_opt_out_routes(admin_app)
 register_ai_opt_out_routes(auth_app)
 
+globals().update(register_assistant_mode_routes(admin_app, auth_app, sys.modules[__name__]))
 async def _serve_admin_logo_file():
     """Serve the branded PNG logo for admin/auth HTML display."""
     logo_path = _get_admin_logo_path()
@@ -10560,6 +10562,22 @@ def _build_webrtc_capabilities(
     include_admin: bool = False,
 ) -> Dict[str, Any]:
     effective_cfg = cfg if cfg is not None else (STATE.config or {})
+def _assistant_mode_capability(*, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Assistant mode as devices see it: wake word, how it is confirmed, readiness."""
+    effective_cfg = cfg if cfg is not None else (STATE.config or {})
+    available = bool(
+        AudioTrackSink is not None
+        and _get_video_call_audio_enabled(cfg=effective_cfg)
+        and _get_video_call_agent_processing_enabled(cfg=effective_cfg)
+    )
+    try:
+        from shared.assistant_mode import capability_payload
+
+        return capability_payload(get_configured_server_name(), available=available)
+    except Exception as exc:
+        LOGGER.warning("Assistant mode capability unavailable: %s", type(exc).__name__)
+        return {"enabled": False, "available": False}
+
     video_enabled = _get_video_call_enabled(cfg=effective_cfg)
     audio_enabled = _get_video_call_audio_enabled(cfg=effective_cfg)
     agents_disabled = _get_video_call_agents_disabled(cfg=effective_cfg)
@@ -10866,6 +10884,10 @@ def _build_webrtc_capabilities(
         "remote_desktop": {
             "enabled": remote_desktop_enabled,
             "configured_enabled": _get_remote_desktop_setting_enabled(cfg=effective_cfg),
+        # Wake word gate for background audio. Older servers omit this key; a
+        # client must not send assistant_listening or assistant_* controls
+        # without it.
+        "assistant_mode": _assistant_mode_capability(cfg=effective_cfg),
             "send_screen": _get_remote_desktop_send_screen_enabled(cfg=effective_cfg),
             "monitor_id": remote_desktop_profile["monitor_id"],
             "monitor": remote_desktop_monitor,

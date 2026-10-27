@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 300, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 311, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -279,6 +279,24 @@ Live sessions, calls, microphone and screen sharing, and DataChannel status. Sou
 | Admin app | `POST` | `/api/webrtc/video-file/upload` | Admin upload video file |
 | Admin app | `GET` | `/api/webrtc/video-files` | Admin get webrtc video files |
 | Admin app | `POST` | `/api/webrtc/video-input/&#123;source_id&#125;/frame` | Admin publish realtime video input frame |
+
+## Assistant mode
+
+The wake word: settings, recordings, training, testing, the model for in-browser detection, and local transcription after a wake. Source: `routers/assistant_mode.py`.
+
+| App | Method | Path | Summary |
+| :--- | :--- | :--- | :--- |
+| Admin app | `GET` | `/api/assistant-mode` | Settings, readiness, recordings, Voice Training matches, and which devices are listening. |
+| Admin app | `DELETE` | `/api/assistant-mode/model` | Forget the trained wake word. |
+| Admin app | `GET` | `/api/assistant-mode/model` | The full model, for detectors that run in the browser or on a device. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples` | Delete every stored wake word recording. |
+| Admin app | `POST` | `/api/assistant-mode/samples` | Store one recording of the wake word (base64 WAV), after checking its length and level. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples/&#123;sample_id&#125;` | Delete one wake word recording. |
+| Admin app | `GET` | `/api/assistant-mode/samples/&#123;sample_id&#125;/audio` | Play back one wake word recording as WAV. |
+| Admin app | `POST` | `/api/assistant-mode/settings` | Turn Assistant mode on or off and choose the wake word, how it is confirmed, and sensitivity. |
+| Admin app | `POST` | `/api/assistant-mode/test` | Say whether a recording would wake the assistant, with the match score and transcript. |
+| Admin app | `POST` | `/api/assistant-mode/train` | Train the wake word from the recordings and, when enabled, Voice Training clips. |
+| Admin app | `POST` | `/api/assistant-mode/transcribe` | Local transcription for a wake heard by the admin page's own detector. |
 
 ## Messaging connectors
 
