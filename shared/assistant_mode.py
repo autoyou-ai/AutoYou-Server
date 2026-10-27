@@ -105,6 +105,8 @@ ENROLL_TIMEOUT_SECONDS = 60.0
 PRE_ROLL_MARGIN_SECONDS = 0.3
 #: A second device hearing the same wake word within this window stays quiet.
 CROSS_DEVICE_WAKE_WINDOW_SECONDS = 1.5
+#: Longest utterance a device may upload after its own detector woke.
+MAX_DEVICE_UTTERANCE_SECONDS = 30.0
 FEED_QUEUE_MAX_ITEMS = 1500
 MIN_SPEECH_DBFS = -50.0
 SPEECH_ABOVE_NOISE_DB = 10.0
@@ -119,10 +121,24 @@ def _repo_anchor() -> Path:
     return Path(__file__).resolve().parents[1] / "server.py"
 
 
+_STORAGE_ROOT: Optional[Callable[[], Path]] = None
+
+
+def set_storage_root(resolver: Optional[Callable[[], Path]]) -> None:
+    """Let a host keep Assistant mode under its own data dir (AutoYou Lite does).
+
+    The environment override still wins, so tests stay inside their root.
+    """
+    global _STORAGE_ROOT
+    _STORAGE_ROOT = resolver
+
+
 def assistant_mode_dir() -> Path:
     override = str(os.environ.get(ASSISTANT_MODE_DIR_ENV) or "").strip()
     if override:
         root = Path(override).expanduser()
+    elif _STORAGE_ROOT is not None:
+        root = Path(_STORAGE_ROOT()) / "assistant_mode"
     else:
         from shared.platform_runtime import get_mutable_data_dir
 
@@ -498,6 +514,50 @@ def public_status(server_name: str, *, include_samples: bool = False) -> Dict[st
     return payload
 
 
+def device_model_payload(server_name: str) -> Optional[Dict[str, Any]]:
+    """The trained model for a device's own detector, or None when there is none.
+
+    Only the acoustic templates (MFCC frames) leave the server, never the
+    recordings. Offered only while Assistant mode is on and the model matches
+    the current wake phrase.
+    """
+    settings = load_settings()
+    if not settings["enabled"]:
+        return None
+    model = load_model()
+    phrase = effective_phrase(settings, server_name)
+    if model is None or ww.normalize_phrase(model.phrase) != ww.normalize_phrase(phrase):
+        return None
+    model.sensitivity = settings["sensitivity"]
+    payload = model.to_dict()
+    payload["wake_phrase"] = phrase
+    payload["confirm"] = settings["confirm"]
+    payload["listen_seconds"] = settings["listen_seconds"]
+    return payload
+
+
+def decode_device_utterance(payload: Mapping[str, Any]) -> Optional[bytes]:
+    """PCM16 16 kHz mono from a device's ``assistant_utterance`` control.
+
+    Accepts ``audio_base64`` as WAV, or ``pcm16_base64`` raw little-endian
+    samples at 16 kHz. Bounded to ``MAX_DEVICE_UTTERANCE_SECONDS``.
+    """
+    import base64
+    import binascii
+
+    try:
+        if payload.get("audio_base64"):
+            pcm = ww.wav_bytes_to_pcm16(base64.b64decode(str(payload.get("audio_base64")), validate=True))
+        elif payload.get("pcm16_base64"):
+            pcm = base64.b64decode(str(payload.get("pcm16_base64")), validate=True)
+        else:
+            return None
+    except (binascii.Error, ValueError):
+        return None
+    pcm = pcm[: len(pcm) - (len(pcm) % 2)]
+    return pcm[: int(MAX_DEVICE_UTTERANCE_SECONDS * ww.SAMPLE_RATE) * 2] or None
+
+
 def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
     """What clients read from ``server_capabilities.assistant_mode``."""
     try:
@@ -518,7 +578,9 @@ def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
         "stream_listening": True,
         "listen_during_safety_recording": bool(status["listen_during_safety_recording"]),
         "wake_word_in_calls": bool(status["wake_word_in_calls"]),
-        # Devices with their own detector send voice_call_control assistant_wake.
+        # Devices with their own detector send voice_call_control assistant_wake
+        # (while streaming) or assistant_utterance (the recorded words, without
+        # streaming), and fetch the model with assistant_model_request.
         "client_wake": True,
         # Devices can teach the word over their stream (assistant_enroll).
         "enrollment": True,
@@ -748,6 +810,19 @@ class _SessionAssistant:
             self.state = "idle"
             self.hub._train_async(self, phrase=self.enroll_phrase)
 
+    def device_utterance(self, pcm: bytes, config: _Config, score: Optional[float]) -> None:
+        """A device heard the word itself and sent what was said; no stream needed."""
+        if not self.hub._claim_wake(self.session_id):
+            self._set_state("idle", "answered_elsewhere")
+            return
+        self.stats["wakes"] += 1
+        self.wake_source = "device"
+        self.wake_score = score
+        self.buffer = bytearray()
+        self.endpointer.reset()
+        self._set_state("thinking", "transcribing", source="device")
+        self.hub._transcribe_async(self, pcm, purpose="command", config=config)
+
     def start_enrollment(self, phrase: str, count: int) -> None:
         self.enroll_phrase = phrase
         self.enroll_needed = max(ww.MIN_TEMPLATES, min(ww.MAX_TEMPLATES, int(count)))
@@ -800,7 +875,9 @@ class _SessionAssistant:
             self._set_state("idle", "no_speech")
             return
         match = ww.match_phrase(config.phrase, text)
-        must_confirm = config.confirm in {"both", "text"} and self.wake_source == "voice"
+        # A device's upload starts with the word itself, like the server's own
+        # pre-roll, so "both"/"text" confirm it the same way.
+        must_confirm = config.confirm in {"both", "text"} and self.wake_source in {"voice", "device"}
         if must_confirm and not match.matched:
             self.stats["not_confirmed"] += 1
             self._set_state("idle", "not_confirmed")
@@ -927,6 +1004,9 @@ class AssistantModeHub:
     def client_wake(self, session_id: str, *, score: Optional[float] = None) -> None:
         self._post(session_id, "client_wake", score)
 
+    def device_utterance(self, session_id: str, pcm: bytes, *, score: Optional[float] = None) -> None:
+        self._post(session_id, "device_utterance", (bytes(pcm), score))
+
     def start_enrollment(self, session_id: str, *, phrase: str = "", count: int = ww.MIN_TEMPLATES) -> None:
         self._post(session_id, "enroll", (clean_phrase_text(phrase), int(count or ww.MIN_TEMPLATES)))
 
@@ -1032,6 +1112,10 @@ class AssistantModeHub:
         elif kind == "client_wake":
             if config.enabled and item.state == "idle":
                 item.wake(config, source="client", score=value)
+        elif kind == "device_utterance":
+            pcm, score = value
+            if config.enabled and item.state in {"idle", "listening"} and pcm:
+                item.device_utterance(pcm, config, score)
         elif kind == "enroll":
             phrase, count = value
             item.start_enrollment(phrase or config.phrase, count)
