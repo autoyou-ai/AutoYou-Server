@@ -19,7 +19,7 @@ import re
 import webbrowser
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 # Imported at module scope, not lazily inside the keepalive handlers.  The old
 # per-rally `import game_ping_pong` resolved a bare root-level module, so any
@@ -55,6 +55,12 @@ from shared.room_bridge import (
     revoked_control_payload,
 )
 from shared.call_listener_coordinator import CallListenerCoordinator
+from shared.assistant_mode import (
+    DEVICE_EVENTS as ASSISTANT_DEVICE_EVENTS,
+    AssistantModeHub,
+    handle_device_control as handle_assistant_device_control,
+    local_transcriber,
+)
 from shared.screen_listen import ScreenListenMixer
 from shared.remote_access_policy import (
     DEVICE_OWN,
@@ -134,6 +140,15 @@ class WebRTCManager:
         # Which rooms the Computer is following. Empty until a call carries
         # audio for a room that holds a grant.
         self.call_listeners = CallListenerCoordinator()
+        # Assistant mode: the owner's wake word decides when background audio
+        # is transcribed and answered. One worker thread serves every device.
+        self._assistant_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.assistant_mode = AssistantModeHub(
+            emit=self._assistant_emit_threadsafe,
+            submit=self._assistant_submit_threadsafe,
+            transcribe=local_transcriber(),
+            server_name=lambda: _runtime.get_configured_server_name(),
+        )
         self.room_bridge_expiry_tasks: Dict[str, asyncio.Task] = {}
         self.http_proxy_request_tasks: Dict[str, Dict[str, asyncio.Task]] = {}  # session_id -> request_id -> proxy task
         self.voice_call_status_by_session: Dict[str, Dict[str, Any]] = {}
@@ -549,6 +564,7 @@ class WebRTCManager:
                 continue
             if self._background_audio_mode_allowed(
                 silent_recording=bool(state.get("silent_recording")),
+                assistant_listening=bool(state.get("assistant_listening")),
                 cfg=cfg,
             ):
                 continue
@@ -866,6 +882,116 @@ class WebRTCManager:
                 "platform": "server",
             }
         return None
+
+    # ------------------------------------------------------------------
+    # Assistant mode plumbing. The hub calls these from its own threads.
+    # ------------------------------------------------------------------
+
+    def _remember_assistant_loop(self) -> None:
+        try:
+            self._assistant_loop = _runtime.asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
+    def _assistant_emit_threadsafe(self, session_id: str, payload: Dict[str, Any]) -> None:
+        loop = self._assistant_loop
+        if loop is None or loop.is_closed():
+            return
+        _runtime.asyncio.run_coroutine_threadsafe(self._send_assistant_event(session_id, payload), loop)
+
+    def _assistant_submit_threadsafe(self, session_id: str, text: str, meta: Dict[str, Any]) -> None:
+        loop = self._assistant_loop
+        if loop is None or loop.is_closed():
+            raise RuntimeError("Assistant mode has no event loop yet")
+        extra = {"assistant_mode": True, **{k: v for k, v in dict(meta or {}).items() if k != "source"}}
+        future = _runtime.asyncio.run_coroutine_threadsafe(
+            self._enqueue_voice_command(session_id, text, metadata_extra=extra),
+            loop,
+        )
+
+        def _done(fut: Any) -> None:
+            try:
+                fut.result()
+            except Exception as exc:
+                _runtime.LOGGER.error("Assistant mode command was not queued for %s: %s", session_id, exc)
+
+        future.add_done_callback(_done)
+
+    async def _send_assistant_event(self, session_id: str, payload: Dict[str, Any]) -> bool:
+        manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
+        if manager is None:
+            return False
+        message = _runtime.create_voice_call_control_message(
+            {**dict(payload), "timestamp_ms": int(_runtime.time.time() * 1000), "platform": "server"},
+            session_id=self._resolve_voice_chat_session_id(session_id) or session_id,
+            user_id=_runtime.get_configured_server_name(),
+        )
+        try:
+            return bool(await manager.send_message(message))
+        except Exception as exc:
+            _runtime.LOGGER.debug("Assistant mode event not sent to %s: %s", session_id, exc)
+            return False
+
+    def _session_streams_microphone(self, session_id: str) -> bool:
+        state = self._background_audio_state_for_session(session_id)
+        return bool(state.get("active") and (state.get("silent_recording") or state.get("assistant_listening")))
+
+    async def _handle_assistant_control(self, session_id: str, event_name: str, payload: Mapping[str, Any]) -> None:
+        if not session_id:
+            return
+        self._remember_assistant_loop()
+        await handle_assistant_device_control(
+            self.assistant_mode,
+            session_id=session_id,
+            event_name=event_name,
+            payload=payload,
+            server_name=_runtime.get_configured_server_name(),
+            streaming=self._session_streams_microphone(session_id),
+            send=lambda body: self._send_assistant_event(session_id, body),
+            after_training=self.broadcast_webrtc_capabilities,
+        )
+
+    def _assistant_turn_request(
+        self,
+        text: str,
+        extra: Dict[str, Any],
+        request_metadata: Dict[str, Any],
+        session_ids: List[str],
+    ) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Mark a wake-word turn for the Assistant agent and add the live frame.
+
+        During a video call the newest camera frame goes along as a picture,
+        exactly like one sent in chat, unless "Let it see the camera" is off.
+        """
+        metadata = dict(request_metadata)
+        context: List[Dict[str, Any]] = []
+        frame = None
+        try:
+            from shared.assistant_mode import live_frame_attachment, load_settings as load_assistant_settings
+
+            if load_assistant_settings().get("use_live_video", True):
+                frame = live_frame_attachment(session_ids)
+        except Exception as exc:
+            _runtime.LOGGER.debug("Assistant mode live frame skipped: %s", exc)
+        if frame:
+            context.append({"source": "assistant_live_frame", "attachments": [frame]})
+        metadata["assistant_mode"] = True
+        metadata["assistant_turn"] = {
+            "text": text,
+            "at": _runtime.time.time(),
+            "wake": str(extra.get("wake") or ""),
+            "live_frame": bool(frame),
+        }
+        return metadata, context
+
+    async def broadcast_webrtc_capabilities(self) -> None:
+        """Push fresh capabilities to every live device (assistant mode changed)."""
+        sent: Set[int] = set()
+        for session_id, manager in list(self.datachannel_managers.items()):
+            if id(manager) in sent or not self._datachannel_manager_is_live(manager):
+                continue
+            sent.add(id(manager))
+            await self._publish_webrtc_capabilities(session_id)
 
     async def _publish_webrtc_capabilities(self, session_id: str) -> None:
         datachannel_manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
@@ -2455,10 +2581,39 @@ class WebRTCManager:
         *,
         silent_recording: bool,
         cfg: Optional[Dict[str, Any]] = None,
+        assistant_listening: bool = False,
     ) -> bool:
         if silent_recording:
             return _runtime._get_silent_recording_enabled(cfg=cfg)
+        if assistant_listening:
+            return self._assistant_listening_allowed(cfg=cfg)
         return _runtime._get_background_mode_enabled(cfg=cfg)
+
+    def _assistant_listening_allowed(self, *, cfg: Optional[Dict[str, Any]] = None) -> bool:
+        """A device may stream its microphone only for the wake word."""
+        effective_cfg = cfg if cfg is not None else (_runtime.STATE.config or {})
+        try:
+            enabled = bool(self.assistant_mode.enabled)
+        except Exception:
+            enabled = False
+        return bool(
+            enabled
+            and _runtime.AudioTrackSink is not None
+            and _runtime._get_video_call_audio_enabled(cfg=effective_cfg)
+            and _runtime._get_video_call_agent_processing_enabled(cfg=effective_cfg)
+        )
+
+    def _assistant_hears(self, background_state: Mapping[str, Any]) -> bool:
+        try:
+            return bool(
+                self.assistant_mode.listens_to(
+                    assistant_listening=bool(background_state.get("assistant_listening")),
+                    silent_recording=bool(background_state.get("silent_recording")),
+                )
+                and _runtime._get_video_call_agent_processing_enabled(cfg=(_runtime.STATE.config or {}))
+            )
+        except Exception:
+            return False
 
     def _background_audio_offer_state(
         self,
@@ -2483,24 +2638,43 @@ class WebRTCManager:
                 hint.get("recording", payload.get("silent_recording", payload.get("recording"))),
             )
         )
+        assistant_listening = self._coerce_control_bool(
+            hint.get("assistant_listening", payload.get("assistant_listening"))
+        )
         muted_raw = hint.get("muted", payload.get("muted"))
         muted_provided = "muted" in hint or "muted" in payload
-        muted = self._coerce_control_bool(muted_raw) if muted_provided else not silent_recording
+        muted = (
+            self._coerce_control_bool(muted_raw)
+            if muted_provided
+            else not (silent_recording or assistant_listening)
+        )
         active = self._coerce_control_bool(
             hint.get(
                 "active",
                 payload.get("background_audio_active", payload.get("background_mode_active", False)),
             )
         )
+        if assistant_listening and not (active and self._assistant_listening_allowed(cfg=cfg)):
+            assistant_listening = False
+        if (
+            active
+            and silent_recording
+            and assistant_listening
+            and not _runtime._get_silent_recording_enabled(cfg=cfg)
+        ):
+            # Listening for the wake word is allowed; saving recordings is not.
+            silent_recording = False
         if active and not self._background_audio_mode_allowed(
             silent_recording=silent_recording,
+            assistant_listening=assistant_listening,
             cfg=cfg,
         ):
             active = False
             silent_recording = False
+            assistant_listening = False
             muted = True
             server_direction = "inactive"
-        if active and silent_recording:
+        if active and (silent_recording or assistant_listening):
             client_direction = "sendonly"
             muted = False
             offer_direction = self._extract_audio_media_direction(sdp)
@@ -2529,6 +2703,8 @@ class WebRTCManager:
         return {
             "active": bool(active),
             "silent_recording": bool(active and silent_recording),
+            "assistant_listening": bool(active and assistant_listening),
+            "mic_streaming": bool(active and (silent_recording or assistant_listening)),
             "muted": bool(muted),
             "platform": platform,
             "client_audio_direction": client_direction,
@@ -2551,6 +2727,7 @@ class WebRTCManager:
         muted: bool,
         platform: str,
         timestamp_ms: Any = None,
+        assistant_listening: bool = False,
     ) -> Set[str]:
         normalized_session_id = str(session_id or "").strip()
         alias_ids = set(self._ordered_related_session_ids(normalized_session_id))
@@ -2562,6 +2739,7 @@ class WebRTCManager:
         state = {
             "active": bool(active),
             "silent_recording": bool(active and silent_recording),
+            "assistant_listening": bool(active and assistant_listening),
             "muted": bool(muted),
             "platform": str(platform or "unknown").strip() or "unknown",
             "timestamp_ms": timestamp_ms,
@@ -2572,6 +2750,8 @@ class WebRTCManager:
 
         if not state["active"] or not state["silent_recording"]:
             self._close_silent_recorders_for_ids(alias_ids)
+        if not state["active"] or not (state["silent_recording"] or state["assistant_listening"]):
+            self.assistant_mode.cancel(normalized_session_id, "stopped_listening")
         return alias_ids
 
     def _close_silent_recorders_for_ids(self, session_ids: Iterable[str]) -> None:
@@ -2685,6 +2865,7 @@ class WebRTCManager:
             and (
                 _runtime._get_background_mode_enabled(cfg=effective_cfg)
                 or _runtime._get_silent_recording_enabled(cfg=effective_cfg)
+                or self._assistant_listening_allowed(cfg=effective_cfg)
             )
         )
 
@@ -2702,6 +2883,7 @@ class WebRTCManager:
         # Screen Listen needs the inbound track even when AI voice agents are disabled.
 
         primary_session_id = str(session_id)
+        self._remember_assistant_loop()
 
         sink = _runtime.AudioTrackSink(
             track,
@@ -2861,6 +3043,10 @@ class WebRTCManager:
         if background_state.get("active"):
             if background_state.get("silent_recording"):
                 self._write_silent_recording_chunk(session_id, chunk)
+            # Assistant mode hears the same frames; nothing is transcribed
+            # until its wake word matches. Recording above is unaffected.
+            if self._assistant_hears(background_state):
+                self.assistant_mode.feed(str(session_id), chunk)
             return
         video_sink = self.video_sinks.get(str(session_id))
         recorded_with_video = False
@@ -2880,7 +3066,18 @@ class WebRTCManager:
         if not self._should_accept_voice_call_audio(session_id):
             return
         self._feed_call_listener(session_id, chunk)
+        if self._assistant_gates_calls():
+            # Assistant mode for calls: the call and its recordings carry on,
+            # but nothing is transcribed for AI until the wake word is heard.
+            self.assistant_mode.feed(str(session_id), chunk)
+            return
         audio_manager.process_audio_chunk(chunk)
+
+    def _assistant_gates_calls(self) -> bool:
+        try:
+            return bool(self.assistant_mode.gates_calls)
+        except Exception:
+            return False
 
     def _feed_call_listener(self, session_id: str, chunk: bytes) -> None:
         """Hand one frame to the Computer's listener, if it is in this call.
@@ -4863,6 +5060,7 @@ class WebRTCManager:
                     text = item
                     transcript_already_mirrored = False
                     queued_identity = None
+                    queued_metadata = None
                     if isinstance(item, tuple):
                         if item:
                             text = item[0]
@@ -4870,12 +5068,16 @@ class WebRTCManager:
                             transcript_already_mirrored = bool(item[1])
                         if len(item) > 2:
                             queued_identity = item[2]
+                        if len(item) > 3 and isinstance(item[3], dict):
+                            queued_metadata = item[3]
 
+                    extra_kwargs = {"metadata_extra": queued_metadata} if queued_metadata else {}
                     await self._process_voice_command(
                         session_id,
                         text,
                         transcript_already_mirrored=bool(transcript_already_mirrored),
                         identity=queued_identity,
+                        **extra_kwargs,
                     )
                 except Exception as e:
                     _runtime.LOGGER.error(f"Voice command worker error for {session_id}: {e}")
@@ -4884,7 +5086,13 @@ class WebRTCManager:
         finally:
             _runtime.LOGGER.info(f"Stopped voice command worker for {session_id}")
 
-    async def _enqueue_voice_command(self, session_id: str, text: str):
+    async def _enqueue_voice_command(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        metadata_extra: Optional[Dict[str, Any]] = None,
+    ):
         """Enqueue STT transcript for sequential processing."""
         normalized = (text or "").strip()
         if not normalized:
@@ -4943,6 +5151,7 @@ class WebRTCManager:
                 metadata={
                     "source": "voice_call",
                     "is_transcription": True,
+                    **(dict(metadata_extra) if metadata_extra else {}),
                     **_runtime._build_conversation_metadata(identity),
                 },
             )
@@ -4966,7 +5175,7 @@ class WebRTCManager:
             except Exception:
                 _runtime.LOGGER.warning(f"Voice command queue full for {session_id}; failed to drop oldest item")
 
-        queue_ref.put_nowait((normalized, transcript_already_mirrored, identity))
+        queue_ref.put_nowait((normalized, transcript_already_mirrored, identity, dict(metadata_extra or {})))
         _runtime.LOGGER.info(f"Queued voice transcript for {session_id}; pending={queue_ref.qsize()}")
 
     def _enqueue_voice_command_threadsafe(self, session_id: str, text: str, loop: asyncio.AbstractEventLoop):
@@ -5966,6 +6175,7 @@ class WebRTCManager:
                 str(chat_id),
                 active=True,
                 silent_recording=bool(background_offer_state.get("silent_recording")),
+                assistant_listening=bool(background_offer_state.get("assistant_listening")),
                 muted=bool(background_offer_state.get("muted", True)),
                 platform=str(background_offer_state.get("platform") or "unknown"),
                 timestamp_ms=int(_runtime.time.time() * 1000),
@@ -6244,7 +6454,7 @@ class WebRTCManager:
                 audio_transceiver.direction = str(background_offer_state.get("server_audio_direction") or "inactive")
                 if (
                     audio_transceiver.direction in {"sendonly", "sendrecv"}
-                    and not background_offer_state.get("silent_recording")
+                    and not background_offer_state.get("mic_streaming")
                 ):
                     self._attach_background_audio_heartbeat_track(str(chat_id), audio_transceiver)
                 _runtime.LOGGER.info(
@@ -6432,6 +6642,7 @@ class WebRTCManager:
                     str(session_id),
                     active=True,
                     silent_recording=bool(background_offer_state.get("silent_recording")),
+                    assistant_listening=bool(background_offer_state.get("assistant_listening")),
                     muted=bool(background_offer_state.get("muted", True)),
                     platform=str(background_offer_state.get("platform") or "unknown"),
                     timestamp_ms=int(_runtime.time.time() * 1000),
@@ -6696,7 +6907,7 @@ class WebRTCManager:
                     audio_transceiver.direction = str(background_offer_state.get("server_audio_direction") or "inactive")
                     if (
                         audio_transceiver.direction in {"sendonly", "sendrecv"}
-                        and not background_offer_state.get("silent_recording")
+                        and not background_offer_state.get("mic_streaming")
                     ):
                         self._attach_background_audio_heartbeat_track(str(session_id), audio_transceiver)
                     _runtime.LOGGER.info(
@@ -7096,6 +7307,7 @@ class WebRTCManager:
 
         closed_silent_recorders: List[Any] = []
         for cleanup_id in cleanup_ids:
+            self.assistant_mode.end_session(str(cleanup_id))
             background_state = expected_background_audio_state.get(cleanup_id, missing)
             if background_state is not missing:
                 pop_if_current(self.background_audio_state_by_session, cleanup_id, background_state)
@@ -8608,6 +8820,7 @@ class WebRTCManager:
         text: str,
         transcript_already_mirrored: bool = False,
         identity: Any = None,
+        metadata_extra: Optional[Dict[str, Any]] = None,
     ):
         """Process voice command text via chat API, speak, and mirror to chat UI."""
         voice_reply_message_id = str(_runtime.uuid.uuid4())
@@ -8725,13 +8938,18 @@ class WebRTCManager:
                 reply_target = self._build_webrtc_reply_target(dc_session_id, identity)
                 if reply_target:
                     request_metadata["reply_target"] = reply_target
+                request_context: List[Dict[str, Any]] = []
+                if (metadata_extra or {}).get("assistant_mode"):
+                    request_metadata, request_context = self._assistant_turn_request(
+                        text, metadata_extra or {}, request_metadata, [raw_session_id, dc_session_id]
+                    )
 
                 chat_req = ChatRequest(
                     message=text,
                     user_id=identity.canonical_user_id,
                     session_id=identity.canonical_session_id,
                     metadata=request_metadata,
-                    context=[],
+                    context=request_context,
                 )
                 url = f"http://127.0.0.1:{_runtime.STATE.main_server_port}"
                 return await process_chat_message(chat_req, ai_agent_url=url, on_chunk=_on_chunk)
@@ -10861,28 +11079,48 @@ class WebRTCManager:
             silent_recording = self._coerce_control_bool(
                 payload.get("silent_recording", payload.get("recording"))
             )
-            muted = self._coerce_control_bool(payload.get("muted")) if "muted" in payload else not silent_recording
+            assistant_listening = self._coerce_control_bool(payload.get("assistant_listening"))
+            muted = (
+                self._coerce_control_bool(payload.get("muted"))
+                if "muted" in payload
+                else not (silent_recording or assistant_listening)
+            )
             client_direction = str(payload.get("client_audio_direction") or "").strip().lower()
+            self._remember_assistant_loop()
+            live_cfg = _runtime.STATE.config or {}
+            if assistant_listening and not (active and self._assistant_listening_allowed(cfg=live_cfg)):
+                assistant_listening = False
+            if (
+                active
+                and silent_recording
+                and assistant_listening
+                and not _runtime._get_silent_recording_enabled(cfg=live_cfg)
+            ):
+                silent_recording = False
             if active and self._voice_call_client_active_for_session(normalized_session_id):
                 active = False
                 silent_recording = False
+                assistant_listening = False
                 muted = True
                 server_audio_direction = "inactive"
                 client_direction = "inactive"
             elif active and not self._background_audio_mode_allowed(
                 silent_recording=silent_recording,
-                cfg=(_runtime.STATE.config or {}),
+                assistant_listening=assistant_listening,
+                cfg=live_cfg,
             ):
                 active = False
                 silent_recording = False
+                assistant_listening = False
                 muted = True
                 server_audio_direction = "inactive"
                 client_direction = "inactive"
             elif not active:
                 silent_recording = False
+                assistant_listening = False
                 muted = True
                 server_audio_direction = "inactive"
-            elif silent_recording:
+            elif silent_recording or assistant_listening:
                 muted = False
                 server_audio_direction = "sendrecv"
                 client_direction = "sendonly"
@@ -10900,6 +11138,7 @@ class WebRTCManager:
                 normalized_session_id,
                 active=active,
                 silent_recording=silent_recording,
+                assistant_listening=assistant_listening,
                 muted=muted,
                 platform=platform,
                 timestamp_ms=timestamp_ms,
@@ -10907,20 +11146,35 @@ class WebRTCManager:
             if active:
                 self._suppress_outbound_audio_for_background(
                     normalized_session_id,
-                    silent_recording=silent_recording,
+                    silent_recording=bool(silent_recording or assistant_listening),
                     server_audio_direction=server_audio_direction,
                 )
             elif not self._voice_call_client_active_for_session(normalized_session_id):
                 self._clear_outbound_audio_track_for_idle(normalized_session_id)
             _runtime.LOGGER.info(
-                "Received background_audio_state for %s: active=%s silent_recording=%s muted=%s platform=%s aliases=%s",
+                "Received background_audio_state for %s: active=%s silent_recording=%s assistant_listening=%s muted=%s platform=%s aliases=%s",
                 session_id,
                 active,
                 silent_recording,
+                assistant_listening,
                 muted,
                 platform,
                 sorted(alias_ids),
             )
+            if assistant_listening or (silent_recording and self.assistant_mode.enabled):
+                await self._send_assistant_event(
+                    normalized_session_id,
+                    {
+                        "event": "assistant_state",
+                        "state": "idle",
+                        "reason": "listening_for_wake_word"
+                        if self._assistant_hears(self._background_audio_state_for_session(normalized_session_id))
+                        else "not_listening",
+                    },
+                )
+            return
+        if event_name in ASSISTANT_DEVICE_EVENTS:
+            await self._handle_assistant_control(str(session_id or "").strip(), event_name, payload)
             return
         if event_name == "video_state":
             platform = str(payload.get("platform") or "unknown").strip() or "unknown"

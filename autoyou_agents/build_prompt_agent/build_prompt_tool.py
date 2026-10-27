@@ -33,7 +33,7 @@ from shared.platform_runtime import get_service_data_dir
 __debug_provenance_p__ = "AUTOYOU-PROVENANCE-P-submit-03be4a325621387380abe0ec"
 
 
-SUPPORTED_APPLICATION_AGENTS = ("codex_desktop_agent", "claude_desktop_agent")
+SUPPORTED_APPLICATION_AGENTS = ("codex_desktop_agent", "claude_desktop_agent", "antigravity_agent")
 DEFAULT_APPLICATION_AGENT = "codex_desktop_agent"
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 _IMAGE_EXTENSIONS = {".bmp", ".gif", ".heic", ".jpeg", ".jpg", ".png", ".webp"}
@@ -41,10 +41,12 @@ _IMAGE_EXTENSIONS = {".bmp", ".gif", ".heic", ".jpeg", ".jpg", ".png", ".webp"}
 _TARGET_MODULES = {
     "codex_desktop_agent": "autoyou_agents.codex_desktop_agent.agent",
     "claude_desktop_agent": "autoyou_agents.claude_desktop_agent.agent",
+    "antigravity_agent": "autoyou_agents.antigravity_agent.agent",
 }
 _TARGET_LABELS = {
     "codex_desktop_agent": "Codex Desktop",
     "claude_desktop_agent": "Claude Desktop",
+    "antigravity_agent": "Antigravity",
 }
 
 
@@ -78,11 +80,15 @@ def normalize_application_agent(value: Optional[str]) -> str:
         "codex_desktop": "codex_desktop_agent",
         "claude": "claude_desktop_agent",
         "claude_desktop": "claude_desktop_agent",
+        "antigravity": "antigravity_agent",
+        "antigravity_desktop": "antigravity_agent",
+        "antigravity_desktop_agent": "antigravity_agent",
+        "agy": "antigravity_agent",
     }
     normalized = aliases.get(raw, raw)
     if normalized not in SUPPORTED_APPLICATION_AGENTS:
         raise ValueError(
-            "application_agent must be codex_desktop_agent or claude_desktop_agent."
+            "application_agent must be codex_desktop_agent, claude_desktop_agent, or antigravity_agent."
         )
     return normalized
 
@@ -426,6 +432,8 @@ def status_prompt(
         _touch(state)
         response = _payload(target, state)
     response["processing"] = bool(result.get("processing"))
+    response["pending_question"] = bool(result.get("pending_question"))
+    response["question_text"] = str(result.get("question_text") or "")
     response["desktop_action"] = result
     return response
 
@@ -521,6 +529,24 @@ def result_prompt(application_agent: Optional[str] = None, *, launch_if_needed: 
         expected_prompt = state.submitted_prompt
 
     live_status = status_prompt(target, launch_if_needed=launch_if_needed)
+    if live_status.get("success") and (
+        live_status.get("pending_question") or live_status.get("status") == "awaiting_question_response"
+    ):
+        q_text = str(live_status.get("question_text") or "").strip()
+        return {
+            "success": False,
+            "application_agent": target,
+            "status": "awaiting_question_response",
+            "processing": True,
+            "pending_question": True,
+            "question_text": q_text,
+            "message": (
+                "The desktop app is paused on an inline Question card"
+                + (f": {q_text}" if q_text else ".")
+                + " Use answer_question(response=...) or answer_question(skip=True)."
+            ),
+            "desktop_status": live_status.get("desktop_action"),
+        }
     if live_status.get("success") and live_status.get("processing"):
         return {
             "success": False,
@@ -640,19 +666,19 @@ def configure_prompt(
     prefix = target.removesuffix("_agent")
     if any(str(value or "").strip() for value in (model, effort, speed, advanced)):
         kwargs: Dict[str, Any] = {"model": model, "effort": effort, "launch_if_needed": launch_if_needed}
-        if target == "codex_desktop_agent":
+        if target == "codex_desktop_agent" or str(speed or "").strip() or str(advanced or "").strip():
             kwargs.update(speed=speed, advanced=advanced)
-        result = _call_target(target, f"select_{prefix}_desktop_model", **kwargs)
+        result = _call_target(target, f"select_{prefix}_model", **kwargs)
         if not _is_success(result):
             return {"success": False, "application_agent": target, **result}
         actions.append(result)
     if str(permissions or "").strip():
-        result = _call_target(target, f"select_{prefix}_desktop_permissions", permissions=permissions, launch_if_needed=launch_if_needed)
+        result = _call_target(target, f"select_{prefix}_permissions", permissions=permissions, launch_if_needed=launch_if_needed)
         if not _is_success(result):
             return {"success": False, "application_agent": target, **result}
         actions.append(result)
     if str(project_name or "").strip():
-        result = _call_target(target, f"select_{prefix}_desktop_project", project_name=project_name, launch_if_needed=launch_if_needed)
+        result = _call_target(target, f"select_{prefix}_project", project_name=project_name, launch_if_needed=launch_if_needed)
         if not _is_success(result):
             return {"success": False, "application_agent": target, **result}
         actions.append(result)
@@ -663,6 +689,62 @@ def configure_prompt(
     return response
 
 
+def _static_agent_configuration_options(application_agent: str) -> Dict[str, Any]:
+    try:
+        from autoyou_agents.shared_tools.desktop_app_control import (
+            _extract_pack_configuration_options,
+            current_platform_details,
+            select_desktop_asset_pack,
+        )
+        from autoyou_agents.shared_tools.desktop_app_manifest import load_desktop_app_manifest
+
+        module = _target_module(application_agent)
+        agent_dir = Path(getattr(module, "__file__", "")).resolve().parent
+        manifest = load_desktop_app_manifest(agent_dir)
+        if not manifest:
+            return {}
+        details = current_platform_details()
+        pack = select_desktop_asset_pack(
+            manifest,
+            platform_tag=details["platform"],
+            architecture=details["architecture"],
+            app_version="9999.0.0",
+        )
+        return _extract_pack_configuration_options(pack)
+    except Exception:
+        return {}
+
+
+def inspect_desktop_config(
+    application_agent: Optional[str] = None,
+    *,
+    probe_live_ocr: bool = False,
+) -> Dict[str, Any]:
+    """Inspect the running desktop application instance and return its available and active configuration options."""
+    target, _state = _state_for(application_agent)
+    try:
+        from autoyou_agents.shared_tools.desktop_app_control import inspect_live_desktop_app_config
+
+        module = _target_module(target)
+        agent_dir = Path(getattr(module, "__file__", "")).resolve().parent
+        inspected = inspect_live_desktop_app_config(agent_dir, probe_control_bar_ocr=bool(probe_live_ocr))
+        return {
+            "success": inspected.get("status") == "success",
+            "application_agent": target,
+            "application_label": _TARGET_LABELS[target],
+            **inspected,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "application_agent": target,
+            "application_label": _TARGET_LABELS[target],
+            "status": "error",
+            "message": str(exc),
+            "configuration_options": _static_agent_configuration_options(target),
+        }
+
+
 def available_application_agents() -> List[Dict[str, Any]]:
     return [
         {
@@ -671,6 +753,7 @@ def available_application_agents() -> List[Dict[str, Any]]:
             "package_available": bool(_TARGET_MODULES[name]),
             "supported_platforms": ["windows", "macos", "linux"],
             "requires_interactive_desktop": True,
+            "configuration_options": _static_agent_configuration_options(name),
         }
         for name in SUPPORTED_APPLICATION_AGENTS
     ]
@@ -680,6 +763,74 @@ def reset_prompt_builder_state() -> None:
     """Clear in-memory state; intended for isolated tests and process restarts."""
     with _LOCK:
         _STATES.clear()
+
+
+def get_question(
+    application_agent: Optional[str] = None,
+    *,
+    launch_if_needed: bool = False,
+) -> Dict[str, Any]:
+    """Inspect the selected desktop app for an active mid-turn inline Question card."""
+    target, state = _state_for(application_agent)
+    prefix = target.removesuffix("_agent")
+    try:
+        result = _call_target(
+            target,
+            f"get_{prefix}_question",
+            launch_if_needed=launch_if_needed,
+        )
+    except Exception as exc:
+        result = {"status": "error", "message": str(exc)}
+    if not _is_success(result):
+        return {"success": False, "application_agent": target, **result}
+    with _LOCK:
+        if result.get("pending_question"):
+            state.status = "awaiting_question_response"
+            _touch(state)
+        response = _payload(target, state)
+    response["pending_question"] = bool(result.get("pending_question"))
+    response["question_text"] = str(result.get("question_text") or "")
+    response["desktop_action"] = result
+    return response
+
+
+def answer_question(
+    application_agent: Optional[str] = None,
+    *,
+    response: Optional[str] = None,
+    skip: bool = False,
+    launch_if_needed: bool = True,
+    capture_after: bool = True,
+) -> Dict[str, Any]:
+    """Reply to or skip an inline Question card in the selected desktop app."""
+    target, state = _state_for(application_agent)
+    prefix = target.removesuffix("_agent")
+    try:
+        result = _call_target(
+            target,
+            f"answer_{prefix}_question",
+            response=response,
+            skip=skip,
+            launch_if_needed=launch_if_needed,
+            capture_after=capture_after,
+        )
+    except Exception as exc:
+        result = {"status": "error", "message": str(exc)}
+    if not _is_success(result):
+        with _LOCK:
+            state.last_error = str(result.get("message") or "Could not answer inline desktop question.")
+            _touch(state)
+        return {"success": False, "application_agent": target, **result}
+    with _LOCK:
+        state.status = "processing"
+        state.last_error = ""
+        _touch(state)
+        payload = _payload(target, state)
+    payload["answered_question"] = not bool(skip)
+    payload["skipped_question"] = bool(skip)
+    payload["question_response"] = str(response or "").strip() if not skip else None
+    payload["desktop_action"] = result
+    return payload
 
 
 TOOL_FUNCTIONS = {
@@ -693,6 +844,9 @@ TOOL_FUNCTIONS = {
     "execute_prompt": execute_prompt,
     "stop_prompt": stop_prompt,
     "configure_prompt": configure_prompt,
+    "inspect_desktop_config": inspect_desktop_config,
+    "get_question": get_question,
+    "answer_question": answer_question,
 }
 
 

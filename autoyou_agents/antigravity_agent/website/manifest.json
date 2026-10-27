@@ -1,0 +1,8 @@
+{
+  "agent_name": "antigravity_agent",
+  "title": "Antigravity Control",
+  "description": "Local control panel for Antigravity Desktop and agy CLI across Windows, macOS, Linux, WSL, and Docker.",
+  "entry_path": "/",
+  "recommended_port": 8115,
+  "requires_proxy_registration": true
+}

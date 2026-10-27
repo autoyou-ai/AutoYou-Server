@@ -108,14 +108,75 @@
       <button class="primary" id="execute">Execute prompt</button>
       <button id="result">Result prompt</button>
       <button class="warn" id="stop">Stop prompt</button>
+      <button class="secondary" id="check-question-btn" type="button">Check inline question</button>
     </div>
-    <div class="grid" style="margin-top:12px">
-      <div><label for="model">Native model</label><input id="model" placeholder="Optional model name"></div>
-      <div><label for="effort">Thinking / effort</label><input id="effort" placeholder="Optional effort"></div>
-      <div><label for="permissions">Permissions</label><input id="permissions" placeholder="Optional permissions mode"></div>
-      <div><label for="project">Project</label><input id="project" placeholder="Optional project name"></div>
+    <div id="inline-question-panel" style="margin-top:14px;padding:12px;border:1px solid #3e4a63;border-radius:10px;background:#121722">
+      <div class="prompt-header" style="margin-bottom:6px">
+        <div class="prompt-header-left">
+          <span class="prompt-title" style="font-size:.95rem">Codex Inline Question Response</span>
+          <span class="badge status empty" id="question-status-badge">no active question</span>
+        </div>
+      </div>
+      <p class="hint" id="question-text-display" style="margin:4px 0 8px 0">When Codex pauses mid-turn with an inline "? Question" card above the composer, its prompt appears here and you can reply or skip directly.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="question-reply-input" type="text" placeholder="Reply to inline Codex question..." style="flex:1;min-width:220px">
+        <button id="answer-question-btn" type="button" class="primary">Send reply</button>
+        <button id="skip-question-btn" type="button" class="secondary">Skip question</button>
+      </div>
     </div>
-    <div class="buttons"><button id="configure">Configure prompt</button></div>
+    <div class="prompt-header" style="margin-top:18px;margin-bottom:8px">
+      <div class="prompt-header-left">
+        <span class="prompt-title">Desktop Instance &amp; Session Configuration</span>
+        <span class="badge" id="desktop-version-badge">pack: loading…</span>
+        <span class="badge status empty" id="desktop-running-badge">unchecked</span>
+      </div>
+      <div class="prompt-actions">
+        <button id="inspect-desktop-btn" type="button" class="secondary" title="Probe running desktop window and OCR active pills">Inspect running instance</button>
+        <button id="refresh-config-btn" type="button" class="secondary" title="Reload pack options">Refresh options</button>
+      </div>
+    </div>
+    <p class="hint" id="desktop-instance-summary">Select an application agent above or click "Inspect running instance" to detect the live desktop build, active pack, and session pills.</p>
+    <div class="grid" style="margin-top:10px">
+      <div>
+        <label for="model-select">Native model</label>
+        <select id="model-select"><option value="">— Keep current model —</option></select>
+        <input id="model" list="model-options" placeholder="Or type model name / alias" style="margin-top:6px">
+        <datalist id="model-options"></datalist>
+      </div>
+      <div>
+        <label for="effort-select">Thinking / effort (nested fly-out / slider)</label>
+        <select id="effort-select"><option value="">— Keep current effort —</option></select>
+        <input id="effort" list="effort-options" placeholder="Or type effort (low, medium, high, extra, max)" style="margin-top:6px">
+        <datalist id="effort-options"></datalist>
+      </div>
+      <div>
+        <label for="permissions-select">Permissions / approval mode</label>
+        <select id="permissions-select"><option value="">— Keep current permissions —</option></select>
+        <input id="permissions" list="permissions-options" placeholder="Or type permissions mode" style="margin-top:6px">
+        <datalist id="permissions-options"></datalist>
+      </div>
+      <div>
+        <label for="speed-select">Speed / Fast mode</label>
+        <select id="speed-select"><option value="">— Keep current speed —</option></select>
+        <input id="speed" list="speed-options" placeholder="Optional speed (fast, standard)" style="margin-top:6px">
+        <datalist id="speed-options"></datalist>
+      </div>
+      <div>
+        <label for="advanced-select">Advanced / Ultracode</label>
+        <select id="advanced-select"><option value="">— Keep current advanced mode —</option></select>
+        <input id="advanced" list="advanced-options" placeholder="Optional advanced toggle (ultracode, off)" style="margin-top:6px">
+        <datalist id="advanced-options"></datalist>
+      </div>
+      <div>
+        <label for="project">Project / Worktree</label>
+        <input id="project" placeholder="Optional project or worktree name (e.g. AutoYou)">
+        <p class="hint" id="worktree-hint" style="margin-top:6px">Supports sidebar search and bottom-bar Project / Worktree pills.</p>
+      </div>
+    </div>
+    <div class="buttons">
+      <button id="configure" class="primary">Apply desktop configuration</button>
+      <button id="clear-config-btn" type="button" class="secondary">Reset fields</button>
+    </div>
   </section>
 
   <section>
@@ -189,6 +250,16 @@
       $('prompt-status').textContent = statusStr;
       $('state').textContent = `${appLabel} · ${statusStr}`;
       if (payload.result_text) $('result-text').textContent = payload.result_text;
+      const pendingQ = !!(payload.pending_question || p.pending_question || statusStr === 'awaiting_question_response');
+      const qText = payload.question_text || p.question_text || '';
+      const qBadge = $('question-status-badge');
+      if (qBadge) {
+        qBadge.textContent = pendingQ ? 'awaiting reply' : 'no active question';
+        qBadge.className = `badge status ${pendingQ ? 'processing' : 'empty'}`;
+      }
+      if ($('question-text-display') && qText) {
+        $('question-text-display').textContent = `Question: ${qText}`;
+      }
     }
 
     async function api(path, method = 'GET', body) {
@@ -218,14 +289,108 @@
       const value = await api('./api/status'); const config = value.telegram_user || {};
       $('telegram-enabled').checked = !!config.enabled;
       $('agent').innerHTML = '';
+      state.agentsById = {};
       (value.application_agents || []).forEach(item => {
+        state.agentsById[item.application_agent] = item;
         const option = document.createElement('option');
         option.value = item.application_agent;
         option.textContent = item.label;
         $('agent').appendChild(option);
       });
       $('agent').value = config.application_agent || 'codex_desktop_agent';
+      populateConfigSelectorsForAgent(agent());
       render(value);
+      refreshDesktopConfig(false).catch(() => {});
+    }
+
+    function populateSelectAndDatalist(selectId, datalistId, inputId, items, emptyLabel) {
+      const sel = $(selectId);
+      const dl = $(datalistId);
+      const inp = $(inputId);
+      if (!sel || !dl || !inp) return;
+      const prevVal = inp.value;
+      sel.innerHTML = '';
+      dl.innerHTML = '';
+      const emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = emptyLabel;
+      sel.appendChild(emptyOpt);
+      (items || []).forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.label ? item.label.split('(')[0].trim() : item.id;
+        opt.dataset.optionId = item.id;
+        let text = item.label || item.id;
+        if (item.description) text += ` — ${item.description}`;
+        if (item.nested) text += ' [nested]';
+        opt.textContent = text;
+        sel.appendChild(opt);
+
+        const dlOpt = document.createElement('option');
+        dlOpt.value = opt.value;
+        dlOpt.label = text;
+        dl.appendChild(dlOpt);
+      });
+      sel.onchange = () => { inp.value = sel.value; };
+      inp.oninput = () => {
+        const match = Array.from(sel.options).find(o => o.value.toLowerCase() === inp.value.trim().toLowerCase() || (o.dataset.optionId || '').toLowerCase() === inp.value.trim().toLowerCase());
+        sel.value = match ? match.value : '';
+      };
+      if (prevVal) {
+        inp.value = prevVal;
+        inp.oninput();
+      }
+    }
+
+    function applyConfigOptionsToUI(configOptions, meta = {}) {
+      const opts = configOptions || {};
+      populateSelectAndDatalist('model-select', 'model-options', 'model', opts.models || [], '— Keep current model —');
+      populateSelectAndDatalist('effort-select', 'effort-options', 'effort', opts.efforts || [], '— Keep current effort —');
+      populateSelectAndDatalist('permissions-select', 'permissions-options', 'permissions', opts.permissions || [], '— Keep current permissions —');
+      populateSelectAndDatalist('speed-select', 'speed-options', 'speed', opts.speeds || [], opts.supports_speed ? '— Keep current speed —' : '— Not used by this pack —');
+      populateSelectAndDatalist('advanced-select', 'advanced-options', 'advanced', opts.advanced || [], opts.supports_advanced ? '— Keep current advanced mode —' : '— Not used by this pack —');
+
+      const packId = meta.asset_pack_id || opts.asset_pack_id || 'default';
+      const ver = meta.installed_app_version || opts.app_version_captured || 'auto';
+      $('desktop-version-badge').textContent = `v${ver} · ${packId}`;
+      const runBadge = $('desktop-running-badge');
+      if (meta.ready === true) {
+        runBadge.textContent = 'running';
+        runBadge.className = 'badge status';
+      } else if (meta.ready === false) {
+        runBadge.textContent = 'not running';
+        runBadge.className = 'badge status empty';
+      }
+      const winTitle = meta.active_window && meta.active_window.title ? `Window "${meta.active_window.title}"` : 'Window not focused';
+      const worktreeNote = opts.supports_worktree ? 'Supports Project & Worktree pills + nested Effort/Ultracode.' : 'Supports native model, effort, and permissions menus.';
+      $('desktop-instance-summary').textContent = `${winTitle} · Pack ${packId} (valid until ${opts.valid_until || 'n/a'}). ${worktreeNote}`;
+
+      if (meta.live_detected) {
+        const det = meta.live_detected;
+        if (det.model_label && !$('model').value) { $('model').value = det.model_label.split('(')[0].trim(); $('model').oninput(); }
+        if (det.effort_label && !$('effort').value) { $('effort').value = det.effort_label.split('(')[0].trim(); $('effort').oninput(); }
+        if (det.permissions_label && !$('permissions').value) { $('permissions').value = det.permissions_label.split('(')[0].trim(); $('permissions').oninput(); }
+        if (det.speed && !$('speed').value) { $('speed').value = det.speed; $('speed').oninput(); }
+        if (det.advanced && !$('advanced').value) { $('advanced').value = det.advanced; $('advanced').oninput(); }
+      }
+    }
+
+    function populateConfigSelectorsForAgent(agentName) {
+      const info = (state.agentsById || {})[agentName] || {};
+      applyConfigOptionsToUI(info.configuration_options || {}, {});
+    }
+
+    async function refreshDesktopConfig(probeLiveOcr = false) {
+      if (!authenticated()) return;
+      const targetAgent = agent();
+      const value = await api(`./api/desktop-config?application_agent=${encodeURIComponent(targetAgent)}&probe_live_ocr=${probeLiveOcr ? 'true' : 'false'}`);
+      applyConfigOptionsToUI(value.configuration_options || {}, value);
+      if (probeLiveOcr) {
+        const det = value.live_detected;
+        const summary = det && (det.model_label || det.effort_label || det.permissions_label)
+          ? `Detected from live window: model=${det.model_label || 'n/a'}, effort=${det.effort_label || 'n/a'}, permissions=${det.permissions_label || 'n/a'}`
+          : `Inspected ${value.application_label || targetAgent} (v${value.installed_app_version || 'auto'}, pack ${value.asset_pack_id || 'n/a'}).`;
+        setMessage(summary);
+      }
     }
     async function call(name, body = {}) {
       if (!(await ensureUnlocked())) return;
@@ -295,12 +460,30 @@
     $('execute').onclick = () => call('execute_prompt');
     $('result').onclick = () => call('result_prompt');
     $('stop').onclick = () => call('stop_prompt');
+    $('check-question-btn').onclick = () => call('get_question');
+    $('answer-question-btn').onclick = async () => {
+      const reply = $('question-reply-input').value.trim();
+      if (!reply) { setMessage('Enter a reply for the inline question or click Skip question.'); return; }
+      await call('answer_question', {response: reply, skip: false});
+      $('question-reply-input').value = '';
+    };
+    $('skip-question-btn').onclick = () => call('answer_question', {skip: true});
     $('configure').onclick = () => call('configure_prompt', {
       model: $('model').value,
       effort: $('effort').value,
+      speed: $('speed').value,
+      advanced: $('advanced').value,
       permissions: $('permissions').value,
       project_name: $('project').value
     });
+    $('inspect-desktop-btn').onclick = () => refreshDesktopConfig(true).catch(error => setMessage(error.message));
+    $('refresh-config-btn').onclick = () => refreshDesktopConfig(false).catch(error => setMessage(error.message));
+    $('clear-config-btn').onclick = () => {
+      ['model','effort','permissions','speed','advanced','project'].forEach(id => {
+        if ($(id)) { $(id).value = ''; if ($(id).oninput) $(id).oninput(); }
+      });
+      setMessage('Cleared configuration fields.');
+    };
 
     $('telegram-enabled').onchange = async () => {
       if (!(await ensureUnlocked())) return;
@@ -312,7 +495,11 @@
         setMessage(error.message);
       }
     };
-    $('agent').onchange = () => $('telegram-enabled').dispatchEvent(new Event('change'));
+    $('agent').onchange = () => {
+      populateConfigSelectorsForAgent(agent());
+      refreshDesktopConfig(false).catch(() => {});
+      $('telegram-enabled').dispatchEvent(new Event('change'));
+    };
     refresh().catch(error => setMessage(error.message));
   </script>
 </body>

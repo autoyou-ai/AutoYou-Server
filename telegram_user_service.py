@@ -213,7 +213,9 @@ class TelegramUserService:
             target = "codex_desktop_agent"
         elif target in {"claude", "claude_desktop"}:
             target = "claude_desktop_agent"
-        if target not in {"codex_desktop_agent", "claude_desktop_agent"}:
+        elif target in {"antigravity", "antigravity_desktop", "antigravity_desktop_agent", "agy"}:
+            target = "antigravity_agent"
+        if target not in {"codex_desktop_agent", "claude_desktop_agent", "antigravity_agent"}:
             target = "codex_desktop_agent"
         if self._prompt_builder_target_override:
             target = self._prompt_builder_target_override
@@ -721,6 +723,9 @@ class TelegramUserService:
                 self._prompt_builder_target_override = target
             elif requested in {"claude", "claude desktop", "claude desktop agent"}:
                 target = "claude_desktop_agent"
+                self._prompt_builder_target_override = target
+            elif requested in {"antigravity", "antigravity agent", "antigravity desktop", "antigravity desktop agent", "agy"}:
+                target = "antigravity_agent"
                 self._prompt_builder_target_override = target
             tool_name = "configure_prompt"
 

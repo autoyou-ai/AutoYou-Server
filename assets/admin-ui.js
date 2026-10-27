@@ -1686,8 +1686,8 @@
             providerFields.push(field("Odysseus chat token", input("aiProvider.odysseus_token", { placeholder: "Leave blank to keep saved token", type: "password" }), "Use an Odysseus chat-scoped token. It stays in protected AutoYou configuration."));
         } else if (provider === "pi") {
             providerFields.push(field("Pi port", input("aiProvider.pi_port", { type: "number" }), "Port for the Pi gateway service (default: 8650). Official Pi agent: https://pi.dev"));
-            providerFields.push(field("Pi workspace directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent directory (CLI fallback). Auto-detected if left empty."));
-            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "qwen3.8:27b" }), "Model identifier (e.g. qwen3.8:27b, ministral-3:8b, gemma4:26b) routed through local Ollama or cloud provider."));
+            providerFields.push(field("Pi installation directory", input("aiProvider.pi_path", { placeholder: "~/Projects/Pi (auto-detected if blank)" }), "Path to the local Pi coding agent installation (CLI fallback). Auto-detected if left empty."));
+            providerFields.push(field("Pi model", input("aiProvider.pi_model", { placeholder: "Use Pi profile default" }), "Use default or pi-agent to keep Pi's profile model. A concrete model name or provider/model overrides it."));
             providerFields.push(field("Pi gateway token", input("aiProvider.pi_token", { placeholder: "Leave blank if unauthenticated", type: "password" }), "Bearer token for Pi gateway when enabled."));
         } else if (provider === "custom") {
             providerFields.push(field("Custom API Base URL", input("aiProvider.custom_api_base", { placeholder: "http://127.0.0.1:8000" }), "External application or model endpoint. AutoYou routes audio, video, chat, and control commands here."));
@@ -1699,6 +1699,11 @@
             ], getByPath(state.forms, "aiProvider.custom_format", "openai")), "Format of payloads dispatched to the Custom API endpoint."));
         }
 
+        var codingMarkup = "<div class=\"ayu-soft-divider\"></div><h3>Coding Agent and Pi</h3><div class=\"ayu-grid-2\">" +
+            field("Coding backend", select("aiProvider.coding_backend", [{ value: "auto", label: "Auto - prefer installed Pi" }, { value: "pi", label: "Pi required" }, { value: "builtin", label: "Built-in AutoYou" }]), "Auto selects Pi when its local CLI and Node.js are available. Failed Pi turns are never replayed automatically.") +
+            field("Pi turn timeout (seconds)", input("aiProvider.pi_timeout_seconds", { type: "number", min: 10, max: 3600 })) +
+            (provider === "pi" ? "" : field("Pi installation directory", input("aiProvider.pi_path", { placeholder: "Auto-detect installed Pi" })) + field("Pi model", input("aiProvider.pi_model", { placeholder: "Inherit current Ollama model" }), "Leave blank, default or pi-agent to share AutoYou's current Ollama model. A concrete model name or provider/model overrides it.")) +
+            "</div><div class=\"ayu-note\">Coding Agent and the optional Pi sub-agent share these settings and AutoYou workspace tools. Install Coding Agent from Agents to use automatic routing. Pi keeps the conversation in AutoYou and runs without a separate Pi session file.</div>";
         var bridgeInstalled = getByPath(state.bootstrap, "agents.agent_overview", []).some(function (agent) { return agent.agent_name === "openclaw_agent" && agent.installed; });
         var bridgeMarkup = provider === "openclaw" || bridgeInstalled
             ? "<div class=\"ayu-soft-divider\"></div><div><h3 style=\"margin:0 0 10px;font-size:15px;\">Optional OpenClaw sub-agent bridge</h3><div class=\"ayu-grid-2\">" + field("Bridge port", input("aiProvider.openclaw_agent_port", { type: "number" }), "The local OpenClaw instance used by the installed bridge, independently of your main AI provider.") + field("Bridge model", input("aiProvider.openclaw_agent_model", { placeholder: "openclaw/default" }), "Use openclaw:main for the main agent and its workspace, or openclaw/default for the gateway's default agent.") + field("Bridge token", input("aiProvider.openclaw_agent_token", { placeholder: "Leave blank to keep saved token", type: "password" })) + "</div></div>"
@@ -1772,7 +1777,7 @@
                 ]))
             : "";
 
-        return renderChoiceCards(availableProviders, provider, "select-ai-provider") + compatibilityNote + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(providerOption.label) + ". " + escapeHtml(providerOption.description) + "</div><div class=\"ayu-grid-2\">" + providerFields.join("") + "</div>" + gatewayStatusMarkup + bridgeMarkup + "<div class=\"ayu-inline-actions\">" + button("Save provider settings", "save-ai-provider", "primary", "save") + button("Refresh runtime data", "ai-refresh", "secondary", "refresh") + "</div>";
+        return renderChoiceCards(availableProviders, provider, "select-ai-provider") + compatibilityNote + "<div class=\"ayu-note\"><strong>Selected path:</strong> " + escapeHtml(providerOption.label) + ". " + escapeHtml(providerOption.description) + "</div><div class=\"ayu-grid-2\">" + providerFields.join("") + "</div>" + gatewayStatusMarkup + codingMarkup + bridgeMarkup + "<div class=\"ayu-inline-actions\">" + button("Save provider settings", "save-ai-provider", "primary", "save") + button("Refresh runtime data", "ai-refresh", "secondary", "refresh") + "</div>";
     }
 
     function renderModelBehaviorBody() {
@@ -3299,7 +3304,9 @@
                 pi_port: getByPath(cfg, "ai_provider.pi_port", 8650),
                 pi_token: "",
                 pi_model: getByPath(cfg, "ai_provider.pi_model", "pi-agent"),
-                pi_path: getByPath(cfg, "ai_provider.pi_path", "C:\\Users\\You\\Projects\\Pi"),
+                pi_path: getByPath(cfg, "ai_provider.pi_path", ""),
+                coding_backend: getByPath(cfg, "ai_provider.coding_backend", "auto"),
+                pi_timeout_seconds: getByPath(cfg, "ai_provider.pi_timeout_seconds", 180),
                 custom_api_base: getByPath(cfg, "ai_provider.custom_api_base", "http://127.0.0.1:8000"),
                 custom_model: getByPath(cfg, "ai_provider.custom_model", "custom"),
                 custom_token: "",
@@ -4510,6 +4517,7 @@
                 if (fresh) state.chat.selected = Object.assign({}, state.chat.selected, fresh);
             }
             state.chat.loaded = true;
+            assistantLoadStatus(false).catch(function () {});
         } catch (error) {
             setNotice("error", error.message || "Chat history is unavailable.");
         } finally {
@@ -4940,6 +4948,707 @@
         return '<header class="ayu-chat-thread-head"><div class="ayu-chat-thread-title"><span class="ayu-chat-eyebrow">' + escapeHtml(eyebrow) + '</span>' + heading + '</div><div class="ayu-chat-thread-actions">' + threadBadge + '</div></header>';
     }
 
+    // <autoyou-wake-word-engine v1>
+    // JavaScript port of shared/wake_word.py (model format 1). The parent repo's
+    // tests/fixtures/wake_word/v1.json pins it to the Python reference; keep the
+    // two in step. Feature recipe, DTW and window rules are documented there.
+    var AutoYouWakeWord = (function () {
+        var SR = 16000, FRAME = 400, HOP = 160, NFFT = 512, NMELS = 26, NMFCC = 12;
+        var PRE = 0.97, LOW_HZ = 60, HIGH_HZ = 7600, LOG_FLOOR = 1e-10, COS_EPS = 1e-9;
+        var SLACK = 6, EVAL_HOP = 5, SPEECH_DBFS = -48, MIN_SPEECH_RATIO = 0.3, REFRACTORY = 2.0;
+        var MIN_THRESHOLD = 0.06, MAX_THRESHOLD = 0.32, BINS = NFFT / 2 + 1;
+        var hamming = new Float64Array(FRAME);
+        var index;
+        for (index = 0; index < FRAME; index += 1) hamming[index] = 0.54 - 0.46 * Math.cos(2 * Math.PI * index / (FRAME - 1));
+        function hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700); }
+        function melToHz(mel) { return 700 * (Math.pow(10, mel / 2595) - 1); }
+        var melBank = (function () {
+            var low = hzToMel(LOW_HZ), high = hzToMel(HIGH_HZ), edges = [], bank = [];
+            for (var e = 0; e < NMELS + 2; e += 1) edges.push(melToHz(low + (high - low) * e / (NMELS + 1)));
+            for (var m = 0; m < NMELS; m += 1) {
+                var row = new Float64Array(BINS), left = edges[m], centre = edges[m + 1], right = edges[m + 2];
+                for (var b = 0; b < BINS; b += 1) {
+                    var hz = b * SR / NFFT;
+                    row[b] = Math.max(0, Math.min((hz - left) / (centre - left), (right - hz) / (right - centre)));
+                }
+                bank.push(row);
+            }
+            return bank;
+        })();
+        var dct = (function () {
+            var rows = [];
+            for (var k = 1; k <= NMFCC; k += 1) {
+                var row = new Float64Array(NMELS);
+                for (var n = 0; n < NMELS; n += 1) row[n] = Math.sqrt(2 / NMELS) * Math.cos(Math.PI * k * (2 * n + 1) / (2 * NMELS));
+                rows.push(row);
+            }
+            return rows;
+        })();
+        var bitReverse = new Uint16Array(NFFT), cosTable = new Float64Array(NFFT / 2), sinTable = new Float64Array(NFFT / 2);
+        for (index = 0; index < NFFT; index += 1) {
+            var reversed = 0;
+            for (var bit = 0; bit < 9; bit += 1) reversed |= ((index >> bit) & 1) << (8 - bit);
+            bitReverse[index] = reversed;
+        }
+        for (index = 0; index < NFFT / 2; index += 1) {
+            cosTable[index] = Math.cos(2 * Math.PI * index / NFFT);
+            sinTable[index] = Math.sin(2 * Math.PI * index / NFFT);
+        }
+        function powerSpectrum(frame, out) {
+            var re = new Float64Array(NFFT), im = new Float64Array(NFFT), i;
+            for (i = 0; i < FRAME; i += 1) re[bitReverse[i]] = frame[i];
+            for (var size = 2; size <= NFFT; size *= 2) {
+                var half = size / 2, step = NFFT / size;
+                for (var start = 0; start < NFFT; start += size) {
+                    for (var j = 0; j < half; j += 1) {
+                        var k = j * step, a = start + j, b = a + half;
+                        var tr = re[b] * cosTable[k] + im[b] * sinTable[k];
+                        var ti = im[b] * cosTable[k] - re[b] * sinTable[k];
+                        re[b] = re[a] - tr; im[b] = im[a] - ti;
+                        re[a] += tr; im[a] += ti;
+                    }
+                }
+            }
+            for (i = 0; i < BINS; i += 1) out[i] = (re[i] * re[i] + im[i] * im[i]) / NFFT;
+        }
+        function centre(frames) {
+            if (!frames.length) return frames;
+            var mean = new Float64Array(NMFCC), out = [], i, k;
+            for (i = 0; i < frames.length; i += 1) for (k = 0; k < NMFCC; k += 1) mean[k] += frames[i][k];
+            for (k = 0; k < NMFCC; k += 1) mean[k] /= frames.length;
+            for (i = 0; i < frames.length; i += 1) {
+                var row = new Float64Array(NMFCC);
+                for (k = 0; k < NMFCC; k += 1) row[k] = frames[i][k] - mean[k];
+                out.push(row);
+            }
+            return out;
+        }
+        function mfcc(samples, normalize) {
+            var length = samples.length;
+            if (length < FRAME) return [];
+            var count = 1 + Math.floor((length - FRAME) / HOP), frame = new Float64Array(FRAME), power = new Float64Array(BINS), out = [];
+            for (var t = 0; t < count; t += 1) {
+                var base = t * HOP;
+                for (var i = 0; i < FRAME; i += 1) {
+                    var at = base + i;
+                    frame[i] = (at === 0 ? samples[0] : samples[at] - PRE * samples[at - 1]) * hamming[i];
+                }
+                powerSpectrum(frame, power);
+                var logs = new Float64Array(NMELS), cepstrum = new Float64Array(NMFCC), m, sum;
+                for (m = 0; m < NMELS; m += 1) {
+                    sum = 0;
+                    for (var b = 0; b < BINS; b += 1) sum += power[b] * melBank[m][b];
+                    logs[m] = Math.log(Math.max(sum, LOG_FLOOR));
+                }
+                for (var k = 0; k < NMFCC; k += 1) {
+                    sum = 0;
+                    for (m = 0; m < NMELS; m += 1) sum += logs[m] * dct[k][m];
+                    cepstrum[k] = sum;
+                }
+                out.push(cepstrum);
+            }
+            return normalize === false ? out : centre(out);
+        }
+        function trailingWindow(raw, frames) {
+            return centre(raw.slice(Math.max(0, raw.length - Math.max(1, frames))));
+        }
+        function dtw(first, second, openStart, openEnd) {
+            var n = first.length, m = second.length;
+            openStart = Math.max(0, openStart || 0); openEnd = Math.max(0, openEnd || 0);
+            if (!n || !m || n > 2 * m + 1 || m > 2 * n + 1 + openStart + openEnd) return Infinity;
+            var cost = new Float64Array(n * m), i, j, k;
+            var normsA = new Float64Array(n), normsB = new Float64Array(m);
+            for (i = 0; i < n; i += 1) { var sa = 0; for (k = 0; k < NMFCC; k += 1) sa += first[i][k] * first[i][k]; normsA[i] = Math.sqrt(sa) + COS_EPS; }
+            for (j = 0; j < m; j += 1) { var sb = 0; for (k = 0; k < NMFCC; k += 1) sb += second[j][k] * second[j][k]; normsB[j] = Math.sqrt(sb) + COS_EPS; }
+            for (i = 0; i < n; i += 1) for (j = 0; j < m; j += 1) {
+                var dot = 0;
+                for (k = 0; k < NMFCC; k += 1) dot += first[i][k] * second[j][k];
+                cost[i * m + j] = 1 - dot / (normsA[i] * normsB[j]);
+            }
+            var total = new Float64Array(n * m).fill(Infinity), origin = new Int32Array(n * m);
+            for (j = 0; j <= Math.min(openStart, m - 1); j += 1) { total[j] = 2 * cost[j]; origin[j] = j; }
+            for (i = 1; i < n; i += 1) {
+                for (j = 0; j < m; j += 1) {
+                    var best = Infinity, from = 0, value;
+                    if (j >= 1) { best = total[(i - 1) * m + j - 1] + 2 * cost[i * m + j]; from = origin[(i - 1) * m + j - 1]; }
+                    if (j >= 2) {
+                        value = total[(i - 1) * m + j - 2] + 2 * cost[i * m + j - 1] + cost[i * m + j];
+                        if (value < best) { best = value; from = origin[(i - 1) * m + j - 2]; }
+                    }
+                    if (i >= 2 && j >= 1) {
+                        value = total[(i - 2) * m + j - 1] + 2 * cost[(i - 1) * m + j] + cost[i * m + j];
+                        if (value < best) { best = value; from = origin[(i - 2) * m + j - 1]; }
+                    }
+                    total[i * m + j] = best; origin[i * m + j] = from;
+                }
+            }
+            var result = Infinity;
+            for (var end = Math.max(0, m - 1 - openEnd); end < m; end += 1) {
+                var final = total[(n - 1) * m + end];
+                if (!isFinite(final)) continue;
+                var distance = final / (n + (end - origin[(n - 1) * m + end] + 1));
+                if (distance < result) result = distance;
+            }
+            return result;
+        }
+        function matchDistances(templates, raw) {
+            return templates.map(function (template) {
+                return dtw(template, trailingWindow(raw, template.length + 2 * SLACK), 2 * SLACK, 2 * SLACK);
+            });
+        }
+        function frameDbfs(samples) {
+            var out = [];
+            if (samples.length < FRAME) return out;
+            var count = 1 + Math.floor((samples.length - FRAME) / HOP);
+            for (var t = 0; t < count; t += 1) {
+                var sum = 0;
+                for (var i = 0; i < FRAME; i += 1) { var v = samples[t * HOP + i]; sum += v * v; }
+                out.push(20 * Math.log10(Math.max(Math.sqrt(sum / FRAME), 1e-6)));
+            }
+            return out;
+        }
+        function rmsDbfs(samples) {
+            if (!samples.length) return -120;
+            var sum = 0;
+            for (var i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
+            return 20 * Math.log10(Math.max(Math.sqrt(sum / samples.length), 1e-6));
+        }
+        function sensitivity(value) {
+            var number = Number(value);
+            if (!isFinite(number)) return 0.5;
+            return Math.max(0, Math.min(1, number));
+        }
+        function thresholdFor(base, value) {
+            return Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, Number(base) * (0.8 + 0.4 * sensitivity(value))));
+        }
+        function loadModel(payload) {
+            if (!payload || payload.format !== "autoyou-wake-word" || Number(payload.version) !== 1) throw new Error("This wake word model is not supported here.");
+            var templates = (payload.templates || []).map(function (item) {
+                return (item.mfcc || []).map(function (row) { return Float64Array.from(row); });
+            }).filter(function (item) { return item.length; });
+            if (!templates.length) throw new Error("The wake word model has no recordings.");
+            var maxFrames = templates.reduce(function (most, item) { return Math.max(most, item.length); }, 0);
+            return { phrase: String(payload.phrase || ""), templates: templates, maxFrames: maxFrames, threshold: thresholdFor(payload.base_threshold, payload.sensitivity) };
+        }
+        function score(model, distance) {
+            if (!isFinite(distance) || model.threshold <= 0) return 0;
+            return Math.max(0, Math.min(1, 1 - distance / (2 * model.threshold)));
+        }
+        function Detector(model, preRollSeconds) {
+            this.model = model;
+            this.windowSamples = (model.maxFrames + 2 * SLACK - 1) * HOP + FRAME;
+            this.keepSamples = Math.max(this.windowSamples, Math.floor((preRollSeconds || 2) * SR));
+            this.buffer = new Float64Array(0);
+            this.sinceEval = 0;
+            this.lastHit = -Infinity;
+            this.clock = 0;
+            this.evaluations = 0;
+        }
+        Detector.prototype.reset = function () { this.buffer = new Float64Array(0); this.sinceEval = 0; };
+        Detector.prototype.feed = function (samples) {
+            if (!samples || !samples.length) return null;
+            this.clock += samples.length / SR;
+            var joined = new Float64Array(this.buffer.length + samples.length);
+            joined.set(this.buffer, 0); joined.set(samples, this.buffer.length);
+            this.buffer = joined.length > this.keepSamples ? joined.slice(joined.length - this.keepSamples) : joined;
+            this.sinceEval += samples.length;
+            if (this.sinceEval < EVAL_HOP * HOP || this.buffer.length < this.windowSamples) return null;
+            this.sinceEval = 0;
+            if (this.clock - this.lastHit < REFRACTORY) return null;
+            var windowSamples = this.buffer.subarray(this.buffer.length - this.windowSamples);
+            var levels = frameDbfs(windowSamples);
+            var voiced = levels.filter(function (level) { return level >= SPEECH_DBFS; }).length;
+            if (!levels.length || voiced / levels.length < MIN_SPEECH_RATIO) return null;
+            this.evaluations += 1;
+            var distances = matchDistances(this.model.templates, mfcc(windowSamples, false));
+            var best = Math.min.apply(null, distances);
+            if (isFinite(best) && best <= this.model.threshold) {
+                this.lastHit = this.clock;
+                var preRoll = this.buffer.slice(0);
+                this.buffer = new Float64Array(0);
+                return { score: score(this.model, best), distance: best, preRoll: preRoll };
+            }
+            return null;
+        };
+        return {
+            SAMPLE_RATE: SR, mfcc: mfcc, dtw: dtw, matchDistances: matchDistances, trailingWindow: trailingWindow,
+            frameDbfs: frameDbfs, rmsDbfs: rmsDbfs, thresholdFor: thresholdFor, loadModel: loadModel,
+            score: score, Detector: Detector
+        };
+    })();
+    // </autoyou-wake-word-engine v1>
+
+    // ---- Assistant mode (Chat & History) --------------------------------------------
+    // The server owns the wake word: settings, recordings, training. This page can
+    // also listen itself: its own detector hears the word, the command is sent to
+    // the server for local transcription, and the result is asked here like a
+    // typed message. Nothing leaves the browser before the word matches, except in
+    // "typed text only" mode, where short bursts are transcribed and discarded.
+    function assistantState() {
+        if (!state.assistant) {
+            state.assistant = { open: false, loaded: false, loading: false, status: null, draft: null, capture: null, test: null, listen: null };
+        }
+        return state.assistant;
+    }
+
+    function assistantDraftFromStatus(status) {
+        return {
+            enabled: Boolean(status.enabled),
+            wake_phrase: status.wake_phrase_configured ? String(status.wake_phrase || "") : "",
+            confirm: status.confirm || "voice",
+            sensitivity: Math.round(Number(status.sensitivity || 0.5) * 100),
+            listen_seconds: Number(status.listen_seconds || 8),
+            listen_during_safety_recording: Boolean(status.listen_during_safety_recording),
+            use_voice_training_clips: status.use_voice_training_clips !== false,
+            wake_word_in_calls: Boolean(status.wake_word_in_calls),
+            use_live_video: status.use_live_video !== false
+        };
+    }
+
+    async function assistantLoadStatus(force) {
+        var assistant = assistantState();
+        if (assistant.loading || (assistant.loaded && !force)) return assistant.status;
+        assistant.loading = true;
+        try {
+            var response = await requestJson("/api/assistant-mode");
+            assistant.status = response;
+            if (!assistant.draft || force) assistant.draft = assistantDraftFromStatus(response);
+            assistant.loaded = true;
+        } catch (error) {
+            assistant.error = error.message || "Assistant mode could not be loaded.";
+        } finally {
+            assistant.loading = false;
+            renderApp({ passive: true });
+        }
+        return assistant.status;
+    }
+
+    function assistantSettingsPayload(extra) {
+        var draft = assistantState().draft || {};
+        return Object.assign({
+            enabled: Boolean(draft.enabled),
+            wake_phrase: String(draft.wake_phrase || "").trim(),
+            confirm: draft.confirm || "voice",
+            sensitivity: Math.max(0, Math.min(100, Number(draft.sensitivity || 50))) / 100,
+            listen_seconds: Math.max(3, Math.min(30, Number(draft.listen_seconds || 8))),
+            listen_during_safety_recording: Boolean(draft.listen_during_safety_recording),
+            use_voice_training_clips: Boolean(draft.use_voice_training_clips),
+            wake_word_in_calls: Boolean(draft.wake_word_in_calls),
+            use_live_video: Boolean(draft.use_live_video)
+        }, extra || {});
+    }
+
+    async function assistantSaveSettings(extra) {
+        var assistant = assistantState();
+        var response = await postJson("/api/assistant-mode/settings", assistantSettingsPayload(extra));
+        assistant.status = response;
+        assistant.draft = assistantDraftFromStatus(response);
+        return response;
+    }
+
+    function assistantBase64(bytes) {
+        var binary = "", chunk = 0x8000;
+        for (var offset = 0; offset < bytes.length; offset += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunk));
+        }
+        return btoa(binary);
+    }
+
+    function assistantWav(samples) {
+        var length = samples.length, buffer = new ArrayBuffer(44 + length * 2), view = new DataView(buffer);
+        function text(offset, value) { for (var i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i)); }
+        text(0, "RIFF"); view.setUint32(4, 36 + length * 2, true); text(8, "WAVE"); text(12, "fmt ");
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+        view.setUint32(24, 16000, true); view.setUint32(28, 32000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+        text(36, "data"); view.setUint32(40, length * 2, true);
+        for (var i = 0; i < length; i += 1) {
+            var sample = Math.max(-1, Math.min(32767 / 32768, samples[i]));
+            view.setInt16(44 + i * 2, Math.round(sample * 32768), true);
+        }
+        return assistantBase64(new Uint8Array(buffer));
+    }
+
+    function assistantJoin(chunks) {
+        var total = chunks.reduce(function (sum, chunk) { return sum + chunk.length; }, 0), out = new Float64Array(total), offset = 0;
+        chunks.forEach(function (chunk) { out.set(chunk, offset); offset += chunk.length; });
+        return out;
+    }
+
+    // Microphone at 16 kHz mono. Chrome resamples properly when the context asks
+    // for 16 kHz; elsewhere a continuous linear resampler is used.
+    async function assistantOpenMic(onSamples) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("This browser cannot use the microphone.");
+        var stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+        var Context = window.AudioContext || window.webkitAudioContext, context;
+        try { context = new Context({ sampleRate: 16000 }); } catch (error) { context = new Context(); }
+        var source;
+        try { source = context.createMediaStreamSource(stream); } catch (error) {
+            try { context.close(); } catch (closeError) {}
+            context = new Context();
+            source = context.createMediaStreamSource(stream);
+        }
+        var ratio = context.sampleRate / 16000, position = 0, previous = 0;
+        var node = context.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = function (event) {
+            var input = event.inputBuffer.getChannelData(0);
+            if (Math.abs(ratio - 1) < 1e-9) { onSamples(Float64Array.from(input)); return; }
+            var out = [];
+            while (true) {
+                var whole = Math.floor(position), fraction = position - whole;
+                if (whole + 1 >= input.length) break;
+                var first = whole < 0 ? previous : input[whole];
+                out.push(first + (input[whole + 1] - first) * fraction);
+                position += ratio;
+            }
+            position -= input.length;
+            previous = input[input.length - 1];
+            onSamples(Float64Array.from(out));
+        };
+        source.connect(node);
+        node.connect(context.destination);
+        var stopped = false;
+        return {
+            stop: function () {
+                if (stopped) return;
+                stopped = true;
+                try { node.disconnect(); source.disconnect(); } catch (error) {}
+                stream.getTracks().forEach(function (track) { track.stop(); });
+                try { var closing = context.close(); if (closing && closing.catch) closing.catch(function () {}); } catch (error) {}
+            }
+        };
+    }
+
+    // Speech start/end on audio time, the same rule the server uses.
+    function assistantEndpointer() {
+        return { noise: -60, speech: 0, silence: 0, started: false };
+    }
+
+    function assistantObserve(endpoint, samples) {
+        var seconds = samples.length / 16000, level = AutoYouWakeWord.rmsDbfs(samples);
+        var speech = level >= Math.max(-50, endpoint.noise + 10);
+        if (!speech) {
+            var weight = level < endpoint.noise ? 0.3 : 0.02;
+            endpoint.noise = (1 - weight) * endpoint.noise + weight * level;
+            endpoint.silence += seconds;
+            if (!endpoint.started) endpoint.speech = 0;
+        } else {
+            endpoint.silence = 0;
+            endpoint.speech += seconds;
+            if (endpoint.speech >= 0.06) endpoint.started = true;
+        }
+        return speech;
+    }
+
+    // One clip: from the first speech to 0.6 s of quiet, or the time limit.
+    async function assistantCaptureClip(purpose, maxSeconds) {
+        var assistant = assistantState();
+        if (assistant.listen) await assistantStopListening();
+        assistant.capture = { purpose: purpose, startedAt: Date.now(), heard: false };
+        renderApp({ passive: true });
+        var chunks = [], total = 0, endpoint = assistantEndpointer(), mic = null, finished = false;
+        try {
+            var samples = await new Promise(function (resolve, reject) {
+                var limit = setTimeout(function () { if (!finished) { finished = true; resolve(assistantJoin(chunks)); } }, (maxSeconds + 1.5) * 1000);
+                assistantOpenMic(function (chunk) {
+                    if (finished) return;
+                    var speech = assistantObserve(endpoint, chunk);
+                    if (speech || endpoint.started) { chunks.push(chunk); total += chunk.length; }
+                    if (endpoint.started && !assistant.capture.heard) { assistant.capture.heard = true; renderApp({ passive: true }); }
+                    if ((endpoint.started && endpoint.silence >= 0.6) || total >= maxSeconds * 16000) {
+                        finished = true;
+                        clearTimeout(limit);
+                        resolve(assistantJoin(chunks));
+                    }
+                }).then(function (opened) { mic = opened; if (finished) opened.stop(); }).catch(function (error) { clearTimeout(limit); reject(error); });
+            });
+            if (samples.length < 16000 * 0.2) throw new Error("No speech was heard. Try again a little closer to the microphone.");
+            return samples;
+        } finally {
+            if (mic) mic.stop();
+            assistant.capture = null;
+            renderApp({ passive: true });
+        }
+    }
+
+    async function assistantRecordSample() {
+        var samples = await assistantCaptureClip("sample", 3.5);
+        var response = await postJson("/api/assistant-mode/samples", {
+            audio_base64: assistantWav(samples),
+            wake_phrase: assistantSettingsPayload().wake_phrase
+        });
+        var sample = response.sample || {};
+        if (!response.success) {
+            var reasons = { too_short: "too short", too_long: "too long — say only the wake word", too_quiet: "too quiet" };
+            throw new Error("That recording was not kept (" + (sample.problems || []).map(function (item) { return reasons[item] || item; }).join(", ") + ").");
+        }
+        setNotice("success", "Recording kept (" + Number(sample.duration_seconds || 0).toFixed(1) + " s).");
+        await assistantLoadStatus(true);
+    }
+
+    async function assistantTest() {
+        var assistant = assistantState();
+        var samples = await assistantCaptureClip("test", 5);
+        assistant.test = await postJson("/api/assistant-mode/test", { audio_base64: assistantWav(samples) });
+        renderApp({ passive: true });
+    }
+
+    async function assistantSendCommand(command, wake) {
+        var text = String(command || "").trim();
+        if (!text) return;
+        var input = root && root.querySelector('[data-role="chat-input"]');
+        var draft = input ? input.value : state.chat.composer;
+        if (input) input.value = text;
+        state.chat.composer = text;
+        try {
+            await sendChatTurn();
+        } finally {
+            var after = root && root.querySelector('[data-role="chat-input"]');
+            state.chat.composer = draft || "";
+            if (after) after.value = draft || "";
+        }
+        assistantState().lastWake = { at: Date.now(), via: wake, text: text };
+    }
+
+    async function assistantTranscribe(samples, requirePhrase) {
+        return postJson("/api/assistant-mode/transcribe", { audio_base64: assistantWav(samples), require_phrase: Boolean(requirePhrase) });
+    }
+
+    async function assistantStartListening() {
+        var assistant = assistantState();
+        var status = await assistantLoadStatus(true);
+        if (!status || !status.enabled) throw new Error("Turn Assistant mode on first.");
+        var model = null;
+        if (status.confirm !== "text") {
+            if (!(status.model && status.model.matches_phrase)) throw new Error("Record and train your wake word first, or choose \"Typed text only\".");
+            model = AutoYouWakeWord.loadModel((await requestJson("/api/assistant-mode/model")).model);
+        }
+        var listen = {
+            phase: "waiting", confirm: status.confirm, phrase: status.wake_phrase, listenSeconds: Number(status.listen_seconds || 8),
+            detector: model ? new AutoYouWakeWord.Detector(model, (model.maxFrames * 160) / 16000 + 0.3) : null,
+            endpoint: assistantEndpointer(), chunks: [], waited: 0, busy: false, mic: null
+        };
+        assistant.listen = listen;
+        listen.mic = await assistantOpenMic(function (chunk) { assistantOnListenChunk(listen, chunk); });
+        renderApp({ passive: true });
+    }
+
+    async function assistantStopListening() {
+        var assistant = assistantState();
+        var listen = assistant.listen;
+        assistant.listen = null;
+        if (listen && listen.mic) listen.mic.stop();
+        renderApp({ passive: true });
+    }
+
+    function assistantBeginCommand(listen, preRoll) {
+        listen.phase = "command";
+        listen.chunks = preRoll ? [preRoll] : [];
+        listen.waited = 0;
+        listen.endpoint = assistantEndpointer();
+        renderApp({ passive: true });
+    }
+
+    function assistantOnListenChunk(listen, chunk) {
+        if (assistantState().listen !== listen) return;
+        var speech = assistantObserve(listen.endpoint, chunk);
+        if (listen.phase === "waiting") {
+            if (listen.detector) {
+                var hit = listen.detector.feed(chunk);
+                if (hit) assistantBeginCommand(listen, listen.confirm === "both" ? hit.preRoll : null);
+                return;
+            }
+            // Typed text only: short bursts go to the server and are discarded
+            // unless they contain the wake phrase.
+            if (listen.busy) return;
+            if (speech || listen.endpoint.started) listen.chunks.push(chunk);
+            else listen.chunks = [];
+            var burst = listen.chunks.reduce(function (sum, item) { return sum + item.length; }, 0) / 16000;
+            if (listen.endpoint.started && (listen.endpoint.silence >= 0.6 || burst >= 6)) {
+                var audio = assistantJoin(listen.chunks);
+                listen.chunks = [];
+                listen.endpoint = assistantEndpointer();
+                listen.busy = true;
+                assistantTranscribe(audio, true).then(function (result) {
+                    if (result.matched && result.command) return assistantSendCommand(result.command, "text");
+                    if (result.matched) assistantBeginCommand(listen, null);
+                }).catch(function () {}).then(function () { listen.busy = false; });
+            }
+            return;
+        }
+        if (listen.phase !== "command") return;
+        listen.chunks.push(chunk);
+        listen.waited += chunk.length / 16000;
+        if (!listen.endpoint.started) {
+            if (listen.waited >= listen.listenSeconds) {
+                listen.phase = "waiting";
+                listen.chunks = [];
+                if (listen.detector) listen.detector.reset();
+                renderApp({ passive: true });
+            }
+            return;
+        }
+        var seconds = listen.chunks.reduce(function (sum, item) { return sum + item.length; }, 0) / 16000;
+        if (listen.endpoint.silence >= 1.0 || seconds >= 20) {
+            var command = assistantJoin(listen.chunks);
+            listen.chunks = [];
+            listen.phase = "thinking";
+            renderApp({ passive: true });
+            assistantTranscribe(command, listen.confirm === "both").then(function (result) {
+                if (result.command) return assistantSendCommand(result.command, listen.detector ? "voice" : "text");
+                setNotice("info", listen.confirm === "both" && !result.matched ? "That did not sound like your wake word, so nothing was sent." : "Nothing was heard after the wake word.");
+            }).catch(function (error) {
+                setNotice("error", error.message || "The command could not be transcribed.");
+            }).then(function () {
+                if (assistantState().listen !== listen) return;
+                listen.phase = "waiting";
+                listen.endpoint = assistantEndpointer();
+                if (listen.detector) listen.detector.reset();
+                renderApp({ passive: true });
+            });
+        }
+    }
+
+    function assistantListeningMarkup() {
+        var listen = assistantState().listen;
+        if (!listen) return "";
+        var copy = {
+            waiting: "Listening for “" + listen.phrase + "”",
+            command: "Heard you — go ahead",
+            thinking: "Working on it…"
+        }[listen.phase] || "Listening";
+        return '<div class="ayu-chat-listening ayu-chat-listening-' + escapeHtml(listen.phase) + '"><span class="ayu-chat-recording-dot"></span><strong>' + escapeHtml(copy) + '</strong><span>Assistant mode in this browser</span></div>';
+    }
+
+    function assistantHeadingButton() {
+        var status = assistantState().status;
+        var on = Boolean(status && status.enabled);
+        return '<button type="button" class="ayu-chat-assistant-pill' + (on ? " on" : "") + '" data-action="assistant-panel-toggle" aria-expanded="' + (assistantState().open ? "true" : "false") + '" title="Wake word and Assistant mode"><span></span>Assistant mode' + (on ? " · on" : "") + '</button>';
+    }
+
+    function assistantPanelMarkup() {
+        var assistant = assistantState();
+        if (!assistant.open) return "";
+        var status = assistant.status;
+        if (!status) {
+            return '<section class="ayu-assistant-panel"><div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>' + escapeHtml(assistant.error || "Loading Assistant mode…") + '</div></section>';
+        }
+        var draft = assistant.draft || assistantDraftFromStatus(status);
+        var samples = Array.isArray(status.samples) ? status.samples : [];
+        var model = status.model;
+        var training = status.voice_training || { matching: [], other_clips: 0 };
+        var liveSessions = Object.keys((status.live && status.live.sessions) || {}).length;
+        var choices = [
+            ["voice", "Recorded voice", "Nothing is transcribed until your recorded word matches."],
+            ["both", "Recorded voice + text", "Your word must match, and the transcript must contain it. Fewest false wakes."],
+            ["text", "Typed text only", "No recordings. Short bursts of speech are transcribed on this server and thrown away unless they contain the word. Uses more CPU."]
+        ].map(function (choice) {
+            return '<label class="ayu-assistant-choice' + (draft.confirm === choice[0] ? " selected" : "") + '"><input type="radio" name="assistant-confirm" value="' + choice[0] + '" data-assistant-field="confirm"' + (draft.confirm === choice[0] ? " checked" : "") + '><span><strong>' + escapeHtml(choice[1]) + '</strong><small>' + escapeHtml(choice[2]) + '</small></span></label>';
+        }).join("");
+        var sampleMarkup = samples.length
+            ? samples.map(function (sample, number) {
+                return '<span class="ayu-assistant-sample"><strong>#' + (number + 1) + '</strong><span>' + Number(sample.duration_seconds || 0).toFixed(1) + ' s · ' + escapeHtml(sample.source === "device" ? "from a device" : "from this page") + '</span><audio controls preload="none" src="/api/assistant-mode/samples/' + encodeURIComponent(sample.id) + '/audio"></audio><button type="button" class="ayu-assistant-x" data-action="assistant-sample-delete:' + escapeHtml(sample.id) + '" aria-label="Delete recording" title="Delete recording">×</button></span>';
+            }).join("")
+            : '<span class="ayu-assistant-note">No recordings yet. Record the wake word ' + Number(status.min_samples || 3) + ' times, the way you will say it.</span>';
+        var capture = assistant.capture;
+        var captureMarkup = capture
+            ? '<div class="ayu-assistant-capture"><span class="ayu-chat-recording-dot"></span>' + escapeHtml(capture.heard ? "Got it — keep going until you stop…" : (capture.purpose === "test" ? "Say the wake word and a short question now…" : "Say “" + status.wake_phrase + "” now…")) + '</div>'
+            : "";
+        var test = assistant.test;
+        var testMarkup = "";
+        if (test) {
+            var acoustic = test.acoustic ? "Voice match " + Math.round(Number(test.acoustic.score || 0) * 100) + "%" : "";
+            var heard = test.transcript !== undefined ? "Heard “" + (test.transcript || "nothing") + "”" : "";
+            testMarkup = '<div class="ayu-assistant-test ' + (test.would_wake ? "ok" : "miss") + '"><strong>' + (test.would_wake ? "It would wake." : "It would not wake.") + '</strong><span>' + escapeHtml([acoustic, heard].filter(Boolean).join(" · ")) + '</span></div>';
+        }
+        var modelLine = model
+            ? (model.matches_phrase
+                ? "Trained from " + model.templates + " recordings" + (model.calibration && model.calibration.negatives_used ? ", checked against " + model.calibration.negatives_used + " Voice Training clips" : "") + "."
+                : "The trained word was “" + model.phrase + "”. Train again for the new wake word.")
+            : "Not trained yet.";
+        var unavailable = status.available ? "" : '<p class="ayu-assistant-warning">Devices cannot use Assistant mode until call audio and AutoYou Agents for calls are on in Video &amp; Calls.</p>';
+        var listening = Boolean(assistant.listen);
+        return '<section class="ayu-assistant-panel" aria-label="Assistant mode">'
+            + '<div class="ayu-assistant-head"><div><h3>Assistant mode</h3><p>Say <strong>“' + escapeHtml(status.wake_phrase) + '”</strong> and ' + escapeHtml(status.assistant_name) + ' listens to what comes next. Until then nothing you say is transcribed or sent to AI. Safety Recording keeps recording as before.</p></div>'
+            + '<label class="ayu-checkbox ayu-assistant-enable"><input type="checkbox" data-assistant-field="enabled"' + (draft.enabled ? " checked" : "") + '><div><span>' + (draft.enabled ? "On" : "Off") + '</span><small>' + (status.ready ? "Ready" : "Needs setup") + '</small></div></label></div>'
+            + unavailable
+            + '<div class="ayu-assistant-grid">'
+            + '<div class="ayu-field"><span class="ayu-field-label">Wake word</span><input class="ayu-input" type="text" maxlength="48" data-assistant-field="wake_phrase" value="' + escapeHtml(draft.wake_phrase || "") + '" placeholder="' + escapeHtml(status.assistant_name) + '"><span class="ayu-field-hint">Blank uses this server’s name. Rename the server in Settings to rename your assistant.</span></div>'
+            + '<div class="ayu-field"><span class="ayu-field-label">Sensitivity · ' + Number(draft.sensitivity || 50) + '%</span><input type="range" min="0" max="100" step="5" data-assistant-field="sensitivity" value="' + Number(draft.sensitivity || 50) + '"><span class="ayu-field-hint">Higher wakes more easily; lower wakes less by accident.</span></div>'
+            + '<div class="ayu-field"><span class="ayu-field-label">Listen after the wake word</span><select class="ayu-select" data-assistant-field="listen_seconds">' + [5, 8, 12, 20].map(function (seconds) { return '<option value="' + seconds + '"' + (Number(draft.listen_seconds) === seconds ? " selected" : "") + '>' + seconds + ' seconds</option>'; }).join("") + '</select><span class="ayu-field-hint">How long to wait for you to start speaking.</span></div>'
+            + '</div>'
+            + '<div class="ayu-field"><span class="ayu-field-label">How the wake word is recognised</span><div class="ayu-assistant-choices">' + choices + '</div></div>'
+            + '<div class="ayu-assistant-grid">'
+            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="listen_during_safety_recording"' + (draft.listen_during_safety_recording ? " checked" : "") + '><div><span>Listen during Safety Recording</span><small>Devices already recording can also wake the assistant. Recording itself is unchanged.</small></div></label>'
+            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="wake_word_in_calls"' + (draft.wake_word_in_calls ? " checked" : "") + '><div><span>Wake word in calls too</span><small>Calls and their video or audio recordings carry on as usual, but AI answers only after the wake word.</small></div></label>'
+            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_live_video"' + (draft.use_live_video ? " checked" : "") + '><div><span>Let it see the camera</span><small>In a video call, what you ask after the wake word includes the latest camera picture, handled like a photo sent in chat.</small></div></label>'
+            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_voice_training_clips"' + (draft.use_voice_training_clips ? " checked" : "") + '><div><span>Learn from Voice Training clips</span><small>' + escapeHtml((training.matching.length === 1 ? "1 clip says" : training.matching.length + " clips say") + " the word; " + (training.other_clips === 1 ? "1 other teaches" : training.other_clips + " others teach") + " it what to ignore.") + '</small></div></label>'
+            + '</div>'
+            + '<div class="ayu-assistant-actions">' + button("Save", "assistant-save", "primary", "save", "sm") + '</div>'
+            + '<div class="ayu-field"><span class="ayu-field-label">Your recordings</span><div class="ayu-assistant-samples">' + sampleMarkup + '</div><span class="ayu-field-hint">' + escapeHtml(modelLine) + '</span></div>'
+            + captureMarkup + testMarkup
+            + '<div class="ayu-assistant-actions">'
+            + button("Record wake word", "assistant-record-sample", "secondary", "mic", "sm")
+            + button("Train", "assistant-train", "secondary", "bolt", "sm")
+            + button("Test", "assistant-test", "secondary", "play", "sm")
+            + (samples.length ? button("Delete recordings", "assistant-clear-samples", "ghost", "trash", "sm") : "")
+            + button(listening ? "Stop listening here" : "Listen in this browser", "assistant-listen-toggle", listening ? "primary" : "ghost", "wave", "sm")
+            + '</div>'
+            + '<p class="ayu-assistant-note">' + escapeHtml(liveSessions ? liveSessions + " connected device" + (liveSessions === 1 ? " is" : "s are") + " listening for the wake word." : "Phones and computers listen when Assistant mode or Safety Recording is on in their settings.") + '</p>'
+            + '</section>';
+    }
+
+    async function handleAssistantAction(action) {
+        var assistant = assistantState();
+        if (action === "assistant-panel-toggle") {
+            assistant.open = !assistant.open;
+            renderApp();
+            if (assistant.open) await assistantLoadStatus(true);
+            return;
+        }
+        if (action === "assistant-save") {
+            await assistantSaveSettings();
+            setNotice("success", "Assistant mode saved.");
+            return;
+        }
+        if (action === "assistant-record-sample") { await assistantRecordSample(); return; }
+        if (action === "assistant-train") {
+            await assistantSaveSettings();
+            var trained = await postJson("/api/assistant-mode/train", {});
+            assistant.status = trained.status || assistant.status;
+            assistant.draft = assistantDraftFromStatus(assistant.status);
+            var report = trained.report || {};
+            setNotice("success", "Wake word trained from " + Number(report.templates || 0) + " recordings" + (report.voice_training_templates ? " and " + report.voice_training_templates + " Voice Training clips" : "") + ".");
+            return;
+        }
+        if (action === "assistant-test") { await assistantTest(); return; }
+        if (action === "assistant-clear-samples") {
+            await requestJson("/api/assistant-mode/samples", { method: "DELETE" });
+            await assistantLoadStatus(true);
+            return;
+        }
+        if (action.indexOf("assistant-sample-delete:") === 0) {
+            await requestJson("/api/assistant-mode/samples/" + encodeURIComponent(action.slice("assistant-sample-delete:".length)), { method: "DELETE" });
+            await assistantLoadStatus(true);
+            return;
+        }
+        if (action === "assistant-listen-toggle") {
+            if (assistant.listen) await assistantStopListening();
+            else await assistantStartListening();
+        }
+    }
+
+    function assistantFieldChanged(target) {
+        var assistant = assistantState();
+        if (!assistant.draft) return false;
+        var field = target.getAttribute("data-assistant-field");
+        if (!field) return false;
+        if (target.type === "checkbox") assistant.draft[field] = target.checked;
+        else if (target.type === "radio") { if (target.checked) assistant.draft[field] = target.value; }
+        else if (field === "sensitivity" || field === "listen_seconds") assistant.draft[field] = Number(target.value);
+        else assistant.draft[field] = target.value;
+        return true;
+    }
+
     function renderChatHistoryScreen() {
         var chat = state.chat;
         var serverName = firstNonBlank([
@@ -4972,12 +5681,12 @@
         var deviceReplyMarkup = deviceLive
             ? '<button type="button" class="ayu-chat-device-reply" data-action="chat-reply-device" title="Deliver this text to the device as your own message. AutoYou is not asked." ' + (isActionPending("chat-reply-device") ? "disabled" : "") + '>' + (isActionPending("chat-reply-device") ? "Sending…" : "Send to " + escapeHtml(counterpart.name)) + '</button>'
             : "";
-        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>'
+        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>' + assistantHeadingButton()
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
             + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
-            + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + assistantPanelMarkup() + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + assistantListeningMarkup() + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><button type="button" data-action="assistant-listen-toggle" class="ayu-chat-assistant-tool' + (assistantState().listen ? " active" : "") + '" aria-label="Listen for the wake word" title="' + (assistantState().listen ? "Stop listening for the wake word" : "Listen for the wake word in this browser") + '">◎</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -6498,7 +7207,7 @@
             { label: "Status", value: prettyLabel(summary.displayStatus), help: summary.connected ? "Connected to your Saved Messages." : "Connect your own Telegram account to use Saved Messages." },
             { label: "Connected", value: summary.connected ? "Yes" : "No" },
             { label: "Saved Messages only", value: getByPath(status, "saved_messages_only", true) ? "Yes" : "No" }
-        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
+        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }, { value: "antigravity_agent", label: "Antigravity" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
     }
 
     var GUIDED_SETUP_STEPS = [
@@ -7098,7 +7807,7 @@
         var promptFields = field("Desktop agent", select("desktopAssets.agent_name", agents.map(function (agent) { return { value: agent.agent_name, label: agent.title || agent.agent_name }; })))
             + field("Target platform", select("desktopAssets.platform", [{ value: "windows", label: "Windows" }, { value: "macos", label: "macOS" }, { value: "linux", label: "Linux" }]))
             + field("Installed app version", input("desktopAssets.app_version", { placeholder: "Leave blank to have your assistant inspect it" }), "The assistant can identify the installed version if you leave this blank.");
-        var body = "<div class=\"ayu-note ayu-note-blue\"><strong>Use your own coding assistant to prepare a local pack.</strong><p>AutoYou gives you a prompt to copy into your existing Claude, ChatGPT, or Codex workspace. It does not contact those services. Import the resulting ZIP here. Generated manifests and cropped control images stay in this computer's private AutoYou data folder and are excluded from source and compiled release bundles.</p></div>"
+        var body = "<div class=\"ayu-note ayu-note-blue\"><strong>Use your own coding assistant to prepare a local pack.</strong><p>AutoYou gives you a prompt to copy into your existing Claude, ChatGPT, Codex, or Antigravity workspace. It does not contact those services. Import the resulting ZIP here. Generated manifests and cropped control images stay in this computer's private AutoYou data folder and are excluded from source and compiled release bundles.</p></div>"
             + "<div class=\"ayu-grid-2\">" + promptFields + "</div><div class=\"ayu-grid-2\">" + preferences + "</div>"
             + "<div class=\"ayu-inline-actions\">" + button("Save preferences", "desktop-asset-save-preferences", "secondary", "save", "sm") + button("Prepare setup prompt", "desktop-asset-generate-prompt", "primary", "copy", "sm") + button("Import ZIP", "desktop-pack-select", "ghost", "file", "sm") + button("Refresh packs", "desktop-assets-refresh", "ghost", "refresh", "sm") + fileInput + "</div>"
             + "<div class=\"ayu-field-hint\">Only use a blank or synthetic app state. Keep chat text, account details, full-screen captures, and other personal content out of the ZIP. A local pack may still be subject to the desktop app's terms and rights in its interface.</div>"
@@ -7108,7 +7817,7 @@
 
     function agentCategoryOf(agent) {
         var name = String(agent.agent_name || "");
-        if (/coding|codex|claude|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
+        if (/coding|codex|claude|antigravity|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
         if (/audio|media|voice|tv_|game_/.test(name)) return "media";
         if (/desktop|browser|security_/.test(name)) return "desktop";
         if (/education/.test(name)) return "learning";
@@ -9496,6 +10205,8 @@
                 pi_port: source.pi_port,
                 pi_model: source.pi_model,
                 pi_path: source.pi_path,
+                coding_backend: source.coding_backend,
+                pi_timeout_seconds: source.pi_timeout_seconds,
                 custom_api_base: source.custom_api_base,
                 custom_model: source.custom_model,
                 custom_format: source.custom_format,
@@ -9654,6 +10365,7 @@
 
     async function handleAction(action, element) {
         if (action === "live-pair") { await openLivePairing(); return; }
+        if (action && action.indexOf("assistant-") === 0) { await handleAssistantAction(action); return; }
         if (!action) {
             return;
         }
@@ -11683,6 +12395,11 @@
             state.chat.composer = target.value;
             return;
         }
+        if (target.getAttribute("data-assistant-field")) {
+            assistantFieldChanged(target);
+            if (target.type === "range") renderApp({ passive: true });
+            return;
+        }
         if (target.getAttribute("data-role") === "chat-search") {
             state.chat.search = target.value;
             renderApp({ passive: true });
@@ -11758,6 +12475,18 @@
     document.addEventListener("change", function (event) {
         var target = event.target;
         if (!root || !root.contains(target)) {
+            return;
+        }
+        if (target.getAttribute("data-assistant-field")) {
+            assistantFieldChanged(target);
+            if (target.getAttribute("data-assistant-field") === "enabled") {
+                assistantSaveSettings().then(function () {
+                    setNotice("success", assistantState().status.enabled ? "Assistant mode is on." : "Assistant mode is off.");
+                }).catch(function (error) {
+                    setNotice("error", error.message || "Assistant mode could not be saved.");
+                });
+            }
+            renderApp({ passive: true });
             return;
         }
         if (target.getAttribute("data-role") === "chat-file-input") {

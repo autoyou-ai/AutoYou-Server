@@ -93,15 +93,28 @@ _SEND_DRAFT_INTENT_RE = re.compile(
 )
 _ASK_DESKTOP_PREFIX_RE = re.compile(
     r"^(?:send|execute|submit)\s+prompt\s*(?:to\s+[\w\s_]+)?[\:\s]+(.+)$|"
-    r"^(?:ask|tell)\s+(?:claude|codex)(?:\s+desktop)?[\:\s]+(.+)$",
+    r"^(?:ask|tell)\s+(?:claude|codex|antigravity|agy)(?:\s+desktop)?[\:\s]+(.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 _STATUS_INTENT_RE = re.compile(
-    r"^(?:get\s+|check\s+)?status(?:[\s_]+check)?[\s.!\?]*$",
+    r"^(?:get\s+|check\s+)?(?:(?:claude|codex|antigravity|agy)\s+(?:desktop\s+)?)?status(?:[\s_]+check)?[\s.!\?]*$",
     re.IGNORECASE,
 )
 _USAGE_INTENT_RE = re.compile(
-    r"^(?:get\s+|check\s+)?usage(?:[\s_]+check)?[\s.!\?]*$",
+    r"^(?:get\s+|check\s+)?(?:(?:claude|codex|antigravity|agy)\s+(?:desktop\s+)?)?usage(?:[\s_]+check)?[\s.!\?]*$",
+    re.IGNORECASE,
+)
+_ANSWER_QUESTION_PREFIX_RE = re.compile(
+    r"^(?:answer|reply(?:\s+to)?)\s+(?:the\s+)?(?:(?:codex|antigravity|agy)\s+(?:desktop\s+)?|inline\s+)?question\s*[:\-]\s*(.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_SKIP_QUESTION_INTENT_RE = re.compile(
+    r"^(?:skip|dismiss)\s+(?:the\s+)?(?:(?:codex|antigravity|agy)\s+(?:desktop\s+)?|inline\s+)?question[\s.!\?]*$",
+    re.IGNORECASE,
+)
+_GET_QUESTION_INTENT_RE = re.compile(
+    r"^(?:get|check|read|inspect)\s+(?:the\s+)?(?:(?:codex|antigravity|agy)\s+(?:desktop\s+)?|inline\s+)?question(?:\s+(?:state|status|card))?[\s.!\?]*$|"
+    r"^check\s+(?:codex|antigravity)\s+(?:desktop\s+)?status\s+and\s+question\s+state[\s.!\?]*$",
     re.IGNORECASE,
 )
 
@@ -123,8 +136,11 @@ def desktop_exact_tool_call_from_text(
             for candidate in (
                 "send_current_claude_desktop_prompt",
                 "send_current_codex_desktop_prompt",
+                "send_current_antigravity_prompt",
+                "send_current_antigravity_desktop_prompt",
                 "ask_claude_and_return",
                 "ask_codex_and_return",
+                "ask_antigravity_and_return",
             ):
                 if candidate in available:
                     return candidate, {}
@@ -146,27 +162,51 @@ def desktop_exact_tool_call_from_text(
                     candidates = (
                         "send_prompt_to_claude_desktop",
                         "send_prompt_to_codex_desktop",
+                        "send_prompt_to_antigravity",
+                        "send_prompt_to_antigravity_desktop",
                         "ask_claude_and_return",
                         "ask_codex_and_return",
+                        "ask_antigravity_and_return",
                     )
                 else:
                     candidates = (
                         "ask_claude_and_return",
                         "ask_codex_and_return",
+                        "ask_antigravity_and_return",
                         "send_prompt_to_claude_desktop",
                         "send_prompt_to_codex_desktop",
+                        "send_prompt_to_antigravity",
+                        "send_prompt_to_antigravity_desktop",
                     )
                 for candidate in candidates:
                     if candidate in available:
                         return candidate, {"prompt": prompt_text}
 
+        answer_q_match = _ANSWER_QUESTION_PREFIX_RE.search(cleaned)
+        if answer_q_match:
+            response_text = (answer_q_match.group(1) or "").strip()
+            if response_text:
+                for candidate in ("answer_codex_desktop_question", "answer_antigravity_question", "answer_antigravity_desktop_question"):
+                    if candidate in available:
+                        return candidate, {"response": response_text}
+
+        if _SKIP_QUESTION_INTENT_RE.search(cleaned):
+            for candidate in ("answer_codex_desktop_question", "answer_antigravity_question", "answer_antigravity_desktop_question"):
+                if candidate in available:
+                    return candidate, {"skip": True}
+
+        if _GET_QUESTION_INTENT_RE.search(cleaned):
+            for candidate in ("get_codex_desktop_question", "get_antigravity_question", "get_antigravity_desktop_question"):
+                if candidate in available:
+                    return candidate, {}
+
         if _STATUS_INTENT_RE.search(cleaned):
-            for candidate in ("get_claude_desktop_status", "get_codex_desktop_status"):
+            for candidate in ("get_claude_desktop_status", "get_codex_desktop_status", "get_antigravity_status", "get_antigravity_desktop_status"):
                 if candidate in available:
                     return candidate, {}
 
         if _USAGE_INTENT_RE.search(cleaned):
-            for candidate in ("get_claude_usage", "get_codex_usage"):
+            for candidate in ("get_claude_usage", "get_codex_usage", "get_antigravity_usage"):
                 if candidate in available:
                     return candidate, {}
 
@@ -188,33 +228,43 @@ def desktop_exact_tool_call_from_text(
             args["platform_tag"] = platform_tag
         if screenshot_limit is not None:
             args["screenshot_limit"] = screenshot_limit
-    elif tool_name.startswith("get_") and tool_name.endswith("_desktop_status"):
+    elif tool_name.startswith("get_") and tool_name.endswith(("_desktop_status", "_antigravity_status")):
         _add_common_launch_args(cleaned, args, ("capture_screenshot",))
-    elif tool_name.startswith("get_") and tool_name.endswith("_desktop_prompt"):
+    elif tool_name.startswith("get_") and tool_name.endswith(("_desktop_prompt", "_antigravity_prompt")):
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith("get_") and tool_name.endswith("_desktop_prompt_status"):
+    elif tool_name.startswith("get_") and tool_name.endswith(("_desktop_prompt_status", "_antigravity_prompt_status")):
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith("list_") and tool_name.endswith("_desktop_asset_packs"):
+    elif tool_name.startswith("get_") and tool_name.endswith(("_desktop_question", "_antigravity_question")):
+        _add_common_launch_args(cleaned, args, ("launch_if_needed",))
+    elif tool_name.startswith("answer_") and tool_name.endswith(("_desktop_question", "_antigravity_question")):
+        response_val = _string_arg(cleaned, "response") or _string_arg(cleaned, "reply") or _prompt_arg(cleaned)
+        if response_val:
+            args["response"] = response_val
+        skip_val = _bool_arg(cleaned, "skip")
+        if skip_val is not None:
+            args["skip"] = skip_val
+        _add_common_launch_args(cleaned, args, ("launch_if_needed", "capture_after"))
+    elif tool_name.startswith("list_") and tool_name.endswith(("_desktop_asset_packs", "_antigravity_asset_packs")):
         platform_tag = _string_arg(cleaned, "platform_tag")
         if platform_tag:
             args["platform_tag"] = platform_tag
-    elif tool_name.startswith("select_") and tool_name.endswith("_desktop_model"):
+    elif tool_name.startswith("select_") and tool_name.endswith(("_desktop_model", "_antigravity_model")):
         for key in ("model", "effort", "speed", "advanced"):
             value = _string_arg(cleaned, key)
             if value:
                 args[key] = value
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith("select_") and tool_name.endswith("_desktop_project"):
+    elif tool_name.startswith("select_") and tool_name.endswith(("_desktop_project", "_antigravity_project")):
         value = _string_arg(cleaned, "project_name") or _string_arg(cleaned, "project")
         if value:
             args["project_name"] = value
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith("select_") and tool_name.endswith("_desktop_permissions"):
+    elif tool_name.startswith("select_") and tool_name.endswith(("_desktop_permissions", "_antigravity_permissions")):
         value = _string_arg(cleaned, "permissions")
         if value:
             args["permissions"] = value
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith(("add_to_", "replace_")) and tool_name.endswith("_desktop_prompt"):
+    elif tool_name.startswith(("add_to_", "replace_")) and tool_name.endswith(("_desktop_prompt", "_antigravity_prompt")):
         prompt = _prompt_arg(cleaned)
         if prompt:
             args["prompt"] = prompt
@@ -226,14 +276,14 @@ def desktop_exact_tool_call_from_text(
             args["attachment_paths"] = paths
         launch_args = ("launch_if_needed", "prepend_newline") if tool_name.startswith("add_to_") else ("launch_if_needed",)
         _add_common_launch_args(cleaned, args, launch_args)
-    elif tool_name.startswith("add_") and tool_name.endswith("_desktop_attachments"):
+    elif tool_name.startswith("add_") and tool_name.endswith(("_desktop_attachments", "_antigravity_attachments")):
         paths = _attachment_paths_arg(cleaned)
         if paths:
             args["attachment_paths"] = paths
         _add_common_launch_args(cleaned, args, ("launch_if_needed",))
-    elif tool_name.startswith(("send_current_", "queue_")) and tool_name.endswith("_desktop_prompt"):
+    elif tool_name.startswith(("send_current_", "queue_")) and tool_name.endswith(("_desktop_prompt", "_antigravity_prompt")):
         _add_common_launch_args(cleaned, args, ("launch_if_needed", "capture_after"))
-    elif tool_name.startswith("copy_") and tool_name.endswith("_desktop_final_response"):
+    elif tool_name.startswith("copy_") and tool_name.endswith(("_desktop_final_response", "_antigravity_final_response")):
         prompt = _prompt_arg(cleaned)
         if prompt:
             args["expected_prompt"] = prompt
@@ -251,7 +301,7 @@ def desktop_exact_tool_call_from_text(
             value = _number_arg(cleaned, key, as_int=as_int)
             if value is not None:
                 args[key] = value
-    elif tool_name.startswith("send_prompt_to_") or tool_name in ("ask_claude_and_return", "ask_codex_and_return"):
+    elif tool_name.startswith("send_prompt_to_") or tool_name in ("ask_claude_and_return", "ask_codex_and_return", "ask_antigravity_and_return"):
         prompt = _prompt_arg(cleaned)
         if prompt:
             args["prompt"] = prompt
@@ -265,14 +315,14 @@ def desktop_exact_tool_call_from_text(
             value = _bool_arg(cleaned, key)
             if value is not None:
                 args[key] = value
-    elif tool_name.startswith("find_") and tool_name.endswith("_desktop_screenshot_attachments"):
+    elif tool_name.startswith("find_") and tool_name.endswith(("_desktop_screenshot_attachments", "_antigravity_screenshot_attachments")):
         directory = _string_arg(cleaned, "directory")
         limit = _number_arg(cleaned, "limit", as_int=True)
         if directory:
             args["directory"] = directory
         if limit is not None:
             args["limit"] = limit
-    elif tool_name.startswith("capture_") and tool_name.endswith("_desktop_screenshot"):
+    elif tool_name.startswith("capture_") and tool_name.endswith(("_desktop_screenshot", "_antigravity_screenshot")):
         label = _string_arg(cleaned, "label")
         if label:
             args["label"] = label

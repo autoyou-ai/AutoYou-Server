@@ -320,6 +320,19 @@ def probe_wan_runtime(config: dict[str, Any], env: dict[str, str], *, refresh: b
         return result
 
 
+def wan_supports_option(config: dict[str, Any], option: str) -> bool:
+    """Check the selected installation before passing newer CLI options."""
+    app_dir = Path(str(config.get("app_dir") or ""))
+    for source in (app_dir / "shared" / "cli_args.py", app_dir / "wgp.py"):
+        try:
+            text = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if re.search(r"[\"']" + re.escape(option) + r"[\"']", text):
+            return True
+    return False
+
+
 def wan_generation_command(python: Path, settings: Path, output: Path, runtime: dict[str, Any], config: dict[str, Any]) -> list[str]:
     command = [
         str(python), "-u", "-c", WAN_WORKER_BOOTSTRAP, "wgp.py",
@@ -328,4 +341,27 @@ def wan_generation_command(python: Path, settings: Path, output: Path, runtime: 
     ]
     if runtime.get("backend") == "amd":
         command += ["--attention", "sdpa"]
+        # MMGP's native CPU allocator can crash in alloc_cpu on Windows ROCm.
+        # Use the supported PyTorch allocator without editing the external app.
+        if platform.system() == "Windows" and wan_supports_option(config, "--ram-allocator"):
+            command += ["--ram-allocator", "default"]
+    profile = str(config.get("memory_profile") or "auto")
+    if config.get("_low_memory_retry"):
+        profile = "5"
+    if profile != "auto":
+        if profile not in {"1", "2", "3", "3.5", "4", "4.5", "5"}:
+            raise ValueError("Wan2GP memory profile must be auto, 1, 2, 3, 3.5, 4, 4.5, or 5.")
+        if wan_supports_option(config, "--profile"):
+            command += ["--profile", profile]
+        elif not config.get("_low_memory_retry"):
+            raise ValueError("This Wan2GP installation does not support selecting a memory profile.")
+    if config.get("_low_memory_retry"):
+        # Lowering pixel count cannot fix weight loading or pinned host memory.
+        # Profile 5 streams weights instead of keeping the transformer pinned.
+        for option, value in (
+            ("--preload", "0"),
+            ("--perc-reserved-mem-max", "0.1"), ("--ram-allocator", "default"),
+        ):
+            if option not in command and wan_supports_option(config, option):
+                command += [option, value]
     return command

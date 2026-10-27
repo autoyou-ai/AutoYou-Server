@@ -245,6 +245,17 @@ actor BackendManager {
             env["PLAYWRIGHT_BROWSERS_PATH"] = playwright.path
         }
 
+        let ffmpegExe = resourcesRootURL.appendingPathComponent("runtime/ffmpeg/bin/ffmpeg")
+        let ffmpegFlat = resourcesRootURL.appendingPathComponent("runtime/ffmpeg/ffmpeg")
+        let resolvedFFmpeg = FileManager.default.fileExists(atPath: ffmpegExe.path) ? ffmpegExe : (FileManager.default.fileExists(atPath: ffmpegFlat.path) ? ffmpegFlat : nil)
+        if let resolvedFFmpeg = resolvedFFmpeg {
+            env["AUTOYOU_TV_FFMPEG"] = resolvedFFmpeg.path
+            let ffprobe = resolvedFFmpeg.deletingLastPathComponent().appendingPathComponent("ffprobe")
+            if FileManager.default.fileExists(atPath: ffprobe.path) {
+                env["AUTOYOU_TV_FFPROBE"] = ffprobe.path
+            }
+        }
+
         let bundledCACerts = resourcesRootURL.appendingPathComponent("certifi/cacert.pem")
         if FileManager.default.fileExists(atPath: bundledCACerts.path) {
             env["SSL_CERT_FILE"] = bundledCACerts.path

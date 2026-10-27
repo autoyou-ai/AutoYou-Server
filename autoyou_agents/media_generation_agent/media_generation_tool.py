@@ -29,7 +29,7 @@ from shared.platform_runtime import get_config_dir, get_service_data_dir, is_com
 from shared.secure_storage import SecureStorageError, append_secure_file, read_secure_file, write_secure_file
 from shared.media_generation_runtime import (
     clear_wan_runtime_cache, probe_wan_runtime, run_owned_media_process,
-    wan_generation_command,
+    wan_generation_command, wan_supports_option,
 )
 from shared.openrouter_config import OPENROUTER_API_BASE, normalize_openrouter_model
 
@@ -262,6 +262,7 @@ def _default_wan2gp_config() -> Dict[str, Any]:
     return {
         **_platform_default_wan2gp_paths(),
         "engine": "draw_things" if apple_silicon else "wan2gp",
+        "memory_profile": "auto",
         "draw_things_cli": "",
         "draw_things_models_dir": "",
         "draw_things_video_model": "",
@@ -398,6 +399,9 @@ def get_wan2gp_config() -> Dict[str, Any]:
 
 def save_wan2gp_config(wan_cfg: Dict[str, Any]) -> None:
     """Save Wan2GP configuration to config/video.json."""
+    memory_profile = str(wan_cfg.get("memory_profile") or "auto")
+    if memory_profile not in {"auto", "1", "2", "3", "3.5", "4", "4.5", "5"}:
+        raise ValueError("Choose a valid Wan2GP memory profile.")
     config_path = _wan2gp_config_path(for_write=True)
     existing_config_path = _wan2gp_config_path()
     
@@ -1150,6 +1154,11 @@ def _write_process_logs(work_dir: Path, command: List[str], completed: subproces
 
 
 def _process_failure_summary(completed: subprocess.CompletedProcess[str]) -> str:
+    kind = _process_failure_kind(completed)
+    if kind == "native_allocator_crash":
+        return "The native MMGP CPU memory allocator crashed (Windows access violation 0xC0000005)."
+    if kind == "native_crash":
+        return "The generator crashed with a Windows access violation (0xC0000005)."
     for text in (completed.stderr, completed.stdout):
         lines = re.split(r"[\r\n]+", str(text or ""))
         for line in reversed(lines):
@@ -1190,6 +1199,19 @@ WAN_MEMORY_FAILURE_MARKERS = (
 def _looks_like_wan_memory_failure(*texts: Any) -> bool:
     combined = "\n".join(str(text or "") for text in texts).lower()
     return any(marker in combined for marker in WAN_MEMORY_FAILURE_MARKERS)
+
+
+def _process_failure_kind(completed: subprocess.CompletedProcess[str]) -> str:
+    combined = "\n".join(str(value or "") for value in (completed.stderr, completed.stdout)).lower()
+    if completed.returncode in {124, 125}:
+        return "timeout" if completed.returncode == 124 else "cleanup_failed"
+    if completed.returncode & 0xFFFFFFFF == 0xC0000005:
+        if "ram_alloc" in combined:
+            return "native_allocator_crash"
+        return "native_crash"
+    if _looks_like_wan_memory_failure(completed.stderr, completed.stdout):
+        return "out_of_memory"
+    return "process_error"
 
 def _parse_resolution(resolution: Any) -> Optional[Tuple[int, int]]:
     match = re.match(r"^\s*(\d+)\s*x\s*(\d+)\s*$", str(resolution or ""), flags=re.IGNORECASE)
@@ -1597,6 +1619,7 @@ def _generate_media_sync_unlocked(
                 retry_resolution != final_resolution
                 or retry_prompt != final_prompt
                 or retry_steps != final_steps
+                or (engine == "wan2gp" and wan_supports_option(wan, "--profile"))
             ):
                 attempts.append(
                     {
@@ -1660,7 +1683,8 @@ def _generate_media_sync_unlocked(
                 settings_path = work_dir / "wan2gp-settings.json"
                 with settings_path.open("w", encoding="utf-8") as f:
                     json.dump(settings_payload, f, indent=2)
-                command = wan_generation_command(python, settings_path, output_dir, runtime, wan)
+                attempt_config = dict(wan, _low_memory_retry=attempt_index > 0)
+                command = wan_generation_command(python, settings_path, output_dir, runtime, attempt_config)
 
             generation_timeout = float(wan.get("generation_timeout_seconds", 3600 if media_type == "image" else 7200))
             if not 0 < generation_timeout <= 86400:
@@ -1688,15 +1712,30 @@ def _generate_media_sync_unlocked(
             _write_process_logs(work_dir, command, completed)
 
             if completed.returncode != 0:
+                failure_kind = _process_failure_kind(completed)
                 if (
                     attempt_index + 1 < len(attempts)
-                    and _looks_like_wan_memory_failure(completed.stderr, completed.stdout)
+                    and (
+                        failure_kind == "out_of_memory"
+                        or (
+                            failure_kind == "native_allocator_crash" and engine == "wan2gp"
+                            and wan_supports_option(wan, "--ram-allocator")
+                        )
+                    )
                 ):
                     next_attempt = attempts[attempt_index + 1]
-                    note = (
-                        f"{('Draw Things' if engine == 'draw_things' else 'Wan2GP')} reported memory pressure; logs were saved in {work_dir}. "
-                        f"Retrying image generation at {next_attempt['resolution']} with a shorter prompt."
+                    reason = (
+                        "The native CPU memory allocator crashed"
+                        if failure_kind == "native_allocator_crash" else
+                        f"{('Draw Things' if engine == 'draw_things' else 'Wan2GP')} reported memory pressure"
                     )
+                    note = (
+                        f"{reason}; logs were saved in {work_dir}. "
+                        f"Retrying image generation at {next_attempt['resolution']} with a shorter prompt"
+                    )
+                    if engine == "wan2gp" and wan_supports_option(wan, "--profile"):
+                        note += ", streaming model weights with the low-memory profile"
+                    note += "."
                     retry_notes.append(note)
                     if history_item_id:
                         update_history_status(
@@ -1712,21 +1751,22 @@ def _generate_media_sync_unlocked(
                                 "seed": final_seed,
                             },
                         )
+                    _cleanup_generation_payloads(work_dir)
                     _seal_generation_work_dir(work_dir)
                     continue
 
                 err_msg = (
                     f"{('Draw Things local inference' if engine == 'draw_things' else 'Wan2GP generation')} failed with exit code {completed.returncode}. "
                     f"{_process_failure_summary(completed)} "
-                    f"Logs were saved in {work_dir}.\nSTDERR tail:\n{_tail_text(completed.stderr)}\n"
-                    f"STDOUT tail:\n{_tail_text(completed.stdout)}"
+                    f"Diagnostic logs were saved in {work_dir}."
                 )
                 if retry_notes:
                     err_msg = "\n".join(retry_notes) + "\n" + err_msg
                 if history_item_id:
                     update_history_status(history_item_id, "failed", err_msg)
                 _seal_generation_work_dir(work_dir)
-                return {"status": "error", "message": err_msg}
+                return {"status": "error", "message": err_msg, "failure_kind": failure_kind,
+                        "runtime_repair_required": failure_kind in {"native_crash", "native_allocator_crash"}}
 
             files = [
                 candidate
@@ -1794,7 +1834,7 @@ def _generate_media_sync_unlocked(
 
             message = f"Successfully generated {media_type} and saved to history."
             if retry_notes:
-                message += f" {('Draw Things' if engine == 'draw_things' else 'Wan2GP')} memory pressure was recovered with a low-memory retry."
+                message += f" {('Draw Things' if engine == 'draw_things' else 'Wan2GP')} recovered with a low-memory retry."
 
             return {
                 "status": "success",

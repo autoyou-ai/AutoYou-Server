@@ -178,6 +178,17 @@ build_with_spm() {
         
         # Copy build output
         local build_output="${SCRIPT_DIR}/apple/.build/release/AutoYou"
+        if [[ ! -f "$build_output" ]]; then
+            local spm_bin_dir
+            spm_bin_dir="$(swift build "${build_args[@]}" --show-bin-path 2>/dev/null || true)"
+            if [[ -n "$spm_bin_dir" && -f "${spm_bin_dir}/AutoYou" ]]; then
+                build_output="${spm_bin_dir}/AutoYou"
+            elif [[ -f "${SCRIPT_DIR}/apple/.build/arm64-apple-macosx/release/AutoYou" ]]; then
+                build_output="${SCRIPT_DIR}/apple/.build/arm64-apple-macosx/release/AutoYou"
+            elif [[ -f "${SCRIPT_DIR}/apple/.build/x86_64-apple-macosx/release/AutoYou" ]]; then
+                build_output="${SCRIPT_DIR}/apple/.build/x86_64-apple-macosx/release/AutoYou"
+            fi
+        fi
         if [[ -f "$build_output" ]]; then
             mkdir -p "${BUILD_DIR}/executables"
             cp "$build_output" "${BUILD_DIR}/executables/AutoYou"

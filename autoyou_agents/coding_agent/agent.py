@@ -308,6 +308,7 @@ def get_pending_builder_handoff(tool_context: ToolContext) -> dict:
 
 def create_coding_agent(model_config):
     """Create the coding agent with repo-aware workspace tools."""
+    from autoyou_agents.pi_agent.agent import forward_coding_to_pi
     tools = [
         get_workspace_root,
         get_pending_builder_handoff,
@@ -334,6 +335,7 @@ def create_coding_agent(model_config):
         description=AGENT_DESCRIPTION,
         instruction=AGENT_INSTRUCTION,
         tools=tools,
+        before_agent_callback=forward_coding_to_pi,
         before_model_callback=[_coding_before_model_callback],
         after_model_callback=[_coding_after_model_callback],
         before_tool_callback=[_coding_before_tool_callback],

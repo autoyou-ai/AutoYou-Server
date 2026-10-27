@@ -1471,3 +1471,373 @@ def test_codex_macos_26_730_pack_retains_inherited_composer_coordinates():
             targets_by_id[tid].get("click_point") is not None
             or targets_by_id[tid].get("normalized_box") is not None
         ), f"Target '{tid}' lost inherited coordinates in 26.730 pack"
+def test_claude_modern_3_6556_pack_has_sprites_nested_effort_and_release_ready_usage():
+    manifest = load_desktop_app_manifest(CLAUDE_AGENT_DIR)
+    pack = select_desktop_asset_pack(
+        manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="3.6556.2",
+    )
+    assert pack is not None
+    assert pack["asset_pack_id"] == "claude-windows-3.6556-2026-12"
+    assert desktop_app_control._missing_target_image_count(manifest, pack) == 0
+
+    coverage = desktop_app_control._release_action_coverage(manifest, pack)
+    assert coverage["release_ready"] is True
+    assert coverage["missing_actions"] == []
+
+    controls = pack["selection_controls"]
+    models = controls["model"]["options"]
+    for modern_model in ("opus_5_5", "sonnet_5_5", "fable_5_1", "haiku_5_5"):
+        assert modern_model in models
+    efforts = controls["model"]["effort_options"]
+    for eff_key in ("low", "medium", "high", "extra", "max"):
+        assert eff_key in efforts
+        steps = efforts[eff_key]["steps"]
+        assert steps[0]["target_id"] == "effort_menu_row"
+        assert steps[0]["action"] == "hover"
+        assert steps[1]["glide"] is True
+    assert "fast" in controls["speed"]["options"]
+    assert "ultracode" in controls["advanced"]["options"]
+    assert controls["advanced"]["options"]["ultracode"]["steps"][0]["target_id"] == "effort_menu_row"
+    assert controls["project"]["fallback_target_id"] == "project_selector"
+    assert controls["worktree"]["open_target_id"] == "worktree_selector"
+
+
+def test_codex_modern_26_1021_pack_has_9_row_model_menu_and_inline_question_targets():
+    manifest = load_desktop_app_manifest(CODEX_AGENT_DIR)
+    pack = select_desktop_asset_pack(
+        manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="26.1021.3705.0",
+    )
+    assert pack is not None
+    assert pack["asset_pack_id"] == "codex-windows-26.1021-2026-12"
+    assert desktop_app_control._missing_target_image_count(manifest, pack) == 0
+
+    models = pack["selection_controls"]["model"]["options"]
+    ordered_model_ids = (
+        "default",
+        "gpt_6_1_sol",
+        "gpt_6_astra",
+        "gpt_6_1_terra",
+        "gpt_6_sol",
+        "gpt_6_luna",
+        "gpt_5_6_sol",
+        "gpt_5_6_terra",
+        "gpt_5_6_luna",
+    )
+    targets_by_id = {t["target_id"]: t for t in pack["targets"]}
+    ys = []
+    for mid in ordered_model_ids:
+        assert mid in models
+        tid = models[mid]["target_id"]
+        assert tid in targets_by_id
+        ys.append(targets_by_id[tid]["click_point"][1])
+    assert ys == sorted(ys), "9-row Select model dropdown targets must be ordered top-to-bottom"
+
+    for extra_tid in (
+        "question_reply_input",
+        "question_skip_button",
+        "question_send_button",
+        "diff_summary_pill",
+        "toggle_diff",
+        "project_selector",
+    ):
+        assert extra_tid in targets_by_id
+
+
+def test_windows_squirrel_version_and_live_control_bar_ocr_parsing():
+    exe = r"C:\Users\Synthetic\AppData\Local\AnthropicClaude\app-3.6556.2\claude.exe"
+    assert desktop_app_control._windows_squirrel_app_version(exe) == "3.6556.2"
+
+    claude_manifest = load_desktop_app_manifest(CLAUDE_AGENT_DIR)
+    claude_pack = select_desktop_asset_pack(
+        claude_manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="3.6556.2",
+    )
+    claude_opts = desktop_app_control._extract_pack_configuration_options(claude_pack)
+    parsed_claude = desktop_app_control._parse_live_control_bar_ocr(
+        "AutoYou Worktree Auto Opus 5.5 Extra · Ultracode",
+        claude_opts,
+    )
+    assert parsed_claude["model"] == "opus_5_5"
+    assert parsed_claude["effort"] == "extra"
+    assert parsed_claude["advanced"] == "ultracode"
+    assert parsed_claude["permissions"] == "auto_mode"
+    assert parsed_claude["worktree_visible"] is True
+
+    codex_manifest = load_desktop_app_manifest(CODEX_AGENT_DIR)
+    codex_pack = select_desktop_asset_pack(
+        codex_manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="26.1021.3705.0",
+    )
+    codex_opts = desktop_app_control._extract_pack_configuration_options(codex_pack)
+    parsed_codex = desktop_app_control._parse_live_control_bar_ocr(
+        "8 files changed +324 -9 Question Reply... Skip Send Work with Codex GPT-6.1 Sol Max",
+        codex_opts,
+    )
+    assert parsed_codex["model"] == "gpt_6_1_sol"
+    assert parsed_codex["effort"] == "max"
+    assert parsed_codex["pending_question"] is True
+    assert parsed_codex["diff_summary_visible"] is True
+
+
+def test_codex_inline_question_extraction_and_prompt_status_detection(monkeypatch, tmp_path):
+    ocr_sample = """
+    8 files changed +324 -9
+    ? Question
+    Do you want me to implement and run a live e2e test against the running site right now, or only tell you whether it is already tested?
+    Reply...
+    Skip   Send
+    Work with Codex in this folder
+    GPT-5.4 Extra High Full access
+    """
+    extracted = desktop_app_control._extract_inline_question_from_ocr_text(ocr_sample)
+    assert extracted["pending_question"] is True
+    assert extracted["question_text"] == (
+        "Do you want me to implement and run a live e2e test against the running site right now, "
+        "or only tell you whether it is already tested?"
+    )
+    assert extracted["has_reply_input"] is True
+    assert extracted["has_skip_button"] is True
+    assert extracted["has_send_button"] is True
+
+    prose_only = desktop_app_control._extract_inline_question_from_ocr_text(
+        "I answered your question about the database schema."
+    )
+    assert prose_only["pending_question"] is False
+
+    codex_manifest = load_desktop_app_manifest(CODEX_AGENT_DIR)
+    codex_pack = select_desktop_asset_pack(
+        codex_manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="26.1021.3705.0",
+    )
+    prepared = {
+        "status": "success",
+        "pyautogui": SimpleNamespace(),
+        "manifest": {"agent_name": "codex_desktop_agent", "app_id": "codex"},
+        "details": {"platform": "windows"},
+        "pack": codex_pack,
+        "window_bounds": (0, 0, 1200, 900),
+        "screen_size": (1200, 900),
+        "focused": True,
+        "warnings": [],
+    }
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_prepare_desktop_app_interaction",
+        lambda agent_dir, *, launch_if_needed=False: prepared,
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_build_artifact_path",
+        lambda agent_name, label: tmp_path / f"{label}.png",
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_capture_desktop_screenshot",
+        lambda destination: {"status": "success", "path": str(destination)},
+    )
+    monkeypatch.setattr(desktop_app_control, "_crop_region_from_capture", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_ocr_image_file",
+        lambda image_path: {"status": "success", "engine": "synthetic", "text": ocr_sample},
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_locate_target_by_image",
+        lambda gui, manifest, target, **kw: (890, 850) if target["target_id"] == "stop_button" else None,
+    )
+
+    status_payload = desktop_app_control.get_desktop_app_prompt_status(CODEX_AGENT_DIR, launch_if_needed=False)
+    assert status_payload["status"] == "success"
+    assert status_payload["prompt_status"] == "awaiting_question_response"
+    assert status_payload["pending_question"] is True
+    assert "live e2e test" in status_payload["question_text"]
+
+    wait_payload = desktop_app_control.wait_until_idle_and_copy_desktop_response(
+        CODEX_AGENT_DIR,
+        poll_interval_seconds=0.01,
+        max_wait_seconds=5.0,
+    )
+    assert wait_payload["status"] == "awaiting_question_response"
+    assert wait_payload["pending_question"] is True
+    assert "live e2e test" in wait_payload["question_text"]
+    assert "answer_codex_desktop_question" in wait_payload["message"]
+
+
+def test_answer_and_skip_codex_inline_question_and_shortcuts(monkeypatch, tmp_path):
+    from autoyou_agents.codex_desktop_agent import agent as codex_agent
+    from autoyou_agents.shared_tools.desktop_app_agent_shortcuts import desktop_exact_tool_call_from_text
+
+    codex_manifest = load_desktop_app_manifest(CODEX_AGENT_DIR)
+    codex_pack = select_desktop_asset_pack(
+        codex_manifest,
+        platform_tag="windows",
+        architecture="x86_64",
+        on_date="2026-10-27",
+        app_version="26.1021.3705.0",
+    )
+    clicks = []
+    pastes = []
+    keys = []
+    prepared = {
+        "status": "success",
+        "pyautogui": SimpleNamespace(press=lambda k: keys.append(k)),
+        "manifest": {"agent_name": "codex_desktop_agent", "app_id": "codex"},
+        "details": {"platform": "windows"},
+        "pack": codex_pack,
+        "window_bounds": (0, 0, 1200, 900),
+        "screen_size": (1200, 900),
+        "focused": True,
+        "warnings": [],
+    }
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_prepare_desktop_app_interaction",
+        lambda agent_dir, *, launch_if_needed=True: prepared,
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_build_artifact_path",
+        lambda agent_name, label: tmp_path / f"{label}.png",
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_capture_desktop_screenshot",
+        lambda destination: {"status": "success", "path": str(destination)},
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_detect_inline_question_card",
+        lambda prep, cap=None: {
+            "pending_question": True,
+            "question_text": "Do you want me to implement and run a live e2e test right now?",
+            "has_reply_input": True,
+            "has_skip_button": True,
+            "has_send_button": True,
+            "source": "question_card_ocr",
+            "ocr_engine": "synthetic",
+        },
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_click_target_id",
+        lambda prep, tid, **kw: clicks.append(tid) or {"status": "success", "target_id": tid, "point": [600, 750]},
+    )
+    monkeypatch.setattr(
+        desktop_app_control,
+        "_paste_text_into_focused_prompt",
+        lambda prep, text, *, replace=True: pastes.append((text, replace)) or {"status": "success", "used_clipboard": True},
+    )
+    monkeypatch.setattr(desktop_app_control.time, "sleep", lambda *_a, **_kw: None)
+
+    q_check = codex_agent.get_codex_desktop_question(launch_if_needed=False)
+    assert q_check["status"] == "success"
+    assert q_check["pending_question"] is True
+    assert "live e2e test" in q_check["question_text"]
+
+    ans_res = codex_agent.answer_codex_desktop_question(
+        response="Yes, implement and run the live e2e test now.",
+        skip=False,
+        launch_if_needed=False,
+    )
+    assert ans_res["status"] == "success"
+    assert ans_res["action"] == "answer_question"
+    assert ans_res["skipped"] is False
+    assert clicks[:2] == ["question_reply_input", "question_send_button"]
+    assert pastes == [("Yes, implement and run the live e2e test now.", True)]
+
+    clicks.clear()
+    skip_res = codex_agent.answer_codex_desktop_question(skip=True, launch_if_needed=False)
+    assert skip_res["status"] == "success"
+    assert skip_res["action"] == "skip_question"
+    assert skip_res["skipped"] is True
+    assert clicks == ["question_skip_button"]
+
+    available = ("get_codex_desktop_question", "answer_codex_desktop_question", "get_codex_desktop_status")
+    assert desktop_exact_tool_call_from_text("answer question: run the e2e test now", available) == (
+        "answer_codex_desktop_question",
+        {"response": "run the e2e test now"},
+    )
+    assert desktop_exact_tool_call_from_text("skip question", available) == (
+        "answer_codex_desktop_question",
+        {"skip": True},
+    )
+    assert desktop_exact_tool_call_from_text("check codex question", available) == (
+        "get_codex_desktop_question",
+        {},
+    )
+
+
+def test_antigravity_agent_manifest_packs_shortcuts_and_website(monkeypatch):
+    from fastapi.testclient import TestClient
+    from autoyou_agents.antigravity_agent import agent as ag_agent
+    from autoyou_agents.antigravity_agent.website.backend import app as ag_website
+    from autoyou_agents.shared_tools.desktop_app_agent_shortcuts import desktop_exact_tool_call_from_text
+
+    ag_dir = repo_root_dir = Path(ag_agent.__file__).resolve().parent
+    ag_manifest = load_desktop_app_manifest(ag_dir)
+    assert ag_manifest["agent_name"] == "antigravity_agent"
+    assert ag_manifest["app_id"] == "antigravity_desktop"
+
+    for plat, expected_id in (
+        ("windows", "antigravity-windows-2.24.0-2026-10"),
+        ("macos", "antigravity-macos-2.24.0-2026-10"),
+        ("linux", "antigravity-linux-2.24.0-2026-10"),
+    ):
+        pack = select_desktop_asset_pack(
+            ag_manifest,
+            platform_tag=plat,
+            architecture="x86_64",
+            app_version="2.24.0",
+        )
+        assert pack is not None
+        assert pack["asset_pack_id"] == expected_id
+        opts = desktop_app_control._extract_pack_configuration_options(pack)
+        model_ids = {m["id"] for m in opts["models"]}
+        assert {"gemini-4-argon", "gemini-3.8-flash", "claude-opus-5.5", "claude-sonnet-5.5", "gpt-oss-120b"}.issubset(model_ids)
+        effort_ids = {e["id"] for e in opts["efforts"]}
+        assert {"low", "medium", "high"}.issubset(effort_ids)
+        perm_ids = {p["id"] for p in opts["permissions"]}
+        assert {"request_review", "default", "turbo"}.issubset(perm_ids)
+
+    avail = ("get_antigravity_status", "send_prompt_to_antigravity", "get_antigravity_usage", "select_antigravity_model")
+    assert desktop_exact_tool_call_from_text("check antigravity status", avail) == ("get_antigravity_status", {})
+    assert desktop_exact_tool_call_from_text("send prompt: verify build", avail) == (
+        "send_prompt_to_antigravity",
+        {"prompt": "verify build"},
+    )
+    assert desktop_exact_tool_call_from_text(
+        "Use only one tool: select_antigravity_model with model='Gemini 4 Argon' and effort='High'",
+        avail,
+    ) == (
+        "select_antigravity_model",
+        {"model": "Gemini 4 Argon", "effort": "High"},
+    )
+
+    monkeypatch.setattr(ag_website, "_auth_error", lambda _req: None)
+    with TestClient(ag_website.app) as client:
+        index_resp = client.get("/")
+        assert index_resp.status_code == 200
+        assert "Antigravity Control" in index_resp.text
+        cfg_resp = client.get("/api/config")
+        assert cfg_resp.status_code == 200
+        assert cfg_resp.json()["agent_name"] == "antigravity_agent"
+
+

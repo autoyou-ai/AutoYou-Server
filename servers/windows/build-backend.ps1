@@ -2051,8 +2051,23 @@ $runtimeNodeRoot = Join-Path $runtimeRoot "node"
 $runtimePlaywrightRoot = Join-Path $runtimeRoot "playwright"
 $runtimeWhisperRoot = Join-Path $runtimeRoot "whisper"
 $runtimeTunnelmoleRoot = Join-Path $runtimeRoot "tunnelmole"
+$runtimeFfmpegRoot = Join-Path $runtimeRoot "ffmpeg"
 
-New-Item -ItemType Directory -Force -Path $runtimeRoot, $runtimeNodeRoot, $runtimePlaywrightRoot, $runtimeWhisperRoot, $runtimeTunnelmoleRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $runtimeRoot, $runtimeNodeRoot, $runtimePlaywrightRoot, $runtimeWhisperRoot, $runtimeTunnelmoleRoot, $runtimeFfmpegRoot | Out-Null
+$ffmpegCandidates = @(
+    $env:AUTOYOU_TV_FFMPEG,
+    $(if (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue) { (Get-Command ffmpeg.exe).Source }),
+    $(Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter "ffmpeg.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName)
+)
+$discoveredFFmpeg = $ffmpegCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if ($discoveredFFmpeg) {
+    $ffmpegDir = Split-Path -Parent $discoveredFFmpeg
+    $destBin = Join-Path $runtimeFfmpegRoot "bin"
+    New-Item -ItemType Directory -Force -Path $destBin | Out-Null
+    Copy-Item (Join-Path $ffmpegDir "ffmpeg.exe") $destBin -Force -ErrorAction SilentlyContinue
+    Copy-Item (Join-Path $ffmpegDir "ffprobe.exe") $destBin -Force -ErrorAction SilentlyContinue
+    Write-Host "Bundled FFmpeg and FFprobe into packaged runtime: $destBin"
+}
 Copy-Item (Join-Path $nodeRuntimeRoot "*") $runtimeNodeRoot -Recurse -Force
 Copy-Item (Join-Path $playwrightRoot "*") $runtimePlaywrightRoot -Recurse -Force
 Install-WhisperCppRuntime -RuntimeRoot $runtimeWhisperRoot -PythonExe $pythonExe

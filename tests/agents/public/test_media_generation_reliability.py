@@ -183,6 +183,122 @@ def test_amd_command_selects_portable_attention_and_explicit_gpu(tmp_path):
     assert nvidia[nvidia.index("--gpu") + 1] == "cuda:1"
 
 
+def _install_memory_options(tmp_path):
+    source = tmp_path / "shared" / "cli_args.py"
+    source.parent.mkdir(exist_ok=True)
+    source.write_text("\n".join(
+        f'add("{option}")' for option in (
+            "--profile", "--preload", "--ram-allocator", "--perc-reserved-mem-max",
+        )
+    ), encoding="utf-8")
+
+
+def test_windows_amd_avoids_native_ram_allocator_and_retry_streams_weights(tmp_path, monkeypatch):
+    _install_memory_options(tmp_path)
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Windows")
+    config = {"app_dir": str(tmp_path), "memory_profile": "4"}
+    command = runtime.wan_generation_command(Path("python"), tmp_path / "settings.json", tmp_path, {"backend": "amd"}, config)
+    assert command[command.index("--ram-allocator") + 1] == "default"
+    assert command[command.index("--profile") + 1] == "4"
+    retry = runtime.wan_generation_command(Path("python"), tmp_path / "settings.json", tmp_path, {"backend": "amd"}, dict(config, _low_memory_retry=True))
+    assert retry[retry.index("--profile") + 1] == "5"
+    assert retry[retry.index("--preload") + 1] == "0"
+    assert retry[retry.index("--perc-reserved-mem-max") + 1] == "0.1"
+    assert retry.count("--ram-allocator") == 1
+    nvidia = runtime.wan_generation_command(Path("python"), tmp_path / "settings.json", tmp_path, {"backend": "nvidia"}, {"app_dir": str(tmp_path)})
+    assert "--ram-allocator" not in nvidia and "--profile" not in nvidia
+
+
+def test_legacy_wan_installation_does_not_receive_unknown_recovery_options(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Windows")
+    command = runtime.wan_generation_command(Path("python"), tmp_path / "settings.json", tmp_path, {"backend": "amd"}, {"app_dir": str(tmp_path), "_low_memory_retry": True})
+    assert "--ram-allocator" not in command and "--profile" not in command
+    with pytest.raises(ValueError, match="does not support"):
+        runtime.wan_generation_command(Path("python"), tmp_path / "settings.json", tmp_path, {"backend": "amd"}, {"app_dir": str(tmp_path), "memory_profile": "5"})
+
+
+@pytest.mark.parametrize("code", [3221225477, -1073741819])
+def test_native_allocator_crash_is_distinct_from_gpu_memory_pressure(code):
+    result = subprocess.CompletedProcess([], code, "", "Exception Code: 0xC0000005\nram_alloc_win_amd64.dll\nc10.dll alloc_cpu")
+    assert media._process_failure_kind(result) == "native_allocator_crash"
+    assert "CPU memory allocator crashed" in media._process_failure_summary(result)
+    assert not media._looks_like_wan_memory_failure(result.stderr)
+
+
+@pytest.mark.parametrize("code,kind", [(124, "timeout"), (125, "cleanup_failed")])
+def test_timeout_and_incomplete_cleanup_never_trigger_memory_retry(media_db, monkeypatch, code, kind):
+    monkeypatch.setattr(media, "get_wan2gp_config", lambda: _fake_config(media_db))
+    monkeypatch.setattr(media, "probe_wan_runtime", lambda *args: {"ready": True, "backend": "amd"})
+    calls = []
+
+    def failed(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, code, "CUDA out of memory", "Synthetic worker stopped.")
+
+    monkeypatch.setattr(media, "run_owned_media_process", failed)
+    item = _pending()
+    result = media.generate_media_sync("synthetic prompt", media_type="image", history_item_id=item)
+    assert len(calls) == 1
+    assert result["failure_kind"] == kind
+    assert media.get_history_item(item)["status"] == "failed"
+
+
+def test_native_allocator_retry_recovers_same_history_item_with_runtime_changes(media_db, monkeypatch):
+    _install_memory_options(media_db)
+    config = dict(_fake_config(media_db), image_resolution="512x512", image_num_inference_steps=6)
+    monkeypatch.setattr(media, "get_wan2gp_config", lambda: config)
+    monkeypatch.setattr(media, "probe_wan_runtime", lambda *args: {"ready": True, "backend": "nvidia"})
+    calls = []
+
+    def generate(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(command, 3221225477, "", "Exception Code: 0xC0000005\nram_alloc_win_amd64.dll")
+        assert command[command.index("--profile") + 1] == "5"
+        assert command[command.index("--ram-allocator") + 1] == "default"
+        output = Path(command[command.index("--output-dir") + 1]) / "synthetic-recovered.png"
+        Image.new("RGB", (32, 32), "navy").save(output)
+        return subprocess.CompletedProcess(command, 0, "done", "")
+
+    monkeypatch.setattr(media, "run_owned_media_process", generate)
+    item = _pending()
+    result = media.generate_media_sync("synthetic prompt", media_type="image", optimized_prompt="synthetic prompt", history_item_id=item)
+    assert result["status"] == "success" and result["item_id"] == item
+    assert result["retry_attempted"] is True and len(calls) == 2
+    assert media.get_history_item(item)["status"] == "completed"
+    assert len(media.list_history()) == 1
+    assert len(list(media.OUTPUT_DIR.glob("*/command.json"))) == 2
+
+
+def test_unrelated_native_crash_is_not_retried_or_dumped_into_chat(media_db, monkeypatch):
+    monkeypatch.setattr(media, "get_wan2gp_config", lambda: _fake_config(media_db))
+    monkeypatch.setattr(media, "probe_wan_runtime", lambda *args: {"ready": True, "backend": "amd"})
+    calls = []
+    stack = "Exception Code: 0xC0000005\n" + "synthetic_driver.dll 0x12345678\n" * 300
+
+    def failed(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 3221225477, "", stack)
+
+    monkeypatch.setattr(media, "run_owned_media_process", failed)
+    item = _pending()
+    result = media.generate_media_sync("synthetic prompt", media_type="image", history_item_id=item)
+    assert len(calls) == 1 and result["failure_kind"] == "native_crash"
+    assert result["runtime_repair_required"] is True
+    assert "access violation" in result["message"]
+    assert "synthetic_driver.dll" not in result["message"]
+    assert len(result["message"]) < 1000
+    assert stack.encode() == read_secure_file(next(media.OUTPUT_DIR.glob("*/stderr.txt")))
+
+
+def test_settings_reject_invalid_memory_profile_before_writing(media_db, monkeypatch):
+    monkeypatch.setattr(website, "_check_auth", lambda request: True)
+    monkeypatch.setattr(media, "_wan2gp_config_path", lambda **kwargs: pytest.fail("Invalid settings must not reach storage"))
+    response = TestClient(website.app).post("/api/config", json={"memory_profile": "unsafe"})
+    assert response.status_code == 400
+    assert "valid Wan2GP memory profile" in response.json()["error"]
+
+
 def test_generation_checks_gpu_before_launch_and_finishes_failure(media_db, monkeypatch):
     monkeypatch.setattr(media, "get_wan2gp_config", lambda: _fake_config(media_db))
     monkeypatch.setattr(media, "probe_wan_runtime", lambda *args: {"ready": False, "error": "Synthetic GPU runtime failure."})

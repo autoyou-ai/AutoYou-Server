@@ -51,6 +51,7 @@ from routers.mcp import register_routes as register_mcp_routes
 from routers.peer_rendezvous import register_routes as register_peer_rendezvous_routes
 from routers.moderation import register_routes as register_moderation_routes
 from routers.website_gateway import register_routes as register_website_gateway_routes
+from routers.assistant_mode import register_routes as register_assistant_mode_routes
 from routers.ai_opt_out import register_ai_opt_out_routes
 from routers.ai_agent import (
     attach_ai_agent_endpoints,
@@ -3272,6 +3273,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.build_prompt_agent.website.backend.app:app",
         "default_port": 8074,
     },
+    "antigravity_agent": {
+        "app_import": "autoyou_agents.antigravity_agent.website.backend.app:app",
+        "default_port": 8115,
+    },
     "prompts_agent": {
         "app_import": "autoyou_agents.prompts_agent.website.backend.app:app",
         "default_port": 8078,
@@ -3403,6 +3408,7 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "audio_agent": "Audio Player App",
     "tv_agent": "AutoYou TV",
     "build_prompt_agent": "Prompt Builder",
+    "antigravity_agent": "Antigravity Control",
     "prompts_agent": "My Prompt",
     "notes_agent": "Notes Manager App",
     "tasks_agent": "Tasks App",
@@ -3529,6 +3535,10 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
     "mac_security_agent": (
         "Publish the OTP-gated, read-only macOS network dashboard. It stays opt-in "
         "and is excluded from packaged/build-server runtimes."
+    ),
+    "antigravity_agent": (
+        "Publish the Antigravity Control web panel for model, effort, and execution "
+        "mode selection, composer drafting, and inline question responses."
     ),
 }
 
@@ -5167,7 +5177,9 @@ def _apply_default_messaging_partner_config(cfg: Dict[str, Any]) -> bool:
         normalized_prompt_builder_agent = "codex_desktop_agent"
     elif normalized_prompt_builder_agent in {"claude", "claude_desktop"}:
         normalized_prompt_builder_agent = "claude_desktop_agent"
-    if normalized_prompt_builder_agent not in {"codex_desktop_agent", "claude_desktop_agent"}:
+    elif normalized_prompt_builder_agent in {"antigravity", "antigravity_desktop", "antigravity_desktop_agent", "agy"}:
+        normalized_prompt_builder_agent = "antigravity_agent"
+    if normalized_prompt_builder_agent not in {"codex_desktop_agent", "claude_desktop_agent", "antigravity_agent"}:
         normalized_prompt_builder_agent = "codex_desktop_agent"
     if prompt_builder_cfg.get("application_agent") != normalized_prompt_builder_agent:
         prompt_builder_cfg["application_agent"] = normalized_prompt_builder_agent
@@ -5994,8 +6006,10 @@ def _default_config() -> Dict[str, Any]:
             # Pi Coding Agent gateway/CLI settings (official agent from pi.dev)
             "pi_port": 8650,
             "pi_token": "",
-            "pi_model": "qwen3.8:27b",
+            "pi_model": "pi-agent",
             "pi_path": "",
+            "coding_backend": "auto",
+            "pi_timeout_seconds": 180,
             # Custom API integration settings (communication software mode)
             "custom_api_base": "http://127.0.0.1:8000",
             "custom_model": "custom",
@@ -6661,7 +6675,7 @@ def _apply_google_api_config_to_env() -> None:
     # ── Pi Coding Agent gateway settings (pi.dev) ─────────────────────────────
     pi_port  = str(ai_prov_config.get("pi_port",  8650) or 8650)
     pi_token = str(ai_prov_config.get("pi_token", "") or "")
-    pi_model = str(ai_prov_config.get("pi_model", "qwen3.8:27b") or "qwen3.8:27b")
+    pi_model = str(ai_prov_config.get("pi_model", "pi-agent") or "pi-agent")
     pi_path  = str(ai_prov_config.get("pi_path", "") or "")
     if not pi_path:
         try:
@@ -6673,6 +6687,8 @@ def _apply_google_api_config_to_env() -> None:
     os.environ['PI_TOKEN'] = pi_token
     os.environ['PI_MODEL'] = pi_model
     os.environ['PI_PATH']  = pi_path
+    os.environ['AUTOYOU_CODING_BACKEND'] = str(ai_prov_config.get("coding_backend", "auto") or "auto")
+    os.environ['AUTOYOU_PI_TIMEOUT_SECONDS'] = str(ai_prov_config.get("pi_timeout_seconds", 180) or 180)
 
     # ── Custom API integration settings (communication software mode) ─────────
     custom_api_base = str(ai_prov_config.get("custom_api_base", "http://127.0.0.1:8000") or "http://127.0.0.1:8000")
@@ -7599,6 +7615,7 @@ globals().update(register_mcp_routes(admin_app, auth_app, sys.modules[__name__])
 globals().update(register_peer_rendezvous_routes(admin_app, auth_app, sys.modules[__name__]))
 globals().update(register_moderation_routes(admin_app, auth_app, sys.modules[__name__]))
 globals().update(register_website_gateway_routes(admin_app, auth_app, sys.modules[__name__]))
+globals().update(register_assistant_mode_routes(admin_app, auth_app, sys.modules[__name__]))
 
 # AI training opt-out: serves /.well-known/ai.txt, /robots.txt, and injects
 # X-Robots-Tag + TDM-Reservation headers on every response.
@@ -10554,6 +10571,22 @@ def _create_configured_outbound_audio_track(
     )
     return mixed_track
 
+def _assistant_mode_capability(*, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Assistant mode as devices see it: wake word, how it is confirmed, readiness."""
+    effective_cfg = cfg if cfg is not None else (STATE.config or {})
+    available = bool(
+        AudioTrackSink is not None
+        and _get_video_call_audio_enabled(cfg=effective_cfg)
+        and _get_video_call_agent_processing_enabled(cfg=effective_cfg)
+    )
+    try:
+        from shared.assistant_mode import capability_payload
+
+        return capability_payload(get_configured_server_name(), available=available)
+    except Exception as exc:
+        LOGGER.warning("Assistant mode capability unavailable: %s", type(exc).__name__)
+        return {"enabled": False, "available": False}
+
 def _build_webrtc_capabilities(
     *,
     cfg: Optional[Dict[str, Any]] = None,
@@ -10860,6 +10893,10 @@ def _build_webrtc_capabilities(
         "conversation": {"rename": True},
         "audio": audio_payload,
         "video": video_payload,
+        # Wake word gate for background audio. Older servers omit this key; a
+        # client must not send assistant_listening or assistant_* controls
+        # without it.
+        "assistant_mode": _assistant_mode_capability(cfg=effective_cfg),
         "location": {
             "recording_enabled": _location_recording_available(cfg=effective_cfg),
         },
@@ -13589,6 +13626,16 @@ def _apply_admin_ui_config_patch(
         for key in {"openclaw_port", "openclaw_agent_port", "hermes_port", "pi_port"}:
             if key in ai_provider_payload:
                 ai_provider_cfg[key] = _coerce_admin_ui_int(ai_provider_payload.get(key), f"ai_provider.{key}", minimum=1)
+        if "coding_backend" in ai_provider_payload:
+            backend = str(ai_provider_payload.get("coding_backend") or "").strip().lower()
+            if backend not in {"auto", "pi", "builtin"}:
+                raise ValueError("Coding backend must be auto, pi, or builtin.")
+            ai_provider_cfg["coding_backend"] = backend
+        if "pi_timeout_seconds" in ai_provider_payload:
+            timeout = _coerce_admin_ui_int(ai_provider_payload.get("pi_timeout_seconds"), "ai_provider.pi_timeout_seconds", minimum=10)
+            if timeout > 3600:
+                raise ValueError("Pi timeout must be between 10 and 3600 seconds.")
+            ai_provider_cfg["pi_timeout_seconds"] = timeout
         touched_sections.add("ai_provider")
 
     ollama_payload = payload.get("ollama")
@@ -13739,7 +13786,9 @@ def _apply_admin_ui_config_patch(
                     target = "codex_desktop_agent"
                 elif target in {"claude", "claude_desktop"}:
                     target = "claude_desktop_agent"
-                if target not in {"codex_desktop_agent", "claude_desktop_agent"}:
+                elif target in {"antigravity", "antigravity_desktop", "antigravity_desktop_agent", "agy"}:
+                    target = "antigravity_agent"
+                if target not in {"codex_desktop_agent", "claude_desktop_agent", "antigravity_agent"}:
                     raise ValueError("telegram_user.prompt_builder.application_agent is invalid.")
                 prompt_builder_cfg["application_agent"] = target
         touched_sections.add("telegram_user")

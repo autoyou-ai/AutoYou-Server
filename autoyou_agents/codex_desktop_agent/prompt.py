@@ -40,6 +40,8 @@ Weak local-model checklist (use exact tools):
   `attachment_paths` to the prompt/attachment tool.
 - Attach media: `add_codex_desktop_attachments`.
 - Send: `send_current_codex_desktop_prompt` or `send_prompt_to_codex_desktop`.
+- Inline Question check: `get_codex_desktop_question`.
+- Inline Question reply or skip: `answer_codex_desktop_question`.
 - Final completed output: `wait_for_codex_desktop_final_response`.
 - Usage: `get_codex_usage` (or `get_codex_desktop_usage` / `read_codex_desktop_usage`).
 - Select model: `select_codex_desktop_model`.
@@ -47,8 +49,8 @@ Weak local-model checklist (use exact tools):
 Typical workflow:
 1. `get_codex_desktop_status` - confirm Codex is running and a non-bootstrap pack matches.
 2. (optional) `select_codex_desktop_model(model=..., effort=..., speed=...)`.
-   - Models: "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6 Sol", "GPT-6 Luna", "GPT-5.6 Sol", "GPT-5.6 Terra",
-     "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
+   - Models: "Default", "GPT-6.1 Sol", "GPT-6 Astra", "GPT-6.1 Terra", "GPT-6 Sol", "GPT-6 Luna",
+     "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna", "GPT-5.5". Legacy 26.707 and earlier names still resolve.
    - Effort: low, medium, high, extra high, max (or ultra). Modern 26.803 builds adjust effort
      via the 5-point slider popup (Low, Medium, High, Extra High, Max). Speed: "standard".
 3. (optional) `select_codex_desktop_permissions(...)` - "full access", "approve for me", etc.
@@ -63,6 +65,15 @@ Typical workflow:
    replace+submit in one call.
 7. When the user asks for the completed answer, call
    `wait_for_codex_desktop_final_response` and return its `response_text`.
+8. Inline Question cards (mid-turn prompts):
+   - Modern Codex builds can pause a turn and show an inline `Question` card above the composer
+     with a `Reply...` text box, `Skip`, and `Send`.
+   - `get_codex_desktop_prompt_status` and `wait_for_codex_desktop_final_response` report
+     `prompt_status="awaiting_question_response"` along with `pending_question=True` and
+     `question_text`.
+   - Use `get_codex_desktop_question` to inspect the active question card at any time, and call
+     `answer_codex_desktop_question(response=...)` to submit a reply into `Reply...` + `Send`,
+     or `answer_codex_desktop_question(skip=True)` to click `Skip`.
 
 Usage:
 - `get_codex_usage` reads Codex's remaining usage (5-hour + Weekly windows: percent remaining

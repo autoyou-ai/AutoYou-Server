@@ -456,3 +456,103 @@ def test_preserved_legacy_cli_uses_test_scoped_runtime(autoyou_test_root: Path) 
     from autoyou_agents.data_collector_agent.legacy_workflow import _agent_runtime_root
 
     assert _agent_runtime_root().resolve().is_relative_to(autoyou_test_root)
+def test_collector_parses_modern_claude_and_codex_ui_metadata_and_capabilities(monkeypatch, tmp_path: Path) -> None:
+    from autoyou_agents.data_collector_agent import legacy_workflow
+
+    collector = _isolate_collector(monkeypatch, tmp_path)
+    claude_file = tmp_path / "modern_claude.jsonl"
+    claude_file.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "custom-title", "sessionId": "claude-36556", "customTitle": "Modern Claude 5.5 Session"}),
+                json.dumps(
+                    {
+                        "type": "system",
+                        "sessionId": "claude-36556",
+                        "cwd": "C:/Synthetic/AutoYou",
+                        "version": "3.6556.2",
+                        "gitBranch": "main",
+                        "worktree": "autoyou-wt",
+                        "permissionMode": "auto",
+                        "effort": "extra",
+                        "fastMode": True,
+                        "ultracode": True,
+                    }
+                ),
+                json.dumps({"type": "user", "sessionId": "claude-36556", "message": {"content": "<claude_desktop_context>noise"}}),
+                json.dumps({"type": "user", "sessionId": "claude-36556", "message": {"content": "Check Opus 5.5 Extra Ultracode"}}),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": "claude-36556",
+                        "message": {"model": "claude-opus-5-5", "content": "Opus 5.5 Extra with Ultracode is active."},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed_claude = collector.parse_claude(claude_file)
+    assert parsed_claude is not None
+    assert parsed_claude["title"] == "Modern Claude 5.5 Session"
+    assert parsed_claude["model"] == "claude-opus-5-5"
+    assert len(parsed_claude["turns"]) == 2
+    assert parsed_claude["ui_meta"]["effort"] == "extra"
+    assert parsed_claude["ui_meta"]["fast_mode"] is True
+    assert parsed_claude["ui_meta"]["ultracode"] is True
+    assert parsed_claude["ui_meta"]["permission_mode"] == "auto"
+    assert parsed_claude["ui_meta"]["worktree"] == "autoyou-wt"
+
+    codex_file = tmp_path / "modern_codex.jsonl"
+    codex_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "codex-261021",
+                            "cwd": "C:/Synthetic/AutoYou",
+                            "model": "gpt-6.1-sol",
+                            "effort": "max",
+                            "approval_policy": "on-request",
+                            "app_version": "26.1021.3705.0",
+                            "git": {"branch": "main", "worktree": "codex-wt"},
+                        },
+                    }
+                ),
+                json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "Diagnose Wan2GP failure"}}),
+                json.dumps({"type": "event_msg", "payload": {"type": "task_complete", "last_agent_message": "Recovered failed image request."}}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    parsed_codex = collector.parse_codex(codex_file)
+    assert parsed_codex is not None
+    assert parsed_codex["model"] == "gpt-6.1-sol"
+    assert parsed_codex["ui_meta"]["effort"] == "max"
+    assert parsed_codex["ui_meta"]["git_branch"] == "main"
+    assert parsed_codex["ui_meta"]["worktree"] == "codex-wt"
+    assert len(parsed_codex["turns"]) == 2
+
+    stamp = {"bytes": 100, "mtime_ns": 1_700_000_000_000_000_000}
+    leg_claude = legacy_workflow.parse_claude(claude_file, "synthetic-machine", Path("raw/claude.jsonl"), stamp)
+    assert leg_claude is not None
+    assert leg_claude["model"] == "claude-opus-5-5"
+    assert leg_claude["meta"]["ultracode"] is True
+    assert len(leg_claude["turns"]) == 2
+
+    leg_codex = legacy_workflow.parse_codex(codex_file, "synthetic-machine", Path("raw/codex.jsonl"), stamp)
+    assert leg_codex is not None
+    assert leg_codex["model"] == "gpt-6.1-sol"
+    assert leg_codex["meta"]["effort"] == "max"
+    assert leg_codex["meta"]["worktree"] == "codex-wt"
+
+    caps = collector.application_capabilities()
+    by_id = {app["id"]: app for app in caps["applications"]}
+    assert "Opus 5.5" in by_id["claude"]["modern_ui"]["models"]
+    assert "ultracode" in by_id["claude"]["modern_ui"]["features"]
+    assert "GPT-6.1 Terra" in by_id["codex"]["modern_ui"]["models"]
+    assert "inline_question_card" in by_id["codex"]["modern_ui"]["features"]

@@ -384,6 +384,8 @@ async def api_save_config(request: Request) -> JSONResponse:
         
         save_wan2gp_config(payload)
         return _json_response({"success": True, "message": "Settings saved successfully."})
+    except ValueError as e:
+        return _json_response({"success": False, "error": str(e)}, status_code=400)
     except Exception as e:
         return _json_response({"success": False, "error": internal_error_message(e)}, status_code=500)
 

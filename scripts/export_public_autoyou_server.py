@@ -54,6 +54,7 @@ PRIVATE_PREFIXES = (
     ".gemini/",
     ".github/",
     "skills/",
+    "autoyou_agents/antigravity_agent/desktop_assets/",
     "autoyou_agents/claude_desktop_agent/desktop_assets/",
     "autoyou_agents/codex_desktop_agent/desktop_assets/",
     "autoyou_agents/private/",
@@ -143,6 +144,8 @@ PUBLIC_DESKTOP_ASSET_PATHS = {
     "autoyou_agents/claude_desktop_agent/desktop_assets/setup_prompt.md",
     "autoyou_agents/codex_desktop_agent/desktop_assets/manifest.template.json",
     "autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md",
+    "autoyou_agents/antigravity_agent/desktop_assets/manifest.template.json",
+    "autoyou_agents/antigravity_agent/desktop_assets/setup_prompt.md",
 }
 
 PUBLIC_SKILL_PATHS = {".agents/skills/autoyou-server-validate/SKILL.md"}
@@ -277,6 +280,7 @@ PRIVATE_BASENAMES = {
 }
 
 DESKTOP_CAPTURE_ASSET_PREFIXES = (
+    "autoyou_agents/antigravity_agent/desktop_assets/",
     "autoyou_agents/claude_desktop_agent/desktop_assets/",
     "autoyou_agents/codex_desktop_agent/desktop_assets/",
 )

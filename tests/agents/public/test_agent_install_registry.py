@@ -57,7 +57,9 @@ def test_refresh_agent_install_registry_applies_default_install_states(tmp_path)
     agents_root.mkdir()
     for agent_name in (
         "agent_builder_agent",
+        "antigravity_agent",
         "coding_agent",
+        "pi_agent",
         "media_generation_agent",
         "notes_agent",
         "custom_agent",
@@ -74,7 +76,9 @@ def test_refresh_agent_install_registry_applies_default_install_states(tmp_path)
     assert payload["installed_agents"] == ["notes_agent"]
     assert set(payload["available_agents"]) == {
         "agent_builder_agent",
+        "antigravity_agent",
         "coding_agent",
+        "pi_agent",
         "custom_agent",
         "media_generation_agent",
         "website_agent",
@@ -95,6 +99,8 @@ def test_release_agent_defaults_match_public_private_policy():
     default_on = {
         "admin_agent",
         "ads_watching_agent",
+        # Acts only on wake-word turns; Assistant mode itself starts off.
+        "assistant_agent",
         "audio_agent",
         "backup_agent",
         "client_browser_control_agent",
@@ -116,6 +122,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "build_prompt_agent",
         "browser_agent",
         "coding_agent",
+        "pi_agent",
         "data_collector_agent",
         "education_agent",
         "files_agent",
@@ -128,6 +135,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "voice_training_agent",
         "win_security_agent",
         "agent_builder_agent",
+        "antigravity_agent",
         "claude_cli_agent",
         "claude_desktop_agent",
         "cli_agent",

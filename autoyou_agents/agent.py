@@ -1149,6 +1149,7 @@ _ROUTABLE_PROMPT_AGENT_NAMES = {
     "agent_builder_agent",
     "autoyou_website_agent",
     "coding_agent",
+    "pi_agent",
     "memory_agent",
 }
 
@@ -1174,6 +1175,7 @@ for _install_name in (
     "admin_agent",
     "ads_watching_agent",
     "agent_builder_agent",
+    "assistant_agent",
     "audio_agent",
     "tv_agent",
     "browser_agent",
@@ -1182,8 +1184,10 @@ for _install_name in (
     "claude_cli_agent",
     "claude_desktop_agent",
     "cli_agent",
+    "antigravity_agent",
     "codex_desktop_agent",
     "coding_agent",
+    "pi_agent",
     "data_collector_agent",
     "donation_agent",
     "earnings_agent",
@@ -1232,8 +1236,11 @@ _AGENT_BUILDER_RUNTIME_AGENT_NAME = (
 _CLAUDE_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_cli_agent") or "claude_cli_agent"
 _CLAUDE_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("claude_desktop_agent") or "claude_desktop_agent"
 _CLI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("cli_agent") or "autoyou_cli_agent"
+_ANTIGRAVITY_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("antigravity_agent") or "antigravity_agent"
 _CODEX_DESKTOP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("codex_desktop_agent") or "codex_desktop_agent"
 _CODING_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("coding_agent") or "autoyou_coding_agent"
+_PI_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("pi_agent") or "autoyou_pi_agent"
+_ASSISTANT_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("assistant_agent") or "autoyou_assistant_agent"
 _DATA_COLLECTOR_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("data_collector_agent") or "autoyou_data_collector_agent"
 _FILES_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("files_agent") or "autoyou_files_agent"
 _BACKUP_RUNTIME_AGENT_NAME = resolve_runtime_agent_name("backup_agent") or "autoyou_backup_agent"
@@ -1348,6 +1355,7 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "coding_agent",
         "code agent",
     ),
+    _PI_RUNTIME_AGENT_NAME: ("pi agent", "pi_agent", "pi coding agent"),
     _DATA_COLLECTOR_RUNTIME_AGENT_NAME: (
         "data collector agent",
         "data_collector_agent",
@@ -1413,6 +1421,16 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "claude app",
         "claude code desktop",
     ),
+    _ANTIGRAVITY_RUNTIME_AGENT_NAME: (
+        "antigravity agent",
+        "antigravity_agent",
+        "antigravity desktop agent",
+        "antigravity_desktop_agent",
+        "antigravity desktop",
+        "antigravity",
+        "agy agent",
+        "agy",
+    ),
     _CODEX_DESKTOP_RUNTIME_AGENT_NAME: (
         "codex desktop agent",
         "codex_desktop_agent",
@@ -1456,6 +1474,11 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "skills_agent",
         "skills",
         "skill agent",
+    ),
+    resolve_runtime_agent_name("assistant_agent") or "autoyou_assistant_agent": (
+        "assistant agent",
+        "assistant_agent",
+        "assistant mode",
     ),
     resolve_runtime_agent_name("remote_desktop_agent") or "autoyou_remote_desktop_agent": (
         "remote desktop agent",
@@ -1627,6 +1650,30 @@ def _looks_like_notes_request(user_text: str) -> bool:
         return False
     return any(pattern.search(normalized) for pattern in _NOTES_INTENT_PATTERNS)
 
+_ADMIN_SENSITIVE_INTENT_PATTERNS = (
+    re.compile(
+        r"\b(?:restart|stop|start|enable|disable|configure)\s+"
+        r"(?:the\s+)?(?:whatsapp|telegram|signal|tunnelmole|admin\s+service)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:show|reveal|expose|list|dump|get)\s+(?:any\s+|all\s+|my\s+|the\s+)?"
+        r"(?:saved\s+|stored\s+)?(?:api\s+tokens?|api\s+keys?|admin\s+passwords?|totp\s+secrets?)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bwithout\s+asking\s+(?:me\s+)?for\s+(?:a\s+)?(?:2fa|totp|two[- ]factor)\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _looks_like_admin_sensitive_request(user_text: str) -> bool:
+    normalized = " ".join(str(user_text or "").split())
+    if not normalized or _is_memory_recall_request(normalized):
+        return False
+    return any(pattern.search(normalized) for pattern in _ADMIN_SENSITIVE_INTENT_PATTERNS)
+
 # ── Static agent imports (Nuitka-friendly) ────────────────────────────────────
 # importlib.import_module() with a runtime string cannot be traced by Nuitka's
 # static analyser even when --include-package=autoyou_agents is set.  These
@@ -1682,6 +1729,12 @@ except Exception as _import_err:
     _create_coding_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.pi_agent.agent import create_pi_agent as _create_pi_agent
+except Exception as _import_err:
+    logger.warning("pi_agent static import failed: %s", _import_err)
+    _create_pi_agent = None
+
+try:
     from autoyou_agents.data_collector_agent.agent import create_data_collector_agent as _create_data_collector_agent
 except Exception as _import_err:
     logger.warning("data_collector_agent static import failed: %s", _import_err)
@@ -1704,6 +1757,12 @@ try:
 except Exception as _import_err:
     logger.warning("cli_agent static import failed: %s", _import_err)
     _create_cli_agent = None  # type: ignore[assignment]
+
+try:
+    from autoyou_agents.antigravity_agent.agent import create_antigravity_agent as _create_antigravity_agent
+except Exception as _import_err:
+    logger.warning("antigravity_agent static import failed: %s", _import_err)
+    _create_antigravity_agent = None  # type: ignore[assignment]
 
 try:
     from autoyou_agents.codex_desktop_agent.agent import create_codex_desktop_agent as _create_codex_desktop_agent
@@ -1826,6 +1885,12 @@ except Exception as _import_err:
     _create_skills_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.assistant_agent.agent import create_assistant_agent as _create_assistant_agent
+except Exception as _import_err:
+    logger.warning("assistant_agent static import failed: %s", _import_err)
+    _create_assistant_agent = None  # type: ignore[assignment]
+
+try:
     from autoyou_agents.remote_desktop_agent.agent import create_remote_desktop_agent as _create_remote_desktop_agent
 except Exception as _import_err:
     logger.warning("remote_desktop_agent static import failed: %s", _import_err)
@@ -1901,8 +1966,10 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "claude_cli_agent": _create_claude_cli_agent,
     "claude_desktop_agent": _create_claude_desktop_agent,
     "cli_agent": _create_cli_agent,
+    "antigravity_agent": _create_antigravity_agent,
     "codex_desktop_agent": _create_codex_desktop_agent,
     "coding_agent": _create_coding_agent,
+    "pi_agent": _create_pi_agent,
     "data_collector_agent": _create_data_collector_agent,
     "donation_agent": _create_donation_agent,
     "earnings_agent": _create_earnings_agent,
@@ -1927,6 +1994,7 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "tasks_agent": _create_tasks_agent,
     "website_agent": _create_website_agent,
     "remote_desktop_agent": _create_remote_desktop_agent,
+    "assistant_agent": _create_assistant_agent,
     "education_agent": _create_education_agent,
     "media_generation_agent": _create_media_generation_agent,
     "voice_training_agent": _create_voice_training_agent,
@@ -4199,6 +4267,8 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
         "autoyou_agents.claude_desktop_agent.agent",
         (
             "get_claude_desktop_status",
+            "get_claude_desktop_prompt",
+            "get_claude_desktop_prompt_status",
             "get_claude_desktop_release_status",
             "list_claude_desktop_asset_packs",
             "select_claude_desktop_project",
@@ -4207,10 +4277,12 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
             "add_to_claude_desktop_prompt",
             "replace_claude_desktop_prompt",
             "add_claude_desktop_attachments",
+            "new_claude_desktop_prompt",
             "send_current_claude_desktop_prompt",
             "queue_claude_desktop_prompt",
             "copy_claude_desktop_final_response",
             "send_prompt_to_claude_desktop",
+            "stop_claude_desktop_prompt",
             "wait_for_claude_desktop_final_response",
             "get_claude_usage",
             "find_claude_desktop_screenshot_attachments",
@@ -4221,6 +4293,10 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
         "autoyou_agents.codex_desktop_agent.agent",
         (
             "get_codex_desktop_status",
+            "get_codex_desktop_prompt",
+            "get_codex_desktop_prompt_status",
+            "get_codex_desktop_question",
+            "answer_codex_desktop_question",
             "get_codex_desktop_release_status",
             "list_codex_desktop_asset_packs",
             "select_codex_desktop_project",
@@ -4229,14 +4305,66 @@ _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
             "add_to_codex_desktop_prompt",
             "replace_codex_desktop_prompt",
             "add_codex_desktop_attachments",
+            "new_codex_desktop_prompt",
             "send_current_codex_desktop_prompt",
             "queue_codex_desktop_prompt",
             "copy_codex_desktop_final_response",
             "send_prompt_to_codex_desktop",
+            "stop_codex_desktop_prompt",
             "wait_for_codex_desktop_final_response",
             "get_codex_usage",
             "find_codex_desktop_screenshot_attachments",
             "capture_codex_desktop_screenshot",
+        ),
+    ),
+    _ANTIGRAVITY_RUNTIME_AGENT_NAME: (
+        "autoyou_agents.antigravity_agent.agent",
+        (
+            "get_antigravity_status",
+            "get_antigravity_desktop_status",
+            "get_antigravity_prompt",
+            "get_antigravity_desktop_prompt",
+            "get_antigravity_prompt_status",
+            "get_antigravity_desktop_prompt_status",
+            "get_antigravity_question",
+            "get_antigravity_desktop_question",
+            "answer_antigravity_question",
+            "answer_antigravity_desktop_question",
+            "get_antigravity_release_status",
+            "get_antigravity_desktop_release_status",
+            "list_antigravity_asset_packs",
+            "list_antigravity_desktop_asset_packs",
+            "select_antigravity_project",
+            "select_antigravity_desktop_project",
+            "select_antigravity_permissions",
+            "select_antigravity_desktop_permissions",
+            "select_antigravity_model",
+            "select_antigravity_desktop_model",
+            "add_to_antigravity_prompt",
+            "add_to_antigravity_desktop_prompt",
+            "replace_antigravity_prompt",
+            "replace_antigravity_desktop_prompt",
+            "add_antigravity_attachments",
+            "add_antigravity_desktop_attachments",
+            "new_antigravity_prompt",
+            "new_antigravity_desktop_prompt",
+            "send_current_antigravity_prompt",
+            "send_current_antigravity_desktop_prompt",
+            "queue_antigravity_prompt",
+            "queue_antigravity_desktop_prompt",
+            "copy_antigravity_final_response",
+            "copy_antigravity_desktop_final_response",
+            "send_prompt_to_antigravity",
+            "send_prompt_to_antigravity_desktop",
+            "stop_antigravity_prompt",
+            "stop_antigravity_desktop_prompt",
+            "wait_for_antigravity_final_response",
+            "wait_for_antigravity_desktop_final_response",
+            "get_antigravity_usage",
+            "find_antigravity_screenshot_attachments",
+            "find_antigravity_desktop_screenshot_attachments",
+            "capture_antigravity_screenshot",
+            "capture_antigravity_desktop_screenshot",
         ),
     ),
 }
@@ -4513,6 +4641,76 @@ def _root_conversation_note(callback_context: Any) -> str:
     return " ".join(parts)
 
 
+async def _route_assistant_mode_turn(callback_context: Any, user_text: str, invocation_id: str) -> Any:
+    """Hand a wake-word Assistant mode turn to the Assistant agent.
+
+    The server marks the turn in session state; it applies only to the message
+    it was made for. Web reads and window steps run here and reply at once;
+    code-to-automate goes to Pi (or the Coding agent) and web tasks beyond
+    reading go to the Browser agent. Anything else - including questions about
+    what the live camera shows - returns None, so the model answers with the
+    attached picture and the conversation as usual.
+    """
+    state = getattr(callback_context, "state", None)
+    try:
+        from autoyou_agents.assistant_agent import assistant_tool
+    except Exception as exc:  # pragma: no cover - package missing from a build
+        logger.warning("Assistant agent unavailable: %s", exc)
+        return None
+    turn = assistant_tool.claim_turn(state, user_text, invocation_id)
+    if not turn or not _is_runtime_agent_enabled(_ASSISTANT_RUNTIME_AGENT_NAME):
+        return None
+    plan = assistant_tool.plan_request(turn["text"])
+    metadata = {
+        "response_author": _ASSISTANT_RUNTIME_AGENT_NAME,
+        "route_target": _ASSISTANT_RUNTIME_AGENT_NAME,
+        "route_reason": f"assistant_mode_{plan.route}",
+        "assistant_mode": True,
+    }
+
+    def _hand_to(target: str) -> Any:
+        _mark_tool_dispatched_for_invocation(state, invocation_id)
+        _set_root_last_routed_agent(state, target)
+        return _dispatch_specialist_tool_call(
+            target,
+            {"request": plan.request},
+            custom_metadata={**metadata, "route_target": target},
+        )
+
+    if plan.route == assistant_tool.ROUTE_CODE:
+        for target in (_PI_RUNTIME_AGENT_NAME, _CODING_RUNTIME_AGENT_NAME):
+            if _is_runtime_agent_enabled(target):
+                return _hand_to(target)
+        return None
+    if plan.route == assistant_tool.ROUTE_BROWSER:
+        if not _is_runtime_agent_enabled(_BROWSER_RUNTIME_AGENT_NAME):
+            _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+            return create_text_llm_response(assistant_tool.BROWSER_AGENT_MISSING_REPLY, custom_metadata=metadata)
+        if plan.needs_browser_agent:
+            return _hand_to(_BROWSER_RUNTIME_AGENT_NAME)
+    if plan.route == assistant_tool.ROUTE_DESKTOP and not _is_runtime_agent_enabled(
+        resolve_runtime_agent_name("remote_desktop_agent") or "autoyou_remote_desktop_agent"
+    ):
+        _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+        return create_text_llm_response(
+            "Working with desktop windows needs the Remote Desktop agent. Install it under Agents on the Admin Page.",
+            custom_metadata=metadata,
+        )
+    try:
+        result = await assistant_tool.run_plan(plan)
+    except Exception as exc:  # noqa: BLE001 - reported, never hidden
+        logger.warning("Assistant mode %s step failed: %s", plan.route, exc)
+        result = {"status": "error", "reply": "That didn't work, and nothing was changed."}
+    if not result:
+        return None
+    _state_set(state, _ROOT_INVOCATION_AGENT_STATE_KEY, _ASSISTANT_RUNTIME_AGENT_NAME)
+    _set_root_last_routed_agent(state, _ASSISTANT_RUNTIME_AGENT_NAME)
+    return create_text_llm_response(
+        str(result.get("reply") or ""),
+        custom_metadata={**metadata, "assistant_status": str(result.get("status") or "")},
+    )
+
+
 async def _root_router_before_model_callback(callback_context: Any, llm_request: Any) -> Any:
     """Deterministic routing shortcuts that fire before the LLM.
 
@@ -4561,6 +4759,10 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
                 },
             )
         return None
+
+    assistant_reply = await _route_assistant_mode_turn(callback_context, user_text, invocation_id)
+    if assistant_reply is not None:
+        return assistant_reply
 
     explicit_route = _extract_explicit_route_request(routing_user_text)
     current_active_agent = _get_root_active_agent_name(getattr(callback_context, "state", {}))
@@ -4749,6 +4951,23 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             )
         if notes_runtime and _is_runtime_agent_installed_but_unavailable(notes_runtime):
             return _unavailable_agent_response(notes_runtime)
+
+    if _provider_requires_explicit_agent_tools() and _looks_like_admin_sensitive_request(user_text):
+        if _is_runtime_agent_enabled(_ADMIN_RUNTIME_AGENT_NAME):
+            _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
+            _set_root_preferred_agent(callback_context.state, _ADMIN_RUNTIME_AGENT_NAME)
+            _set_root_last_routed_agent(callback_context.state, _ADMIN_RUNTIME_AGENT_NAME)
+            return _dispatch_specialist_tool_call(
+                _ADMIN_RUNTIME_AGENT_NAME,
+                {"request": user_text},
+                custom_metadata={
+                    "response_author": root_prompt.AGENT_NAME,
+                    "route_target": _ADMIN_RUNTIME_AGENT_NAME,
+                    "route_reason": "deterministic_admin_sensitive_intent",
+                },
+            )
+        if _is_runtime_agent_installed_but_unavailable(_ADMIN_RUNTIME_AGENT_NAME):
+            return _unavailable_agent_response(_ADMIN_RUNTIME_AGENT_NAME)
 
     pinned_agent = _get_root_pinned_agent(callback_context.state)
     if (

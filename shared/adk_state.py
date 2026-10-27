@@ -24,6 +24,28 @@ AUTOYOU_CONVERSATION_SESSION_USER_STATE_KEY = "user:autoyou_conversation_session
 AUTOYOU_SCHEDULED_TASK_STATE_KEY = "autoyou_scheduled_task"
 AUTOYOU_LAST_SCHEDULED_TASK_STATE_KEY = "autoyou_last_scheduled_task"
 AUTOYOU_LAST_SCHEDULED_TASK_USER_STATE_KEY = "user:autoyou_last_scheduled_task"
+# One wake-word Assistant mode turn: {"text", "at", "wake", "live_frame"}.
+# The root agent acts on it only while it matches the current message.
+AUTOYOU_ASSISTANT_TURN_STATE_KEY = "autoyou_assistant_turn"
+
+
+def normalize_assistant_turn(value: Any) -> Optional[Dict[str, Any]]:
+    """The Assistant mode marker a device turn carries in request metadata."""
+    if not isinstance(value, dict):
+        return None
+    text = " ".join(str(value.get("text") or "").split())[:2000]
+    if not text:
+        return None
+    try:
+        at = float(value.get("at") or 0.0)
+    except (TypeError, ValueError):
+        at = 0.0
+    return {
+        "text": text,
+        "at": at,
+        "wake": str(value.get("wake") or "")[:16],
+        "live_frame": bool(value.get("live_frame")),
+    }
 
 
 def state_get_first(state_like: Any, *keys: str) -> Any:

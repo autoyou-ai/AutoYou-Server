@@ -33,6 +33,7 @@ _json_response = _smc._json_response
 
 from autoyou_agents.build_prompt_agent.build_prompt_tool import (
     available_application_agents,
+    inspect_desktop_config,
     run_tool,
     status_prompt,
 )
@@ -96,6 +97,15 @@ def _extra_routes(app: Any, agent_name: str) -> None:
             "application_agents": available_application_agents(),
             "telegram_user": _telegram_user_config(),
         }
+
+    @app.get("/api/desktop-config")
+    async def desktop_config(request: Request):
+        auth_error = _auth_error(request)
+        if auth_error:
+            return auth_error
+        requested_agent = request.query_params.get("application_agent") or _telegram_user_config()["application_agent"]
+        probe_ocr = str(request.query_params.get("probe_live_ocr") or "").strip().lower() in {"1", "true", "yes"}
+        return inspect_desktop_config(requested_agent, probe_live_ocr=probe_ocr)
 
     @app.post("/api/tool/{tool_name}")
     async def tool(tool_name: str, request: Request):

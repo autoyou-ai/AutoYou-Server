@@ -1,0 +1,172 @@
+Antigravity Desktop Automation Reference
+
+Purpose
+- Agent: `antigravity_agent`
+- App ID: `antigravity_desktop`
+- Transport: `desktop_gui`
+- Scope: User-calibrated local desktop controls for an installed Antigravity app.
+
+Working Directory Strategy
+- Mode: `prefix_prompt`
+- Prompt template: `[Workspace: {working_directory}]
+{prompt}`
+
+Preferred Targets
+- Prompt target: `composer_box`
+- Submit target: `send_button`
+- Copy response target: `copy_response_button`
+
+Asset Packs
+- `antigravity-windows-2.24.0-2026-10`
+  - Platform: `windows`
+  - Selection controls:
+    - `permissions`: open target `open_permissions_picker`; options: default, request_review, turbo
+    - `model`: open target `open_model_picker`; options: claude-opus-5.5, claude-sonnet-5.5, gemini-3.8-flash, gemini-4-argon, gpt-oss-120b, high, low, medium
+  - Targets:
+    - `composer_box`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/composer_box.png`
+    - `attach_button`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/attach_button.png`
+    - `open_model_picker`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_picker_button.png`
+    - `select_gemini_4_argon_model`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_select_gemini_4_argon.png`
+    - `select_gemini_3_8_flash_model`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_select_gemini_3_8_flash.png`
+    - `select_claude_opus_5_5_model`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_select_claude_opus_5_5.png`
+    - `select_claude_sonnet_5_5_model`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_select_claude_sonnet_5_5.png`
+    - `select_gpt_oss_120b_model`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/model_select_gpt_oss_120b.png`
+    - `view_usage_menu_item`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/view_usage_menu_item.png`
+    - `open_effort_submenu`: No description provided.
+    - `select_low_effort`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/effort_low.png`
+    - `select_medium_effort`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/effort_medium.png`
+    - `select_high_effort`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/effort_high.png`
+    - `open_permissions_picker`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/permissions_picker_button.png`
+    - `select_request_review_mode`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/permissions_request_review.png`
+    - `select_default_permissions_mode`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/permissions_default.png`
+    - `select_turbo_mode`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/permissions_turbo.png`
+    - `voice_button`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/voice_button.png`
+    - `send_button`: No description provided.
+      - Expected image path: `windows/2.24.0/sprites/send_button.png`
+    - `stop_button`: No description provided.
+    - `copy_response_button`: No description provided.
+    - `question_reply_input`: No description provided.
+    - `question_skip_button`: No description provided.
+    - `question_send_button`: No description provided.
+  - Submit actions: [{'type': 'click_target', 'target_id': 'send_button'}, {'type': 'press_keys', 'keys': ['enter']}]
+- `antigravity-macos-2.24.0-2026-10`
+  - Platform: `macos`
+  - Selection controls:
+    - `permissions`: open target `open_permissions_picker`; options: default, request_review, turbo
+    - `model`: open target `open_model_picker`; options: claude-opus-5.5, claude-sonnet-5.5, gemini-3.8-flash, gemini-4-argon, gpt-oss-120b, high, low, medium
+  - Targets:
+    - `composer_box`: No description provided.
+    - `attach_button`: No description provided.
+    - `open_model_picker`: No description provided.
+    - `select_gemini_4_argon_model`: No description provided.
+    - `select_gemini_3_8_flash_model`: No description provided.
+    - `select_claude_opus_5_5_model`: No description provided.
+    - `select_claude_sonnet_5_5_model`: No description provided.
+    - `select_gpt_oss_120b_model`: No description provided.
+    - `view_usage_menu_item`: No description provided.
+    - `open_effort_submenu`: No description provided.
+    - `select_low_effort`: No description provided.
+    - `select_medium_effort`: No description provided.
+    - `select_high_effort`: No description provided.
+    - `open_permissions_picker`: No description provided.
+    - `select_request_review_mode`: No description provided.
+    - `select_default_permissions_mode`: No description provided.
+    - `select_turbo_mode`: No description provided.
+    - `voice_button`: No description provided.
+    - `send_button`: No description provided.
+    - `stop_button`: No description provided.
+    - `copy_response_button`: No description provided.
+    - `question_reply_input`: No description provided.
+    - `question_skip_button`: No description provided.
+    - `question_send_button`: No description provided.
+  - Submit actions: [{'type': 'click_target', 'target_id': 'send_button'}, {'type': 'press_keys', 'keys': ['enter']}]
+- `antigravity-linux-2.24.0-2026-10`
+  - Platform: `linux`
+  - Selection controls:
+    - `permissions`: open target `open_permissions_picker`; options: default, request_review, turbo
+    - `model`: open target `open_model_picker`; options: claude-opus-5.5, claude-sonnet-5.5, gemini-3.8-flash, gemini-4-argon, gpt-oss-120b, high, low, medium
+  - Targets:
+    - `composer_box`: No description provided.
+    - `attach_button`: No description provided.
+    - `open_model_picker`: No description provided.
+    - `select_gemini_4_argon_model`: No description provided.
+    - `select_gemini_3_8_flash_model`: No description provided.
+    - `select_claude_opus_5_5_model`: No description provided.
+    - `select_claude_sonnet_5_5_model`: No description provided.
+    - `select_gpt_oss_120b_model`: No description provided.
+    - `view_usage_menu_item`: No description provided.
+    - `open_effort_submenu`: No description provided.
+    - `select_low_effort`: No description provided.
+    - `select_medium_effort`: No description provided.
+    - `select_high_effort`: No description provided.
+    - `open_permissions_picker`: No description provided.
+    - `select_request_review_mode`: No description provided.
+    - `select_default_permissions_mode`: No description provided.
+    - `select_turbo_mode`: No description provided.
+    - `voice_button`: No description provided.
+    - `send_button`: No description provided.
+    - `stop_button`: No description provided.
+    - `copy_response_button`: No description provided.
+    - `question_reply_input`: No description provided.
+    - `question_skip_button`: No description provided.
+    - `question_send_button`: No description provided.
+  - Submit actions: [{'type': 'click_target', 'target_id': 'send_button'}, {'type': 'press_keys', 'keys': ['enter']}]
+- `antigravity-any-default`
+  - Platform: `any`
+  - Selection controls:
+    - `permissions`: open target `open_permissions_picker`; options: default, request_review, turbo
+    - `model`: open target `open_model_picker`; options: claude-opus-5.5, claude-sonnet-5.5, gemini-3.8-flash, gemini-4-argon, gpt-oss-120b, high, low, medium
+  - Targets:
+    - `composer_box`: No description provided.
+    - `attach_button`: No description provided.
+    - `open_model_picker`: No description provided.
+    - `select_gemini_4_argon_model`: No description provided.
+    - `select_gemini_3_8_flash_model`: No description provided.
+    - `select_claude_opus_5_5_model`: No description provided.
+    - `select_claude_sonnet_5_5_model`: No description provided.
+    - `select_gpt_oss_120b_model`: No description provided.
+    - `view_usage_menu_item`: No description provided.
+    - `open_effort_submenu`: No description provided.
+    - `select_low_effort`: No description provided.
+    - `select_medium_effort`: No description provided.
+    - `select_high_effort`: No description provided.
+    - `open_permissions_picker`: No description provided.
+    - `select_request_review_mode`: No description provided.
+    - `select_default_permissions_mode`: No description provided.
+    - `select_turbo_mode`: No description provided.
+    - `voice_button`: No description provided.
+    - `send_button`: No description provided.
+    - `stop_button`: No description provided.
+    - `copy_response_button`: No description provided.
+    - `question_reply_input`: No description provided.
+    - `question_skip_button`: No description provided.
+    - `question_send_button`: No description provided.
+  - Submit actions: [{'type': 'click_target', 'target_id': 'send_button'}, {'type': 'press_keys', 'keys': ['enter']}]
+
+Crowd-Sourcing Rules
+- Keep each new screenshot pack versioned with a stable `asset_pack_id` and a `valid_until` date.
+- Prefer window-relative coordinates when possible; use screen-relative coordinates only as a fallback.
+- When replacing screenshots, update both `manifest.json` and this `llm.txt` so future LLMs inherit the new visual map.
+- Never delete an older pack until a newer pack has been validated on the target OS build.
+
+Future Maintenance
+- Add new screenshots under `desktop_assets/images/...` and reference them from the matching target entry.
+- If a UI version stops matching before its `valid_until` date, shorten the date and add a replacement pack.
+- Record whether the app was maximized, windowed, or on a scaled display when the pack was captured.

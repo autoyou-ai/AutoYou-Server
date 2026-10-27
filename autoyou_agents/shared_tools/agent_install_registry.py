@@ -75,6 +75,8 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "admin_agent": True,
     "ads_watching_agent": True,
     "agent_builder_agent": False,    # Opt-in: advanced scaffolding tool
+    "antigravity_agent": False,      # Opt-in: Antigravity desktop and CLI bridge
+    "assistant_agent": True,         # Acts only on wake-word Assistant mode turns (off until enabled)
     "audio_agent": True,
     "backup_agent": True,
     "build_prompt_agent": False,     # Opt-in: Telegram/website prompt assembly
@@ -85,6 +87,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "cli_agent": False,              # Opt-in: command-line interface
     "codex_desktop_agent": False,    # Opt-in: Codex Desktop bridge
     "coding_agent": False,           # Opt-in: repo-aware coding assistant
+    "pi_agent": False,               # Optional Pi specialist; Coding Agent also shares its backend
     "data_collector_agent": False,   # Opt-in: consented local conversation collection
     "donation_agent": True,
     "earnings_agent": True,

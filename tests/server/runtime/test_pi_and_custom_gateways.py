@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import aiohttp
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -103,14 +104,14 @@ async def test_call_pi_gateway_cli_fallback(monkeypatch, tmp_path):
             pass
 
         async def __aenter__(self):
-            raise Exception("Connection refused")
+            raise aiohttp.ClientConnectorError(MagicMock(), OSError("Connection refused"))
 
         async def __aexit__(self, *args):
             return False
 
     with patch("aiohttp.ClientSession", FailingSession):
         with patch("shared.pi_gateway._run_pi_cli_direct", new_callable=AsyncMock) as mock_cli:
-            mock_cli.return_value = "CLI synthetic output"
+            mock_cli.return_value = {"ok": True, "response": "CLI synthetic output"}
             res = await pi_gateway.call_pi_gateway(
                 message="Test CLI",
                 session_id="synthetic-session-cli",

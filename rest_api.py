@@ -63,6 +63,8 @@ from shared.adk_state import (
     AUTOYOU_REPLY_TARGET_STATE_KEY,
     AUTOYOU_REPLY_TARGET_USER_STATE_KEY,
     AUTOYOU_SCHEDULED_TASK_STATE_KEY,
+    AUTOYOU_ASSISTANT_TURN_STATE_KEY,
+    normalize_assistant_turn,
     normalize_reply_target,
 )
 from shared.openclaw_gateway import (
@@ -1953,7 +1955,7 @@ async def send_message_to_pi(
     from shared.pi_gateway import call_pi_gateway
     port = os.environ.get("PI_PORT", "8650").strip() or "8650"
     base_url = f"http://127.0.0.1:{port}"
-    model = os.environ.get("PI_MODEL", "qwen3.8:27b").strip() or "qwen3.8:27b"
+    model = os.environ.get("PI_MODEL", "pi-agent").strip() or "pi-agent"
     token = os.environ.get("PI_TOKEN", "").strip()
     pi_path = os.environ.get("PI_PATH", "").strip()
     return await call_pi_gateway(
@@ -2443,6 +2445,11 @@ def _build_autoyou_state_delta_from_metadata(metadata: Any) -> Dict[str, Any]:
         if instruction:
             task_state["instruction"] = instruction
         state_delta[AUTOYOU_SCHEDULED_TASK_STATE_KEY] = task_state
+
+    assistant_turn = normalize_assistant_turn(metadata.get("assistant_turn"))
+    if assistant_turn:
+        # The root agent hands this one message to the Assistant agent.
+        state_delta[AUTOYOU_ASSISTANT_TURN_STATE_KEY] = assistant_turn
 
     client_prompt_id = str(metadata.get("client_prompt_id") or "").strip()
     if client_prompt_id:

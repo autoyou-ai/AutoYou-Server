@@ -43,9 +43,10 @@ Weak local-model checklist (use exact tools):
 
 Typical workflow:
 1. `get_claude_desktop_status` - confirm Claude is running and a non-bootstrap pack matches.
-2. (optional) `select_claude_desktop_model(model=..., effort=...)` - e.g. model "Sonnet 4.6",
-   effort "high"/"max". Either argument is optional.
-3. (optional) `select_claude_desktop_permissions(...)` - "ask permissions", "bypass permissions", etc.
+2. (optional) `select_claude_desktop_model(model=..., effort=..., speed=..., advanced=...)` - e.g.
+   model "Opus 5.5" / "Sonnet 5.5" / "Fable 5.1" / "Haiku 5.5", effort "low"/"medium"/"high"/"extra"/"max",
+   speed "fast"/"standard", advanced "ultracode"/"off". Any argument is optional.
+3. (optional) `select_claude_desktop_permissions(...)` - "ask permissions", "accept edits", "plan mode", "auto mode", "bypass permissions".
 4. Build the prompt:
    - First chunk: `add_to_claude_desktop_prompt(text, prepend_newline=False)`.
    - Each later chunk: `add_to_claude_desktop_prompt(text)` (adds a newline first).

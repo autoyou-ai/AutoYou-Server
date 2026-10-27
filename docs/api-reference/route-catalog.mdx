@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 300, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 316, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -174,10 +174,12 @@ Agent catalog, install state, the Agent Builder workbench, agent website fronten
 | Admin app | `POST` | `/api/agents/workbench/&#123;agent_name&#125;/instructions` | Save draft instruction content for an agent. |
 | Admin app | `POST` | `/api/agents/workbench/&#123;agent_name&#125;/publish` | Publish a workspace draft to the live agents directory (new admin UI). |
 | Admin app | `POST` | `/api/agents/workbench/&#123;agent_name&#125;/test` | Run a structural check on a workspace draft. |
+| Admin app | `GET` | `/api/ai/custom/status` | Check whether the Custom API application is reachable. |
 | Admin app | `GET` | `/api/ai/hermes/status` | Check whether the Hermes Agent gateway is reachable and return available models. |
 | Admin app | `GET` | `/api/ai/odysseus/status` | Return sanitized Odysseus readiness without disclosing credentials. |
 | Admin app | `GET` | `/api/ai/ollama/status` | Return only sanitized native Ollama readiness for an authenticated admin. |
 | Admin app | `GET` | `/api/ai/openclaw/status` | Check whether the OpenClaw Gateway is reachable and return available models. |
+| Admin app | `GET` | `/api/ai/pi/status` | Check whether the Pi Coding Agent gateway/CLI is reachable and return models. |
 | Admin app | `POST` | `/api/ai/restart` | Apply the latest agent configuration to AutoYou AI. |
 | Admin app | `DELETE` | `/api/bookmarks` | Clear all server-managed browser bookmarks. |
 | Admin app | `GET` | `/api/bookmarks` | Return server-managed browser bookmarks exposed to paired clients. |
@@ -189,6 +191,7 @@ Agent catalog, install state, the Agent Builder workbench, agent website fronten
 | Admin app | `GET` | `/api/builder/agents` | List live agents and workspace drafts for the admin studio. |
 | Admin app | `POST` | `/api/builder/create` | Scaffold a new workspace draft for the agent studio. |
 | Admin app | `GET` | `/api/builder/status/&#123;agent_name&#125;` | Return detailed studio state for a specific agent. |
+| Admin app | `POST` | `/api/custom/relay` | Allow connected external applications to relay messages, audio, or datachannel commands to clients. |
 | Admin app | `POST` | `/api/jailbreak/activate` | Create the ACKNOWLEDGEMENT_AGREEMENT file to enable Prompt Override. |
 | Admin app | `POST` | `/api/jailbreak/deactivate` | Remove the ACKNOWLEDGEMENT_AGREEMENT file to deenable Prompt Override. |
 | Admin app | `GET` | `/api/jailbreak/prompt` | Return the current Prompt Override root agent prompt. |
@@ -257,10 +260,12 @@ Live sessions, calls, microphone and screen sharing, and DataChannel status. Sou
 | Admin app | `GET` | `/api/webrtc/capabilities` | Admin get webrtc capabilities |
 | Admin app | `POST` | `/api/webrtc/client-browser-control` | Send a browser-control message to a connected WebRTC client. |
 | Admin app | `GET` | `/api/webrtc/game-input/connection` | Admin get game input connection |
+| Admin app | `WEBSOCKET` | `/api/webrtc/game-input/observe` | A read-only copy of every input players make, for agents and other programs. |
 | Admin app | `WEBSOCKET` | `/api/webrtc/game-input/stream` | Local game input stream |
 | Admin app | `WEBSOCKET` | `/api/webrtc/hosted-game/api/game/native-input` | Hosted game input stream |
 | Admin app | `GET` | `/api/webrtc/hosted-game/api/game/native-input/status` | Hosted game input status |
-| Admin app | `GET` | `/api/webrtc/hosted-game/play` | Hosted game page |
+| Admin app | `GET` | `/api/webrtc/hosted-game/frame/&#123;game_id&#125;` | The game itself, sandboxed with no network, for the host page's frame only. |
+| Admin app | `GET` | `/api/webrtc/hosted-game/play` | The trusted page that plays one library game; Neon Horizon unless ?game= names another. |
 | Admin app | `GET` | `/api/webrtc/microphone-sharing` | Admin get microphone sharing |
 | Admin app | `PUT` | `/api/webrtc/microphone-sharing` | Admin set microphone sharing |
 | Admin app | `GET` | `/api/webrtc/monitors` | Admin get webrtc monitors |
@@ -279,6 +284,24 @@ Live sessions, calls, microphone and screen sharing, and DataChannel status. Sou
 | Admin app | `POST` | `/api/webrtc/video-file/upload` | Admin upload video file |
 | Admin app | `GET` | `/api/webrtc/video-files` | Admin get webrtc video files |
 | Admin app | `POST` | `/api/webrtc/video-input/&#123;source_id&#125;/frame` | Admin publish realtime video input frame |
+
+## Assistant mode
+
+The wake word: settings, recordings, training, testing, the model for in-browser detection, and local transcription after a wake. Source: `routers/assistant_mode.py`.
+
+| App | Method | Path | Summary |
+| :--- | :--- | :--- | :--- |
+| Admin app | `GET` | `/api/assistant-mode` | Settings, readiness, recordings, Voice Training matches, and which devices are listening. |
+| Admin app | `DELETE` | `/api/assistant-mode/model` | Forget the trained wake word. |
+| Admin app | `GET` | `/api/assistant-mode/model` | The full model, for detectors that run in the browser or on a device. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples` | Delete every stored wake word recording. |
+| Admin app | `POST` | `/api/assistant-mode/samples` | Store one recording of the wake word (base64 WAV), after checking its length and level. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples/&#123;sample_id&#125;` | Delete one wake word recording. |
+| Admin app | `GET` | `/api/assistant-mode/samples/&#123;sample_id&#125;/audio` | Play back one wake word recording as WAV. |
+| Admin app | `POST` | `/api/assistant-mode/settings` | Turn Assistant mode on or off and choose the wake word, how it is confirmed, and sensitivity. |
+| Admin app | `POST` | `/api/assistant-mode/test` | Say whether a recording would wake the assistant, with the match score and transcript. |
+| Admin app | `POST` | `/api/assistant-mode/train` | Train the wake word from the recordings and, when enabled, Voice Training clips. |
+| Admin app | `POST` | `/api/assistant-mode/transcribe` | Local transcription for a wake heard by the admin page's own detector. |
 
 ## Messaging connectors
 
