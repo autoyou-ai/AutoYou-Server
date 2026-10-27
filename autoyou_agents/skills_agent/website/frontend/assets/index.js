@@ -23,6 +23,13 @@ var state = {
 
 function $(id) { return document.getElementById(id); }
 
+function escHtml(value) {
+  var text = value === null || value === undefined ? '' : String(value);
+  return text.replace(/[&<>"']/g, function(character) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character];
+  });
+}
+
 function proxyRootPrefix() {
   var pathname = String((window.location && window.location.pathname) || '');
   var marker = '/agent/';
