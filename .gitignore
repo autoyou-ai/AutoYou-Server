@@ -212,3 +212,4 @@ graphify-out/
 # Per-machine media inference ownership locks
 *.gpu.lock
 DO_NOT_UPLOAD/
+game_package_cache/

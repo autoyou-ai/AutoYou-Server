@@ -8,32 +8,75 @@ can leave those dependency bundles out while the source remains present.
 
 ## Included Helpers
 
-| Helper | What It Helps With |
-| --- | --- |
-| Admin | setup and safe server controls |
-| Coding | small implementation and verification tasks |
-| Files | local file guidance |
-| Internet | web lookup when web access is enabled |
-| Memory | remembered context and past work |
-| Notes | notes, saved text, and attachments |
-| Page | saved links and personal feed items |
-| Persona | personal assistant style and preferences |
-| Audio | local music and voice playback controls |
-| Donation | simple support and donation guidance |
-| Earnings | support activity and future payout-readiness guidance |
-| Fine-Tuning | preparing a personal training dataset |
-| Hosting | publishing a local website or helper screen |
-| Media Generation | local image or video generation setup |
-| Model Picker | choosing an AI provider or model |
-| Skills | installing and managing helper skills |
-| Tasks | reminders and scheduled work |
-| Voice Training | preparing a personal voice dataset |
-| Website | creating simple browser screens for helpers |
+| Helper | Package | What It Helps With |
+| --- | --- | --- |
+| Admin | `admin_agent` | setup and safe server controls |
+| Ads Watching | `ads_watching_agent` | opt-in rewarded ad viewing for credits |
+| Agent Builder | `agent_builder_agent` | scaffolding, creating, and registering new agents and tools |
+| Antigravity | `antigravity_agent` | Antigravity desktop app and `agy` CLI integration |
+| Assistant | `assistant_agent` | desktop window management and quick page reader |
+| Audio | `audio_agent` | local music player, audio library, and playback controls |
+| Backup | `backup_agent` | resumable local file backup and archive management |
+| Coding | `coding_agent` | repo-aware implementation, bug fixes, refactoring, and test verification |
+| Data Collector | `data_collector_agent` | consented local conversation and message-history collection |
+| Donation | `donation_agent` | supporter routes, Buy Me a Coffee, and donation guidance |
+| Earnings | `earnings_agent` | credits, rewarded-ad status, and payout planning |
+| Education | `education_agent` | learning sessions, study recordings, and lesson transcripts |
+| Files | `files_agent` | authenticated local filesystem inspection and operations |
+| Fine-Tuning | `fine_tuning_agent` | personal model training datasets and model preparation |
+| Game Studio | `game_agent` | local browser-based games and interactive entertainment |
+| Hosting | `hosting_agent` | publishing local websites or helper screens to persistent or `/pair` links |
+| Internet | `internet_agent` | verified live web search, browsing, and scraping |
+| Location | `location_agent` | location timeline and geodata management |
+| macOS Security | `mac_security_agent` | macOS security status and hardening controls |
+| Media Generation | `media_generation_agent` | local image and video generation setup |
+| Memory | `memory_agent` | dedicated memory recall passes and remembered context |
+| Model Picker | `model_picker_agent` | hardware-fit recommendations and AI provider/model selection |
+| Notes | `notes_agent` | notes, to-dos, organization, search, and attachments |
+| Notify | `notify_agent` | timed notifications, reminders, and direct client delivery |
+| OpenClaw | `openclaw_agent` | smart home, local browser, and OpenClaw gateway integrations |
+| Page | `page_agent` | saved links, media cards, and personal feed items |
+| Persona | `persona_agent` | personal profile facts, assistant style, and persona journal |
+| Prompt Builder | `build_prompt_agent` | prompt assembly from Saved Messages or Prompt Builder UI |
+| Prompts | `prompts_agent` | personal prompt library and reusable prompt templates |
+| Remote Desktop | `remote_desktop_agent` | screen sharing, window casting, and mouse/keyboard control |
+| Skills | `skills_agent` | creating, viewing, editing, and executing reusable AutoYou skills |
+| Tasks | `tasks_agent` | scheduled AI jobs, cron automations, and recurring tasks |
+| TV Agent | `tv_agent` | local media streaming, video library indexer, playback manager, and transcoding |
+| Voice Training | `voice_training_agent` | custom TTS voice datasets and voice training |
+| Website | `website_agent` | scaffolding and registering agent frontend websites and split architectures |
+| Windows Security | `win_security_agent` | Windows firewall, protection, and security status |
 
 Some experimental or partner-specific helpers are private or disabled by default until they are ready for wider use.
 Calibrated Claude and Codex Desktop asset packs are excluded from the public
 source distribution; their desktop bridge agents need compatible local asset
 packs before those controls can be used.
+
+## Quantized & Small Local Model Architecture
+
+Small or quantized Ollama models (such as `ministral-3:8b`, `qwen38-turbo`, `gemma4:e2b/e4b`, and models under 20B parameters) are prone to context exhaustion, tool hallucinations, and schema-echoing degeneration when exposed to extensive tool catalogs. AutoYou uses a multi-tier routing pipeline to keep small models accurate:
+
+1. **Dynamic Prompt Filtering (`_build_effective_agent_instruction`)**:
+   - `prompt.py` defines factory text templates (`SUB_AGENTS_SECTION` and `ROUTING_RULES_SECTION`).
+   - At startup, `_filter_prompt_section_by_installed_agents` strips every line or bullet referencing an uninstalled agent.
+   - If an operator authors a custom `AGENT_INSTRUCTION`, `_filter_unavailable_agents_from_instruction` automatically purges references to unavailable agents to prevent phantom routing targets.
+
+2. **Compact Two-Stage Enum Routing (`route_to_specialist`)**:
+   - Enabled automatically for small/quantized models via `model_uses_compact_root_tool_routing`.
+   - **Catalog Stripping**: `_strip_duplicate_agent_catalog` removes the repetitive bulleted agent catalog from the prompt (~4.6k characters saved), preventing the prompt bloat that causes small models to echo schemas instead of invoking tools.
+   - **Single Dispatcher Tool**: Rather than advertising dozens of distinct JSON function schemas, the model is given a single tool: `route_to_specialist`.
+   - **JSON Schema Enum Constraint**: The `agent` argument is strictly constrained to a JSON Schema `enum` containing only installed specialists.
+   - **Forgiving Argument Resolution**: `_resolve_specialist_tool` normalizes casing and forgives small-model tendencies to drop the `autoyou_` prefix or `_agent` suffix. If an unknown agent is requested, it safely fails closed with an informative error listing valid choices.
+
+3. **Pre-Model Fast Paths & Offline Intent Classifier**:
+   - Deterministic pattern-matchers intercept common commands (notes, media generation, CLI, files, etc.).
+   - An offline 23 MB `all-MiniLM-L6-v2` embedding classifier (`classify_intent`) evaluates user queries against an `allowed` set consisting solely of enabled/installed agents. Confident matches dispatch directly to the target specialist tool, bypassing the root quantized model entirely.
+   - If a requested agent is uninstalled or installed-but-broken, the system immediately returns an explicit refusal or explanation (`_unavailable_agent_response`), preventing hallucinated confirmations.
+
+4. **Adapter Safeguards (`litellm_ollama_adapter.py`)**:
+   - Detects and repairs responses that degenerate into JSON schema echos.
+   - Catches truncated tool calls when reasoning models exhaust `num_predict`, automatically retrying with expanded prediction budgets.
+   - Handles Ollama KV-cache pre-allocation memory failures with automatic context size recovery.
 
 ## Full-server integration
 
