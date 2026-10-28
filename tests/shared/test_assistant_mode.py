@@ -456,3 +456,85 @@ def test_live_video_setting_defaults_on_and_saves(isolated_store):
     assert am.load_settings()["use_live_video"] is True
     am.save_settings({"use_live_video": False})
     assert am.load_settings()["use_live_video"] is False
+
+
+def test_a_device_on_a_call_turns_assistant_mode_on_for_that_call_only():
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    hub = make_hub(Recorder())
+    try:
+        assert hub.gates_call("pi") is False
+        reply = _run_device(hub, "assistant_call_mode", {"enabled": True})
+        assert reply == [{"event": "assistant_call_mode", "enabled": True, "forced": False, "reason": "",
+                          "wake_phrase": "Hey AutoYou"}]
+        assert hub.gates_call("pi") is True and hub.gates_call("laptop") is False
+        assert hub.gates_calls is False  # other calls still answer everything
+        assert hub.snapshot()["call_mode_sessions"] == ["pi"]
+        off = _run_device(hub, "assistant_call_mode", {"enabled": False})
+        assert off[0]["enabled"] is False and hub.gates_call("pi") is False
+        _run_device(hub, "assistant_call_mode", {"enabled": True})
+        hub.end_session("pi")
+        assert hub.gates_call("pi") is False
+    finally:
+        hub.close()
+
+
+def test_call_mode_follows_the_owners_permissions():
+    hub = make_hub(Recorder())
+    try:
+        assert _run_device(hub, "assistant_call_mode", {"enabled": True})[0]["reason"] == "disabled"
+        am.save_settings({"enabled": True, "allow_call_toggle": False})
+        hub.reload()
+        refused = _run_device(hub, "assistant_call_mode", {"enabled": True})[0]
+        assert refused["enabled"] is False and refused["reason"] == "not_allowed"
+        assert hub.gates_call("pi") is False
+        capability = am.capability_payload("AutoYou-Server", available=True)
+        assert capability["call_toggle"] is False
+
+        am.save_settings({"allow_call_toggle": True})
+        hub.reload()
+        assert am.capability_payload("AutoYou-Server", available=True)["call_toggle"] is True
+        assert am.capability_payload("AutoYou-Server", available=False)["call_toggle"] is False
+        _run_device(hub, "assistant_call_mode", {"enabled": True})
+        assert hub.gates_call("pi") is True
+        # Turning the permission off later stops the call's gate at once.
+        am.save_settings({"allow_call_toggle": False})
+        hub.reload()
+        assert hub.gates_call("pi") is False
+
+        am.save_settings({"wake_word_in_calls": True})
+        hub.reload()
+        forced = _run_device(hub, "assistant_call_mode", {"enabled": False})[0]
+        assert forced["enabled"] is True and forced["forced"] is True
+        assert hub.gates_call("anyone") is True
+    finally:
+        hub.close()
+
+
+def test_device_teaching_can_be_left_to_this_computer():
+    rng = np.random.default_rng(32)
+    am.save_settings({"enabled": True, "allow_device_teaching": False})
+    hub = make_hub(Recorder())
+    try:
+        pcm = enroll(rng)[0]
+        refused = _run_device(hub, "assistant_sample", {"audio_base64": _b64(pcm), "train": True})
+        assert refused == [{"event": "assistant_enroll", "state": "failed", "reason": "not_allowed"}]
+        assert am.list_samples() == []
+        streamed = _run_device(hub, "assistant_enroll", {"action": "start"}, streaming=True)
+        assert streamed[0]["reason"] == "not_allowed"
+        capability = am.capability_payload("AutoYou-Server", available=True)
+        assert capability["device_samples"] is False and capability["enrollment"] is False
+        assert capability["device_teaching"] is False
+        # The model a device detects with is unaffected.
+        assert _run_device(hub, "assistant_model_request")[0]["event"] == "assistant_model"
+    finally:
+        hub.close()
+
+
+def test_permission_settings_default_to_letting_devices_help():
+    settings = am.load_settings()
+    assert settings["allow_call_toggle"] is True and settings["allow_device_teaching"] is True
+    saved = am.save_settings({"allow_call_toggle": "off", "allow_device_teaching": 0})
+    assert saved["allow_call_toggle"] is False and saved["allow_device_teaching"] is False
+    status = am.public_status("AutoYou-Server")
+    assert status["allow_call_toggle"] is False and status["allow_device_teaching"] is False
+    assert set(am.PERMISSION_KEYS) <= set(am.DEFAULT_SETTINGS)

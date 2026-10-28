@@ -314,3 +314,32 @@ def test_ordinary_voice_turns_carry_no_assistant_marker(env, monkeypatch):
 
     asyncio.run(run())
     assert processed == [None]
+
+
+def test_a_device_turns_assistant_mode_on_for_its_call(env, monkeypatch, tmp_path):
+    from shared import assistant_mode as am
+
+    monkeypatch.setenv(am.ASSISTANT_MODE_DIR_ENV, str(tmp_path / "assistant_mode"))
+    am.save_settings({"enabled": True, "wake_phrase": "Hey Jarvis"})
+    hub = am.AssistantModeHub(emit=lambda *a: None, submit=lambda *a: None, transcribe=lambda pcm: "")
+    env.webrtc.assistant_mode = hub
+    fed_to_stt = []
+    audio_manager = SimpleNamespace(process_audio_chunk=lambda chunk: fed_to_stt.append(len(chunk)))
+    monkeypatch.setattr(env.webrtc, "_should_accept_voice_call_audio", lambda session_id: True)
+    monkeypatch.setattr(env.webrtc, "_write_audio_only_call_chunk", lambda session_id, chunk: True)
+    try:
+        env.webrtc._handle_inbound_voice_audio_chunk("phone", audio_manager, b"\x01\x00" * 160)
+        assert fed_to_stt == [320]
+
+        control(env.webrtc, {"event": "assistant_call_mode", "enabled": True})
+        assert env.manager.sent[-1]["event"] == "assistant_call_mode"
+        assert env.manager.sent[-1]["enabled"] is True
+        env.webrtc._handle_inbound_voice_audio_chunk("phone", audio_manager, b"\x01\x00" * 160)
+        assert fed_to_stt == [320]  # held for the wake word, not transcribed
+
+        control(env.webrtc, {"event": "call_state", "active": False})
+        assert hub.gates_call("phone") is False
+        env.webrtc._handle_inbound_voice_audio_chunk("phone", audio_manager, b"\x01\x00" * 160)
+        assert fed_to_stt == [320, 320]
+    finally:
+        hub.close()

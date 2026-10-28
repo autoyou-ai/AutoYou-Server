@@ -161,6 +161,7 @@
     "ctranslate2": "MIT",
     "customtkinter": "MIT",
     "distance": "MIT",
+    "dnspython": "ISC",
     "docker": "Apache-2.0",
     "elevenlabs": "MIT",
     "enum34": "BSD-3-Clause",

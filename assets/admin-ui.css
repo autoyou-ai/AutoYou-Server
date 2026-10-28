@@ -5055,6 +5055,270 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     background: var(--ayu-green-soft);
 }
 
+.ayu-assistant-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ayu-assistant-lock {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px 13px;
+    border-radius: var(--ayu-radius-sm);
+    background: var(--ayu-amber-soft);
+    color: var(--ayu-amber);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ayu-assistant-lock div {
+    display: grid;
+    gap: 2px;
+}
+
+.ayu-assistant-lock span {
+    color: var(--ayu-muted);
+}
+
+.ayu-assistant-lock .ayu-nav-icon {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+}
+
+/* How it works: three steps joined by arrows */
+.ayu-assistant-flow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ayu-assistant-flow li {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--ayu-radius-sm);
+    background: var(--ayu-surface-strong);
+}
+
+.ayu-assistant-flow li + li::before {
+    content: "→";
+    position: absolute;
+    top: 50%;
+    left: -17px;
+    transform: translateY(-50%);
+    color: var(--ayu-faint);
+    font-weight: 700;
+}
+
+.ayu-assistant-flow li > span:last-child {
+    display: grid;
+    gap: 3px;
+}
+
+.ayu-assistant-flow strong {
+    font-size: 13px;
+}
+
+.ayu-assistant-flow small {
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.ayu-assistant-flow-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--ayu-primary-soft);
+    color: var(--ayu-primary);
+}
+
+.ayu-assistant-flow-icon .ayu-nav-icon {
+    width: 18px;
+    height: 18px;
+}
+
+/* Setup checklist */
+.ayu-assistant-steps {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.ayu-assistant-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 12px;
+    padding: 0 0 16px;
+}
+
+.ayu-assistant-step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 30px;
+    bottom: 2px;
+    left: 14px;
+    width: 2px;
+    background: var(--ayu-border);
+}
+
+.ayu-assistant-step-n {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 2px solid var(--ayu-border-strong);
+    border-radius: 50%;
+    background: var(--ayu-surface);
+    color: var(--ayu-muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ayu-assistant-step-n .ayu-nav-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.ayu-assistant-step.done .ayu-assistant-step-n {
+    border-color: var(--ayu-green);
+    background: var(--ayu-green-soft);
+    color: var(--ayu-green);
+}
+
+.ayu-assistant-step.current .ayu-assistant-step-n {
+    border-color: var(--ayu-primary);
+    background: var(--ayu-primary);
+    color: #fff;
+}
+
+.ayu-assistant-step.skipped {
+    opacity: 0.6;
+}
+
+.ayu-assistant-step-body {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding-top: 4px;
+}
+
+.ayu-assistant-step-body > strong {
+    font-size: 14px;
+}
+
+.ayu-assistant-step-body > small {
+    margin-top: -5px;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ayu-assistant-step-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ayu-assistant-step-row .ayu-input {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.ayu-assistant-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.ayu-assistant-dot {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--ayu-border-strong);
+    border-radius: 50%;
+}
+
+.ayu-assistant-dot.on {
+    border-color: var(--ayu-green);
+    background: var(--ayu-green);
+}
+
+.ayu-assistant-more {
+    border: 1px solid var(--ayu-border);
+    border-radius: var(--ayu-radius-sm);
+    background: var(--ayu-surface-strong);
+}
+
+.ayu-assistant-more summary {
+    padding: 11px 13px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ayu-assistant-more-body {
+    display: grid;
+    gap: 14px;
+    padding: 0 13px 13px;
+}
+
+.ayu-assistant-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--ayu-border);
+}
+
+.ayu-chat-call-assistant {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ayu-chat-call-assistant small {
+    flex: 1 1 200px;
+    color: var(--ayu-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.ayu-chat-call-assistant.on small {
+    color: var(--ayu-green);
+}
+
+.ayu-assistant-panel {
+    container-type: inline-size;
+}
+
+@container (max-width: 620px) {
+    .ayu-assistant-flow {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .ayu-assistant-flow li + li::before {
+        content: none;
+    }
+}
+
 @media (max-width: 640px) {
     .ayu-assistant-panel {
         padding: 14px;

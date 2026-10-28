@@ -291,16 +291,16 @@ The wake word: settings, recordings, training, testing, the model for in-browser
 
 | App | Method | Path | Summary |
 | :--- | :--- | :--- | :--- |
-| Admin app | `GET` | `/api/assistant-mode` | Settings, readiness, recordings, Voice Training matches, and which devices are listening. |
-| Admin app | `DELETE` | `/api/assistant-mode/model` | Forget the trained wake word. |
+| Admin app | `GET` | `/api/assistant-mode` | Settings, readiness, recordings, Voice Training matches, which devices are listening, and whether this admin may change them. |
+| Admin app | `DELETE` | `/api/assistant-mode/model` | Forget the trained wake word. This computer only. |
 | Admin app | `GET` | `/api/assistant-mode/model` | The full model, for detectors that run in the browser or on a device. |
-| Admin app | `DELETE` | `/api/assistant-mode/samples` | Delete every stored wake word recording. |
-| Admin app | `POST` | `/api/assistant-mode/samples` | Store one recording of the wake word (base64 WAV), after checking its length and level. |
-| Admin app | `DELETE` | `/api/assistant-mode/samples/&#123;sample_id&#125;` | Delete one wake word recording. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples` | Delete every stored wake word recording. This computer only. |
+| Admin app | `POST` | `/api/assistant-mode/samples` | Store one recording of the wake word (base64 WAV), after checking its length and level. This computer only. |
+| Admin app | `DELETE` | `/api/assistant-mode/samples/&#123;sample_id&#125;` | Delete one wake word recording. This computer only. |
 | Admin app | `GET` | `/api/assistant-mode/samples/&#123;sample_id&#125;/audio` | Play back one wake word recording as WAV. |
-| Admin app | `POST` | `/api/assistant-mode/settings` | Turn Assistant mode on or off and choose the wake word, how it is confirmed, and sensitivity. |
+| Admin app | `POST` | `/api/assistant-mode/settings` | Turn Assistant mode on or off; choose the wake word, how it is confirmed, sensitivity and what devices may do. This computer only. |
 | Admin app | `POST` | `/api/assistant-mode/test` | Say whether a recording would wake the assistant, with the match score and transcript. |
-| Admin app | `POST` | `/api/assistant-mode/train` | Train the wake word from the recordings and, when enabled, Voice Training clips. |
+| Admin app | `POST` | `/api/assistant-mode/train` | Train the wake word from the recordings and, when enabled, Voice Training clips. This computer only. |
 | Admin app | `POST` | `/api/assistant-mode/transcribe` | Local transcription for a wake heard by the admin page's own detector. |
 
 ## Messaging connectors

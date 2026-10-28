@@ -1483,7 +1483,7 @@
         agents: [["library", "Agent library", /installed|available/i], ["studio", "Agent Studio", /studio/i], ["build", "Build & instructions", /prompt|create|draft|builder/i], ["desktop", "Desktop apps", /desktop/i]],
         page: [["websites", "Websites", /website|apps|bookmark|page/i], ["browser", "Browser", /browser|forward/i], ["access", "Access", /security|access|proxy/i]],
         messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "MCP & Tools", /mcp|webhook|send|queue/i]],
-        permissions: [["capture", "Audio & video", /audio|video|capture/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website|remote/i]],
+        permissions: [["capture", "Audio & video", /audio|video|capture/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website|remote/i], ["assistant", "Assistant mode", /assistant|wake word/i]],
         video: [["calls", "Calls & playback", /call|playback|background/i], ["sources", "Sharing sources", /source|camera|desktop|layout|device/i], ["recording", "Recording", /record|storage/i], ["connection", "Connection", /webrtc|ice|connection/i]],
         speech: [["voice", "Voice", /provider|tts|speech|voice/i], ["models", "Models", /model|download|recognition|stt/i]],
         connectivity: [["local", "This computer & LAN", /local|home|access|unlock|webrtc|network/i], ["remote", "Remote access", /cloud|public|tunnel|remote/i], ["routes", "Routes & delivery", /route|queue|task|website|bluetooth/i]],
@@ -4767,6 +4767,7 @@
         if (type === "voice_call_control") {
             var payload = frame.payload || {};
             var event = String(payload.event || "").toLowerCase();
+            chatCallAssistantEvent(event, payload);
             if (event === "readiness") {
                 state.chat.call.readiness = String(payload.state || "unknown");
                 state.chat.call.status = String(payload.detail || "Voice pipeline status updated.");
@@ -4872,7 +4873,7 @@
         var call = state.chat.call;
         if (call.phase === "idle") return "";
         var readinessTone = call.readiness === "ready" ? "green" : (call.readiness === "unavailable" ? "red" : "amber");
-        return "<section class=\"ayu-chat-call-card\"><audio data-role=\"chat-call-audio\" autoplay></audio><div class=\"ayu-chat-call-orb\"><span></span><span></span><span></span></div><div class=\"ayu-chat-call-copy\"><span class=\"ayu-chat-eyebrow\">Voice call · microphone only</span><h2>Talk to AutoYou</h2><p>" + escapeHtml(call.status || "Connecting…") + "</p><div class=\"ayu-chat-call-status\">" + badge(String(call.readiness || "warming"), readinessTone) + "<span>STT + TTS stays on the server</span></div></div><div class=\"ayu-chat-call-controls\">" + button(call.muted ? "Unmute" : "Mute", "chat-call-mute", call.muted ? "secondary" : "ghost", "mic", "sm", "aria-pressed=\"" + String(Boolean(call.muted)) + "\"") + button("Stop talking", "chat-call-stop", "secondary", "stop", "sm") + button("End call", "chat-call-end", "danger", "close", "sm") + "</div></section>";
+        return "<section class=\"ayu-chat-call-card\"><audio data-role=\"chat-call-audio\" autoplay></audio><div class=\"ayu-chat-call-orb\"><span></span><span></span><span></span></div><div class=\"ayu-chat-call-copy\"><span class=\"ayu-chat-eyebrow\">Voice call · microphone only</span><h2>Talk to AutoYou</h2><p>" + escapeHtml(call.status || "Connecting…") + "</p><div class=\"ayu-chat-call-status\">" + badge(String(call.readiness || "warming"), readinessTone) + "<span>STT + TTS stays on the server</span></div>" + chatCallAssistantMarkup() + "</div><div class=\"ayu-chat-call-controls\">" + button(call.muted ? "Unmute" : "Mute", "chat-call-mute", call.muted ? "secondary" : "ghost", "mic", "sm", "aria-pressed=\"" + String(Boolean(call.muted)) + "\"") + button("Stop talking", "chat-call-stop", "secondary", "stop", "sm") + button("End call", "chat-call-end", "danger", "close", "sm") + "</div></section>";
     }
 
     function chatTrainingClipMarkup(clip, showConversation) {
@@ -5201,7 +5202,9 @@
             listen_during_safety_recording: Boolean(status.listen_during_safety_recording),
             use_voice_training_clips: status.use_voice_training_clips !== false,
             wake_word_in_calls: Boolean(status.wake_word_in_calls),
-            use_live_video: status.use_live_video !== false
+            use_live_video: status.use_live_video !== false,
+            allow_call_toggle: status.allow_call_toggle !== false,
+            allow_device_teaching: status.allow_device_teaching !== false
         };
     }
 
@@ -5234,7 +5237,9 @@
             listen_during_safety_recording: Boolean(draft.listen_during_safety_recording),
             use_voice_training_clips: Boolean(draft.use_voice_training_clips),
             wake_word_in_calls: Boolean(draft.wake_word_in_calls),
-            use_live_video: Boolean(draft.use_live_video)
+            use_live_video: Boolean(draft.use_live_video),
+            allow_call_toggle: Boolean(draft.allow_call_toggle),
+            allow_device_teaching: Boolean(draft.allow_device_teaching)
         }, extra || {});
     }
 
@@ -5522,7 +5527,111 @@
     function assistantHeadingButton() {
         var status = assistantState().status;
         var on = Boolean(status && status.enabled);
-        return '<button type="button" class="ayu-chat-assistant-pill' + (on ? " on" : "") + '" data-action="assistant-panel-toggle" aria-expanded="' + (assistantState().open ? "true" : "false") + '" title="Wake word and Assistant mode"><span></span>Assistant mode' + (on ? " · on" : "") + '</button>';
+        return '<button type="button" class="ayu-chat-assistant-pill' + (on ? " on" : "") + '" data-action="assistant-panel-toggle" aria-expanded="' + (assistantState().open ? "true" : "false") + '" title="Set up the wake word and Assistant mode"><span></span>Assistant mode' + (on ? " · on" : " · set up") + '</button>';
+    }
+
+    // Only an admin on this computer (localhost) may change Assistant mode; the
+    // server says so in status.editable and refuses changes from elsewhere.
+    function assistantEditable(status) {
+        return Boolean(status && status.editable !== false);
+    }
+
+    function assistantLockNote(status) {
+        if (assistantEditable(status)) return "";
+        return '<div class="ayu-assistant-lock">' + icon("shield") + '<div><strong>View only from this connection.</strong><span>Only an admin on this computer (localhost) can change Assistant mode. From here you can still test the wake word, listen in this browser, and turn Assistant mode on during a call.</span></div></div>';
+    }
+
+    function assistantFlowMarkup(status) {
+        var phrase = status.wake_phrase || status.assistant_name || "AutoYou";
+        var steps = [
+            ["mic", "Say “" + phrase + "”", "Until then nothing is transcribed or sent to AI."],
+            ["wave", "Then say what you need", "“…open example.com and read the title.”"],
+            ["msg", "The answer arrives", "Here in chat, and on the phone or computer you spoke to."]
+        ];
+        return '<ol class="ayu-assistant-flow" aria-label="How Assistant mode works">' + steps.map(function (step) {
+            return '<li><span class="ayu-assistant-flow-icon">' + icon(step[0]) + '</span><span><strong>' + escapeHtml(step[1]) + '</strong><small>' + escapeHtml(step[2]) + '</small></span></li>';
+        }).join("") + '</ol>';
+    }
+
+    function assistantSetupSteps(status, draft) {
+        var assistant = assistantState();
+        var samples = Array.isArray(status.samples) ? status.samples : [];
+        var needed = Number(status.min_samples || 3);
+        var textOnly = (draft.confirm || status.confirm) === "text";
+        var model = status.model;
+        var trained = Boolean(model && model.matches_phrase);
+        var test = assistant.test;
+        return [
+            { id: "name", title: "Choose the wake word", done: Boolean(String(status.wake_phrase || "").trim()),
+                detail: "Now “" + (status.wake_phrase || "") + "”. Two or three syllables work best, like “Hey Jarvis”." },
+            { id: "record", title: "Record it " + needed + " times", done: textOnly || samples.length >= needed, skipped: textOnly,
+                detail: textOnly ? "Not needed with Typed text only." : Math.min(samples.length, needed) + " of " + needed + " recorded. Say only the wake word, the way you will say it." },
+            { id: "train", title: "Train", done: textOnly || trained, skipped: textOnly,
+                detail: textOnly ? "Not needed with Typed text only." : (trained ? "Trained from " + model.templates + " recordings" + (model.calibration && model.calibration.negatives_used ? ", checked against " + model.calibration.negatives_used + " Voice Training clips" : "") + "." : (model ? "Trained for “" + model.phrase + "”. Train again for the new word." : "Takes a few seconds on this computer.")) },
+            { id: "test", title: "Test it", done: Boolean(test && test.would_wake),
+                detail: test ? (test.would_wake ? "It woke. You are ready." : "It did not wake. Record once more, or raise Sensitivity under Fine-tune.") : "Say the wake word and a short question." },
+            { id: "on", title: "Turn it on", done: Boolean(status.enabled),
+                detail: status.enabled ? "On. Devices with Assistant mode in their settings listen for the word." : "Then turn on Assistant mode in each phone or computer that should listen, or during a call." }
+        ];
+    }
+
+    function assistantStepBody(step, status, draft, editable) {
+        var assistant = assistantState();
+        var samples = Array.isArray(status.samples) ? status.samples : [];
+        if (step.id === "name") {
+            return '<div class="ayu-assistant-step-row"><input class="ayu-input" type="text" maxlength="48" data-assistant-field="wake_phrase" value="' + escapeHtml(draft.wake_phrase || "") + '" placeholder="' + escapeHtml(status.assistant_name) + '" aria-label="Wake word"' + (editable ? "" : " disabled") + '>' + (editable ? button("Save word", "assistant-save", "secondary", "save", "sm") : "") + '</div><small class="ayu-assistant-note">Blank uses this server’s name, “' + escapeHtml(status.assistant_name) + '”. Changing the word needs new recordings.</small>';
+        }
+        if (step.id === "record") {
+            if (step.skipped) return "";
+            var needed = Number(status.min_samples || 3);
+            var dots = "";
+            for (var index = 0; index < Math.max(needed, samples.length); index += 1) {
+                dots += '<span class="ayu-assistant-dot' + (index < samples.length ? " on" : "") + '"></span>';
+            }
+            var list = samples.map(function (sample, number) {
+                return '<span class="ayu-assistant-sample"><strong>#' + (number + 1) + '</strong><span>' + Number(sample.duration_seconds || 0).toFixed(1) + ' s · ' + escapeHtml(sample.source === "device" ? "from a device" : "from this page") + '</span><audio controls preload="none" src="/api/assistant-mode/samples/' + encodeURIComponent(sample.id) + '/audio"></audio>' + (editable ? '<button type="button" class="ayu-assistant-x" data-action="assistant-sample-delete:' + escapeHtml(sample.id) + '" aria-label="Delete recording" title="Delete recording">×</button>' : "") + '</span>';
+            }).join("");
+            var capture = assistant.capture && assistant.capture.purpose === "sample"
+                ? '<div class="ayu-assistant-capture"><span class="ayu-chat-recording-dot"></span>' + escapeHtml(assistant.capture.heard ? "Got it…" : "Say “" + status.wake_phrase + "” now…") + '</div>'
+                : "";
+            return '<div class="ayu-assistant-dots" aria-label="' + samples.length + ' recordings">' + dots + '</div>' + capture
+                + (list ? '<div class="ayu-assistant-samples">' + list + '</div>' : "")
+                + (editable ? '<div class="ayu-assistant-actions">' + button(samples.length ? "Record another" : "Record wake word", "assistant-record-sample", samples.length >= needed ? "ghost" : "primary", "mic", "sm") + (samples.length ? button("Delete all", "assistant-clear-samples", "ghost", "trash", "sm") : "") + '</div>' : "");
+        }
+        if (step.id === "train") {
+            if (step.skipped || !editable) return "";
+            var ready = samples.length >= Number(status.min_samples || 3);
+            return '<div class="ayu-assistant-actions">' + button("Train", "assistant-train", step.done ? "ghost" : "primary", "bolt", "sm", ready ? "" : "disabled") + '</div>';
+        }
+        if (step.id === "test") {
+            var test = assistant.test, result = "";
+            if (test) {
+                var acoustic = test.acoustic ? "Voice match " + Math.round(Number(test.acoustic.score || 0) * 100) + "%" : "";
+                var heard = test.transcript !== undefined ? "Heard “" + (test.transcript || "nothing") + "”" : "";
+                result = '<div class="ayu-assistant-test ' + (test.would_wake ? "ok" : "miss") + '"><strong>' + (test.would_wake ? "It would wake." : "It would not wake.") + '</strong><span>' + escapeHtml([acoustic, heard].filter(Boolean).join(" · ")) + '</span></div>';
+            }
+            var testing = assistant.capture && assistant.capture.purpose === "test"
+                ? '<div class="ayu-assistant-capture"><span class="ayu-chat-recording-dot"></span>' + escapeHtml(assistant.capture.heard ? "Got it — keep going until you stop…" : "Say the wake word and a short question now…") + '</div>'
+                : "";
+            return testing + result + '<div class="ayu-assistant-actions">' + button("Test", "assistant-test", "secondary", "play", "sm") + '</div>';
+        }
+        if (step.id === "on") {
+            if (!editable) return "";
+            return '<div class="ayu-assistant-actions">' + button(status.enabled ? "Turn off" : "Turn on Assistant mode", "assistant-enable-toggle", status.enabled ? "ghost" : "primary", "power", "sm") + '</div>';
+        }
+        return "";
+    }
+
+    function assistantCheckbox(field, title, help, draft, editable) {
+        return '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="' + field + '"' + (draft[field] ? " checked" : "") + (editable ? "" : " disabled") + '><div><span>' + escapeHtml(title) + '</span><small>' + escapeHtml(help) + '</small></div></label>';
+    }
+
+    function assistantPermissionFields(draft, editable) {
+        return assistantCheckbox("wake_word_in_calls", "Wake word in every call", "Every call answers only after the wake word. Off: each person chooses during their own call.", draft, editable)
+            + assistantCheckbox("allow_call_toggle", "Devices can turn it on during a call", "Someone on a call can switch that call to answer only after the wake word. It ends with the call.", draft, editable)
+            + assistantCheckbox("allow_device_teaching", "Devices can record and train the wake word", "Phones, computers and the Raspberry Pi may teach the word from their own microphone. Off: only this page on this computer.", draft, editable)
+            + assistantCheckbox("listen_during_safety_recording", "Listen during Safety Recording", "Devices already recording can also wake the assistant. Recording itself is unchanged.", draft, editable)
+            + assistantCheckbox("use_live_video", "Let it see the camera", "In a video call, what you ask after the wake word includes the latest camera picture, handled like a photo sent in chat.", draft, editable);
     }
 
     function assistantPanelMarkup() {
@@ -5532,69 +5641,72 @@
         if (!status) {
             return '<section class="ayu-assistant-panel"><div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>' + escapeHtml(assistant.error || "Loading Assistant mode…") + '</div></section>';
         }
+        var editable = assistantEditable(status);
         var draft = assistant.draft || assistantDraftFromStatus(status);
-        var samples = Array.isArray(status.samples) ? status.samples : [];
-        var model = status.model;
         var training = status.voice_training || { matching: [], other_clips: 0 };
         var liveSessions = Object.keys((status.live && status.live.sessions) || {}).length;
+        var callSessions = ((status.live && status.live.call_mode_sessions) || []).length;
+        var steps = assistantSetupSteps(status, draft);
+        var nextStep = steps.filter(function (step) { return !step.done && !step.skipped; })[0];
+        var stepsMarkup = steps.map(function (step, index) {
+            var stateClass = step.skipped ? "skipped" : (step.done ? "done" : (nextStep && nextStep.id === step.id ? "current" : "upcoming"));
+            return '<li class="ayu-assistant-step ' + stateClass + '"><span class="ayu-assistant-step-n" aria-hidden="true">' + (step.done && !step.skipped ? icon("check") : String(index + 1)) + '</span><div class="ayu-assistant-step-body"><strong>' + escapeHtml(step.title) + '</strong><small>' + escapeHtml(step.detail) + '</small>' + assistantStepBody(step, status, draft, editable) + '</div></li>';
+        }).join("");
         var choices = [
-            ["voice", "Recorded voice", "Nothing is transcribed until your recorded word matches."],
+            ["voice", "Recorded voice", "Nothing is transcribed until your recorded word matches. Best for most people."],
             ["both", "Recorded voice + text", "Your word must match, and the transcript must contain it. Fewest false wakes."],
             ["text", "Typed text only", "No recordings. Short bursts of speech are transcribed on this server and thrown away unless they contain the word. Uses more CPU."]
         ].map(function (choice) {
-            return '<label class="ayu-assistant-choice' + (draft.confirm === choice[0] ? " selected" : "") + '"><input type="radio" name="assistant-confirm" value="' + choice[0] + '" data-assistant-field="confirm"' + (draft.confirm === choice[0] ? " checked" : "") + '><span><strong>' + escapeHtml(choice[1]) + '</strong><small>' + escapeHtml(choice[2]) + '</small></span></label>';
+            return '<label class="ayu-assistant-choice' + (draft.confirm === choice[0] ? " selected" : "") + '"><input type="radio" name="assistant-confirm" value="' + choice[0] + '" data-assistant-field="confirm"' + (draft.confirm === choice[0] ? " checked" : "") + (editable ? "" : " disabled") + '><span><strong>' + escapeHtml(choice[1]) + '</strong><small>' + escapeHtml(choice[2]) + '</small></span></label>';
         }).join("");
-        var sampleMarkup = samples.length
-            ? samples.map(function (sample, number) {
-                return '<span class="ayu-assistant-sample"><strong>#' + (number + 1) + '</strong><span>' + Number(sample.duration_seconds || 0).toFixed(1) + ' s · ' + escapeHtml(sample.source === "device" ? "from a device" : "from this page") + '</span><audio controls preload="none" src="/api/assistant-mode/samples/' + encodeURIComponent(sample.id) + '/audio"></audio><button type="button" class="ayu-assistant-x" data-action="assistant-sample-delete:' + escapeHtml(sample.id) + '" aria-label="Delete recording" title="Delete recording">×</button></span>';
-            }).join("")
-            : '<span class="ayu-assistant-note">No recordings yet. Record the wake word ' + Number(status.min_samples || 3) + ' times, the way you will say it.</span>';
-        var capture = assistant.capture;
-        var captureMarkup = capture
-            ? '<div class="ayu-assistant-capture"><span class="ayu-chat-recording-dot"></span>' + escapeHtml(capture.heard ? "Got it — keep going until you stop…" : (capture.purpose === "test" ? "Say the wake word and a short question now…" : "Say “" + status.wake_phrase + "” now…")) + '</div>'
-            : "";
-        var test = assistant.test;
-        var testMarkup = "";
-        if (test) {
-            var acoustic = test.acoustic ? "Voice match " + Math.round(Number(test.acoustic.score || 0) * 100) + "%" : "";
-            var heard = test.transcript !== undefined ? "Heard “" + (test.transcript || "nothing") + "”" : "";
-            testMarkup = '<div class="ayu-assistant-test ' + (test.would_wake ? "ok" : "miss") + '"><strong>' + (test.would_wake ? "It would wake." : "It would not wake.") + '</strong><span>' + escapeHtml([acoustic, heard].filter(Boolean).join(" · ")) + '</span></div>';
-        }
-        var modelLine = model
-            ? (model.matches_phrase
-                ? "Trained from " + model.templates + " recordings" + (model.calibration && model.calibration.negatives_used ? ", checked against " + model.calibration.negatives_used + " Voice Training clips" : "") + "."
-                : "The trained word was “" + model.phrase + "”. Train again for the new wake word.")
-            : "Not trained yet.";
-        var unavailable = status.available ? "" : '<p class="ayu-assistant-warning">Devices cannot use Assistant mode until call audio and AutoYou Agents for calls are on in Video &amp; Calls.</p>';
-        var listening = Boolean(assistant.listen);
-        return '<section class="ayu-assistant-panel" aria-label="Assistant mode">'
-            + '<div class="ayu-assistant-head"><div><h3>Assistant mode</h3><p>Say <strong>“' + escapeHtml(status.wake_phrase) + '”</strong> and ' + escapeHtml(status.assistant_name) + ' listens to what comes next. Until then nothing you say is transcribed or sent to AI. Safety Recording keeps recording as before.</p></div>'
-            + '<label class="ayu-checkbox ayu-assistant-enable"><input type="checkbox" data-assistant-field="enabled"' + (draft.enabled ? " checked" : "") + '><div><span>' + (draft.enabled ? "On" : "Off") + '</span><small>' + (status.ready ? "Ready" : "Needs setup") + '</small></div></label></div>'
-            + unavailable
-            + '<div class="ayu-assistant-grid">'
-            + '<div class="ayu-field"><span class="ayu-field-label">Wake word</span><input class="ayu-input" type="text" maxlength="48" data-assistant-field="wake_phrase" value="' + escapeHtml(draft.wake_phrase || "") + '" placeholder="' + escapeHtml(status.assistant_name) + '"><span class="ayu-field-hint">Blank uses this server’s name. Rename the server in Settings to rename your assistant.</span></div>'
-            + '<div class="ayu-field"><span class="ayu-field-label">Sensitivity · ' + Number(draft.sensitivity || 50) + '%</span><input type="range" min="0" max="100" step="5" data-assistant-field="sensitivity" value="' + Number(draft.sensitivity || 50) + '"><span class="ayu-field-hint">Higher wakes more easily; lower wakes less by accident.</span></div>'
-            + '<div class="ayu-field"><span class="ayu-field-label">Listen after the wake word</span><select class="ayu-select" data-assistant-field="listen_seconds">' + [5, 8, 12, 20].map(function (seconds) { return '<option value="' + seconds + '"' + (Number(draft.listen_seconds) === seconds ? " selected" : "") + '>' + seconds + ' seconds</option>'; }).join("") + '</select><span class="ayu-field-hint">How long to wait for you to start speaking.</span></div>'
-            + '</div>'
+        var disabled = editable ? "" : " disabled";
+        var fineTune = '<details class="ayu-assistant-more"><summary>Fine-tune recognition</summary><div class="ayu-assistant-more-body">'
             + '<div class="ayu-field"><span class="ayu-field-label">How the wake word is recognised</span><div class="ayu-assistant-choices">' + choices + '</div></div>'
             + '<div class="ayu-assistant-grid">'
-            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="listen_during_safety_recording"' + (draft.listen_during_safety_recording ? " checked" : "") + '><div><span>Listen during Safety Recording</span><small>Devices already recording can also wake the assistant. Recording itself is unchanged.</small></div></label>'
-            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="wake_word_in_calls"' + (draft.wake_word_in_calls ? " checked" : "") + '><div><span>Wake word in calls too</span><small>Calls and their video or audio recordings carry on as usual, but AI answers only after the wake word.</small></div></label>'
-            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_live_video"' + (draft.use_live_video ? " checked" : "") + '><div><span>Let it see the camera</span><small>In a video call, what you ask after the wake word includes the latest camera picture, handled like a photo sent in chat.</small></div></label>'
-            + '<label class="ayu-checkbox"><input type="checkbox" data-assistant-field="use_voice_training_clips"' + (draft.use_voice_training_clips ? " checked" : "") + '><div><span>Learn from Voice Training clips</span><small>' + escapeHtml((training.matching.length === 1 ? "1 clip says" : training.matching.length + " clips say") + " the word; " + (training.other_clips === 1 ? "1 other teaches" : training.other_clips + " others teach") + " it what to ignore.") + '</small></div></label>'
+            + '<div class="ayu-field"><span class="ayu-field-label">Sensitivity · ' + Number(draft.sensitivity || 50) + '%</span><input type="range" min="0" max="100" step="5" data-assistant-field="sensitivity" value="' + Number(draft.sensitivity || 50) + '"' + disabled + '><span class="ayu-field-hint">Higher wakes more easily; lower wakes less by accident.</span></div>'
+            + '<div class="ayu-field"><span class="ayu-field-label">Listen after the wake word</span><select class="ayu-select" data-assistant-field="listen_seconds"' + disabled + '>' + [5, 8, 12, 20].map(function (seconds) { return '<option value="' + seconds + '"' + (Number(draft.listen_seconds) === seconds ? " selected" : "") + '>' + seconds + ' seconds</option>'; }).join("") + '</select><span class="ayu-field-hint">How long to wait for you to start speaking.</span></div>'
             + '</div>'
-            + '<div class="ayu-assistant-actions">' + button("Save", "assistant-save", "primary", "save", "sm") + '</div>'
-            + '<div class="ayu-field"><span class="ayu-field-label">Your recordings</span><div class="ayu-assistant-samples">' + sampleMarkup + '</div><span class="ayu-field-hint">' + escapeHtml(modelLine) + '</span></div>'
-            + captureMarkup + testMarkup
-            + '<div class="ayu-assistant-actions">'
-            + button("Record wake word", "assistant-record-sample", "secondary", "mic", "sm")
-            + button("Train", "assistant-train", "secondary", "bolt", "sm")
-            + button("Test", "assistant-test", "secondary", "play", "sm")
-            + (samples.length ? button("Delete recordings", "assistant-clear-samples", "ghost", "trash", "sm") : "")
-            + button(listening ? "Stop listening here" : "Listen in this browser", "assistant-listen-toggle", listening ? "primary" : "ghost", "wave", "sm")
-            + '</div>'
-            + '<p class="ayu-assistant-note">' + escapeHtml(liveSessions ? liveSessions + " connected device" + (liveSessions === 1 ? " is" : "s are") + " listening for the wake word." : "Phones and computers listen when Assistant mode or Safety Recording is on in their settings.") + '</p>'
+            + assistantCheckbox("use_voice_training_clips", "Learn from Voice Training clips", (training.matching.length === 1 ? "1 clip says" : training.matching.length + " clips say") + " the word; " + (training.other_clips === 1 ? "1 other teaches" : training.other_clips + " others teach") + " it what to ignore.", draft, editable)
+            + '</div></details>';
+        var permissions = '<details class="ayu-assistant-more" open><summary>Where it listens and what devices may do</summary><div class="ayu-assistant-more-body"><div class="ayu-assistant-grid">' + assistantPermissionFields(draft, editable) + '</div></div></details>';
+        var unavailable = status.available ? "" : '<p class="ayu-assistant-warning">Devices cannot use Assistant mode until call audio and AutoYou Agents for calls are on in Video &amp; Calls.</p>';
+        var listening = Boolean(assistant.listen);
+        var liveLine = [
+            liveSessions ? liveSessions + " device" + (liveSessions === 1 ? " is" : "s are") + " listening for the wake word" : "",
+            callSessions ? callSessions + " call" + (callSessions === 1 ? " is" : "s are") + " in Assistant mode" : ""
+        ].filter(Boolean).join(" · ") || "No device is listening right now. Phones and computers listen when Assistant mode is on in their settings or during a call.";
+        return '<section class="ayu-assistant-panel" aria-label="Assistant mode">'
+            + '<div class="ayu-assistant-head"><div><h3>Assistant mode</h3><p>A wake word for ' + escapeHtml(status.assistant_name) + '. Say it from any connected phone, computer, Raspberry Pi, or this page, and the next thing you say goes to AutoYou. Safety Recording keeps recording as before.</p></div>'
+            + '<div class="ayu-assistant-status">' + badge(status.enabled ? "On" : "Off", status.enabled ? "green" : "gray") + badge(status.ready ? "Ready" : "Needs setup", status.ready ? "green" : "amber") + (editable ? "" : badge("View only", "gray")) + '</div></div>'
+            + assistantLockNote(status)
+            + unavailable
+            + assistantFlowMarkup(status)
+            + '<ol class="ayu-assistant-steps" aria-label="Set up the wake word">' + stepsMarkup + '</ol>'
+            + permissions
+            + fineTune
+            + (editable ? '<div class="ayu-assistant-actions">' + button("Save settings", "assistant-save", "primary", "save", "sm") + '</div>' : "")
+            + '<div class="ayu-assistant-foot"><p class="ayu-assistant-note">' + escapeHtml(liveLine) + '</p>' + button(listening ? "Stop listening here" : "Listen in this browser", "assistant-listen-toggle", listening ? "primary" : "ghost", "wave", "sm") + '</div>'
             + '</section>';
+    }
+
+    // Permissions screen: the same settings, next to the other capture permissions.
+    function assistantPermissionsPanel() {
+        var assistant = assistantState();
+        var status = assistant.status;
+        var title = "Assistant mode (wake word)";
+        var subtitle = "Whether the wake word works, and what connected devices may do with it.";
+        if (!status) {
+            if (!assistant.loading && !assistant.error) assistantLoadStatus(false);
+            return panel(title, subtitle, '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>' + escapeHtml(assistant.error || "Loading Assistant mode…") + '</div>');
+        }
+        var editable = assistantEditable(status);
+        var draft = assistant.draft || assistantDraftFromStatus(status);
+        var body = assistantLockNote(status)
+            + assistantCheckbox("enabled", "Allow Assistant mode", "Connected devices and the admin page can wake AutoYou with the wake word. Nothing is transcribed before the word.", draft, editable)
+            + assistantPermissionFields(draft, editable)
+            + '<p class="ayu-assistant-note">Wake word: <strong>“' + escapeHtml(status.wake_phrase) + '”</strong> · ' + escapeHtml(status.ready ? "ready" : "needs setup") + '</p>'
+            + '<div class="ayu-inline-actions">' + (editable ? button("Save Assistant mode permissions", "assistant-save", "primary", "save") : "") + button("Set up the wake word", "assistant-open-setup", "ghost", "mic") + '</div>';
+        return panel(title, subtitle, body);
     }
 
     async function handleAssistantAction(action) {
@@ -5605,9 +5717,31 @@
             if (assistant.open) await assistantLoadStatus(true);
             return;
         }
+        if (action === "assistant-open-setup") {
+            assistant.open = true;
+            setScreen("chat");
+            await assistantLoadStatus(true);
+            return;
+        }
+        if (action === "assistant-call-toggle") { assistantToggleCallMode(); return; }
+        if (action === "assistant-test") { await assistantTest(); return; }
+        if (action === "assistant-listen-toggle") {
+            if (assistant.listen) await assistantStopListening();
+            else await assistantStartListening();
+            return;
+        }
+        if (!assistantEditable(assistant.status)) {
+            setNotice("error", "Only an admin on this computer (localhost) can change Assistant mode.");
+            return;
+        }
         if (action === "assistant-save") {
             await assistantSaveSettings();
             setNotice("success", "Assistant mode saved.");
+            return;
+        }
+        if (action === "assistant-enable-toggle") {
+            await assistantSaveSettings({ enabled: !(assistant.status && assistant.status.enabled) });
+            setNotice("success", assistant.status.enabled ? "Assistant mode is on." : "Assistant mode is off.");
             return;
         }
         if (action === "assistant-record-sample") { await assistantRecordSample(); return; }
@@ -5617,10 +5751,9 @@
             assistant.status = trained.status || assistant.status;
             assistant.draft = assistantDraftFromStatus(assistant.status);
             var report = trained.report || {};
-            setNotice("success", "Wake word trained from " + Number(report.templates || 0) + " recordings" + (report.voice_training_templates ? " and " + report.voice_training_templates + " Voice Training clips" : "") + ".");
+            setNotice("success", "Wake word trained from " + Number(report.templates || 0) + " recordings" + (report.voice_training_templates ? " and " + report.voice_training_templates + " Voice Training clips" : "") + ". Now test it.");
             return;
         }
-        if (action === "assistant-test") { await assistantTest(); return; }
         if (action === "assistant-clear-samples") {
             await requestJson("/api/assistant-mode/samples", { method: "DELETE" });
             await assistantLoadStatus(true);
@@ -5629,12 +5762,70 @@
         if (action.indexOf("assistant-sample-delete:") === 0) {
             await requestJson("/api/assistant-mode/samples/" + encodeURIComponent(action.slice("assistant-sample-delete:".length)), { method: "DELETE" });
             await assistantLoadStatus(true);
+        }
+    }
+
+    // ---- Assistant mode during the admin page's own voice call ----------------------
+    // The call is a device like any other: it may switch itself to wake-word
+    // answers (assistant_call_mode) when the server allows devices to.
+    function chatCallAssistant() {
+        var call = state.chat.call;
+        if (!call.assistant) call.assistant = { offered: false, enabled: false, forced: false, phrase: "", state: "", reason: "" };
+        return call.assistant;
+    }
+
+    function assistantToggleCallMode() {
+        var assistant = chatCallAssistant();
+        if (assistant.forced) {
+            setNotice("info", "Every call answers only after the wake word. Change this in Permissions on this computer.");
             return;
         }
-        if (action === "assistant-listen-toggle") {
-            if (assistant.listen) await assistantStopListening();
-            else await assistantStartListening();
+        if (!chatSendCallControl({ event: "assistant_call_mode", enabled: !assistant.enabled })) {
+            setNotice("error", "The call is not connected yet.");
+            return;
         }
+        assistant.pending = true;
+        renderApp({ passive: true });
+    }
+
+    function chatCallAssistantEvent(event, payload) {
+        var assistant = chatCallAssistant();
+        if (event === "server_capabilities") {
+            var capability = (payload.capabilities || {}).assistant_mode || {};
+            assistant.offered = Boolean(capability.call_toggle);
+            assistant.forced = Boolean(capability.enabled && capability.call_mode_forced);
+            assistant.phrase = String(capability.wake_phrase || assistant.phrase || "");
+            if (assistant.forced) assistant.enabled = true;
+            if (!capability.enabled) assistant.enabled = false;
+            return true;
+        }
+        if (event === "assistant_call_mode") {
+            assistant.pending = false;
+            assistant.enabled = Boolean(payload.enabled);
+            assistant.forced = Boolean(payload.forced);
+            if (payload.wake_phrase) assistant.phrase = String(payload.wake_phrase);
+            var reasons = {
+                disabled: "Assistant mode is off on this server. An admin on this computer can turn it on in Chat & History.",
+                not_allowed: "This server does not let calls switch to Assistant mode. An admin on this computer can allow it in Permissions."
+            };
+            if (payload.reason && reasons[payload.reason]) setNotice("error", reasons[payload.reason]);
+            return true;
+        }
+        if (event === "assistant_state") {
+            assistant.state = String(payload.state || "");
+            return true;
+        }
+        return false;
+    }
+
+    function chatCallAssistantMarkup() {
+        var assistant = chatCallAssistant();
+        if (!assistant.offered && !assistant.forced) return "";
+        var phrase = assistant.phrase || "the wake word";
+        var line = !assistant.enabled
+            ? "AutoYou answers everything you say. Turn on Assistant mode to answer only after “" + phrase + "”."
+            : ({ listening: "Heard you — go ahead…", thinking: "Working on it…" }[assistant.state] || "Answers only after “" + phrase + "”. The call carries on as usual.");
+        return '<div class="ayu-chat-call-assistant' + (assistant.enabled ? " on" : "") + '"><button type="button" class="ayu-chat-assistant-pill' + (assistant.enabled ? " on" : "") + '" data-action="assistant-call-toggle" aria-pressed="' + String(Boolean(assistant.enabled)) + '"' + (assistant.pending ? " disabled" : "") + ' title="' + (assistant.forced ? "Every call uses the wake word on this server" : "Answer only after the wake word in this call") + '"><span></span>Assistant mode' + (assistant.enabled ? " · on" : "") + '</button><small>' + escapeHtml(line) + '</small></div>';
     }
 
     function assistantFieldChanged(target) {
@@ -8739,9 +8930,10 @@
             { label: "Chat and event memory", value: yesNo(getByPath(state.forms, "aiAgent.record_messages_in_database", true)) },
             { label: "AI Agent developer API on the home network", value: aiApiSaved ? (machineOnHomeNetwork ? "Open on port " + aiApiPort : "On, but this computer is local-only") : "Off" },
             { label: "Paired browser role", value: prettyLabel(getByPath(state.forms, "page.remote_access_role", "editor")) },
-            { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) }
+            { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) },
+            { label: "Assistant mode (wake word)", value: assistantState().status ? (assistantState().status.enabled ? "On" : "Off") : "Loading" }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div><div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div>" + assistantPermissionsPanel() + "<div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
     }
 
     function renderVideoScreen() {

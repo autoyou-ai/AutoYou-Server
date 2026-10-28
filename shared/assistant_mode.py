@@ -94,8 +94,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # latest camera frame, so "what am I holding?" can be answered. The frame
     # is handled like a picture sent in chat.
     "use_live_video": True,
+    # Permissions. Only an admin on this computer (localhost) changes settings;
+    # these decide what a connected device may do on its own. A device on a
+    # call may switch that call to wake-word answers (assistant_call_mode), and
+    # may record and train the wake word from its microphone.
+    "allow_call_toggle": True,
+    "allow_device_teaching": True,
     "updated_at": 0.0,
 }
+
+#: Settings that decide what devices may do. Shown on the Permissions screen too.
+PERMISSION_KEYS = ("enabled", "allow_call_toggle", "allow_device_teaching", "wake_word_in_calls", "use_live_video")
 
 # Listening/endpointing, in seconds of audio. Driven by audio time rather than
 # the wall clock so behaviour is the same however fast frames arrive.
@@ -190,7 +199,14 @@ def normalize_settings(raw: Optional[Mapping[str, Any]], *, previous: Optional[M
         except (TypeError, ValueError):
             seconds = int(base["listen_seconds"])
         result["listen_seconds"] = max(3, min(30, seconds))
-    for key in ("listen_during_safety_recording", "use_voice_training_clips", "wake_word_in_calls", "use_live_video"):
+    for key in (
+        "listen_during_safety_recording",
+        "use_voice_training_clips",
+        "wake_word_in_calls",
+        "use_live_video",
+        "allow_call_toggle",
+        "allow_device_teaching",
+    ):
         if key in source:
             result[key] = _as_bool(source.get(key))
     result["enabled"] = bool(result["enabled"])
@@ -502,6 +518,8 @@ def public_status(server_name: str, *, include_samples: bool = False) -> Dict[st
         "use_voice_training_clips": settings["use_voice_training_clips"],
         "wake_word_in_calls": settings["wake_word_in_calls"],
         "use_live_video": settings["use_live_video"],
+        "allow_call_toggle": settings["allow_call_toggle"],
+        "allow_device_teaching": settings["allow_device_teaching"],
         "model": None,
         "sample_count": len(list_samples()),
         "min_samples": ww.MIN_TEMPLATES,
@@ -584,6 +602,12 @@ def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
         "stream_listening": True,
         "listen_during_safety_recording": bool(status["listen_during_safety_recording"]),
         "wake_word_in_calls": bool(status["wake_word_in_calls"]),
+        # A device on a call may turn Assistant mode on for that call only
+        # (voice_call_control assistant_call_mode). With wake_word_in_calls on,
+        # every call already answers only after the wake word.
+        "call_toggle": bool(status["enabled"] and available and status["allow_call_toggle"]),
+        "call_mode_forced": bool(status["wake_word_in_calls"]),
+        "use_live_video": bool(status["use_live_video"]),
         # Devices with their own detector send voice_call_control assistant_wake
         # (while streaming) or assistant_utterance (the recorded words, without
         # streaming), and fetch the model with assistant_model_request.
@@ -592,9 +616,10 @@ def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
         # upload only what was said after their own wake (assistant_utterance),
         # and can teach the word without streaming (assistant_sample).
         "client_detection": True,
-        "device_samples": True,
+        "device_samples": bool(status["allow_device_teaching"]),
         # Devices can teach the word over their stream (assistant_enroll).
-        "enrollment": True,
+        "enrollment": bool(status["allow_device_teaching"]),
+        "device_teaching": bool(status["allow_device_teaching"]),
         "model_version": ww.MODEL_VERSION if status["model"] else 0,
         "model_created_at": (status["model"] or {}).get("created_at", 0),
     }
@@ -619,6 +644,8 @@ class _Config:
     listen_during_safety_recording: bool
     model: Optional[ww.WakeWordModel]
     wake_word_in_calls: bool = False
+    allow_call_toggle: bool = True
+    allow_device_teaching: bool = True
 
     @property
     def acoustic(self) -> bool:
@@ -945,6 +972,8 @@ class AssistantModeHub:
         self._config: Optional[_Config] = None
         self._config_lock = threading.Lock()
         self._last_wake: Tuple[str, float] = ("", -math.inf)
+        # Calls a device switched to wake-word answers (assistant_call_mode).
+        self._call_mode_sessions: set = set()
         self._closed = False
         self.dropped_frames = 0
 
@@ -976,6 +1005,8 @@ class AssistantModeHub:
             listen_during_safety_recording=bool(settings["listen_during_safety_recording"]),
             model=model,
             wake_word_in_calls=bool(settings["wake_word_in_calls"]),
+            allow_call_toggle=bool(settings["allow_call_toggle"]),
+            allow_device_teaching=bool(settings["allow_device_teaching"]),
         )
 
     def reload(self) -> None:
@@ -992,6 +1023,61 @@ class AssistantModeHub:
         """Calls keep recording, but only the wake word starts an AI turn."""
         config = self.config()
         return bool(config.enabled and config.wake_word_in_calls)
+
+    def gates_call(self, session_id: str) -> bool:
+        """Whether this call answers only after the wake word.
+
+        True for every call when "Wake word in calls" is on, and for a call
+        whose device turned Assistant mode on (while devices may do that).
+        """
+        config = self.config()
+        if not config.enabled:
+            return False
+        if config.wake_word_in_calls:
+            return True
+        with self._lock:
+            chosen = str(session_id) in self._call_mode_sessions
+        return bool(chosen and config.allow_call_toggle)
+
+    def set_call_mode(self, session_id: str, enabled: bool) -> Dict[str, Any]:
+        """A device turns Assistant mode on or off for its own call.
+
+        Returns what the device should show: ``enabled`` (this call answers
+        only after the wake word), ``forced`` (every call does, so it cannot be
+        turned off here), and ``reason`` when the request was refused.
+        """
+        key = str(session_id or "").strip()
+        config = self.config()
+        if not key:
+            return {"enabled": False, "forced": False, "reason": "no_session"}
+        if not config.enabled:
+            self.clear_call_mode(key)
+            return {"enabled": False, "forced": False, "reason": "disabled"}
+        if config.wake_word_in_calls:
+            return {"enabled": True, "forced": True, "reason": "every_call"}
+        if not config.allow_call_toggle:
+            self.clear_call_mode(key)
+            return {"enabled": False, "forced": False, "reason": "not_allowed"}
+        with self._lock:
+            if enabled:
+                self._call_mode_sessions.add(key)
+            else:
+                self._call_mode_sessions.discard(key)
+        if not enabled:
+            self.cancel(key, "call_mode_off")
+        return {"enabled": bool(enabled), "forced": False, "reason": ""}
+
+    def call_mode(self, session_id: str) -> bool:
+        with self._lock:
+            return str(session_id) in self._call_mode_sessions
+
+    def has_call_mode_sessions(self) -> bool:
+        """Cheap check for the audio path before it looks up call aliases."""
+        return bool(self._call_mode_sessions)
+
+    def clear_call_mode(self, session_id: str) -> None:
+        with self._lock:
+            self._call_mode_sessions.discard(str(session_id))
 
     def listens_to(self, *, assistant_listening: bool, silent_recording: bool) -> bool:
         config = self.config()
@@ -1025,6 +1111,7 @@ class AssistantModeHub:
         self._post(session_id, "cancel", reason)
 
     def end_session(self, session_id: str) -> None:
+        self.clear_call_mode(str(session_id))
         self._post(session_id, "end", None)
 
     def snapshot(self) -> Dict[str, Any]:
@@ -1033,7 +1120,13 @@ class AssistantModeHub:
                 key: {"state": item.state, **item.stats}
                 for key, item in self._sessions.items()
             }
-        return {"sessions": sessions, "dropped_frames": self.dropped_frames, "queued": self._queue.qsize()}
+            calls = sorted(self._call_mode_sessions)
+        return {
+            "sessions": sessions,
+            "call_mode_sessions": calls,
+            "dropped_frames": self.dropped_frames,
+            "queued": self._queue.qsize(),
+        }
 
     def session_state(self, session_id: str) -> str:
         with self._lock:
@@ -1256,6 +1349,7 @@ def live_frame_attachment(
 # ---------------------------------------------------------------------------
 
 DEVICE_EVENTS = frozenset({
+    "assistant_call_mode",
     "assistant_wake",
     "assistant_enroll",
     "assistant_cancel",
@@ -1265,6 +1359,13 @@ DEVICE_EVENTS = frozenset({
 })
 
 Send = Callable[[Dict[str, Any]], Any]
+
+
+def _allows_device_teaching(hub: Any) -> bool:
+    config = getattr(hub, "config", None)
+    if not callable(config):
+        return True
+    return bool(getattr(config(), "allow_device_teaching", True))
 
 
 def _score(value: Any) -> Optional[float]:
@@ -1294,6 +1395,14 @@ async def handle_device_control(
 
     if not session_id or event_name not in DEVICE_EVENTS:
         return
+    if event_name == "assistant_call_mode":
+        # A device on a call turns Assistant mode on for that call only.
+        choice = hub.set_call_mode(session_id, _as_bool(payload.get("enabled", True)))
+        body = {"event": "assistant_call_mode", **choice}
+        if choice["enabled"]:
+            body["wake_phrase"] = effective_phrase(load_settings(), server_name)
+        await _maybe_await(send(body))
+        return
     if not hub.enabled:
         reply = "assistant_model" if event_name == "assistant_model_request" else "assistant_state"
         body: Dict[str, Any] = {"event": reply, "state": "idle", "reason": "disabled"}
@@ -1314,6 +1423,10 @@ async def handle_device_control(
             await _maybe_await(send({"event": "assistant_state", "state": "idle", "reason": "bad_audio"}))
             return
         hub.device_utterance(session_id, pcm, score=_score(payload.get("score")))
+        return
+    if event_name in {"assistant_sample", "assistant_enroll"} and not _allows_device_teaching(hub):
+        # Only an admin on this computer may then record or train the word.
+        await _maybe_await(send({"event": "assistant_enroll", "state": "failed", "reason": "not_allowed"}))
         return
     if event_name == "assistant_sample":
         await _handle_device_sample(hub, payload=payload, server_name=server_name, send=send, after_training=after_training)

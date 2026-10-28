@@ -5,9 +5,13 @@
 
 """Admin routes for Assistant mode and its wake word.
 
-Every route needs an admin session. Audio arrives as base64 WAV inside JSON so
-the admin page can post it with the same helper it uses everywhere; it is
-decoded to 16 kHz mono and bounded before anything else touches it.
+Every route needs an admin session. Changing Assistant mode (settings,
+recordings, training) also needs that admin to be on this computer (localhost),
+like the Permissions screen: an admin reaching the page from another device or
+through a public link can read the settings and use the wake word, but not
+change them. Audio arrives as base64 WAV inside JSON so the admin page can post
+it with the same helper it uses everywhere; it is decoded to 16 kHz mono and
+bounded before anything else touches it.
 """
 
 from __future__ import annotations
@@ -30,6 +34,11 @@ from shared import wake_word as ww
 
 LOGGER = logging.getLogger(__name__)
 
+LOCAL_ADMIN_ONLY_MESSAGE = (
+    "Assistant mode can only be changed by an admin on this computer. "
+    "Open the Admin Page on this computer (localhost) to change it."
+)
+
 MAX_JSON_BYTES = 4 * 1024 * 1024
 MAX_SAMPLE_SECONDS = 4.0
 MAX_TEST_SECONDS = 12.0
@@ -39,6 +48,22 @@ MAX_TRANSCRIBE_SECONDS = 30.0
 def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[str, Callable[..., Any]]:
     def _require_admin_login(request: Request) -> Optional[JSONResponse]:
         return server._require_api_login(request)
+
+    def _can_change(request: Request) -> bool:
+        check = getattr(server, "_request_is_from_this_computer", None)
+        return bool(check(request)) if callable(check) else False
+
+    def _require_local_admin(request: Request) -> Optional[JSONResponse]:
+        """An admin session from this computer, for anything that changes Assistant mode."""
+        refused = server._require_api_login(request)
+        if refused is not None:
+            return refused
+        if not _can_change(request):
+            return JSONResponse(
+                status_code=403,
+                content={"success": False, "error": LOCAL_ADMIN_ONLY_MESSAGE, "local_admin_required": True},
+            )
+        return None
 
     def _error(status: int, message: str) -> JSONResponse:
         return JSONResponse(status_code=status, content={"success": False, "error": message})
@@ -109,16 +134,18 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
 
     @admin_app.get("/api/assistant-mode")
     async def assistant_mode_status(request: Request):
-        """Settings, readiness, recordings, Voice Training matches, and which devices are listening."""
+        """Settings, readiness, recordings, Voice Training matches, which devices are listening, and whether this admin may change them."""
         refused = _require_admin_login(request)
         if refused is not None:
             return refused
-        return server._json_response_no_store({"success": True, **await asyncio.to_thread(_status)})
+        payload = await asyncio.to_thread(_status)
+        payload["editable"] = _can_change(request)
+        return server._json_response_no_store({"success": True, **payload})
 
     @admin_app.post("/api/assistant-mode/settings")
     async def assistant_mode_settings(request: Request):
-        """Turn Assistant mode on or off and choose the wake word, how it is confirmed, and sensitivity."""
-        refused = _require_admin_login(request)
+        """Turn Assistant mode on or off; choose the wake word, how it is confirmed, sensitivity and what devices may do. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
@@ -127,12 +154,12 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         allowed = {key: body[key] for key in am.DEFAULT_SETTINGS if key in body and key != "updated_at"}
         await asyncio.to_thread(am.save_settings, allowed)
         await _after_change()
-        return server._json_response_no_store({"success": True, **await asyncio.to_thread(_status)})
+        return server._json_response_no_store({"success": True, **await asyncio.to_thread(_status), "editable": True})
 
     @admin_app.post("/api/assistant-mode/samples")
     async def assistant_mode_add_sample(request: Request):
-        """Store one recording of the wake word (base64 WAV), after checking its length and level."""
-        refused = _require_admin_login(request)
+        """Store one recording of the wake word (base64 WAV), after checking its length and level. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
@@ -148,8 +175,8 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
 
     @admin_app.delete("/api/assistant-mode/samples")
     async def assistant_mode_clear_samples(request: Request):
-        """Delete every stored wake word recording."""
-        refused = _require_admin_login(request)
+        """Delete every stored wake word recording. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         removed = await asyncio.to_thread(am.clear_samples)
@@ -157,8 +184,8 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
 
     @admin_app.delete("/api/assistant-mode/samples/{sample_id}")
     async def assistant_mode_delete_sample(sample_id: str, request: Request):
-        """Delete one wake word recording."""
-        refused = _require_admin_login(request)
+        """Delete one wake word recording. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         removed = await asyncio.to_thread(am.delete_sample, sample_id)
@@ -183,8 +210,8 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
 
     @admin_app.post("/api/assistant-mode/train")
     async def assistant_mode_train(request: Request):
-        """Train the wake word from the recordings and, when enabled, Voice Training clips."""
-        refused = _require_admin_login(request)
+        """Train the wake word from the recordings and, when enabled, Voice Training clips. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         settings = await asyncio.to_thread(am.load_settings)
@@ -198,12 +225,14 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         except ValueError as exc:
             return _error(400, str(exc))
         await _after_change()
-        return server._json_response_no_store({"success": True, **result, "status": await asyncio.to_thread(_status)})
+        status = await asyncio.to_thread(_status)
+        status["editable"] = True
+        return server._json_response_no_store({"success": True, **result, "status": status})
 
     @admin_app.delete("/api/assistant-mode/model")
     async def assistant_mode_delete_model(request: Request):
-        """Forget the trained wake word."""
-        refused = _require_admin_login(request)
+        """Forget the trained wake word. This computer only."""
+        refused = _require_local_admin(request)
         if refused is not None:
             return refused
         await asyncio.to_thread(am.delete_model)

@@ -67,6 +67,7 @@
               "admin-ui/overview-and-status",
               "admin-ui/security-console",
               "admin-ui/live-view-and-media",
+              "admin-ui/assistant-mode",
               "admin-ui/ai-and-speech",
               "admin-ui/messaging-bridges",
               "admin-ui/agent-workbench-ui",

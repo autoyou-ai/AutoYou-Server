@@ -3066,16 +3066,27 @@ class WebRTCManager:
         if not self._should_accept_voice_call_audio(session_id):
             return
         self._feed_call_listener(session_id, chunk)
-        if self._assistant_gates_calls():
+        if self._assistant_gates_calls(str(session_id)):
             # Assistant mode for calls: the call and its recordings carry on,
             # but nothing is transcribed for AI until the wake word is heard.
             self.assistant_mode.feed(str(session_id), chunk)
             return
         audio_manager.process_audio_chunk(chunk)
 
-    def _assistant_gates_calls(self) -> bool:
+    def _assistant_gates_calls(self, session_id: str = "") -> bool:
+        """Whether this call answers only after the wake word.
+
+        Every call does with "Wake word in calls" on; otherwise only a call
+        whose device turned Assistant mode on (assistant_call_mode), checked
+        across the call's session aliases.
+        """
         try:
-            return bool(self.assistant_mode.gates_calls)
+            hub = self.assistant_mode
+            if hub.gates_calls:
+                return True
+            if not session_id or not hub.has_call_mode_sessions():
+                return False
+            return any(hub.gates_call(alias) for alias in self._ordered_related_session_ids(session_id))
         except Exception:
             return False
 
@@ -11043,6 +11054,11 @@ class WebRTCManager:
                 sorted(alias_ids),
             )
             if not active:
+                # Assistant mode chosen for a call ends with that call.
+                clear_call_mode = getattr(self.assistant_mode, "clear_call_mode", None)
+                for alias in {str(session_id or ""), *alias_ids}:
+                    if alias and callable(clear_call_mode):
+                        clear_call_mode(alias)
                 await self._release_remote_desktop_control(str(session_id or ""))
                 self._drop_local_capture_audio_tracks_for_ids(alias_ids)
                 self._clear_outbound_audio_track_for_idle(str(session_id or ""))
