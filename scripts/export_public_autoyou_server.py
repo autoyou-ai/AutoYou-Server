@@ -175,6 +175,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/admin-ui/agent-workbench-ui.mdx',
     'docs/admin-ui/ai-and-speech.mdx',
     'docs/admin-ui/architecture.mdx',
+    'docs/admin-ui/assistant-mode.mdx',
     'docs/admin-ui/live-view-and-media.mdx',
     'docs/admin-ui/messaging-bridges.mdx',
     'docs/admin-ui/overview-and-status.mdx',
