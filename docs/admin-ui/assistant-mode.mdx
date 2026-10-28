@@ -30,12 +30,12 @@ flowchart LR
 
 The word can be heard in two places:
 
-- **On the device.** Android phones, the desktop apps and the Raspberry Pi download the trained
-  word (only its acoustic pattern, never your recordings) and listen themselves. After
-  the word, they upload only what you said next.
-- **On the server.** A device that streams its microphone for Assistant mode or Safety
-  Recording (an iPhone, the Chrome extension, or any device during a call) is heard by
-  the server, which transcribes nothing until the word matches.
+- **On the device.** iPhones, Android phones, the desktop apps and the Raspberry Pi download
+  the trained word (only its acoustic pattern, never your recordings) and listen themselves.
+  After the word, they upload only what you said next.
+- **On the server.** Before a word is trained, while Safety Recording runs, during a call,
+  and in the Chrome extension, the device streams its microphone and the server listens,
+  transcribing nothing until the word matches.
 
 During a video call, what you ask after the wake word also carries the latest camera
 picture (unless **Let it see the camera** is off), so "Hey Jarvis, what am I holding?"
