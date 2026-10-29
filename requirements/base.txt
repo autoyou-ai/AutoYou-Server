@@ -63,7 +63,7 @@ pyotp>=2.9.0
 pysodium>=0.7.18
 psutil>=5.9.0
 # Floor raised past GHSA-gjv8-xp57-g29c / GHSA-j934-xhv5-fg8f ReDoS in soupsieve<2.9.0.
-soupsieve>=2.9.0
+soupsieve>=3.0.4
 beautifulsoup4>=4.13.0
 authlib>=1.9.1,<2
 # CVE-2026-114605: bound DNS name decompression work.
