@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-29T05:11:54+00:00
+Generated: 2026-10-29T05:50:31+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -34,7 +34,7 @@ Third-Party Components
 - qrcode-terminal 0.12.0 [npm] - MIT - node/whatsapp/package.json
 - tunnelmole 2.2.14 [npm] - MIT - node/tunnelmole/package.json
 - whatsapp-web.js 1.34.7 [npm] - Apache-2.0 - node/whatsapp/package.json
-- ws 8.18.0 [npm] - MIT - node/whatsapp/package.json
+- ws 8.22.0 [npm] - MIT - node/whatsapp/package.json
 - Pillow [pypi] - MIT-CMU - requirements/base.txt
 - PyAudio 0.2.14 [pypi] - MIT - requirements/voice.txt
 - PyAudioWPatch 0.2.12.8 [pypi] - Apache-2.0 - requirements/voice.txt
