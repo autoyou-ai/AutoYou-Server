@@ -21,7 +21,7 @@ starlette>=1.3.1,<2
 anyio>=4.15.0
 uvicorn[standard]>=0.34.0,<1.0.0
 python-multipart>=0.0.31,<1
-litellm==1.89.7
+litellm==1.100.4
 # Cognee currently pulls instructor 1.15.x, which has not accepted these newest
 # transitive releases yet. Keep shared pins compatible with optional Cognee.
 jiter>=0.6.1,<0.14
