@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS binary-default build (autoyou-server-macos-default)
 Release profile: binary-default
 Dependency profile: binary-default
-Generated: 2026-10-29T05:11:54+00:00
+Generated: 2026-10-29T06:12:28+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -34,15 +34,15 @@ Third-Party Components
 - PyAudio [pypi] - MIT - requirements/binary-default.txt
 - PyAudioWPatch 0.2.12.8 [pypi] - Apache-2.0 - requirements/binary-default.txt
 - PyAutoGUI [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
-- Telethon 1.44.0 [pypi] - MIT - requirements/messaging.txt
+- Telethon 1.45.0 [pypi] - MIT - requirements/messaging.txt
 - aiohttp [pypi] - Apache-2.0 - requirements/base.txt
 - aiortc [pypi] - BSD-3-Clause - requirements/base.txt
 - aiosqlite [pypi] - MIT - requirements/base.txt
 - anyio [pypi] - MIT - requirements/base.txt
 - authlib [pypi] - BSD-3-Clause - requirements/base.txt
-- auto-browser-client 1.4.2 [pypi] - MIT - requirements/internet.txt
-- auto-browser-langchain 1.4.2 [pypi] - MIT - requirements/internet.txt
-- auto-browser-mcp 1.4.2 [pypi] - MIT - requirements/internet.txt
+- auto-browser-client 1.11.0 [pypi] - MIT - requirements/internet.txt
+- auto-browser-langchain 1.11.0 [pypi] - MIT - requirements/internet.txt
+- auto-browser-mcp 1.11.0 [pypi] - MIT - requirements/internet.txt
 - av [pypi] - BSD-3-Clause - requirements/base.txt
 - beautifulsoup4 [pypi] - MIT - requirements/base.txt
 - bleak [pypi] - MIT - requirements/bluetooth.txt
@@ -52,30 +52,30 @@ Third-Party Components
 - cryptography [pypi] - Apache-2.0 OR BSD-3-Clause - requirements/base.txt
 - dnspython [pypi] - ISC - requirements/base.txt
 - docker [pypi] - Apache-2.0 - requirements/base.txt
-- fastapi 0.136.3 [pypi] - MIT - requirements/base.txt
+- fastapi 0.162.0 [pypi] - MIT - requirements/base.txt
 - filelock [pypi] - MIT - requirements/base.txt
-- fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
-- google-adk 2.11.0 [pypi] - Apache-2.0 - requirements/base.txt
+- fsspec 2026.9.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- google-adk 2.13.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
-- google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-genai 2.33.0 [pypi] - Apache-2.0 - requirements/base.txt
 - h2 [pypi] - MIT - requirements/base.txt
-- httpcore2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
+- httpcore2 2.16.0 [pypi] - BSD-3-Clause - requirements/base.txt
 - httpx [pypi] - BSD-3-Clause - requirements/base.txt
-- httpx2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
+- httpx2 2.16.0 [pypi] - BSD-3-Clause - requirements/base.txt
 - huggingface_hub [pypi] - Apache-2.0 - requirements/local-llm.txt
 - idna [pypi] - BSD-3-Clause - requirements/base.txt
 - jiter [pypi] - MIT - requirements/base.txt
 - keyring [pypi] - MIT - requirements/base.txt
 - lingua-language-detector 2.1.1 [pypi] - Apache-2.0 - requirements/base.txt
 - lingua-language-detector 2.2.0 [pypi] - Apache-2.0 - requirements/base.txt
-- litellm 1.100.4 [pypi] - MIT - requirements/base.txt
+- litellm 1.106.4 [pypi] - MIT - requirements/base.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - mcp 2.3.0 [pypi] - MIT - requirements/base.txt
 - mcp-types 2.3.0 [pypi] - MIT - requirements/base.txt
 - mss [pypi] - MIT - requirements/desktop-automation.txt
 - multidict [pypi] - Apache-2.0 - requirements/base.txt
 - numpy [pypi] - BSD-3-Clause - requirements/base.txt
-- ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
+- ollama 0.6.3 [pypi] - MIT - requirements/local-llm.txt
 - onnxruntime [pypi] - MIT - requirements/local-llm.txt
 - opencv-python [pypi] - Apache-2.0 - requirements/binary-default.txt
 - opentelemetry-api 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
@@ -107,7 +107,7 @@ Third-Party Components
 - rsa 4.9.1 [pypi] - Apache-2.0 - requirements/messaging.txt
 - setuptools [pypi] - MIT - requirements/base.txt
 - soupsieve [pypi] - MIT - requirements/base.txt
-- sqlalchemy 2.0.50 [pypi] - MIT - requirements/base.txt
+- sqlalchemy 2.1.6 [pypi] - MIT - requirements/base.txt
 - starlette [pypi] - BSD-3-Clause - requirements/base.txt
 - supertonic 1.3.1 [pypi] - MIT - requirements/base.txt
 - urllib3 [pypi] - MIT - requirements/base.txt
@@ -122,7 +122,7 @@ Third-Party Components
 - winrt-Windows.Foundation.Collections [pypi] - MIT - requirements/bluetooth.txt
 - winrt-Windows.Storage.Streams [pypi] - MIT - requirements/bluetooth.txt
 - yt-dlp [pypi] - Unlicense - requirements/base.txt
-- zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
+- zeroconf 0.151.5 [pypi] - LGPL-2.1-or-later - requirements/base.txt
 
 Copyleft Review Notes
 ---------------------

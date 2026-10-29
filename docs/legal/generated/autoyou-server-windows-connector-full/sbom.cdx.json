@@ -598,7 +598,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "RealtimeSTT==1.0.2"
+          "value": "RealtimeSTT==1.0.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -609,9 +609,9 @@
           "value": "requirements/realtimestt-runtime.txt"
         }
       ],
-      "purl": "pkg:pypi/RealtimeSTT@1.0.2",
+      "purl": "pkg:pypi/RealtimeSTT@1.0.4",
       "type": "library",
-      "version": "1.0.2"
+      "version": "1.0.4"
     },
     {
       "licenses": [
@@ -625,7 +625,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "Telethon==1.44.0"
+          "value": "Telethon==1.45.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -636,9 +636,9 @@
           "value": "requirements/messaging.txt"
         }
       ],
-      "purl": "pkg:pypi/Telethon@1.44.0",
+      "purl": "pkg:pypi/Telethon@1.45.0",
       "type": "library",
-      "version": "1.44.0"
+      "version": "1.45.0"
     },
     {
       "licenses": [
@@ -652,11 +652,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "aiohttp>=3.14.4"
+          "value": "aiohttp>=3.14.5"
         },
         {
           "name": "specifier",
-          "value": ">=3.14.4"
+          "value": ">=3.14.5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -682,11 +682,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "aiortc>=1.7.0,<2.0.0"
+          "value": "aiortc>=1.15.0,<2.0.0"
         },
         {
           "name": "specifier",
-          "value": ">=1.7.0,<2.0.0"
+          "value": ">=1.15.0,<2.0.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -802,7 +802,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "auto-browser-client==1.4.2"
+          "value": "auto-browser-client==1.11.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -813,9 +813,9 @@
           "value": "requirements/internet.txt"
         }
       ],
-      "purl": "pkg:pypi/auto-browser-client@1.4.2",
+      "purl": "pkg:pypi/auto-browser-client@1.11.0",
       "type": "library",
-      "version": "1.4.2"
+      "version": "1.11.0"
     },
     {
       "licenses": [
@@ -829,7 +829,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "auto-browser-langchain==1.4.2"
+          "value": "auto-browser-langchain==1.11.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -840,9 +840,9 @@
           "value": "requirements/internet.txt"
         }
       ],
-      "purl": "pkg:pypi/auto-browser-langchain@1.4.2",
+      "purl": "pkg:pypi/auto-browser-langchain@1.11.0",
       "type": "library",
-      "version": "1.4.2"
+      "version": "1.11.0"
     },
     {
       "licenses": [
@@ -856,7 +856,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "auto-browser-mcp==1.4.2"
+          "value": "auto-browser-mcp==1.11.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -867,9 +867,9 @@
           "value": "requirements/internet.txt"
         }
       ],
-      "purl": "pkg:pypi/auto-browser-mcp@1.4.2",
+      "purl": "pkg:pypi/auto-browser-mcp@1.11.0",
       "type": "library",
-      "version": "1.4.2"
+      "version": "1.11.0"
     },
     {
       "licenses": [
@@ -913,11 +913,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "azure-cognitiveservices-speech>=1.30.0"
+          "value": "azure-cognitiveservices-speech>=1.53.0"
         },
         {
           "name": "specifier",
-          "value": ">=1.30.0"
+          "value": ">=1.53.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1033,11 +1033,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "certifi>=2026.10.19"
+          "value": "certifi>=2026.10.23"
         },
         {
           "name": "specifier",
-          "value": ">=2026.10.19"
+          "value": ">=2026.10.23"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1180,11 +1180,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "cryptography>=50.0.0"
+          "value": "cryptography>=50.0.2"
         },
         {
           "name": "specifier",
-          "value": ">=50.0.0"
+          "value": ">=50.0.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1210,11 +1210,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "ctranslate2>=4.0.0"
+          "value": "ctranslate2>=4.8.4"
         },
         {
           "name": "specifier",
-          "value": ">=4.0.0"
+          "value": ">=4.8.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1270,11 +1270,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "docker>=6.1.0"
+          "value": "docker>=7.2.0"
         },
         {
           "name": "specifier",
-          "value": ">=6.1.0"
+          "value": ">=7.2.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1300,11 +1300,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "elevenlabs>=0.2.26"
+          "value": "elevenlabs>=2.74.1"
         },
         {
           "name": "specifier",
-          "value": ">=0.2.26"
+          "value": ">=2.74.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1330,7 +1330,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "fastapi==0.136.3"
+          "value": "fastapi==0.162.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1341,9 +1341,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/fastapi@0.136.3",
+      "purl": "pkg:pypi/fastapi@0.162.0",
       "type": "library",
-      "version": "0.136.3"
+      "version": "0.162.0"
     },
     {
       "licenses": [
@@ -1444,7 +1444,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "fsspec[http]==2026.6.0"
+          "value": "fsspec[http]==2026.9.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1455,9 +1455,9 @@
           "value": "requirements/local-llm.txt"
         }
       ],
-      "purl": "pkg:pypi/fsspec@2026.6.0",
+      "purl": "pkg:pypi/fsspec@2026.9.0",
       "type": "library",
-      "version": "2026.6.0"
+      "version": "2026.9.0"
     },
     {
       "licenses": [
@@ -1501,7 +1501,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-adk==2.11.0"
+          "value": "google-adk==2.13.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1512,9 +1512,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-adk@2.11.0",
+      "purl": "pkg:pypi/google-adk@2.13.0",
       "type": "library",
-      "version": "2.11.0"
+      "version": "2.13.0"
     },
     {
       "licenses": [
@@ -1555,7 +1555,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-genai==2.25.0"
+          "value": "google-genai==2.33.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1566,9 +1566,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-genai@2.25.0",
+      "purl": "pkg:pypi/google-genai@2.33.0",
       "type": "library",
-      "version": "2.25.0"
+      "version": "2.33.0"
     },
     {
       "licenses": [
@@ -1639,7 +1639,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "httpcore2==2.13.1"
+          "value": "httpcore2==2.16.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1650,9 +1650,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/httpcore2@2.13.1",
+      "purl": "pkg:pypi/httpcore2@2.16.0",
       "type": "library",
-      "version": "2.13.1"
+      "version": "2.16.0"
     },
     {
       "licenses": [
@@ -1696,7 +1696,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "httpx2==2.13.1"
+          "value": "httpx2==2.16.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1707,9 +1707,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/httpx2@2.13.1",
+      "purl": "pkg:pypi/httpx2@2.16.0",
       "type": "library",
-      "version": "2.13.1"
+      "version": "2.16.0"
     },
     {
       "licenses": [
@@ -1753,11 +1753,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "idna>=3.15,<4"
+          "value": "idna>=3.20,<4"
         },
         {
           "name": "specifier",
-          "value": ">=3.15,<4"
+          "value": ">=3.20,<4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1813,11 +1813,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "jiter>=0.6.1,<0.14"
+          "value": "jiter>=0.18.0,<0.19"
         },
         {
           "name": "specifier",
-          "value": ">=0.6.1,<0.14"
+          "value": ">=0.18.0,<0.19"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1927,7 +1927,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "litellm==1.100.4"
+          "value": "litellm==1.106.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1938,9 +1938,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/litellm@1.100.4",
+      "purl": "pkg:pypi/litellm@1.106.4",
       "type": "library",
-      "version": "1.100.4"
+      "version": "1.106.4"
     },
     {
       "licenses": [
@@ -1984,11 +1984,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "lxml>=6.1.0"
+          "value": "lxml>=6.1.3"
         },
         {
           "name": "specifier",
-          "value": ">=6.1.0"
+          "value": ">=6.1.3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2068,11 +2068,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "modelscope>=1.40.1,<2"
+          "value": "modelscope>=1.40.2,<2"
         },
         {
           "name": "specifier",
-          "value": ">=1.40.1,<2"
+          "value": ">=1.40.2,<2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2188,11 +2188,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "numba>=0.65.1,<0.68"
+          "value": "numba>=0.68.0,<0.69"
         },
         {
           "name": "specifier",
-          "value": ">=0.65.1,<0.68"
+          "value": ">=0.68.0,<0.69"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2218,11 +2218,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "numpy>=1.26.4,<3"
+          "value": "numpy>=2.5.4,<3"
         },
         {
           "name": "specifier",
-          "value": ">=1.26.4,<3"
+          "value": ">=2.5.4,<3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2248,7 +2248,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "ollama==0.6.0"
+          "value": "ollama==0.6.3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2259,9 +2259,9 @@
           "value": "requirements/local-llm.txt"
         }
       ],
-      "purl": "pkg:pypi/ollama@0.6.0",
+      "purl": "pkg:pypi/ollama@0.6.3",
       "type": "library",
-      "version": "0.6.0"
+      "version": "0.6.3"
     },
     {
       "licenses": [
@@ -2275,11 +2275,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "onnxruntime>=1.24.2,<2"
+          "value": "onnxruntime>=1.31.0,<2"
         },
         {
           "name": "specifier",
-          "value": ">=1.24.2,<2"
+          "value": ">=1.31.0,<2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2473,11 +2473,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "playwright>=1.40.0"
+          "value": "playwright>=1.64.1"
         },
         {
           "name": "specifier",
-          "value": ">=1.40.0"
+          "value": ">=1.64.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2650,11 +2650,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "pydantic>=2.10.0,<3.0.0"
+          "value": "pydantic>=2.14.1,<3.0.0"
         },
         {
           "name": "specifier",
-          "value": ">=2.10.0,<3.0.0"
+          "value": ">=2.14.1,<3.0.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2830,11 +2830,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "pysodium>=0.7.18"
+          "value": "pysodium>=0.7.19"
         },
         {
           "name": "specifier",
-          "value": ">=0.7.18"
+          "value": ">=0.7.19"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2920,11 +2920,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "python-dotenv>=1.2.2"
+          "value": "python-dotenv>=1.2.4"
         },
         {
           "name": "specifier",
-          "value": ">=1.2.2"
+          "value": ">=1.2.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3187,7 +3187,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "scipy==1.17.1"
+          "value": "scipy==1.18.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3198,9 +3198,9 @@
           "value": "requirements/voice.txt"
         }
       ],
-      "purl": "pkg:pypi/scipy@1.17.1",
+      "purl": "pkg:pypi/scipy@1.18.1",
       "type": "library",
-      "version": "1.17.1"
+      "version": "1.18.1"
     },
     {
       "licenses": [
@@ -3274,7 +3274,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "silero-vad[onnx-cpu]==6.2.1"
+          "value": "silero-vad[onnx-cpu]==6.2.3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3285,9 +3285,9 @@
           "value": "requirements/voice.txt"
         }
       ],
-      "purl": "pkg:pypi/silero-vad@6.2.1",
+      "purl": "pkg:pypi/silero-vad@6.2.3",
       "type": "library",
-      "version": "6.2.1"
+      "version": "6.2.3"
     },
     {
       "licenses": [
@@ -3301,7 +3301,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "soundfile==0.13.1"
+          "value": "soundfile==0.14.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3312,9 +3312,9 @@
           "value": "requirements/voice.txt"
         }
       ],
-      "purl": "pkg:pypi/soundfile@0.13.1",
+      "purl": "pkg:pypi/soundfile@0.14.0",
       "type": "library",
-      "version": "0.13.1"
+      "version": "0.14.0"
     },
     {
       "licenses": [
@@ -3388,7 +3388,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "sqlalchemy[asyncio]==2.0.50"
+          "value": "sqlalchemy[asyncio]==2.1.6"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3399,9 +3399,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/sqlalchemy@2.0.50",
+      "purl": "pkg:pypi/sqlalchemy@2.1.6",
       "type": "library",
-      "version": "2.0.50"
+      "version": "2.1.6"
     },
     {
       "licenses": [
@@ -3415,11 +3415,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "starlette>=1.3.1,<2"
+          "value": "starlette>=1.10.0,<2"
         },
         {
           "name": "specifier",
-          "value": ">=1.3.1,<2"
+          "value": ">=1.10.0,<2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3502,11 +3502,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "torch>=2.13.0"
+          "value": "torch>=2.14.1"
         },
         {
           "name": "specifier",
-          "value": ">=2.13.0"
+          "value": ">=2.14.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3562,11 +3562,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "transformers>=5.12.1,<6"
+          "value": "transformers>=5.20.2,<6"
         },
         {
           "name": "specifier",
-          "value": ">=5.12.1,<6"
+          "value": ">=5.20.2,<6"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3622,11 +3622,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "uvicorn[standard]>=0.34.0,<1.0.0"
+          "value": "uvicorn[standard]>=0.54.0,<1.0.0"
         },
         {
           "name": "specifier",
-          "value": ">=0.34.0,<1.0.0"
+          "value": ">=0.54.0,<1.0.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3679,7 +3679,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "websocket-client==1.9.0"
+          "value": "websocket-client==1.9.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3690,9 +3690,9 @@
           "value": "requirements/voice.txt"
         }
       ],
-      "purl": "pkg:pypi/websocket-client@1.9.0",
+      "purl": "pkg:pypi/websocket-client@1.9.2",
       "type": "library",
-      "version": "1.9.0"
+      "version": "1.9.2"
     },
     {
       "licenses": [
@@ -4003,11 +4003,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "yt-dlp>=2026.7.4"
+          "value": "yt-dlp>=2026.10.21"
         },
         {
           "name": "specifier",
-          "value": ">=2026.7.4"
+          "value": ">=2026.10.21"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4033,7 +4033,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "zeroconf==0.151.3"
+          "value": "zeroconf==0.151.5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4044,9 +4044,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/zeroconf@0.151.3",
+      "purl": "pkg:pypi/zeroconf@0.151.5",
       "type": "library",
-      "version": "0.151.3"
+      "version": "0.151.5"
     }
   ],
   "metadata": {
@@ -4079,7 +4079,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-29T05:11:54+00:00",
+    "timestamp": "2026-10-29T06:12:28+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4088,7 +4088,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:23380044-7c78-4b3c-be53-f5f95ae827cd",
+  "serialNumber": "urn:uuid:f90a82de-1117-4c32-be66-6245b05e7694",
   "specVersion": "1.5",
   "version": 1
 }
