@@ -1612,6 +1612,36 @@
       "licenses": [
         {
           "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "numpy",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "numpy>=1.26.4,<3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=1.26.4,<3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/numpy",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "id": "MIT"
           }
         }
@@ -3049,7 +3079,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-29T04:22:31+00:00",
+    "timestamp": "2026-10-29T05:11:54+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3058,7 +3088,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:0a05b41b-b77b-42e5-ad52-a19ac61be270",
+  "serialNumber": "urn:uuid:64667a78-e72e-415c-8461-4dc2be1fb08c",
   "specVersion": "1.5",
   "version": 1
 }

@@ -49,6 +49,9 @@ aiortc>=1.7.0,<2.0.0
 # Native desktop Lobby discovery uses the mobile Bonjour service contract.
 zeroconf==0.151.3
 av>=10.0.0
+# Personal wake word MFCC/DTW and PCM processing use NumPy directly.
+# The Intel macOS voice profile may narrow this to the compatible 1.x line.
+numpy>=1.26.4,<3
 # Floor raised past the 41.x/42.x lines that carried CVE-2023-50782 /
 # CVE-2024-26130 / CVE-2024-12797; pip resolves to the newest anyway.
 cryptography>=50.0.0

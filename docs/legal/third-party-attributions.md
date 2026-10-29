@@ -30,3 +30,14 @@ Every distributed app build should include its own legal bundle:
 Desktop packages place these files under the app or package `Legal` directory. Mobile apps include the generated legal files as app resources/assets.
 
 The repository-wide notice index is available in `THIRD-PARTY-NOTICES.md`.
+
+The server manifests pin [LiteLLM 1.100.4](https://pypi.org/project/litellm/1.100.4/)
+and require [filelock 4.2.4](https://pypi.org/project/filelock/4.2.4/) or later 4.x
+and [setuptools 84.2.1](https://pypi.org/project/setuptools/84.2.1/) or later 84.x.
+These components retain their MIT notices. The hash-pinned server lockfile and
+each generated release profile record the corresponding dependency declarations.
+
+Personal wake word recognition uses AutoYou's own MFCC and dynamic time warping
+code with recordings supplied by the owner. Its Python numerical operations use
+[NumPy](https://numpy.org/doc/stable/license.html), whose BSD-3-Clause notice is
+retained. No third-party pretrained wake word model is bundled by this feature.

@@ -2209,6 +2209,7 @@ numpy==2.4.6 \
     --hash=sha256:f407cb6b8e9d6d8c626bc73c945db1706035af8fd632295547bf1c9e46d092d6 \
     --hash=sha256:f74a575920ab21fe304421a3fc28793d82e299cae9eccb37084e9fc7f3617c20
     # via
+    #   -r requirements/base.txt
     #   ctranslate2
     #   g2p-en
     #   numba

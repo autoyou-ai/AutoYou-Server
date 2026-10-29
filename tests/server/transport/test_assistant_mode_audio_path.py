@@ -14,6 +14,7 @@ tests pin who hears which frames, and that recording is untouched.
 from __future__ import annotations
 
 import asyncio
+import base64
 from types import SimpleNamespace
 
 import pytest
@@ -31,7 +32,10 @@ class FakeHub:
         self.listen_during_safety_recording = listen_during_safety_recording
         self.fed = []
         self.wakes = []
+        self.reservations = []
+        self.utterances = []
         self.enrollments = []
+        self.training_callbacks = []
         self.cancelled = []
 
     def listens_to(self, *, assistant_listening, silent_recording):
@@ -45,8 +49,15 @@ class FakeHub:
     def client_wake(self, session_id, *, score=None):
         self.wakes.append((session_id, score))
 
-    def start_enrollment(self, session_id, *, phrase="", count=3):
+    def reserve_device_wake(self, session_id, wake_id, *, score=None):
+        self.reservations.append((session_id, wake_id, score))
+
+    def device_utterance(self, session_id, pcm, *, score=None, wake_id=""):
+        self.utterances.append((session_id, pcm, score, wake_id))
+
+    def start_enrollment(self, session_id, *, phrase="", count=3, after_training=None):
         self.enrollments.append((session_id, phrase, count))
+        self.training_callbacks.append(after_training)
 
     def cancel(self, session_id, reason="cancelled"):
         self.cancelled.append((session_id, reason))
@@ -207,6 +218,26 @@ def test_stopping_the_stream_cancels_any_open_listening_window(env):
     control(env.webrtc, background(assistant_listening=True))
     control(env.webrtc, background(active=False))
     assert ("phone", "stopped_listening") in env.hub.cancelled
+
+
+def test_on_device_wake_announcement_and_upload_need_no_microphone_stream(env):
+    control(env.webrtc, {"event": "assistant_wake", "wake_id": "synthetic-wake-1", "score": 0.9})
+    pcm = b"\x02\x00" * 160
+    control(env.webrtc, {
+        "event": "assistant_utterance", "wake_id": "synthetic-wake-1", "score": 0.9,
+        "pcm16_base64": base64.b64encode(pcm).decode("ascii"),
+    })
+    assert env.hub.reservations == [("phone", "synthetic-wake-1", 0.9)]
+    assert env.hub.utterances == [("phone", pcm, 0.9, "synthetic-wake-1")]
+    assert env.hub.fed == []
+    assert env.recorder.chunks == []
+
+
+@pytest.mark.parametrize("wake_id", ["x" * 65, "invalid wake", "../invalid"])
+def test_on_device_wake_rejects_invalid_identifiers(env, wake_id):
+    control(env.webrtc, {"event": "assistant_wake", "wake_id": wake_id})
+    assert env.hub.reservations == []
+    assert env.manager.sent[-1]["reason"] == "bad_wake_id"
 
 
 def test_an_active_voice_call_owns_the_microphone(env, monkeypatch):

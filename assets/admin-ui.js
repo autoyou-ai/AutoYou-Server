@@ -5414,8 +5414,8 @@
         assistantState().lastWake = { at: Date.now(), via: wake, text: text };
     }
 
-    async function assistantTranscribe(samples, requirePhrase) {
-        return postJson("/api/assistant-mode/transcribe", { audio_base64: assistantWav(samples), require_phrase: Boolean(requirePhrase) });
+    async function assistantTranscribe(samples, requirePhrase, listen, spotWake) {
+        return postJson("/api/assistant-mode/transcribe", { audio_base64: assistantWav(samples), require_phrase: Boolean(requirePhrase), listener_id: listen && listen.listenerId, spot_wake: Boolean(spotWake) });
     }
 
     async function assistantStartListening() {
@@ -5428,12 +5428,23 @@
             model = AutoYouWakeWord.loadModel((await requestJson("/api/assistant-mode/model")).model);
         }
         var listen = {
+            listenerId: chatUuid("assistant"),
             phase: "waiting", confirm: status.confirm, phrase: status.wake_phrase, listenSeconds: Number(status.listen_seconds || 8),
             detector: model ? new AutoYouWakeWord.Detector(model, (model.maxFrames * 160) / 16000 + 0.3) : null,
             endpoint: assistantEndpointer(), chunks: [], waited: 0, busy: false, mic: null
         };
+        var previous = assistant.listen;
         assistant.listen = listen;
-        listen.mic = await assistantOpenMic(function (chunk) { assistantOnListenChunk(listen, chunk); });
+        if (previous && previous.mic) previous.mic.stop();
+        try {
+            var mic = await assistantOpenMic(function (chunk) { assistantOnListenChunk(listen, chunk); });
+            if (assistant.listen !== listen) { mic.stop(); return; }
+            listen.mic = mic;
+        } catch (error) {
+            if (assistant.listen !== listen) return;
+            assistant.listen = null;
+            throw error;
+        }
         renderApp({ passive: true });
     }
 
@@ -5445,7 +5456,14 @@
         renderApp({ passive: true });
     }
 
-    function assistantBeginCommand(listen, preRoll) {
+    function assistantBeginCommand(listen, preRoll, alreadyAccepted) {
+        listen.wake = alreadyAccepted ? Promise.resolve(true) : postJson("/api/assistant-mode/wake", { listener_id: listen.listenerId }).then(function (result) {
+            if (!result.accepted && assistantState().listen === listen) setNotice("info", "Another device is answering this wake word.");
+            return Boolean(result.accepted);
+        }).catch(function (error) {
+            if (assistantState().listen === listen) setNotice("error", error.message || "The wake word could not be checked.");
+            return false;
+        });
         listen.phase = "command";
         listen.chunks = preRoll ? [preRoll] : [];
         listen.waited = 0;
@@ -5473,9 +5491,14 @@
                 listen.chunks = [];
                 listen.endpoint = assistantEndpointer();
                 listen.busy = true;
-                assistantTranscribe(audio, true).then(function (result) {
+                assistantTranscribe(audio, true, listen, true).then(function (result) {
+                    if (assistantState().listen !== listen) return;
+                    if (result.matched && result.wake_accepted === false) {
+                        setNotice("info", "Another device is answering this wake word.");
+                        return;
+                    }
                     if (result.matched && result.command) return assistantSendCommand(result.command, "text");
-                    if (result.matched) assistantBeginCommand(listen, null);
+                    if (result.matched) assistantBeginCommand(listen, null, true);
                 }).catch(function () {}).then(function () { listen.busy = false; });
             }
             return;
@@ -5498,10 +5521,15 @@
             listen.chunks = [];
             listen.phase = "thinking";
             renderApp({ passive: true });
-            assistantTranscribe(command, listen.confirm === "both").then(function (result) {
+            Promise.resolve(listen.wake).then(function (accepted) {
+                if (accepted === false || assistantState().listen !== listen) return null;
+                return assistantTranscribe(command, listen.confirm === "both", listen, false);
+            }).then(function (result) {
+                if (!result || assistantState().listen !== listen) return;
                 if (result.command) return assistantSendCommand(result.command, listen.detector ? "voice" : "text");
                 setNotice("info", listen.confirm === "both" && !result.matched ? "That did not sound like your wake word, so nothing was sent." : "Nothing was heard after the wake word.");
             }).catch(function (error) {
+                if (assistantState().listen !== listen) return;
                 setNotice("error", error.message || "The command could not be transcribed.");
             }).then(function () {
                 if (assistantState().listen !== listen) return;

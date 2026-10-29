@@ -122,3 +122,80 @@ def test_signed_out_requests_are_refused_before_the_local_check(admin):
     admin.server.logged_in = False
     assert admin.client.get("/api/assistant-mode").status_code == 401
     assert admin.client.post("/api/assistant-mode/settings", json={"enabled": True}).status_code == 401
+
+
+@pytest.fixture
+def wake_hub(admin):
+    hub = am.AssistantModeHub(emit=lambda *a: None, submit=lambda *a: None, transcribe=lambda pcm: "")
+    admin.server.WEBRTC.assistant_mode = hub
+    yield hub
+    hub.close()
+
+
+@pytest.mark.parametrize("first", ["browser", "phone"])
+def test_browser_and_phone_share_the_same_wake_decision(admin, wake_hub, first):
+    am.save_settings({"enabled": True, "confirm": "text"})
+    if first == "phone":
+        assert wake_hub._claim_wake("synthetic-phone")
+    response = admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser"})
+    assert response.status_code == 200
+    assert response.json()["accepted"] is (first == "browser")
+    if first == "browser":
+        assert not wake_hub._claim_wake("synthetic-phone")
+
+
+def test_browser_wakes_are_deduplicated_without_a_webrtc_runtime(admin):
+    am.save_settings({"enabled": True, "confirm": "text"})
+    first = admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser-1"}).json()
+    second = admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser-2"}).json()
+    assert first["accepted"] is True
+    assert second["accepted"] is False and second["reason"] == "answered_elsewhere"
+
+
+def test_browser_text_spotting_deduplicates_before_slow_transcription(admin, wake_hub, monkeypatch):
+    am.save_settings({"enabled": True, "wake_phrase": "Hey Jarvis", "confirm": "text"})
+    clock = SimpleNamespace(now=100.0)
+    fake_time = SimpleNamespace(monotonic=lambda: clock.now)
+    monkeypatch.setattr(am, "time", fake_time)
+    monkeypatch.setattr(routes, "time", fake_time)
+    assert wake_hub._claim_wake("synthetic-phone")
+    clock.now += 0.5
+
+    def transcribe(pcm):
+        clock.now += 12
+        return "hey jarvis what time is it"
+
+    monkeypatch.setattr(am, "local_transcriber", lambda: transcribe)
+    result = admin.client.post("/api/assistant-mode/transcribe", json={
+        "audio_base64": _wav(), "require_phrase": True,
+        "listener_id": "synthetic-browser", "spot_wake": True,
+    }).json()
+    assert result["matched"] is True
+    assert result["wake_accepted"] is False and result["command"] == ""
+
+
+def test_browser_transcription_cannot_finish_after_settings_change(admin, monkeypatch):
+    am.save_settings({"enabled": True, "wake_phrase": "Hey Jarvis", "confirm": "text"})
+
+    def transcribe(pcm):
+        am.save_settings({"enabled": False})
+        return "hey jarvis what time is it"
+
+    monkeypatch.setattr(am, "local_transcriber", lambda: transcribe)
+    result = admin.client.post("/api/assistant-mode/transcribe", json={"audio_base64": _wav()}).json()
+    assert result["command"] == "" and result["transcript"] == ""
+    assert result["reason"] == "settings_changed"
+
+
+@pytest.mark.parametrize("listener_id", ["", "x" * 65, "invalid listener"])
+def test_browser_wake_requires_a_valid_listener_id(admin, listener_id):
+    am.save_settings({"enabled": True})
+    response = admin.client.post("/api/assistant-mode/wake", json={"listener_id": listener_id})
+    assert response.status_code == 400
+
+
+def test_browser_wake_requires_login_and_enabled_assistant(admin):
+    body = {"listener_id": "synthetic-browser"}
+    assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 409
+    admin.server.logged_in = False
+    assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 401

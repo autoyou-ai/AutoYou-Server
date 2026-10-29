@@ -12,6 +12,7 @@ transcribed and nothing reaches the model. Storage is redirected to
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import sys
 import threading
@@ -667,5 +668,106 @@ def test_one_device_answers_even_when_another_uploads_seconds_later(monkeypatch)
         clock["now"] = 130.0
         hub.device_utterance("pi", ww.float_to_pcm16(silence(2.0)), score=0.9)
         assert recorder.wait_for(lambda r: any(sid == "pi" for sid, _, _ in r.commands), timeout=5)
+    finally:
+        hub.close()
+
+
+def test_a_new_wake_invalidates_the_previous_transcription():
+    recorder = Recorder()
+    hub = make_hub(recorder)
+    config = am._Config(True, "hey autoyou", "voice", 8.0, True, None)
+    hub._config = config
+    item = hub._session("synthetic-device")
+    item.wake(config, source="voice")
+    item._set_state("thinking", "transcribing")
+    old_ticket = item.ticket
+    item.wake(config, source="voice")
+    item._set_state("thinking", "transcribing")
+    hub._dispatch(item.session_id, "result", (item, "command", "hey autoyou old command", old_ticket, 100.0))
+    hub._dispatch(item.session_id, "result", (item, "command", "hey autoyou new command", item.ticket, 105.0))
+    assert [text for _, text, _ in recorder.commands] == ["new command"]
+    hub.close()
+
+
+def test_disabling_text_spotting_invalidates_an_idle_pending_result():
+    recorder = Recorder()
+    hub = make_hub(recorder)
+    config = am._Config(True, "hey autoyou", "text", 8.0, True, None)
+    hub._config = config
+    item = hub._session("synthetic-device")
+    item.text_check_pending = True
+    ticket = item.ticket
+    hub._config = am._Config(False, "hey autoyou", "text", 8.0, True, None)
+    hub._dispatch("", "reload", None)
+    hub._config = config
+    hub._dispatch(item.session_id, "result", (item, "text_spot", "hey autoyou old command", ticket, 100.0))
+    assert recorder.commands == []
+    assert not item.text_check_pending
+    hub.close()
+
+
+def test_announced_wakes_keep_their_decision_across_delayed_uploads(monkeypatch):
+    rng = np.random.default_rng(43)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    train_voice_model(rng)
+    clock = {"now": 100.0}
+    monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["now"], time=time.time))
+    recorder = Recorder(transcripts=["hey autoyou one command"] * 3)
+    hub = make_hub(recorder)
+    config = hub.config()
+    first = hub._session("synthetic-stream")
+    first.wake(config, source="voice")
+    second = hub._session("synthetic-phone")
+    second.reserve_device_wake("synthetic-duplicate", config, 0.9)
+    clock["now"] = 112.0  # Recording and upload took longer than the matching window.
+    second.device_utterance(ww.float_to_pcm16(silence(4.5)), config, 0.9, "synthetic-duplicate")
+    assert second.stats["wakes"] == 0
+    assert recorder.transcribed == []
+    clock["now"] = 130.0
+    second.reserve_device_wake("synthetic-next", config, 0.9)
+    clock["now"] = 145.0
+    second.device_utterance(ww.float_to_pcm16(silence(2.0)), config, 0.9, "synthetic-next")
+    assert recorder.wait_for(lambda r: len(r.commands) == 1)
+    # Neither an upload retry nor an announcement retry may run it again.
+    second.reserve_device_wake("synthetic-next", config, 0.9)
+    second.device_utterance(ww.float_to_pcm16(silence(2.0)), config, 0.9, "synthetic-next")
+    _drain(hub, recorder)
+    assert len(recorder.commands) == 1
+    hub.close()
+
+
+def test_text_confirmation_uses_server_listening_and_disable_changes_revision():
+    rng = np.random.default_rng(44)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    train_voice_model(rng)
+    revision = am.capability_payload("AutoYou-Server", available=True)["model_revision"]
+    am.save_settings({"enabled": False})
+    assert am.capability_payload("AutoYou-Server", available=True)["model_revision"] != revision
+    am.save_settings({"enabled": True, "confirm": "text"})
+    assert am.device_model_payload("AutoYou-Server") is None
+
+
+def test_stream_enrollment_publishes_the_trained_model():
+    rng = np.random.default_rng(45)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "use_voice_training_clips": False})
+    recorder = Recorder()
+    hub = make_hub(recorder)
+
+    async def scenario():
+        published = asyncio.Event()
+        await am.handle_device_control(
+            hub, session_id="synthetic-phone", event_name="assistant_enroll", payload={"count": 3},
+            server_name="AutoYou-Server", streaming=True, send=lambda payload: None,
+            after_training=published.set,
+        )
+        for recording in enroll(rng):
+            feed(hub, "synthetic-phone", ww.pcm16_to_float(recording))
+            feed(hub, "synthetic-phone", silence(1.0))
+        await asyncio.wait_for(published.wait(), 10)
+        assert am.device_model_payload("AutoYou-Server") is not None
+        assert any(p.get("state") == "done" for _, p in recorder.events)
+
+    try:
+        asyncio.run(scenario())
     finally:
         hub.close()

@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 316, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 318, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -262,6 +262,7 @@ Live sessions, calls, microphone and screen sharing, and DataChannel status. Sou
 | Admin app | `GET` | `/api/webrtc/game-input/connection` | Admin get game input connection |
 | Admin app | `WEBSOCKET` | `/api/webrtc/game-input/observe` | A read-only copy of every input players make, for agents and other programs. |
 | Admin app | `WEBSOCKET` | `/api/webrtc/game-input/stream` | Local game input stream |
+| Admin app | `POST` | `/api/webrtc/hosted-game/api/game/music` | The hosted game's music setting: turns the soundtrack streamed to players on or off. |
 | Admin app | `WEBSOCKET` | `/api/webrtc/hosted-game/api/game/native-input` | Hosted game input stream |
 | Admin app | `GET` | `/api/webrtc/hosted-game/api/game/native-input/status` | Hosted game input status |
 | Admin app | `GET` | `/api/webrtc/hosted-game/frame/&#123;game_id&#125;` | The game itself, sandboxed with no network, for the host page's frame only. |
@@ -302,6 +303,7 @@ The wake word: settings, recordings, training, testing, the model for in-browser
 | Admin app | `POST` | `/api/assistant-mode/test` | Say whether a recording would wake the assistant, with the match score and transcript. |
 | Admin app | `POST` | `/api/assistant-mode/train` | Train the wake word from the recordings and, when enabled, Voice Training clips. This computer only. |
 | Admin app | `POST` | `/api/assistant-mode/transcribe` | Local transcription for a wake heard by the admin page's own detector. |
+| Admin app | `POST` | `/api/assistant-mode/wake` | Assistant mode wake |
 
 ## Messaging connectors
 

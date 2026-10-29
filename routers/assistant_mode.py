@@ -24,6 +24,8 @@ import base64
 import binascii
 import json
 import logging
+import re
+import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from fastapi import FastAPI, Request
@@ -46,6 +48,9 @@ MAX_TRANSCRIBE_SECONDS = 30.0
 
 
 def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[str, Callable[..., Any]]:
+    # Browser listening also works when this server has no WebRTC runtime.
+    browser_wakes = am.WakeArbiter()
+
     def _require_admin_login(request: Request) -> Optional[JSONResponse]:
         return server._require_api_login(request)
 
@@ -107,6 +112,14 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
     def _hub() -> Optional[Any]:
         webrtc = getattr(server, "WEBRTC", None)
         return getattr(webrtc, "assistant_mode", None)
+
+    def _browser_listener(body: Dict[str, Any]) -> str:
+        value = str(body.get("listener_id") or "")
+        return "browser:" + value if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value) else ""
+
+    def _claim_browser_wake(listener_id: str, *, spoken_at: Optional[float] = None) -> bool:
+        arbiter = getattr(_hub(), "wake_arbiter", browser_wakes)
+        return arbiter.claim(listener_id, spoken_at=spoken_at)
 
     async def _after_change() -> None:
         hub = _hub()
@@ -285,6 +298,25 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         )
         return server._json_response_no_store({"success": True, **result})
 
+    @admin_app.post("/api/assistant-mode/wake")
+    async def assistant_mode_wake(request: Request):
+        refused = _require_admin_login(request)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        listener_id = _browser_listener(body or {})
+        if not listener_id:
+            return _error(400, "A valid listener_id is required.")
+        if not (await asyncio.to_thread(am.load_settings))["enabled"]:
+            return _error(409, "Assistant mode is off.")
+        accepted = _claim_browser_wake(listener_id)
+        return server._json_response_no_store({
+            "success": True, "accepted": accepted,
+            "reason": "wake_word" if accepted else "answered_elsewhere",
+        })
+
     @admin_app.post("/api/assistant-mode/transcribe")
     async def assistant_mode_transcribe(request: Request):
         """Local transcription for a wake heard by the admin page's own detector."""
@@ -297,14 +329,30 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         pcm, error = _decode_audio(body or {}, MAX_TRANSCRIBE_SECONDS)
         if error is not None:
             return error
+        received_at = time.monotonic()
+        spotting = bool((body or {}).get("spot_wake"))
+        listener_id = _browser_listener(body or {})
+        if spotting and not listener_id:
+            return _error(400, "A valid listener_id is required.")
         settings = await asyncio.to_thread(am.load_settings)
         if not settings["enabled"]:
             return _error(409, "Assistant mode is off.")
         phrase = am.effective_phrase(settings, _server_name())
         transcript = await asyncio.to_thread(_transcribe, pcm or b"")
+        if await asyncio.to_thread(am.load_settings) != settings:
+            return server._json_response_no_store({
+                "success": True, "transcript": "", "matched": False, "command": "",
+                "reason": "settings_changed", "wake_accepted": False,
+            })
         match = ww.match_phrase(phrase, transcript)
         require_phrase = bool((body or {}).get("require_phrase"))
         command = match.remainder if match.matched else ("" if require_phrase else transcript)
+        accepted = True
+        if spotting:
+            accepted = bool(match.matched and _claim_browser_wake(
+                listener_id, spoken_at=received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE)))
+            if not accepted:
+                command = ""
         return server._json_response_no_store({
             "success": True,
             "transcript": transcript,
@@ -312,6 +360,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
             "phrase_score": round(match.score, 3),
             "command": command,
             "wake_phrase": phrase,
+            "wake_accepted": accepted,
         })
 
     def _transcribe(pcm: bytes) -> str:
@@ -328,4 +377,5 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         "assistant_mode_train": assistant_mode_train,
         "assistant_mode_test": assistant_mode_test,
         "assistant_mode_transcribe": assistant_mode_transcribe,
+        "assistant_mode_wake": assistant_mode_wake,
     }

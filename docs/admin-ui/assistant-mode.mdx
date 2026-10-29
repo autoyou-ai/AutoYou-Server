@@ -8,7 +8,7 @@ description: "Set up a wake word for your AutoYou server, choose who may change 
 Assistant mode gives your server a wake word, such as "Hey Jarvis". Say it from a
 connected phone, computer, Raspberry Pi or the admin page, and whatever you say next
 goes to AutoYou. The answer arrives in chat and on the device you spoke to. Until the
-word is heard, nothing you say is transcribed or sent to AI. Safety Recording keeps
+word is heard in a recorded-voice mode, nothing you say is transcribed or sent to AI. Safety Recording keeps
 recording as before.
 
 It is set up in **Chat & History → Assistant mode** on the admin page, and its
@@ -32,10 +32,13 @@ The word can be heard in two places:
 
 - **On the device.** iPhones, Android phones, the desktop apps and the Raspberry Pi download
   the trained word (only its acoustic pattern, never your recordings) and listen themselves.
-  After the word, they upload only what you said next.
-- **On the server.** Before a word is trained, while Safety Recording runs, during a call,
-  and in the Chrome extension, the device streams its microphone and the server listens,
-  transcribing nothing until the word matches.
+  They announce the wake immediately, then upload the word and your command. The
+  announcement keeps the same duplicate-suppression decision while the audio uploads.
+- **On the server.** If device capture cannot run, while Safety Recording runs,
+  during a call, and in the Chrome
+  extension, the device streams its microphone and the server detects the trained word.
+  A recorded-voice mode without a usable model waits for teaching and transcribes nothing.
+  **Typed text only** uses server transcription to find the phrase, as described below.
 
 During a video call, what you ask after the wake word also carries the latest camera
 picture (unless **Let it see the camera** is off), so "Hey Jarvis, what am I holding?"
@@ -194,3 +197,22 @@ for the word) and a `reason` when refused (`disabled`, `not_allowed`). Capabilit
 advertise `assistant_mode.call_toggle`, `call_mode_forced` and `device_teaching`, and
 `model_revision`, which changes when the model is retrained or its word, sensitivity,
 listening time or confirmation changes; devices fetch the model again when it does.
+
+On-device listeners send `assistant_wake {wake_id}` as soon as the word matches,
+without a microphone stream. Their later `assistant_utterance` carries that same
+`wake_id`. The server retains and consumes the decision once for up to 120 seconds;
+upload retries cannot execute a second command. Older clients without an announcement
+retain the recording-duration estimate for compatibility. Plain `assistant_wake`
+without an ID still requires a stream.
+
+Streamed teaching publishes fresh capabilities after training, just like recording
+uploads and admin training. Every new wake invalidates a previous unfinished turn;
+stopping a browser listener also discards its pending transcription result.
+
+The admin browser announces an acoustic wake with `POST /api/assistant-mode/wake`
+and its `listener_id`. It waits for the same wake arbiter used by device clients
+before uploading a command for transcription. Typed-text spotting supplies
+`listener_id` and `spot_wake: true` to `/api/assistant-mode/transcribe`; the server
+dates that wake before transcription and returns `wake_accepted`. A rejected wake
+never becomes a browser chat turn. Pending microphone acquisition also closes its
+capture if the listener was stopped or replaced.

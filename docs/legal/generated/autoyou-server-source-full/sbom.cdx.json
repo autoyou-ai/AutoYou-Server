@@ -2196,11 +2196,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "numpy<2; platform_system == \"Darwin\" and platform_machine == \"x86_64\""
+          "value": "numpy>=1.26.4,<3"
         },
         {
           "name": "specifier",
-          "value": "<2"
+          "value": ">=1.26.4,<3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2208,7 +2208,7 @@
         },
         {
           "name": "autoyou:source",
-          "value": "requirements/voice.txt"
+          "value": "requirements/base.txt"
         }
       ],
       "purl": "pkg:pypi/numpy",
@@ -4057,7 +4057,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-29T04:22:31+00:00",
+    "timestamp": "2026-10-29T05:11:54+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4066,7 +4066,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:c67b4f9a-5713-43ee-851f-4badcbf8a196",
+  "serialNumber": "urn:uuid:9547efd7-f2a7-44f5-a617-c3588d65a4df",
   "specVersion": "1.5",
   "version": 1
 }

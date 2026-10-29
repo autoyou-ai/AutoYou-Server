@@ -25,6 +25,8 @@ python-multipart>=0.0.31,<1
 setuptools>=84.2.1,<85
 # This patched release permits filelock 4; newer LiteLLM releases cap it below 4.
 litellm==1.100.4
+# Personal wake word features and PCM processing; voice.txt narrows Intel Macs to <2.
+numpy>=1.26.4,<3
 # Cognee currently pulls instructor 1.15.x, which has not accepted these newest
 # transitive releases yet. Keep shared pins compatible with optional Cognee.
 jiter>=0.6.1,<0.14
