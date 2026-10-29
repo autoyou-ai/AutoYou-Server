@@ -538,3 +538,134 @@ def test_permission_settings_default_to_letting_devices_help():
     status = am.public_status("AutoYou-Server")
     assert status["allow_call_toggle"] is False and status["allow_device_teaching"] is False
     assert set(am.PERMISSION_KEYS) <= set(am.DEFAULT_SETTINGS)
+
+
+def _blocking_hub(recorder, release):
+    def slow(pcm):
+        release.wait(5)
+        return recorder.transcribe(pcm)
+
+    return am.AssistantModeHub(
+        emit=recorder.emit, submit=recorder.submit, transcribe=slow, server_name=lambda: "AutoYou-Server"
+    )
+
+
+def _drain(hub, recorder):
+    assert recorder.wait_for(lambda r: hub._queue.empty(), timeout=5)
+    time.sleep(0.2)
+
+
+def test_a_command_is_not_submitted_after_the_listener_was_cancelled():
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    words = ww.float_to_pcm16(silence(1.0))
+    # Control: without a cancel the same command is handed over.
+    release = threading.Event()
+    recorder = Recorder(transcripts=["hey autoyou what time is it"])
+    hub = _blocking_hub(recorder, release)
+    try:
+        hub.device_utterance("pi", words, score=0.9)
+        release.set()
+        assert recorder.wait_for(lambda r: r.commands, timeout=5)
+        assert recorder.commands[0][1] == "what time is it"
+    finally:
+        hub.close()
+    # Cancelled while it was being transcribed: nothing reaches the conversation.
+    release = threading.Event()
+    recorder = Recorder(transcripts=["hey autoyou what time is it"])
+    hub = _blocking_hub(recorder, release)
+    try:
+        hub.device_utterance("pi", words, score=0.9)
+        assert recorder.wait_for(lambda r: ("thinking", "transcribing") in r.states("pi"), timeout=5)
+        hub.cancel("pi", "cancelled")
+        _drain(hub, recorder)
+        release.set()
+        assert recorder.wait_for(lambda r: r.transcribed, timeout=5)
+        _drain(hub, recorder)
+        assert recorder.commands == []
+    finally:
+        hub.close()
+
+
+def test_a_command_is_not_submitted_after_assistant_mode_was_turned_off():
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    release = threading.Event()
+    recorder = Recorder(transcripts=["hey autoyou what time is it"])
+    hub = _blocking_hub(recorder, release)
+    try:
+        hub.device_utterance("pi", ww.float_to_pcm16(silence(1.0)), score=0.9)
+        assert recorder.wait_for(lambda r: ("thinking", "transcribing") in r.states("pi"), timeout=5)
+        am.save_settings({"enabled": False})
+        hub.reload()
+        release.set()
+        assert recorder.wait_for(lambda r: r.transcribed, timeout=5)
+        _drain(hub, recorder)
+        assert recorder.commands == []
+    finally:
+        hub.close()
+
+
+@pytest.mark.parametrize("confirm", ["voice", "both"])
+def test_voice_choices_transcribe_nothing_without_a_trained_word(confirm):
+    rng = np.random.default_rng(41)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "confirm": confirm})
+    recorder = Recorder(transcripts=["hey autoyou what time is it"] * 4)
+    hub = make_hub(recorder)
+    try:
+        assert hub.config().needs_training is True
+        for formants in (OTHER, WAKE, ALSO_OTHER):
+            feed(hub, "phone", with_noise(synth_word(formants, rng=rng), rng=rng))
+            feed(hub, "phone", silence(1.5))
+        _drain(hub, recorder)
+        assert recorder.transcribed == []  # never transcribed, so never sent
+        assert recorder.commands == []
+        assert hub.session_state("phone") == "idle"
+    finally:
+        hub.close()
+    # A model trained for another word does not count either.
+    train_voice_model(rng, phrase="Hey Jarvis")
+    hub = make_hub(Recorder())
+    try:
+        assert hub.config().needs_training is True
+    finally:
+        hub.close()
+
+
+def test_devices_refetch_the_model_when_its_settings_change():
+    rng = np.random.default_rng(42)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    assert am.capability_payload("AutoYou-Server", available=True)["model_revision"] == ""
+    train_voice_model(rng)
+    first = am.capability_payload("AutoYou-Server", available=True)["model_revision"]
+    assert first
+    am.save_settings({"allow_call_toggle": False})
+    assert am.capability_payload("AutoYou-Server", available=True)["model_revision"] == first
+    am.save_settings({"sensitivity": 0.9})
+    second = am.capability_payload("AutoYou-Server", available=True)["model_revision"]
+    assert second != first
+    am.save_settings({"listen_seconds": 12})
+    third = am.capability_payload("AutoYou-Server", available=True)["model_revision"]
+    assert third not in {first, second}
+    assert am.device_model_payload("AutoYou-Server")["sensitivity"] == 0.9
+    assert am.device_model_payload("AutoYou-Server")["listen_seconds"] == 12
+
+
+def test_one_device_answers_even_when_another_uploads_seconds_later(monkeypatch):
+    clock = {"now": 100.0}
+    monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["now"], time=time.time))
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    recorder = Recorder(transcripts=["hey autoyou what time is it"] * 4)
+    hub = make_hub(recorder)
+    try:
+        # The phone streams: the server heard the word just now.
+        hub.client_wake("phone", score=0.9)
+        assert recorder.wait_for(lambda r: ("listening", "wake_word") in r.states("phone"), timeout=5)
+        # The Pi heard the same words itself and uploads 4.5 s of them 4 s later.
+        clock["now"] = 104.0
+        hub.device_utterance("pi", ww.float_to_pcm16(silence(4.5)), score=0.9)
+        assert recorder.wait_for(lambda r: ("idle", "answered_elsewhere") in r.states("pi"), timeout=5)
+        # A separate request a while later is answered.
+        clock["now"] = 130.0
+        hub.device_utterance("pi", ww.float_to_pcm16(silence(2.0)), score=0.9)
+        assert recorder.wait_for(lambda r: any(sid == "pi" for sid, _, _ in r.commands), timeout=5)
+    finally:
+        hub.close()

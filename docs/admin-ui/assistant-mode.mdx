@@ -82,8 +82,14 @@ it is done. Open **Chat & History** and choose the **Assistant mode** button nex
 **Typed text only** needs no recordings: short bursts of speech are transcribed on your
 server and discarded unless they contain the word. It uses more CPU. **Recorded voice +
 text** requires both a voice match and the word in the transcript, for the fewest
-accidental wakes.
+accidental wakes. The two voice choices never fall back to transcribing: until the
+word is trained (or after you change it), they wait, and devices say the word needs
+teaching.
 </Tip>
+
+When you save a new **Sensitivity** or listening time, phones and computers that listen
+on their own pick it up without training again, and a browser already listening on this
+page restarts with it.
 
 ---
 
@@ -165,6 +171,7 @@ The Assistant agent answers most requests itself or hands them to the right agen
 | It wakes by accident | Lower **Sensitivity**, choose **Recorded voice + text**, or record the word again more clearly |
 | It does not wake | Raise **Sensitivity**, record in the room you will use it, and train again |
 | "The trained word was …, train again" | You changed the wake word. Record the new word and choose **Train** |
+| A device says the computer "has no trained wake word yet" | **Recorded voice** or **Recorded voice + text** needs the word trained. Teach it on the device or record it here, or choose **Typed text only** |
 
 ---
 
@@ -184,4 +191,6 @@ Devices use `voice_call_control` events on the DataChannel: `assistant_model_req
 `assistant_cancel`, and `assistant_call_mode` (`{"enabled": true}` during a call). The
 server answers `assistant_call_mode` with `enabled`, `forced` (every call already waits
 for the word) and a `reason` when refused (`disabled`, `not_allowed`). Capabilities
-advertise `assistant_mode.call_toggle`, `call_mode_forced` and `device_teaching`.
+advertise `assistant_mode.call_toggle`, `call_mode_forced` and `device_teaching`, and
+`model_revision`, which changes when the model is retrained or its word, sensitivity,
+listening time or confirmation changes; devices fetch the model again when it does.

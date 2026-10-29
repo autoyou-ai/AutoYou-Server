@@ -3073,6 +3073,13 @@ class WebRTCManager:
             return
         audio_manager.process_audio_chunk(chunk)
 
+    def _assistant_needs_training(self) -> bool:
+        """A voice choice without a trained word: devices stream, nothing listens."""
+        try:
+            return bool(self.assistant_mode.config().needs_training)
+        except Exception:
+            return False
+
     def _assistant_gates_calls(self, session_id: str = "") -> bool:
         """Whether this call answers only after the wake word.
 
@@ -11183,7 +11190,9 @@ class WebRTCManager:
                     {
                         "event": "assistant_state",
                         "state": "idle",
-                        "reason": "listening_for_wake_word"
+                        "reason": "needs_training"
+                        if self._assistant_needs_training()
+                        else "listening_for_wake_word"
                         if self._assistant_hears(self._background_audio_state_for_session(normalized_session_id))
                         else "not_listening",
                     },

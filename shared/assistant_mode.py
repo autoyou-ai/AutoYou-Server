@@ -38,6 +38,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import base64
+import json
 import logging
 import math
 import os
@@ -119,6 +120,10 @@ ENROLL_TIMEOUT_SECONDS = 60.0
 PRE_ROLL_MARGIN_SECONDS = 0.3
 #: A second device hearing the same wake word within this window stays quiet.
 CROSS_DEVICE_WAKE_WINDOW_SECONDS = 1.5
+# A device that heard the word itself uploads it with what followed, seconds
+# later. Its wake is dated back by the audio's length; this covers the word's
+# own length and the upload's latency between that estimate and a live wake.
+ESTIMATED_WAKE_SLACK_SECONDS = 1.5
 #: Longest utterance a device may upload after its own detector woke.
 MAX_DEVICE_UTTERANCE_SECONDS = 30.0
 FEED_QUEUE_MAX_ITEMS = 1500
@@ -582,6 +587,23 @@ def decode_device_utterance(payload: Mapping[str, Any]) -> Optional[bytes]:
     return pcm[: int(MAX_DEVICE_UTTERANCE_SECONDS * ww.SAMPLE_RATE) * 2] or None
 
 
+def model_revision(status: Mapping[str, Any]) -> str:
+    """A short fingerprint of the model as a device would receive it; empty without one."""
+    model = status.get("model") or {}
+    if not model or not model.get("matches_phrase", False):
+        return ""
+    import hashlib
+
+    basis = json.dumps([
+        model.get("created_at", 0),
+        ww.normalize_phrase(str(status.get("wake_phrase") or "")),
+        round(float(status.get("sensitivity") or 0.0), 4),
+        status.get("listen_seconds"),
+        status.get("confirm"),
+    ], sort_keys=True)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
 def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
     """What clients read from ``server_capabilities.assistant_mode``."""
     try:
@@ -622,6 +644,9 @@ def capability_payload(server_name: str, *, available: bool) -> Dict[str, Any]:
         "device_teaching": bool(status["allow_device_teaching"]),
         "model_version": ww.MODEL_VERSION if status["model"] else 0,
         "model_created_at": (status["model"] or {}).get("created_at", 0),
+        # Changes with retraining and with anything the device's detector uses
+        # (word, sensitivity, listening time, confirmation), so devices refetch.
+        "model_revision": model_revision(status),
     }
 
 
@@ -653,8 +678,14 @@ class _Config:
 
     @property
     def text_spotting(self) -> bool:
-        # Text-only, or an acoustic choice with no usable model yet.
-        return self.confirm == "text" or (self.confirm in {"voice", "both"} and self.model is None)
+        # Only "Typed text only" transcribes speech to look for the word. The
+        # voice choices promise nothing is transcribed before the recorded word
+        # matches, so without a usable model they do not listen at all.
+        return self.confirm == "text"
+
+    @property
+    def needs_training(self) -> bool:
+        return self.enabled and self.confirm in {"voice", "both"} and self.model is None
 
 
 class _Endpointer:
@@ -704,6 +735,10 @@ class _SessionAssistant:
         self.wake_source = ""
         self.wake_score: Optional[float] = None
         self.text_check_pending = False
+        # Bumped by every cancel: a transcription carries the value it started
+        # with, and a result whose ticket is stale is dropped unread.
+        self.ticket = 0
+        self.spoken_at: Optional[float] = None
         self.enroll_needed = 0
         self.enroll_captured = 0
         self.enroll_phrase = ""
@@ -756,8 +791,16 @@ class _SessionAssistant:
         if config.text_spotting:
             self._feed_text_spotting(pcm, speech, config)
 
-    def wake(self, config: _Config, *, source: str, score: Optional[float] = None, pre_roll: bytes = b"") -> None:
-        if not self.hub._claim_wake(self.session_id):
+    def wake(
+        self,
+        config: _Config,
+        *,
+        source: str,
+        score: Optional[float] = None,
+        pre_roll: bytes = b"",
+        spoken_at: Optional[float] = None,
+    ) -> None:
+        if not self.hub._claim_wake(self.session_id, spoken_at=spoken_at):
             self._set_state("idle", "answered_elsewhere")
             return
         self.stats["wakes"] += 1
@@ -850,7 +893,10 @@ class _SessionAssistant:
 
     def device_utterance(self, pcm: bytes, config: _Config, score: Optional[float]) -> None:
         """A device heard the word itself and sent what was said; no stream needed."""
-        if not self.hub._claim_wake(self.session_id):
+        # The upload arrives after the command ended: date the wake back by the
+        # recording's length, which starts just before the word.
+        spoken_at = time.monotonic() - len(pcm) / (2.0 * ww.SAMPLE_RATE)
+        if not self.hub._claim_wake(self.session_id, spoken_at=spoken_at):
             self._set_state("idle", "answered_elsewhere")
             return
         self.stats["wakes"] += 1
@@ -876,6 +922,8 @@ class _SessionAssistant:
 
     def cancel(self, reason: str) -> None:
         was = self.state
+        self.ticket += 1
+        self.text_check_pending = False
         self.buffer = bytearray()
         self.endpointer.reset()
         self.state = "idle"
@@ -900,15 +948,17 @@ class _SessionAssistant:
             if not match.matched:
                 return  # Ordinary speech: dropped, never stored, never sent.
             if match.remainder:
-                if not self.hub._claim_wake(self.session_id):
+                if not self.hub._claim_wake(self.session_id, spoken_at=self.spoken_at):
                     return
                 self.stats["wakes"] += 1
                 self.wake_source = "text"
                 self._submit(match.remainder, config, phrase_score=match.score)
                 return
-            self.wake(config, source="text", score=match.score)
+            self.wake(config, source="text", score=match.score, spoken_at=self.spoken_at)
             return
-        # purpose == "command"
+        # purpose == "command": only while this command is still awaited.
+        if not config.enabled or self.state != "thinking":
+            return
         if not text:
             self._set_state("idle", "no_speech")
             return
@@ -971,7 +1021,7 @@ class AssistantModeHub:
         self._executor: Optional[ThreadPoolExecutor] = None
         self._config: Optional[_Config] = None
         self._config_lock = threading.Lock()
-        self._last_wake: Tuple[str, float] = ("", -math.inf)
+        self._last_wake: Tuple[str, float, bool] = ("", -math.inf, False)
         # Calls a device switched to wake-word answers (assistant_call_mode).
         self._call_mode_sessions: set = set()
         self._closed = False
@@ -1201,9 +1251,11 @@ class AssistantModeHub:
                 self._sessions.pop(session_id, None)
             return
         if kind == "result":
-            item, purpose, text = value
-            if self._sessions.get(item.session_id) is item:
-                item.on_transcript(purpose, text, self.config())
+            item, purpose, text, ticket, spoken_at = value
+            if self._sessions.get(item.session_id) is not item or ticket != item.ticket:
+                return  # Cancelled, disabled or ended while it was transcribed.
+            item.spoken_at = spoken_at
+            item.on_transcript(purpose, text, self.config())
             return
         if kind == "trained":
             item, payload = value
@@ -1226,13 +1278,25 @@ class AssistantModeHub:
         elif kind == "cancel":
             item.cancel(str(value or "cancelled"))
 
-    def _claim_wake(self, session_id: str) -> bool:
-        now = time.monotonic()
-        other, at = self._last_wake
-        if other and other != session_id and now - at < CROSS_DEVICE_WAKE_WINDOW_SECONDS:
-            return False
-        self._last_wake = (session_id, now)
-        return True
+    def _claim_wake(self, session_id: str, *, spoken_at: Optional[float] = None) -> bool:
+        """One device answers each wake word, however late its words arrive.
+
+        ``spoken_at`` (monotonic) dates a wake that reaches the server after the
+        fact: an on-device upload or a transcribed burst, estimated from the
+        audio's length. A live wake is dated now.
+        """
+        estimated = spoken_at is not None
+        when = float(spoken_at) if estimated else time.monotonic()
+        with self._lock:
+            other, at, other_estimated = self._last_wake
+            window = CROSS_DEVICE_WAKE_WINDOW_SECONDS
+            if estimated or other_estimated:
+                window += ESTIMATED_WAKE_SLACK_SECONDS
+            if other and other != session_id and abs(when - at) < window:
+                return False
+            if not other or when >= at or other != session_id:
+                self._last_wake = (session_id, when, estimated)
+            return True
 
     def _executor_ready(self) -> ThreadPoolExecutor:
         if self._executor is None:
@@ -1240,13 +1304,18 @@ class AssistantModeHub:
         return self._executor
 
     def _transcribe_async(self, item: _SessionAssistant, audio: bytes, *, purpose: str, config: _Config) -> None:
+        ticket = item.ticket
+        # When the first of these words was spoken, for matching one wake heard
+        # by several devices.
+        spoken_at = time.monotonic() - len(audio) / (2.0 * ww.SAMPLE_RATE)
+
         def job() -> None:
             try:
                 text = self._transcribe_cb(audio)
             except Exception as exc:
                 LOGGER.warning("Assistant mode transcription failed: %s", exc)
                 text = ""
-            self._post(item.session_id, "result", (item, purpose, text))
+            self._post(item.session_id, "result", (item, purpose, text, ticket, spoken_at))
 
         self._executor_ready().submit(job)
 

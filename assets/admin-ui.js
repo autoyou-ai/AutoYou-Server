@@ -5709,6 +5709,19 @@
         return panel(title, subtitle, body);
     }
 
+    // A browser already listening restarts with the saved word, sensitivity and
+    // listening time, as devices refetch their model when these change.
+    async function assistantRefreshBrowserListener() {
+        var assistant = assistantState();
+        if (!assistant.listen) return;
+        await assistantStopListening();
+        try {
+            await assistantStartListening();
+        } catch (error) {
+            setNotice("error", (error && error.message) || "Listening in this browser stopped.");
+        }
+    }
+
     async function handleAssistantAction(action) {
         var assistant = assistantState();
         if (action === "assistant-panel-toggle") {
@@ -5737,11 +5750,14 @@
         if (action === "assistant-save") {
             await assistantSaveSettings();
             setNotice("success", "Assistant mode saved.");
+            await assistantRefreshBrowserListener();
             return;
         }
         if (action === "assistant-enable-toggle") {
             await assistantSaveSettings({ enabled: !(assistant.status && assistant.status.enabled) });
             setNotice("success", assistant.status.enabled ? "Assistant mode is on." : "Assistant mode is off.");
+            if (!assistant.status.enabled) await assistantStopListening();
+            else await assistantRefreshBrowserListener();
             return;
         }
         if (action === "assistant-record-sample") { await assistantRecordSample(); return; }
@@ -5752,6 +5768,7 @@
             assistant.draft = assistantDraftFromStatus(assistant.status);
             var report = trained.report || {};
             setNotice("success", "Wake word trained from " + Number(report.templates || 0) + " recordings" + (report.voice_training_templates ? " and " + report.voice_training_templates + " Voice Training clips" : "") + ". Now test it.");
+            await assistantRefreshBrowserListener();
             return;
         }
         if (action === "assistant-clear-samples") {
@@ -12674,6 +12691,7 @@
             if (target.getAttribute("data-assistant-field") === "enabled") {
                 assistantSaveSettings().then(function () {
                     setNotice("success", assistantState().status.enabled ? "Assistant mode is on." : "Assistant mode is off.");
+                    return assistantState().status.enabled ? assistantRefreshBrowserListener() : assistantStopListening();
                 }).catch(function (error) {
                     setNotice("error", error.message || "Assistant mode could not be saved.");
                 });

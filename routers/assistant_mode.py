@@ -248,7 +248,11 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         model = await asyncio.to_thread(am.load_model)
         if model is None:
             return _error(404, "No wake word has been trained yet.")
-        return server._json_response_no_store({"success": True, "model": model.to_dict()})
+        settings = await asyncio.to_thread(am.load_settings)
+        model.sensitivity = settings["sensitivity"]
+        payload = model.to_dict()
+        payload["listen_seconds"] = settings["listen_seconds"]
+        return server._json_response_no_store({"success": True, "model": payload})
 
     @admin_app.post("/api/assistant-mode/test")
     async def assistant_mode_test(request: Request):
