@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-27T04:29:04+00:00
+Generated: 2026-10-28T20:48:03+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -61,6 +61,7 @@ Third-Party Components
 - cryptg 0.6.0 [pypi] - CC0-1.0 - requirements/messaging.txt
 - cryptography [pypi] - Apache-2.0 OR BSD-3-Clause - requirements/base.txt
 - ctranslate2 [pypi] - MIT - requirements/voice.txt
+- dnspython [pypi] - ISC - requirements/base.txt
 - docker [pypi] - Apache-2.0 - requirements/base.txt
 - elevenlabs [pypi] - MIT - requirements/voice.txt
 - fastapi 0.136.3 [pypi] - MIT - requirements/base.txt

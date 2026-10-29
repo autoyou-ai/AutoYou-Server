@@ -772,11 +772,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "authlib>=1.7.1,<2"
+          "value": "authlib>=1.9.1,<2"
         },
         {
           "name": "specifier",
-          "value": ">=1.7.1,<2"
+          "value": ">=1.9.1,<2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1226,6 +1226,36 @@
         }
       ],
       "purl": "pkg:pypi/ctranslate2",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "dnspython",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "dnspython>=2.9.0,<3"
+        },
+        {
+          "name": "specifier",
+          "value": ">=2.9.0,<3"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/dnspython",
       "type": "library"
     },
     {
@@ -4049,7 +4079,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-27T04:29:04+00:00",
+    "timestamp": "2026-10-28T20:48:03+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4058,7 +4088,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:6860c9eb-ea5c-4dc9-8fa3-33cc4aad53f6",
+  "serialNumber": "urn:uuid:86983dcd-8efc-407b-ac43-fd7aef316d7c",
   "specVersion": "1.5",
   "version": 1
 }

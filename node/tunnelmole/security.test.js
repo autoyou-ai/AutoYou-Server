@@ -39,6 +39,32 @@ test('Tunnelmole retains the package entrypoints used by the local launcher', ()
     assert.equal(typeof require('multer')().single, 'function');
 });
 
+test('compressed JSON with trailing garbage cannot crash the HTTP parser', async () => {
+    const express = require('express');
+    const { gzipSync } = require('node:zlib');
+    const app = express();
+    app.use(express.json());
+    app.post('/', (req, res) => res.json(req.body));
+    app.use((error, _req, res, _next) => res.status(error.status || 400).end('Rejected'));
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    try {
+        const url = `http://127.0.0.1:${server.address().port}`;
+        const valid = gzipSync(Buffer.from('{"name":"synthetic"}'));
+        const rejected = await fetch(url, { method: 'POST', headers: {
+            'Content-Type': 'application/json', 'Content-Encoding': 'gzip',
+        }, body: Buffer.concat([valid, Buffer.from('invalid-trailing-bytes')]) });
+        assert.equal(rejected.status, 400);
+        const accepted = await fetch(url, { method: 'POST', headers: {
+            'Content-Type': 'application/json', 'Content-Encoding': 'gzip',
+        }, body: valid });
+        assert.equal(accepted.status, 200);
+        assert.deepEqual(await accepted.json(), { name: 'synthetic' });
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
+});
+
 test('multipart input rejects excessive field nesting and still accepts ordinary fields', async () => {
     const { createServer } = require('node:http');
     const multer = require('multer');
