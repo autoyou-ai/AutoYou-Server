@@ -517,6 +517,7 @@ JS = r"""
     flush();
     if (cells[name]) { cells[name].classList.add('is-opening'); }
     announce('Opening ' + a.title);
+    if (typeof win.AutoYouOpenDirectPort === 'function' && win.AutoYouOpenDirectPort(url) === true) { return; }
     win.location.assign(url);
   }
   win.addEventListener('pageshow', function (e) {

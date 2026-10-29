@@ -259,3 +259,38 @@ def test_script_parses(tmp_path):
     source.write_text(JS, encoding="utf-8")
     result = subprocess.run(["node", "--check", str(source)], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_native_direct_port_handoff_preserves_regular_browser_launches(tmp_path):
+    functions = "\n".join(re.search(r"  function " + name + r"\([^\n]*\) \{.*?^  \}", JS, re.S | re.M).group(0)
+                          for name in ("resolveLaunchTarget", "openApp"))
+    fixture = r'''
+const assert = require('node:assert/strict');
+const assigned = [], handed = [], announced = [];
+const win = {location: {origin: 'https://192.168.50.20:18367', assign: url => assigned.push(url)}};
+const boot = {base: 'http://127.0.0.1:8067'};
+const apps = {
+  direct: {ready: true, title: 'Synthetic direct app', open_url: 'http://127.0.0.1:39101/'},
+  path: {ready: true, title: 'Synthetic path app', open_url: '/agent/synthetic/'},
+  waiting: {ready: false, title: 'Synthetic waiting app', open_url: 'http://127.0.0.1:39101/'}
+};
+const state = {usage: {}}, cells = {};
+function now() {return 1;} function flush() {} function toast() {} function announce(value) {announced.push(value);}
+FUNCTIONS
+win.AutoYouOpenDirectPort = url => {
+  if (url !== apps.direct.open_url) return false;
+  handed.push(url); return true;
+};
+openApp('direct');
+assert.deepEqual(handed, [apps.direct.open_url]); assert.equal(assigned.length, 0);
+assert.equal(state.usage.direct.n, 1); assert.deepEqual(announced, ['Opening Synthetic direct app']);
+openApp('path'); assert.equal(assigned[0], win.location.origin + '/agent/synthetic/');
+openApp('waiting'); assert.equal(handed.length, 1); assert.equal(assigned.length, 1);
+delete win.AutoYouOpenDirectPort;
+openApp('direct'); assert.equal(assigned[1], apps.direct.open_url);
+'''.replace("FUNCTIONS", functions)
+    source = tmp_path / "native-launch.cjs"
+    source.write_text(fixture, encoding="utf-8")
+    result = subprocess.run(["node", str(source)], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
