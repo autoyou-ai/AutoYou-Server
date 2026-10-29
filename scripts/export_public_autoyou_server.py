@@ -81,6 +81,8 @@ PUBLIC_GITHUB_PATHS = {
     ".github/workflows/public-checks.yml",
     ".github/workflows/dependency-advisories.yml",
     ".github/workflows/macos-audio-capture.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/dependabot-legal-refresh.yml",
 }
 
 PUBLIC_VENDOR_PATHS = {
@@ -97,6 +99,7 @@ PUBLIC_CONFIG_PATHS = {"config/donations.example.json"}
 # Review scripts individually so private operator tools are not exported by default.
 PUBLIC_SCRIPT_PATHS = {
     "scripts/__init__.py",
+    "scripts/check_release_version.py",
     "scripts/acknowledge_local_build.py",
     "scripts/audit_dependency_advisories.py",
     "scripts/bluetooth_pair_host_bridge.py",
@@ -197,6 +200,7 @@ PUBLIC_GENERATED_LEGAL_PATHS = {
 PUBLIC_DOC_PREFIXES = (
     "docs/images/",
     "docs/legal/licenses/",
+    "docs/releases/",
     "docs/security/",
     "docs/technical/",
 )

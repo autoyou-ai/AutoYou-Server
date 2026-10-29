@@ -1,20 +1,44 @@
 name: CodeQL
 
+# CodeQL is the slowest check, so it runs only when Python or JavaScript
+# changes, plus a weekly scan that catches newly published queries.
 on:
   push:
     branches: [main]
+    paths:
+      - "**.py"
+      - "**.js"
+      - "**.mjs"
+      - "**.cjs"
+      - "**.ts"
+      - "**.html"
+      - ".github/workflows/codeql.yml"
   pull_request:
+    paths:
+      - "**.py"
+      - "**.js"
+      - "**.mjs"
+      - "**.cjs"
+      - "**.ts"
+      - "**.html"
+      - ".github/workflows/codeql.yml"
   schedule:
     - cron: "31 4 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     if: github.event.repository.private == false
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -24,11 +48,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
       - name: Analyze
-        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: "/language:${{ matrix.language }}"

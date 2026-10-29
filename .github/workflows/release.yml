@@ -1,0 +1,131 @@
+name: Release
+
+# Publishes a GitHub release for the version in the VERSION file.
+#
+# Two ways to start it:
+#   - push a tag that matches VERSION, for example `git tag 81.4.0 && git push origin 81.4.0`
+#   - run it by hand from the Actions tab on main; it creates the tag itself
+#
+# Release notes come from docs/releases/<version>.md when that file exists,
+# followed by GitHub's generated list of merged changes. Every release runs the
+# public checks and the dependency advisory review first, then attaches the sanitized public source archive, the generated
+# SBOM/NOTICE bundles and SHA-256 checksums. Standard GitHub-hosted runners
+# only, so it stays inside the free plan for public repositories.
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Mark the release as a pre-release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Resolve and verify the release version
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "$version" ]; then
+            echo "::error::Tag $REF_NAME does not match VERSION ($version). Bump VERSION first."
+            exit 1
+          fi
+          if [ "$REF_TYPE" != "tag" ] && [ "$REF_NAME" != "main" ]; then
+            echo "::error::Run releases from main or from a version tag, not $REF_NAME."
+            exit 1
+          fi
+          python3 scripts/check_release_version.py --expect "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: version
+    uses: ./.github/workflows/public-checks.yml
+
+  advisories:
+    needs: version
+    uses: ./.github/workflows/dependency-advisories.yml
+
+  publish:
+    needs: [version, checks, advisories]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PRERELEASE: ${{ inputs.prerelease && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Stop if this version is already released
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "::error::Release $VERSION already exists. Bump VERSION for a new release."
+            exit 1
+          fi
+          if [ "${{ github.ref_type }}" != "tag" ] && git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            if [ "$(git rev-list -n 1 "refs/tags/$VERSION")" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $VERSION already points at another commit. Bump VERSION for a new release."
+              exit 1
+            fi
+          fi
+      - name: Build release assets
+        run: |
+          set -euo pipefail
+          name="AutoYou-Server-$VERSION"
+          mkdir -p dist
+          python scripts/export_public_autoyou_server.py --ref "$GITHUB_SHA" --output "$RUNNER_TEMP/$name"
+          tar -C "$RUNNER_TEMP" -czf "dist/$name-source.tar.gz" "$name"
+          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/$name-source.zip" "$name")
+          (cd docs/legal && zip -qr "$GITHUB_WORKSPACE/dist/$name-legal-sbom-notices.zip" generated)
+          (cd dist && sha256sum -- * > SHA256SUMS.txt)
+          ls -l dist
+      - name: Publish the GitHub release
+        run: |
+          set -euo pipefail
+          args=(--title "AutoYou Server $VERSION" --generate-notes --verify-tag)
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            args=(--title "AutoYou Server $VERSION" --generate-notes --target "$GITHUB_SHA")
+          fi
+          previous="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [ -n "$previous" ]; then
+            args+=(--notes-start-tag "$previous")
+          fi
+          if [ -f "docs/releases/$VERSION.md" ]; then
+            args+=(--notes-file "docs/releases/$VERSION.md")
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+          gh release create "$VERSION" "${args[@]}" dist/*
+          echo "Published https://github.com/$GH_REPO/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"
