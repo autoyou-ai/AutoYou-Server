@@ -21,7 +21,7 @@ safetensors==0.8.0
 conformer==0.3.2
 resemble-perth==1.0.1
 s3tokenizer==0.3.0
-librosa==0.11.0
+librosa==1.0.0
 omegaconf==2.4.0
 einops==0.8.2
 soundfile>=0.13.1
