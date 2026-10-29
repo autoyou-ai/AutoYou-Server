@@ -372,6 +372,7 @@ def test_admin_bootstrap_returns_live_snapshot(monkeypatch):
         assert server.STATE.config["ai_provider"]["openrouter_api_key"] == "synthetic-bootstrap-key"
         assert body["status"]["browser"]["advertised_websites"][0]["label"] == "Docs"
         assert body["metadata"]["tunnelmole"]["pair_code_mode"] == "authenticator"
+        assert body["metadata"]["chat_ui_protocol"] == 1
         assert body["metadata"]["tunnelmole"]["connection_mode"] == "unmanaged"
         assert {
             item["id"]: item["label"]

@@ -19,7 +19,7 @@ const end = source.indexOf('    // The owner\'s own words', start);
 const nativeSetTimeout = setTimeout;
 const pause = () => new Promise(resolve => nativeSetTimeout(resolve, 2));
 const until = async predicate => { for (let n=0;n<500;n++) { if(predicate()) return; await pause(); } throw Error('Timed out'); };
-const state = { chat: { userId:'synthetic-user',sessionId:'synthetic-thread',composer:'',attachments:[],messages:[],turns:[],selected:null,pendingTitle:'' } };
+const state = { bootstrap:{metadata:{chat_ui_protocol:1}}, chat: { userId:'synthetic-user',sessionId:'synthetic-thread',composer:'',attachments:[],messages:[],turns:[],selected:null,pendingTitle:'' } };
 const input = { value:'' }, controls={innerHTML:''}, send={setAttribute(){}};
 const markers = new Map();
 let keyboard = false, height = '';
@@ -39,7 +39,7 @@ const root = {
 const window = {innerWidth:390,innerHeight:844,visualViewport:{height:844,offsetTop:0,scale:1},requestAnimationFrame:()=>1};
 const document={activeElement:null};
 let serial=0, stopCalls=0, releaseAcceptance;
-const jobs=new Map(), posts=[];
+const jobs=new Map(), posts=[], notices=[];
 const request = async (url,options) => {
     if(url === '/api/chat') {
         const body=JSON.parse(options.body);posts.push(body);
@@ -57,11 +57,23 @@ const api = new Function('state','root','chatDefaultUserId','chatUuid','renderAp
     'escapeHtml','chatKindForMime','chatMessageMarkup','ensureChatData','setNotice','setTimeout','clearTimeout','window','document',
     source.slice(start,end)+'\nreturn {send:sendChatTurn,stop:stopChatTurn,viewport:syncChatViewport};')(
     state,root,()=> 'synthetic-user',()=> 'turn-'+(++serial),()=>{input.value=state.chat.composer},request,async()=>({}),
-    (label)=>'<button>'+label+'</button>',String,()=> 'file',()=>'<article>synthetic answer</article>',async()=>{},()=>{},
+    (label)=>'<button>'+label+'</button>',String,()=> 'file',()=>'<article>synthetic answer</article>',async()=>{},(kind,message)=>notices.push({kind,message}),
     (fn,ms)=>nativeSetTimeout(fn,ms<10000?0:ms),clearTimeout,window,document);
 const submit=async text=>{input.value=text;await api.send();};
 const complete=id=>{const job=jobs.get(id);job.status='completed';job.response={response:'answer '+id};};
-if(scenario==='viewport') {
+if(scenario.startsWith('outdated')) {
+    if(scenario==='outdated-bootstrap')state.bootstrap=null;
+    else if(scenario==='outdated-metadata')state.bootstrap.metadata={};
+    else state.bootstrap.metadata.chat_ui_protocol=0;
+    const attachments=[{kind:'file',name:'synthetic.txt'}];
+    state.chat.attachments=attachments;
+    await submit('Keep this unsent draft');
+    assert.equal(posts.length,0);assert.equal(state.chat.messages.length,0);assert.equal(state.chat.turns.length,0);
+    assert.equal(input.value,'Keep this unsent draft');assert.equal(state.chat.composer,input.value);
+    assert.equal(state.chat.attachments,attachments);
+    assert.match(notices.at(-1).message,/Server restart required/);
+    assert.match(notices.at(-1).message,/has not been sent/);
+} else if(scenario==='viewport') {
     api.viewport();assert.equal(height,'672px');
     document.activeElement={getAttribute:()=> 'chat-input'};window.visualViewport.height=440;
     api.viewport();assert.equal(keyboard,true);assert.equal(height,'378px');
@@ -95,7 +107,8 @@ console.log('verified '+scenario);
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-@pytest.mark.parametrize("scenario", ["queue", "stop", "preaccept", "acklost", "navigate", "viewport"])
+@pytest.mark.parametrize("scenario", ["queue", "stop", "preaccept", "acklost", "navigate", "viewport",
+                                      "outdated-bootstrap", "outdated-metadata", "outdated-version"])
 def test_browser_chat_lifecycle_and_mobile_viewport(scenario):
     asset = Path(__file__).resolve().parents[3] / "assets/admin-ui.js"
     result = subprocess.run(["node", "--input-type=module", "-e", SCRIPT, str(asset), scenario],

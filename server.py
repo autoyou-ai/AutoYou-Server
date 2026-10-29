@@ -13382,6 +13382,7 @@ async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
         "agents": agents_payload,
         "metadata": {
             "guides": _admin_guide_links(),
+            "chat_ui_protocol": 1,
             "recording_paths": _build_recording_paths_payload(cfg),
             "security_modes": [
                 {"id": "normal", "label": "Normal Mode (No Encryption)"},

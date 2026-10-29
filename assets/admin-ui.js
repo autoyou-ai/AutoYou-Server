@@ -5991,6 +5991,11 @@
         var text = String(state.chat.composer || "").trim();
         var attachments = state.chat.attachments.slice();
         if (!text && !attachments.length) return;
+        var metadata = state.bootstrap && state.bootstrap.metadata;
+        if (!metadata || metadata.chat_ui_protocol !== 1) {
+            setNotice("error", "Server restart required. Restart AutoYou Server, then reload this page. Your message has not been sent.");
+            return;
+        }
         state.chat.userId = state.chat.userId || chatDefaultUserId();
         state.chat.sessionId = state.chat.sessionId || chatUuid("admin-chat");
         if (chatConversationTurns(state.chat.userId, state.chat.sessionId).length >= 20) {
