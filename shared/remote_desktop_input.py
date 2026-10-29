@@ -20,7 +20,14 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from .remote_desktop_keyboard import execute_remote_desktop_keyboard, load_pyautogui, release_stuck_modifiers
+from .remote_desktop_keyboard import (
+    execute_remote_desktop_keyboard,
+    load_pyautogui,
+    load_remote_input_backend,
+    note_remote_desktop_activity,
+    release_stuck_modifiers,
+)
+from .windows_secure_desktop import SecureDesktopError
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-9bfa5a113c65013c87202d6c"
 
@@ -148,7 +155,7 @@ def normalize_remote_desktop_input_payload(payload: Any) -> Optional[Dict[str, A
 def _control_backend(pyautogui: Any = None) -> Any:
     if pyautogui is not None:
         return pyautogui
-    return load_pyautogui()
+    return load_remote_input_backend()
 
 
 # Importing this module only proves the protocol is present. The backend that
@@ -180,6 +187,10 @@ def remote_desktop_input_backend_available(*, refresh: bool = False) -> bool:
                 position = getattr(backend, "position", None)
                 if callable(position):
                     position()
+        except SecureDesktopError:
+            # The Windows screen is locked and the helper is missing. That is
+            # temporary and reported per input, so the host keeps control.
+            available = True
         except Exception:
             available = False
         _BACKEND_PROBE["available"] = bool(available)
@@ -235,6 +246,7 @@ def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = N
     normalized = normalize_remote_desktop_input_payload(payload)
     if normalized is None or track is None:
         return False
+    note_remote_desktop_activity()
     try:
         backend = _control_backend(pyautogui)
         try:

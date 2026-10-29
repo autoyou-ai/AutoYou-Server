@@ -1592,6 +1592,11 @@ from shared.remote_desktop_settings import (
     normalize_remote_desktop_quality,
     remote_desktop_quality_settings,
 )
+from shared.remote_desktop_keep_awake import (
+    REMOTE_DESKTOP_KEEP_AWAKE,
+    normalize_keep_awake_mode,
+)
+from shared.windows_secure_desktop import secure_desktop_status
 from shared.video_composite_settings import normalize_video_composite_config
 from shared.adk_state import normalize_reply_target
 from shared.session_execution import (
@@ -4808,6 +4813,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
             ),
             "game_enabled": _normalize_partner_enabled_flag(remote_cfg.get("game_enabled"), False),
             "game_buttons": _normalize_game_buttons(remote_cfg.get("game_buttons")),
+            "keep_awake": normalize_keep_awake_mode(remote_cfg.get("keep_awake")),
         },
     }
 
@@ -5858,6 +5864,7 @@ def _default_config() -> Dict[str, Any]:
                 "control_enabled": False,
                 "game_enabled": False,
                 "game_buttons": [button.copy() for button in _DEFAULT_GAME_BUTTONS],
+                "keep_awake": "off",
             },
         },
         "agent_frontends": {
@@ -10274,6 +10281,12 @@ def _get_remote_desktop_monitor_payload(
         "available": False,
     }
 
+def _apply_remote_desktop_keep_awake_config(*, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """Push the saved keep-awake mode to the process-wide controller."""
+    mode = normalize_keep_awake_mode(_get_video_remote_desktop_config(cfg=cfg).get("keep_awake"))
+    REMOTE_DESKTOP_KEEP_AWAKE.configure(mode)
+    return mode
+
 def _remote_desktop_input_backend_ready() -> bool:
     probed = remote_desktop_input_backend_probed()
     return True if probed is None else bool(probed)
@@ -10912,6 +10925,8 @@ def _build_webrtc_capabilities(
             "game_protocol": "autoyou_game_v1",
             "game_buttons": _normalize_game_buttons(_get_video_remote_desktop_config(cfg=effective_cfg).get("game_buttons")),
             "touch_modes": ["direct", "relative"],
+            "keep_awake": REMOTE_DESKTOP_KEEP_AWAKE.status(),
+            "secure_desktop": secure_desktop_status(),
             "agent_installed": remote_agent_installed,
             "agent_enabled": remote_agent_enabled,
             "agent_required": False,
@@ -14003,6 +14018,8 @@ def _apply_admin_ui_config_patch(
                 remote_cfg["game_enabled"] = _coerce_enabled_flag(remote_payload.get("game_enabled"))
             if "game_buttons" in remote_payload:
                 remote_cfg["game_buttons"] = _normalize_game_buttons(remote_payload["game_buttons"], strict=True)
+            if "keep_awake" in remote_payload:
+                remote_cfg["keep_awake"] = normalize_keep_awake_mode(remote_payload.get("keep_awake"))
         touched_sections.add("video_call")
 
     rtc_payload = payload.get("rtc")

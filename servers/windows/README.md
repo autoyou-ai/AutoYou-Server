@@ -64,3 +64,28 @@ source repository.
 Strict release checks require the operator's external review file through
 `AUTOYOU_RELEASE_CHECKLIST`. See [SECURITY.md](../../SECURITY.md). Report failures with sanitized logs;
 do not publish build credentials or a live configuration.
+
+## Remote Desktop on the lock screen
+
+Windows shows the lock screen, sign-in screen, and UAC prompts on a protected
+desktop that normal apps cannot see or send input to. To see and type into it
+from a paired device (for example to type your password after the computer
+locked itself), install the AutoYou Secure Desktop Helper once on the host:
+
+- In the admin page, open **Video & Calls > Remote Desktop** and select
+  **Install lock screen helper**, then approve the Windows prompt; or
+- from an elevated PowerShell in the install folder, run
+  `.\AutoYou.exe --secure-desktop install` (source checkout:
+  `python autoyou_app.py --secure-desktop install`).
+
+This registers the `AutoYouSecureDesktop` service (LocalSystem, automatic
+start). It runs a helper in the signed-in console session that serves input
+and screen capture only to AutoYou running as the account that installed it.
+It also enables the `SoftwareSASGeneration` policy so Ctrl+Alt+Del from the
+keyboard toolbar works. Remove it with `--secure-desktop uninstall`; check it
+with `--secure-desktop status`. Logs are in
+`%ProgramData%\AutoYou\SecureDesktop\secure-desktop.log`.
+
+Without the helper, **Keep this computer awake** in the same section keeps the
+display awake and the idle timer reset so Windows does not lock for
+inactivity during a session.

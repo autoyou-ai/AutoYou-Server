@@ -1445,7 +1445,19 @@ def main(argv: list[str] | None = None) -> str:
     parser.add_argument("--read-keyring-password", action="store_true")
     parser.add_argument("--keyring-service", default="")
     parser.add_argument("--keyring-username", default="")
+    # Windows lock-screen support for Remote Desktop: install/uninstall/status
+    # from an elevated prompt, and the service/helper modes the service runs.
+    parser.add_argument(
+        "--secure-desktop",
+        dest="secure_desktop",
+        choices=("install", "uninstall", "status", "service", "helper"),
+        default=None,
+    )
     parsed_args, remaining_args = parser.parse_known_args(effective_argv)
+    if parsed_args.secure_desktop:
+        from shared.windows_secure_desktop import main as secure_desktop_main
+
+        raise SystemExit(secure_desktop_main([parsed_args.secure_desktop, *remaining_args]))
     remaining_args, saw_server_script = _strip_compiled_server_script_arg(remaining_args)
 
     if argv is None:

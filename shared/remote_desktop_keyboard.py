@@ -92,6 +92,35 @@ def load_pyautogui() -> Any:
     return pyautogui
 
 
+def note_remote_desktop_activity() -> None:
+    """Tell the keep-awake controller that Remote Desktop is in use."""
+    try:
+        from .remote_desktop_keep_awake import REMOTE_DESKTOP_KEEP_AWAKE
+
+        REMOTE_DESKTOP_KEEP_AWAKE.touch()
+    except Exception:
+        pass
+
+
+def load_remote_input_backend() -> Any:
+    """pyautogui, or the secure desktop helper while Windows is locked.
+
+    On Windows the lock screen and UAC prompts live on the Winlogon desktop,
+    which this user process cannot send input to. While that desktop is
+    active, input goes through the SYSTEM helper instead. Raises when the
+    screen is locked and the helper is not installed or not reachable, so the
+    caller reports a failure instead of silently dropping the input.
+    """
+
+    if sys.platform == "win32":
+        from .windows_secure_desktop import secure_input_backend_if_needed
+
+        backend = secure_input_backend_if_needed()
+        if backend is not None:
+            return backend
+    return load_pyautogui()
+
+
 REMOTE_DESKTOP_KEYBOARD_EVENT = "remote_desktop_keyboard"
 REMOTE_DESKTOP_KEYBOARD_SOURCE = "remote_desktop_agent"
 MAX_CONTROL_ID_LENGTH = 128
@@ -233,7 +262,7 @@ def release_stuck_modifiers(pyautogui: Any = None) -> None:
 
     if pyautogui is None:
         try:
-            pyautogui_module = load_pyautogui()
+            pyautogui_module = load_remote_input_backend()
         except Exception:
             return
         pyautogui = pyautogui_module
@@ -261,9 +290,10 @@ def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool
     if normalized is None or normalized["action"] in {"show", "hide", "state"}:
         return False
 
+    note_remote_desktop_activity()
     if pyautogui is None:
         try:
-            pyautogui_module = load_pyautogui()
+            pyautogui_module = load_remote_input_backend()
         except Exception:
             return False
         pyautogui = pyautogui_module

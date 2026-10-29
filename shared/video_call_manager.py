@@ -42,6 +42,7 @@ from shared.secure_storage import (
     secure_storage_enabled,
     write_secure_file,
 )
+from shared.remote_desktop_keyboard import note_remote_desktop_activity
 from shared.video_composite_settings import normalize_video_composite_config
 
 __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-95b7f610bb495a70bbd0db54"
@@ -701,7 +702,34 @@ def _capture_desktop_image_for_monitor(monitor_id: Any = 0) -> Any:
     return mss_image
 
 
-def _capture_desktop_image_with_fallback(monitor_id: Any = 0) -> Any:
+def _capture_secure_desktop_image(monitor_id: Any = 0, max_width: Optional[int] = None) -> Any:
+    """Frame from the Windows secure desktop helper while the screen is locked."""
+    if _desktop_capture_platform_tag() != "windows":
+        return None
+    try:
+        from shared.windows_secure_desktop import capture_secure_desktop_image_if_needed
+
+        return capture_secure_desktop_image_if_needed(_normalize_desktop_monitor_id(monitor_id), max_width=max_width)
+    except Exception as exc:
+        logger.debug("Secure desktop capture unavailable for WebRTC track: %s", exc)
+        return None
+
+
+def _secure_desktop_capture_hint() -> str:
+    if _desktop_capture_platform_tag() != "windows":
+        return ""
+    try:
+        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
+
+        return secure_desktop_unavailable_hint()
+    except Exception:
+        return ""
+
+
+def _capture_desktop_image_with_fallback(monitor_id: Any = 0, max_width: Optional[int] = None) -> Any:
+    secure_image = _capture_secure_desktop_image(monitor_id, max_width=max_width)
+    if secure_image is not None:
+        return secure_image
     return _capture_desktop_image_for_monitor(_normalize_desktop_monitor_id(monitor_id))
 
 
@@ -2010,15 +2038,18 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         if Image is None:
             raise RuntimeError("Pillow is required for desktop video capture")
         try:
-            image = _capture_desktop_image_with_fallback(self.monitor_id)
+            note_remote_desktop_activity()
+            image = _capture_desktop_image_with_fallback(self.monitor_id, max_width=self.max_width)
             if image is None:
-                raise RuntimeError("Desktop capture returned no frame")
+                raise RuntimeError(_secure_desktop_capture_hint() or "Desktop capture returned no frame")
             if image.width > self.max_width:
                 ratio = self.max_width / float(image.width)
                 image = image.resize((self.max_width, max(1, int(image.height * ratio))), Image.Resampling.BILINEAR)
             image = _ensure_even_rgb_image(image)
             if _is_probably_blank_desktop_capture(image):
-                raise RuntimeError(_describe_desktop_capture_blank_frame(self.monitor_id))
+                raise RuntimeError(
+                    _secure_desktop_capture_hint() or _describe_desktop_capture_blank_frame(self.monitor_id)
+                )
             return image
         except Exception as exc:
             logger.debug("Desktop capture unavailable for video-call track: %s", exc)
@@ -2036,7 +2067,12 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         if ImageDraw is not None:
             draw = ImageDraw.Draw(image)
             draw.text((32, 32), "AutoYou desktop video feed", fill=(248, 250, 252))
-            draw.text((32, 70), "Waiting for screen capture permission or display access.", fill=(148, 163, 184))
+            headline = (
+                "This computer's screen is locked."
+                if str(detail or "").startswith("This computer is locked")
+                else "Waiting for screen capture permission or display access."
+            )
+            draw.text((32, 70), headline, fill=(148, 163, 184))
             if detail:
                 for index, line in enumerate(textwrap.wrap(str(detail), width=78)[:5]):
                     draw.text((32, 108 + (index * 26)), line, fill=(100, 116, 139))

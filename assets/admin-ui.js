@@ -3461,6 +3461,7 @@
                     bitrate_kbps: getByPath(cfg, "video_call.remote_desktop.bitrate_kbps", 1500),
                     control_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.control_enabled", false), false),
                     game_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.game_enabled", false), false),
+                    keep_awake: String(getByPath(cfg, "video_call.remote_desktop.keep_awake", "off") || "off"),
                     game_buttons: Array.isArray(gameButtons) ? gameButtons.map(function (button) { return button.label + ":" + button.name; }).join(", ") : "A:action_a, B:action_b"
                 }
             },
@@ -9608,6 +9609,34 @@
                 { label: "Screen ready", value: yesNo(getByPath(outboundCaps, "available_sources.remote_desktop.enabled", false)) }
             ])
             + "<div class=\"ayu-inline-actions\">" + button("Save source", "save-video-call", "primary", "save") + button("Refresh status", "ops-refresh", "secondary", "refresh", "sm") + "</div>";
+        var secureDesktop = getByPath(remoteCaps, "secure_desktop", {}) || {};
+        var secureDesktopSupported = Boolean(getByPath(secureDesktop, "supported", false));
+        var secureDesktopInstalled = Boolean(getByPath(secureDesktop, "installed", false));
+        var secureDesktopReachable = getByPath(secureDesktop, "reachable", null);
+        var secureDesktopLocked = getByPath(secureDesktop, "locked", null);
+        var keepAwakeStatus = getByPath(remoteCaps, "keep_awake", {}) || {};
+        var keepAwakeSupported = Boolean(getByPath(keepAwakeStatus, "supported", false));
+        var secureDesktopLabel = !secureDesktopInstalled
+            ? "Not installed"
+            : (secureDesktopReachable === true ? "Ready" : (secureDesktopReachable === false ? "Installed, not responding" : "Installed"));
+        var lockScreenMarkup = "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Locked screen</h3>"
+            + (secureDesktopSupported
+                ? "<div class=\"ayu-note ayu-note-" + (secureDesktopInstalled && secureDesktopReachable !== false ? "green" : "amber") + "\"><strong>" + escapeHtml(secureDesktopInstalled ? "Lock screen helper: " + secureDesktopLabel + "." : "Unlock this computer remotely.") + "</strong><p style=\"margin:6px 0 0;\">" + escapeHtml(secureDesktopInstalled
+                    ? "While Windows is locked or showing a UAC prompt, AutoYou sends the screen and your taps and typing through the AutoYou Secure Desktop Helper service, so you can type your password from your phone or another computer. Ctrl+Alt+Del from the keyboard toolbar is sent as the real Windows sign-in key."
+                    : "Windows keeps the lock screen and UAC prompts on a protected screen that normal apps can't see or type into. Install the AutoYou Secure Desktop Helper (a small Windows service, like TeamViewer's) so paired devices can see that screen and type your password. Installing shows a Windows admin prompt on this computer, so do it while you are at it.") + "</p></div>"
+                    + renderStatusRows([
+                        { label: "Lock screen helper", value: secureDesktopLabel },
+                        { label: "Screen right now", value: secureDesktopLocked === true ? "Locked" : (secureDesktopLocked === false ? "Unlocked" : "Unknown") }
+                    ])
+                    + "<div class=\"ayu-inline-actions\">" + button(secureDesktopInstalled ? "Reinstall lock screen helper" : "Install lock screen helper", "secure-desktop-install", secureDesktopInstalled ? "secondary" : "primary", "shield", "sm") + button("Check helper", "secure-desktop-check", "ghost", "refresh", "sm") + "</div>"
+                : "<div class=\"ayu-note ayu-note-blue\">On macOS, give AutoYou Accessibility and Screen Recording permission in System Settings > Privacy & Security so the lock screen can be seen and typed into. On any computer, the option below stops it locking itself in the first place.</div>")
+            + field("Keep this computer awake", select("videoCall.remote_desktop.keep_awake", [
+                { value: "off", label: "Off - follow this computer's sleep and lock settings" },
+                { value: "in_use", label: "While the screen is shared or controlled" },
+                { value: "always", label: "Always, while AutoYou Server is running" }
+            ], keepAwakeSupported ? "" : "disabled"), keepAwakeSupported
+                ? "Stops the display from sleeping and resets the idle timer, so this computer doesn't lock itself for inactivity. It can't unlock a computer that is already locked. Status: " + (getByPath(keepAwakeStatus, "active", false) ? "keeping awake now." : "not active right now.")
+                : "Not available on this host.");
         var remoteSettingsMarkup = remoteDesktopNudge
             + "<div class=\"ayu-note ayu-note-blue\">Screen sharing, Remote Desktop control, and game mode are controlled in Permissions.</div>"
             + field("Camera / file placement", select("videoCall.composite.layout", [
@@ -9636,6 +9665,7 @@
                 { label: "Native control", value: remoteControlEnabled ? "Ready" : (remoteControlConfigured ? (remoteControlAvailable ? "Save to enable" : "Unavailable") : "View only") },
                 { label: "Screen stream ready", value: yesNo(remoteTrackAvailable) }
             ])
+            + lockScreenMarkup
             + "<div class=\"ayu-inline-actions\">" + button("Save system settings", "save-video-call", "primary", "save") + button("Open Permissions", "nav:permissions", "ghost", "shield", "sm") + (remoteAgentInstalled ? button("Open optional web console", "nav:agents", "ghost", "agents", "sm") : "") + "</div>";
         var capabilityMarkup = capabilityError + renderStatusRows([
             { label: "Video enabled", value: yesNo(getByPath(videoCaps, "enabled", false)) },
@@ -12209,6 +12239,20 @@
             await ensureOperationsData(true);
             await ensureMediaDeviceData(false);
             await ensureSpeechData(true);
+            return;
+        }
+        if (action === "secure-desktop-install") {
+            var installResponse = await postJson("/api/webrtc/remote-desktop/secure-desktop/install", {});
+            setNotice("success", (installResponse && installResponse.detail) || "Approve the Windows prompt on this computer to finish installing.");
+            return;
+        }
+        if (action === "secure-desktop-check") {
+            var checkResponse = await postJson("/api/webrtc/remote-desktop/secure-desktop/status", {});
+            await ensureOperationsData(true);
+            var checkStatus = (checkResponse && checkResponse.status) || {};
+            setNotice(checkStatus.reachable ? "success" : "error", checkStatus.reachable
+                ? "The lock screen helper is running."
+                : (checkStatus.installed ? "The lock screen helper is installed but not responding. Restart the AutoYouSecureDesktop service." : "The lock screen helper is not installed."));
             return;
         }
         if (action === "video-file-play" || action === "video-file-restart") {

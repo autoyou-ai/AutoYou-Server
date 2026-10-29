@@ -59,3 +59,12 @@ release gates. They require the relevant operator's own credentials and
 approvals. This repository does not supply signing identities or store access.
 The strict release gate takes the operator's external review file through
 `AUTOYOU_RELEASE_CHECKLIST`; keep that private input outside this repository.
+
+## Remote Desktop on the lock screen
+
+AutoYou needs **Accessibility** (input) and **Screen Recording** (capture)
+permission in System Settings > Privacy & Security for Remote Desktop to work,
+including at the lock screen of a signed-in user. To stop the Mac locking
+itself during a session, choose **Keep this computer awake** in
+**Video & Calls > Remote Desktop**; it holds a `caffeinate` assertion and
+resets the idle timer while Remote Desktop is in use (or always).

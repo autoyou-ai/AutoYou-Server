@@ -539,6 +539,10 @@ class WebRTCManager:
 
     async def apply_video_call_settings(self, *, force_audio_rewire: bool = False) -> None:
         cfg = _runtime.STATE.config or {}
+        try:
+            _runtime._apply_remote_desktop_keep_awake_config(cfg=cfg)
+        except Exception as exc:
+            _runtime.LOGGER.debug("Could not apply Remote Desktop keep-awake setting: %s", exc)
         self.server_microphone_sharing_enabled = bool(
             _runtime._get_video_call_config(cfg=cfg).get("server_microphone_sharing_enabled", True))
         video_enabled = _runtime._get_video_call_enabled(cfg=cfg)
@@ -4292,11 +4296,18 @@ class WebRTCManager:
       control_id = str(lease.get("control_id") or "")
       await self._probe_remote_desktop_input_backend(refresh=True)
       await self._release_remote_desktop_control_locked(session_id, control_id)
+      reason = "The server host stopped accepting remote input."
+      try:
+        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
+
+        reason = await _runtime.asyncio.to_thread(secure_desktop_unavailable_hint) or reason
+      except Exception:
+        pass
       await self._send_remote_desktop_control_status(
         session_id,
         control_id=control_id,
         active=False,
-        reason="The server host stopped accepting remote input.",
+        reason=reason,
       )
 
     async def _handle_remote_desktop_input(

@@ -1117,6 +1117,10 @@ async def _initialize_services_on_startup() -> None:
 
         # Apply Google API configuration from config to environment variables
         runtime._apply_google_api_config_to_env()
+        try:
+            runtime._apply_remote_desktop_keep_awake_config(cfg=runtime.STATE.config or {})
+        except Exception as e:
+            runtime.LOGGER.debug(f"Could not apply Remote Desktop keep-awake setting: {e}")
         if str(runtime.os.getenv("AI_PROVIDER", "") or "").strip().lower() == "ollama_gateway":
             await runtime.asyncio.to_thread(runtime._ensure_local_ollama_runtime_ready)
 

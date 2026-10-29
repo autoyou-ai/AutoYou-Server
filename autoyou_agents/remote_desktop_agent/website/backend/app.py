@@ -19,6 +19,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import asyncio
 import logging
 import platform
+import sys
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -78,7 +79,15 @@ KEY_MAP = REMOTE_DESKTOP_KEY_MAP
 
 
 def _control_backend():
-    pyautogui = _lazy_import_pyautogui()
+    # While Windows is locked (or showing UAC) input must go through the
+    # secure desktop helper; elsewhere this is plain pyautogui.
+    from shared.remote_desktop_keyboard import load_remote_input_backend, note_remote_desktop_activity
+
+    note_remote_desktop_activity()
+    if sys.platform == "win32":
+        pyautogui = load_remote_input_backend()
+    else:
+        pyautogui = _lazy_import_pyautogui()
     # Remote control intentionally maps to screen edges, so the PyAutoGUI
     # corner failsafe would make legitimate client input crash.
     pyautogui.FAILSAFE = False
@@ -253,10 +262,41 @@ def _log_imagegrab_fallback_once(reason: str) -> None:
     logger.info("Remote Desktop stream using ImageGrab fallback after %s.", reason)
 
 
+def _capture_secure_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image.Image]:
+    """Lock screen / UAC frame from the Windows secure desktop helper, cropped to bounds."""
+    if sys.platform != "win32":
+        return None
+    try:
+        from shared.windows_secure_desktop import capture_secure_desktop_image_if_needed
+
+        image = capture_secure_desktop_image_if_needed(0)
+        if image is None:
+            return None
+        virtual = _get_mss_virtual_bounds_sync() or {"left": 0, "top": 0}
+        left = int(bounds["left"]) - int(virtual.get("left") or 0)
+        top = int(bounds["top"]) - int(virtual.get("top") or 0)
+        box = (
+            max(0, left),
+            max(0, top),
+            min(image.width, left + int(bounds["width"])),
+            min(image.height, top + int(bounds["height"])),
+        )
+        if box[2] - box[0] < 2 or box[3] - box[1] < 2:
+            return image
+        return image.crop(box)
+    except Exception as exc:
+        logger.debug("Secure desktop capture unavailable: %s", exc)
+        return None
+
+
 def _capture_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image.Image]:
     normalized_bounds = _normalize_capture_bounds(bounds)
     if normalized_bounds is None:
         return None
+
+    secure_image = _capture_secure_desktop_image_sync(normalized_bounds)
+    if secure_image is not None:
+        return secure_image
 
     mss_image: Optional[Image.Image] = None
     try:

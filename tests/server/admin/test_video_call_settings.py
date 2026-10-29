@@ -2845,3 +2845,31 @@ def test_admin_ui_greys_out_webcam_option_when_no_webcam_is_detected():
 
     stylesheet = (repo_root / "assets" / "admin-ui.css").read_text(encoding="utf-8")
     assert ".ayu-checkbox:has(input:disabled)" in stylesheet
+
+
+def test_admin_config_patch_persists_remote_desktop_keep_awake():
+    cfg, touched, _theme = server._apply_admin_ui_config_patch(
+        server._default_config(),
+        {"video_call": {"remote_desktop": {"keep_awake": "always"}}},
+    )
+
+    assert "video_call" in touched
+    assert cfg["video_call"]["remote_desktop"]["keep_awake"] == "always"
+    assert server._normalize_video_call_config(cfg["video_call"])["remote_desktop"]["keep_awake"] == "always"
+
+    cfg, _touched, _theme = server._apply_admin_ui_config_patch(
+        cfg,
+        {"video_call": {"remote_desktop": {"keep_awake": "nonsense"}}},
+    )
+    assert cfg["video_call"]["remote_desktop"]["keep_awake"] == "off"
+    assert server._default_config()["video_call"]["remote_desktop"]["keep_awake"] == "off"
+
+
+def test_apply_keep_awake_config_configures_controller(monkeypatch):
+    seen = []
+    monkeypatch.setattr(server.REMOTE_DESKTOP_KEEP_AWAKE, "configure", lambda mode: seen.append(mode))
+    cfg = server._default_config()
+    cfg["video_call"]["remote_desktop"]["keep_awake"] = "in_use"
+
+    assert server._apply_remote_desktop_keep_awake_config(cfg=cfg) == "in_use"
+    assert seen == ["in_use"]

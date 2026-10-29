@@ -506,6 +506,36 @@ def register_routes(
                     if hasattr(maybe_close, "__await__"):
                         await maybe_close
 
+    @admin_app.post("/api/webrtc/remote-desktop/secure-desktop/status")
+    async def admin_secure_desktop_status(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        from shared.windows_secure_desktop import secure_desktop_status
+
+        status = await server.asyncio.to_thread(secure_desktop_status, probe=True)
+        return {"success": True, "status": status}
+
+    @admin_app.post("/api/webrtc/remote-desktop/secure-desktop/install")
+    async def admin_install_secure_desktop_helper(request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error:
+            return auth_error
+        from shared.windows_secure_desktop import IS_WINDOWS, request_elevated_install
+
+        if not IS_WINDOWS:
+            return JSONResponse(
+                status_code=409,
+                content={"success": False, "error": "The secure desktop helper is only needed on Windows."},
+            )
+        try:
+            result = await server.asyncio.to_thread(request_elevated_install)
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(exc)})
+        if not result.get("ok"):
+            return JSONResponse(status_code=409, content={"success": False, "error": result.get("error")})
+        return {"success": True, "detail": result.get("detail")}
+
     @admin_app.post("/api/webrtc/video-file/play")
     async def admin_play_video_file(request: Request):
         auth_error = server._require_webrtc_playback_auth_json(request)
