@@ -39,6 +39,7 @@ GUIDED_PERMISSION_DEFAULTS = {
     "share_computer_audio": False,
     "share_webcam": False,
     "desktop_control": False,
+    "game_mode": False,
 }
 
 PAIR_CODE_MODE_AUTHENTICATOR = "authenticator"
@@ -61,9 +62,11 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "backup_agent": "Backup Agent",
     "assistant_agent": "Assistant Agent",
     "browser_agent": "Browser Agent",
+    "build_prompt_agent": "Prompt Builder",
     "claude_cli_agent": "Claude CLI Agent",
     "claude_desktop_agent": "Claude Desktop Agent",
     "cli_agent": "CLI Agent",
+    "client_browser_control_agent": "Client Browser Control Agent",
     "codex_desktop_agent": "Codex Desktop Agent",
     "coding_agent": "Coding Agent",
     "pi_agent": "Pi Agent",
@@ -72,10 +75,13 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "education_agent": "Education Agent",
     "earnings_agent": "Earnings Agent",
     "files_agent": "Files Agent",
+    "game_agent": "Game Studio",
     "fine_tuning_agent": "Fine Tuning Agent",
     "hermes_agent": "Hermes Agent",
     "hosting_agent": "Hosting Agent",
     "internet_agent": "Internet Agent",
+    "location_agent": "Location Agent",
+    "mac_security_agent": "macOS Security Agent",
     "media_generation_agent": "Media Generation Agent",
     "memory_agent": "Memory Agent",
     "model_picker_agent": "Model Picker Agent",
@@ -84,6 +90,8 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "openclaw_agent": "OpenClaw Agent",
     "page_agent": "Page Agent",
     "persona_agent": "Persona Agent",
+    "prompts_agent": "Prompts Agent",
+    "proxy_agent": "Proxy Agent",
     "remote_desktop_agent": "Remote Desktop Agent",
     "skills_agent": "Skills Agent",
     "tasks_agent": "Tasks Agent",
@@ -101,14 +109,33 @@ def _model_picker_available() -> bool:
 
 AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "admin_agent": ("core", "security"),
+    "ads_watching_agent": ("commerce_review",),
+    "antigravity_agent": ("workbench", "coding"),
+    "assistant_agent": ("assistant_mode", "speech"),
+    "build_prompt_agent": ("workbench", "coding"),
+    "claude_cli_agent": ("workbench", "coding"),
+    "claude_desktop_agent": ("workbench", "coding"),
+    "client_browser_control_agent": ("agent_websites", "desktop_automation"),
+    "donation_agent": ("commerce_review",),
+    "earnings_agent": ("commerce_review",),
+    "education_agent": ("learning", "video_calls"),
+    "fine_tuning_agent": ("ai_runtime", "workbench"),
+    "game_agent": ("games", "creator"),
+    "hosting_agent": ("agent_websites", "commerce_review"),
+    "location_agent": ("background_connection",),
+    "mac_security_agent": ("security",),
+    "pi_agent": ("workbench", "coding"),
+    "prompts_agent": ("workbench", "productivity"),
+    "proxy_agent": ("agent_websites", "api_integrations"),
+    "remote_desktop_agent": ("desktop_automation", "video_calls"),
+    "tv_agent": ("media_center", "video_calls"),
     "agent_builder_agent": ("agents", "workbench"),
-    "audio_agent": ("speech", "video_calls"),
+    "audio_agent": ("audio_player", "speech", "video_calls"),
     "backup_agent": ("api_integrations", "productivity"),
     "browser_agent": ("agent_websites", "api_integrations"),
     "cli_agent": ("workbench", "api_integrations"),
-    "antigravity_agent": ("workbench", "agent_websites"),
-    "codex_desktop_agent": ("workbench",),
-    "coding_agent": ("workbench",),
+    "codex_desktop_agent": ("workbench", "coding"),
+    "coding_agent": ("workbench", "coding"),
     "data_collector_agent": ("messaging", "agent_websites"),
     "files_agent": ("api_integrations", "creator"),
     "hermes_agent": ("ai_gateway", "agents"),
@@ -125,7 +152,7 @@ AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "tasks_agent": ("core", "productivity"),
     "voice_training_agent": ("speech", "creator"),
     "website_agent": ("agent_websites", "creator"),
-    "win_security_agent": ("security", "agent_websites"),
+    "win_security_agent": ("security",),
 }
 
 FEATURE_CATALOG: Sequence[Dict[str, Any]] = (
@@ -276,6 +303,8 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
             {"id": "genai", "label": "GenAI Studio", "description": "Generate media with separately configured models. Downloads and provider setup may be needed."},
             {"id": "desktop_automation", "label": "Desktop Automation", "description": "Optional desktop tools. Screen sharing and remote control require separate permission."},
             {"id": "learning", "label": "Learning", "description": "Use the local education workspace for study and practice."},
+            {"id": "assistant_mode", "label": "Hands-free assistant", "description": "Answer only after your own wake word, on calls and connected devices. You record and train the word in Chat & History."},
+            {"id": "games", "label": "Games", "description": "Build and play games on connected devices. Streaming a game from this computer is a separate permission."},
             {"id": "file_library", "label": "Files", "description": "Let agents work with local files you choose to make available."},
             {"id": "messaging", "label": "Messaging", "description": "Telegram Bot, Telegram User, Signal, WhatsApp, and fallback partner setup."},
             {"id": "video_calls", "label": "Video and calls", "description": "Calls, playback, audio devices, and media upload."},
@@ -286,6 +315,7 @@ DECISION_TREE: Sequence[Dict[str, Any]] = (
             {"id": "agent_websites", "label": "Agent websites", "description": "Websites & Browser, browser routes, advertised websites, and agent UIs."},
             {"id": "api_integrations", "label": "Connect tools", "description": "Cloud push, scheduler, files, browser automation, and webhooks."},
             {"id": "creator", "label": "Create media and sites", "description": "Media generation, website work, audio, and voice training."},
+            {"id": "coding", "label": "Coding helpers", "description": "Coding, Pi, terminal, and Claude CLI agents that read files, change code, and run commands."},
             {"id": "commerce_review", "label": "Money helpers", "description": "Donation, hosting, earnings, and finance helpers stay off unless you choose them."},
         ),
     },
@@ -713,6 +743,8 @@ def _normalize_answers(answers: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         merged["permissions"] = {**GUIDED_PERMISSION_DEFAULTS, **permissions}
         if "desktop_automation" not in intents:
             merged["permissions"]["desktop_control"] = False
+        if "games" not in intents:
+            merged["permissions"]["game_mode"] = False
         if "incognito" in intents:
             for key in ("save_conversations", "local_memory", "record_audio_calls", "record_video_calls"):
                 merged["permissions"][key] = False
@@ -759,6 +791,12 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
         add("media_generation_agent")
     if "learning" in intents:
         add("education_agent")
+    if "assistant_mode" in intents:
+        add("assistant_agent")
+    if "games" in intents:
+        add("game_agent")
+    if "coding" in intents:
+        add("coding_agent", "pi_agent", "cli_agent", "claude_cli_agent", "skills_agent")
     if "file_library" in intents:
         add("files_agent")
     if "desktop_automation" in intents and answers.get("permissions", {}).get("desktop_control", False):
@@ -876,8 +914,12 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
             audio_sources.append("microphone")
         if permissions["share_computer_audio"]:
             audio_sources.append("speaker_loopback")
+        # Game mode streams this computer's screen and sound to players and takes
+        # their game controls, so it needs screen sending and Remote Desktop input.
+        game_mode = bool(permissions["game_mode"]) and "games" in intents
+        desktop_control = bool(permissions["desktop_control"]) and "desktop_automation" in intents
         outbound_sources = []
-        if permissions["share_screen"]:
+        if permissions["share_screen"] or game_mode:
             outbound_sources.append("remote_desktop")
         if permissions["share_webcam"]:
             outbound_sources.append("camera")
@@ -892,10 +934,10 @@ def _make_config_patches(answers: Mapping[str, Any]) -> Dict[str, Dict[str, Any]
             "record_audio_only_calls": permissions["record_audio_calls"],
             "silent_recording_enabled": "safety_recording" in intents and "incognito" not in intents,
             "remote_desktop": {
-                "enabled": permissions["share_screen"] or permissions["desktop_control"],
-                "send_screen": permissions["share_screen"],
-                "control_enabled": permissions["desktop_control"] and "desktop_automation" in intents,
-                "game_enabled": False,
+                "enabled": permissions["share_screen"] or permissions["desktop_control"] or game_mode,
+                "send_screen": permissions["share_screen"] or game_mode,
+                "control_enabled": desktop_control or game_mode,
+                "game_enabled": game_mode,
             },
         })
         safe_patch["speech"] = {"voice_training": {"capture_enabled": False}}
@@ -953,9 +995,9 @@ def compile_setup_recipe(
     restart_required: List[Dict[str, Any]] = []
 
     permissions = normalized.get("permissions", {})
-    if isinstance(permissions, Mapping) and any(permissions.get(key) for key in ("record_audio_calls", "record_video_calls", "desktop_control")):
+    if isinstance(permissions, Mapping) and any(permissions.get(key) for key in ("record_audio_calls", "record_video_calls", "desktop_control", "game_mode")):
         risk_level = _highest_risk(risk_level, "medium")
-        warnings.append(_warning("warning", "Capture and control are explicit choices", "Selected call recording writes files to this computer. Desktop control allows tools to act on this computer. Confirm participants know about recording and review allowed tools."))
+        warnings.append(_warning("warning", "Capture and control are explicit choices", "Selected call recording writes files to this computer. Desktop control allows tools to act on this computer. Game mode streams this screen and sound to players and accepts their game controls. Confirm participants know about recording and review allowed tools."))
     if permissions and network_scope in {"loopback", "telegram", "cloud_pair"} and str((config or {}).get("server", {}).get("bind_host", "127.0.0.1")) not in {"127.0.0.1", "localhost"}:
         restart_required.append({"id": "restore_loopback", "label": "Restart AutoYou to restore this-computer-only binding", "command_examples": ("AUTOYOU_BIND_HOST=127.0.0.1", "--host 127.0.0.1"), "applies_after_restart": True})
 
@@ -1150,6 +1192,29 @@ def compile_setup_recipe(
                 "description": "Allow a paired phone to save background microphone audio as WAV files on this server. There is no call screen, no server audio reply, no transcription, and no AI processing.",
             }
         )
+    if "assistant_mode" in intents:
+        sections.append(
+            {
+                "id": "assistant_mode",
+                "label": "Hands-free assistant",
+                "status": "manual_review",
+                "description": "Install the Assistant agent. Record and train your wake word in Chat & History, then turn Assistant mode on. Nothing is transcribed before the wake word.",
+            }
+        )
+    if "games" in intents:
+        game_mode = bool((normalized.get("permissions") or {}).get("game_mode"))
+        sections.append(
+            {
+                "id": "games",
+                "label": "Games",
+                "status": "config_ready",
+                "description": (
+                    "Install Game Studio and turn on game mode, which streams this computer's screen and sound to players and accepts their game controls."
+                    if game_mode else
+                    "Install Game Studio for offline games on connected devices. Game mode, which streams games from this computer, stays off."
+                ),
+            }
+        )
     if "incognito" in intents:
         sections.append(
             {
@@ -1176,6 +1241,12 @@ def compile_setup_recipe(
         next_actions.append("Open Video & Calls to verify Safety Recording is enabled and choose the storage folder.")
     if "incognito" in intents:
         next_actions.append("Open AI & Models and Video & Calls to confirm message storage, client-name history, and recording options are off.")
+    if "assistant_mode" in intents:
+        next_actions.append("Open Chat & History, choose Assistant mode, then record, train, and test your wake word before turning it on.")
+    if "games" in intents:
+        next_actions.append("Open Interact while people play to see each player's controller inputs and live camera video.")
+    if "coding" in intents:
+        next_actions.append("Coding agents can read and change files and run commands. Review them in Agents and uninstall the ones you do not use.")
     if "speech" in intents:
         next_actions.append("Open Speech to select the local STT model and TTS provider.")
     if "agent_websites" in intents:

@@ -2534,6 +2534,73 @@ class WebRTCManager:
             "inputs": list(self.screen_inputs)[-50:],
         }
 
+    def _video_sink_groups(self) -> List[Tuple[Any, List[str]]]:
+        """Each inbound camera sink once, with every session id it publishes frames under."""
+        groups: Dict[int, Tuple[Any, List[str]]] = {}
+        for session_id, sink in list(self.video_sinks.items()):
+            if sink is None:
+                continue
+            _sink, aliases = groups.setdefault(id(sink), (sink, []))
+            aliases.append(str(session_id))
+        for sink, aliases in groups.values():
+            for alias in sorted(str(value) for value in (getattr(sink, "session_ids", None) or ())):
+                if alias and alias not in aliases:
+                    aliases.append(alias)
+        return list(groups.values())
+
+    @staticmethod
+    def _latest_frame_for_aliases(registry: Any, aliases: Iterable[str]) -> Any:
+        latest = None
+        for alias in aliases:
+            try:
+                frame = registry.latest(session_id=alias)
+            except Exception:
+                frame = None
+            if frame is not None and (latest is None or frame.sequence > latest.sequence):
+                latest = frame
+        return latest
+
+    def live_video_feeds(self) -> List[Dict[str, Any]]:
+        """Latest camera frame details for each connected device that is sending video.
+
+        Only metadata: the admin page asks for a picture separately and only when
+        its sequence changed, so idle feeds cost nothing.
+        """
+        registry = getattr(_runtime, "VIDEO_FRAME_REGISTRY", None)
+        if registry is None:
+            return []
+        feeds: List[Dict[str, Any]] = []
+        for _sink, aliases in self._video_sink_groups():
+            frame = self._latest_frame_for_aliases(registry, aliases)
+            if frame is None:
+                continue
+            feed_id = aliases[0]
+            try:
+                name = self.client_display_name_snapshot(feed_id).get("client_display_name")
+            except Exception:
+                name = ""
+            feeds.append({
+                "id": feed_id,
+                "name": str(name or "Connected device")[:64],
+                "sequence": int(frame.sequence),
+                "width": int(frame.width),
+                "height": int(frame.height),
+                "timestamp_ms": int(frame.timestamp_ms),
+            })
+        feeds.sort(key=lambda feed: (feed["name"].lower(), feed["id"]))
+        return feeds
+
+    def live_video_frame(self, feed_id: str) -> Any:
+        """The newest JPEG frame for one feed, looked up by any of its session ids."""
+        registry = getattr(_runtime, "VIDEO_FRAME_REGISTRY", None)
+        wanted = str(feed_id or "").strip()
+        if registry is None or not wanted:
+            return None
+        for _sink, aliases in self._video_sink_groups():
+            if wanted in aliases:
+                return self._latest_frame_for_aliases(registry, aliases)
+        return None
+
     def configure_screen_listen(self, mode: str, selected: Iterable[str] = ()) -> Dict[str, Any]:
         allowed = {str(session["id"]) for session in self.screen_sessions.values()
                    if session["mode"] == "interactive" and

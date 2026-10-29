@@ -19,6 +19,22 @@ The **Agents** screen (`renderAgentScreen()` in `assets/admin-ui.js`) is where y
 | **Available to install** | Sub-agents and drafts that are ready to install. |
 | **Create New Agent** | Set up a new agent draft that you can then open in Agent Studio. |
 
+### Finding an agent
+
+The agent library has a search box and category filters. Each built-in agent is listed by name in one category (`AGENT_CATEGORIES` in `assets/admin-ui.js`), so a word in a package name cannot put it in the wrong group. An agent added later, such as a workspace draft, is grouped by keywords in its name and description. Categories with no agents are hidden.
+
+| Category | Agents |
+| :--- | :--- |
+| **Everyday** | Notes, Tasks, Notify, Memory, Persona, Page, Files, Backup, Location |
+| **Assistant & control** | Assistant (wake word), Remote Desktop, Client Browser Control |
+| **Media & games** | Audio, TV, Media Generation, Voice Training, Game Studio |
+| **Learning** | Education |
+| **Web & publishing** | Internet, Browser, Proxy, Hosting |
+| **AI models & training** | Model Picker, Hermes, OpenClaw, Fine-Tuning, Data Collector |
+| **Development** | Coding, Pi, CLI, Claude CLI, Codex Desktop, Claude Desktop, Antigravity, Agent Builder, Website, Skills, Prompt Builder, Prompts |
+| **System & security** | Admin, Windows Security, macOS Security |
+| **Support & credits** | Donation, Earnings, Ads Watching |
+
 ---
 
 ## Installing and managing agents

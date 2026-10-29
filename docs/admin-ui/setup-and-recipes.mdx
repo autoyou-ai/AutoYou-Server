@@ -7,11 +7,13 @@ description: "The Setup & Boot screen of the admin console: the first-run wizard
 
 The **Setup & Boot** screen (`renderSetupScreen()` in `assets/admin-ui.js`) combines first-time setup and bootstrap in a six-step flow: Make it yours, Choose uses, Responses, Privacy, Connect, and Review & boot. A live draft summary shows the selected response provider, connection, storage, capture and recording choices. Nothing in the draft is applied until you save the plan.
 
-**Easy & private** is the recommended starting point. It uses local Ollama, keeps the server on `127.0.0.1`, disables public links, and offers personal Telegram access through approved sender IDs. Notes, tasks, audio, the Media Center and learning are included. Recording, microphone, webcam, screen sharing, desktop control and coding agents are separate choices. It is a useful starting point, not a claim of absolute safety.
+**Easy & private** is the recommended starting point. It uses local Ollama, keeps the server on `127.0.0.1`, disables public links, and offers personal Telegram access through approved sender IDs. Notes, tasks, audio, the Media Center and learning are included. Recording, microphone, webcam, screen sharing, desktop control, game mode and coding agents are separate choices. It is a useful starting point, not a claim of absolute safety.
 
 Telegram onboarding explains BotFather, the bot token, discovery and sender-ID approval in order. Other connection choices include this computer only, trusted LAN, optional paid Cloud Pair and guarded temporary public links. Telegram transports bot messages through its servers. Local history and memory storage do not prevent hosted models, hosted speech or enabled online tools from receiving data.
 
-**Boot & maintenance** owns startup choices, service controls, software updates and the manual Bootstrap Guide. **Detailed setup** keeps the existing full configuration checklist and recipes available. Overview puts identity and appearance first; specialist pages use section navigation, while Live View keeps transport diagnostics in expandable sections.
+**Choose uses** includes **Hands-free assistant** (installs the Assistant agent; you record and train the wake word in Chat & History afterwards), **Games** (Game Studio; streaming a game from this computer is the separate **Allow game mode?** permission, which also turns on screen sending and Remote Desktop input) and, under More use cases, **Coding helpers** (Coding, Pi, CLI and Claude CLI agents).
+
+**Boot & maintenance** owns startup choices (AutoYou AI, Websites & Browser, and keeping this computer awake), service controls, a list of what else reconnects or stays on after a restart (public link, hosted website link, Assistant mode, game mode, Remote Desktop input) with a link to each owner screen, software updates and the manual Bootstrap Guide. **Detailed setup** keeps the existing full configuration checklist and recipes available. Overview puts identity and appearance first; specialist pages use section navigation, while Live View keeps transport diagnostics in expandable sections.
 
 ---
 
@@ -37,7 +39,7 @@ Both routes take an `answers` object. By default, apply makes only the recipe's 
 | **Choose a starting plan** (`profile_id`) | Easy & private, Private starter, Phone companion, Trusted LAN, Temporary public link, Creator and calls, Background phone link, Safety recording, Incognito local, Agent workbench, Integration operator, Custom mix |
 | **Network scope** (`network_scope`) | This computer only, Private access through Telegram, Cloud Pair, Trusted local network, Temporary public link |
 | **AI path** (`ai_path`) | Ollama local, Ollama native gateway, Cloud model provider, Gemini, Hermes Agent, OpenClaw, Odysseus, Help me pick |
-| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Media Center; Audio Player; GenAI Studio; Desktop Automation; Learning; Files; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Money helpers |
+| **What should be ready first?** (`intents`) | Notes, tasks, alerts; Media Center; Audio Player; GenAI Studio; Desktop Automation; Learning; Hands-free assistant; Games; Files; Messaging; Video and calls; Background phone link; Safety recording; Incognito; Speech; Agent websites; Connect tools; Create media and sites; Coding helpers; Money helpers |
 
 An explicitly submitted `intents` list replaces the preset's selections, including an empty list. `permissions` contains boolean choices for `save_conversations`, `local_memory`, `record_audio_calls`, `record_video_calls`, `share_screen`, `share_microphone`, `share_computer_audio`, `share_webcam` and `desktop_control`. Incognito overrides history, memory and call recording. Desktop control also requires the Desktop Automation use case.
 

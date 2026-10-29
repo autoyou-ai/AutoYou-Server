@@ -443,3 +443,41 @@ def test_connectivity_guide_calls_out_lan_and_public_proxy_exposure():
     assert "agent websites" in body
     assert "public link publishes" in body
     assert "admin page" in body
+
+
+def test_assistant_games_and_coding_are_their_own_setup_choices():
+    intents = {option["id"] for question in build_setup_profile_payload()["decision_tree"]
+               if question["id"] == "intents" for option in question["options"]}
+    assert {"assistant_mode", "games", "coding"} <= intents
+
+    recipe = compile_setup_recipe({"profile_id": "custom_mix", "intents": ["assistant_mode", "games", "coding"], "permissions": {}})
+    enabled = set(recipe["agent_choices"]["enable"])
+    assert {"assistant_agent", "game_agent", "coding_agent", "pi_agent", "cli_agent", "claude_cli_agent"} <= enabled
+    assert {"assistant_mode", "games"} <= {section["id"] for section in recipe["sections"]}
+    # Easy & private still leaves coding agents out.
+    assert not set(compile_setup_recipe({"profile_id": "easy_private"})["agent_choices"]["enable"]) & {"coding_agent", "pi_agent"}
+
+
+def test_game_mode_is_an_explicit_permission_that_needs_the_games_choice():
+    import server
+
+    without_games = compile_setup_recipe({"profile_id": "custom_mix", "intents": [], "permissions": {"game_mode": True}})
+    assert without_games["answers"]["permissions"]["game_mode"] is False
+    assert without_games["safe_config_patch"]["video_call"]["remote_desktop"]["game_enabled"] is False
+
+    recipe = compile_setup_recipe({"profile_id": "custom_mix", "intents": ["games"], "permissions": {"game_mode": True}})
+    remote = recipe["safe_config_patch"]["video_call"]["remote_desktop"]
+    assert remote == {"enabled": True, "send_screen": True, "control_enabled": True, "game_enabled": True}
+    assert "Game mode streams" in " ".join(warning["body"] for warning in recipe["warnings"])
+    config, _, _ = server._apply_admin_ui_config_patch({}, recipe["safe_config_patch"])
+    video = server._normalize_video_call_config(config["video_call"])
+    assert "remote_desktop" in video["outbound_sources"]
+    assert video["remote_desktop"]["game_enabled"] is True and video["remote_desktop"]["control_enabled"] is True
+
+
+def test_every_built_in_agent_has_a_label_and_a_setup_role():
+    from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
+
+    built_in = set(DEFAULT_AGENT_INSTALL_STATES)
+    assert sorted(built_in - set(setup_profiles.KNOWN_AGENT_LABELS)) == []
+    assert sorted(built_in - set(setup_profiles.AGENT_ROLE_MAP)) == []

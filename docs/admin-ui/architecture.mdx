@@ -68,6 +68,8 @@ User actions are dispatched by an action name carried on the clicked control, an
 
 The console does not poll on one global timer. Features that need live data start their own timers while they are active: download jobs for models and speech models, the pairing dialogs, Telegram sender approvals, the Interact screen, and the authenticator code display.
 
+A poll re-renders only when its data changed, and waits while someone is typing, holding a pointer down, or has text selected. When it does re-render, `renderApp()` keeps the reader in place: the page scroll, inner scroll boxes such as the menu and chat lists, and keyboard focus on the button, link, or tab that had it. The page height is held until new images have loaded, so a picture that starts at zero height cannot pull the page up. Interact stops polling while its tab is hidden.
+
 ---
 
 ## Safety in the browser

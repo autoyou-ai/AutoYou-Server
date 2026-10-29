@@ -80,7 +80,32 @@ def register_routes(
         refused = _local_listen_access(request)
         if refused is not None:
             return refused
-        return server._json_response_no_store(server.WEBRTC.screen_listen_snapshot())
+        snapshot = dict(server.WEBRTC.screen_listen_snapshot())
+        feeds = getattr(server.WEBRTC, "live_video_feeds", None)
+        snapshot["video_feeds"] = feeds() if callable(feeds) else []
+        return server._json_response_no_store(snapshot)
+
+    @admin_app.get("/api/screen-listen/frame.jpg")
+    async def screen_listen_frame(request: Request, id: str = "", after: int = 0):
+        """The newest camera picture from one connected device, for Interact.
+
+        The frame is the JPEG the call already made, served as is. ``after`` lets
+        the page skip a download when it already shows that picture.
+        """
+        refused = _local_listen_access(request)
+        if refused is not None:
+            return refused
+        lookup = getattr(server.WEBRTC, "live_video_frame", None)
+        frame = lookup(id[:128]) if callable(lookup) else None
+        if frame is None:
+            return JSONResponse(status_code=404, content={"error": "No video from this device"}, headers={"Cache-Control": "no-store"})
+        headers = {
+            "Cache-Control": "no-store, max-age=0",
+            "X-AutoYou-Frame-Sequence": str(int(frame.sequence)),
+        }
+        if after and int(frame.sequence) <= int(after):
+            return Response(status_code=204, headers=headers)
+        return Response(content=frame.jpeg_bytes, media_type="image/jpeg", headers=headers)
 
     @admin_app.post("/api/screen-listen")
     async def screen_listen_configure(request: Request):

@@ -29,6 +29,7 @@ Four screens in `assets/admin-ui.js` cover what is connected to the server and h
 
 - **Listen** plays the unmuted phone microphones of connected participants on this computer's speakers, without AI processing. It is controlled with `GET /api/screen-listen` and `POST /api/screen-listen`, and it is available only from the computer itself.
 - **Inputs** lists recent controller and direction presses from participants.
+- **Live video** shows camera video from connected devices, the same frames the Education agent shows. It is off until you turn it on, and the choice is remembered in this browser. Each device gets a small picture updated once a second (or twice, if chosen). Selecting a picture enlarges it and updates it four times a second while the others slow down. Pictures that are scrolled out of view, a hidden tab, and leaving Interact all pause it. The list of devices arrives with `GET /api/screen-listen` (`video_feeds`, frame details only). `GET /api/screen-listen/frame.jpg?id=…&after=…` returns the JPEG the call already made, or `204` when the device has not sent a newer frame, so an idle camera costs no download and the server does no extra encoding. Like Listen, it is available only from the computer itself, and nothing is recorded.
 
 ---
 

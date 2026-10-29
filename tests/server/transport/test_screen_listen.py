@@ -168,3 +168,59 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     assert manager.screen_listen_snapshot()["participants"] == []
     manager._handle_inbound_voice_audio_chunk(transport_id, ai, b"\3\0")
     assert len(heard) == 1
+
+
+def _synthetic_camera(manager, monkeypatch):
+    """One phone camera sink registered under two session ids, like a real call."""
+    registry = video_call_manager.LatestVideoFrameRegistry(max_age_seconds=30)
+    monkeypatch.setattr(server, "VIDEO_FRAME_REGISTRY", registry)
+    sink = SimpleNamespace(session_ids={"synthetic-transport", "synthetic-call"})
+    manager.video_sinks["synthetic-call"] = sink
+    manager.video_sinks["synthetic-transport"] = sink
+    monkeypatch.setattr(manager, "client_display_name_snapshot", lambda sid: {"client_display_name": "Student"})
+    return registry
+
+
+def test_interact_lists_each_camera_once_with_frame_details_only(monkeypatch):
+    manager = server.WebRTCManager()
+    assert manager.live_video_feeds() == []
+    registry = _synthetic_camera(manager, monkeypatch)
+    assert manager.live_video_feeds() == [], "a camera with no frame yet is not listed"
+    for session_id in ("synthetic-call", "synthetic-transport"):
+        registry.publish_jpeg(session_id=session_id, jpeg_bytes=b"\xff\xd8synthetic", width=640, height=480)
+    feeds = manager.live_video_feeds()
+    assert len(feeds) == 1
+    assert feeds[0]["id"] == "synthetic-call" and feeds[0]["name"] == "Student"
+    assert (feeds[0]["width"], feeds[0]["height"]) == (640, 480)
+    assert "jpeg_bytes" not in feeds[0], "the list carries no pictures"
+    newest = manager.live_video_frame("synthetic-transport")
+    assert newest.sequence == feeds[0]["sequence"] and newest.jpeg_bytes == b"\xff\xd8synthetic"
+    assert manager.live_video_frame("synthetic-other") is None
+
+
+def test_interact_frame_route_serves_the_call_frame_on_this_computer_only(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    registry = _synthetic_camera(server.WEBRTC, monkeypatch)
+    monkeypatch.setattr(server, "_require_api_login", lambda request: None)
+    monkeypatch.setattr(server, "_is_loopback_client_host", lambda host: True)
+    try:
+        frame = registry.publish_jpeg(session_id="synthetic-call", jpeg_bytes=b"\xff\xd8synthetic", width=320, height=240)
+        with TestClient(server.admin_app, base_url="http://127.0.0.1:8001") as client:
+            listing = client.get("/api/screen-listen").json()
+            assert [feed["id"] for feed in listing["video_feeds"]] == ["synthetic-call"]
+            picture = client.get("/api/screen-listen/frame.jpg", params={"id": "synthetic-call"})
+            assert picture.status_code == 200 and picture.content == b"\xff\xd8synthetic"
+            assert picture.headers["content-type"] == "image/jpeg"
+            assert picture.headers["cache-control"].startswith("no-store")
+            assert picture.headers["x-autoyou-frame-sequence"] == str(frame.sequence)
+            # The page already shows this picture, so nothing is sent again.
+            unchanged = client.get("/api/screen-listen/frame.jpg", params={"id": "synthetic-call", "after": frame.sequence})
+            assert unchanged.status_code == 204 and unchanged.content == b""
+            assert client.get("/api/screen-listen/frame.jpg", params={"id": "synthetic-missing"}).status_code == 404
+            remote = client.get("/api/screen-listen/frame.jpg", params={"id": "synthetic-call"},
+                                headers={"X-AutoYou-Tunnel-Client-Ip": "203.0.113.9"})
+            assert remote.status_code == 403
+    finally:
+        server.WEBRTC.video_sinks.pop("synthetic-call", None)
+        server.WEBRTC.video_sinks.pop("synthetic-transport", None)

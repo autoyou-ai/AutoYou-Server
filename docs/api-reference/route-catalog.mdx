@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 322, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 323, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -65,6 +65,7 @@ Configuration, password and security settings, authenticator setup, the chat and
 | Admin app | `GET` | `/api/scheduler/notification-queue` | Scheduler notification queue status |
 | Admin app | `GET` | `/api/screen-listen` | Screen listen status |
 | Admin app | `POST` | `/api/screen-listen` | Screen listen configure |
+| Admin app | `GET` | `/api/screen-listen/frame.jpg` | The newest camera picture from one connected device, for Interact. |
 | Admin app | `POST` | `/api/setup/recipe/apply` | Admin setup recipe apply |
 | Admin app | `POST` | `/api/setup/recipe/preview` | Admin setup recipe preview |
 | Admin app | `GET` | `/api/status` | Simple status check for Admin Server. |

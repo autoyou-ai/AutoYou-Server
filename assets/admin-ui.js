@@ -233,7 +233,7 @@
         softwareUpdate: { payload: null, loading: false, checked: false },
         profileImage: { key: "", dataUrl: "", loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
-        interact: { payload: null, selected: [], dirty: false, loading: false, saving: false, error: "" },
+        interact: { payload: null, feeds: [], selected: [], dirty: false, loading: false, saving: false, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
         selectedAgentName: "",
         sections: {},
@@ -489,7 +489,8 @@
     function hasActiveAdminControl() {
         // A pressed pointer counts too: a background render between mousedown and
         // mouseup replaces the button under the cursor and the click is lost.
-        return renderState.composing || renderState.pointerDown || Boolean(activeAdminControl());
+        // Selected text counts as well: a refresh would clear what the reader is copying.
+        return renderState.composing || renderState.pointerDown || Boolean(activeAdminControl()) || hasActiveTextSelection();
     }
 
     function attrSelector(name, value) {
@@ -630,27 +631,115 @@
         }
     }
 
-    // Tab strips are rebuilt by every applied render, which would drop keyboard
-    // focus to the page body. Keep it on the tab that was just activated.
+    // Every applied render rebuilds the page, which would drop keyboard focus to
+    // the page body. Keep it on the tab, button, link or disclosure that had it.
     function captureActiveTab() {
         var element = document.activeElement;
-        if (!root || !element || !root.contains(element) || !element.classList || !element.classList.contains("ayu-tab")) {
+        if (!root || !element || !root.contains(element) || isAdminFormControl(element)) {
             return null;
         }
-        return { screen: state.screen, action: element.getAttribute("data-action") || "" };
+        var shell = root.firstElementChild;
+        var snapshot = { screen: (shell && shell.getAttribute("data-screen")) || state.screen, action: element.getAttribute("data-action") || "", href: "", disclosure: "", index: 0 };
+        if (!snapshot.action && element.tagName === "A") snapshot.href = element.getAttribute("href") || "";
+        if (!snapshot.action && element.tagName === "SUMMARY" && element.parentElement) snapshot.disclosure = element.parentElement.getAttribute("data-disclosure") || "";
+        var selector = focusTargetSelector(snapshot);
+        if (!selector) return null;
+        snapshot.index = Math.max(0, Array.prototype.indexOf.call(root.querySelectorAll(selector), element));
+        return snapshot;
+    }
+
+    function focusTargetSelector(snapshot) {
+        if (snapshot.action) return attrSelector("data-action", snapshot.action);
+        if (snapshot.href) return "a" + attrSelector("href", snapshot.href);
+        if (snapshot.disclosure) return "details" + attrSelector("data-disclosure", snapshot.disclosure) + " > summary";
+        return "";
     }
 
     function restoreActiveTab(snapshot) {
-        if (!snapshot || !snapshot.action || snapshot.screen !== state.screen || !root) {
+        if (!snapshot || snapshot.screen !== state.screen || !root) {
             return;
         }
-        var element = root.querySelector(".ayu-tab" + attrSelector("data-action", snapshot.action));
-        if (!element) {
+        var current = document.activeElement;
+        if (current && current !== document.body && root.contains(current)) {
+            return;
+        }
+        var matches = root.querySelectorAll(focusTargetSelector(snapshot));
+        var element = matches[snapshot.index] || matches[0];
+        if (!element || element.disabled) {
             return;
         }
         try {
             element.focus({ preventScroll: true });
         } catch (error) {}
+    }
+
+    // Inner scroll boxes are rebuilt with the page and would jump back to their
+    // top. Images and videos also start at zero height until they load, which
+    // shortens the page for a moment and pulls the reader up. Remember where
+    // everything was, hold the page height until media settles, and put it back.
+    var KEEP_SCROLL_SELECTOR = ".ayu-nav, .ayu-route-list, .ayu-guide-toc, .ayu-chat-history-list, .ayu-chat-transcript, .ayu-chat-files-body, pre, [data-keep-scroll]";
+    var scrollHoldTimer = null;
+
+    function keepScrollKeys() {
+        var counts = {};
+        return Array.from(root.querySelectorAll(KEEP_SCROLL_SELECTOR)).map(function (element) {
+            var panel = element.closest("[data-panel-title]");
+            var base = (element.getAttribute("data-keep-scroll") || element.className || element.tagName) + "|" + (panel ? panel.getAttribute("data-panel-title") : "");
+            counts[base] = (counts[base] || 0) + 1;
+            return { key: base + "|" + counts[base], element: element };
+        });
+    }
+
+    function captureScrollState() {
+        if (!root || !root.firstElementChild) return null;
+        var page = document.scrollingElement || document.documentElement;
+        var boxes = {};
+        keepScrollKeys().forEach(function (entry) {
+            if (entry.element.scrollTop || entry.element.scrollLeft) boxes[entry.key] = [entry.element.scrollTop, entry.element.scrollLeft];
+        });
+        // The screen on display, not state.screen: a navigation has already changed that.
+        return { screen: root.firstElementChild.getAttribute("data-screen") || "", top: page ? page.scrollTop : 0, left: page ? page.scrollLeft : 0, height: root.offsetHeight, boxes: boxes };
+    }
+
+    function releaseScrollHold() {
+        if (scrollHoldTimer) { window.clearTimeout(scrollHoldTimer); scrollHoldTimer = null; }
+        if (root) root.style.minHeight = "";
+    }
+
+    function restoreScrollState(snapshot) {
+        if (!snapshot || snapshot.screen !== state.screen || !root) return;
+        if (snapshot.top > 0 && snapshot.height) {
+            root.style.minHeight = snapshot.height + "px";
+            var pending = Array.from(root.querySelectorAll("img, video")).filter(function (media) {
+                return media.tagName === "IMG" ? !media.complete : media.readyState < 1;
+            });
+            var settle = function () {
+                pending = pending.filter(function (media) { return media.tagName === "IMG" ? !media.complete : media.readyState < 1; });
+                if (!pending.length) releaseScrollHold();
+            };
+            pending.forEach(function (media) {
+                media.addEventListener(media.tagName === "IMG" ? "load" : "loadedmetadata", settle, { once: true });
+                media.addEventListener("error", settle, { once: true });
+            });
+            if (scrollHoldTimer) window.clearTimeout(scrollHoldTimer);
+            scrollHoldTimer = window.setTimeout(releaseScrollHold, pending.length ? 1500 : 0);
+        }
+        var page = document.scrollingElement || document.documentElement;
+        if (page && (Math.abs(page.scrollTop - snapshot.top) > 1 || Math.abs(page.scrollLeft - snapshot.left) > 1)) {
+            page.scrollTop = snapshot.top;
+            page.scrollLeft = snapshot.left;
+        }
+        keepScrollKeys().forEach(function (entry) {
+            var saved = snapshot.boxes[entry.key];
+            if (!saved) return;
+            entry.element.scrollTop = saved[0];
+            entry.element.scrollLeft = saved[1];
+        });
+    }
+
+    function hasActiveTextSelection() {
+        var selection = window.getSelection ? window.getSelection() : null;
+        return Boolean(selection && !selection.isCollapsed && selection.rangeCount && root && root.contains(selection.anchorNode));
     }
 
     function flushPassiveRender() {
@@ -1439,7 +1528,7 @@
 
     function isImmediateAction(action) {
         if (action && (/^(setup-guided-step:|setup-permission:|setup-mode:|settings-section:|agent-category:)/.test(action))) return true;
-        return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-select:") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
+        return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-select:") === 0 || action.indexOf("interact-video") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
     }
 
     async function withPendingAction(action, callback) {
@@ -3214,7 +3303,9 @@
             setByPath(state.forms, "aiProvider.provider", { local_ollama: "ollama", native_ollama_gateway: "ollama_gateway", cloud_provider: "litellm", google_gemini: "google", hermes: "hermes", openclaw: "openclaw", odysseus: "odysseus", pi: "pi", custom: "custom", model_picker: "ollama" }[optionId] || "ollama");
         }
         if (questionId === "intents" && answers.permissions) {
-            if (answers.intents.indexOf("desktop_automation") === -1) answers.permissions.desktop_control = false;
+            Object.keys(GUIDED_PERMISSION_INTENTS).forEach(function (key) {
+                if (guidedPermissionBlocked(key, answers)) answers.permissions[key] = false;
+            });
             if (answers.intents.indexOf("incognito") !== -1) {
                 ["save_conversations", "local_memory", "record_audio_calls", "record_video_calls"].forEach(function (key) { answers.permissions[key] = false; });
             }
@@ -5981,7 +6072,7 @@
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace' + (chat.mobileHistoryOpen ? ' history-open' : '') + '"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
-            + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
+            + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript" data-keep-scroll="chat-transcript:' + escapeHtml(String(chat.userId || "") + "/" + String(chat.sessionId || "")) + '">'
             + assistantPanelMarkup() + renderChatCallCard() + '<div class="ayu-chat-message-list" data-role="chat-messages" aria-live="polite" aria-relevant="additions">' + messageMarkup + '</div>' + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + assistantListeningMarkup() + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-turn-controls" data-role="chat-turn-controls">' + chatTurnControlsMarkup() + '</div><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><button type="button" data-action="assistant-listen-toggle" class="ayu-chat-assistant-tool' + (assistantState().listen ? " active" : "") + '" aria-label="Listen for the wake word" title="' + (assistantState().listen ? "Stop listening for the wake word" : "Listen for the wake word in this browser") + '">◎</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" aria-label="Send message" title="Send message">↑</button></div></div></section></div></div>';
     }
 
@@ -6508,11 +6599,20 @@
     }
 
     async function refreshInteract() {
-        if (state.screen !== "interact" || state.interact.loading || state.interact.saving) return;
+        // Nothing to show while the tab is in the background; resume when it returns.
+        if (state.screen !== "interact" || state.interact.loading || state.interact.saving || document.hidden) return;
         state.interact.loading = true;
         try {
             var payload = await requestJson("/api/screen-listen");
             if (state.screen !== "interact") return;
+            // Camera frame numbers change many times a second. Keep them out of the
+            // page markup so new pictures never rebuild the page.
+            var feeds = Array.isArray(payload.video_feeds) ? payload.video_feeds : [];
+            delete payload.video_feeds;
+            var feedList = function (list) { return list.map(function (feed) { return feed.id + "\u0000" + feed.name; }).join("\u0001"); };
+            var feedsChanged = feedList(feeds) !== feedList(state.interact.feeds || []);
+            state.interact.feeds = feeds;
+            interactVideoSync();
             var changed = JSON.stringify(payload) !== JSON.stringify(state.interact.payload);
             state.interact.payload = payload;
             if (!state.interact.dirty) state.interact.selected = (payload.selected || []).slice();
@@ -6520,7 +6620,7 @@
             var recent = (payload.participants || []).some(function (person) {
                 return Date.now() / 1000 - Number(person.last_input_at || 0) < 3;
             });
-            if (changed || recent) renderApp({ passive: true });
+            if (changed || recent || feedsChanged) renderApp({ passive: true });
         } catch (error) {
             if (state.screen === "interact" && state.interact.error !== error.message) {
                 state.interact.error = error.message;
@@ -6531,12 +6631,186 @@
         }
     }
 
+    // Live camera video in Interact, ported from the Education agent's viewer
+    // and kept light: off until asked for, one small picture per device at a
+    // low rate, a faster rate only for the one picture you enlarge, nothing
+    // while a picture is scrolled out of view or the tab is hidden, and no
+    // download when a device has not sent a new frame. Pictures are the JPEG
+    // frames the call already produces, so the server does no extra encoding.
+    var INTERACT_VIDEO_RATES = { low: 1000, normal: 500 };
+    var INTERACT_VIDEO_FOCUS_MS = 250;
+    var interactVideo = { node: null, tiles: {}, timer: null, observer: null, on: null, rate: "low", focus: "" };
+
+    function interactVideoPrefs() {
+        if (interactVideo.on === null) {
+            interactVideo.on = false;
+            try {
+                var saved = JSON.parse(localStorage.getItem("autoyou.interact.video") || "{}");
+                interactVideo.on = Boolean(saved.on);
+                if (INTERACT_VIDEO_RATES[saved.rate]) interactVideo.rate = saved.rate;
+            } catch (error) {}
+        }
+        return interactVideo;
+    }
+
+    function saveInteractVideoPrefs() {
+        try { localStorage.setItem("autoyou.interact.video", JSON.stringify({ on: interactVideo.on, rate: interactVideo.rate })); } catch (error) {}
+    }
+
+    function interactVideoActive() {
+        return state.screen === "interact" && interactVideoPrefs().on;
+    }
+
+    function interactVideoNode() {
+        if (interactVideo.node) return interactVideo.node;
+        var node = document.createElement("div");
+        node.className = "ayu-interact-video-grid";
+        node.setAttribute("data-keep-scroll", "interact-video");
+        node.addEventListener("click", function (event) {
+            var tile = event.target.closest && event.target.closest("[data-feed-id]");
+            if (!tile || !node.contains(tile)) return;
+            var id = tile.getAttribute("data-feed-id");
+            interactVideo.focus = interactVideo.focus === id ? "" : id;
+            interactVideoSync();
+        });
+        node.addEventListener("keydown", function (event) {
+            if ((event.key === "Enter" || event.key === " ") && event.target.hasAttribute && event.target.hasAttribute("data-feed-id")) {
+                event.preventDefault();
+                event.target.click();
+            }
+        });
+        if (typeof IntersectionObserver === "function") {
+            interactVideo.observer = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    var tile = interactVideo.tiles[entry.target.getAttribute("data-feed-id")];
+                    if (tile) tile.visible = entry.isIntersecting;
+                });
+            });
+        }
+        interactVideo.node = node;
+        return node;
+    }
+
+    function interactVideoTile(feed) {
+        var element = document.createElement("figure");
+        element.className = "ayu-interact-video-tile";
+        element.setAttribute("data-feed-id", feed.id);
+        element.setAttribute("tabindex", "0");
+        element.setAttribute("role", "button");
+        var image = document.createElement("img");
+        image.alt = "";
+        image.decoding = "async";
+        var caption = document.createElement("figcaption");
+        element.appendChild(image);
+        element.appendChild(caption);
+        var tile = { id: feed.id, element: element, image: image, caption: caption, url: "", sequence: 0, lastAt: 0, busy: false, visible: typeof IntersectionObserver !== "function" };
+        image.addEventListener("load", function () {
+            if (tile.previousUrl) { URL.revokeObjectURL(tile.previousUrl); tile.previousUrl = ""; }
+            element.classList.add("has-frame");
+        });
+        if (interactVideo.observer) interactVideo.observer.observe(element);
+        return tile;
+    }
+
+    function releaseInteractVideoTile(tile) {
+        if (interactVideo.observer) interactVideo.observer.unobserve(tile.element);
+        [tile.url, tile.previousUrl].forEach(function (url) { if (url) URL.revokeObjectURL(url); });
+        tile.element.remove();
+    }
+
+    // Matches the tiles to the devices sending video, then mounts the grid in
+    // the panel slot. The grid lives outside the page markup, so refreshes of
+    // the rest of the page do not reload the pictures.
+    function interactVideoSync() {
+        var active = interactVideoActive();
+        var node = interactVideoNode();
+        var feeds = active ? (state.interact.feeds || []) : [];
+        var wanted = {};
+        feeds.forEach(function (feed) { wanted[feed.id] = feed; });
+        Object.keys(interactVideo.tiles).forEach(function (id) {
+            if (!wanted[id]) { releaseInteractVideoTile(interactVideo.tiles[id]); delete interactVideo.tiles[id]; }
+        });
+        if (interactVideo.focus && !wanted[interactVideo.focus]) interactVideo.focus = "";
+        feeds.forEach(function (feed) {
+            var tile = interactVideo.tiles[feed.id] || (interactVideo.tiles[feed.id] = interactVideoTile(feed));
+            var focused = interactVideo.focus === feed.id;
+            tile.element.classList.toggle("focused", focused);
+            tile.element.setAttribute("aria-pressed", String(focused));
+            tile.element.setAttribute("aria-label", (focused ? "Shrink " : "Enlarge ") + feed.name + " camera video");
+            tile.image.alt = feed.name + " camera video";
+            var detail = feed.name + (feed.width && feed.height ? " · " + feed.width + "×" + feed.height : "");
+            if (tile.caption.textContent !== detail) tile.caption.textContent = detail;
+            node.appendChild(tile.element);
+        });
+        var empty = node.querySelector(".ayu-empty");
+        if (!feeds.length && !empty) {
+            empty = document.createElement("div");
+            empty.className = "ayu-empty";
+            empty.textContent = "No connected device is sending camera video.";
+            node.appendChild(empty);
+        } else if (feeds.length && empty) {
+            empty.remove();
+        }
+        var slot = root && root.querySelector("[data-interact-video-slot]");
+        if (active && slot && node.parentElement !== slot) slot.appendChild(node);
+        if (active && !interactVideo.timer) {
+            interactVideo.timer = window.setInterval(interactVideoTick, INTERACT_VIDEO_FOCUS_MS);
+        } else if (!active) {
+            stopInteractVideo();
+        }
+    }
+
+    function stopInteractVideo() {
+        if (interactVideo.timer) { window.clearInterval(interactVideo.timer); interactVideo.timer = null; }
+        Object.keys(interactVideo.tiles).forEach(function (id) { releaseInteractVideoTile(interactVideo.tiles[id]); });
+        interactVideo.tiles = {};
+        if (interactVideo.node) interactVideo.node.remove();
+    }
+
+    function interactVideoTick() {
+        if (!interactVideoActive()) { stopInteractVideo(); return; }
+        if (document.hidden) return;
+        var now = Date.now();
+        Object.keys(interactVideo.tiles).forEach(function (id) {
+            var tile = interactVideo.tiles[id];
+            var every = interactVideo.focus === id ? INTERACT_VIDEO_FOCUS_MS : INTERACT_VIDEO_RATES[interactVideo.rate];
+            // While one picture is enlarged, the small ones slow down further.
+            if (interactVideo.focus && interactVideo.focus !== id) every = Math.max(every, 2000);
+            if (tile.busy || !tile.visible || now - tile.lastAt < every) return;
+            tile.busy = true;
+            tile.lastAt = now;
+            fetch("/api/screen-listen/frame.jpg?id=" + encodeURIComponent(id) + "&after=" + tile.sequence, { cache: "no-store" }).then(function (response) {
+                if (response.status !== 200) return null;
+                tile.sequence = Number(response.headers.get("X-AutoYou-Frame-Sequence")) || tile.sequence;
+                return response.blob();
+            }).then(function (blob) {
+                if (!blob || interactVideo.tiles[id] !== tile) return;
+                if (tile.previousUrl) URL.revokeObjectURL(tile.previousUrl);
+                tile.previousUrl = tile.url;
+                tile.url = URL.createObjectURL(blob);
+                tile.image.src = tile.url;
+            }).catch(function () {}).then(function () { tile.busy = false; });
+        });
+    }
+
+    function renderInteractVideoPanel() {
+        var prefs = interactVideoPrefs();
+        var count = (state.interact.feeds || []).length;
+        var controls = "<div class=\"ayu-inline-actions\">" + button(prefs.on ? "Hide live video" : "Show live video", "interact-video-toggle", prefs.on ? "secondary" : "primary", prefs.on ? "eyeOff" : "camera", "sm", "aria-pressed=\"" + String(prefs.on) + "\"")
+            + (prefs.on ? button("1 picture a second", "interact-video-rate:low", prefs.rate === "low" ? "primary" : "ghost", "", "sm", "aria-pressed=\"" + String(prefs.rate === "low") + "\"") + button("2 pictures a second", "interact-video-rate:normal", prefs.rate === "normal" ? "primary" : "ghost", "", "sm", "aria-pressed=\"" + String(prefs.rate === "normal") + "\"") : "") + "</div>";
+        var body = controls + (prefs.on
+            ? "<p class=\"ayu-hint\">Select a picture to enlarge it and update it four times a second. Video pauses while it is out of view or this tab is hidden. Nothing is recorded here.</p><div data-interact-video-slot></div>"
+            : "<p class=\"ayu-hint\">" + escapeHtml(count ? count + (count === 1 ? " device is" : " devices are") + " sending camera video. " : "") + "Shows camera video from connected devices on this computer only. It stays off until you turn it on.</p>");
+        return panel("Live video", "Camera video from connected devices", body);
+    }
+
     function setScreen(screen, options) {
         options = options || {};
         if (options.section && (SETTINGS_SECTIONS[screen] || []).some(function (group) { return group[0] === options.section; })) {
             state.sections[screen] = options.section;
         }
         if (interactTimer) { clearInterval(interactTimer); interactTimer = null; }
+        if (screen !== "interact") stopInteractVideo();
         if (state.screen === "guides" && screen !== "guides" && bootSweepState.running) {
             stopBootSweep({ report: false }).catch(function () {});
         }
@@ -6779,6 +7053,7 @@
         if (agent.coding_status && agent.coding_status !== "idle") { html += badge(prettyLabel(agent.coding_status), statusTone(agent.coding_status)); }
         if (agent.frontend_status && agent.frontend_status !== "idle") { html += badge(prettyLabel(agent.frontend_status), statusTone(agent.frontend_status)); }
         if (agent.frontend_route_mode) { html += badge(agentWebsiteRouteModeLabel(agent.frontend_route_mode), agent.frontend_route_mode === "direct_forward" ? "purple" : "blue"); }
+        if (agent.agent_name) { html += badge(agentCategoryLabel(agent), "gray"); }
         return html;
     }
 
@@ -7703,13 +7978,22 @@
         ["share_microphone", "Allow the computer microphone?", "Lets calls capture and share sound from this computer's microphone.", "mic"],
         ["share_computer_audio", "Allow computer sound?", "Lets calls share speaker output. Audio playback itself does not need this.", "wave"],
         ["share_webcam", "Allow the webcam?", "Lets paired clients receive this computer's camera during a session.", "camera"],
-        ["desktop_control", "Allow desktop control?", "Allows the Desktop Automation agent and paired remote controls to act on this computer. Enable the use case first.", "agents"]
+        ["desktop_control", "Allow desktop control?", "Allows the Desktop Automation agent and paired remote controls to act on this computer. Enable the use case first.", "agents"],
+        ["game_mode", "Allow game mode?", "Streams this computer's screen and sound to players and accepts their game controls. Turns on screen sending and Remote Desktop input. Choose Games first.", "play"]
     ];
+
+    // A permission that only applies once its use case is chosen.
+    var GUIDED_PERMISSION_INTENTS = { desktop_control: "desktop_automation", game_mode: "games" };
+
+    function guidedPermissionBlocked(key, answers) {
+        var intent = GUIDED_PERMISSION_INTENTS[key];
+        return Boolean(intent) && (answers || currentSetupAnswers()).intents.indexOf(intent) === -1;
+    }
 
     function guidedPermissions() {
         var answers = currentSetupAnswers();
         if (!answers.permissions) {
-            answers.permissions = { save_conversations: true, local_memory: true, record_audio_calls: false, record_video_calls: false, share_screen: false, share_microphone: false, share_computer_audio: false, share_webcam: false, desktop_control: false };
+            answers.permissions = { save_conversations: true, local_memory: true, record_audio_calls: false, record_video_calls: false, share_screen: false, share_microphone: false, share_computer_audio: false, share_webcam: false, desktop_control: false, game_mode: false };
         }
         return answers.permissions;
     }
@@ -7728,7 +8012,7 @@
         var capture = [permissions.share_screen ? "Screen" : "", permissions.share_microphone ? "Microphone" : "", permissions.share_webcam ? "Webcam" : ""].filter(Boolean);
         var ai = (setupQuestion("ai_path").options || []).find(function (option) { return option.id === answers.ai_path; });
         var network = (setupQuestion("network_scope").options || []).find(function (option) { return option.id === answers.network_scope; });
-        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Setup summary</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are not part of the recommended preset. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
+        return "<aside class=\"ayu-plan-summary\" aria-label=\"Your setup plan\"><div class=\"ayu-kicker\">Your setup plan</div><h3>Setup summary</h3><p>Choices here are a draft until you apply them.</p><dl><div><dt>Responses</dt><dd>" + escapeHtml(ai ? ai.label : prettyLabel(answers.ai_path)) + "</dd></div><div><dt>Connection</dt><dd>" + escapeHtml(network ? network.label : prettyLabel(answers.network_scope)) + "</dd></div><div><dt>Use cases</dt><dd>" + answers.intents.length + " selected</dd></div><div><dt>Conversations</dt><dd>" + (permissions.save_conversations ? "Saved locally" : "History off") + "</dd></div><div><dt>Memory</dt><dd>" + (permissions.local_memory ? "Local memory on" : "Memory agent off") + "</dd></div><div><dt>Sharing</dt><dd>" + escapeHtml(capture.length ? capture.join(", ") : "Screen, mic and camera off") + "</dd></div><div><dt>Call recording</dt><dd>" + (permissions.record_audio_calls || permissions.record_video_calls ? "Enabled by your choice" : "Off") + "</dd></div><div><dt>Hands-free</dt><dd>" + (answers.intents.indexOf("assistant_mode") !== -1 ? "Wake word after setup" : "Off") + "</dd></div><div><dt>Game mode</dt><dd>" + (permissions.game_mode && answers.intents.indexOf("games") !== -1 ? "Streams to players" : "Off") + "</dd></div></dl><div class=\"ayu-plan-footnote\">Coding agents are installed only when you choose Coding helpers. Existing installed agents stay installed unless this plan explicitly disables them.</div></aside>";
     }
 
     function renderGuidedTelegram() {
@@ -7867,13 +8151,13 @@
             return "<div class=\"ayu-grid-2\">" + field("Give your server a name", input("overview.serverName", { placeholder: "My AutoYou" }), "The name your connected devices will see.") + field("Choose your appearance", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }])) + "</div><div class=\"ayu-inline-actions\">" + button("Save name & theme", "save-overview", "secondary", "save", "sm") + "</div><div class=\"ayu-preset-card\"><div class=\"ayu-preset-title\">" + icon("shield") + "<span><small>Recommended combination</small><strong>Easy & private</strong></span>" + badge("Local first", "green") + "</div><p>Local AI, personal Telegram access, notes, tasks, audio, media and learning. No coding agents, public link, recording or computer capture is enabled by this preset.</p><div class=\"ayu-inline-actions\">" + button(answers.profile_id === getByPath(preset, "id", "") ? "Preset selected" : "Use this combination", "setup-profile:" + getByPath(preset, "id", "private_starter"), "primary", "check") + button("Customize uses", "setup-guided-step:1", "secondary", "agents") + "</div></div>" + disclosure("setup-presets", "More starting points", "Phone companion, creator, home network, incognito and other existing recipes.", renderSetupProfileCards(answers)) + "<div class=\"ayu-note ayu-note-blue\">You can complete setup on this computer without an AutoYou account. A free account for signed updates and optional paid Cloud Pair lives in Boot & maintenance.</div>";
         }
         if (step.id === "uses") {
-            var icons = { productivity: "check", messaging: "msg", media_center: "video", audio_player: "wave", genai: "bolt", desktop_automation: "page", learning: "book", file_library: "file", video_calls: "video", speech: "mic", background_connection: "wifi", agent_websites: "page", creator: "camera", api_integrations: "key", safety_recording: "mic", incognito: "eyeOff", commerce_review: "shield" };
-            var commonIds = ["productivity", "messaging", "media_center", "audio_player", "genai", "desktop_automation", "learning", "file_library", "video_calls", "speech"];
+            var icons = { assistant_mode: "mic", games: "play", coding: "edit", productivity: "check", messaging: "msg", media_center: "video", audio_player: "wave", genai: "bolt", desktop_automation: "page", learning: "book", file_library: "file", video_calls: "video", speech: "mic", background_connection: "wifi", agent_websites: "page", creator: "camera", api_integrations: "key", safety_recording: "mic", incognito: "eyeOff", commerce_review: "shield" };
+            var commonIds = ["productivity", "assistant_mode", "messaging", "media_center", "audio_player", "games", "genai", "desktop_automation", "learning", "file_library", "video_calls", "speech"];
             var usecaseOptions = setupQuestion("intents").options || [];
             var tile = function (option) {
                 return guidedChoice("intents", option, answers.intents.indexOf(option.id) !== -1, icons[option.id]);
             };
-            return "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) !== -1; }).map(tile).join("") + "</div>" + disclosure("setup-extra-uses", "More use cases", "Background phone link, websites, integrations, incognito and other specialist choices.", "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) === -1; }).map(tile).join("") + "</div>") + "<div class=\"ayu-note\">GenAI may need model downloads. Desktop Automation needs separate desktop-control permission. Selecting a feature does not approve recording or capture.</div>";
+            return "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) !== -1; }).map(tile).join("") + "</div>" + disclosure("setup-extra-uses", "More use cases", "Coding helpers, background phone link, websites, integrations, incognito and other specialist choices.", "<div class=\"ayu-usecase-grid\">" + usecaseOptions.filter(function (option) { return commonIds.indexOf(option.id) === -1; }).map(tile).join("") + "</div>") + "<div class=\"ayu-note\">GenAI may need model downloads. Desktop Automation and game mode each need their own permission on the next steps. A hands-free assistant needs your wake word, which you record after setup. Selecting a feature does not approve recording or capture.</div>";
         }
         if (step.id === "responses") {
             var options = setupQuestion("ai_path").options || [];
@@ -7886,7 +8170,7 @@
         if (step.id === "privacy") {
             var permissions = guidedPermissions();
             return "<div class=\"ayu-permission-questions\">" + GUIDED_PERMISSION_COPY.map(function (item) {
-                var blocked = item[0] === "desktop_control" && answers.intents.indexOf("desktop_automation") === -1;
+                var blocked = guidedPermissionBlocked(item[0], answers);
                 var incognito = answers.intents.indexOf("incognito") !== -1 && ["save_conversations", "local_memory", "record_audio_calls", "record_video_calls"].indexOf(item[0]) !== -1;
                 var enabled = Boolean(permissions[item[0]]) && !blocked && !incognito;
                 return "<button type=\"button\" role=\"switch\" aria-checked=\"" + String(enabled) + "\" class=\"ayu-permission-question\" data-action=\"setup-permission:" + item[0] + "\"" + (blocked || incognito ? " disabled" : "") + ">" + icon(item[3]) + "<span><strong>" + escapeHtml(item[1]) + "</strong><small>" + escapeHtml(incognito ? "Off while Incognito is selected." : item[2]) + "</small></span><span class=\"ayu-switch\" aria-hidden=\"true\"><span></span></span><span class=\"ayu-switch-label\">" + (enabled ? "Yes" : "No") + "</span></button>";
@@ -7904,7 +8188,48 @@
         var readiness = "<div class=\"ayu-readiness-list\">" + ready.map(function (item) { return "<div><span class=\"ayu-readiness-icon " + (item.ready ? "ready" : "") + "\">" + icon(item.ready ? "check" : "info") + "</span><span><strong>" + escapeHtml(item.label) + "</strong><small>" + escapeHtml(item.ready ? "Ready" : item.copy) + "</small></span>" + (!item.ready && item.label !== "Applied setup plan" ? button("Review", item.action, "ghost", "arrowRight", "sm") : "") + "</div>"; }).join("") + "</div>";
         var recipe = state.setup.recipe;
         var recipeMarkup = recipe ? renderSetupRecipePreview(setupProfilesPayload(), answers).replace(button("Apply safe settings", "setup-apply-recipe", "primary", "save"), "") + "<h3>Agent changes</h3><div class=\"ayu-note\"><strong>Enable:</strong> " + escapeHtml(getByPath(recipe, "agent_choices.enable", []).join(", ")) + "<br><strong>Disable:</strong> " + escapeHtml(getByPath(recipe, "agent_choices.disable", []).join(", ") || "None") + "</div>" + disclosure("setup-config-patch", "Configuration changes", "The validated configuration patch this plan saves.", "<pre class=\"ayu-note ayu-mono\">" + escapeHtml(JSON.stringify(recipe.safe_config_patch || {}, null, 2)) + "</pre>") : "<div class=\"ayu-note\">Preview your plan to see the exact settings, agent choices, network warnings and restart notes.</div>";
-        return readiness + (state.setup.progress ? "<div class=\"ayu-note ayu-note-blue\" role=\"status\">" + escapeHtml(state.setup.progress) + "</div>" : "") + (state.setup.applyError ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(state.setup.applyError) + "</div>" : "") + "<div class=\"ayu-inline-actions\">" + button("Preview my plan", "setup-preview-recipe", "secondary", "search", "", state.setup.applying ? "disabled" : "") + button(state.setup.applied ? "Apply again" : "Apply settings & agents", "setup-guided-apply", "primary", "save", "", state.setup.applying ? "disabled" : "") + button("Start services & finish", "setup-guided-boot", "green", "power", "", !ready.every(function (item) { return item.ready; }) || state.setup.applying ? "disabled" : "") + "</div>" + disclosure("setup-exact-plan", "Exact plan & network changes", "See validated settings and apply any guarded network changes separately.", recipeMarkup) + "<div class=\"ayu-note\">Applying saves configuration and updates the selected agent registry. Starting services restarts the AI runtime to load those agents. GenAI models and media libraries still need their own setup.</div>";
+        var followUps = "";
+        if (answers.intents.indexOf("assistant_mode") !== -1) {
+            followUps += "<div class=\"ayu-note ayu-note-blue\"><strong>Hands-free assistant</strong><p>After you apply the plan, record and train your wake word, test it, then turn Assistant mode on. Nothing is transcribed before the wake word.</p><div class=\"ayu-inline-actions\">" + button("Set up the wake word", "assistant-open-setup", "secondary", "mic", "sm") + button("Assistant permissions", "setup-open-screen:permissions:assistant", "ghost", "shield", "sm") + "</div></div>";
+        }
+        if (answers.intents.indexOf("games") !== -1) {
+            followUps += "<div class=\"ayu-note ayu-note-blue\"><strong>Games</strong><p>" + escapeHtml(guidedPermissions().game_mode ? "Game mode streams this computer's screen and sound to players. Interact shows what each player presses and, when you turn it on, their camera video." : "Game Studio builds offline games for connected devices. Turn on game mode in Privacy to stream a game from this computer.") + "</p><div class=\"ayu-inline-actions\">" + button("Open Interact", "setup-open-screen:interact", "ghost", "agents", "sm") + "</div></div>";
+        }
+        return readiness + followUps + (state.setup.progress ? "<div class=\"ayu-note ayu-note-blue\" role=\"status\">" + escapeHtml(state.setup.progress) + "</div>" : "") + (state.setup.applyError ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(state.setup.applyError) + "</div>" : "") + "<div class=\"ayu-inline-actions\">" + button("Preview my plan", "setup-preview-recipe", "secondary", "search", "", state.setup.applying ? "disabled" : "") + button(state.setup.applied ? "Apply again" : "Apply settings & agents", "setup-guided-apply", "primary", "save", "", state.setup.applying ? "disabled" : "") + button("Start services & finish", "setup-guided-boot", "green", "power", "", !ready.every(function (item) { return item.ready; }) || state.setup.applying ? "disabled" : "") + "</div>" + disclosure("setup-exact-plan", "Exact plan & network changes", "See validated settings and apply any guarded network changes separately.", recipeMarkup) + "<div class=\"ayu-note\">Applying saves configuration and updates the selected agent registry. Starting services restarts the AI runtime to load those agents. GenAI models and media libraries still need their own setup.</div>";
+    }
+
+    // Everything that starts or reconnects by itself when AutoYou opens, with a
+    // link to the screen that owns each setting.
+    function renderBootStartupSummary() {
+        var cfg = bootstrapConfig();
+        var assistant = assistantState().status;
+        var rows = [
+            ["Public link", getByPath(cfg, "tunnelmole.auto_start_on_boot", false) ? "Reconnects on startup" : "Starts only when you open it", "setup-open-screen:connectivity:remote", "wifi"],
+            ["Hosted website link", getByPath(state.forms, "page.websiteHosting.auto_start_on_boot", false) ? "Reconnects on startup" : "Off", "setup-open-screen:page:websites", "page"],
+            ["Hands-free assistant", assistant ? (assistant.enabled ? "On - answers after \u201c" + (assistant.wake_phrase || "the wake word") + "\u201d" : "Off") : "Set up in Chat & History", "assistant-open-setup", "mic"],
+            ["Game mode", getByPath(cfg, "video_call.remote_desktop.game_enabled", false) ? "Players can stream games from this computer" : "Off", "setup-open-screen:permissions:capture", "play"],
+            ["Remote Desktop input", getByPath(cfg, "video_call.remote_desktop.control_enabled", false) ? "Allowed for paired devices" : "Off", "setup-open-screen:permissions:capture", "agents"]
+        ];
+        return "<div class=\"ayu-list\">" + rows.map(function (row) {
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(row[0]) + "</strong><p>" + escapeHtml(row[1]) + "</p></div><div class=\"ayu-inline-actions\">" + button("Manage", row[2], "ghost", row[3], "sm") + "</div></div>";
+        }).join("") + "</div>";
+    }
+
+    function renderBootMaintenanceScreen() {
+        var startup = checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot")
+            + checkbox("page.auto_start", "Start Websites & Browser on server boot")
+            + field("Keep this computer awake", select("videoCall.remote_desktop.keep_awake", [
+                { value: "off", label: "Off - follow this computer's sleep and lock settings" },
+                { value: "in_use", label: "While the screen is shared or controlled" },
+                { value: "always", label: "Always, while AutoYou Server is running" }
+            ]), "Windows and macOS. Stops the display sleeping so remote sessions and game streams are not cut off by an idle lock.")
+            + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>What starts with AutoYou, the services running now, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>"
+            + "<div class=\"ayu-grid-2\">" + panel("Startup services", "Saved startup choices for your local services.", startup) + panel("Running now", "Start, stop or restart each local service.", renderOverviewQuickControls()) + "</div>"
+            + panel("Also starts with AutoYou", "Links, modes and helpers that reconnect or stay on after a restart. Each is changed on its own screen.", renderBootStartupSummary())
+            + renderSoftwareUpdatePanel()
+            + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow covers identity, use cases, responses, privacy, connection and startup. Use the bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt"))
+            + "</div>";
     }
 
     function renderSetupScreen() {
@@ -7915,7 +8240,7 @@
             return "<div class=\"ayu-setup-modebar\">" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "<span>Detailed setup and existing recipes</span></div>" + renderAdvancedSetupScreen();
         }
         if (state.setup.mode === "boot") {
-            return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Boot & maintenance</h1><p>Startup services, software updates, and the manual bootstrap reference.</p></div>" + button("Back to guided setup", "setup-mode:guided", "secondary", "arrowLeft") + "</div>" + panel("Startup services", "Saved startup choices for your local services.", checkbox("aiAgent.auto_start", "Start AutoYou AI on server boot") + checkbox("page.auto_start", "Start Websites & Browser on server boot") + "<div class=\"ayu-inline-actions\">" + button("Save startup choices", "setup-save-startup", "primary", "save") + "</div>" + renderOverviewQuickControls()) + renderSoftwareUpdatePanel() + disclosure("setup-manual-bootstrap", "Manual bootstrap reference", "The command-line path and troubleshooting guide for the same setup.", "<p>The guided flow above covers identity, security, models, messaging, permissions and startup. Use the existing bootstrap guide for command-line installation or recovery.</p><a class=\"ayu-link-btn ayu-btn ayu-btn-secondary\" href=\"/guides/bootstrap\" target=\"_blank\" rel=\"noopener noreferrer\">Open Bootstrap Guide</a>" + button("Open detailed setup", "setup-mode:advanced", "ghost", "bolt")) + "</div>";
+            return renderBootMaintenanceScreen();
         }
         var index = Math.max(0, Math.min(Number(state.setup.guidedStep) || 0, GUIDED_SETUP_STEPS.length - 1));
         var step = GUIDED_SETUP_STEPS[index];
@@ -8290,23 +8615,47 @@
         return panel("Desktop app control assets", "Prepare user-local control packs for the desktop apps you run on this computer.", body);
     }
 
+    // Built-in agents are listed by name so a new agent never lands in the
+    // wrong group because of a word in its package name. Agents added later
+    // (workspace drafts, private agents) fall back to keywords in their name and
+    // description.
+    var AGENT_CATEGORIES = [
+        ["everyday", "Everyday", ["notes_agent", "tasks_agent", "notify_agent", "memory_agent", "persona_agent", "page_agent", "files_agent", "backup_agent", "location_agent"], /note|task|remind|notif|memor|persona|calendar|file|backup|location|feed|bookmark/],
+        ["assistant", "Assistant & control", ["assistant_agent", "remote_desktop_agent", "client_browser_control_agent"], /assistant|wake word|hands-free|remote desktop|screen shar|mouse|keyboard|window/],
+        ["media", "Media & games", ["audio_agent", "tv_agent", "media_generation_agent", "voice_training_agent", "game_agent"], /audio|music|video|media|image|voice|tv_|game|play/],
+        ["learning", "Learning", ["education_agent"], /educat|learn|lesson|study|tutor|course/],
+        ["web", "Web & publishing", ["internet_agent", "browser_agent", "proxy_agent", "hosting_agent"], /internet|web search|browser|scrap|proxy|hosting|publish/],
+        ["ai", "AI models & training", ["model_picker_agent", "hermes_agent", "openclaw_agent", "fine_tuning_agent", "data_collector_agent"], /model|gateway|fine.?tun|dataset|training|llm/],
+        ["development", "Development", ["coding_agent", "pi_agent", "cli_agent", "claude_cli_agent", "codex_desktop_agent", "claude_desktop_agent", "antigravity_agent", "agent_builder_agent", "website_agent", "skills_agent", "build_prompt_agent", "prompts_agent"], /cod(e|ing)|cli|terminal|builder|scaffold|skill|prompt|developer|repo/],
+        ["system", "System & security", ["admin_agent", "win_security_agent", "mac_security_agent"], /admin|security|firewall|server/],
+        ["support", "Support & credits", ["donation_agent", "earnings_agent", "ads_watching_agent"], /donat|earning|credit|payout|advert/]
+    ];
+
     function agentCategoryOf(agent) {
         var name = String(agent.agent_name || "");
-        if (/coding|codex|claude|antigravity|cli_|builder|website_|skills|fine_tuning|data_collector|build_prompt/.test(name)) return "development";
-        if (/audio|media|voice|tv_|game_/.test(name)) return "media";
-        if (/desktop|browser|security_/.test(name)) return "desktop";
-        if (/education/.test(name)) return "learning";
-        if (/notes|tasks|memory|notify|persona|prompts|admin|files/.test(name)) return "everyday";
-        return "connections";
+        var listed = AGENT_CATEGORIES.find(function (category) { return category[2].indexOf(name) !== -1; });
+        if (listed) return listed[0];
+        var text = [name, agent.display_name, agent.description].join(" ").toLowerCase();
+        var matched = AGENT_CATEGORIES.find(function (category) { return category[3].test(text); });
+        return matched ? matched[0] : "everyday";
+    }
+
+    function agentCategoryLabel(agent) {
+        var id = agentCategoryOf(agent);
+        var category = AGENT_CATEGORIES.find(function (item) { return item[0] === id; });
+        return category ? category[1] : "";
     }
 
     function agentMatchesFilter(agent) {
         var query = String(state.agentQuery || "").trim().toLowerCase();
-        return (state.agentCategory === "all" || agentCategoryOf(agent) === state.agentCategory) && (!query || [agent.agent_name, agent.display_name, agent.description].join(" ").toLowerCase().indexOf(query) !== -1);
+        return (state.agentCategory === "all" || agentCategoryOf(agent) === state.agentCategory) && (!query || [agent.agent_name, agent.display_name, agent.description, agentCategoryLabel(agent)].join(" ").toLowerCase().indexOf(query) !== -1);
     }
 
     function renderAgentLibraryToolbar(agents) {
-        var categories = [["all", "All agents"], ["everyday", "Everyday"], ["media", "Media & GenAI"], ["desktop", "Desktop"], ["learning", "Learning"], ["connections", "Connections"], ["development", "Development"]];
+        // Hide empty groups, but keep the selected one so it can be turned off.
+        var categories = [["all", "All agents"]].concat(AGENT_CATEGORIES.map(function (category) { return [category[0], category[1]]; })).filter(function (category) {
+            return category[0] === "all" || category[0] === state.agentCategory || agents.some(function (agent) { return agentCategoryOf(agent) === category[0]; });
+        });
         return "<div class=\"ayu-agent-toolbar\"><label class=\"ayu-agent-search\">" + icon("search") + "<span class=\"ayu-sr-only\">Search agents by name or use</span><input type=\"search\" data-virtual-bind=\"agentQuery\" value=\"" + escapeHtml(state.agentQuery) + "\" placeholder=\"Find an agent by name or what you want to do\"></label><div class=\"ayu-filter-chips\" aria-label=\"Agent categories\">" + categories.map(function (category) {
             var count = agents.filter(function (agent) { return category[0] === "all" || agentCategoryOf(agent) === category[0]; }).length;
             return "<button type=\"button\" data-action=\"agent-category:" + category[0] + "\" class=\"ayu-filter-chip" + (state.agentCategory === category[0] ? " active" : "") + "\" aria-pressed=\"" + String(state.agentCategory === category[0]) + "\">" + category[1] + "<span>" + count + "</span></button>";
@@ -10470,7 +10819,7 @@
         var feed = inputs.slice(-30).reverse().map(function (input) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";
         }).join("");
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", "secondary") + button("All unmuted", "interact-save:all", "secondary") + button("Selected", "interact-save:selected", "primary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", "secondary") + button("All unmuted", "interact-save:all", "secondary") + button("Selected", "interact-save:selected", "primary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div>" + renderInteractVideoPanel() + "</div>";
     }
 
     function renderCurrentScreen() {
@@ -10593,6 +10942,7 @@
         renderState.passiveQueued = false;
         var activeSnapshot = captureActiveControl();
         var activeTab = captureActiveTab();
+        var scrollSnapshot = captureScrollState();
         if (!state.bootstrap) {
             renderState.markup = null;
             root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><div class=\"ayu-spinner\"></div><h1>Loading admin shell</h1><p>Fetching the live bootstrap snapshot from the server.</p></div></div>";
@@ -10641,9 +10991,11 @@
                     element.replaceWith(initials);
                 });
             });
+            if (state.screen === "interact") interactVideoSync();
+            restoreScrollState(scrollSnapshot);
             restoreActiveControl(activeSnapshot);
-        syncChatTurnControls();
-        scheduleChatViewport();
+            syncChatTurnControls();
+            scheduleChatViewport();
             restoreActiveTab(activeTab);
         }
         syncBootSweepUi();
@@ -10882,6 +11234,21 @@
             return;
         }
         if (action === "interact-refresh") { await refreshInteract(); return; }
+        if (action === "interact-video-toggle") {
+            interactVideoPrefs().on = !interactVideo.on;
+            saveInteractVideoPrefs();
+            renderApp();
+            interactVideoSync();
+            return;
+        }
+        if (action.indexOf("interact-video-rate:") === 0) {
+            var rate = action.slice("interact-video-rate:".length);
+            if (!INTERACT_VIDEO_RATES[rate]) return;
+            interactVideoPrefs().rate = rate;
+            saveInteractVideoPrefs();
+            renderApp();
+            return;
+        }
         if (action.indexOf("interact-select:") === 0) {
             var chosen = decodeURIComponent(action.slice("interact-select:".length));
             var connected = ((state.interact.payload || {}).participants || []).some(function (person) {
@@ -11258,6 +11625,7 @@
         if (action.indexOf("setup-mode:") === 0) {
             state.setup.mode = action.slice("setup-mode:".length);
             renderApp();
+            if (state.setup.mode === "boot") assistantLoadStatus(false).catch(function () {});
             return;
         }
         if (action.indexOf("setup-guided-step:") === 0) {
@@ -11284,7 +11652,7 @@
         if (action.indexOf("setup-permission:") === 0) {
             var key = action.slice("setup-permission:".length);
             if (!GUIDED_PERMISSION_COPY.some(function (item) { return item[0] === key; })) return;
-            if (key === "desktop_control" && currentSetupAnswers().intents.indexOf("desktop_automation") === -1) return;
+            if (guidedPermissionBlocked(key)) return;
             var permissions = guidedPermissions();
             permissions[key] = !permissions[key];
             state.setup.recipe = null;
@@ -11297,7 +11665,7 @@
             return;
         }
         if (action === "setup-save-startup") {
-            await patchConfig({ ai_agent: { auto_start: getByPath(state.forms, "aiAgent.auto_start", true) }, autoyou_page: { auto_start: getByPath(state.forms, "page.auto_start", true) } }, "Startup choices saved.");
+            await patchConfig({ ai_agent: { auto_start: getByPath(state.forms, "aiAgent.auto_start", true) }, autoyou_page: { auto_start: getByPath(state.forms, "page.auto_start", true) }, video_call: { remote_desktop: { keep_awake: getByPath(state.forms, "videoCall.remote_desktop.keep_awake", "off") } } }, "Startup choices saved.");
             return;
         }
         if (action === "setup-telegram-discover" || action === "setup-telegram-save-ids") {
@@ -13010,6 +13378,16 @@
             return;
         }
         flushPassiveRenderSoon();
+    });
+
+    // Interact stops polling in a background tab; catch up as soon as it is shown.
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && state.screen === "interact") refreshInteract();
+    });
+
+    // A refresh waits while text is selected; run it once the selection clears.
+    document.addEventListener("selectionchange", function () {
+        if (renderState.passiveQueued && !hasActiveTextSelection()) flushPassiveRenderSoon();
     });
 
     document.addEventListener("change", function (event) {
