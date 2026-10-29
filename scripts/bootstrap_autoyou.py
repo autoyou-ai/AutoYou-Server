@@ -955,7 +955,7 @@ def create_venv(python_executable: str) -> Path:
     return venv_python
 
 
-PACKAGING_TOOL_SPECS = ("pip>=26.1.2,<27", "setuptools>=83,<84", "wheel")
+PACKAGING_TOOL_SPECS = ("pip>=26.1.2,<27", "setuptools>=84.2.1,<85", "wheel")
 
 
 def upgrade_packaging_tools(venv_python: Path) -> None:

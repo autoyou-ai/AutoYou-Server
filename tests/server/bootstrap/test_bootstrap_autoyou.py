@@ -287,7 +287,7 @@ def test_upgrade_packaging_tools_caps_setuptools(monkeypatch):
     bootstrap.upgrade_packaging_tools(Path(sys.executable))
 
     assert "pip>=26.1.2,<27" in captured["command"]
-    assert "setuptools>=83,<84" in captured["command"]
+    assert "setuptools>=84.2.1,<85" in captured["command"]
     assert "setuptools" not in captured["command"]
     assert captured["kwargs"]["upgrade"] is True
     assert captured["kwargs"]["constraints"] == constraints
@@ -309,7 +309,7 @@ def test_upgrade_packaging_tools_falls_back_once_for_a_pip_without_reports(monke
 
     bootstrap.upgrade_packaging_tools(Path(sys.executable))
 
-    assert "setuptools>=83,<84" in captured["command"]
+    assert "setuptools>=84.2.1,<85" in captured["command"]
     assert captured["kwargs"]["check"] is False
 
 
