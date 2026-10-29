@@ -15,8 +15,8 @@
 #
 # Only what the English model imports is listed; the multilingual tokenizers,
 # Gradio demo and loudness tools are left out.
-transformers==5.12.1
-diffusers==0.38.0
+transformers==5.20.2
+diffusers==0.42.0
 safetensors==0.8.0
 conformer==0.3.2
 resemble-perth==1.0.1
@@ -24,8 +24,8 @@ s3tokenizer==0.3.0
 librosa==0.11.0
 omegaconf==2.4.0
 einops==0.8.2
-soundfile>=0.13.1
-scipy>=1.13
+soundfile>=0.14.0
+scipy>=1.18.1
 # resemble-perth 1.0.1 imports pkg_resources, which setuptools 82 removed.
 # Without it the watermarker fails to import and AutoYou refuses to clone.
 setuptools==81.0.0

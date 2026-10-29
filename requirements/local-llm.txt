@@ -1,7 +1,7 @@
 # Optional local LLM runtime integrations.
-ollama==0.6.0
+ollama==0.6.3
 # CPU-only local intent routing; independent of Ollama and Apple frameworks.
-onnxruntime>=1.24.2,<2
+onnxruntime>=1.31.0,<2
 huggingface_hub>=0.34.0,<2.0.0
 # Datasets 5.0.1 accepts the GHSA-27vj-qcqg-25rc fix in this release.
-fsspec[http]==2026.6.0
+fsspec[http]==2026.9.0
