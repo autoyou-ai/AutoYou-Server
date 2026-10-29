@@ -5746,16 +5746,9 @@ def _build_totp_otpauth(client_id: str, secret: str, issuer: Optional[str] = Non
     totp = pyotp.TOTP(secret)
     return resolved_issuer, totp.provisioning_uri(name=client_id, issuer_name=resolved_issuer)
 
-def _build_qr_code_url(payload: str, *, size: int = 300, ecc: str = "H") -> str:
-    """Return a hosted QR image URL for the provided payload text."""
-    safe_size = max(128, min(int(size or 300), 1024))
-    safe_ecc = str(ecc or "H").strip().upper() or "H"
-    return (
-        "https://api.qrserver.com/v1/create-qr-code/"
-        f"?size={safe_size}x{safe_size}"
-        f"&ecc={quote(safe_ecc, safe='')}"
-        f"&data={quote(str(payload or ''), safe='')}"
-    )
+def _build_qr_code_url(payload: str, *, size: int = 300, ecc: str = "H") -> Optional[str]:
+    """Compatibility wrapper: QR payloads must never leave this computer."""
+    return _build_local_qr_data_url(payload)
 
 def _build_local_qr_data_url(payload: str, *, box_size: int = 8, border: int = 2) -> Optional[str]:
     """Render a QR code for ``payload`` entirely locally as a base64 PNG data URL.
@@ -17511,7 +17504,7 @@ def _totp_payload(*, secret: str, target: str, issuer: Optional[str] = None, acc
         "issuer": resolved_issuer,
         "account_name": resolved_account_name,
         "otpauth": otpauth,
-        "qr_url": _build_qr_code_url(otpauth),
+        "qr_data_url": _build_local_qr_data_url(otpauth),
     }
 
 def _preview_totp_payload(*, value: Any, target: str) -> Dict[str, Any]:

@@ -553,10 +553,43 @@ def _request_csrf_hosts(request: Request) -> set[str]:
     return {host for host in hosts if host}
 
 
-def _agent_app_csrf_guard(exempt_paths: frozenset = frozenset({"/api/auth/login"})):
+def _agent_app_csrf_guard(exempt_paths: frozenset = frozenset({"/api/auth/login"}), *, agent_name: str = ""):
     async def _guard(request: Request, call_next):
+        attempt = None
+        raw_path = (request.url.path or "").rstrip("/") or "/"
+        otp_login = raw_path.endswith(("/api/auth/login", "/api/game/publish-auth/login"))
+        if request.method.upper() == "POST" and otp_login:
+            loaded_server = sys.modules.get("server")
+            # Open websites can still expose a bespoke OTP verifier. Apply the
+            # budget independently of shell visibility; successful open-mode
+            # replies release their own reservation below.
+            body = bytearray()
+            async for part in request.stream():
+                if len(body) + len(part) > 4096:
+                    return _json_response({"success": False, "error": "Authentication request is too large."}, status_code=413)
+                body.extend(part)
+            request._body = bytes(body)
+            try:
+                payload = json.loads(body) if body else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("Expected an object")
+            except (ValueError, UnicodeError):
+                return _json_response({"success": False, "error": "Invalid JSON body."}, status_code=400)
+            try:
+                from shared.agent_otp_attempts import reserve_attempt
+
+                # Keep standalone local authenticators independent of imports.
+                key_fn = getattr(loaded_server, "_rate_limit_client_key", None)
+                caller = key_fn(request) if callable(key_fn) else (request.client.host if request.client else "unknown")
+                attempt = reserve_attempt(str(caller))
+            except Exception:
+                return _json_response({"success": False, "error": "Authentication is temporarily unavailable."}, status_code=503)
+            if attempt is None:
+                return JSONResponse(
+                    {"success": False, "error": "Too many authentication attempts. Try again later."},
+                    status_code=429, headers={**NO_CACHE_HEADERS, "Retry-After": "300"},
+                )
         if (request.method or "").upper() in _CSRF_PROTECTED_METHODS:
-            raw_path = (request.url.path or "").rstrip("/") or "/"
             if raw_path not in exempt_paths:
                 origin = request.headers.get("origin") or request.headers.get("referer") or ""
                 if origin:
@@ -576,7 +609,12 @@ def _agent_app_csrf_guard(exempt_paths: frozenset = frozenset({"/api/auth/login"
                     return _json_response(
                         {"success": False, "error": "Cross-origin request blocked."}, status_code=403
                     )
-        return await call_next(request)
+        response = await call_next(request)
+        if attempt and response.status_code < 400:
+            from shared.agent_otp_attempts import accept_attempt
+
+            accept_attempt(attempt)
+        return response
 
     return _guard
 
@@ -915,7 +953,7 @@ def install_agent_website_auth(
     Factory-built sites already get this behavior from their factory. This
     adapter keeps custom FastAPI sites from drifting into a second auth style.
     """
-    app.middleware("http")(_agent_app_csrf_guard())
+    app.middleware("http")(_agent_app_csrf_guard(agent_name=agent_name))
     if shared_session_upgrade:
         app.middleware("http")(_shared_session_upgrade_middleware())
     prefix = f"/agent/{agent_name}"
@@ -1699,7 +1737,7 @@ def create_scheduler_mission_control_app(agent_kind: str) -> FastAPI:
 
     app = FastAPI(title=meta["title"])
     app.add_middleware(GZipMiddleware, minimum_size=512)
-    app.middleware("http")(_agent_app_csrf_guard())
+    app.middleware("http")(_agent_app_csrf_guard(agent_name=agent_name))
     app.middleware("http")(_shared_session_upgrade_middleware())
 
     @app.middleware("http")
@@ -1944,7 +1982,7 @@ def create_agent_website_app(
     """
     app = FastAPI(title=title, docs_url=None, redoc_url=None)
     app.add_middleware(GZipMiddleware, minimum_size=512)
-    app.middleware("http")(_agent_app_csrf_guard())
+    app.middleware("http")(_agent_app_csrf_guard(agent_name=agent_name))
     app.middleware("http")(_shared_session_upgrade_middleware())
 
     if assets_dir and assets_dir.is_dir():
@@ -2169,7 +2207,7 @@ def create_agent_chat_app(
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Authorization"],
     )
-    app.middleware("http")(_agent_app_csrf_guard())
+    app.middleware("http")(_agent_app_csrf_guard(agent_name=agent_name))
     app.middleware("http")(_shared_session_upgrade_middleware())
 
     if frontend_dir and (frontend_dir / "assets").is_dir():

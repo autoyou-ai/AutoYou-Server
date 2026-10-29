@@ -61,6 +61,19 @@ def autoyou_test_root() -> Path:
 
 
 @pytest.fixture(autouse=True)
+def _isolate_agent_otp_budget(tmp_path):
+    from shared import agent_otp_attempts
+
+    # A private MonkeyPatch, not the shared `monkeypatch` fixture: requesting that
+    # here would create it before tests/conftest.py's packaged-runtime restorer,
+    # so its undo would run last and fail on attributes the restorer already
+    # removed, skipping the rest of the undo, including AUTOYOU_TEST_ROOT.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(agent_otp_attempts, "_database_path", lambda: tmp_path / "agent-otp-attempts.sqlite3")
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _forget_remembered_credentials():
     """Credentials the process remembers from the OS keystore never leak between tests."""
     try:

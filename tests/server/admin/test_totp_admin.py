@@ -117,8 +117,19 @@ def test_admin_totp_generate_pairing_secret_persists(monkeypatch):
         assert body["secret"] == persisted["config"]["security"]["totp_secret"]
         assert body["account_name"].endswith("(pairing)")
         assert body["otpauth"].startswith("otpauth://totp/")
+        assert body["qr_data_url"].startswith("data:image/png;base64,")
+        assert "qr_url" not in body
     finally:
         _restore_state(original_state)
+
+
+def test_legacy_totp_payload_has_no_external_qr_fallback(monkeypatch):
+    monkeypatch.setattr(server, "_build_local_qr_data_url", lambda _: None)
+    payload = server._totp_payload(secret="JBSWY3DPEHPK3PXP", target="pairing")
+    assert payload["qr_data_url"] is None
+    assert "qr_url" not in payload
+    assert payload["otpauth"].startswith("otpauth://totp/")
+    assert server._build_qr_code_url(payload["otpauth"]) is None
 
 
 def test_native_totp_setup_keeps_new_secret_pending_until_verified(monkeypatch):

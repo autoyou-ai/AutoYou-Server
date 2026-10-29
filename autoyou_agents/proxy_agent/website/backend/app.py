@@ -79,11 +79,19 @@ async def _serve(request: Request, target: str):
     content = upstream.body
     if upstream.content_type == "text/html" and content:
         content = rewrite_html(content, base_url=upstream.final_url, endpoint=_endpoint(request))
-    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    # The response can also be opened directly on the administration origin.
+    # Keep the inline viewer's isolation on every MIME type, including SVG/XML.
+    sandbox = "sandbox allow-forms allow-modals allow-popups allow-scripts"
+    headers = {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": sandbox,
+        "Referrer-Policy": "no-referrer",
+    }
     if upstream.content_type:
         headers["Content-Type"] = f"{upstream.content_type}; charset=utf-8" if upstream.content_type.startswith("text/") else upstream.content_type
     if upstream.content_type == "text/html":
-        headers["Content-Security-Policy"] = "default-src 'self' data: blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; frame-src 'self' data: blob:"
+        headers["Content-Security-Policy"] = sandbox + "; default-src 'self' data: blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; frame-src 'self' data: blob:"
     return Response(content=content, status_code=upstream.status_code, headers=headers)
 
 

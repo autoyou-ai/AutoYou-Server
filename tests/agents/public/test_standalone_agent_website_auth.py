@@ -11,6 +11,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -65,6 +66,49 @@ def test_standalone_agent_login_prefers_assigned_totp_profile(monkeypatch, backe
     assert response.status_code == 200
     assert response.json()["authenticated"] is True
     assert calls == [(agent_name, "654321")]
+
+
+def test_open_audio_settings_otp_shares_the_guessing_budget(monkeypatch) -> None:
+    from autoyou_agents.shared_tools import scheduler_mission_control as security
+
+    verified = []
+    server = SimpleNamespace(
+        STATE=SimpleNamespace(config={}),
+        agent_has_assigned_2fa_profile=lambda _: False,
+        _default_config=lambda: {},
+        _get_pairing_totp_secret=lambda _: "synthetic-secret",
+        _verify_totp_secret=lambda secret, code: verified.append(code) or False,
+    )
+    helpers = {
+        "totp_capabilities": lambda: {"totp_configured": True},
+        "create_session": lambda *_: "synthetic-session",
+        "cookie_name": lambda _: "synthetic-cookie",
+        "runtime_server": lambda: server,
+    }
+    monkeypatch.setattr(audio_backend, "_import_auth_helpers", lambda: helpers)
+    monkeypatch.setattr(security, "_get_agent_security_settings", lambda _: {"auth_mode": "open"})
+    client = TestClient(audio_backend.app)
+    for _ in range(5):
+        assert client.post("/api/auth/login", json={"code": "000000"}).status_code == 401
+    assert client.post("/api/auth/login", json={"code": "000000"}).status_code == 429
+    assert len(verified) == 5
+
+
+def test_fine_tuning_standalone_login_keeps_its_local_authenticator(monkeypatch) -> None:
+    from autoyou_agents.shared_tools import scheduler_mission_control as security
+
+    monkeypatch.delitem(sys.modules, "server", raising=False)
+    def no_core_import():
+        pytest.fail("Standalone OTP must not import core server")
+
+    no_core_import.__module__ = security.__name__
+    monkeypatch.setattr(security, "_runtime_server", no_core_import)
+    monkeypatch.setattr(fine_tuning_backend._LOCAL_AUTH, "create_session", lambda code: "synthetic-local-token" if code == "654321" else None)
+    client = TestClient(fine_tuning_backend.app)
+    response = client.post("/api/auth/login", json={"code": "654321"})
+    assert response.status_code == 200
+    assert response.json()["token"] == "synthetic-local-token"
+    assert "server" not in sys.modules
 
 
 @pytest.mark.parametrize(

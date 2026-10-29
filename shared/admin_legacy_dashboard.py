@@ -6057,8 +6057,10 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
         }
 
         function buildTotpQrHtml(data, heading) {
-          const enc = encodeURIComponent(data.otpauth);
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${enc}`;
+          const qrUrl = String(data.qr_data_url || '');
+          const qrImage = qrUrl.startsWith('data:image/png;base64,') && /^[A-Za-z0-9+/=]+$/.test(qrUrl.slice(22))
+            ? `<img src='${qrUrl}' alt='2FA QR Code' class='totp-qr-image'>`
+            : '<p>QR rendering is unavailable. Use the setup key below.</p>';
           const issuer = escapeHtml(data.issuer || 'AutoYou-Server');
           const accountName = escapeHtml(data.account_name || '2FA account');
           const secret = escapeHtml(data.secret);
@@ -6071,7 +6073,7 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
                 <b>Account:</b> <code class='mono'>${accountName}</code>
                 <span class='totp-qr-issuer'>Issuer: ${issuer}</span>
               </p>
-              <img src='${qrUrl}' alt='2FA QR Code' class='totp-qr-image'>
+              ${qrImage}
               <details class='totp-qr-details'>
                 <summary>Show setup key and authenticator setup link</summary>
                 <p style='margin-top:8px'><b>Setup key:</b> <code class='mono'>${secret}</code></p>
