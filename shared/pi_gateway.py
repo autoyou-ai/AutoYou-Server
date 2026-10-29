@@ -77,11 +77,8 @@ def get_default_pi_path() -> str:
     if env_path:
         return env_path
 
-    repo_root = Path(__file__).resolve().parent.parent
     candidates = [
         managed_pi_path(),
-        repo_root.parent / "Pi",
-        repo_root.parent / "pi",
         Path.home() / "Projects" / "Pi",
         Path.home() / "Projects" / "pi",
         Path.home() / "pi",

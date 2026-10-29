@@ -199,6 +199,21 @@ def test_run_command_captures_stdout(tmp_path, monkeypatch):
     assert result["exit_code"] == 0
 
 
+def test_run_command_keeps_quoted_paths_intact(tmp_path, monkeypatch):
+    """A quoted file name reaches the program without its quotes, on Windows too."""
+    import autoyou_agents.shared_tools.workspace_tools as wt
+
+    monkeypatch.setenv("AUTOYOU_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTOYOU_ENABLE_AGENT_RUN_COMMAND", "1")
+    (tmp_path / "has space.txt").write_text("quoted_path_ok", encoding="utf-8")
+
+    reader = "type" if sys.platform == "win32" else "cat"
+    result = wt.run_command(f'{reader} "has space.txt"', cwd=str(tmp_path))
+
+    assert result["status"] == "success", result
+    assert "quoted_path_ok" in result["stdout"]
+
+
 def test_run_command_nonzero_exit_is_error_status(tmp_path, monkeypatch):
     import autoyou_agents.shared_tools.workspace_tools as wt
 

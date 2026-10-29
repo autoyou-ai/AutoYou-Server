@@ -511,12 +511,30 @@ def test_earnings_agent_ui_auth_status_exposes_totp_state(monkeypatch):
     assert payload["totp"]["totp_configured"] is True
 
 
+_EARNINGS_GATED_CONFIG = {"agent_ui_security": {"earnings_agent": {"auth_mode": "totp"}}}
+
+
+def test_earnings_agent_website_is_open_by_default(monkeypatch):
+    from autoyou_agents.earnings_agent.website.backend import app as earnings_ui_backend
+
+    mock_server = SimpleNamespace(STATE=SimpleNamespace(config={}), _default_config=lambda: {})
+    monkeypatch.setattr(earnings_ui_backend._smc, "_runtime_server", lambda: mock_server)
+    login = TestClient(earnings_ui_backend.app).post("/api/auth/login", json={"code": "123456"})
+
+    assert login.status_code == 200
+    assert login.json()["auth"]["auth_mode"] == "open"
+    assert login.json()["auth"]["authenticated"] is True
+    assert "token" not in login.json()
+
+
 def test_earnings_agent_ui_auth_login_issues_test_scoped_token(monkeypatch, tmp_path):
     from autoyou_agents.earnings_agent.website.backend import app as earnings_ui_backend
 
     sessions_path = tmp_path / "agent_ui_sessions.json"
+    # The Earnings website is open by default (its manifest); an admin who gates
+    # it with the authenticator gets a test-scoped session token.
     mock_server = SimpleNamespace(
-        STATE=SimpleNamespace(config={}),
+        STATE=SimpleNamespace(config=_EARNINGS_GATED_CONFIG),
         _default_config=lambda: {},
         _is_logged_in=lambda request: False,
         _get_pairing_totp_secret=lambda cfg: "TESTSECRET",
@@ -550,8 +568,9 @@ def test_earnings_agent_ui_auth_login_rejects_missing_totp(monkeypatch):
     from autoyou_agents.earnings_agent.website.backend import app as earnings_ui_backend
 
     mock_server = SimpleNamespace(
-        STATE=SimpleNamespace(config={}),
+        STATE=SimpleNamespace(config=_EARNINGS_GATED_CONFIG),
         _default_config=lambda: {},
+        agent_has_assigned_2fa_profile=lambda agent_name: False,
     )
     monkeypatch.setattr(earnings_ui_backend._smc, "_runtime_server", lambda: mock_server)
     monkeypatch.setattr(

@@ -775,7 +775,11 @@ def _run_command_with_cancel(
         stderr_overflow = [0]
 
         if platform.system() == "Windows":
-            argv = ["cmd", "/c", command]
+            # One command line, passed verbatim: a list would go through
+            # list2cmdline, whose backslash-escaped quotes cmd.exe does not
+            # understand, so `node "file.mjs"` reached node with the quotes.
+            # /s keeps the command's own quotes; /d skips AutoRun commands.
+            argv = f'cmd /d /s /c "{command}"'
         else:
             argv = ["/bin/sh", "-c", command]
 

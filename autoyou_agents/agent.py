@@ -4097,22 +4097,38 @@ def _installed_agent_at_route_targets() -> list[tuple[str, str]]:
     return targets
 
 
-def _at_agent_aliases(install_name: str, runtime_name: str) -> set[str]:
-    values = {
-        install_name,
-        runtime_name,
-        format_agent_display_name(runtime_name),
-    }
-    values.update(_EXPLICIT_ROUTE_ALIASES.get(runtime_name, ()))
-    values.update(_EXPLICIT_ROUTE_ALIASES.get(resolve_runtime_agent_name(install_name), ()))
+# A word split out of a descriptive alias ("media" from "media library") is a
+# weaker claim than the agent's own name: without this, "@media" tied between
+# the TV agent and media generation, and the tie routed it nowhere.
+_AT_ALIAS_DESCRIPTIVE_PART_WEIGHT = 0.88
 
-    aliases: set[str] = set()
-    for value in values:
+
+def _at_agent_alias_weights(install_name: str, runtime_name: str) -> Dict[str, float]:
+    """Every @-alias for one agent, with how strongly it claims that agent."""
+    own_names = {install_name, runtime_name, format_agent_display_name(runtime_name)}
+    descriptive = set(_EXPLICIT_ROUTE_ALIASES.get(runtime_name, ()))
+    descriptive.update(_EXPLICIT_ROUTE_ALIASES.get(resolve_runtime_agent_name(install_name), ()))
+
+    weights: Dict[str, float] = {}
+
+    def claim(alias: str, weight: float) -> None:
+        if alias and weights.get(alias, 0.0) < weight:
+            weights[alias] = weight
+
+    for value in own_names | descriptive:
         normalized = _normalize_at_agent_alias(value)
-        if normalized:
-            aliases.add(normalized)
-            aliases.update(part for part in normalized.split("_") if len(part) >= 3)
-    return aliases
+        if not normalized:
+            continue
+        claim(normalized, 1.0)
+        part_weight = 1.0 if value in own_names else _AT_ALIAS_DESCRIPTIVE_PART_WEIGHT
+        for part in normalized.split("_"):
+            if len(part) >= 3:
+                claim(part, part_weight)
+    return weights
+
+
+def _at_agent_aliases(install_name: str, runtime_name: str) -> set[str]:
+    return set(_at_agent_alias_weights(install_name, runtime_name))
 
 
 def _at_agent_alias_score(query: str, alias: str) -> float:
@@ -4161,9 +4177,9 @@ def _extract_at_agent_route_request(user_text: str) -> Optional[Dict[str, str]]:
                 route_targets = _installed_agent_at_route_targets()
             scored_targets: dict[tuple[str, str], float] = {}
             for install_name, candidate_runtime_name in route_targets:
-                aliases = _at_agent_aliases(install_name, candidate_runtime_name)
+                weights = _at_agent_alias_weights(install_name, candidate_runtime_name)
                 scored_targets[(install_name, candidate_runtime_name)] = max(
-                    (_at_agent_alias_score(query, alias) for alias in aliases),
+                    (_at_agent_alias_score(query, alias) * weight for alias, weight in weights.items()),
                     default=0.0,
                 )
 

@@ -281,7 +281,7 @@ def test_upgrade_packaging_tools_caps_setuptools(monkeypatch):
         captured["command"] = list(requirement_args)
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: constraints)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: constraints)
     monkeypatch.setattr(bootstrap, "verified_pip_install", fake_verified_install)
 
     bootstrap.upgrade_packaging_tools(Path(sys.executable))
@@ -303,7 +303,7 @@ def test_upgrade_packaging_tools_falls_back_once_for_a_pip_without_reports(monke
         captured["command"] = command
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: None)
     monkeypatch.setattr(bootstrap, "verified_pip_install", no_report)
     monkeypatch.setattr(bootstrap, "run_command", fake_run_command)
 
@@ -323,7 +323,7 @@ def test_reconcile_runtime_dependency_drift_uses_locked_constraints(monkeypatch,
     captured = {}
 
     monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: constraints)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: constraints)
     monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: captured.update(command=command))
 
     bootstrap.reconcile_runtime_dependency_drift(Path("/tmp/venv/bin/python"))
@@ -343,7 +343,7 @@ def test_reconcile_runtime_dependency_drift_keeps_tuning_packages(monkeypatch, t
     captured = {}
 
     monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: None)
     monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: captured.update(command=command))
 
     bootstrap.reconcile_runtime_dependency_drift(Path("/tmp/venv/bin/python"), ("tuning",))
@@ -358,7 +358,7 @@ def test_reconcile_runtime_dependency_drift_keeps_tuning_packages(monkeypatch, t
 def test_voice_component_installs_realtimestt_runtime_shim(monkeypatch):
     commands = []
 
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: None)
     monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: commands.append(command))
     monkeypatch.setattr(
         bootstrap,
@@ -1404,7 +1404,7 @@ def test_bootstrap_upgrade_flag_and_env_propagate():
 
 def test_install_requirements_honors_upgrade_flag(monkeypatch):
     commands = []
-    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda: None)
+    monkeypatch.setattr(bootstrap, "build_locked_constraints", lambda torch_pins=None: None)
     monkeypatch.setattr(
         bootstrap,
         "verified_pip_install",

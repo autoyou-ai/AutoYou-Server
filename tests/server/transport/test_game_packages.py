@@ -13,9 +13,13 @@ import pytest
 from shared import game_package as package
 from shared.game_package_catalog import GamePackages
 from shared.game_package_uploads import GamePackageUploads
+from tests.support.offline_games import offline_game_packages
+
 pytestmark = pytest.mark.server
 
-FIXTURES = Path(__file__).resolve().parents[4] / "tests/fixtures/offline_games"
+# Built inside this repository; the desktop interoperability test lives with the
+# desktop client in the parent repository.
+FIXTURES = offline_game_packages()
 
 
 def test_full_assets_and_sqlite_snapshot_migrate_without_losing_progress(tmp_path):
@@ -140,39 +144,3 @@ def test_large_package_verification_is_pollable_idempotent_and_owner_bound(tmp_p
         time.sleep(.01);result=store.finish(key,"synthetic-owner")
     assert result["sha256"]==package.digest(file)
     assert store.finish(key,"synthetic-owner")==result
-
-
-@pytest.mark.asyncio
-async def test_real_webrtc_game_route_and_desktop_binary_decoder(tmp_path, monkeypatch):
-    import asyncio
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock
-    import server
-    client_root = Path(__file__).resolve().parents[4]
-    if not (client_root / "v2/runtime/client.py").is_file():
-        pytest.skip("Desktop interoperability needs the parent client checkout")
-    monkeypatch.syspath_prepend(str(client_root))
-    from v2.runtime.client import DesktopClient
-    monkeypatch.setenv("AUTOYOU_TEST_ROOT",str(tmp_path/"state"))
-    monkeypatch.setattr(server,"APP_ROOT",tmp_path/"app")
-    config=server._default_config();config["autoyou_page"]["remote_access_role"]="editor"
-    monkeypatch.setattr(server.STATE,"config",config,raising=False)
-    folder=server.get_mutable_data_dir("AutoYou",anchor=server.__file__)/"mobile_games";folder.mkdir(parents=True)
-    shutil.copyfile(FIXTURES/"package-v1.aygame",folder/"synthetic-package.aygame")
-    engine=server.WebRTCManager();pending={}
-    async def deliver(message):
-        pending[message.payload["request_id"]].set_result(message.payload);return True
-    engine.datachannel_managers["synthetic-game-session"]=SimpleNamespace(send_message=AsyncMock(side_effect=deliver))
-    async def send(message):await engine._handle_http_request(message);return True
-    client=SimpleNamespace(connected=True,data_channel=SimpleNamespace(readyState="open"),session_id="synthetic-game-session",connection_session="synthetic-game-connection",
-        pending_requests=pending,datachannel_manager=SimpleNamespace(send_message=send),_clear_pending_response_stream=lambda _key:None)
-    async def request(path,headers=None):return await DesktopClient.game_package_request(client,"GET",path,headers)
-    code,_,body=await request("/api/v1/game-packages/synthetic-package/metadata");metadata=json.loads(body)
-    assert code==200 and metadata["size"]>1024*1024
-    checksum=hashlib.sha256();offset=0
-    while offset<metadata["size"]:
-        end=min(metadata["size"]-1,offset+1024*1024-1)
-        code,headers,body=await request("/api/v1/game-packages/synthetic-package",{"Range":f"bytes={offset}-{end}"})
-        assert code==206 and headers["Content-Range"]==f"bytes {offset}-{end}/{metadata['size']}" and len(body)==end-offset+1
-        checksum.update(body);offset+=len(body)
-    assert checksum.hexdigest()==metadata["sha256"] and not pending

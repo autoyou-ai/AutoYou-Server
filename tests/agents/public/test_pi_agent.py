@@ -222,8 +222,8 @@ async def test_coding_cancellation_stops_active_command(monkeypatch, tmp_path):
     await asyncio.sleep(0.3)
     cancel.set()
     result = await asyncio.wait_for(task, timeout=10)
-    assert result["status"] == "error"
-    assert result["cancelled"]
+    assert result["status"] == "error", result
+    assert result.get("cancelled") is True, (result.get("stderr"), result.get("stdout"), result.get("exit_code"))
 
 
 def test_pi_extension_is_in_packaged_runtime_plan():

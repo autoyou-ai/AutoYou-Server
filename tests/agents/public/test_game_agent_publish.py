@@ -112,7 +112,8 @@ def test_complete_package_upload_poll_and_download_are_authenticated_and_owner_b
     owners={"Bearer synthetic-package-owner","Bearer synthetic-package-other"}
     monkeypatch.setattr(game_studio._smc,"_agent_chat_session_is_valid",lambda _agent,token:"Bearer "+token in owners)
     monkeypatch.setattr(game_studio._smc,"_describe_chat_auth_state",lambda request,_agent:{"authenticated":request.headers.get("Authorization") in owners})
-    file=Path(__file__).resolve().parents[4]/"tests/fixtures/offline_games/package-v1.aygame"
+    from tests.support.offline_games import offline_game_packages
+    file=offline_game_packages()/"package-v1.aygame"
     checksum=hashlib.sha256(file.read_bytes()).hexdigest();base="/api/game/packages/uploads"
     with TestClient(game_studio.app) as client:
         metadata={"id":"synthetic-package","size":file.stat().st_size,"sha256":checksum}

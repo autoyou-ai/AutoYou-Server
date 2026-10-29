@@ -899,6 +899,22 @@ def test_at_route_resolves_every_installed_agent_from_the_live_catalog(monkeypat
     }
 
 
+def test_at_media_prefers_the_agent_named_media_over_a_descriptive_alias(monkeypatch):
+    """"media library" (TV agent) must not tie "@media" with media generation."""
+    installed = ["media_generation_agent", "tv_agent"]
+    available = {"autoyou_media_generation_agent", "autoyou_tv_agent"}
+    monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: installed)
+    monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", available)
+
+    media = root_agent_module._extract_explicit_route_request("@media make a poster")
+    library = root_agent_module._extract_explicit_route_request("@library play the next episode")
+    tv = root_agent_module._extract_explicit_route_request("@tv play the next episode")
+
+    assert media and media["runtime_agent_name"] == "autoyou_media_generation_agent"
+    assert library and library["runtime_agent_name"].endswith("tv_agent")
+    assert tv and tv["runtime_agent_name"].endswith("tv_agent")
+
+
 def test_at_main_route_returns_to_the_root_agent(monkeypatch):
     monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: [])
 

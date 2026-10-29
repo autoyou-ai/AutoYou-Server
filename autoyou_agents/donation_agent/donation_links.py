@@ -194,7 +194,6 @@ def _config_path() -> Path:
     candidates = [
         get_resources_root(__file__) / _DEFAULT_CONFIG_PATH,
         Path(__file__).resolve().parents[2] / _DEFAULT_CONFIG_PATH,
-        Path(__file__).resolve().parents[3] / _DEFAULT_CONFIG_PATH if len(Path(__file__).resolve().parents) > 3 else None,
         Path.cwd() / _DEFAULT_CONFIG_PATH,
         Path.cwd() / "AutoYou-Server" / _DEFAULT_CONFIG_PATH,
     ]
