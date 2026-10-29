@@ -84,6 +84,35 @@ def test_unlocked_package_is_pinned_to_the_index_hash_and_reported(locked):
     assert unlocked == ["stripe==15.0.0"]
 
 
+@pytest.mark.parametrize("python_version", ["3.11", "3.12", "3.13"])
+def test_python_specific_speech_pin_stays_compatible_with_constraints_and_hash_plan(
+    tmp_path, monkeypatch, python_version
+):
+    from packaging.requirements import Requirement
+
+    root = Path(bootstrap.__file__).resolve().parents[1]
+    name = "lingua-language-detector"
+    requirements = [
+        Requirement(line) for line in (root / "requirements/base.txt").read_text().splitlines()
+        if line.startswith(name + "==")
+    ]
+    active = [item for item in requirements if item.marker.evaluate({"python_version": python_version})]
+    assert len(active) == 1
+    expected = next(iter(active[0].specifier)).version
+    monkeypatch.setattr(bootstrap, "REQUIREMENTS_DIR", tmp_path)
+    constraints = bootstrap.build_locked_constraints(root / "requirements/locked.txt")
+    for line in constraints.read_text().splitlines():
+        if line.startswith(name + "=="):
+            assert Requirement(line).specifier.contains(expected)
+    locked = bootstrap.parse_locked_hashes(root / "requirements/locked.txt")
+    digest = next(iter(locked[name][1])) if name in locked else GOOD
+    lines, _, unhashable = bootstrap.plan_verified_install(
+        {"install": [_item(name, expected, digest)]}, locked
+    )
+    assert lines == [f"{name}=={expected} --hash=sha256:{digest}"]
+    assert unhashable == []
+
+
 def test_vcs_requirements_are_kept_apart_because_they_have_no_hash(locked):
     vcs = {"metadata": {"name": "cognee", "version": "0.1"}, "download_info": {"url": "git+https://example.test/c.git"}}
     lines, _, unhashable = bootstrap.plan_verified_install({"install": [vcs]}, locked)

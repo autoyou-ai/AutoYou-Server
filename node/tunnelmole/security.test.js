@@ -39,6 +39,83 @@ test('Tunnelmole retains the package entrypoints used by the local launcher', ()
     assert.equal(typeof require('multer')().single, 'function');
 });
 
+test('comma query serialization handles shadowed coercion methods', () => {
+    for (const encodeValuesOnly of [false, true]) {
+        assert.doesNotThrow(() => qs.stringify({ a: [{ toString: 'synthetic' }] }, {
+            arrayFormat: 'comma', encodeValuesOnly,
+        }));
+    }
+    assert.equal(qs.stringify({ a: [1, 2] }, { arrayFormat: 'comma' }), 'a=1%2C2');
+});
+
+test('TOML rejects oversized integers and retains ordinary configuration', () => {
+    execFileSync(process.execPath, ['-e', `
+        const assert = require('node:assert/strict');
+        const toml = require('toml');
+        assert.throws(() => toml.parse('value = ' + '9'.repeat(250000)));
+        const normal = toml.parse('port = 8022\\nvalues = [1, 2]');
+        assert.equal(normal.port, 8022);
+        assert.deepEqual(normal.values, [1, 2]);
+    `], { cwd: __dirname, timeout: 5000 });
+});
+
+test('TOML resolves long dotted paths within a bound', () => {
+    execFileSync(process.execPath, ['-e', `
+        const assert = require('node:assert/strict');
+        const toml = require('toml');
+        const depth = 12000;
+        let value = toml.parse('a.'.repeat(depth) + 'value = 1');
+        for (let index = 0; index < depth; index++) value = value.a;
+        assert.equal(value.value, 1);
+    `], { cwd: __dirname, timeout: 5000 });
+});
+
+test('TOML bounds bookkeeping for distinct array-of-table names', () => {
+    execFileSync(process.execPath, ['-e', `
+        const assert = require('node:assert/strict');
+        const toml = require('toml');
+        const count = 30000;
+        const input = Array.from({ length: count }, (_, index) =>
+            '[[entry' + index + ']]\\nvalue = 1\\n').join('');
+        const tables = toml.parse(input);
+        assert.equal(Object.keys(tables).length, count);
+        assert.equal(tables['entry' + (count - 1)][0].value, 1);
+    `], { cwd: __dirname, timeout: 5000 });
+});
+
+test('a pending upload filter cannot crash a process after parser teardown', () => {
+    execFileSync(process.execPath, ['-e', `
+        const assert = require('node:assert/strict');
+        const { PassThrough } = require('node:stream');
+        const multer = require('multer');
+        const request = new PassThrough();
+        const boundary = 'SyntheticTeardownBoundary';
+        const part = name => '--' + boundary + '\\r\\nContent-Disposition: form-data; name="' + name +
+            '"; filename="synthetic.txt"\\r\\nContent-Type: text/plain\\r\\n\\r\\nx';
+        const body = part('first') + '\\r\\n' + part('second');
+        request.headers = { 'content-type': 'multipart/form-data; boundary=' + boundary,
+            'content-length': Buffer.byteLength(body) };
+        let resume;
+        let calls = 0;
+        const rejected = new Error('synthetic rejection');
+        const upload = multer({ fileHwm: 1, fileFilter(req, file, done) {
+            if (file.fieldname === 'first') resume = done;
+            else req.once('end', () => setImmediate(() => done(rejected)));
+        } }).any();
+        upload(request, {}, error => {
+            assert.equal(error, rejected);
+            assert.equal(++calls, 1);
+            assert.equal(typeof resume, 'function');
+            setImmediate(() => {
+                resume(null, true);
+                setTimeout(() => { assert.equal(calls, 1); process.exit(0); }, 40);
+            });
+        });
+        request.end(body);
+        setTimeout(() => process.exit(2), 1500);
+    `], { cwd: __dirname, timeout: 3000 });
+});
+
 test('compressed JSON with trailing garbage cannot crash the HTTP parser', async () => {
     const express = require('express');
     const { gzipSync } = require('node:zlib');

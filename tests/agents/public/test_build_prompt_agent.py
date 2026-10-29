@@ -361,6 +361,37 @@ def test_prompt_builder_website_serves_otp_shell_before_unlock(monkeypatch):
 def test_configure_prompt_forwards_speed_and_advanced_and_inspect_desktop_config(monkeypatch):
     from fastapi.testclient import TestClient
     from autoyou_agents.build_prompt_agent.website.backend import app as website
+    from autoyou_agents.shared_tools import desktop_app_control
+
+    # Calibration is operator state. Exercise the real option extraction and
+    # API using synthetic packs, without inspecting the operator's desktop.
+    fixture_model_ids = {
+        "claude_desktop_agent": ("opus_5_5", "fable_5_1"),
+        "codex_desktop_agent": ("default", "gpt_6_1_terra"),
+        "antigravity_agent": ("gemini-4-argon", "claude-opus-5.5", "gpt-oss-120b"),
+    }
+
+    def synthetic_status(agent_dir, *, capture_screenshot=False):
+        assert capture_screenshot is False
+        return {
+            "status": "success",
+            "agent_name": agent_dir.name,
+            "ready": False,
+            "asset_pack": {
+                "asset_pack_id": "synthetic-config-pack",
+                "selection_controls": {
+                    "model": {"options": {name: {"label": name} for name in fixture_model_ids[agent_dir.name]}},
+                    "speed": {"options": {"fast": {"label": "Fast"}}},
+                    "advanced": {"options": {"ultracode": {"label": "Ultra code"}}},
+                    "permissions": {"options": {
+                        name: {"label": name} for name in ("request_review", "default", "turbo")
+                    }},
+                    "worktree": {},
+                },
+            },
+        }
+
+    monkeypatch.setattr(desktop_app_control, "get_desktop_app_status", synthetic_status)
 
     calls = []
 

@@ -1585,7 +1585,7 @@ Invoke-CheckedCommand -FilePath $pythonExe -Arguments @(
     "-m", "pip", "install",
     "--upgrade",
     "pip>=26.1.2,<27",
-    "setuptools>=83,<84",
+    "setuptools>=84.2.1,<85",
     "wheel",
     "nuitka",
     "ordered-set",

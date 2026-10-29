@@ -1280,7 +1280,7 @@ setup_venv() {
     source "${venv_dir}/bin/activate"
     
     # Upgrade pip
-    pip install --upgrade 'pip>=26.1.2,<27' 'setuptools>=83,<84' wheel > /dev/null 2>&1 || true
+    pip install --upgrade 'pip>=26.1.2,<27' 'setuptools>=84.2.1,<85' wheel > /dev/null 2>&1 || true
 
     log_success "Virtual environment ready"
 }
@@ -1941,7 +1941,7 @@ install_dependencies() {
     fi
     
     # First make sure we have common build tools
-    "$PYTHON_CMD" -m pip install --upgrade 'pip>=26.1.2,<27' 'setuptools>=83,<84' wheel 2>&1 | grep -E "(Collecting|Successfully|already)" | head -5
+    "$PYTHON_CMD" -m pip install --upgrade 'pip>=26.1.2,<27' 'setuptools>=84.2.1,<85' wheel 2>&1 | grep -E "(Collecting|Successfully|already)" | head -5
     
     # Install Playwright separately before attempting browser installation
     log "Installing Playwright..."

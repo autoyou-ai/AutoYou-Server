@@ -28,3 +28,20 @@ test('malformed directory listing cannot pin the parser process', () => {
     assert.equal(child.error, undefined, child.error?.message);
     assert.equal(child.status, 0, child.stderr);
 });
+
+test('IPv6 zone rejection is bounded and retains SOCKS byte-array conversion', () => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict';
+        import { Address6 } from 'ip-address';
+        for (const suffix of ['\\n', '\\r']) {
+            const value = '%'.repeat(100000) + suffix;
+            assert.equal(Address6.isValid(value), false);
+            assert.throws(() => new Address6(value));
+        }
+        assert.equal(new Address6('2001:db8::1').correctForm(), '2001:db8::1');
+        assert.equal(Address6.fromByteArray([0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 1]).correctForm(), '2001:db8::1');
+    `], { cwd: fileURLToPath(new URL('.', import.meta.url)), timeout: 2000, encoding: 'utf8' });
+    assert.equal(child.error, undefined, child.error?.message);
+    assert.equal(child.status, 0, child.stderr);
+});
