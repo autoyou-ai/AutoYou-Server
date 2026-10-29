@@ -276,14 +276,25 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         body, error = await _json_body(request)
         if error is not None:
             return error
-        pcm, error = _decode_audio(body or {}, MAX_TEST_SECONDS)
-        if error is not None:
-            return error
         settings = await asyncio.to_thread(am.load_settings)
         phrase = am.effective_phrase(settings, _server_name())
         model = await asyncio.to_thread(am.load_model)
         result: Dict[str, Any] = {"wake_phrase": phrase, "confirm": settings["confirm"]}
-        if model is not None and ww.normalize_phrase(model.phrase) == ww.normalize_phrase(phrase):
+        ready = bool(model is not None and ww.normalize_phrase(model.phrase) == ww.normalize_phrase(phrase))
+        if settings["confirm"] != "text" and not ready:
+            LOGGER.info("Assistant wake test: needs_training, model_ready=false")
+            return server._json_response_no_store({
+                "success": True, **result, "would_wake": False, "reason": "needs_training",
+                "message": "Train the current wake word first. Voice training clips in chat history are a separate library.",
+            })
+        pcm, error = _decode_audio(body or {}, MAX_TEST_SECONDS)
+        if error is not None:
+            return error
+        diagnostics = {"duration_seconds": round(len(pcm or b"") / (2.0 * ww.SAMPLE_RATE), 2),
+                       "level_dbfs": round(ww.rms_dbfs(ww.pcm16_to_float(pcm or b"")), 1),
+                       "model_ready": ready}
+        if ready:
+            model.sensitivity = settings["sensitivity"]
             result["acoustic"] = await asyncio.to_thread(ww.evaluate_clip, model, pcm or b"")
         if settings["confirm"] in {"text", "both"} or bool((body or {}).get("transcribe")):
             transcript = await asyncio.to_thread(_transcribe, pcm or b"")
@@ -296,6 +307,13 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         result["would_wake"] = (
             acoustic_ok if confirm == "voice" else text_ok if confirm == "text" else acoustic_ok and text_ok
         )
+        result["reason"] = "matched" if result["would_wake"] else (
+            "voice_mismatch" if confirm != "text" and not acoustic_ok else "phrase_not_heard")
+        result["diagnostics"] = diagnostics
+        LOGGER.info("Assistant wake test: mode=%s reason=%s duration=%.2fs level=%.1fdBFS score=%s distance=%s threshold=%s",
+                    confirm, result["reason"], diagnostics["duration_seconds"], diagnostics["level_dbfs"],
+                    (result.get("acoustic") or {}).get("score"), (result.get("acoustic") or {}).get("distance"),
+                    (result.get("acoustic") or {}).get("threshold"))
         return server._json_response_no_store({"success": True, **result})
 
     @admin_app.post("/api/assistant-mode/wake")

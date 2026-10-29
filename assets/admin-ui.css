@@ -3320,6 +3320,12 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     gap: 18px;
 }
 
+.ayu-chat-history-toggle { display: none; }
+.ayu-chat-message-list { display: flex; flex-direction: column; gap: 18px; }
+.ayu-chat-turn-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 0; color: var(--ayu-muted); font-size: 12px; }
+.ayu-chat-turn-controls:has(button), .ayu-chat-turn-controls:has(span:not(:empty)) { margin-bottom: 8px; }
+.ayu-chat-pending button { margin-left: 8px; padding: 4px 8px; border: 0; border-radius: 6px; color: var(--ayu-primary); background: var(--ayu-primary-soft); cursor: pointer; }
+
 .ayu-chat-heading {
     display: flex;
     align-items: flex-end;
@@ -4566,28 +4572,44 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
 @media (max-width: 720px) {
     .ayu-chat-heading {
         align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
     }
+    .ayu-chat-heading h1 { font-size: 27px; }
+    .ayu-shell[data-screen="chat"] .ayu-contextbar { display: none; }
+    .ayu-chat-heading-actions [data-action="chat-new"] { width: 40px; padding: 9px; justify-content: center; }
+    .ayu-chat-heading-actions [data-action="chat-new"] span { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .ayu-chat-heading p {
         display: none;
     }
     .ayu-chat-heading-actions {
-        flex: 0 0 auto;
-        justify-content: flex-end;
+        flex: 1 1 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 8px;
     }
+    .ayu-chat-heading-actions .ayu-btn { min-height: 40px; }
+    .ayu-chat-history-toggle { display: inline-flex; }
     .ayu-chat-server-pill {
         display: none;
     }
     .ayu-chat-workspace {
         grid-template-columns: 1fr;
-        height: auto;
+        grid-template-rows: minmax(0, 1fr);
+        height: var(--ayu-chat-available-height, calc(100dvh - 190px));
         min-height: 0;
-        overflow: visible;
+        overflow: hidden;
+        border-radius: 18px;
     }
     .ayu-chat-history {
+        display: none;
         max-height: 190px;
         border-right: 0;
         border-bottom: 1px solid var(--ayu-border);
     }
+    .ayu-chat-workspace.history-open { grid-template-rows: auto minmax(0, 1fr); }
+    .ayu-chat-workspace.history-open .ayu-chat-history { display: flex; max-height: 190px; }
     .ayu-chat-history-top {
         padding: 10px 12px 7px;
         align-items: center;
@@ -4611,8 +4633,8 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
         display: none;
     }
     .ayu-chat-thread {
-        height: min(610px, calc(100dvh - 260px));
-        min-height: 340px;
+        height: 100%;
+        min-height: 0;
     }
     .ayu-chat-thread-head {
         padding: 12px 13px 10px;
@@ -4621,14 +4643,22 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
         font-size: 18px;
     }
     .ayu-chat-thread-head p {
-        margin-top: 3px;
+        display: none;
     }
     .ayu-chat-transcript {
         padding: 12px 10px;
     }
     .ayu-chat-composer {
         margin: 0 10px 10px;
+        padding-bottom: max(9px, env(safe-area-inset-bottom));
     }
+    .ayu-chat-composer textarea { font-size: 16px; min-height: 44px; max-height: 120px; resize: none; }
+    .ayu-chat-search input, .ayu-assistant-panel input, .ayu-assistant-panel select { font-size: 16px; }
+    .ayu-chat-composer-tools button, .ayu-chat-send { min-width: 40px; min-height: 40px; }
+    .ayu-chat-message-list { gap: 12px; }
+    .ayu-chat-keyboard-open .ayu-chat-heading,
+    .ayu-chat-keyboard-open .ayu-chat-history,
+    .ayu-chat-keyboard-open .ayu-chat-thread-head { display: none !important; }
     .ayu-chat-composer-hint {
         display: none;
     }

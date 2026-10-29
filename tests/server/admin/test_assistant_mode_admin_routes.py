@@ -199,3 +199,38 @@ def test_browser_wake_requires_login_and_enabled_assistant(admin):
     assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 409
     admin.server.logged_in = False
     assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 401
+
+
+def test_voice_test_reports_missing_training_before_opening_microphone(admin, caplog):
+    am.save_settings({"confirm": "voice"})
+    with caplog.at_level("INFO"):
+        response = admin.client.post("/api/assistant-mode/test", json={})
+    assert response.status_code == 200
+    assert response.json()["reason"] == "needs_training"
+    assert response.json()["would_wake"] is False
+    assert "separate library" in response.json()["message"]
+    assert "needs_training" in caplog.text
+
+
+def test_text_test_returns_capture_diagnostics_without_logging_transcript(admin, caplog):
+    am.save_settings({"confirm": "text", "wake_phrase": "Hey Jarvis"})
+    with caplog.at_level("INFO"):
+        response = admin.client.post("/api/assistant-mode/test", json={"audio_base64": _wav()})
+    result = response.json()
+    assert result["reason"] == "matched" and result["would_wake"]
+    assert result["diagnostics"]["duration_seconds"] == 1.0
+    assert result["diagnostics"]["level_dbfs"] < 0
+    assert "Assistant wake test" in caplog.text
+    assert "hey jarvis" not in caplog.text.lower()
+
+
+def test_voice_test_uses_saved_sensitivity_and_returns_match_diagnostics(admin, monkeypatch):
+    recordings = [ww.wav_bytes_to_pcm16(base64.b64decode(_wav(0.8 + index * 0.1))) for index in range(3)]
+    model, _ = ww.build_model("synthetic wake", recordings)
+    model.sensitivity = 0.1
+    am.save_settings({"confirm": "voice", "wake_phrase": model.phrase, "sensitivity": 0.9})
+    monkeypatch.setattr(am, "load_model", lambda: model)
+    result = admin.client.post("/api/assistant-mode/test", json={"audio_base64": _wav()}).json()
+    assert model.sensitivity == 0.9
+    assert result["diagnostics"]["model_ready"]
+    assert result["acoustic"]["threshold"] == round(model.distance_threshold, 5)

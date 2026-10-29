@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 318, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 320, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -41,6 +41,8 @@ Configuration, password and security settings, authenticator setup, the chat and
 | Admin app | `POST` | `/api/chat/call/close` | Admin chat call close |
 | Admin app | `POST` | `/api/chat/call/offer` | Admin chat call offer |
 | Admin app | `GET` | `/api/chat/media/&#123;media_id&#125;` | Admin chat media |
+| Admin app | `GET` | `/api/chat/requests/&#123;request_id&#125;` | Admin chat request status |
+| Admin app | `POST` | `/api/chat/requests/&#123;request_id&#125;/stop` | Admin chat request stop |
 | Admin app | `GET` | `/api/chat/session` | Admin chat session |
 | Admin app | `POST` | `/api/chat/session/reply` | The owner answers a device's conversation in person. |
 | Admin app | `POST` | `/api/chat/session/title` | Name a conversation on this server only; clients are never told. |

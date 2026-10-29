@@ -365,6 +365,8 @@
             composer: "",
             attachments: [],
             recording: null,
+            turns: [],
+            mobileHistoryOpen: false,
             call: {
                 phase: "idle",
                 status: "Voice pipeline is waiting for a call.",
@@ -443,7 +445,9 @@
             } else if (text) {
                 msg = text;
             }
-            throw new Error(msg);
+            var error = new Error(msg);
+            error.status = res.status;
+            throw error;
         }
         return json;
     }
@@ -4426,7 +4430,7 @@
         var human = role === "assistant" && item.human === true;
         var face = role === "user" ? chatFaceMarkup(mine ? { is_self: true } : counterpart, "message") : (human ? chatFaceMarkup({ is_self: true }, "message") : "<div class=\"ayu-chat-avatar\">AI</div>");
         var authorName = role === "user" ? (mine ? "You" : counterpart.name) : (human ? "You · sent to the device" : "AutoYou");
-        return "<article class=\"ayu-chat-message " + role + (role === "user" && !mine ? " from-other" : "") + "\">" + face + "<div class=\"ayu-chat-message-body\"><div class=\"ayu-chat-message-meta\"><strong>" + escapeHtml(authorName) + "</strong>" + (timestamp ? "<span>" + escapeHtml(timestamp) + "</span>" : "") + "</div>" + (body ? "<div class=\"ayu-chat-bubble\"><p>" + escapeHtml(body).replace(/\n/g, "<br>") + "</p>" + attachmentHtml + "</div>" : attachmentHtml) + (item.pending ? "<small class=\"ayu-chat-pending\">Sending…</small>" : "") + (item.failed ? "<small class=\"ayu-chat-error\">Could not send</small>" : "") + "</div></article>";
+        return "<article class=\"ayu-chat-message " + role + (role === "user" && !mine ? " from-other" : "") + "\">" + face + "<div class=\"ayu-chat-message-body\"><div class=\"ayu-chat-message-meta\"><strong>" + escapeHtml(authorName) + "</strong>" + (timestamp ? "<span>" + escapeHtml(timestamp) + "</span>" : "") + "</div>" + (body ? "<div class=\"ayu-chat-bubble\"><p>" + escapeHtml(body).replace(/\n/g, "<br>") + "</p>" + attachmentHtml + "</div>" : attachmentHtml) + (item.requestId ? chatTurnStatusMarkup(item) : ((item.pending ? "<small class=\"ayu-chat-pending\">Sending…</small>" : "") + (item.failed ? "<small class=\"ayu-chat-error\">Could not send</small>" : ""))) + "</div></article>";
     }
 
     function chatThreadIdentity() {
@@ -4533,13 +4537,17 @@
         state.chat.pendingTitle = "";
         state.chat.userId = userId || chatDefaultUserId();
         state.chat.sessionId = sessionId || "";
+        var requestedUser = state.chat.userId, requestedSession = state.chat.sessionId;
+        state.chat.mobileHistoryOpen = false;
         state.chat.messages = [];
         state.chat.files = [];
         state.chat.training = [];
         renderApp();
         try {
             var response = await requestJson("/api/chat/session?user_id=" + encodeURIComponent(state.chat.userId) + "&session_id=" + encodeURIComponent(state.chat.sessionId));
-            state.chat.messages = Array.isArray(response && response.messages) ? response.messages : [];
+            if (state.chat.userId !== requestedUser || state.chat.sessionId !== requestedSession) return;
+            var pendingTurns = chatConversationTurns(requestedUser, requestedSession);
+            state.chat.messages = pendingTurns.length ? pendingTurns[0].messages : (Array.isArray(response && response.messages) ? response.messages : []);
             state.chat.files = Array.isArray(response && response.files) ? response.files : [];
             state.chat.training = Array.isArray(response && response.voice_training) ? response.voice_training : [];
             var listed = (state.chat.sessions || []).find(function (item) { return item.user_id === state.chat.userId && item.session_id === state.chat.sessionId; });
@@ -4552,8 +4560,10 @@
         } catch (error) {
             setNotice("error", error.message || "Conversation could not be opened.");
         } finally {
-            state.chat.loading = false;
-            renderApp();
+            if (state.chat.userId === requestedUser && state.chat.sessionId === requestedSession) {
+                state.chat.loading = false;
+                renderApp();
+            }
         }
     }
 
@@ -5232,7 +5242,7 @@
             enabled: Boolean(draft.enabled),
             wake_phrase: String(draft.wake_phrase || "").trim(),
             confirm: draft.confirm || "voice",
-            sensitivity: Math.max(0, Math.min(100, Number(draft.sensitivity || 50))) / 100,
+            sensitivity: Math.max(0, Math.min(100, Number(draft.sensitivity == null ? 50 : draft.sensitivity))) / 100,
             listen_seconds: Math.max(3, Math.min(30, Number(draft.listen_seconds || 8))),
             listen_during_safety_recording: Boolean(draft.listen_during_safety_recording),
             use_voice_training_clips: Boolean(draft.use_voice_training_clips),
@@ -5282,15 +5292,36 @@
     // Microphone at 16 kHz mono. Chrome resamples properly when the context asks
     // for 16 kHz; elsewhere a continuous linear resampler is used.
     async function assistantOpenMic(onSamples) {
+        if (window.isSecureContext === false) throw new Error("Microphone access needs trusted HTTPS or localhost. Install and trust this server's certificate on your phone.");
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("This browser cannot use the microphone.");
         var stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
         var Context = window.AudioContext || window.webkitAudioContext, context;
-        try { context = new Context({ sampleRate: 16000 }); } catch (error) { context = new Context(); }
+        try { context = new Context({ sampleRate: 16000 }); } catch (error) {
+            try { context = new Context(); }
+            catch (contextError) { stream.getTracks().forEach(function (track) { track.stop(); }); throw contextError; }
+        }
         var source;
         try { source = context.createMediaStreamSource(stream); } catch (error) {
             try { context.close(); } catch (closeError) {}
-            context = new Context();
-            source = context.createMediaStreamSource(stream);
+            context = null;
+            try { context = new Context(); source = context.createMediaStreamSource(stream); }
+            catch (sourceError) {
+                stream.getTracks().forEach(function (track) { track.stop(); });
+                if (context) { try { context.close(); } catch (closeError) {} }
+                throw sourceError;
+            }
+        }
+        if (context.state === "suspended") {
+            var resumeTimer;
+            try {
+                await Promise.race([context.resume(), new Promise(function (_, reject) {
+                    resumeTimer = setTimeout(function () { reject(new Error("The browser did not start audio capture. Tap Test again and allow microphone access.")); }, 5000);
+                })]);
+            } catch (resumeError) {
+                stream.getTracks().forEach(function (track) { track.stop(); });
+                try { context.close(); } catch (closeError) {}
+                throw resumeError;
+            } finally { clearTimeout(resumeTimer); }
         }
         var ratio = context.sampleRate / 16000, position = 0, previous = 0;
         var node = context.createScriptProcessor(4096, 1, 1);
@@ -5353,7 +5384,10 @@
         var chunks = [], total = 0, endpoint = assistantEndpointer(), mic = null, finished = false;
         try {
             var samples = await new Promise(function (resolve, reject) {
-                var limit = setTimeout(function () { if (!finished) { finished = true; resolve(assistantJoin(chunks)); } }, (maxSeconds + 1.5) * 1000);
+                var limit = null;
+                var permissionTimer = setTimeout(function () {
+                    if (!finished) { finished = true; reject(new Error("Microphone access did not start. Check the browser permission and certificate trust, then try again.")); }
+                }, 30000);
                 assistantOpenMic(function (chunk) {
                     if (finished) return;
                     var speech = assistantObserve(endpoint, chunk);
@@ -5362,9 +5396,18 @@
                     if ((endpoint.started && endpoint.silence >= 0.6) || total >= maxSeconds * 16000) {
                         finished = true;
                         clearTimeout(limit);
+                        clearTimeout(permissionTimer);
                         resolve(assistantJoin(chunks));
                     }
-                }).then(function (opened) { mic = opened; if (finished) opened.stop(); }).catch(function (error) { clearTimeout(limit); reject(error); });
+                }).then(function (opened) {
+                    mic = opened;
+                    clearTimeout(permissionTimer);
+                    if (finished) { opened.stop(); return; }
+                    assistant.capture.startedAt = Date.now();
+                    limit = setTimeout(function () {
+                        if (!finished) { finished = true; resolve(assistantJoin(chunks)); }
+                    }, (maxSeconds + 1.5) * 1000);
+                }).catch(function (error) { finished = true; clearTimeout(limit); clearTimeout(permissionTimer); reject(error); });
             });
             if (samples.length < 16000 * 0.2) throw new Error("No speech was heard. Try again a little closer to the microphone.");
             return samples;
@@ -5392,9 +5435,21 @@
 
     async function assistantTest() {
         var assistant = assistantState();
-        var samples = await assistantCaptureClip("test", 5);
-        assistant.test = await postJson("/api/assistant-mode/test", { audio_base64: assistantWav(samples) });
-        renderApp({ passive: true });
+        assistant.test = null;
+        assistant.testError = "";
+        try {
+            var status = await assistantLoadStatus(true);
+            if (!status) throw new Error("Assistant mode settings could not be loaded.");
+            if (status.confirm !== "text" && !(status.model && status.model.matches_phrase)) {
+                assistant.test = await postJson("/api/assistant-mode/test", {});
+            } else {
+                var samples = await assistantCaptureClip("test", 5);
+                assistant.test = await postJson("/api/assistant-mode/test", { audio_base64: assistantWav(samples) });
+            }
+        } catch (error) {
+            assistant.testError = error.message || "The wake word test failed.";
+            throw error;
+        } finally { renderApp({ passive: true }); }
     }
 
     async function assistantSendCommand(command, wake) {
@@ -5597,7 +5652,7 @@
             { id: "train", title: "Train", done: textOnly || trained, skipped: textOnly,
                 detail: textOnly ? "Not needed with Typed text only." : (trained ? "Trained from " + model.templates + " recordings" + (model.calibration && model.calibration.negatives_used ? ", checked against " + model.calibration.negatives_used + " Voice Training clips" : "") + "." : (model ? "Trained for “" + model.phrase + "”. Train again for the new word." : "Takes a few seconds on this computer.")) },
             { id: "test", title: "Test it", done: Boolean(test && test.would_wake),
-                detail: test ? (test.would_wake ? "It woke. You are ready." : "It did not wake. Record once more, or raise Sensitivity under Fine-tune.") : "Say the wake word and a short question." },
+                detail: test && test.reason === "needs_training" ? "Finish recording and training the current word before testing." : test ? (test.would_wake ? "It woke. You are ready." : "The test did not match. Check the capture and match details below.") : "Say the wake word and a short question." },
             { id: "on", title: "Turn it on", done: Boolean(status.enabled),
                 detail: status.enabled ? "On. Devices with Assistant mode in their settings listen for the word." : "Then turn on Assistant mode in each phone or computer that should listen, or during a call." }
         ];
@@ -5633,10 +5688,14 @@
         }
         if (step.id === "test") {
             var test = assistant.test, result = "";
+            if (assistant.testError) result = '<div class="ayu-assistant-test miss" role="alert">' + escapeHtml(assistant.testError) + '</div>';
             if (test) {
                 var acoustic = test.acoustic ? "Voice match " + Math.round(Number(test.acoustic.score || 0) * 100) + "%" : "";
                 var heard = test.transcript !== undefined ? "Heard “" + (test.transcript || "nothing") + "”" : "";
-                result = '<div class="ayu-assistant-test ' + (test.would_wake ? "ok" : "miss") + '"><strong>' + (test.would_wake ? "It would wake." : "It would not wake.") + '</strong><span>' + escapeHtml([acoustic, heard].filter(Boolean).join(" · ")) + '</span></div>';
+                var details = [acoustic, heard];
+                if (test.diagnostics) details.push(Number(test.diagnostics.duration_seconds).toFixed(1) + "s captured, " + test.diagnostics.level_dbfs + " dBFS");
+                if (test.acoustic && test.acoustic.distance != null) details.push("Voice distance " + test.acoustic.distance + ", needs at most " + test.acoustic.threshold);
+                result = '<div class="ayu-assistant-test ' + (test.would_wake ? "ok" : "miss") + '" role="status"><strong>' + (test.reason === "needs_training" ? "Train the wake word first." : test.would_wake ? "It would wake." : "It would not wake.") + '</strong><span>' + escapeHtml(test.message || details.filter(Boolean).join(" - ")) + '</span></div>';
             }
             var testing = assistant.capture && assistant.capture.purpose === "test"
                 ? '<div class="ayu-assistant-capture"><span class="ayu-chat-recording-dot"></span>' + escapeHtml(assistant.capture.heard ? "Got it — keep going until you stop…" : "Say the wake word and a short question now…") + '</div>'
@@ -5917,12 +5976,12 @@
         var deviceReplyMarkup = deviceLive
             ? '<button type="button" class="ayu-chat-device-reply" data-action="chat-reply-device" title="Deliver this text to the device as your own message. AutoYou is not asked." ' + (isActionPending("chat-reply-device") ? "disabled" : "") + '>' + (isActionPending("chat-reply-device") ? "Sending…" : "Send to " + escapeHtml(counterpart.name)) + '</button>'
             : "";
-        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><span class="ayu-chat-server-pill"><span></span>Server connected</span>' + assistantHeadingButton()
-            + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
+        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><button type="button" class="ayu-btn ayu-btn-secondary ayu-btn-sm ayu-chat-history-toggle" data-action="chat-history-toggle" aria-expanded="' + Boolean(chat.mobileHistoryOpen) + '">Conversations</button><span class="ayu-chat-server-pill"><span></span>Server connected</span>' + assistantHeadingButton()
+            + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace' + (chat.mobileHistoryOpen ? ' history-open' : '') + '"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
             + '</div>' + chatSelfCardMarkup() + '</aside><section class="ayu-chat-thread">' + chatThreadHeadMarkup(serverName) + '<div class="ayu-chat-transcript">'
-            + assistantPanelMarkup() + renderChatCallCard() + messageMarkup + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + assistantListeningMarkup() + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><button type="button" data-action="assistant-listen-toggle" class="ayu-chat-assistant-tool' + (assistantState().listen ? " active" : "") + '" aria-label="Listen for the wake word" title="' + (assistantState().listen ? "Stop listening for the wake word" : "Listen for the wake word in this browser") + '">◎</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" ' + (isActionPending("chat-send") ? "disabled" : "") + '>' + (isActionPending("chat-send") ? "…" : "↑") + '</button></div></div></section></div></div>';
+            + assistantPanelMarkup() + renderChatCallCard() + '<div class="ayu-chat-message-list" data-role="chat-messages" aria-live="polite" aria-relevant="additions">' + messageMarkup + '</div>' + '</div><div class="ayu-chat-composer"' + (chat.view === "training" ? " hidden" : "") + '>' + replyContextMarkup + '<div class="ayu-chat-attachment-tray">' + composerAttachmentMarkup + recordingMarkup + assistantListeningMarkup() + '</div><textarea data-role="chat-input" rows="2" placeholder="Message ' + escapeHtml(serverName) + '…">' + inputValue + '</textarea><div class="ayu-chat-turn-controls" data-role="chat-turn-controls">' + chatTurnControlsMarkup() + '</div><div class="ayu-chat-composer-footer"><div class="ayu-chat-composer-tools"><button type="button" data-action="chat-file-select" aria-label="Attach file" title="Attach file">＋</button><button type="button" data-action="chat-record-toggle" class="' + (chat.recording ? "active" : "") + '" aria-label="Record voice note" title="Record voice note">♩</button><button type="button" data-action="chat-call-toggle" class="ayu-chat-call-tool" aria-label="Start voice call" title="Start voice call">◉</button><button type="button" data-action="assistant-listen-toggle" class="ayu-chat-assistant-tool' + (assistantState().listen ? " active" : "") + '" aria-label="Listen for the wake word" title="' + (assistantState().listen ? "Stop listening for the wake word" : "Listen for the wake word in this browser") + '">◎</button><input type="file" data-role="chat-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"></div><div class="ayu-chat-composer-hint">Enter to send · Shift+Enter for a new line</div>' + deviceReplyMarkup + '<button type="button" class="ayu-chat-send" data-action="chat-send" aria-label="Send message" title="Send message">↑</button></div></div></section></div></div>';
     }
 
     async function sendChatTurn() {
@@ -5933,13 +5992,20 @@
         if (!text && !attachments.length) return;
         state.chat.userId = state.chat.userId || chatDefaultUserId();
         state.chat.sessionId = state.chat.sessionId || chatUuid("admin-chat");
+        if (chatConversationTurns(state.chat.userId, state.chat.sessionId).length >= 20) {
+            setNotice("error", "There are already 20 pending messages in this conversation.");
+            return;
+        }
+        var requestId = chatUuid("turn");
         var userMessage = {
             role: "user",
             author: "self",
             content: text || "Please process the attached file.",
             timestamp: Date.now(),
             attachments: attachments,
-            pending: true
+            pending: true,
+            requestId: requestId,
+            deliveryState: "queued"
         };
         state.chat.messages.push(userMessage);
         state.chat.composer = "";
@@ -5953,43 +6019,210 @@
             custom_title: Boolean(pendingTitle)
         };
         state.chat.pendingTitle = "";
+        state.chat.mobileHistoryOpen = false;
+        state.chat.turns.push({
+            id: requestId, userId: state.chat.userId, sessionId: state.chat.sessionId,
+            message: userMessage, messages: state.chat.messages, attachments: attachments,
+            pendingTitle: pendingTitle, status: "queued", dispatched: false, accepted: false,
+            cancelRequested: false
+        });
         renderApp();
+        chatPumpQueue(state.chat.userId, state.chat.sessionId);
+    }
+
+    var chatViewportFrame = 0, chatViewportBaseline = 0, chatViewportWidth = 0;
+
+    function scheduleChatViewport() {
+        if (chatViewportFrame) return;
+        chatViewportFrame = window.requestAnimationFrame(function () {
+            chatViewportFrame = 0;
+            syncChatViewport();
+        });
+    }
+
+    function syncChatViewport() {
+        if (!root) return;
+        var workspace = root.querySelector(".ayu-chat-workspace");
+        if (!workspace || window.innerWidth > 720) {
+            root.classList.remove("ayu-chat-keyboard-open");
+            if (workspace) workspace.style.removeProperty("--ayu-chat-available-height");
+            return;
+        }
+        var viewport = window.visualViewport;
+        if (viewport && viewport.scale > 1.05) return;
+        var height = viewport ? viewport.height : window.innerHeight;
+        if (Math.abs(chatViewportWidth - window.innerWidth) > 40) chatViewportBaseline = height;
+        chatViewportWidth = window.innerWidth;
+        chatViewportBaseline = Math.max(chatViewportBaseline, height);
+        var focused = document.activeElement && document.activeElement.getAttribute("data-role") === "chat-input";
+        var keyboard = Boolean(focused && Math.max(chatViewportBaseline, window.innerHeight) - height > 120);
+        root.classList.toggle("ayu-chat-keyboard-open", keyboard);
+        var bottom = height + (viewport ? viewport.offsetTop : 0);
+        var available = Math.max(170, bottom - workspace.getBoundingClientRect().top - 12);
+        workspace.style.setProperty("--ayu-chat-available-height", Math.floor(available) + "px");
+    }
+
+    function chatConversationTurns(userId, sessionId) {
+        return (state.chat.turns || []).filter(function (turn) {
+            return turn.userId === userId && turn.sessionId === sessionId
+                && ["completed", "stopped", "failed"].indexOf(turn.status) < 0;
+        });
+    }
+
+    function chatTurnStatusMarkup(message) {
+        if (!message.requestId) return "";
+        var labels = { queued: "Queued", sending: "Sending", thinking: "Thinking", stopping: "Stopping", reconnecting: "Reconnecting", stopped: "Stopped", failed: "Could not complete", completed: "Sent" };
+        var queued = (state.chat.turns || []).find(function (turn) { return turn.id === message.requestId; });
+        var remove = message.deliveryState === "queued" && queued && !queued.dispatched
+            ? '<button type="button" data-action="chat-remove-queued:' + escapeHtml(message.requestId) + '" aria-label="Remove queued message">Remove</button>' : "";
+        return '<small class="ayu-chat-pending" data-chat-request-id="' + escapeHtml(message.requestId) + '" role="status">'
+            + escapeHtml(labels[message.deliveryState] || "") + remove + '</small>';
+    }
+
+    function chatTurnControlsMarkup() {
+        var turns = chatConversationTurns(state.chat.userId, state.chat.sessionId);
+        var active = turns.find(function (turn) { return turn.dispatched; });
+        var queued = turns.filter(function (turn) { return !turn.dispatched; }).length;
+        var label = active ? ({ sending: "Sending", thinking: "Thinking", queued: "Waiting at server", stopping: "Stopping", reconnecting: "Reconnecting" }[active.status] || "Thinking") : "";
+        return '<span role="status" aria-live="polite">' + escapeHtml([label, queued ? queued + " queued" : ""].filter(Boolean).join(" - ")) + '</span>'
+            + (active ? button(active.status === "stopping" ? "Stopping" : "Stop", "chat-stop", "secondary", "stop", "sm", active.status === "stopping" ? "disabled" : "") : "");
+    }
+
+    function syncChatTurnControls() {
+        if (!root) return;
+        var controls = root.querySelector('[data-role="chat-turn-controls"]');
+        if (controls) {
+            var markup = chatTurnControlsMarkup();
+            if (controls._chatMarkup !== markup) { controls.innerHTML = markup; controls._chatMarkup = markup; }
+        }
+        (state.chat.turns || []).forEach(function (turn) {
+            var marker = root.querySelector('[data-chat-request-id="' + turn.id + '"]');
+            if (marker) {
+                var statusMarkup = chatTurnStatusMarkup(turn.message);
+                if (marker.outerHTML !== statusMarkup) marker.outerHTML = statusMarkup;
+            }
+        });
+        var send = root.querySelector('[data-action="chat-send"]');
+        var input = root.querySelector('[data-role="chat-input"]');
+        if (send) {
+            var busy = chatConversationTurns(state.chat.userId, state.chat.sessionId).length > 0;
+            send.setAttribute("aria-label", busy ? "Queue message" : "Send message");
+            send.title = busy ? "Queue message" : "Send message";
+            send.disabled = !String(input ? input.value : state.chat.composer).trim() && !state.chat.attachments.length;
+        }
+    }
+
+    async function chatTurnRequest(url, payload) {
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, payload ? 30000 : 10000);
         try {
-            var response = await postJson("/api/chat", {
-                message: userMessage.content,
-                user_id: state.chat.userId,
-                session_id: state.chat.sessionId,
-                context: attachments.length ? [{ source: "admin-web", attachments: attachments }] : [],
-                metadata: { client: "admin-web", source: "admin_web" }
-            });
-            userMessage.pending = false;
-            state.chat.sessionId = response.session_id || state.chat.sessionId;
-            var responseAttachments = [];
-            if (response.voice_reply_audio) {
-                responseAttachments.push(Object.assign({ kind: "audio", meta: { kind: "audio" } }, response.voice_reply_audio));
+            return await requestJson(url, payload ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal } : { signal: controller.signal });
+        } finally { clearTimeout(timer); }
+    }
+
+    function chatUpdateTurn(turn, status) {
+        turn.status = status;
+        turn.message.deliveryState = status;
+        turn.message.pending = status === "queued" || status === "sending";
+        syncChatTurnControls();
+    }
+
+    async function stopChatTurn() {
+        var turn = chatConversationTurns(state.chat.userId, state.chat.sessionId).find(function (item) { return item.dispatched; });
+        if (!turn) return;
+        turn.cancelRequested = true;
+        chatUpdateTurn(turn, "stopping");
+        if (turn.accepted) {
+            await chatTurnRequest("/api/chat/requests/" + encodeURIComponent(turn.id) + "/stop", {});
+            turn.stopSent = true;
+        }
+    }
+
+    function chatPumpQueue(userId, sessionId) {
+        var turns = chatConversationTurns(userId, sessionId);
+        if (turns.some(function (turn) { return turn.dispatched; })) return;
+        var turn = turns.find(function (item) { return item.status === "queued"; });
+        if (!turn) return;
+        turn.dispatched = true;
+        chatUpdateTurn(turn, "sending");
+        runChatTurn(turn).finally(function () {
+            state.chat.turns = state.chat.turns.filter(function (item) { return item !== turn; });
+            syncChatTurnControls();
+            chatPumpQueue(userId, sessionId);
+        });
+    }
+
+    async function runChatTurn(turn) {
+        try {
+            var payload = {
+                async: true, request_id: turn.id, message: turn.message.content,
+                user_id: turn.userId, session_id: turn.sessionId,
+                context: turn.attachments.length ? [{ source: "admin-web", attachments: turn.attachments }] : [],
+                metadata: { client: "admin-web", source: "admin_web", client_request_id: turn.id }
+            };
+            var response;
+            try { response = await chatTurnRequest("/api/chat", payload); }
+            catch (acceptError) {
+                if (acceptError.status && acceptError.status < 500) throw acceptError;
+                chatUpdateTurn(turn, "reconnecting");
+                // The server may have accepted the message before the connection broke.
+                // Recover by ID without submitting the words a second time.
+                try { response = await chatTurnRequest("/api/chat/requests/" + encodeURIComponent(turn.id)); }
+                catch (recoverError) { throw new Error("Unable to confirm this message. Check conversation history before retrying."); }
             }
-            (response.media_reply_attachments || []).forEach(function (attachment) {
-                responseAttachments.push(Object.assign({ kind: chatKindForMime(attachment.mimetype) }, attachment));
-            });
-            state.chat.messages.push({
-                role: "assistant",
-                content: response.response || "No response returned.",
-                timestamp: response.timestamp || Date.now(),
-                attachments: responseAttachments
-            });
-            if (pendingTitle) {
-                try {
-                    await postJson("/api/chat/session/title", { user_id: state.chat.userId, session_id: state.chat.sessionId, title: pendingTitle });
-                } catch (titleError) {
-                    setNotice("error", "The message was sent, but the name was not saved: " + (titleError.message || "try renaming again."));
+            if (response.request_id) {
+                turn.accepted = true;
+                turn.message.pending = false;
+                while (["completed", "stopped", "failed"].indexOf(response.status) < 0) {
+                    if (turn.cancelRequested && !turn.stopSent) {
+                        try {
+                            await chatTurnRequest("/api/chat/requests/" + encodeURIComponent(turn.id) + "/stop", {});
+                            turn.stopSent = true;
+                        } catch (stopError) {}
+                    }
+                    chatUpdateTurn(turn, turn.cancelRequested ? "stopping" : response.status);
+                    await new Promise(function (resolve) { setTimeout(resolve, 500); });
+                    try { response = await chatTurnRequest("/api/chat/requests/" + encodeURIComponent(turn.id)); }
+                    catch (pollError) {
+                        if (pollError.status === 404) throw new Error("The server no longer has this request. Check conversation history before retrying.");
+                        if (pollError.status === 401 || pollError.status === 403) throw new Error("Sign in again to check this response.");
+                        chatUpdateTurn(turn, "reconnecting");
+                        await new Promise(function (resolve) { setTimeout(resolve, 1500); });
+                    }
                 }
+                if (response.status === "stopped") { chatUpdateTurn(turn, "stopped"); return; }
+                if (response.status === "failed") throw new Error(response.error || "Chat request failed.");
+                response = response.response || {};
             }
-            await ensureChatData(true);
+            chatUpdateTurn(turn, "completed");
+            var attachments = [];
+            if (response.voice_reply_audio) attachments.push(Object.assign({ kind: "audio", meta: { kind: "audio" } }, response.voice_reply_audio));
+            (response.media_reply_attachments || []).forEach(function (item) {
+                attachments.push(Object.assign({ kind: chatKindForMime(item.mimetype) }, item));
+            });
+            var answer = { role: "assistant", content: response.response || "No response returned.", timestamp: response.timestamp || Date.now(), attachments: attachments };
+            turn.messages.push(answer);
+            if (state.chat.userId === turn.userId && state.chat.sessionId === turn.sessionId) {
+                if (state.chat.messages !== turn.messages) state.chat.messages.push(answer);
+                var transcript = root && root.querySelector('[data-role="chat-messages"]');
+                if (transcript) {
+                    var scroller = root.querySelector(".ayu-chat-transcript");
+                    var atBottom = !scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+                    transcript.insertAdjacentHTML("beforeend", chatMessageMarkup(answer));
+                    if (scroller && atBottom) scroller.scrollTop = scroller.scrollHeight;
+                }
+                else renderApp({ passive: true });
+            }
+            if (turn.pendingTitle) {
+                try { await postJson("/api/chat/session/title", { user_id: turn.userId, session_id: turn.sessionId, title: turn.pendingTitle }); }
+                catch (titleError) { setNotice("error", "The message was sent, but the conversation name was not saved."); }
+            }
+            ensureChatData(true).catch(function () {});
         } catch (error) {
-            userMessage.pending = false;
-            userMessage.failed = true;
-            setNotice("error", error.message || "Chat request failed.");
-            renderApp();
+            turn.message.pending = false;
+            turn.message.failed = true;
+            chatUpdateTurn(turn, "failed");
+            if (state.chat.userId === turn.userId && state.chat.sessionId === turn.sessionId) setNotice("error", error.message || "Chat request failed.");
         }
     }
 
@@ -10374,6 +10607,8 @@
                 });
             });
             restoreActiveControl(activeSnapshot);
+        syncChatTurnControls();
+        scheduleChatViewport();
             restoreActiveTab(activeTab);
         }
         syncBootSweepUi();
@@ -10802,6 +11037,25 @@
         }
         if (action === "chat-call-end") {
             await endAdminCall(true);
+            return;
+        }
+        if (action === "chat-history-toggle") {
+            state.chat.mobileHistoryOpen = !state.chat.mobileHistoryOpen;
+            renderApp();
+            return;
+        }
+        if (action === "chat-stop") {
+            await stopChatTurn();
+            return;
+        }
+        if (action.indexOf("chat-remove-queued:") === 0) {
+            var queuedId = action.slice("chat-remove-queued:".length);
+            var queued = state.chat.turns.find(function (item) { return item.id === queuedId && !item.dispatched; });
+            if (queued) {
+                queued.message.pending = false;
+                chatUpdateTurn(queued, "stopped");
+                state.chat.turns = state.chat.turns.filter(function (item) { return item !== queued; });
+            }
             return;
         }
         if (action === "chat-send") {
@@ -12813,6 +13067,17 @@
             state.aiLibrary.source = target.value;
         }
     });
+
+    document.addEventListener("input", function (event) {
+        if (event.target && event.target.getAttribute("data-role") === "chat-input") syncChatTurnControls();
+    });
+    document.addEventListener("focusin", scheduleChatViewport);
+    document.addEventListener("focusout", scheduleChatViewport);
+    window.addEventListener("resize", scheduleChatViewport);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", scheduleChatViewport);
+        window.visualViewport.addEventListener("scroll", scheduleChatViewport);
+    }
 
     document.addEventListener("keydown", function (event) {
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.target && event.target.getAttribute("data-role") === "chat-input") {

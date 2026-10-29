@@ -18,6 +18,7 @@ import logging
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
@@ -38,6 +39,7 @@ from shared.chat_history_identity import (
     describe_conversation,
 )
 from shared.http_errors import internal_error_message
+from shared.admin_chat_jobs import AdminChatJobs
 from shared.remote_access_policy import REMOTE_BROWSER_HEADER, REMOTE_BROWSER_VIA_HOME_NETWORK
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-0c681cfb79557970d9459e4e"
@@ -48,6 +50,19 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
+    chat_jobs = AdminChatJobs()
+    previous_lifespan = admin_app.router.lifespan_context
+
+    @asynccontextmanager
+    async def chat_lifespan(app):
+        async with previous_lifespan(app):
+            try:
+                yield
+            finally:
+                await chat_jobs.shutdown()
+
+    admin_app.router.lifespan_context = chat_lifespan
+
     def _chat_text(value: Any, fallback: str = "", limit: int = 256) -> str:
         text = " ".join(str(value or "").strip().split())
         return (text or fallback)[:limit]
@@ -408,17 +423,51 @@ def register_routes(
             # conversation, and where the owner typed them.
             "admin_surface": _admin_surface(request),
         }
-        try:
+        async def process_turn():
             chat_request = server.ChatRequest(**payload)
             response = await server.process_chat_message(
                 chat_request,
                 f"http://127.0.0.1:{server.AI_AGENT_SERVER_PORT}",
                 authenticated_actor_role="admin",
             )
-            return server._json_response_no_store(_chat_response_payload(response))
+            return _chat_response_payload(response)
+
+        try:
+            if body.get("async") is True:
+                request_id = str(body.get("request_id") or "")
+                if request_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", request_id):
+                    return JSONResponse(status_code=400, content={"success": False, "error": "Invalid request ID"})
+                try:
+                    accepted = chat_jobs.start(user_id, payload["session_id"], process_turn, request_id=request_id)
+                except ValueError as exc:
+                    return JSONResponse(status_code=409, content={"success": False, "error": str(exc)})
+                except RuntimeError as exc:
+                    return JSONResponse(status_code=429, content={"success": False, "error": str(exc)})
+                return JSONResponse(status_code=202, content={"success": True, **accepted}, headers={"Cache-Control": "no-store"})
+            return server._json_response_no_store(await process_turn())
         except Exception as exc:
             server.LOGGER.error("admin_chat_message failed: %s", exc, exc_info=True)
             return JSONResponse(status_code=500, content={"success": False, "error": "Chat request failed"})
+
+    @admin_app.get("/api/chat/requests/{request_id}")
+    async def admin_chat_request_status(request_id: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error is not None:
+            return auth_error
+        try:
+            return server._json_response_no_store({"success": True, **chat_jobs.snapshot(request_id)})
+        except KeyError:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Chat request not found"})
+
+    @admin_app.post("/api/chat/requests/{request_id}/stop")
+    async def admin_chat_request_stop(request_id: str, request: Request):
+        auth_error = server._require_api_login(request)
+        if auth_error is not None:
+            return auth_error
+        try:
+            return server._json_response_no_store({"success": True, **await chat_jobs.stop(request_id)})
+        except KeyError:
+            return JSONResponse(status_code=404, content={"success": False, "error": "Chat request not found"})
 
     @admin_app.get("/api/chat/sessions")
     async def admin_chat_sessions(request: Request):
