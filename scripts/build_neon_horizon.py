@@ -6,7 +6,8 @@
 
 """Keep the standalone phone download in sync with Game Studio's Horizon page.
 
-Run after editing play.html. Both deliverables remain self-contained, so the
+Run after editing play.html (and scripts/render_neon_horizon_music.cjs when the music
+changes). Both deliverables remain self-contained, so the
 phone needs no network or bundled JavaScript loader to play the downloaded game.
 """
 

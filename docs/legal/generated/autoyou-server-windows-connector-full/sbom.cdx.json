@@ -1384,11 +1384,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "filelock>=3.20.3"
+          "value": "filelock>=4.2.4,<5"
         },
         {
           "name": "specifier",
-          "value": ">=3.20.3"
+          "value": ">=4.2.4,<5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1927,7 +1927,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "litellm==1.89.7"
+          "value": "litellm==1.100.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1938,9 +1938,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/litellm@1.89.7",
+      "purl": "pkg:pypi/litellm@1.100.4",
       "type": "library",
-      "version": "1.89.7"
+      "version": "1.100.4"
     },
     {
       "licenses": [
@@ -3244,11 +3244,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "setuptools>=83,<84"
+          "value": "setuptools>=84.2.1,<85"
         },
         {
           "name": "specifier",
-          "value": ">=83,<84"
+          "value": ">=84.2.1,<85"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4079,7 +4079,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-28T20:48:03+00:00",
+    "timestamp": "2026-10-29T04:22:31+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4088,7 +4088,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:86983dcd-8efc-407b-ac43-fd7aef316d7c",
+  "serialNumber": "urn:uuid:cc5e6b98-9dbc-4de7-8ea0-c8af3d9d150c",
   "specVersion": "1.5",
   "version": 1
 }

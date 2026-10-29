@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-28T20:48:03+00:00
+Generated: 2026-10-29T04:22:31+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -85,7 +85,7 @@ Third-Party Components
 - keyring [pypi] - MIT - requirements/base.txt
 - lingua-language-detector 2.1.1 [pypi] - Apache-2.0 - requirements/base.txt
 - lingua-language-detector 2.2.0 [pypi] - Apache-2.0 - requirements/base.txt
-- litellm 1.89.7 [pypi] - MIT - requirements/base.txt
+- litellm 1.100.4 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - mcp 2.3.0 [pypi] - MIT - requirements/base.txt

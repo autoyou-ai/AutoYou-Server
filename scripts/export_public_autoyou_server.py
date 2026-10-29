@@ -103,6 +103,7 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/bootstrap_autoyou.py",
     "scripts/build_architecture_diagram.py",
     "scripts/build_codec_clean_av.py",
+    "scripts/build_game_package.py",
     "scripts/build_macos_appstore_dependencies.py",
     "scripts/build_macos_appstore_native.py",
     "scripts/macos_appstore_native.json",
@@ -123,6 +124,7 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/generate_windows_server_tiles.py",
     "scripts/install_gpu_torch.py",
     "scripts/install_realtimestt_runtime.py",
+    "scripts/install_voice_clone_runtime.py",
     "scripts/patch_adk_web_ui.py",
     "scripts/prepare_intent_router.py",
     "scripts/prepare_packaged_guides.py",
@@ -131,6 +133,7 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/prune_runtime_site_packages_to_requirements.py",
     "scripts/read_backend_runtime_pins.py",
     "scripts/reconcile_python_runtime_env.py",
+    "scripts/render_neon_horizon_music.cjs",
     "scripts/serve_guides_preview.py",
     "scripts/social-verify/run.sh",
     "scripts/verify_backend_hardening.py",
@@ -149,6 +152,34 @@ PUBLIC_DESKTOP_ASSET_PATHS = {
 }
 
 PUBLIC_SKILL_PATHS = {".agents/skills/autoyou-server-validate/SKILL.md"}
+
+# Committed paths the maintainer reviewed and chose to publish even though a broader rule above
+# (private prefix, desktop capture, llm.txt) would otherwise keep them out.
+REVIEWED_PUBLIC_PATHS = {
+    "autoyou_agents/antigravity_agent/desktop_assets/llm.txt",
+    "autoyou_agents/antigravity_agent/desktop_assets/manifest.json",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/attach_button.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/composer_box.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/effort_high.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/effort_low.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/effort_medium.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_picker_button.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_select_claude_opus_5_5.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_select_claude_sonnet_5_5.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_select_gemini_3_8_flash.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_select_gemini_4_argon.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/model_select_gpt_oss_120b.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/permissions_default.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/permissions_picker_button.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/permissions_request_review.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/permissions_turbo.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/send_button.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/view_usage_menu_item.png",
+    "autoyou_agents/antigravity_agent/desktop_assets/windows/2.24.0/sprites/voice_button.png",
+    "autoyou_agents/antigravity_agent/llm.txt",
+    "skills/campaign-render-profile/SKILL.md",
+    "skills/campaign-render-profile/scripts/inspect_profile.py",
+}
 
 PUBLIC_GENERATED_LEGAL_PREFIXES = (
     "docs/legal/generated/autoyou-server-source-full/",
@@ -188,6 +219,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/agent-framework/architecture.mdx',
     'docs/agent-framework/building-agents.mdx',
     'docs/agent-framework/core-agent-engine.mdx',
+    'docs/agent-framework/pi-coding-backend.mdx',
     'docs/agent-framework/security-and-permissions.mdx',
     'docs/agent-framework/self-improvement-and-harness-testing.mdx',
     'docs/agent-framework/shared-tools-and-subsystems.mdx',
@@ -557,6 +589,8 @@ def normalize_path(path: str) -> str:
 
 def is_sensitive_path(path: str) -> bool:
     normalized = normalize_path(path)
+    if normalized in REVIEWED_PUBLIC_PATHS:
+        return False
     lowered = normalized.lower()
     name = Path(lowered).name
     if (
@@ -578,6 +612,8 @@ def is_sensitive_path(path: str) -> bool:
 
 def is_private_desktop_capture_path(path: str) -> bool:
     normalized = normalize_path(path)
+    if normalized in REVIEWED_PUBLIC_PATHS:
+        return False
     prefix = next((item for item in DESKTOP_CAPTURE_ASSET_PREFIXES if normalized.startswith(item)), None)
     if prefix is None:
         return False
@@ -594,7 +630,7 @@ def should_publish_path(path: str) -> bool:
     normalized = normalize_path(path)
     if not normalized or is_sensitive_path(normalized) or is_private_desktop_capture_path(normalized):
         return False
-    if normalized in PUBLIC_DESKTOP_ASSET_PATHS:
+    if normalized in PUBLIC_DESKTOP_ASSET_PATHS or normalized in REVIEWED_PUBLIC_PATHS:
         return True
     if normalized in PUBLIC_GITHUB_PATHS:
         return True
@@ -643,6 +679,7 @@ def audit_public_source_paths(paths: list[str]) -> list[str]:
             and path not in PUBLIC_GITHUB_PATHS
             and path not in PUBLIC_SKILL_PATHS
             and path not in PUBLIC_DESKTOP_ASSET_PATHS
+            and path not in REVIEWED_PUBLIC_PATHS
         ):
             failures.append(f"private path included: {path}")
         if path.startswith(_private_test_prefixes()):

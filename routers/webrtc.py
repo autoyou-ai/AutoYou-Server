@@ -90,6 +90,26 @@ def register_routes(
             "engine_connected": server.WEBRTC.game_input_hub.connected,
         }, headers={"Cache-Control": "no-store"})
 
+    @admin_app.post("/api/webrtc/hosted-game/api/game/music")
+    async def hosted_game_music(request: Request):
+        """The hosted game's music setting: turns the soundtrack streamed to players on or off."""
+        origin = urlsplit(request.headers.get("origin", ""))
+        if (
+            not local_game_page_allowed(request)
+            or origin.scheme not in {"http", "https"}
+            or origin.netloc.lower() != request.headers.get("host", "").lower()
+        ):
+            return JSONResponse(status_code=403, content={"success": False, "error": "Local computer only"})
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        enabled = body.get("enabled") if isinstance(body, dict) else None
+        if not isinstance(enabled, bool):
+            return JSONResponse(status_code=400, content={"success": False, "error": "enabled must be true or false"})
+        server.WEBRTC.set_hosted_game_music(enabled)
+        return JSONResponse({"success": True, "enabled": enabled}, headers={"Cache-Control": "no-store"})
+
     async def serve_game_input_stream(websocket: WebSocket, *, owner: str = "engine"):
         hub = server.WEBRTC.game_input_hub
         queue = hub.attach(owner=owner)

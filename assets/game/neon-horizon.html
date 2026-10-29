@@ -10,34 +10,56 @@
   <style>
     :root{font:16px/1.4 system-ui,sans-serif;color:#fff;background:#080b1c}
     *{box-sizing:border-box}html,body{height:100%;margin:0;overflow:hidden}
-    body{position:relative}
+    body{position:relative;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
     canvas{display:block;width:100%;height:100%;touch-action:none}
-    .hud{position:absolute;inset:max(14px,env(safe-area-inset-top)) 18px auto;display:flex;justify-content:space-between;gap:12px;padding-right:42px;pointer-events:none;text-shadow:0 2px 12px #050614}
-    .score{font-weight:800;letter-spacing:.12em;font-size:.72rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,3.5rem);line-height:1.1;color:#fff;letter-spacing:-.04em}.score small{display:block;letter-spacing:.04em}
-    .loot{text-align:right;font-size:.8rem;color:#c6faff}.loot strong{font-size:1.25rem;color:#fff}.charge{height:5px;margin:5px 0;background:#293252;border-radius:4px;overflow:hidden}.charge span{display:block;height:100%;background:#7cfaff;width:0;transition:width .15s}
+    .hud{position:absolute;inset:max(12px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) auto max(14px,env(safe-area-inset-left));display:flex;justify-content:space-between;gap:12px;pointer-events:none;text-shadow:0 2px 12px #050614}
+    .score{font-weight:800;letter-spacing:.12em;font-size:.7rem;color:#97faff}.score strong{display:block;font-size:clamp(2rem,5vw,3.4rem);line-height:1.05;color:#fff;letter-spacing:-.03em;font-variant-numeric:tabular-nums}.score small{display:block;letter-spacing:.06em}
+    #mult{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:999px;background:#ff54da;color:#170827;font-size:.85rem;letter-spacing:.04em;text-shadow:none}
+    #mult[data-hot]{background:#ffd36c}
+    .loot{margin-top:54px;text-align:right;font-size:.74rem;font-weight:700;color:#c6faff;min-width:132px}.loot strong{font-size:1.15rem;color:#fff}
+    .bar{height:5px;margin:4px 0 6px auto;width:132px;background:#293252;border-radius:4px;overflow:hidden}.bar span{display:block;height:100%;width:0;background:#7cfaff;transition:width .15s}
+    .bar.drive span{background:linear-gradient(90deg,#ff54da,#ffd36c)}
+    #powers{min-height:1.1em;color:#ffd36c;letter-spacing:.05em}
+    .corner{position:absolute;top:max(12px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));display:flex;gap:8px;z-index:4}
+    .icon{width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:50%;background:#0b1838d9}
+    .icon svg{width:22px;height:22px;fill:#d6faff}
     .controls{position:absolute;inset:auto 0 max(16px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:clamp(10px,2vw,22px);padding:0 16px}
+    .controls[hidden]{display:none}
     button,a{font:inherit}button{cursor:pointer;border:1px solid #7cf4ff;border-radius:14px;background:#0d1436d9;color:#e9fdff;box-shadow:0 0 22px #12bfe854;font-weight:900;letter-spacing:.08em}
-    .controls button{min-width:clamp(78px,15vw,160px);min-height:64px;font-size:clamp(.85rem,2vw,1.15rem);touch-action:none}
+    .controls button{min-width:clamp(78px,15vw,160px);min-height:64px;font-size:clamp(.85rem,2vw,1.15rem);touch-action:none;background:#0d143699}
     button:hover,button:focus-visible{background:#12366a;outline:2px solid #fff;outline-offset:2px}
     button:active{transform:translateY(2px);background:#fa42cb;color:#080b1c}
-    .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#070b20a8;padding:18px;overflow:auto}
-    .overlay[hidden]{display:none}.panel{max-width:510px;padding:clamp(18px,4vw,34px);text-align:center;background:#09122bee;border:1px solid #ff50db;border-radius:22px;box-shadow:0 0 60px #e027bd57}.panel h1{margin:0;font-size:clamp(1.6rem,5vw,2.3rem);letter-spacing:.03em}.panel p{margin:12px 0}.rules{font-size:.88rem;line-height:1.65}.gold{color:#ffd36c}.pink{color:#ff80d5}.cyan{color:#7cfaff}
-    p{color:#bed0eb}.panel button{padding:14px 28px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 15px}
-    .hint{font-size:.78rem;color:#b5c8e4}.top-actions{position:absolute;top:calc(max(14px,env(safe-area-inset-top)) + 104px);left:18px;display:flex;flex-wrap:wrap;gap:8px}
-    .top-actions button{font-size:.65rem;padding:7px 9px;color:#d6faff;background:#0b1838d9}
-    #feedback{position:absolute;top:36%;left:8%;right:8%;text-align:center;color:#fff;font-weight:800;font-size:clamp(.8rem,2.5vw,1.2rem);text-shadow:0 2px 12px #080b1c;pointer-events:none}
-    #motion-status{position:absolute;top:calc(max(14px,env(safe-area-inset-top)) + 180px);left:12px;right:12px;text-align:center;pointer-events:none;font-size:.68rem;color:#c4d3e8}
-    body[data-offline] #fullscreen{display:none}
-    @media(max-height:480px){.panel{padding:12px 22px}.panel p{margin:6px 0}.panel h1{font-size:1.4rem}.panel button{margin:5px;padding:9px 24px}.rules{line-height:1.4}.controls button{min-height:44px}.top-actions{top:85px}.hud{top:8px}.score strong{font-size:2rem}#motion-status{top:124px}}
+    .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#070b20b8;padding:18px;overflow:auto;z-index:3}
+    .overlay[hidden]{display:none}.panel{width:min(520px,100%);padding:clamp(18px,4vw,32px);text-align:center;background:#09122bf2;border:1px solid #ff50db;border-radius:22px;box-shadow:0 0 60px #e027bd57}.panel h1{margin:0;font-size:clamp(1.6rem,5vw,2.3rem);letter-spacing:.06em;background:linear-gradient(90deg,#7cfaff,#ff6be0,#ffd36c);-webkit-background-clip:text;background-clip:text;color:transparent}.panel h2{margin:0 0 10px;letter-spacing:.12em;font-size:1.1rem}.panel p{margin:10px 0}.rules{font-size:.84rem;line-height:1.6}.gold{color:#ffd36c}.pink{color:#ff80d5}.cyan{color:#7cfaff}.green{color:#6dff8a}.violet{color:#c3a2ff}
+    p{color:#bed0eb}.panel .go{padding:14px 30px;background:#ff54da;color:#180929;border-color:#ff9bf0;margin:10px 0 12px}
+    .missions{margin:12px 0;padding:10px 12px;border:1px solid #2c3f73;border-radius:14px;background:#0c173a;text-align:left;font-size:.8rem;color:#d6e4ff;white-space:pre-line}
+    .missions b{display:block;color:#ffd36c;letter-spacing:.1em;font-size:.72rem;margin-bottom:4px}
+    .hint{font-size:.76rem;color:#b5c8e4}
+    #feedback{position:absolute;top:34%;left:8%;right:8%;text-align:center;color:#fff;font-weight:900;letter-spacing:.06em;font-size:clamp(.85rem,2.6vw,1.3rem);text-shadow:0 0 14px #ff54da,0 2px 10px #080b1c;pointer-events:none}
+    #motion-status{position:absolute;bottom:calc(max(16px,env(safe-area-inset-bottom)) + 76px);left:12px;right:12px;text-align:center;pointer-events:none;font-size:.68rem;color:#c4d3e8;opacity:.85}
+    .settings .panel{text-align:left;border-color:#7cf4ff;box-shadow:0 0 60px #12bfe844}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #1d2a52}
+    .row span{font-size:.88rem;color:#dbe8ff}.row small{display:block;color:#8fa3c8;font-size:.7rem}
+    .row button{min-width:92px;padding:8px 10px;font-size:.75rem}
+    .row button[aria-pressed="true"]{background:#7cfaff;color:#06122a}
+    .danger{border-color:#ff6b8b;color:#ffd0db}.danger[data-armed]{background:#ff3b6b;color:#fff}
+    .settings .close{display:block;width:100%;margin-top:14px;padding:12px;background:#ff54da;color:#180929;border-color:#ff9bf0}
+    .keys{margin-top:10px;font-size:.72rem;color:#9fb2d6;line-height:1.5}
+    body[data-offline] #fullscreen-row{display:none}
+    @media(max-height:620px){.settings .panel{width:min(780px,100%);padding:12px 18px}.settings h2{margin:0 0 4px}.rows{display:grid;grid-template-columns:1fr 1fr;column-gap:20px}.row{padding:4px 0}.row small,.keys{display:none}.row button{min-width:78px;padding:6px 8px}.settings .close{margin-top:8px;padding:8px}}
+    @media(max-height:480px){.panel{padding:12px 22px}.panel p{margin:6px 0}.panel h1{font-size:1.4rem}.panel .go{margin:5px;padding:9px 24px}.rules{line-height:1.4}.controls button{min-height:44px}.hud{top:8px}.score strong{font-size:2rem}.loot{margin-top:50px}.missions{margin:6px 0}#motion-status{bottom:60px}}
   </style>
 </head>
 <body data-offline>
   <canvas id="game" aria-label="Neon Horizon. Jump gold hurdles, dodge tall pink barriers, and collect cyan diamonds."></canvas>
-  <div class="hud"><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small><small id="stage">SECTOR 1</small></div><div class="loot"><strong id="diamonds">0 DIAMONDS</strong><div id="combo">STREAK 0 / 5 - x1</div><div class="charge"><span id="charge"></span></div><div id="shield">SHIELD 0 / 8</div></div></div>
-  <div class="top-actions"><button id="pause" type="button">PAUSE</button><button id="calibrate" type="button">CALIBRATE TILT</button><button id="lift" type="button" aria-pressed="true">LIFT JUMP: ON</button><button id="fullscreen" type="button">FULL SCREEN</button></div>
+  <div class="hud"><div class="score">SCORE<strong id="score">0000</strong><small id="best">BEST 0000</small><small id="stage">SECTOR 1</small><span id="mult">x1</span></div><div class="loot"><strong id="diamonds">0 DIAMONDS</strong><div id="combo">STREAK 0 / 5 - x1</div><div class="bar"><span id="charge"></span></div><div id="shield">SHIELD 0 / 8</div><div class="bar drive"><span id="drive"></span></div><div id="powers"></div></div></div>
+  <div class="corner">
+    <button id="pause" class="icon" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+    <button id="settings-open" class="icon" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.7 7.7 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.7 7.7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.7 7.7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+  </div>
   <div id="feedback" role="status" aria-live="polite"></div>
-  <div id="motion-status">Swipe once per lane. Swipe up or tap JUMP.</div>
-  <div class="controls" aria-label="Game controls">
+  <div id="motion-status">Swipe once per lane. Swipe up or tap JUMP. Swipe down to slam.</div>
+  <div class="controls" id="controls" aria-label="Game controls">
     <button type="button" data-action="left" aria-label="Move one lane left">LEFT</button>
     <button type="button" data-action="jump" aria-label="Jump">JUMP</button>
     <button type="button" data-action="right" aria-label="Move one lane right">RIGHT</button>
@@ -45,9 +67,27 @@
   <div class="overlay" id="overlay"><div class="panel">
     <h1>NEON HORIZON</h1>
     <p id="message">Find your line. Time your jumps. Beat your best.</p>
-    <div class="rules"><span class="gold">Jump gold hurdles</span> for +50. <span class="pink">Dodge tall pink barriers.</span><br><span class="cyan">Diamonds: +25, airborne diamonds: +60.</span><br>Every 5 in a streak raises your multiplier, up to x4.<br>Every 8 diamonds charges a shield for one crash.</div>
-    <button id="start" type="button">START RUN</button>
-    <div class="hint">One swipe = one lane. Swipe up, Space, or JUMP.<br>Tilt to steer. Hold still to calibrate, then lift the phone to jump.<br><span id="record-hint">Records stay on this device.</span> P pauses the run.</div>
+    <div class="missions"><b id="rank">RANK 1 MISSIONS</b><span id="missions"></span></div>
+    <div class="rules"><span class="gold">Jump gold hurdles</span> (perfect timing pays double). <span class="pink">Dodge pink barriers</span> late for a close call.<br><span class="cyan">Diamonds</span> build your streak multiplier and charge a shield.<br>Close calls and perfect jumps fill <span class="gold">OVERDRIVE</span> for double points.<br>Power-ups: <span class="green">M magnet</span>, <span class="violet">x2 points</span>, <span class="gold">&gt;&gt; surge</span> smashes everything.</div>
+    <button id="start" class="go" type="button">START RUN</button>
+    <div class="hint">One swipe = one lane. Swipe up, Space, or JUMP. Swipe down to slam back to the road.<br>Tilt to steer and lift the phone to jump; both can be turned off in settings.<br><span id="record-hint">Records stay on this device.</span> P pauses, O opens settings.</div>
+  </div></div>
+  <div class="overlay settings" id="settings" hidden><div class="panel" role="dialog" aria-label="Settings">
+    <h2>SETTINGS</h2>
+    <div class="rows">
+    <div class="row"><span>Music<small>Reactive soundtrack</small></span><button id="music" type="button" aria-pressed="true">ON</button></div>
+    <div class="row"><span>Sound effects</span><button id="sfx" type="button" aria-pressed="true">ON</button></div>
+    <div class="row"><span>Tilt steering<small>Phone accelerometer</small></span><button id="tilt" type="button" aria-pressed="true">ON</button></div>
+    <div class="row"><span>Lift jump<small>Lift the phone to jump</small></span><button id="lift" type="button" aria-pressed="true">ON</button></div>
+    <div class="row"><span>Calibrate tilt<small>Hold the phone still afterwards</small></span><button id="calibrate" type="button">CALIBRATE</button></div>
+    <div class="row"><span>Vibration</span><button id="haptics" type="button" aria-pressed="true">ON</button></div>
+    <div class="row"><span>On-screen buttons</span><button id="buttons" type="button">AUTO</button></div>
+    <div class="row"><span>Graphics<small id="quality-note">Adjusts to this device</small></span><button id="quality" type="button">AUTO</button></div>
+    <div class="row" id="fullscreen-row"><span>Full screen</span><button id="fullscreen" type="button">TOGGLE</button></div>
+    <div class="row"><span>High scores<small id="reset-note">Best score on this device</small></span><button id="reset-best" class="danger" type="button">DELETE</button></div>
+    </div>
+    <div class="keys">Keyboard: arrows or A/D steer, Space/W/Up jump, S/Down slam, P pause, M music, O settings.<br>Controller: stick or d-pad steers, A jumps, Start pauses, Select opens settings.</div>
+    <button id="settings-close" class="close" type="button">DONE</button>
   </div></div>
   <script>
   (() => {
@@ -56,36 +96,63 @@
     const scoreEl = document.querySelector('#score');
     const bestEl = document.querySelector('#best');
     const overlay = document.querySelector('#overlay');
+    const settingsEl = document.querySelector('#settings');
     const startButton = document.querySelector('#start');
     const message = document.querySelector('#message');
     let width = 0, height = 0, scale = 1, last = 0;
-    let mode = 'ready', lane = 0, visualLane = 0, jumpTime = 0, score = 0, best = 0;
+    let mode = 'ready', lane = 0, visualLane = 0, laneVelocity = 0, jumpTime = 0, score = 0, best = 0;
     let distance = 0, elapsed = 0, spawnTime = 0, spawnCount = 0, objects = [];
     let diamonds = 0, streak = 0, charge = 0, shield = false, clears = 0, bestAtStart = 0;
     let feedbackTime = 0, invincible = 0, saveTime = 0, routeLane = 0, liftEnabled = true;
-    let manualSteerUntil = 0, storageAvailable = false;
+    let manualSteerUntil = 0, storageAvailable = false, slam = false, sector = 0;
+    let drive = 0, overdrive = 0, magnet = 0, doubled = 0, surge = 0, powerCooldown = 3;
+    let dodgeFrom = null, dodgeAt = -9, squash = 0, shake = 0, flash = 0, flashColor = '#fff';
+    let run = {close: 0, perfect: 0, powers: 0, drives: 0, smash: 0};
+    let settingsOpen = false, settingsFocus = 0, resetArmed = 0, resetFloor = 0;
     const JUMP_DURATION = 0.82, PLAYER_Z = 0.9, HURDLE_HEIGHT = 0.48;
     const BEST_KEY = 'autoyou.neon-horizon.best.v2', MAX_SCORE = 1000000000;
+    const SETTINGS_KEY = 'autoyou.neon-horizon.settings.v1', PROGRESS_KEY = 'autoyou.neon-horizon.progress.v1';
+    const CLEARED_KEY = 'autoyou.neon-horizon.cleared.v1';
     const pointers = new Map();
     let localMotion = {};
     const offline = document.body.hasAttribute('data-offline');
-    let audioContext, musicTime = 0, musicStep = 0;
+    let audioContext;
     const sounds = new Map();
     const audioStarted = () => window.webkit?.messageHandlers?.gameAudio?.postMessage(true);
     const remotePlayers = new Map();
     const streamedFromComputer = location.pathname.startsWith('/api/webrtc/hosted-game/');
     let nativeSocket, reconnectTimer, connecting = false;
-    const stars = Array.from({length: 70}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.45, r: i % 9 ? 1 : 2}));
+    const stars = Array.from({length: 90}, (_, i) => ({x: (i * 0.6180339887) % 1, y: (i * 0.413736) % 0.42, r: i % 9 ? 1 : 2}));
 
+    // ---------- Settings ----------
+    const settings = {music: true, sfx: true, tilt: true, lift: true, haptics: true, buttons: 'auto', quality: 'auto'};
+    function loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+        for (const key of ['music', 'sfx', 'tilt', 'lift', 'haptics']) if (typeof saved[key] === 'boolean') settings[key] = saved[key];
+        if (['auto', 'on', 'off'].includes(saved.buttons)) settings.buttons = saved.buttons;
+        if (['auto', 'high', 'low'].includes(saved.quality)) settings.quality = saved.quality;
+      } catch (_) { /* Defaults apply when storage is unavailable. */ }
+      liftEnabled = settings.lift;
+    }
+    function saveSettings() {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* Session only. */ }
+    }
+
+    // ---------- Records ----------
     function validBest(value) {
       const number = Number(value);
       return Number.isSafeInteger(number) && number >= 0 && number <= MAX_SCORE ? number : 0;
     }
     function loadBest() {
-      let value = validBest(window.autoYouGameBest);
+      // A native store that only keeps its maximum cannot forget a deleted record, so values at or below
+      // the record that was deleted are ignored until a better run replaces them.
+      const floor = Math.max(resetFloor, (() => { try { return validBest(localStorage.getItem(CLEARED_KEY)); } catch (_) { return 0; } })());
+      const fromNative = number => number > floor ? number : 0;
+      let value = fromNative(validBest(window.autoYouGameBest));
       try {
         if (window.AutoYouGameScores) {
-          value = Math.max(value, validBest(window.AutoYouGameScores.readBest()));
+          value = Math.max(value, fromNative(validBest(window.AutoYouGameScores.readBest())));
           storageAvailable = true;
         }
         if (window.webkit?.messageHandlers?.gameScore) storageAvailable = true;
@@ -106,32 +173,128 @@
       try { window.AutoYouGameScores?.saveBest(best); } catch (_) { /* Keep playing. */ }
       try { window.webkit?.messageHandlers?.gameScore?.postMessage(best); } catch (_) { /* Keep playing. */ }
     }
+    function deleteBest() {
+      let floor = best;
+      try { floor = Math.max(floor, validBest(window.AutoYouGameScores?.readBest())); } catch (_) { /* No bridge. */ }
+      floor = Math.max(floor, validBest(window.autoYouGameBest));
+      resetFloor = floor; best = 0; bestAtStart = 0;
+      if (mode !== 'running' && mode !== 'paused') score = 0;
+      try { localStorage.setItem(BEST_KEY, '0'); localStorage.setItem(CLEARED_KEY, String(floor)); } catch (_) { /* Session only. */ }
+      try { window.autoYouGameBest = 0; } catch (_) { /* Read-only bridge. */ }
+      try { window.AutoYouGameScores?.clearBest?.(); } catch (_) { /* Older bridge. */ }
+      try { window.AutoYouGameScores?.saveBest(0); } catch (_) { /* Keep playing. */ }
+      try { window.webkit?.messageHandlers?.gameScore?.postMessage(0); } catch (_) { /* Keep playing. */ }
+      refreshHud();
+    }
+
+    // ---------- Progression: missions and rank ----------
+    const MISSIONS = {
+      diamonds: {text: n => `Collect ${n} diamonds in one run`, base: 25, step: 10, stat: () => diamonds},
+      clears: {text: n => `Clear ${n} gold hurdles in one run`, base: 6, step: 3, stat: () => clears},
+      close: {text: n => `Pull off ${n} close calls in one run`, base: 3, step: 2, stat: () => run.close},
+      perfect: {text: n => `Land ${n} perfect jumps in one run`, base: 3, step: 2, stat: () => run.perfect},
+      score: {text: n => `Score ${n} in one run`, base: 2500, step: 2000, stat: () => Math.floor(score)},
+      powers: {text: n => `Grab ${n} power-ups in one run`, base: 2, step: 1, stat: () => run.powers},
+      sector: {text: n => `Reach sector ${n}`, base: 3, step: 1, stat: () => 1 + sector},
+      drive: {text: n => `Trigger overdrive ${n} times in one run`, base: 1, step: 1, stat: () => run.drives},
+    };
+    let progress = {rank: 1, stars: 0, missions: []};
+    function newMission(exclude) {
+      const options = Object.keys(MISSIONS).filter(type => !exclude.includes(type));
+      const type = options[Math.floor(Math.random() * options.length)] || 'diamonds';
+      return {type, target: MISSIONS[type].base + MISSIONS[type].step * (progress.rank - 1)};
+    }
+    function loadProgress() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
+        if (saved && Number.isSafeInteger(saved.rank) && saved.rank >= 1 && saved.rank <= 999 && Array.isArray(saved.missions)) {
+          progress.rank = saved.rank; progress.stars = Math.max(0, Math.min(2, Number(saved.stars) | 0));
+          progress.missions = saved.missions.filter(item => item && MISSIONS[item.type] && Number.isSafeInteger(item.target) && item.target > 0).slice(0, 3);
+        }
+      } catch (_) { /* Fresh progress. */ }
+      while (progress.missions.length < 3) progress.missions.push(newMission(progress.missions.map(item => item.type)));
+    }
+    function saveProgress() {
+      try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress)); } catch (_) { /* Session only. */ }
+    }
+    const rankBonus = () => Math.min(2.5, 1 + (progress.rank - 1) * 0.1);
+    function checkMissions() {
+      progress.missions.forEach((mission, index) => {
+        if (MISSIONS[mission.type].stat() < mission.target) return;
+        progress.stars++;
+        feedback(`MISSION COMPLETE: ${MISSIONS[mission.type].text(mission.target).toUpperCase()}`);
+        sfxChord([784, 988, 1175]); haptic(30);
+        if (progress.stars >= 3) {
+          progress.stars = 0; progress.rank++;
+          setTimeout(() => feedback(`RANK ${progress.rank}! SCORE BONUS x${rankBonus().toFixed(1)}`), 900);
+        }
+        progress.missions[index] = newMission(progress.missions.map(item => item.type));
+        saveProgress();
+      });
+    }
+    function describeMissions() {
+      document.querySelector('#rank').textContent = `RANK ${progress.rank} MISSIONS  ${'\u2605'.repeat(progress.stars)}${'\u2606'.repeat(3 - progress.stars)}  x${rankBonus().toFixed(1)} SCORE`;
+      document.querySelector('#missions').textContent = progress.missions.map(item => '- ' + MISSIONS[item.type].text(item.target)).join('\n');
+    }
+
+    // ---------- Scoring ----------
     const multiplier = () => Math.min(4, 1 + Math.floor(streak / 5));
-    const jumpHeight = (remaining = jumpTime) => remaining > 0
-      ? Math.sin(Math.PI * (1 - remaining / JUMP_DURATION)) : 0;
+    const bonus = () => (doubled > 0 ? 2 : 1) * (overdrive > 0 ? 2 : 1) * rankBonus();
+    const points = base => Math.round(base * multiplier() * bonus());
+    const jumpHeight = (remaining = jumpTime) => {
+      if (remaining <= 0) return 0;
+      const t = 1 - remaining / JUMP_DURATION;
+      return 4 * t * (1 - t); // A ballistic arc: constant gravity, peak at the middle of the jump.
+    };
     function feedback(text) {
       document.querySelector('#feedback').textContent = text;
       feedbackTime = 1.65;
     }
+    const hud = new Map();
+    function setText(id, text) {
+      if (hud.get(id) === text) return;
+      hud.set(id, text); document.querySelector(id).textContent = text;
+    }
+    function setWidth(id, value) {
+      const text = `${Math.round(value * 100)}%`;
+      if (hud.get(id) === text) return;
+      hud.set(id, text); document.querySelector(id).style.width = text;
+    }
     function refreshHud() {
-      scoreEl.textContent = String(Math.floor(score)).padStart(4, '0');
-      bestEl.textContent = `BEST ${String(Math.max(best, Math.floor(score))).padStart(4, '0')}${storageAvailable ? '' : ' (SESSION)'}`;
-      document.querySelector('#record-hint').textContent = storageAvailable ? 'Records stay on this device.' : 'Storage unavailable: best lasts for this session.';
-      document.querySelector('#diamonds').textContent = `${diamonds} DIAMONDS`;
-      document.querySelector('#combo').textContent = `STREAK ${streak}${multiplier() < 4 ? ' / ' + (Math.floor(streak / 5) + 1) * 5 : ''} - x${multiplier()}`;
-      document.querySelector('#shield').textContent = `${shield ? 'SHIELD READY' : 'SHIELD'} ${charge} / 8`;
-      document.querySelector('#charge').style.width = `${charge / 8 * 100}%`;
-      document.querySelector('#stage').textContent = `SECTOR ${1 + Math.floor(elapsed / 25)}`;
+      setText('#score', String(Math.floor(score)).padStart(4, '0'));
+      setText('#best', `BEST ${String(Math.max(best, Math.floor(score))).padStart(4, '0')}${storageAvailable ? '' : ' (SESSION)'}`);
+      setText('#record-hint', storageAvailable ? 'Records stay on this device.' : 'Storage unavailable: best lasts for this session.');
+      setText('#diamonds', `${diamonds} DIAMONDS`);
+      setText('#combo', `STREAK ${streak}${multiplier() < 4 ? ' / ' + (Math.floor(streak / 5) + 1) * 5 : ''} - x${multiplier()}`);
+      setText('#shield', `${shield ? 'SHIELD READY' : 'SHIELD'} ${charge} / 8`);
+      setWidth('#charge', charge / 8);
+      setWidth('#drive', overdrive > 0 ? overdrive / 6 : drive);
+      setText('#stage', `SECTOR ${1 + sector} - RANK ${progress.rank}`);
+      const total = multiplier() * bonus();
+      setText('#mult', `x${Number.isInteger(total) ? total : total.toFixed(1)}`);
+      const hot = overdrive > 0 || doubled > 0;
+      if (hud.get('hot') !== hot) { hud.set('hot', hot); document.querySelector('#mult').toggleAttribute?.('data-hot', hot); }
+      const powers = [];
+      if (overdrive > 0) powers.push(`OVERDRIVE ${Math.ceil(overdrive)}`);
+      if (surge > 0) powers.push(`SURGE ${Math.ceil(surge)}`);
+      if (magnet > 0) powers.push(`MAGNET ${Math.ceil(magnet)}`);
+      if (doubled > 0) powers.push(`x2 ${Math.ceil(doubled)}`);
+      setText('#powers', powers.join('  ') || (drive >= 0.01 ? `OVERDRIVE ${Math.floor(drive * 100)}%` : ''));
     }
     function resetMotion() {
       localMotion = {};
       for (const player of remotePlayers.values()) player.motion = {};
     }
+    function haptic(ms) {
+      if (!settings.haptics) return;
+      try { window.navigator?.vibrate?.(ms); } catch (_) { /* Not supported. */ }
+    }
 
+    // ---------- Sound effects ----------
     function unlockAudio() {
       const Audio = window.AudioContext || window.webkitAudioContext;
       if (!Audio) return;
-      if (!audioContext) audioContext = new Audio();
+      if (!audioContext) { try { audioContext = new Audio(); } catch (_) { return; } }
       if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
     }
     function wavSound(frequency, duration, type) {
@@ -168,36 +331,497 @@
       audioStarted();
     }
     function tone(frequency, duration = 0.1, volume = 0.04, type = 'sine') {
+      if (!settings.sfx) return;
       const key = `${frequency}:${duration}:${type}`;
+      if (audioContext?.state === 'running') { webTone(frequency, duration, volume, type); return; }
       if (!sounds.has(key)) sounds.set(key, wavSound(frequency, duration, type));
       const sound = sounds.get(key);
       sound.volume = Math.min(1, volume * 8);
       try { sound.currentTime = 0; sound.play().then(audioStarted).catch(() => webTone(frequency, duration, volume, type)); }
       catch { webTone(frequency, duration, volume, type); }
     }
+    function sfxChord(notes, gap = 0.06, type = 'triangle') {
+      notes.forEach((note, i) => setTimeout(() => tone(note, 0.14, 0.05, type), i * gap * 1000));
+    }
+
+    /* music:begin - pure synthesis shared with scripts/render_neon_horizon_music.cjs */
+    const MUSIC_BPM = 148, MUSIC_STEP = 60 / MUSIC_BPM / 4, MUSIC_STEPS = 64;
+    const MUSIC_LOOP = MUSIC_STEP * MUSIC_STEPS;
+    const MUSIC_STEMS = ['kick', 'bass', 'pad', 'drums', 'arp', 'lead', 'tension'];
+    // A minor, one chord per bar: Am, F, G, Em.
+    const MUSIC_CHORDS = [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59]];
+    const MUSIC_ROOTS = [33, 29, 31, 28];
+    const MUSIC_LEAD = [[0, 76, 3], [3, 74, 1], [4, 72, 2], [6, 74, 2], [8, 76, 4], [12, 79, 2], [14, 76, 2],
+      [16, 77, 3], [19, 76, 1], [20, 74, 2], [22, 72, 2], [24, 74, 6], [30, 72, 2],
+      [32, 74, 3], [35, 72, 1], [36, 71, 2], [38, 72, 2], [40, 74, 4], [44, 79, 2], [46, 77, 2],
+      [48, 76, 6], [54, 74, 2], [56, 71, 4], [60, 72, 2], [62, 74, 2]];
+    function renderStem(name, rate) {
+      const total = Math.round(MUSIC_LOOP * rate), out = new Float32Array(total);
+      const hz = note => 440 * Math.pow(2, (note - 69) / 12);
+      const beat = MUSIC_STEP * 4;
+      let seed = 0x2545f491 + name.length * 977;
+      const noise = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 2147483648 - 1; };
+      // Sidechain pump: everything melodic ducks under the kick, the signature of driving electronic music.
+      const pump = time => 1 - 0.62 * Math.exp(-((time % beat + beat) % beat) * 13);
+      const note = (step, seconds, voice) => {
+        const from = Math.round(step * MUSIC_STEP * rate), count = Math.max(1, Math.round(seconds * rate));
+        for (let i = 0; i < count; i++) out[(from + i) % total] += voice(i / rate, i / count, (from + i) / rate);
+      };
+      const lowpass = cutoff => { let y = 0; return (x, fc = cutoff) => (y += (1 - Math.exp(-2 * Math.PI * fc / rate)) * (x - y)); };
+      const saw = phase => 2 * (phase - Math.floor(phase)) - 1;
+      for (let step = 0; step < MUSIC_STEPS; step++) {
+        const bar = Math.floor(step / 16), inBar = step % 16, chord = MUSIC_CHORDS[bar];
+        if (name === 'kick' && step % 4 === 0) {
+          note(step, 0.38, t => Math.sin(2 * Math.PI * (44 * t + 120 * (1 - Math.exp(-30 * t)) / 30)) * Math.exp(-t * 7.5) * 0.95
+            + noise() * Math.exp(-t * 320) * 0.25);
+        } else if (name === 'drums') {
+          if (inBar % 8 === 4 || (bar === 3 && inBar >= 13)) {
+            const level = bar === 3 && inBar >= 13 ? 0.28 + (inBar - 13) * 0.06 : 0.42;
+            let prev = 0;
+            note(step, 0.24, t => { const n = noise(), hp = n - prev * 0.6; prev = n;
+              return hp * Math.exp(-t * 17) * level + Math.sin(2 * Math.PI * 190 * t) * Math.exp(-t * 28) * 0.28; });
+          }
+          const open = inBar % 4 === 2;
+          let prev = 0;
+          note(step, open ? 0.16 : 0.05, t => { const n = noise(), hp = n - prev; prev = n;
+            return hp * Math.exp(-t * (open ? 14 : 70)) * (open ? 0.12 : step % 2 ? 0.05 : 0.08); });
+        } else if (name === 'bass' && step % 4 !== 0) {
+          const root = MUSIC_ROOTS[bar] + (step % 4 === 3 ? 12 : 0), f = hz(root + 12);
+          const filter = lowpass(400);
+          note(step, MUSIC_STEP * 0.92, (t, u) => {
+            const x = saw(f * t) * 0.7 + Math.sin(2 * Math.PI * f * 0.5 * t) * 0.6;
+            return filter(x, 260 + 2200 * Math.exp(-t * 22)) * Math.min(1, t * 400) * (1 - u) * 0.55;
+          });
+        } else if (name === 'pad' && inBar === 0) {
+          for (const tone of chord) {
+            const f = hz(tone), a = lowpass(1400), b = lowpass(1400);
+            note(step, MUSIC_STEP * 16 + 0.25, (t, u, at) => {
+              const x = saw(f * t) + saw(f * 1.004 * t + 0.3);
+              return b(a(x)) * Math.min(1, t / 0.35) * Math.min(1, (1 - u) * 8) * pump(at) * 0.07;
+            });
+          }
+        } else if (name === 'arp') {
+          const order = [0, 1, 2, 1, 2, 0, 1, 2];
+          const f = hz(chord[order[inBar % 8]] + 12 + (inBar >= 8 ? 12 : 0)), filter = lowpass(2600);
+          note(step, MUSIC_STEP * 0.9, (t, u, at) => {
+            const x = (f * t) % 1 < 0.3 ? 1 : -1;
+            return filter(x) * Math.exp(-t * 18) * pump(at) * 0.12;
+          });
+        } else if (name === 'tension') {
+          const f = hz(MUSIC_ROOTS[bar] + 48 + (step % 2 ? 7 : 0));
+          note(step, MUSIC_STEP * 0.6, t => ((f * t) % 1 < 0.5 ? 0.5 : -0.5) * Math.exp(-t * 34) * 0.16);
+          if (inBar === 0) {
+            let prev = 0;
+            note(step, MUSIC_STEP * 16, (t, u) => { const n = noise(), hp = n - prev; prev = n; return hp * u * u * 0.09; });
+          }
+        }
+      }
+      if (name === 'lead') {
+        for (const [step, tone, length] of MUSIC_LEAD) {
+          const f = hz(tone), filter = lowpass(3200), seconds = length * MUSIC_STEP;
+          let phaseA = 0, phaseB = 0.5;
+          note(step, seconds + 0.08, (t, u) => {
+            const vibrato = 1 + (t > 0.15 ? Math.sin(2 * Math.PI * 5.5 * t) * 0.004 : 0);
+            phaseA += f * vibrato / rate; phaseB += f * 1.007 * vibrato / rate;
+            const env = Math.min(1, t * 120) * (0.65 + 0.35 * Math.exp(-t * 8)) * (t > seconds ? Math.max(0, 1 - (t - seconds) / 0.08) : 1);
+            return filter(saw(phaseA) + saw(phaseB)) * env * 0.085;
+          });
+        }
+      }
+      return out;
+    }
+    // How loud each stem plays at an energy level from 0 (calm) to 1 (everything).
+    function stemLevels(energy, danger = 0) {
+      const ramp = (from, span) => Math.max(0, Math.min(1, (energy - from) / span));
+      return {kick: 1, bass: 0.9, pad: 0.85 - 0.25 * ramp(0.6, 0.4), drums: 0.3 + 0.7 * ramp(0.12, 0.2),
+        arp: ramp(0.3, 0.2), lead: ramp(0.55, 0.2) * 0.9, tension: Math.min(1, danger)};
+    }
+    /* music:end */
+
+    // ---------- Reactive music ----------
+    const music = {data: {}, buffers: {}, sources: {}, gains: {}, bus: null, filter: null, out: null,
+      t0: 0, playing: false, rendering: false, levels: {}, cutoff: 0, energy: 0, danger: 0};
+    const wantMusic = () => settings.music && !streamedFromComputer && (mode === 'running' || mode === 'paused');
+    function renderMusic() {
+      if (music.rendering || !audioContext) return;
+      const pending = MUSIC_STEMS.filter(name => !music.data[name]);
+      if (!pending.length) return;
+      music.rendering = true;
+      // One stem per tick keeps the first frames smooth on slow phones; stems join in time as they finish.
+      const next = () => {
+        const name = pending.shift();
+        music.data[name] = renderStem(name, 22050);
+        syncMusic();
+        if (pending.length) setTimeout(next, 16); else music.rendering = false;
+      };
+      setTimeout(next, 0);
+    }
+    function syncMusic() {
+      if (!audioContext || !wantMusic()) return;
+      const now = audioContext.currentTime;
+      if (!music.playing) {
+        music.bus = audioContext.createGain();
+        music.filter = audioContext.createBiquadFilter(); music.filter.type = 'lowpass';
+        music.filter.frequency.value = 18000; music.filter.Q.value = 0.8;
+        music.out = audioContext.createGain(); music.out.gain.value = 0;
+        music.out.gain.setTargetAtTime(0.55, now, 0.08);
+        music.bus.connect(music.filter).connect(music.out).connect(audioContext.destination);
+        music.t0 = now + 0.05; music.playing = true; music.levels = {}; music.cutoff = 18000;
+        audioStarted();
+      }
+      for (const name of MUSIC_STEMS) {
+        if (!music.data[name] || music.sources[name]) continue;
+        if (!music.buffers[name]) {
+          const data = music.data[name], buffer = audioContext.createBuffer(1, data.length, 22050);
+          buffer.getChannelData(0).set(data); music.buffers[name] = buffer;
+        }
+        const source = audioContext.createBufferSource(), gain = audioContext.createGain();
+        source.buffer = music.buffers[name]; source.loop = true;
+        gain.gain.value = 0; source.connect(gain).connect(music.bus);
+        const when = Math.max(now + 0.03, music.t0);
+        source.start(when, ((when - music.t0) % MUSIC_LOOP + MUSIC_LOOP) % MUSIC_LOOP);
+        music.sources[name] = source; music.gains[name] = gain; music.levels[name] = -1;
+      }
+    }
+    function stopMusic(tapeStop = false) {
+      if (!music.playing || !audioContext) return;
+      const now = audioContext.currentTime, end = now + (tapeStop ? 0.9 : 0.15);
+      for (const source of Object.values(music.sources)) {
+        try {
+          if (tapeStop) { source.playbackRate.setValueAtTime(1, now); source.playbackRate.linearRampToValueAtTime(0.2, end); }
+          source.stop(end + 0.05);
+        } catch (_) { /* Already stopped. */ }
+      }
+      music.out.gain.cancelScheduledValues(now);
+      music.out.gain.setValueAtTime(music.out.gain.value, now);
+      music.out.gain.linearRampToValueAtTime(0, end);
+      music.sources = {}; music.gains = {}; music.playing = false;
+    }
+    function updateMusic() {
+      if (!music.playing) return;
+      const now = audioContext.currentTime;
+      let target = -1;
+      // Danger: the nearest hazard closing in on the lane the ship is in, eased away while airborne over a hurdle.
+      for (const item of objects) {
+        if (item.passed || (item.kind !== 'wall' && item.kind !== 'hurdle') || Math.abs(item.lane - lane) > 0.5) continue;
+        let level = Math.max(0, Math.min(1, (item.z - 0.4) / 0.48));
+        if (item.kind === 'hurdle') level *= jumpTime > 0 ? 0.3 : 0.75;
+        target = Math.max(target, level);
+      }
+      music.danger += (Math.max(0, target) - music.danger) * 0.2;
+      const energy = surge > 0 || overdrive > 0 ? 1
+        : Math.min(1, 0.08 + sector * 0.2 + (multiplier() - 1) * 0.12 + (doubled > 0 || magnet > 0 ? 0.15 : 0));
+      const levels = stemLevels(energy, music.danger * 0.85);
+      for (const name in music.gains) {
+        if (Math.abs(levels[name] - music.levels[name]) < 0.03) continue;
+        music.levels[name] = levels[name];
+        music.gains[name].gain.setTargetAtTime(levels[name], now, name === 'tension' ? 0.05 : 0.4);
+      }
+      const cutoff = mode === 'paused' || settingsOpen ? 650 : 18000;
+      if (cutoff !== music.cutoff) { music.cutoff = cutoff; music.filter.frequency.setTargetAtTime(cutoff, now, 0.12); }
+    }
+    function applyMusicSetting() {
+      if (streamedFromComputer) {
+        try { window.parent?.postMessage({autoyouGameAudio: {music: settings.music}}, '*'); } catch (_) { /* No host page. */ }
+        return;
+      }
+      if (wantMusic()) { unlockAudio(); renderMusic(); syncMusic(); } else stopMusic();
+    }
+
+    // ---------- Graphics ----------
+    const TIERS = [
+      {name: 'LOW', scale: 1, glow: false, particles: 60, grid: 12, posts: 6, stars: 40},
+      {name: 'BALANCED', scale: 1.5, glow: true, particles: 150, grid: 16, posts: 10, stars: 70},
+      {name: 'HIGH', scale: 2, glow: true, particles: 260, grid: 19, posts: 12, stars: 90},
+    ];
+    let tier = 2, perfWork = 0, perfFrame = 1 / 60, perfSlow = 0, perfFast = 0, perfUpgrades = 0;
+    const THEMES = [
+      {sky: ['#070c23', '#301348', '#130c2a'], sun: ['#ffe78a', '#f5589a'], glow: '#fa49ba', edge: '#ff4be3', grid: '#e842d7', city: '#1a0f3a', far: '#22124a', window: '#ffcf6b', road: '#0c102c'},
+      {sky: ['#020b1e', '#0b2d55', '#06142b'], sun: ['#c4fcff', '#2f8cff'], glow: '#2fb4ff', edge: '#3cf2ff', grid: '#33b8ff', city: '#071a36', far: '#0c2648', window: '#8ff7ff', road: '#07122b'},
+      {sky: ['#04110c', '#0f3b2a', '#03140e'], sun: ['#f6ff8a', '#26e07f'], glow: '#5dff9a', edge: '#7dff5c', grid: '#4fe39a', city: '#06241a', far: '#0b3324', window: '#d8ff7a', road: '#061611'},
+      {sky: ['#14040a', '#4a0f1c', '#1a0509'], sun: ['#ffd27a', '#ff3b3b'], glow: '#ff5a3b', edge: '#ff6a3d', grid: '#ff4d6d', city: '#2a0712', far: '#3a0c18', window: '#ffb36b', road: '#160812'},
+    ];
+    const theme = () => THEMES[sector % THEMES.length];
+    const layers = {key: '', sky: null, far: null, near: null, previous: null, fade: 0, road: null};
+    const glows = new Map();
+    function makeLayer(w, h) {
+      if (typeof document.createElement !== 'function') return null;
+      const layer = document.createElement('canvas');
+      layer.width = Math.max(1, Math.round(w)); layer.height = Math.max(1, Math.round(h));
+      const context = layer.getContext && layer.getContext('2d');
+      return context ? {canvas: layer, ctx: context} : null;
+    }
+    function glowSprite(color) {
+      if (glows.has(color)) return glows.get(color);
+      const layer = makeLayer(64, 64);
+      if (layer) {
+        const g = layer.ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        g.addColorStop(0, color); g.addColorStop(0.35, color + '88'); g.addColorStop(1, color + '00');
+        layer.ctx.fillStyle = g; layer.ctx.fillRect(0, 0, 64, 64);
+      }
+      glows.set(color, layer && layer.canvas);
+      return glows.get(color);
+    }
+    function glow(color, x, y, radius, alpha = 1) {
+      if (!TIERS[tier].glow || radius <= 0) return;
+      const sprite = glowSprite(color);
+      if (!sprite) return;
+      ctx.globalAlpha = alpha; ctx.drawImage(sprite, x - radius, y - radius, radius * 2, radius * 2); ctx.globalAlpha = 1;
+    }
+    function seeded(seed) {
+      return () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    }
+    function buildLayers() {
+      const t = theme(), h = horizon(), key = `${width}x${height}:${sector % THEMES.length}:${tier}`;
+      if (layers.key === key || width < 2 || height < 2) return;
+      const themeChanged = layers.key && layers.key.split(':')[1] !== key.split(':')[1] && layers.key.split(':')[0] === key.split(':')[0];
+      if (themeChanged && layers.sky) { layers.previous = {sky: layers.sky, far: layers.far, near: layers.near}; layers.fade = 1; }
+      else { layers.previous = null; layers.fade = 0; }
+      layers.key = key;
+      const pixel = Math.min(scale, 1.5);
+      const sky = makeLayer(width * pixel, (h + 2) * pixel);
+      if (sky) {
+        const c = sky.ctx; c.scale(pixel, pixel);
+        const g = c.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, t.sky[0]); g.addColorStop(0.75, t.sky[1]); g.addColorStop(1, t.sky[2]);
+        c.fillStyle = g; c.fillRect(0, 0, width, h + 2);
+        c.fillStyle = '#cfe3ff';
+        for (const star of stars.slice(0, TIERS[tier].stars)) { c.globalAlpha = 0.25 + (star.x * 7 % 1) * 0.5; c.fillRect(star.x * width, star.y * height, star.r, star.r); }
+        c.globalAlpha = 1;
+        const sunY = h - Math.min(width, height) * 0.11, radius = Math.min(width * 0.17, height * 0.2);
+        const halo = c.createRadialGradient(width / 2, sunY, radius * 0.2, width / 2, sunY, radius * 2.2);
+        halo.addColorStop(0, t.sun[0] + 'aa'); halo.addColorStop(0.45, t.glow + '55'); halo.addColorStop(1, t.glow + '00');
+        c.fillStyle = halo; c.fillRect(0, 0, width, h + 2);
+        const sun = c.createLinearGradient(0, sunY - radius, 0, sunY + radius);
+        sun.addColorStop(0, t.sun[0]); sun.addColorStop(1, t.sun[1]);
+        c.fillStyle = sun; c.beginPath(); c.arc(width / 2, sunY, radius, 0, Math.PI * 2); c.fill();
+        c.globalCompositeOperation = 'destination-out';
+        for (let stripe = 0; stripe < 6; stripe++) c.fillRect(width / 2 - radius, sunY + radius * (0.12 + stripe * 0.15), radius * 2, 2 + stripe * 1.5);
+        c.globalCompositeOperation = 'source-over';
+        layers.sky = sky.canvas;
+      }
+      const skyline = (color, lit, seed, lift, minH, maxH) => {
+        const w = width * 1.3, layer = makeLayer(w * pixel, (h + 2) * pixel);
+        if (!layer) return null;
+        const c = layer.ctx, random = seeded(seed); c.scale(pixel, pixel);
+        let x = 0;
+        while (x < w) {
+          const bw = 14 + random() * 38, bh = height * (minH + random() * (maxH - minH));
+          c.fillStyle = color; c.fillRect(x, h - bh - lift, bw - 2, bh + lift + 2);
+          if (random() < 0.3) c.fillRect(x + bw * 0.45, h - bh - lift - 10, 2, 10);
+          if (lit && tier > 0) {
+            c.fillStyle = t.window;
+            for (let wy = h - bh - lift + 5; wy < h - 6; wy += 7) for (let wx = x + 3; wx < x + bw - 6; wx += 6) {
+              if (random() < 0.16) { c.globalAlpha = 0.35 + random() * 0.5; c.fillRect(wx, wy, 2, 3); }
+            }
+            c.globalAlpha = 1;
+          }
+          x += bw;
+        }
+        return layer.canvas;
+      };
+      layers.far = skyline(t.far, false, 7 + sector, 0, 0.03, 0.09);
+      layers.near = skyline(t.city, true, 91 + sector, 0, 0.02, 0.14);
+      layers.road = ctx.createLinearGradient(0, h, 0, height);
+      layers.road.addColorStop(0, '#05030f'); layers.road.addColorStop(1, t.road);
+    }
+    function drawSky(layerSet, alpha) {
+      const h = horizon();
+      ctx.globalAlpha = alpha;
+      if (layerSet.sky) ctx.drawImage(layerSet.sky, 0, 0, width, h + 2);
+      const pan = visualLane + laneVelocity * 0.02;
+      if (layerSet.far) ctx.drawImage(layerSet.far, -width * 0.15 - pan * width * 0.02, 0, width * 1.3, h + 2);
+      if (layerSet.near) ctx.drawImage(layerSet.near, -width * 0.15 - pan * width * 0.05, 0, width * 1.3, h + 2);
+      ctx.globalAlpha = 1;
+    }
+    function drawBackground(time, dt) {
+      const t = theme();
+      ctx.fillStyle = t.sky[2]; ctx.fillRect(0, 0, width, height);
+      buildLayers();
+      drawSky(layers, 1);
+      if (layers.previous && layers.fade > 0) {
+        drawSky(layers.previous, layers.fade);
+        layers.fade = Math.max(0, layers.fade - dt / 1.5);
+        if (!layers.fade) layers.previous = null;
+      }
+      if (tier === 2) {
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 12; i++) {
+          const star = stars[i * 7];
+          ctx.globalAlpha = Math.max(0, Math.sin(time * 2.4 + i * 1.7)) * 0.9;
+          ctx.fillRect(star.x * width, star.y * height, 2, 2);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    function drawRoad(time) {
+      const h = horizon(), t = theme(), q = TIERS[tier];
+      // The road edge follows the same perspective curve as the lanes, down past the bottom of the screen.
+      const bottom = Math.sqrt(Math.max(1, height - h) / Math.max(1, height * 0.52 - (height <= 480 ? 68 : 86)));
+      const edgeZ = Array.from({length: 13}, (_, i) => bottom * (i / 12) ** 0.7);
+      ctx.fillStyle = layers.road || t.road;
+      ctx.beginPath(); ctx.moveTo(width / 2 - 20, h);
+      for (const z of edgeZ) ctx.lineTo(width / 2 - roadHalf(z), roadY(z));
+      for (let i = edgeZ.length - 1; i >= 0; i--) ctx.lineTo(width / 2 + roadHalf(edgeZ[i]), roadY(edgeZ[i]));
+      ctx.closePath(); ctx.fill();
+      // A soft reflection of the sun running down the road.
+      if (q.glow) glow(t.glow, width / 2, h + (height - h) * 0.25, Math.min(width, height) * 0.28, 0.22);
+      for (let i = 0; i < q.grid; i++) {
+        const z = ((i / q.grid + distance * 0.16) % 1) ** 1.45;
+        ctx.globalAlpha = 0.25 + z * 0.55;
+        line(width / 2 - roadHalf(z), roadY(z), width / 2 + roadHalf(z), roadY(z), t.grid, 1 + z * 1.6);
+      }
+      ctx.globalAlpha = 1;
+      for (const divider of [-0.31, 0.31]) {
+        for (let i = 0; i < 8; i++) {
+          const z0 = ((i / 8 + distance * 0.32) % 1) ** 1.45, z1 = (Math.min(1, (i / 8 + distance * 0.32) % 1 + 0.05)) ** 1.45;
+          ctx.globalAlpha = 0.25 + z0 * 0.5;
+          line(width / 2 + divider * roadHalf(z0), roadY(z0), width / 2 + divider * roadHalf(z1), roadY(z1), '#c7b8ff', 1 + z0 * 3);
+        }
+      }
+      ctx.globalAlpha = 1;
+      for (const edge of [-1, 1]) {
+        ctx.beginPath(); ctx.moveTo(width / 2 + edge * 20, h);
+        for (const z of edgeZ) ctx.lineTo(width / 2 + edge * roadHalf(z), roadY(z));
+        ctx.strokeStyle = t.edge;
+        if (q.glow) { ctx.globalAlpha = 0.25; ctx.lineWidth = 10; ctx.stroke(); ctx.globalAlpha = 1; }
+        ctx.lineWidth = 3; ctx.stroke();
+      }
+      // Light pylons along both edges sell the speed.
+      for (let i = 0; i < q.posts; i++) {
+        const z = ((i / q.posts + distance * 0.16) % 1) ** 1.45;
+        if (z < 0.03) continue;
+        const postHeight = 6 + 70 * z;
+        for (const edge of [-1, 1]) {
+          const x = width / 2 + edge * (roadHalf(z) + 6 * z), y = roadY(z);
+          ctx.fillStyle = '#2a2f5a'; ctx.fillRect(x - z * 2, y - postHeight, Math.max(1, z * 4), postHeight);
+          ctx.fillStyle = t.edge; ctx.fillRect(x - z * 3, y - postHeight, Math.max(1, z * 6), Math.max(1, z * 5));
+          glow(t.edge, x, y - postHeight, 6 + 22 * z, 0.7);
+        }
+      }
+      if (surge > 0 || overdrive > 0) {
+        const random = seeded(Math.floor(time * 30));
+        ctx.globalAlpha = 0.35;
+        for (let i = 0; i < (tier ? 18 : 8); i++) {
+          const angle = random() * Math.PI * 2, r0 = 40 + random() * Math.max(width, height) * 0.3, r1 = r0 + 60 + random() * 120;
+          line(width / 2 + Math.cos(angle) * r0, h + Math.sin(angle) * r0 * 0.6, width / 2 + Math.cos(angle) * r1, h + Math.sin(angle) * r1 * 0.6,
+            surge > 0 ? '#ffd36c' : '#ff8be6', 1.5);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    function line(x1, y1, x2, y2, color, weight = 1) {
+      ctx.strokeStyle = color; ctx.lineWidth = weight;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+
+    // ---------- Particles: a fixed pool with gravity, drag and ground bounce ----------
+    const particles = Array.from({length: 260}, () => ({life: 0}));
+    let particleCursor = 0;
+    const popups = [];
+    function emit(x, y, count, color, spread = 220, lift = 160, options = {}) {
+      const budget = TIERS[tier].particles, limit = Math.min(particles.length, budget);
+      const total = Math.ceil(count * (tier === 0 ? 0.4 : tier === 1 ? 0.7 : 1));
+      for (let i = 0; i < total; i++) {
+        const p = particles[particleCursor = (particleCursor + 1) % limit];
+        const angle = Math.random() * Math.PI * 2, speed = (0.3 + Math.random() * 0.7) * spread;
+        p.x = x; p.y = y; p.vx = Math.cos(angle) * speed; p.vy = Math.sin(angle) * speed * 0.6 - lift;
+        p.life = p.max = (options.life || 0.7) * (0.6 + Math.random() * 0.6);
+        p.size = (options.size || 3) * (0.6 + Math.random() * 0.8); p.color = color;
+        p.gravity = options.gravity ?? 700; p.floor = options.floor ?? y + 30; p.drag = options.drag ?? 1.5;
+        p.shard = Boolean(options.shard); p.spin = (Math.random() - 0.5) * 18; p.angle = Math.random() * 6;
+      }
+    }
+    function popup(text, x, y, color = '#fff') {
+      if (popups.length > 6) popups.shift();
+      popups.push({text, x, y, vy: -90, life: 0.9, color});
+    }
+    function stepParticles(dt) {
+      const limit = Math.min(particles.length, TIERS[tier].particles);
+      for (let i = 0; i < limit; i++) {
+        const p = particles[i];
+        if (p.life <= 0) continue;
+        p.life -= dt;
+        p.vy += p.gravity * dt;
+        const drag = Math.exp(-p.drag * dt); p.vx *= drag; p.vy *= drag;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.angle += p.spin * dt;
+        if (p.y > p.floor && p.vy > 0) { p.y = p.floor; p.vy *= -0.42; p.vx *= 0.7; p.spin *= 0.5; }
+      }
+      for (const item of popups) { item.life -= dt; item.y += item.vy * dt; item.vy += 120 * dt; }
+      while (popups.length && popups[0].life <= 0) popups.shift();
+    }
+    function drawParticles() {
+      const limit = Math.min(particles.length, TIERS[tier].particles), additive = TIERS[tier].glow;
+      if (additive) ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < limit; i++) {
+        const p = particles[i];
+        if (p.life <= 0) continue;
+        const alpha = Math.min(1, p.life / p.max * 1.5);
+        ctx.globalAlpha = alpha; ctx.fillStyle = p.color;
+        if (p.shard) {
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle); ctx.fillRect(-p.size, -p.size * 0.4, p.size * 2, p.size * 0.8); ctx.restore();
+        } else if (additive) {
+          const sprite = glowSprite(p.color);
+          if (sprite) ctx.drawImage(sprite, p.x - p.size * 2, p.y - p.size * 2, p.size * 4, p.size * 4);
+        } else ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.textAlign = 'center'; ctx.font = '900 16px system-ui,sans-serif';
+      for (const item of popups) {
+        ctx.globalAlpha = Math.max(0, Math.min(1, item.life * 2)); ctx.fillStyle = item.color;
+        ctx.fillText(item.text, item.x, item.y);
+      }
+      ctx.globalAlpha = 1;
+    }
 
     function resize() {
-      width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, 2);
+      width = innerWidth; height = innerHeight; scale = Math.min(devicePixelRatio || 1, TIERS[tier].scale);
       // Embedded WebViews can report a visible viewport before resolving the root's percentage height.
       document.documentElement.style.height = `${height}px`;
       canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      layers.key = '';
     }
+    function setTier(next) {
+      if (next === tier) return;
+      tier = next; resize();
+      setText('#quality-note', settings.quality === 'auto' ? `Auto: ${TIERS[tier].name.toLowerCase()} on this device` : `${TIERS[tier].name.toLowerCase()} detail`);
+    }
+    // Measure the work each frame costs, not the display rate, so a phone capped at 30 Hz is not mistaken for a slow one.
+    function tuneQuality(workSeconds, frameSeconds) {
+      perfWork += (workSeconds - perfWork) * 0.05;
+      perfFrame += (frameSeconds - perfFrame) * 0.05;
+      if (settings.quality !== 'auto' || mode !== 'running') return;
+      const slow = perfWork > 0.011 || (perfFrame > 0.04 && perfWork > 0.006);
+      perfSlow = slow ? perfSlow + frameSeconds : 0;
+      perfFast = perfWork < 0.004 && perfFrame < 0.02 ? perfFast + frameSeconds : 0;
+      if (perfSlow > 1.5 && tier > 0) { setTier(tier - 1); perfSlow = 0; perfFast = 0; perfWork = 0.006; }
+      if (perfFast > 12 && tier < 2 && perfUpgrades < 2) { perfUpgrades++; setTier(tier + 1); perfFast = 0; }
+    }
+
+    // ---------- Run flow ----------
     function start() {
       unlockAudio();
-      mode = 'running'; lane = 0; visualLane = 0; jumpTime = 0; score = 0;
-      distance = 0; elapsed = 0; spawnTime = 0.8; spawnCount = 0; objects = [];
+      mode = 'running'; lane = 0; visualLane = 0; laneVelocity = 0; jumpTime = 0; score = 0; slam = false;
+      distance = 0; elapsed = 0; spawnTime = 0.8; spawnCount = 0; objects = []; sector = 0;
       diamonds = 0; streak = 0; charge = 0; shield = false; clears = 0; routeLane = 0;
+      drive = 0; overdrive = 0; magnet = 0; doubled = 0; surge = 0; powerCooldown = 3; dodgeFrom = null;
+      run = {close: 0, perfect: 0, powers: 0, drives: 0, smash: 0};
       invincible = 0; saveTime = 0; best = Math.max(best, loadBest()); bestAtStart = best;
       pointers.clear(); resetMotion();
-      musicTime = 0; musicStep = 0;
       overlay.hidden = true; tone(523, 0.16);
+      stopMusic(); applyMusicSetting();
       feedback('COLLECT DIAMONDS TO CHARGE YOUR SHIELD'); refreshHud();
     }
     function finish(reason) {
       mode = 'over'; saveBest(); pointers.clear();
-      tone(110, 0.4, 0.08, 'sawtooth');
-      message.textContent = `${Math.floor(score) > bestAtStart ? 'NEW BEST! ' : ''}${Math.floor(score)} points, ${diamonds} diamonds, ${clears} hurdles cleared. ${reason}`;
+      tone(110, 0.4, 0.08, 'sawtooth'); stopMusic(true); haptic([60, 40, 90]);
+      const x = laneX(visualLane, PLAYER_Z), y = roadY(PLAYER_Z) - 20;
+      emit(x, y, 46, '#ff6be0', 360, 260, {shard: true, size: 4, life: 1.4, floor: roadY(PLAYER_Z) + 6});
+      emit(x, y, 30, '#7cfaff', 260, 120, {life: 0.9});
+      shake = 1; flash = 0.6; flashColor = '#ff4dda';
+      checkMissions(); describeMissions();
+      message.textContent = `${Math.floor(score) > bestAtStart ? 'NEW BEST! ' : ''}${Math.floor(score)} points, ${diamonds} diamonds, ${clears} hurdles cleared, ${run.close} close calls. ${reason}`;
       startButton.textContent = 'RUN AGAIN'; overlay.hidden = false;
       refreshHud();
     }
@@ -205,22 +829,32 @@
       if (mode !== 'running') return;
       mode = 'paused'; saveBest(); pointers.clear(); resetMotion();
       for (const player of remotePlayers.values()) player.touches.clear();
+      describeMissions();
       message.textContent = 'Run paused. Your score is safe. Resume when you are ready.';
-      startButton.textContent = 'RESUME'; overlay.hidden = false;
+      startButton.textContent = 'RESUME'; overlay.hidden = settingsOpen;
     }
     function beginOrResume() {
+      if (settingsOpen) return;
       if (mode !== 'paused') { start(); return; }
       unlockAudio(); resetMotion(); last = 0; mode = 'running'; overlay.hidden = true;
     }
     function action(name) {
       unlockAudio();
-      if (mode === 'paused') return;
+      if (mode === 'paused' || settingsOpen) return;
       if (mode !== 'running') { start(); return; }
-      if (name === 'left' && lane > -1) { lane -= 1; tone(330, 0.07); }
-      if (name === 'right' && lane < 1) { lane += 1; tone(392, 0.07); }
-      if (name === 'jump' && jumpTime <= 0) { jumpTime = JUMP_DURATION; tone(660, 0.12); }
+      if ((name === 'left' && lane > -1) || (name === 'right' && lane < 1)) {
+        dodgeFrom = lane; dodgeAt = elapsed;
+        lane += name === 'left' ? -1 : 1; tone(name === 'left' ? 330 : 392, 0.07);
+      }
+      if (name === 'jump' && jumpTime <= 0) { jumpTime = JUMP_DURATION; slam = false; tone(660, 0.12); }
+      if (name === 'slam' && jumpTime > 0 && !slam) {
+        // Mirror onto the falling half of the same arc, so the height stays continuous, then fall fast.
+        if (jumpTime > JUMP_DURATION / 2) jumpTime = JUMP_DURATION - jumpTime;
+        slam = true; tone(220, 0.1, 0.05, 'triangle');
+      }
     }
     function manualAction(name) {
+      if (settingsOpen) return;
       if (mode === 'paused') { beginOrResume(); return; }
       if (name === 'left' || name === 'right') manualSteerUntil = performance.now() + 350;
       action(name);
@@ -233,7 +867,88 @@
       pointer.used = true;
       if (Math.abs(dx) >= Math.abs(dy)) manualAction(dx < 0 ? 'left' : 'right');
       else if (dy < 0) manualAction('jump');
+      else if (mode === 'running') manualAction('slam');
     }
+
+    // ---------- Settings panel ----------
+    const settingButtons = ['#music', '#sfx', '#tilt', '#lift', '#calibrate', '#haptics', '#buttons', '#quality', '#fullscreen', '#reset-best', '#settings-close'];
+    function showToggle(id, on) {
+      const button = document.querySelector(id);
+      button.textContent = on ? 'ON' : 'OFF'; button.setAttribute('aria-pressed', String(on));
+    }
+    function controlsVisible() {
+      if (settings.buttons !== 'auto') return settings.buttons === 'on';
+      const touch = 'ontouchstart' in window || (window.navigator?.maxTouchPoints || 0) > 0;
+      return touch || streamedFromComputer || !window.matchMedia?.('(pointer: fine)')?.matches;
+    }
+    function refreshSettings() {
+      showToggle('#music', settings.music); showToggle('#sfx', settings.sfx); showToggle('#tilt', settings.tilt);
+      showToggle('#lift', liftEnabled); showToggle('#haptics', settings.haptics);
+      document.querySelector('#buttons').textContent = settings.buttons.toUpperCase();
+      document.querySelector('#quality').textContent = settings.quality.toUpperCase();
+      document.querySelector('#controls').hidden = !controlsVisible();
+      setText('#quality-note', settings.quality === 'auto' ? `Auto: ${TIERS[tier].name.toLowerCase()} on this device` : `${TIERS[tier].name.toLowerCase()} detail`);
+      setText('#reset-note', `Best score on this device: ${best}`);
+    }
+    function openSettings() {
+      if (settingsOpen) return;
+      if (mode === 'running') pause();
+      settingsOpen = true; settingsEl.hidden = false; overlay.hidden = true; resetArmed = 0;
+      document.querySelector('#reset-best').textContent = 'DELETE';
+      document.querySelector('#reset-best').removeAttribute?.('data-armed');
+      refreshSettings(); settingsFocus = 0;
+      document.querySelector(settingButtons[0]).focus?.();
+    }
+    function closeSettings() {
+      if (!settingsOpen) return;
+      settingsOpen = false; settingsEl.hidden = true;
+      overlay.hidden = mode === 'running';
+      startButton.focus?.();
+    }
+    function settingsNav(command) {
+      if (command === 'close') { closeSettings(); return; }
+      if (command === 'activate') { document.querySelector(settingButtons[settingsFocus]).click?.(); return; }
+      settingsFocus = (settingsFocus + (command === 'up' ? -1 : 1) + settingButtons.length) % settingButtons.length;
+      document.querySelector(settingButtons[settingsFocus]).focus?.();
+    }
+    const onClick = (id, handler) => document.querySelector(id).addEventListener('click', handler);
+    onClick('#settings-open', openSettings);
+    onClick('#settings-close', closeSettings);
+    onClick('#music', () => { settings.music = !settings.music; saveSettings(); refreshSettings(); applyMusicSetting(); });
+    onClick('#sfx', () => { settings.sfx = !settings.sfx; saveSettings(); refreshSettings(); tone(660, 0.08); });
+    onClick('#tilt', () => {
+      settings.tilt = !settings.tilt; saveSettings(); resetMotion(); refreshSettings();
+      setText('#motion-status', settings.tilt ? 'Tilt to steer.' : 'Tilt steering is off. Swipe or use the buttons.');
+    });
+    onClick('#lift', () => {
+      liftEnabled = !liftEnabled; settings.lift = liftEnabled; saveSettings(); resetMotion(); refreshSettings();
+    });
+    onClick('#calibrate', () => { resetMotion(); feedback('HOLD STILL TO SET YOUR NEUTRAL TILT'); });
+    onClick('#haptics', () => { settings.haptics = !settings.haptics; saveSettings(); refreshSettings(); haptic(20); });
+    onClick('#buttons', () => {
+      settings.buttons = {auto: 'on', on: 'off', off: 'auto'}[settings.buttons]; saveSettings(); refreshSettings();
+    });
+    onClick('#quality', () => {
+      settings.quality = {auto: 'high', high: 'low', low: 'auto'}[settings.quality]; saveSettings();
+      perfUpgrades = 0; perfSlow = 0; perfFast = 0;
+      setTier(settings.quality === 'low' ? 0 : 2); refreshSettings();
+    });
+    onClick('#fullscreen', () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.();
+    });
+    onClick('#reset-best', event => {
+      const button = event.currentTarget;
+      if (!resetArmed || performance.now() > resetArmed) {
+        resetArmed = performance.now() + 4000;
+        button.textContent = 'CONFIRM?'; button.setAttribute('data-armed', '');
+        return;
+      }
+      resetArmed = 0; deleteBest();
+      button.textContent = 'DELETED'; button.removeAttribute?.('data-armed');
+      refreshSettings(); tone(196, 0.2, 0.06, 'triangle');
+    });
+
     startButton.addEventListener('click', beginOrResume);
     document.querySelectorAll('[data-action]').forEach(button => {
       button.addEventListener('pointerdown', event => {
@@ -260,12 +975,20 @@
     canvas.addEventListener('lostpointercapture', event => pointers.delete(event.pointerId));
     addEventListener('keydown', event => {
       const key = event.key.toLowerCase();
+      if (settingsOpen) {
+        const command = key === 'escape' || key === 'o' ? 'close' : key === 'arrowup' ? 'up' : key === 'arrowdown' ? 'down' : null;
+        if (command && !event.repeat) { event.preventDefault(); settingsNav(command); }
+        return;
+      }
       const command = key === 'arrowleft' || key === 'a' ? 'left'
         : key === 'arrowright' || key === 'd' ? 'right'
-        : key === ' ' || key === 'arrowup' || key === 'w' ? 'jump' : null;
+        : key === ' ' || key === 'arrowup' || key === 'w' ? 'jump'
+        : key === 'arrowdown' || key === 's' ? 'slam' : null;
       if (command) { event.preventDefault(); if (!event.repeat) manualAction(command); }
       if (key === 'enter' && mode !== 'running') beginOrResume();
       if ((key === 'p' || key === 'escape') && !event.repeat) pause();
+      if (key === 'o' && !event.repeat) openSettings();
+      if (key === 'm' && !event.repeat) document.querySelector('#music').click?.();
     });
     // A controller plays like the keyboard: stick or d-pad steers, A or d-pad up jumps, Start starts and pauses.
     const pads = new Map();
@@ -276,39 +999,42 @@
       for (const pad of list) {
         if (!pad || !pad.connected) continue;
         any = true;
-        const was = pads.get(pad.index) || {dir: 0, jump: false, start: false};
-        const x = Number(pad.axes[0]) || 0;
+        const was = pads.get(pad.index) || {dir: 0, vertical: 0, jump: false, start: false, select: false, back: false};
+        const x = Number(pad.axes[0]) || 0, y = Number(pad.axes[1]) || 0;
         const dir = pad.buttons[14]?.pressed || x < -0.55 ? -1 : pad.buttons[15]?.pressed || x > 0.55 ? 1 : 0;
-        if (dir && dir !== was.dir) manualAction(dir < 0 ? 'left' : 'right');
-        const jump = Boolean(pad.buttons[0]?.pressed || pad.buttons[12]?.pressed);
-        if (jump && !was.jump) manualAction('jump');
-        const startPressed = Boolean(pad.buttons[9]?.pressed);
-        if (startPressed && !was.start) { if (mode === 'running') pause(); else beginOrResume(); }
-        pads.set(pad.index, {dir, jump, start: startPressed});
+        const vertical = pad.buttons[12]?.pressed || y < -0.55 ? -1 : pad.buttons[13]?.pressed || y > 0.55 ? 1 : 0;
+        const jump = Boolean(pad.buttons[0]?.pressed);
+        const startPressed = Boolean(pad.buttons[9]?.pressed), select = Boolean(pad.buttons[8]?.pressed), back = Boolean(pad.buttons[1]?.pressed);
+        if (settingsOpen) {
+          if (vertical && vertical !== was.vertical) settingsNav(vertical < 0 ? 'up' : 'down');
+          if (jump && !was.jump) settingsNav('activate');
+          if ((back && !was.back) || (select && !was.select) || (startPressed && !was.start)) settingsNav('close');
+        } else {
+          if (dir && dir !== was.dir) manualAction(dir < 0 ? 'left' : 'right');
+          if ((jump && !was.jump) || (vertical < 0 && was.vertical >= 0)) manualAction('jump');
+          if (vertical > 0 && was.vertical <= 0) manualAction('slam');
+          if (startPressed && !was.start) { if (mode === 'running') pause(); else beginOrResume(); }
+          if (select && !was.select) openSettings();
+        }
+        pads.set(pad.index, {dir, vertical, jump, start: startPressed, select, back});
       }
       padLoop = any;
       if (any) requestAnimationFrame(pollGamepads);
     }
     addEventListener('gamepadconnected', () => { if (!padLoop) { padLoop = true; requestAnimationFrame(pollGamepads); } });
     addEventListener('gamepaddisconnected', event => pads.delete(event.gamepad.index));
-    document.querySelector('#pause').addEventListener('click', pause);
-    document.querySelector('#calibrate').addEventListener('click', () => { resetMotion(); feedback('HOLD STILL TO SET YOUR NEUTRAL TILT'); });
-    document.querySelector('#lift').addEventListener('click', event => {
-      liftEnabled = !liftEnabled; resetMotion();
-      event.currentTarget.textContent = `LIFT JUMP: ${liftEnabled ? 'ON' : 'OFF'}`;
-      event.currentTarget.setAttribute('aria-pressed', String(liftEnabled));
-    });
-    document.querySelector('#fullscreen').addEventListener('click', () => {
-      if (document.fullscreenElement) document.exitFullscreen();
-      else document.documentElement.requestFullscreen?.();
-    });
+    document.querySelector('#pause').addEventListener('click', () => { if (mode === 'running') pause(); else if (mode === 'paused') beginOrResume(); });
     addEventListener('resize', () => { resize(); resetMotion(); });
     addEventListener('blur', pause);
     addEventListener('pagehide', saveBest);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { pause(); audioContext?.suspend?.().catch(() => {}); }
+      else if (audioContext && wantMusic()) audioContext.resume().catch(() => {});
+    });
 
     function motionInput(state, x, y, z, threshold) {
-      if (mode !== 'running' || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (mode !== 'running' || settingsOpen || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (!settings.tilt && !liftEnabled) return;
       const now = performance.now();
       let lifting = false;
       if (Number.isFinite(z)) {
@@ -347,10 +1073,12 @@
           lift.armed = false; lift.pulse = 0; lift.until = now + 950;
           action('jump');
         }
-        document.querySelector('#motion-status').textContent = liftEnabled
-          ? (lift.armed ? 'LIFT READY - lift the phone upward to jump' : 'Hold still briefly to ready lift jump')
-          : 'Tilt to steer. Lift jump is off.';
+        setText('#motion-status', !settings.tilt ? 'Tilt steering is off. Lift the phone to jump.'
+          : liftEnabled
+            ? (lift.armed ? 'LIFT READY - lift the phone upward to jump' : 'Hold still briefly to ready lift jump')
+            : 'Tilt to steer. Lift jump is off.');
       }
+      if (!settings.tilt) return;
       if (!state.tilt) state.tilt = {axis: Math.abs(x) <= Math.abs(y) ? 'x' : 'y', x, y, direction: 0};
       if (lifting || now < manualSteerUntil) return;
       const tilt = state.tilt;
@@ -362,8 +1090,17 @@
     }
     window.autoYouGameTilt = (x, y, z) => motionInput(localMotion, x, y, z, 1.8);
 
+    // A streamed player's tap presses whichever on-screen button it lands on (settings, pause, start).
+    function remoteTap(x, y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+      const hit = document.elementFromPoint?.(x * width, y * height);
+      const button = hit?.closest?.('button');
+      if (!button || button.dataset.action) return false;
+      button.click(); return true;
+    }
     function remoteActionFromX(x) {
       if (!Number.isFinite(x) || x < 0 || x > 1) return;
+      if (settingsOpen) return;
       manualAction(x < 0.35 ? 'left' : x > 0.65 ? 'right' : 'jump');
     }
     function handleRemoteFrame(frame) {
@@ -388,28 +1125,39 @@
           const x = Number(point.x), y = Number(point.y);
           if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) continue;
           const pointer = player.touches.get(point.id) || {x, y, used: false};
-          moveGesture(pointer, x, y, 0.09, 0.09);
+          if (!settingsOpen) moveGesture(pointer, x, y, 0.09, 0.09);
           next.set(point.id, pointer);
         }
         for (const [id, pointer] of player.touches) {
-          if (!next.has(id) && !pointer.used && frame.phase !== 'cancel') remoteActionFromX(pointer.x);
+          if (!next.has(id) && !pointer.used && frame.phase !== 'cancel' && !remoteTap(pointer.x, pointer.y)) remoteActionFromX(pointer.x);
         }
         player.touches = next;
       } else if (frame.event === 'game_input' && kind === 'axis' && frame.axis === 'left_x') {
         const value = Number(frame.value);
         const direction = value < -0.55 ? -1 : value > 0.55 ? 1 : 0;
-        if (direction && direction !== player.axis) manualAction(direction < 0 ? 'left' : 'right');
+        if (direction && direction !== player.axis && !settingsOpen) manualAction(direction < 0 ? 'left' : 'right');
         player.axis = direction;
       } else if (frame.event === 'game_input' && kind === 'axis' && frame.axis === 'left_y') {
-        const up = Number(frame.value) < -0.55;
-        if (up && !player.up) manualAction('jump');
-        player.up = up;
+        const value = Number(frame.value), up = value < -0.55, down = value > 0.55;
+        if (settingsOpen) { if ((up && !player.up) || (down && !player.down)) settingsNav(up ? 'up' : 'down'); }
+        else {
+          if (up && !player.up) manualAction('jump');
+          if (down && !player.down) manualAction('slam');
+        }
+        player.up = up; player.down = down;
       } else if (frame.event === 'game_input' && kind === 'button') {
         const name = String(frame.button || '').toLowerCase();
         if (frame.phase === 'down' && !player.buttons.has(name)) {
           player.buttons.add(name);
+          if (settingsOpen) {
+            const command = {up: 'up', left: 'up', down: 'down', right: 'down', action_a: 'activate', jump: 'activate',
+              action_b: 'close', select: 'close', start: 'close'}[name];
+            if (command) settingsNav(command);
+            return;
+          }
           if (name === 'start') { if (mode === 'running') pause(); else beginOrResume(); return; }
-          const command = {action_a: 'jump', action_b: 'right', jump: 'jump', up: 'jump', left: 'left', right: 'right'}[name];
+          if (name === 'select') { openSettings(); return; }
+          const command = {action_a: 'jump', action_b: 'right', jump: 'jump', up: 'jump', down: 'slam', left: 'left', right: 'right'}[name];
           if (command) manualAction(command);
         } else if (frame.phase === 'up') player.buttons.delete(name);
       } else if (frame.event === 'game_input' && kind === 'sensor' && frame.sensor === 'accelerometer') {
@@ -419,13 +1167,22 @@
         const key = String(frame.key || '').toLowerCase();
         if (frame.action === 'key' && frame.phase === 'down' && !player.keys.has(key)) {
           player.keys.add(key);
+          if (settingsOpen) {
+            const command = {escape: 'close', o: 'close', arrowup: 'up', arrowdown: 'down', enter: 'activate', space: 'activate'}[key];
+            if (command) settingsNav(command);
+            return;
+          }
           if (key === 'enter') { if (mode !== 'running') beginOrResume(); return; }
+          if (key === 'o') { openSettings(); return; }
+          if (key === 'm') { document.querySelector('#music').click?.(); return; }
+          if (key === 'p' || key === 'escape') { pause(); return; }
           const command = {arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right',
-            arrowup: 'jump', w: 'jump', space: 'jump'}[key];
+            arrowup: 'jump', w: 'jump', space: 'jump', arrowdown: 'slam', s: 'slam'}[key];
           if (command) manualAction(command);
         } else if (frame.phase === 'up') player.keys.delete(key);
       } else if (frame.event === 'remote_desktop_input' && kind === 'button' &&
                  (frame.phase === 'down' || frame.phase === 'click')) {
+        if (frame.x != null && remoteTap(Number(frame.x), Number(frame.y))) return;
         if (frame.x != null) remoteActionFromX(Number(frame.x));
         else action(frame.button === 'right' ? 'right' : frame.button === 'middle' ? 'left' : 'jump');
       }
@@ -474,18 +1231,27 @@
       });
     }
 
+    // ---------- World ----------
     const horizon = () => height * 0.48;
     const roadY = z => horizon() + (height * 0.52 - (height <= 480 ? 68 : 86)) * z * z;
     const roadHalf = z => 20 + width * 0.46 * z;
     const laneX = (laneValue, z) => width / 2 + laneValue * roadHalf(z) * 0.62;
     const jumpPixels = () => Math.min(105, height * 0.19);
+    const POWERS = {magnet: {label: 'M', color: '#6dff8a', name: 'MAGNET'}, double: {label: 'x2', color: '#c3a2ff', name: 'DOUBLE POINTS'},
+      surge: {label: '>>', color: '#ffb13b', name: 'SURGE'}};
     function spawnRow() {
-      const put = (kind, laneValue, z = 0.02, air = false) => objects.push({kind, lane: laneValue, z, air, passed: false});
-      const pattern = spawnCount++ % 6;
-      // A readable introduction, then repeating patterns with varied routes.
-      // Rows remain more than a full jump apart, including at maximum speed.
+      const put = (kind, laneValue, z = 0.02, air = false) => {
+        const item = {kind, lane: laneValue, z, air, passed: false, seed: Math.random() * 6};
+        objects.push(item); return item;
+      };
+      const step = () => { routeLane = Math.max(-1, Math.min(1, routeLane + (Math.random() < 0.5 ? -1 : 1))); };
+      const first = spawnCount < 6;
+      // A readable introduction, then patterns drawn at random, with harder ones unlocked by sector.
+      // Rows remain more than a full jump apart, including at maximum speed, and one lane always stays open.
+      const pattern = first ? spawnCount : sector >= 1 && Math.random() < 0.35 ? 6 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 6);
+      spawnCount++;
       if (pattern === 0 || pattern === 4) {
-        if (spawnCount > 1) routeLane = Math.max(-1, Math.min(1, routeLane + (Math.random() < 0.5 ? -1 : 1)));
+        if (spawnCount > 1) step();
         for (let i = 0; i < 3; i++) put('shard', routeLane, 0.02 - i * 0.09);
         if (pattern === 4) put('wall', routeLane === 0 ? 1 : -routeLane);
       } else if (pattern === 1) {
@@ -499,43 +1265,124 @@
       } else if (pattern === 3) {
         for (const value of [-1, 0, 1]) put('hurdle', value);
         put('shard', routeLane, 0.02, true);
-        feedback('JUMP THE GOLD ROW');
-      } else {
+        if (spawnCount === 4) feedback('JUMP THE GOLD ROW');
+      } else if (pattern === 5) {
         put('hurdle', routeLane); put('shard', routeLane, 0.02, true);
         put('wall', routeLane === 0 ? 1 : -routeLane);
+      } else if (pattern === 6) {
+        // A gate: barriers on two lanes, the open lane one step away, a diamond trail through it.
+        step();
+        for (const value of [-1, 0, 1]) if (value !== routeLane) put('wall', value);
+        for (let i = 0; i < 3; i++) put('shard', routeLane, 0.02 - i * 0.08);
+      } else {
+        // A diamond arc over a full row of hurdles rewards a perfectly timed jump.
+        for (const value of [-1, 0, 1]) put('hurdle', value);
+        for (const offset of [0.07, 0, -0.07]) put('shard', routeLane, 0.02 + offset, true);
+      }
+      if (spawnCount > 6 && --powerCooldown <= 0 && Math.random() < 0.35) {
+        const kinds = Object.keys(POWERS);
+        put('power', routeLane, -0.16).power = kinds[Math.floor(Math.random() * kinds.length)];
+        powerCooldown = 5;
+      }
+    }
+    function playerScreen() {
+      return {x: laneX(visualLane, PLAYER_Z), y: roadY(PLAYER_Z) - 20 - jumpHeight() * jumpPixels()};
+    }
+    function addDrive(amount) {
+      if (overdrive > 0) return;
+      drive = Math.min(1, drive + amount);
+      if (drive >= 1) {
+        drive = 0; overdrive = 6; run.drives++;
+        feedback('OVERDRIVE! DOUBLE POINTS'); sfxChord([523, 659, 784, 1046], 0.05, 'sawtooth');
+        flash = 0.35; flashColor = '#ffd36c'; haptic(40);
       }
     }
     function collect(item) {
-      const points = (item.air ? 60 : 25) * multiplier();
-      score += points; diamonds++; streak++; charge++;
+      const gained = points(item.air ? 60 : 25);
+      score += gained; diamonds++; streak++; charge++;
+      addDrive(0.03);
       if (charge === 8) {
         charge = 0;
-        if (shield) { score += 100 * multiplier(); feedback(`SHIELD FULL - BONUS +${100 * multiplier()}`); }
+        if (shield) { const extra = points(100); score += extra; feedback(`SHIELD FULL - BONUS +${extra}`); }
         else { shield = true; feedback('SHIELD READY - ONE CRASH PROTECTED'); }
       } else if (streak % 5 === 0 && streak <= 15) feedback(`STREAK UP - x${multiplier()} POINTS`);
-      else feedback(`${item.air ? 'AIR DIAMOND' : 'DIAMOND'} +${points}`);
-      item.collected = true; tone(item.air ? 1046 : 880, 0.16, 0.06);
+      else feedback(`${item.air ? 'AIR DIAMOND' : 'DIAMOND'} +${gained}`);
+      item.collected = true; tone(item.air ? 1046 : 880 + Math.min(8, streak % 10) * 22, 0.16, 0.06);
+      const p = playerScreen();
+      emit(p.x, p.y - 10, 12, '#7cfaff', 160, 140, {life: 0.55, size: 3});
+      popup(`+${gained}`, p.x, p.y - 40, '#7cfaff');
+    }
+    function grabPower(item) {
+      item.collected = true; run.powers++;
+      const power = POWERS[item.power] || POWERS.magnet;
+      if (item.power === 'magnet') magnet = 10;
+      else if (item.power === 'double') doubled = 10;
+      else surge = 5;
+      feedback(`${power.name}!`); sfxChord([659, 880, 1175], 0.05);
+      const p = playerScreen();
+      emit(p.x, p.y, 26, power.color, 260, 120, {life: 0.8});
+      flash = 0.25; flashColor = power.color; haptic(25);
+    }
+    function smash(item) {
+      run.smash++;
+      const gained = points(item.kind === 'wall' ? 120 : 80);
+      score += gained; feedback(`SMASH +${gained}`); tone(150, 0.18, 0.07, 'sawtooth');
+      const x = laneX(item.lane, PLAYER_Z), y = roadY(PLAYER_Z);
+      emit(x, y - 40, 24, item.kind === 'wall' ? '#ff4dda' : '#ffd36c', 380, 300, {shard: true, size: 5, life: 1.1, floor: y + 4});
+      popup(`+${gained}`, x, y - 70, '#ffd36c');
+      shake = Math.max(shake, 0.35); haptic(15);
+    }
+    function closeCall(item) {
+      run.close++;
+      const gained = points(75);
+      score += gained; addDrive(0.34); feedback(`CLOSE CALL +${gained}`);
+      tone(1318, 0.09, 0.05, 'triangle');
+      const x = laneX(item.lane, PLAYER_Z), y = roadY(PLAYER_Z) - 40;
+      emit(x, y, 10, '#ff8be6', 200, 60, {life: 0.4, size: 2});
+      popup('CLOSE!', laneX(visualLane, PLAYER_Z), y - 30, '#ff8be6');
     }
     function crash(item) {
       if (invincible > 0) return;
       if (shield) {
         shield = false; invincible = 0.8; streak = 0;
         feedback('SHIELD SAVED YOU - BUILD ANOTHER'); tone(196, 0.25, 0.07);
+        const p = playerScreen();
+        emit(p.x, p.y, 30, '#ffd36c', 300, 100, {shard: true, size: 3, life: 0.9, floor: roadY(PLAYER_Z) + 4});
+        shake = 0.6; flash = 0.3; flashColor = '#ffffff'; haptic(50);
       } else finish(item.kind === 'wall' ? 'Dodge tall pink barriers.' : 'Jump higher over gold hurdles.');
+    }
+    function landing() {
+      squash = 1;
+      const x = laneX(visualLane, PLAYER_Z), y = roadY(PLAYER_Z);
+      emit(x, y, slam ? 18 : 8, '#b9c6ff', slam ? 240 : 140, 30, {life: 0.45, size: 2, gravity: 200, floor: y + 2});
+      if (slam) { shake = Math.max(shake, 0.25); tone(130, 0.12, 0.06, 'triangle'); }
+    }
+    // The ship's lateral motion is a slightly underdamped spring: quick to the target lane with a little lean and settle.
+    function springLane(dt) {
+      const steps = Math.max(1, Math.ceil(dt / 0.008)), h = dt / steps;
+      for (let i = 0; i < steps; i++) {
+        laneVelocity += ((lane - visualLane) * 400 - laneVelocity * 34) * h;
+        visualLane += laneVelocity * h;
+      }
     }
     function update(dt) {
       if (mode !== 'running') return;
-      if (!streamedFromComputer && (musicTime -= dt) <= 0) {
-        tone([220, 330, 294, 392][musicStep++ % 4], 0.12, 0.055, 'triangle');
-        musicTime = 0.3;
+      elapsed += dt;
+      const sectorNow = Math.floor(elapsed / 25);
+      if (sectorNow !== sector) {
+        sector = sectorNow; feedback(`SECTOR ${sector + 1} - SPEED UP`);
+        sfxChord([392, 523, 659, 784], 0.07, 'sawtooth'); flash = 0.3; flashColor = theme().edge;
       }
-      elapsed += dt; score += dt * 10;
-      const speed = 0.34 + Math.min(elapsed / 500, 0.18);
+      score += dt * 10 * bonus();
+      const speed = (0.34 + Math.min(elapsed / 500, 0.18)) * (surge > 0 ? 1.35 : 1);
       distance += dt * speed;
-      const previousLane = visualLane, previousJump = jumpTime;
-      visualLane += (lane - visualLane) * (1 - Math.exp(-dt * 18));
-      jumpTime = Math.max(0, jumpTime - dt);
+      const previousLane = visualLane, previousJump = jumpTime, jumpRate = slam ? 3.2 : 1;
+      springLane(dt);
+      jumpTime = Math.max(0, jumpTime - dt * jumpRate);
+      if (previousJump > 0 && jumpTime === 0) { landing(); slam = false; }
       invincible = Math.max(0, invincible - dt);
+      overdrive = Math.max(0, overdrive - dt); magnet = Math.max(0, magnet - dt);
+      doubled = Math.max(0, doubled - dt); surge = Math.max(0, surge - dt);
       if ((feedbackTime -= dt) <= 0) document.querySelector('#feedback').textContent = '';
       spawnTime -= dt;
       if (spawnTime <= 0) {
@@ -550,130 +1397,174 @@
           item.passed = true;
           const fraction = dt > 0 ? Math.max(0, Math.min(1, (PLAYER_Z - previousZ) / (dt * speed))) : 1;
           const impactLane = previousLane + (visualLane - previousLane) * fraction;
-          const heightAtImpact = jumpHeight(Math.max(0, previousJump - dt * fraction));
+          const heightAtImpact = jumpHeight(Math.max(0, previousJump - dt * jumpRate * fraction));
           const sameLane = Math.abs(item.lane - impactLane) < 0.55;
           if (item.kind === 'shard') {
-            if (sameLane && (item.air ? heightAtImpact >= 0.5 : heightAtImpact < 0.55)) collect(item);
+            if (magnet > 0 || (sameLane && (item.air ? heightAtImpact >= 0.5 : heightAtImpact < 0.55))) collect(item);
             else {
               if (streak >= 5) feedback('DIAMOND MISSED - STREAK RESET');
               streak = 0;
             }
+          } else if (item.kind === 'power') {
+            if (sameLane) grabPower(item);
           } else if (sameLane) {
-            if (item.kind === 'hurdle' && heightAtImpact >= HURDLE_HEIGHT) {
-              clears++; const points = 50 * multiplier(); score += points;
-              feedback(`HURDLE CLEARED +${points}`); tone(698, 0.12);
+            if (surge > 0) { smash(item); item.collected = true; }
+            else if (item.kind === 'hurdle' && heightAtImpact >= HURDLE_HEIGHT) {
+              clears++;
+              const perfect = heightAtImpact >= 0.9, gained = points(perfect ? 100 : 50); score += gained;
+              if (perfect) { run.perfect++; addDrive(0.25); }
+              feedback(`${perfect ? 'PERFECT JUMP' : 'HURDLE CLEARED'} +${gained}`); tone(perfect ? 988 : 698, 0.12);
+              const x = laneX(item.lane, PLAYER_Z);
+              emit(x, roadY(PLAYER_Z) - jumpPixels() * HURDLE_HEIGHT, perfect ? 16 : 8, '#ffd36c', 200, 80, {life: 0.5, size: 2});
+              if (perfect) popup('PERFECT', x, roadY(PLAYER_Z) - jumpPixels() - 30, '#ffd36c');
             } else crash(item);
             if (mode !== 'running') break;
+          } else if (item.kind === 'wall' && dodgeFrom === item.lane && elapsed - dodgeAt < 0.6 && Math.abs(item.lane - impactLane) < 1.4) {
+            dodgeFrom = null; closeCall(item);
           }
         }
       }
       objects = objects.filter(item => item.z < 1.12 && !item.collected);
+      if (mode === 'running') checkMissions();
       if ((saveTime -= dt) <= 0) { saveBest(); saveTime = 1; }
       refreshHud();
     }
-    function line(x1, y1, x2, y2, color, weight = 1) {
-      ctx.strokeStyle = color; ctx.lineWidth = weight;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
-    function drawBackground(time) {
-      const sky = ctx.createLinearGradient(0, 0, 0, height);
-      sky.addColorStop(0, '#070c23'); sky.addColorStop(0.48, '#301348'); sky.addColorStop(1, '#130c2a');
-      ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
-      ctx.fillStyle = '#9dc9ff';
-      for (const star of stars) {
-        ctx.globalAlpha = 0.2 + (Math.sin(time * 2 + star.x * 20) + 1) * 0.2;
-        ctx.fillRect(star.x * width, star.y * height, star.r, star.r);
-      }
-      ctx.globalAlpha = 1;
-      const sunY = horizon() - Math.min(width, height) * 0.12;
-      const radius = Math.min(width * 0.16, height * 0.2);
-      const glow = ctx.createRadialGradient(width / 2, sunY, radius * 0.15, width / 2, sunY, radius * 1.8);
-      glow.addColorStop(0, '#ffb458bb'); glow.addColorStop(0.52, '#fa49ba66'); glow.addColorStop(1, '#fa49ba00');
-      ctx.fillStyle = glow; ctx.fillRect(width / 2 - radius * 2, sunY - radius * 2, radius * 4, radius * 4);
-      const sun = ctx.createLinearGradient(0, sunY - radius, 0, sunY + radius);
-      sun.addColorStop(0, '#ffe78a'); sun.addColorStop(1, '#f5589a');
-      ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(width / 2, sunY, radius, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#301348';
-      for (let stripe = 0; stripe < 5; stripe++) {
-        const y = sunY + radius * (0.25 + stripe * 0.17);
-        ctx.fillRect(width / 2 - radius, y, radius * 2, 3 + stripe * 1.4);
-      }
-      ctx.fillStyle = '#100b29';
-      ctx.beginPath(); ctx.moveTo(0, horizon());
-      for (let i = 0; i <= 12; i++) {
-        const x = width * i / 12;
-        ctx.lineTo(x, horizon() - height * (0.04 + ((Math.sin(x * 0.027) + 1) * 0.028)));
-      }
-      ctx.lineTo(width, horizon()); ctx.fill();
-    }
-    function drawRoad() {
-      const h = horizon();
-      ctx.fillStyle = '#0c102c';
-      ctx.beginPath(); ctx.moveTo(width / 2 - 20, h); ctx.lineTo(width / 2 + 20, h);
-      ctx.lineTo(width / 2 + roadHalf(1), height); ctx.lineTo(width / 2 - roadHalf(1), height); ctx.fill();
-      ctx.shadowColor = '#f044db'; ctx.shadowBlur = 15;
-      for (const edge of [-1, 1]) line(width / 2 + edge * 20, h, width / 2 + edge * roadHalf(1), height, '#ff4be3', 3);
-      ctx.shadowBlur = 0;
-      for (const stripe of [-0.33, 0.33]) {
-        line(width / 2 + stripe * 20, h, width / 2 + stripe * roadHalf(1), height, '#b637d666', 1);
-      }
-      for (let i = 0; i < 19; i++) {
-        const z = ((i / 18 + distance * 0.16) % 1) ** 1.45;
-        line(width / 2 - roadHalf(z), roadY(z), width / 2 + roadHalf(z), roadY(z), '#e842d788', 1 + z * 1.5);
-      }
-    }
-    function drawItem(item) {
-      const z = item.z;
+
+    // ---------- Drawing ----------
+    function drawItem(item, time) {
+      let z = item.z;
       if (z <= 0 || z > 1.12) return;
-      const x = laneX(item.lane, z), y = roadY(z), size = 5 + Math.min(48, width * 0.085) * z;
-      ctx.save(); ctx.translate(x, y); ctx.shadowBlur = 20 * z;
+      let laneValue = item.lane;
+      let lift = item.air ? jumpPixels() * z / PLAYER_Z * 0.8 : 0;
+      if (magnet > 0 && item.kind === 'shard' && z > 0.45) {
+        // Magnetised diamonds curve toward the ship.
+        const pull = Math.min(1, (z - 0.45) / 0.45) ** 2;
+        laneValue += (visualLane - laneValue) * pull;
+        lift += (jumpHeight() * jumpPixels() * z / PLAYER_Z - lift) * pull;
+      }
+      const x = laneX(laneValue, z), y = roadY(z), size = 5 + Math.min(48, width * 0.085) * z;
+      ctx.save(); ctx.translate(x, y);
       if (item.kind === 'shard') {
-        ctx.translate(0, -18 * z - (item.air ? jumpPixels() * z / PLAYER_Z * 0.8 : 0));
-        ctx.scale(0.65, 0.65);
-        ctx.shadowColor = '#58f8ff'; ctx.fillStyle = '#7cfaff';
-        ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size * 0.48, -size * 0.3);
-        ctx.lineTo(0, size * 0.4); ctx.lineTo(-size * 0.48, -size * 0.3); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.fillStyle = '#58f8ff';
+        ctx.beginPath(); ctx.ellipse(0, 0, size * 0.35, size * 0.1, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        const bob = Math.sin(time * 5 + item.seed) * 3 * z;
+        ctx.translate(0, -18 * z - lift + bob);
+        if (item.air && TIERS[tier].glow) { ctx.globalAlpha = 0.25; line(0, 0, 0, lift + 18 * z, '#58f8ff', Math.max(1, z * 2)); ctx.globalAlpha = 1; }
+        glow('#58f8ff', 0, 0, size * 1.1, 0.8);
+        const spin = Math.cos(time * 4 + item.seed), width2 = size * 0.32 * Math.max(0.2, Math.abs(spin));
+        ctx.fillStyle = '#7cfaff';
+        ctx.beginPath(); ctx.moveTo(0, -size * 0.65); ctx.lineTo(width2, -size * 0.2); ctx.lineTo(0, size * 0.28); ctx.lineTo(-width2, -size * 0.2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = spin > 0 ? '#e4feff' : '#2fc6e0';
+        ctx.beginPath(); ctx.moveTo(0, -size * 0.65); ctx.lineTo(width2 * 0.5, -size * 0.2); ctx.lineTo(0, size * 0.28); ctx.closePath(); ctx.fill();
       } else if (item.kind === 'hurdle') {
-        const hurdleHeight = jumpPixels() * HURDLE_HEIGHT * z / PLAYER_Z;
-        ctx.shadowColor = '#ffd36c'; ctx.fillStyle = '#ffd36c';
-        ctx.fillRect(-size * 0.7, -hurdleHeight, size * 1.4, 8 * z);
-        ctx.fillRect(-size * 0.65, -hurdleHeight, 5 * z, hurdleHeight);
-        ctx.fillRect(size * 0.55, -hurdleHeight, 5 * z, hurdleHeight);
+        const hurdleHeight = jumpPixels() * HURDLE_HEIGHT * z / PLAYER_Z, bar = Math.max(2, 7 * z);
+        ctx.fillStyle = '#00000055'; ctx.fillRect(-size * 0.75, -2 * z, size * 1.5, 4 * z);
+        ctx.fillStyle = '#b8892e';
+        ctx.fillRect(-size * 0.66, -hurdleHeight, 5 * z, hurdleHeight); ctx.fillRect(size * 0.56, -hurdleHeight, 5 * z, hurdleHeight);
+        glow('#ffd36c', 0, -hurdleHeight, size * 1.2, 0.5 + Math.sin(time * 9 + item.seed) * 0.15);
+        ctx.fillStyle = '#ffd36c'; ctx.fillRect(-size * 0.72, -hurdleHeight, size * 1.44, bar);
+        ctx.fillStyle = '#fff6cf'; ctx.fillRect(-size * 0.72, -hurdleHeight, size * 1.44, Math.max(1, bar * 0.35));
+      } else if (item.kind === 'power') {
+        const power = POWERS[item.power] || POWERS.magnet, radius = 6 + 20 * z;
+        ctx.translate(0, -radius - 10 * z + Math.sin(time * 4 + item.seed) * 4 * z);
+        glow(power.color, 0, 0, radius * 2.4, 0.9);
+        ctx.fillStyle = '#0b1030'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = power.color; ctx.lineWidth = Math.max(1.5, 3 * z);
+        ctx.beginPath(); ctx.arc(0, 0, radius, time * 3, time * 3 + Math.PI * 1.5); ctx.stroke();
+        ctx.fillStyle = power.color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `900 ${Math.max(8, Math.round(radius * 0.9))}px system-ui,sans-serif`; ctx.fillText(power.label, 0, 1);
+        ctx.textBaseline = 'alphabetic';
       } else {
-        ctx.shadowColor = '#ff4dda'; ctx.strokeStyle = '#ff4dda'; ctx.lineWidth = Math.max(2, z * 6);
-        const wallHeight = Math.max(size * 2.5, jumpPixels() * 1.45 * z / PLAYER_Z);
-        ctx.fillStyle = '#741755cc'; ctx.fillRect(-size * 0.7, -wallHeight, size * 1.4, wallHeight);
-        ctx.strokeRect(-size * 0.7, -wallHeight, size * 1.4, wallHeight);
-        line(-size * 0.7, -wallHeight, size * 0.7, 0, '#ff93ed', 2);
-        line(size * 0.7, -wallHeight, -size * 0.7, 0, '#ff93ed', 2);
+        const wallHeight = Math.max(size * 2.5, jumpPixels() * 1.45 * z / PLAYER_Z), half = size * 0.7, depth = wallHeight * 0.12;
+        const lean = (width / 2 - x) * 0.04;
+        glow('#ff4dda', 0, -wallHeight / 2, wallHeight * 0.9, 0.35);
+        ctx.fillStyle = '#c23d9f';
+        ctx.beginPath(); ctx.moveTo(-half, -wallHeight); ctx.lineTo(half, -wallHeight); ctx.lineTo(half * 0.9 + lean, -wallHeight - depth); ctx.lineTo(-half * 0.9 + lean, -wallHeight - depth); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#741755e6'; ctx.fillRect(-half, -wallHeight, half * 2, wallHeight);
+        ctx.strokeStyle = '#ff4dda'; ctx.lineWidth = Math.max(2, z * 5); ctx.strokeRect(-half, -wallHeight, half * 2, wallHeight);
+        ctx.globalAlpha = 0.6;
+        for (let i = 1; i < 4; i++) line(-half, -wallHeight * i / 4, half, -wallHeight * i / 4 + wallHeight * 0.12, '#ff93ed', Math.max(1, z * 2));
+        ctx.globalAlpha = 1;
+        const pulse = 0.5 + Math.sin(time * 8 + item.seed) * 0.5;
+        ctx.fillStyle = `rgba(255,220,250,${0.4 + pulse * 0.5})`; ctx.fillRect(-half, -wallHeight, half * 2, Math.max(1, 3 * z));
       }
       ctx.restore();
     }
-    function drawPlayer() {
-      const x = laneX(visualLane, PLAYER_Z), ground = roadY(PLAYER_Z);
-      const y = ground - 20 - jumpHeight() * jumpPixels();
-      ctx.save(); ctx.fillStyle = '#7cfaff44';
-      ctx.beginPath(); ctx.ellipse(x, ground, 23, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      ctx.save(); ctx.translate(x, y);
-      const playerScale = Math.min(1, width / 440); ctx.scale(playerScale, playerScale);
-      if (shield || invincible > 0) {
-        ctx.strokeStyle = invincible > 0 ? '#fff' : '#ffd36c'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.ellipse(0, 0, 34, 40, 0, 0, Math.PI * 2); ctx.stroke();
+    function drawPlayer(time) {
+      const t = theme(), x = laneX(visualLane, PLAYER_Z), ground = roadY(PLAYER_Z), air = jumpHeight();
+      const hover = mode === 'running' ? Math.sin(time * 6) * 2 : 0;
+      const y = ground - 20 - air * jumpPixels() + hover;
+      const playerScale = Math.min(1, width / 440);
+      ctx.save(); ctx.fillStyle = '#000000'; ctx.globalAlpha = 0.35 * (1 - air * 0.6);
+      ctx.beginPath(); ctx.ellipse(x, ground + 2, 26 * playerScale * (1 - air * 0.4), 7 * playerScale * (1 - air * 0.4), 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      glow('#54f7ff', x, ground, 40 * playerScale * (1 - air * 0.5), 0.45);
+      if (mode === 'over') return;
+      ctx.save(); ctx.translate(x, y); ctx.scale(playerScale, playerScale);
+      // Lean into the turn and squash on landing.
+      ctx.rotate(Math.max(-0.45, Math.min(0.45, laneVelocity * 0.055)));
+      const stretch = jumpTime > 0 ? 0.08 : 0;
+      ctx.scale(1 + squash * 0.22 - stretch, 1 - squash * 0.2 + stretch);
+      const flame = 10 + Math.random() * 8 + (surge > 0 ? 14 : 0);
+      ctx.fillStyle = surge > 0 ? '#ffd36c' : '#ff6be0';
+      for (const side of [-11, 11]) {
+        ctx.beginPath(); ctx.moveTo(side - 5, 16); ctx.lineTo(side + 5, 16); ctx.lineTo(side, 16 + flame); ctx.closePath(); ctx.fill();
+        glow(surge > 0 ? '#ffd36c' : '#ff6be0', side, 20, 14, 0.8);
       }
-      ctx.shadowColor = '#54f7ff'; ctx.shadowBlur = 28;
+      if (shield || invincible > 0 || surge > 0) {
+        ctx.strokeStyle = surge > 0 ? '#ffb13b' : invincible > 0 ? '#fff' : '#ffd36c'; ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.6 + Math.sin(time * 10) * 0.3;
+        ctx.beginPath(); ctx.ellipse(0, -2, 38, 42, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = '#123a66';
+      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(26, 18); ctx.lineTo(12, 14); ctx.lineTo(0, 20); ctx.lineTo(-12, 14); ctx.lineTo(-26, 18); ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#68faff';
-      ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(22, 20); ctx.lineTo(0, 10); ctx.lineTo(-22, 20); ctx.closePath(); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(7, 7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(22, 15); ctx.lineTo(0, 8); ctx.lineTo(-22, 15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e9feff';
+      ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(7, 4); ctx.lineTo(-7, 4); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = t.edge; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-26, 18); ctx.lineTo(-12, 14); ctx.moveTo(26, 18); ctx.lineTo(12, 14); ctx.stroke();
       ctx.restore();
+      if (Math.random() < (tier === 2 ? 0.9 : tier === 1 ? 0.5 : 0.2)) {
+        const p = particles[particleCursor = (particleCursor + 1) % Math.min(particles.length, TIERS[tier].particles)];
+        Object.assign(p, {x: x + (Math.random() - 0.5) * 18 * playerScale, y: y + 22 * playerScale, vx: (Math.random() - 0.5) * 30, vy: 120 + Math.random() * 60,
+          life: 0.35, max: 0.35, size: 2.5, color: surge > 0 ? '#ffd36c' : '#ff6be0', gravity: 0, floor: height + 50, drag: 2, shard: false, spin: 0, angle: 0});
+      }
     }
     function frame(now) {
-      const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
-      last = now; update(dt); drawBackground(now / 1000); drawRoad();
-      objects.sort((a, b) => a.z - b.z).forEach(drawItem); drawPlayer();
+      const started = performance.now();
+      const real = last ? Math.min((now - last) / 1000, 0.25) : 0, dt = Math.min(real, 0.05);
+      last = now; update(dt);
+      squash = Math.max(0, squash - dt * 6);
+      stepParticles(dt);
+      if (width >= 2 && height >= 2) {
+        const time = now / 1000;
+        ctx.save();
+        if (shake > 0) { const s = shake * 9; ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s); shake = Math.max(0, shake - dt * 2.5); }
+        drawBackground(time, dt); drawRoad(time);
+        objects.sort((a, b) => a.z - b.z);
+        for (const item of objects) if (item.z < PLAYER_Z) drawItem(item, time);
+        drawPlayer(time);
+        for (const item of objects) if (item.z >= PLAYER_Z) drawItem(item, time);
+        drawParticles();
+        ctx.restore();
+        if (flash > 0) {
+          ctx.globalAlpha = Math.min(0.5, flash); ctx.fillStyle = flashColor; ctx.fillRect(0, 0, width, height); ctx.globalAlpha = 1;
+          flash = Math.max(0, flash - dt * 2);
+        }
+        if (overdrive > 0 || surge > 0) {
+          ctx.strokeStyle = surge > 0 ? '#ffb13b' : '#ff54da'; ctx.globalAlpha = 0.35 + Math.sin(time * 12) * 0.15;
+          ctx.lineWidth = 8; ctx.strokeRect(0, 0, width, height); ctx.globalAlpha = 1;
+        }
+      }
+      updateMusic();
+      tuneQuality((performance.now() - started) / 1000, real || 1 / 60);
       requestAnimationFrame(frame);
     }
+    loadSettings(); loadProgress(); describeMissions();
+    settingsEl.hidden = true;
+    if (settings.quality === 'low') tier = 0;
+    refreshSettings();
+    if (streamedFromComputer) applyMusicSetting();
     best = loadBest(); refreshHud(); resize(); requestAnimationFrame(frame);
   })();
   </script>
