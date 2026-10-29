@@ -2,7 +2,7 @@ name: macOS audio capture
 
 on:
   push:
-    branches: [feature/native-game]
+    branches: [main]
     paths:
       - .github/workflows/macos-audio-capture.yml
       - servers/macos/native/AutoYouAudioCapture.swift
@@ -12,13 +12,19 @@ on:
       - .github/workflows/macos-audio-capture.yml
       - servers/macos/native/AutoYouAudioCapture.swift
       - servers/macos/build-backend.sh
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: macos-audio-capture-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compile:
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:

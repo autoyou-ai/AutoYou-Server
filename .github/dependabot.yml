@@ -1,9 +1,16 @@
 version: 2
+# Updates are grouped so each ecosystem opens at most one version-update PR a
+# week instead of one per package. Security updates still open on their own.
+# The Dependabot legal refresh workflow regenerates the SBOM/NOTICE bundles on
+# these PRs.
 updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
   # The root entry reads requirements.txt and every file in requirements/, for
   # version updates and the dependency graph alike. A separate /requirements
   # entry submitted empty graph snapshots, so the root snapshot (and the alerts
@@ -12,11 +19,37 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      pip-minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # google-adk 2.11.0 caps OpenTelemetry at 1.42.1 (2.13.0 still caps it at
+      # 1.44), so newer releases cannot resolve. See
+      # requirements/advisory-decisions.json. Remove once ADK allows 1.45.1.
+      - dependency-name: "opentelemetry-api"
+        versions: [">=1.43"]
+      - dependency-name: "opentelemetry-sdk"
+        versions: [">=1.43"]
+      - dependency-name: "opentelemetry-exporter-otlp-proto-http"
+        versions: [">=1.43"]
+      - dependency-name: "opentelemetry-exporter-otlp-proto-common"
+        versions: [">=1.43"]
+      - dependency-name: "opentelemetry-proto"
+        versions: [">=1.43"]
+      - dependency-name: "opentelemetry-semantic-conventions"
+        versions: [">=0.64b0"]
   - package-ecosystem: npm
     directory: "/node/whatsapp"
     schedule:
       interval: weekly
+    groups:
+      whatsapp-npm:
+        update-types: ["minor", "patch"]
   - package-ecosystem: npm
     directory: "/node/tunnelmole"
     schedule:
       interval: weekly
+    groups:
+      tunnelmole-npm:
+        update-types: ["minor", "patch"]

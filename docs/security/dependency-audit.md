@@ -95,6 +95,30 @@ as `vulnerable_code_not_in_execute_path`, scoped to Accelerate 0.33.0 in
 returns nonzero again for any other match, a changed floor or manifest, or once
 the review date passes.
 
+- **OpenTelemetry API, server:** [GHSA-xcq7-p3pf-p88h](https://osv.dev/vulnerability/GHSA-xcq7-p3pf-p88h)
+  (CVE-2026-114603) is a quadratic regular-expression split in
+  `TraceState.from_header`, fixed in 1.45.1. The lock cannot move there:
+  google-adk 2.11.0 caps `opentelemetry-sdk` at 1.42.1, and google-adk 2.13.0
+  (latest, checked 2026-10-29) still caps the API and SDK at 1.44. The parser
+  runs only when a propagator reads an inbound `tracestate` header. AutoYou
+  installs no OpenTelemetry instrumentation and never calls
+  `propagate.extract`. ADK's one extraction, `get_propagated_context` in
+  `google/adk/telemetry/_agent_engine.py`, passes a carrier holding only a
+  `traceparent` key, so no `tracestate` value reaches the parser. Dependabot
+  ignores newer OpenTelemetry releases until ADK allows 1.45.1.
+- **setuptools, voice-clone runtime:** [PYSEC-2026-3447](https://osv.dev/vulnerability/PYSEC-2026-3447)
+  and [GHSA-xmj3-9gf7-h52w](https://osv.dev/vulnerability/GHSA-xmj3-9gf7-h52w)
+  affect setuptools 81.0.0. The separate voice-clone environment keeps it
+  because resemble-perth 1.0.1, the latest release, imports `pkg_resources`,
+  which setuptools 82 removed. The advisories cover `MANIFEST.in` exclusion
+  while building a source distribution and the legacy Windows
+  `Wheel.install_as_egg` path. That environment only installs published wheels
+  with pip, so neither path runs. The server environment already requires
+  setuptools 84.2.1 or later.
+
+Both are recorded as `vulnerable_code_not_in_execute_path`, scoped to the
+listed versions and manifests, with a review-by date of 2026-11-29.
+
 ## Other limits and follow-up
 
 - Optional Git source contents and their full transitive/build dependency

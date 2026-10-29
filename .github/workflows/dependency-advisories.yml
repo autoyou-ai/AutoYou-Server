@@ -7,20 +7,34 @@ on:
   pull_request:
     paths:
       - "requirements/**"
+      - "requirements.txt"
       - "scripts/audit_dependency_advisories.py"
       - ".github/workflows/dependency-advisories.yml"
+  push:
+    branches: [main]
+    paths:
+      - "requirements/**"
+      - "requirements.txt"
+      - "scripts/audit_dependency_advisories.py"
+      - ".github/workflows/dependency-advisories.yml"
+  workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: dependency-advisories-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   manifests:
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Query declared package releases without installing dependencies

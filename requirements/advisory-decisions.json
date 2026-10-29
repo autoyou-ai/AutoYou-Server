@@ -4,13 +4,58 @@
   "decisions": [
     {
       "package": "accelerate",
-      "versions": ["0.33.0"],
-      "advisory_ids": ["GHSA-4j2p-28q2-5m79", "PYSEC-2026-3804"],
-      "manifests": ["requirements/tuning.txt"],
+      "versions": [
+        "0.33.0"
+      ],
+      "advisory_ids": [
+        "GHSA-4j2p-28q2-5m79",
+        "PYSEC-2026-3804"
+      ],
+      "manifests": [
+        "requirements/tuning.txt"
+      ],
       "justification": "vulnerable_code_not_in_execute_path",
       "detail": "The advisory affects load_checkpoint_in_model and load_checkpoint_and_dispatch, which no AutoYou source calls; the locked Transformers 5.12.1 and PEFT 0.21.2 releases do not call them either. Accelerate 1.15.0 still joins weight_map entries without a containment check, so the floor is not raised to hide the match. The tuning profile is optional, excluded from default server builds and the cloud VM images, and already treats model sources as fully trusted because it loads remote model code.",
       "reviewed_at": "2026-10-21",
       "review_by": "2026-11-21"
+    },
+    {
+      "package": "opentelemetry-api",
+      "versions": [
+        "1.42.1"
+      ],
+      "advisory_ids": [
+        "GHSA-xcq7-p3pf-p88h",
+        "CVE-2026-114603"
+      ],
+      "manifests": [
+        "requirements/base.txt",
+        "requirements/locked.txt",
+        "requirements/server-macos.txt"
+      ],
+      "justification": "vulnerable_code_not_in_execute_path",
+      "detail": "The fix is opentelemetry-api 1.45.1, but google-adk 2.11.0 caps opentelemetry-sdk at 1.42.1 and the latest google-adk 2.13.0 still caps the API and SDK at 1.44, so the patched release cannot be installed with ADK. The quadratic split is in TraceState.from_header, reached only when a propagator reads an inbound tracestate header. AutoYou installs no OpenTelemetry instrumentation and never calls propagate.extract; ADK's only extraction (google/adk/telemetry/_agent_engine.py, called from cli/fast_api.py) passes a carrier that holds just a traceparent key, so no tracestate value reaches the parser. Raise the pins once google-adk allows 1.45.1.",
+      "reviewed_at": "2026-10-29",
+      "review_by": "2026-11-29"
+    },
+    {
+      "package": "setuptools",
+      "versions": [
+        "81.0.0"
+      ],
+      "advisory_ids": [
+        "PYSEC-2026-3447",
+        "GHSA-h35f-9h28-mq5c",
+        "CVE-2026-59890",
+        "GHSA-xmj3-9gf7-h52w"
+      ],
+      "manifests": [
+        "requirements/voice-clone.txt"
+      ],
+      "justification": "vulnerable_code_not_in_execute_path",
+      "detail": "setuptools 81 stays in the separate voice-clone runtime because resemble-perth 1.0.1 (the latest release) imports pkg_resources, which setuptools 82 removed. The advisories cover MANIFEST.in exclusion while building a source distribution and the legacy Wheel.install_as_egg path on Windows. That runtime only installs published wheels with pip and never builds an sdist or installs eggs, so neither path runs. Revisit when resemble-perth drops pkg_resources.",
+      "reviewed_at": "2026-10-29",
+      "review_by": "2026-11-29"
     }
   ]
 }

@@ -1,0 +1,74 @@
+name: Dependabot legal refresh
+
+# Dependabot can bump requirements/locked.txt but cannot regenerate the SBOM
+# and NOTICE bundles, so every dependency PR used to fail the legal gate. This
+# job regenerates them on the Dependabot branch, commits the result, and
+# re-runs the checks on the new commit. It does nothing when the bundles are
+# already current, and it fails (for a person to review) if the regenerated
+# bundles still do not pass, for example because of a new unknown license.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "requirements/**"
+      - "requirements.txt"
+      - "node/**/package.json"
+      - "node/**/package-lock.json"
+
+permissions: {}
+
+concurrency:
+  group: dependabot-legal-refresh-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: >-
+      github.actor == 'dependabot[bot]'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    env:
+      HEAD_REF: ${{ github.head_ref }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Check whether the legal bundles are current
+        id: current
+        run: |
+          if python scripts/check_release_legal_gates.py --no-generate --strict-unknown-license \
+              --allow-open-release-blockers --report "$RUNNER_TEMP/before.json" > /dev/null; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Regenerate and verify
+        if: steps.current.outputs.stale == 'true'
+        run: |
+          python scripts/generate_release_legal_artifacts.py
+          python scripts/check_release_legal_gates.py --no-generate --strict-unknown-license \
+            --allow-open-release-blockers --report "$RUNNER_TEMP/after.json"
+      - name: Commit, push and re-run checks on the new commit
+        if: steps.current.outputs.stale == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/legal/generated
+          git commit -s -m "chore(legal): regenerate SBOM and NOTICE bundles for $HEAD_REF"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" "HEAD:refs/heads/${HEAD_REF}"
+          # Pushes made with the workflow token do not start new runs, so start
+          # the checks on the new commit explicitly.
+          gh workflow run public-checks.yml --ref "$HEAD_REF"
+          gh workflow run dependency-advisories.yml --ref "$HEAD_REF"

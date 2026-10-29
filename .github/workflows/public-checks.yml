@@ -1,16 +1,30 @@
 name: Public checks
 
+# Runs on pull requests, on pushes to main, from the release workflow, and by
+# hand. Docs-only and asset-only pushes still run because the export boundary
+# check covers every committed path. A newer push cancels an older run on the
+# same branch, so a burst of commits costs one run. Add [skip ci] to a commit
+# message to skip it entirely.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
+# The prefix keeps this group distinct from the release workflow's own group
+# when it is called from there.
+concurrency:
+  group: public-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   python:
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       PYTHONDONTWRITEBYTECODE: "1"
@@ -18,7 +32,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: pip
@@ -37,4 +51,4 @@ jobs:
           --allow-open-release-blockers
           --report "$RUNNER_TEMP/legal-gate-report.json"
       - name: Run public Python checks
-        run: python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_official_build_authorization.py tests/test_release_legal_gates.py tests/test_dependency_advisories.py -q --no-header -p no:cacheprovider
+        run: python -m pytest tests/server/build tests/shared/test_native_libsodium.py tests/test_public_source_export.py tests/test_official_build_authorization.py tests/test_release_legal_gates.py tests/test_dependency_advisories.py tests/test_release_workflow.py -q --no-header -p no:cacheprovider
