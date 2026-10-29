@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _copy_version_sites(tmp_path: Path) -> Path:
-    for rel in ["VERSION", *(site for site, _ in release_version.VERSION_SITES)]:
+    for rel in ["VERSION", *(site for site, _, _ in release_version.VERSION_SITES)]:
         target = tmp_path / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / rel, target)
@@ -41,6 +41,7 @@ def test_mismatch_is_reported(tmp_path):
     (root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
     problems = release_version.find_mismatches(root)
     assert len(problems) == len(release_version.VERSION_SITES)
+    assert all("VERSION says 1.2.3" in problem for problem in problems)
     assert release_version.find_mismatches(root, expected="1.2.4")
 
 
