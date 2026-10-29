@@ -196,7 +196,7 @@ PYTHON_CMD=fake_python
     result = subprocess.run(["bash", "-ec", function + fake_python + "install_openblas_scipy"],
                             env=dict(os.environ, BUILD_DIR=str(tmp_path),
                                      SCIPY_TEST_DOWNLOAD_FAILS=str(int(download_fails))), capture_output=True, text=True)
-    log = (tmp_path / "pip.log").read_text()
+    log = (tmp_path / "pip.log").read_text(encoding="utf-8")
     assert "--platform macosx_12_0_arm64" in log and "scipy==1.17.1" in log
     assert (result.returncode != 0) == download_fails
     assert (tmp_path / "installed").exists() != download_fails
@@ -206,7 +206,7 @@ PYTHON_CMD=fake_python
 
 
 def test_app_store_source_dependencies_are_prepared_before_nuitka():
-    text = BUILD_SCRIPT.read_text()
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
     main = text.split("main() {", 1)[1]
     assert 'AUTOYOU_MACOS_APP_STORE:-0' in main
     dependencies = text.split("ensure_system_deps() {", 1)[1].split("\n}\n", 1)[0]
@@ -218,7 +218,7 @@ def test_app_store_source_dependencies_are_prepared_before_nuitka():
 
 @pytest.mark.skipif(os.name == "nt", reason="exercises the macOS shell build step")
 def test_torch_openmp_load_paths_are_relative_and_rewritten_libraries_are_signed(tmp_path):
-    text = BUILD_SCRIPT.read_text()
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
     function = "patch_torch_libomp() {" + text.split("patch_torch_libomp() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
     libraries = tmp_path / "synthetic torch" / "lib"
     libraries.mkdir(parents=True)
@@ -245,7 +245,7 @@ PYTHON_CMD=fake_python
     log = tmp_path / "commands.log"
     subprocess.run(["bash", "-ec", function + shims + "patch_torch_libomp"], check=True,
                    env=dict(os.environ, TORCH_TEST_LIB=str(libraries), TORCH_TEST_LOG=str(log)))
-    calls = log.read_text()
+    calls = log.read_text(encoding="utf-8")
     assert "rewrite:-change|/opt/llvm-openmp/lib/libomp.dylib|@loader_path/libomp.dylib|" in calls
     assert "rewrite:-change|@rpath/libomp.dylib|@loader_path/libomp.dylib|" in calls
     assert calls.count("sign:") == 2
@@ -254,7 +254,7 @@ PYTHON_CMD=fake_python
 
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("cc"), reason="requires macOS native signing tools")
 def test_native_dylib_rewrites_are_signed_before_import(tmp_path):
-    text = BUILD_SCRIPT.read_text()
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
     functions = "\n".join(
         name + "() {" + text.split(name + "() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
         for name in ("bundle_macos_dylib_closure", "adhoc_sign_macos_path")

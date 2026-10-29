@@ -19,6 +19,10 @@ README = REPO_ROOT / "servers" / "wsl" / "README.md"
 REQUIREMENTS = REPO_ROOT / "servers" / "wsl" / "requirements.txt"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Runs the WSL build script's bash function; on Windows `bash` is WSL's, which cannot see these fakes",
+)
 @pytest.mark.parametrize("install_exit", [0, 17])
 def test_node_packaging_refreshes_existing_trees_and_stops_on_failure(tmp_path, install_exit):
     source = BUILD_SCRIPT.read_text(encoding="utf-8")
@@ -49,7 +53,7 @@ def test_node_packaging_refreshes_existing_trees_and_stops_on_failure(tmp_path, 
     assert result.returncode == install_exit, result.stderr
     calls = tmp_path / "npm-calls"
     assert calls.exists(), "Packaging reused an unverified stale dependency tree"
-    assert calls.read_text().splitlines() == ["ci --omit=dev"] * (1 if install_exit else 2)
+    assert calls.read_text(encoding="utf-8").splitlines() == ["ci --omit=dev"] * (1 if install_exit else 2)
 
 
 def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():
