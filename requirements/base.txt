@@ -45,7 +45,7 @@ sqlalchemy[asyncio]==2.0.50
 websockets>=15.0.1
 qrcode>=7.4.2
 docker>=6.1.0
-aiortc>=1.7.0,<2.0.0
+aiortc>=1.15.0,<2.0.0
 # Native desktop Lobby discovery uses the mobile Bonjour service contract.
 zeroconf==0.151.3
 av>=10.0.0
