@@ -25,8 +25,10 @@ function game(options = {}) {
     const button = element(name); button.dataset.action = name; return button;
   });
   const document = element('document');
+  let created = 0;
   Object.assign(document, {
     querySelector: element, querySelectorAll: () => controls,
+    createElement: () => element(`created-${created++}`),
     documentElement: element('html'),
     body: {hasAttribute: () => html.includes('<body data-offline>')},
   });
@@ -295,4 +297,116 @@ test('patterns offer a clear or jumpable route and rewards do not accelerate dif
   a.step(0.02); b.step(0.02);
   assert.equal(a.run('distance'), b.run('distance'));
   g.run('frame(1000)'); // Exercise actual drawing calls, including all obstacle kinds.
+});
+
+test('settings toggle music, tilt steering and lift jump, and persist', () => {
+  const g = game(); g.start();
+  g.emit('#music', 'click'); g.emit('#tilt', 'click');
+  assert.equal(g.run('settings.music'), false);
+  const saved = JSON.parse(g.storage.get('autoyou.neon-horizon.settings.v1'));
+  assert.equal(saved.music, false); assert.equal(saved.tilt, false);
+  g.window.autoYouGameTilt(0, 9.8);
+  for (let i = 0; i < 20; i++) g.window.autoYouGameTilt(3, 9.8);
+  assert.equal(g.run('lane'), 0, 'tilt steering is off');
+  const reloaded = game({storage: g.storage});
+  assert.equal(reloaded.run('settings.music'), false); assert.equal(reloaded.run('settings.tilt'), false);
+  reloaded.emit('#lift', 'click'); assert.equal(reloaded.run('liftEnabled'), false);
+  assert.equal(game({storage: g.storage}).run('liftEnabled'), false);
+});
+
+test('the settings panel pauses the run and blocks gameplay input until closed', () => {
+  const g = game(); g.start();
+  g.emit('#settings-open', 'click');
+  assert.equal(g.run('mode'), 'paused'); assert.equal(g.run('settingsOpen'), true);
+  g.emit('window', 'keydown', {key: 'ArrowLeft', repeat: false});
+  g.remote([{id: 0, x: 0.5, y: 0.5}]); g.remote([]);
+  assert.equal(g.run('mode'), 'paused'); assert.equal(g.run('lane'), 0);
+  g.emit('window', 'keydown', {key: 'Escape', repeat: false});
+  assert.equal(g.run('settingsOpen'), false);
+  g.emit('#start', 'click'); assert.equal(g.run('mode'), 'running');
+  g.remoteFrame({input_type: 'button', button: 'select', phase: 'down'});
+  assert.equal(g.run('settingsOpen'), true);
+});
+
+test('delete high scores needs a confirmation and survives a native store that keeps its maximum', () => {
+  let record = 900;
+  const native = {AutoYouGameScores: {readBest: () => record, saveBest: value => { record = Math.max(record, value); }}};
+  const storage = new Map();
+  const g = game({native, storage}); assert.equal(g.run('best'), 900);
+  g.emit('#reset-best', 'click'); assert.equal(g.run('best'), 900, 'first press only arms the button');
+  g.emit('#reset-best', 'click'); assert.equal(g.run('best'), 0);
+  const reloaded = game({native, storage}); assert.equal(reloaded.run('best'), 0);
+  reloaded.start(); reloaded.run('score = 1200; saveBest()');
+  assert.equal(game({native, storage}).run('best'), 1200);
+});
+
+test('power-ups: magnet gathers every lane, surge smashes obstacles, double scales points', () => {
+  const g = game(); g.start(); g.run('magnet = 5');
+  impact(g, 'shard', ', lane: 1'); impact(g, 'shard', ', air: true');
+  assert.equal(g.run('diamonds'), 2);
+  const s = game(); s.start(); s.run('surge = 3');
+  impact(s, 'wall'); impact(s, 'hurdle');
+  assert.equal(s.run('mode'), 'running'); assert.equal(s.run('run.smash'), 2);
+  const d = game(); d.start(); d.run('doubled = 5; score = 0'); impact(d, 'shard');
+  assert.ok(d.run('score') >= 50);
+  const p = game(); p.start(); impact(p, 'power', ", power: 'magnet'");
+  assert.ok(p.run('magnet') > 0); assert.equal(p.run('run.powers'), 1);
+});
+
+test('close calls, perfect jumps and overdrive reward skill without changing speed', () => {
+  const g = game(); g.start();
+  g.run("action('right')"); for (let i = 0; i < 12; i++) g.step(1 / 60);
+  impact(g, 'wall');
+  assert.equal(g.run('mode'), 'running'); assert.equal(g.run('run.close'), 1);
+  assert.ok(g.run('drive') > 0.3);
+  g.run('jumpTime = JUMP_DURATION / 2'); impact(g, 'hurdle', ', lane: 1');
+  assert.equal(g.run('run.perfect'), 1);
+  g.run('drive = 0.99; addDrive(0.05)'); assert.ok(g.run('overdrive') > 0);
+  const a = game(), b = game(); a.start(); b.start(); b.run('overdrive = 5; doubled = 5; magnet = 5');
+  a.step(0.02); b.step(0.02); assert.equal(a.run('distance'), b.run('distance'));
+});
+
+test('slam ends a jump early with a continuous fall', () => {
+  const g = game(); g.start(); g.run("action('jump')");
+  g.step(0.1); const before = g.run('jumpHeight()');
+  g.emit('window', 'keydown', {key: 's', repeat: false});
+  assert.ok(Math.abs(g.run('jumpHeight()') - before) < 1e-9);
+  let steps = 0; while (g.run('jumpTime') > 0 && steps < 100) { g.step(0.02); steps++; }
+  assert.ok(steps < 12, `slam landed after ${steps} steps`);
+});
+
+test('missions complete, persist and raise the rank', () => {
+  const g = game(); g.start();
+  g.run("progress.missions = [{type: 'clears', target: 1}, {type: 'diamonds', target: 1}, {type: 'close', target: 50}]");
+  g.run('jumpTime = 0.45'); impact(g, 'hurdle'); g.run('jumpTime = 0'); impact(g, 'shard');
+  assert.equal(g.run('progress.stars'), 2);
+  g.run("progress.missions[0] = {type: 'diamonds', target: 1}"); g.step(0.01);
+  assert.equal(g.run('progress.rank'), 2); assert.equal(g.run('progress.stars'), 0);
+  assert.equal(game({storage: g.storage}).run('progress.rank'), 2);
+  assert.ok(game({storage: g.storage}).run('rankBonus()') > 1);
+});
+
+test('the soundtrack stems loop seamlessly, are audible, and react to energy and danger', () => {
+  const g = game();
+  for (const name of g.run('MUSIC_STEMS')) {
+    const data = g.run(`renderStem('${name}', 8000)`);
+    assert.equal(data.length, Math.round(g.run('MUSIC_LOOP') * 8000));
+    let peak = 0; for (const value of data) { assert.ok(Number.isFinite(value)); peak = Math.max(peak, Math.abs(value)); }
+    assert.ok(peak > 0.02 && peak < 2, `${name} peak ${peak}`);
+  }
+  const calm = g.run('stemLevels(0, 0)'), full = g.run('stemLevels(1, 1)');
+  assert.equal(calm.lead, 0); assert.equal(calm.arp, 0); assert.equal(calm.tension, 0);
+  assert.ok(full.lead > 0.5 && full.arp === 1 && full.tension === 1);
+});
+
+test('graphics tiers step down on slow frames only in auto mode', () => {
+  const g = game(); g.start();
+  assert.equal(g.run('tier'), 2);
+  for (let i = 0; i < 200; i++) g.run('tuneQuality(0.02, 1 / 30)');
+  assert.ok(g.run('tier') < 2);
+  g.emit('#quality', 'click'); assert.equal(g.run('settings.quality'), 'high'); assert.equal(g.run('tier'), 2);
+  for (let i = 0; i < 200; i++) g.run('tuneQuality(0.02, 1 / 30)');
+  assert.equal(g.run('tier'), 2);
+  g.run("objects = []; for (let i = 0; i < 6; i++) spawnRow(); objects.push({kind: 'power', power: 'surge', lane: 0, z: 0.5}); surge = 2; emit(100, 100, 20, '#fff')");
+  for (const t of [0, 1, 2]) { g.run(`setTier(${t}); frame(2000 + ${t} * 16)`); }
 });

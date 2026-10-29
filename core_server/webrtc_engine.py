@@ -185,6 +185,8 @@ class WebRTCManager:
         self.remote_desktop_control_leases_by_session: Dict[str, Dict[str, Any]] = {}
         self.remote_desktop_control_lock = _runtime.asyncio.Lock()
         self.game_input_hub = GameInputHub()
+        # Neon Horizon's settings can turn off the soundtrack streamed to players.
+        self.hosted_game_music_enabled = True
         self.streaming_events: deque[Dict[str, Any]] = _runtime.deque(maxlen=500)
         self.streaming_events_lock = _runtime.threading.Lock()
         # Optional names are display metadata only. They are keyed by the
@@ -3881,7 +3883,11 @@ class WebRTCManager:
       self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
         "event": "game_input", "input_type": "session_start", "control_id": str(lease["control_id"]),
       })
+      self._start_hosted_game_audio(session_id, lease)
+
+    def _start_hosted_game_audio(self, session_id: str, lease: Dict[str, Any]) -> None:
       if (self.game_input_hub.owner == "hosted-neon"
+          and self.hosted_game_music_enabled
           and _runtime._get_audio_playback_enabled(cfg=(_runtime.STATE.config or {}))
           and not lease.get("hosted_game_audio_manager")):
         _resolved, audio_manager = self._resolve_audio_manager_for_reply_target({
@@ -3893,6 +3899,19 @@ class WebRTCManager:
             lease["hosted_game_audio_manager"] = audio_manager
           except Exception as exc:
             _runtime.LOGGER.warning("Could not start hosted game audio: %s", exc)
+
+    def set_hosted_game_music(self, enabled: bool) -> None:
+      """Start or stop the streamed soundtrack for every player of the hosted game."""
+      self.hosted_game_music_enabled = bool(enabled)
+      seen: set[int] = set()
+      for session_id, lease in list(self.remote_desktop_control_leases_by_session.items()):
+        if id(lease) in seen or lease.get("mode") != "game" or not lease.get("engine_input"):
+          continue
+        seen.add(id(lease))
+        if self.hosted_game_music_enabled:
+          self._start_hosted_game_audio(str(lease.get("target_session_id") or session_id), lease)
+        else:
+          self._stop_hosted_game_audio(lease)
 
     def _stop_hosted_game_audio(self, lease: Dict[str, Any]) -> None:
       audio_manager = lease.pop("hosted_game_audio_manager", None)

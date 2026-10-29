@@ -482,3 +482,38 @@ def test_hosted_game_page_accepts_only_local_same_origin_input(monkeypatch):
             assert stream.receive_json()["button"] == "action_a"
             stream.close()
         assert not server.WEBRTC.game_input_hub.connected
+
+
+def test_hosted_game_music_setting_stops_and_restarts_the_streamed_loop(monkeypatch):
+    monkeypatch.setattr(server, "_get_audio_playback_enabled", lambda cfg=None: True)
+    manager = SimpleNamespace(play_audio_file=MagicMock(), stop_playback=MagicMock())
+    webrtc = server.WebRTCManager()
+    monkeypatch.setattr(webrtc, "_resolve_audio_manager_for_reply_target", lambda target: ("synthetic-session", manager))
+    lease = {"control_id": "synthetic-control", "mode": "game", "engine_input": True}
+    webrtc.remote_desktop_control_leases_by_session["synthetic-session"] = lease
+    webrtc.remote_desktop_control_leases_by_session["synthetic-alias"] = lease
+    queue = webrtc.game_input_hub.attach(owner="hosted-neon")
+    try:
+        webrtc._publish_game_session_start("synthetic-session", lease)
+        webrtc.set_hosted_game_music(False)
+        manager.stop_playback.assert_called_once_with(source="hosted_game")
+        webrtc._publish_game_session_start("synthetic-session", lease)
+        assert manager.play_audio_file.call_count == 1
+        webrtc.set_hosted_game_music(True)
+        assert manager.play_audio_file.call_count == 2
+    finally:
+        webrtc.game_input_hub.detach(queue)
+
+
+def test_hosted_game_music_endpoint_accepts_only_the_local_host_page(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server.WEBRTC, "set_hosted_game_music", calls.append)
+    path = "/api/webrtc/hosted-game/api/game/music"
+    local = {"origin": "http://127.0.0.1:8001", "host": "127.0.0.1:8001"}
+    with TestClient(server.admin_app, base_url="http://127.0.0.1:8001") as client:
+        assert client.post(path, json={"enabled": False}, headers=local).status_code == 200
+        assert client.post(path, json={"enabled": "no"}, headers=local).status_code == 400
+        assert client.post(path, json={"enabled": True}, headers={
+            "origin": "https://example.test", "host": "127.0.0.1:8001"}).status_code == 403
+        assert client.post(path, json={"enabled": True}, headers={**local, "X-Forwarded-For": "203.0.113.1"}).status_code == 403
+    assert calls == [False]

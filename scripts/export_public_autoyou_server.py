@@ -131,6 +131,7 @@ PUBLIC_SCRIPT_PATHS = {
     "scripts/prune_runtime_site_packages_to_requirements.py",
     "scripts/read_backend_runtime_pins.py",
     "scripts/reconcile_python_runtime_env.py",
+    "scripts/render_neon_horizon_music.cjs",
     "scripts/serve_guides_preview.py",
     "scripts/social-verify/run.sh",
     "scripts/verify_backend_hardening.py",

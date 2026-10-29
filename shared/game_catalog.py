@@ -238,6 +238,12 @@ def host_page_html(game_id: str, title: str) -> str:
     if (event.source !== game.contentWindow) return;
     const local = event.data && event.data.autoyouLocalInput;
     if (local && typeof local === 'object') relay({{kind: 'game_input', device: String(local.device || ''), value: String(local.value || '')}});
+    // A game's music setting also governs the soundtrack this computer streams to the players.
+    const audio = event.data && event.data.autoyouGameAudio;
+    if (audio && typeof audio === 'object' && typeof audio.music === 'boolean') {{
+      fetch('./api/game/music', {{method: 'POST', cache: 'no-store', headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{enabled: audio.music}})}}).catch(() => {{}});
+    }}
   }});
   const deliver = frame => game.contentWindow?.postMessage({{autoyouGameInput: frame}}, '*');
   const retry = delay => {{ clearTimeout(timer); if (!document.hidden) timer = setTimeout(connect, delay); }};
