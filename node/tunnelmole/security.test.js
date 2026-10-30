@@ -167,3 +167,19 @@ test('multipart input rejects excessive field nesting and still accepts ordinary
         await new Promise((resolve) => server.close(resolve));
     }
 });
+
+test('deepmerge drops own __proto__ keys and still merges ordinary configuration', () => {
+    const deepmerge = require('deepmerge');
+    const merged = deepmerge(
+        { hostip: { endpoint: 'wss://a' }, list: [1] },
+        { hostip: { port: 443 }, list: [2] },
+    );
+    assert.deepEqual(merged, { hostip: { endpoint: 'wss://a', port: 443 }, list: [1, 2] });
+    const hostile = JSON.parse('{"__proto__": {"polluted": true}, "nested": {"__proto__": {"polluted": true}}}');
+    for (const result of [deepmerge({}, hostile), deepmerge(hostile, {}), deepmerge({ nested: {} }, hostile)]) {
+        assert.equal(Object.getPrototypeOf(result), Object.prototype);
+        assert.equal(result.polluted, undefined);
+        assert.equal(result.nested.polluted, undefined);
+    }
+    assert.equal({}.polluted, undefined);
+});

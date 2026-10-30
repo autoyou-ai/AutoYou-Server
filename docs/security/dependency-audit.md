@@ -69,6 +69,24 @@ References:
   still checks that speech text never reaches artifact persistence APIs or
   downloads.
 
+## Resolved since the review (2026-10-30 UTC)
+
+- **Zod, WhatsApp helper:** [GHSA-mrhx-c7xc-m3w5](https://osv.dev/vulnerability/GHSA-mrhx-c7xc-m3w5)
+  (memory exhaustion while validating large arrays) affects Zod through 4.6.5.
+  Puppeteer 24.38.0, which whatsapp-web.js pins, pulls chromium-bidi 14 with
+  Zod 3. Puppeteer 25 moves to a fixed Zod but removes `Browser.isConnected()`,
+  which whatsapp-web.js still calls on logout, so `node/whatsapp` overrides Zod
+  to 4.6.7 instead. Puppeteer passes no protocol parser to chromium-bidi, so
+  Zod is not on the CDP path the client uses; the override was checked with
+  Chromium in both CDP and WebDriver BiDi modes and the client reached the
+  WhatsApp QR code.
+- **deepmerge, Tunnelmole helper:** [GHSA-gcqx-w48m-w2h4](https://osv.dev/vulnerability/GHSA-gcqx-w48m-w2h4)
+  affects every deepmerge release through 4.3.1 and has no upstream fix.
+  `node/tunnelmole/vendor/deepmerge` is 4.3.1 with own `__proto__` keys
+  dropped (see its `AUTOYOU-PATCH.md`); `security.test.js` checks the fix.
+- **multidict 7.2.1 / aiohttp 3.14.5 / soupsieve 3.0.4:** taken from the
+  Dependabot updates. soupsieve 3.0.4 fixes quadratic `:dir()` matching.
+
 ## Reviewed decisions
 
 - **Accelerate, optional tuning:** [GHSA-4j2p-28q2-5m79](https://osv.dev/vulnerability/GHSA-4j2p-28q2-5m79)

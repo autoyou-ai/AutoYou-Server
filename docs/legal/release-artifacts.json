@@ -226,6 +226,7 @@
     "pillow": "MIT-CMU",
     "playwright": "Apache-2.0",
     "extract-zip": "BSD-2-Clause",
+    "deepmerge": "MIT",
     "protobuf": "BSD-3-Clause",
     "psutil": "BSD-3-Clause",
     "pyaudio": "MIT",

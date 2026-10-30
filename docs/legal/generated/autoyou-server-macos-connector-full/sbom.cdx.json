@@ -292,6 +292,32 @@
           }
         }
       ],
+      "name": "deepmerge",
+      "properties": [
+        {
+          "name": "specifier",
+          "value": "file:vendor/deepmerge"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "node/tunnelmole/package.json"
+        }
+      ],
+      "purl": "pkg:npm/deepmerge",
+      "type": "library"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "name": "express",
       "properties": [
         {
@@ -457,7 +483,7 @@
       "properties": [
         {
           "name": "specifier",
-          "value": "^8.18.0"
+          "value": "^8.22.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -468,9 +494,9 @@
           "value": "node/whatsapp/package.json"
         }
       ],
-      "purl": "pkg:npm/ws@8.18.0",
+      "purl": "pkg:npm/ws@8.22.0",
       "type": "library",
-      "version": "8.18.0"
+      "version": "8.22.0"
     },
     {
       "licenses": [
@@ -652,11 +678,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "aiohttp>=3.14.4"
+          "value": "aiohttp>=3.14.5"
         },
         {
           "name": "specifier",
-          "value": ">=3.14.4"
+          "value": ">=3.14.5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -2128,11 +2154,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "multidict>=6.9.1,<7"
+          "value": "multidict>=7.2.1,<8"
         },
         {
           "name": "specifier",
-          "value": ">=6.9.1,<7"
+          "value": ">=7.2.1,<8"
         },
         {
           "name": "autoyou:ecosystem",
@@ -3328,11 +3354,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "soupsieve>=2.9.0"
+          "value": "soupsieve>=3.0.4"
         },
         {
           "name": "specifier",
-          "value": ">=2.9.0"
+          "value": ">=3.0.4"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4079,7 +4105,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-29T05:11:54+00:00",
+    "timestamp": "2026-10-30T01:41:57+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4088,7 +4114,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:e96dd408-7307-4691-b336-beb3d574e871",
+  "serialNumber": "urn:uuid:03f432ed-905d-4f0b-b874-5c25989d668a",
   "specVersion": "1.5",
   "version": 1
 }

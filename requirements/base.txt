@@ -35,9 +35,9 @@ certifi>=2026.10.19
 httpx[http2]>=0.27.0
 # Floor raised past CVE-2026-71554 in h2<=4.4.0.
 h2>=4.4.1
-aiohttp>=3.14.4
+aiohttp>=3.14.5
 # GHSA-54p9-h82j-f925: fixed items-view reference ownership.
-multidict>=6.9.1,<7
+multidict>=7.2.1,<8
 aiosqlite>=0.21.0
 # Exact pin: the packaged-binary builds verify this version at build time
 # (scripts/read_backend_runtime_pins.py via servers/*/build-backend).
@@ -63,7 +63,7 @@ pyotp>=2.9.0
 pysodium>=0.7.18
 psutil>=5.9.0
 # Floor raised past GHSA-gjv8-xp57-g29c / GHSA-j934-xhv5-fg8f ReDoS in soupsieve<2.9.0.
-soupsieve>=2.9.0
+soupsieve>=3.0.4
 beautifulsoup4>=4.13.0
 authlib>=1.9.1,<2
 # CVE-2026-114605: bound DNS name decompression work.

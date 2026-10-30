@@ -39,8 +39,8 @@ certifi>=2026.10.19
 httpx[http2]>=0.27.0
 # Floor raised past CVE-2026-71554 in h2<=4.4.0.
 h2>=4.4.1
-aiohttp>=3.14.4
-multidict>=6.9.1,<7
+aiohttp>=3.14.5
+multidict>=7.2.1,<8
 aiosqlite>=0.21.0
 SQLAlchemy==2.0.50
 websockets>=15.0.1
@@ -52,7 +52,7 @@ keyring>=25.7.0,<26.0.0
 pyotp>=2.9.0
 psutil>=5.9.0
 # Floor raised past GHSA-gjv8-xp57-g29c / GHSA-j934-xhv5-fg8f ReDoS in soupsieve<2.9.0.
-soupsieve>=2.9.0
+soupsieve>=3.0.4
 beautifulsoup4>=4.13.0
 authlib>=1.9.1,<2
 dnspython>=2.9.0,<3

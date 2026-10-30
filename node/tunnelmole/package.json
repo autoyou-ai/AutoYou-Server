@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "tunnelmole": "^2.2.14"
+    "tunnelmole": "^2.2.14",
+    "deepmerge": "file:vendor/deepmerge"
   },
   "overrides": {
     "body-parser": "1.20.9",
@@ -20,7 +21,8 @@
     "toml": "5.0.1",
     "qs": "6.16.1",
     "multer": "2.5.0",
-    "@types/jest": "30.0.0"
+    "@types/jest": "30.0.0",
+    "deepmerge": "$deepmerge"
   },
   "keywords": [
     "tunnelmole",
