@@ -322,7 +322,7 @@
       "properties": [
         {
           "name": "specifier",
-          "value": "^4.18.2"
+          "value": "^5.3.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -333,9 +333,9 @@
           "value": "node/tunnelmole/package.json"
         }
       ],
-      "purl": "pkg:npm/express@4.18.2",
+      "purl": "pkg:npm/express@5.3.0",
       "type": "library",
-      "version": "4.18.2"
+      "version": "5.3.0"
     },
     {
       "licenses": [
@@ -4105,7 +4105,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-30T01:41:57+00:00",
+    "timestamp": "2026-10-30T01:45:40+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4114,7 +4114,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:03f432ed-905d-4f0b-b874-5c25989d668a",
+  "serialNumber": "urn:uuid:0586e1b3-e0bc-4bc9-841d-5d15ca38fd30",
   "specVersion": "1.5",
   "version": 1
 }

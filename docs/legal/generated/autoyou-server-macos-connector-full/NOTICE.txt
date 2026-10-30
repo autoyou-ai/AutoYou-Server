@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-30T01:41:57+00:00
+Generated: 2026-10-30T01:45:40+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -29,7 +29,7 @@ Third-Party Components
 - signal-cli optional external service [manual] - GPL-3.0-only - https://github.com/AsamK/signal-cli; boundary: separate-service
 - signal-cli-rest-api optional Docker service [manual] - GPL-3.0-only - https://github.com/bbernhard/signal-cli-rest-api; boundary: separate-service
 - deepmerge [npm] - MIT - node/tunnelmole/package.json
-- express 4.18.2 [npm] - MIT - node/tunnelmole/package.json
+- express 5.3.0 [npm] - MIT - node/tunnelmole/package.json
 - extract-zip [npm] - BSD-2-Clause - node/whatsapp/package.json
 - node-fetch 3.3.2 [npm] - MIT - node/whatsapp/package.json
 - qrcode-terminal 0.12.0 [npm] - MIT - node/whatsapp/package.json
