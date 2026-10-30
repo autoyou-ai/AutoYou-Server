@@ -200,6 +200,7 @@ PUBLIC_GENERATED_LEGAL_PATHS = {
 PUBLIC_DOC_PREFIXES = (
     "docs/images/",
     "docs/legal/licenses/",
+    "docs/readme/",
     "docs/releases/",
     "docs/security/",
     "docs/technical/",
