@@ -88,6 +88,8 @@ macOS 或 Linux：
 | `recommended` | 訊息應用程式與藍牙整合相依套件（省略 `--profile` 時的預設值） |
 | `full` | 語音、瀏覽器與桌面自動化相依套件 |
 
+設定檔只決定安裝哪些相依套件；各項整合仍需另外設定。`--skip-nuitka` 和 `--skip-backend-compile` 會保留啟動器內建的函式庫，因此封裝應用程式中的相依套件安全性更新需要完整重新建置。
+
 更新時在儲存庫目錄中執行 `git pull`，再重新執行啟動腳本。版本說明見 [docs/releases/](../releases/)。
 
 <a id="how-autoyou-works"></a>
@@ -112,6 +114,13 @@ flowchart LR
 
 在伺服器上，裝置端意圖路由器會把每個請求交給合適的代理或工具。Google ADK 執行原生代理，也可以橋接 OpenClaw、Hermes Agent 和 Odysseus。LiteLLM 把模型呼叫送到你電腦上的 Ollama 或你選擇的雲端供應商。語音在本機辨識、在本機朗讀，記憶保存在 SQLite 中。
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/architecture-dark.png" />
+  <img src="../images/architecture-light.png" alt="AutoYou 架構：應用程式透過加密的 WebRTC 連線連到你電腦上的伺服器；Auto Pair 訊息經由 Telegram、Signal 或 WhatsApp 傳遞；MCP 用戶端透過 MCP 橋接連線；意圖路由器把代理執行環境、代理應用程式、本機語音、記憶和模型串接起來，模型呼叫經 LiteLLM 送往 Ollama 或選用的雲端供應商。" width="100%" />
+</picture>
+
+此圖由 [scripts/build_architecture_diagram.py](../../scripts/build_architecture_diagram.py) 產生。虛線框代表選用的外掛或已連接的專案。
+
 <a id="what-you-can-do"></a>
 
 ## 功能一覽
@@ -128,14 +137,22 @@ flowchart LR
 | **託管任意本機連接埠** | 把電腦上的任何 Web 服務（如 `localhost:3000`）分享給已配對裝置 |
 | **代理** | 45 個內建代理，涵蓋筆記、檔案、程式開發、媒體、瀏覽、訓練等 |
 | **MCP** | 在 ChatGPT、Codex、Claude、Antigravity、Cursor 和 VS Code 中使用 AutoYou 工具 |
+| **訊息** | 透過你掌控的連接器，在 Telegram、Signal 和 WhatsApp 中聯絡你的伺服器 |
+| **記憶** | SQLite 記憶與私人角色日記，Cognee 為選用外掛 |
 
 功能取決於所選設定檔、硬體、權限與已設定的整合。桌面控制、遊戲模式、錄音和檔案存取等強大能力，在你開啟之前都保持關閉。
+
+<a id="ai-chat"></a>
 
 ### AI 聊天
 
 在主控台的 **AI** 頁面選擇供應商：預設的 **Ollama + Agents**（本機模型，不需 API 金鑰）、支援的 Mac 上的 **Apple Intelligence**、**Gemini**、**OpenRouter**，或透過 LiteLLM 接上 Anthropic、OpenAI、Mistral、DeepSeek、xAI 等，同時保留 AutoYou 的所有代理與工具。也可以把 **OpenClaw**、**Hermes Agent** 或 **Odysseus** 作為主要工作階段執行環境。
 
 AutoYou 不限制你傳送的訊息數量。使用本機模型時，聊天不按訊息計費，離線也能使用；你接上的雲端供應商會依其方案收費，並能看到你送出的提示詞。內建模型庫可瀏覽、下載和切換本機模型，Model Picker 代理會推薦適合你硬體的模型。
+
+小型量化本機模型也能保持準確：離線意圖分類器把常見請求直接交給合適的代理，精簡路由模式則讓工具清單保持簡短。請參閱[小模型如何保持準確](../../autoyou_agents/README.md#small-local-models)。
+
+<a id="realtime-voice-in-many-languages"></a>
 
 ### 多語言即時語音
 
@@ -147,17 +164,25 @@ AutoYou 不限制你傳送的訊息數量。使用本機模型時，聊天不按
 
 文字轉語音只朗讀給它的回覆，不負責翻譯；你選擇的聊天模型也需要支援對話語言。
 
+<a id="assistant-mode"></a>
+
 ### 助理模式
 
 為伺服器設定喚醒詞，例如 "Hey Jarvis"。在已配對的手機、電腦、樹莓派、Chrome 擴充功能或管理頁面附近說出它，之後說的話就會送到 AutoYou。在聽到喚醒詞之前，你說的任何話都不會被轉錄或送給 AI。錄三次、在伺服器上幾秒內完成訓練、測試後即可開啟。視訊通話中，喚醒詞之後的請求可附上最新的攝影機畫面。詳見[助理模式](../admin-ui/assistant-mode.mdx)。
+
+<a id="remote-desktop"></a>
 
 ### 遠端桌面
 
 從已配對的手機或桌面應用程式檢視並控制電腦：選擇螢幕或單一應用程式視窗，移動滑鼠、打字並使用修飾鍵。裝置支援時優先使用 H.264。在 Windows 上，選用的 **AutoYou Secure Desktop Helper** 服務讓已配對的擁有者能看到並操作鎖定畫面與 UAC 提示，伺服器也能在連線期間讓電腦保持喚醒。螢幕擷取與輸入是兩個獨立權限，預設關閉；Peer Link 永遠不提供遠端桌面。
 
+<a id="computer-video"></a>
+
 ### 電腦視訊
 
 通話中，電腦可以從四種來源傳送視訊：**螢幕**、**攝影機**、你上傳並播放的**影片檔**，或你自己的程式輸入的 **API 畫面**。也可以分享電腦的麥克風與聲音。主控台的 **Interact** 頁面能顯示已連線裝置的即時攝影機畫面，並在電腦喇叭上播放它們的麥克風聲音，不經過 AI 處理，也不錄製。
+
+<a id="game-mode-and-game-studio"></a>
 
 ### 遊戲模式與 Game Studio
 
@@ -167,9 +192,13 @@ AutoYou 不限制你傳送的訊息數量。使用本機模型時，聊天不按
 
 內建示範遊戲 **Neon Horizon** 可作為手機下載、在 Game Studio 頁面遊玩，或從電腦串流。
 
+<a id="web-app-factory"></a>
+
 ### Web 應用程式工廠
 
 描述一個應用程式，讓代理來建構。**Website** 代理為代理建立瀏覽器前端：簡單的起步範本，或依需求使用 React、Angular，後端可選 Python/FastAPI、Node/TypeScript、Go 或 Rust。**Agent Builder** 建立新代理的骨架，**Coding** 與 **Pi** 代理實作並測試程式碼。每個應用程式都會註冊到本機網站服務，出現在已配對裝置的瀏覽器中。**Hosting** 代理說明如何發布到公開網路：免費的臨時 `/pair` 通道或付費的永久 URL。
+
+<a id="host-any-local-port"></a>
 
 ### 託管任意本機連接埠
 
@@ -193,6 +222,8 @@ AutoYou 內建 45 個代理。主代理把每個請求路由到合適的專家�
 | 支持 AutoYou | Support Ads、Earnings、Donation |
 
 把代理套件複製到 `autoyou_agents/` 即可加入你自己的代理。完整說明見[代理目錄](../../autoyou_agents/README.md)。
+
+[自動產生的代理參考](../agents/)列出每個代理宣告的所有工具。
 
 <a id="pairing-modes"></a>
 
@@ -228,6 +259,49 @@ AutoYou 內建 45 個代理。主代理把每個請求路由到合適的專家�
 
 已配對裝置的瀏覽器會獲得 `viewer`、`editor` 或 `admin` 角色。憑證與安全設定只能在電腦本機，或直接在管理連接埠開啟的 HTTPS 管理工作階段中變更。加密保護的是連線本身，而非端點裝置、代理權限或第三方服務。詳見[安全模式](../security/security-modes.md)與 [SECURITY.md](../../SECURITY.md)。
 
+<details>
+<summary><strong>每一層保護什麼，以及保護到哪裡為止</strong></summary>
+
+| 層 | AutoYou 的做法 |
+| --- | --- |
+| 網路暴露 | 預設只監聽 `127.0.0.1`。在區域網路上監聽需要明確開啟。 |
+| 存取 | 管理主控台受伺服器密碼保護，可選用驗證器應用程式（TOTP）驗證碼。 |
+| 配對 | 以密碼驗證的金鑰交換、一次性代碼，以及 Peer Link 中逐條連結的核准。 |
+| 傳輸 | 兩端之間使用 WebRTC DTLS 與 SRTP，即使由中繼轉送封包也一樣。 |
+| 靜態資料 | 憑證存放在加密的金鑰庫中；Maximus 也會加密 AutoYou 管理的資料。 |
+| 相依套件 | 附鎖定檔的清單、安全性公告檢查，以及固定版本的 CI Action。 |
+
+加密保護的是連線本身，而不是它周圍的一切：
+
+- **裝置。** 伺服器電腦或已配對裝置上的惡意軟體，擁有該裝置所擁有的存取權限。
+- **代理。** 代理以伺服器的權限執行。瀏覽器自動化、檔案存取、桌面控制和指令執行都很強大；只開啟你需要的功能，並檢查它們在做什麼。
+- **第三方。** 雲端模型供應商、訊息橋接和公開通道都有各自的資料流向與條款。開啟前請先了解。
+- **維運。** 自己執行伺服器，就要自己負責更新、備份和憑證。
+
+</details>
+
+<details>
+<summary><strong>涉及哪些外部服務</strong></summary>
+
+你只執行一台伺服器：你自己的。執行助理或儲存資料都不需要 AutoYou 營運的應用程式伺服器，伺服器在不連線 AutoYou Cloud 的區域網路中也能運作（[詳情](../architecture/cloud-and-remote.mdx)）。其餘都是可以變更的預設值或選用的輔助服務：
+
+| 元件 | 執行位置 | 能看到什麼 |
+| --- | --- | --- |
+| AutoYou Server：代理、模型、儲存空間、主控台 | 你的電腦 | 你的資料。它是連線的一端。 |
+| 應用程式與瀏覽器用戶端 | 你的裝置 | 你與它們分享的內容 |
+| 用於探索位址的 STUN 伺服器（預設開啟） | Google 的公開 STUN 伺服器，除非你更換 | WebRTC 連線所顯示的公開 IP 與連接埠 |
+| Cloud Pair 會合點（選用） | AutoYou Cloud | 帳戶電子郵件、裝置 ID、暫時配對資料和網路中繼資料 |
+| 備援中繼（選用） | AutoYou Cloud | 加密的封包與網路中繼資料 |
+| 喚醒手機應用程式的推播通知（選用） | Apple 與 Google 的推播服務 | 有人要求喚醒應用程式這件事 |
+| 更新檢查（連結帳戶後開啟） | AutoYou Cloud 更新頻道 | 以連結帳戶驗證的更新請求 |
+| 雲端模型供應商（選用） | 你選擇的供應商 | 你傳送給它的提示詞 |
+| Telegram、Signal 與 WhatsApp 橋接（選用） | 這些服務 | 經過它們的訊息，受其條款約束 |
+| 網站公開通道（選用） | 通道供應商 | 前往公開 URL 的流量。不是端對端加密。 |
+
+**公開 STUN 預設開啟**，Local Pair 也不例外。若不想讓這次查詢送往網際網路，請在啟動伺服器前設定 `AUTOYOU_DISABLE_PUBLIC_STUN=1`，或用 `AUTOYOU_LOCAL_STUNTURN_HOST` 指向你自己的 STUN 與 TURN 伺服器（TURN 另需 `AUTOYOU_LOCAL_TURN_USERNAME` 和 `AUTOYOU_LOCAL_TURN_PASSWORD`）。完全沒有 STUN 或 TURN 伺服器時，穿越 NAT 的連線可能失敗。
+
+</details>
+
 <a id="supported-clients"></a>
 
 ## 支援的用戶端
@@ -245,11 +319,151 @@ AutoYou Server 在你的電腦上執行，應用程式從其他任何地方存�
 
 手機應用程式也內建小型本機 AI（依裝置為 LFM 2.5 350M、Gemini Nano 或 Apple Intelligence），沒有電腦時也能聊天。
 
+| 配對方式 | 和你自己的 AI 聊天 | 附近的 Lobbies | 手機上的本機 AI |
+| --- | --- | --- | --- |
+| <img src="../images/apps/android-pairing.png" alt="配對方式：Local、Auto、藍牙、Cloud、一次性代碼與 Peer Link" width="200"> | <img src="../images/apps/ios-chat.png" alt="與在你自己電腦上執行的 AI 代理聊天" width="200"> | <img src="../images/apps/ios-lobbies.png" alt="透過 Wi-Fi 與藍牙探索並建立附近的 Lobbies" width="200"> | <img src="../images/apps/android-local-ai.png" alt="與手機上的本機 AI 聊天" width="200"> |
+
+- **Lobbies。** 透過 Wi-Fi 與藍牙建立或加入附近的房間，支援主持人加最多六位訪客進行聊天與音訊或視訊通話。
+- **Peer Link。** 讓一個應用程式連到另一個應用程式。接收端應用程式會逐條核准連結，選用的 AI 回覆只使用你告訴它的內容。
+- **你的電腦，隨處可用。** 聊天、通話、遠端桌面、遊戲模式、代理網站和已發布的連接埠，在每台配對裝置上都能使用。
+
 <a id="mcp"></a>
+<a id="use-autoyou-from-your-coding-agent"></a>
 
 ## 在程式開發代理中使用 AutoYou
 
-本機 MCP 轉接器能把支援的 AutoYou 工具連接到 ChatGPT、Codex、Claude Code、Claude Desktop、Google Antigravity、Cursor 與 VS Code。在 **Admin UI > Messaging > AutoYou MCP** 中啟用 MCP 並下載 `autoyou-mcp.env`，再依照[英文 README 的步驟](../../README.md#use-autoyou-from-your-coding-agent)設定各個用戶端。
+把 ChatGPT、Codex、Claude Code 或 Claude Desktop、Google Antigravity、Cursor 和 VS Code 中支援 MCP 的功能連接到 AutoYou 支援的工具。本機 MCP 轉接器是獨立的程序；伺服器不會把它安裝到這些用戶端中，MCP 呼叫提供的是轉接器支援的工具，而不是對你檔案的任意存取，也不是 AutoYou 的全部功能。
+
+1. 啟動 AutoYou Server，開啟 **http://127.0.0.1:8001/**。
+2. 在 **Admin UI > Messaging > AutoYou MCP** 中啟用 MCP，產生私有的轉接器權杖，並下載 `autoyou-mcp.env`。請妥善保管此檔案。
+3. 把另外維護的轉接器安裝到專用的 Python 環境中：
+
+   ```powershell
+   git clone https://github.com/autoyou-ai/AutoYou.git
+   cd AutoYou
+   py -3 -m venv .venv-mcp
+   .\.venv-mcp\Scripts\python.exe -m pip install -e .\plugins\autoyou-mcp
+   ```
+
+   在 macOS 或 Linux 上，使用 `python3 -m venv .venv-mcp` 和 `.venv-mcp/bin/python -m pip install -e ./plugins/autoyou-mcp`。
+
+對於會啟動本機 MCP 程序的用戶端，請使用帶絕對路徑的以下指令：
+
+```text
+<path-to-.venv-mcp-python> -m autoyou_mcp --env-file <path-to-autoyou-mcp.env> --transport stdio
+```
+
+<details>
+<summary><strong>把 AutoYou 加入各個用戶端</strong></summary>
+
+對於使用 `mcpServers` JSON 格式的用戶端，項目如下。請替換兩個範例路徑；在 JSON 中使用 Windows 反斜線時要跳脫：
+
+```json
+{
+  "mcpServers": {
+    "autoyou": {
+      "command": "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe",
+      "args": [
+        "-m", "autoyou_mcp",
+        "--env-file", "C:/path/to/autoyou-mcp.env",
+        "--transport", "stdio"
+      ]
+    }
+  }
+}
+```
+
+**網頁版 ChatGPT** 使用遠端 MCP 連線，而不是本機 `stdio` 程序。以 `--transport streamable-http` 啟動轉接器，並透過 OpenAI Secure MCP Tunnel 連接其本機端點 `http://127.0.0.1:8071/mcp`。ChatGPT 需要開發人員模式與相應的工作區或管理員權限，OpenAI 也會依方案限制完整的 MCP 動作。請依照 [ChatGPT 的 AutoYou MCP 設定](https://github.com/autoyou-ai/AutoYou/blob/main/plugins/autoyou-mcp/README.md#connect-chatgpt-web)與 [OpenAI 的 MCP 應用程式指南](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)操作。
+
+**Codex CLI、桌面應用程式與 IDE 擴充功能**共用 Codex 主機的 MCP 設定：
+
+```powershell
+codex mcp add autoyou -- "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe" -m autoyou_mcp --env-file "C:/path/to/autoyou-mcp.env" --transport stdio
+codex mcp list
+```
+
+也可以在 `~/.codex/config.toml` 的 `[mcp_servers.autoyou]` 下加入對應的 `command` 和 `args`。請參閱 [Codex MCP 指南](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
+
+**Claude Code：**
+
+```powershell
+claude mcp add --transport stdio autoyou -- "C:/path/to/AutoYou/.venv-mcp/Scripts/python.exe" -m autoyou_mcp --env-file "C:/path/to/autoyou-mcp.env" --transport stdio
+claude mcp list
+```
+
+然後在 Claude Code 中執行 `/mcp`。請參閱 [Claude Code MCP 指南](https://code.claude.com/docs/en/mcp)。
+
+**Claude Desktop** 會把轉接器當作本機 stdio 伺服器啟動。在 macOS 的 `~/Library/Application Support/Claude/claude_desktop_config.json` 或 Windows 的 `%APPDATA%\Claude\claude_desktop_config.json` 中加入 `mcpServers.autoyou` 項目，然後完全結束並重新開啟 Claude Desktop。AutoYou 目前不提供 `.mcpb` 桌面擴充功能。請參閱 [Claude Desktop MCP 指南](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)。
+
+**Google Antigravity** 全域使用 `~/.gemini/config/mcp_config.json`，在工作區中使用 `.agents/mcp_config.json`。在 Antigravity IDE 中開啟 **MCP Servers > Manage MCP Servers > View raw config**。請參閱 [Antigravity MCP 指南](https://antigravity.google/docs/mcp)。
+
+**Cursor** 使用 `~/.cursor/mcp.json` 或 `.cursor/mcp.json`，項目同樣是 `mcpServers`。請參閱 [Cursor MCP 指南](https://prod.cursor.com/help/customization/mcp)。
+
+**VS Code** 可以使用工作區根目錄中可攜的 `.mcp.json` 檔案。`.vscode/mcp.json` 則使用最上層的 `servers` 物件，並帶 `"type": "stdio"`。請參閱 [VS Code MCP 指南](https://code.visualstudio.com/docs/agent-customization/mcp-servers)。
+
+在 macOS 或 Linux 上，Python 執行檔是 `.venv-mcp/bin/python`。用戶端版本、設定、組織政策與工具核准都可能影響可用性。
+
+</details>
+
+連線後，在使用任何會寫入資料的工具之前，先確認 `get_autoyou_status` 已出現並回傳預期的伺服器狀態。適用範圍、安全模型與限制請見 [AutoYou MCP 整合指南](../guides/mcp-integration.mdx)。
+
+<a id="admin-console"></a>
+
+## 管理主控台
+
+<p align="center">
+  <img src="../images/admin-tour.gif" alt="主控台導覽：伺服器總覽、裝置與即時活動、存取與安全" width="760" />
+</p>
+
+本機主控台集中管理設定、模型、語音、代理、連線、權限與安全。引導式設定會詢問你想用 AutoYou 做什麼，並推薦合適的代理與權限；在你檢查並儲存方案之前不會做任何變更。截圖使用範例資料。點選預覽圖可開啟原尺寸圖片。
+
+| 伺服器總覽 | 裝置與活動 | 存取與安全 |
+| --- | --- | --- |
+| [<img src="../images/admin/overview.png" alt="伺服器總覽、服務與設定控制項" width="280">](../images/admin/overview.png) | [<img src="../images/admin/live-view.png" alt="顯示裝置連線、工作與訊息整合的即時檢視" width="280">](../images/admin/live-view.png) | [<img src="../images/admin/security.png" alt="伺服器密碼、驗證器與安全設定" width="280">](../images/admin/security.png) |
+
+<a id="other-ways-to-run"></a>
+
+## 其他執行方式
+
+<details>
+<summary><strong>Docker</strong></summary>
+
+以安全的方式提供 `AUTOYOU_SERVER_PASSWORD`，然後執行：
+
+```bash
+docker compose up --build
+```
+
+Compose 檔案只把連接埠發布到主機的回送位址，並把設定儲存在具名磁碟區中。在同一台電腦上開啟 `http://localhost:8001/`；該檔案宣告了這種僅限回送的發布方式（`AUTOYOU_ADMIN_TRUST_PUBLISHED_LOOPBACK=1`），因此登入不會因 "requires localhost or HTTPS" 被拒絕。若直接使用 `docker run`，請發布到 `127.0.0.1` 並傳入同一變數，或在前方放一個 TLS 代理伺服器。依賴回送隔離之前，請確認你的 Docker 版本如何發布連接埠。
+
+若要在建置與執行時停用 Tunnelmole 下載，請在建置與啟動前設定 `AUTOYOU_SKIP_TUNNELMOLE_DOWNLOAD=1` 和 `AUTOYOU_NO_DOWNLOAD_TUNNELMOLE=1`。這樣一來，依賴它的功能就需要另外提供的二進位檔。
+
+</details>
+
+<details>
+<summary><strong>建置非官方的本機版本</strong></summary>
+
+在儲存庫根目錄下：
+
+```powershell
+# Windows
+.\servers\windows\build-all.ps1 -Configuration Debug
+```
+
+```bash
+# macOS
+./servers/macos/build-all.sh --no-sign --dev
+
+# Linux / WSL
+./servers/wsl/build-backend.sh --unofficial
+```
+
+這些方式不需要 AutoYou 帳戶，也不需要官方版本的核准。它們可能會安裝或調整相依套件。出現授權與聲明時請閱讀。閱讀後若要免互動接受，在 Windows 上傳入 `-AcceptTerms`，在 macOS 與 Linux 上傳入 `--accept-terms`。
+
+必要條件、輸出位置與已知限制：
+[Windows](../../servers/windows/README.md) · [macOS](../../servers/macos/README.md) · [Linux / WSL](../../servers/wsl/README.md).
+
+</details>
 
 <a id="faq"></a>
 
@@ -276,6 +490,27 @@ AutoYou 不限制訊息數量。使用本機 Ollama 模型時，每則訊息都�
 
 </details>
 
+<details>
+<summary><strong>我可以用哪些語言說話？</strong></summary>
+
+當 **STT language** 設為 `auto` 且選用了多語言模型時，語音辨識會自動偵測語言。語音回覆使用相符的系統語音，或涵蓋 31 種語言的本機模型 Supertonic 3。你的聊天模型也需要理解這種語言。
+
+</details>
+
+<details>
+<summary><strong>可以和朋友分享 Web 應用程式或遊戲嗎？</strong></summary>
+
+可以。任何與你的伺服器配對的人，都能在你授予的角色範圍內開啟你的代理網站和已發布連接埠。共用裝置會被標示為共用，因此你的網站可以限制它們能看到的內容。對於未配對的人，Hosting 代理會說明免費的臨時連結與付費的永久 URL。
+
+</details>
+
+<details>
+<summary><strong>遇到 bug 怎麼辦？</strong></summary>
+
+先更新，新版本可能已經修正。如果問題仍在，請附上 AutoYou 版本（`VERSION`）、作業系統、設定檔、重現步驟和錯誤輸出，[提交 issue](https://github.com/autoyou-ai/AutoYou-Server/issues)。安全性漏洞請依 [SECURITY.md](../../SECURITY.md) 私下回報。
+
+</details>
+
 <a id="documentation"></a>
 
 ## 文件
@@ -284,12 +519,43 @@ AutoYou 不限制訊息數量。使用本機 Ollama 模型時，每則訊息都�
 - [代理目錄](../../autoyou_agents/README.md) · [代理參考](../agents/) · [代理框架](../agent-framework/)
 - [HTTP 與 WebSocket API](../api-reference/) · [指南](../guides/) · [配對指南](../../guides/README.md)
 
+<a id="contributing"></a>
+
 ## 參與貢獻
 
-歡迎一起打造 AutoYou：建構代理、遊戲、擴充功能或整合，改善安裝、無障礙、平台支援、翻譯與文件，或分享示範和指南。提交前請閱讀 [CONTRIBUTING.md](../../CONTRIBUTING.md) 與[行為準則](../../CODE_OF_CONDUCT.md)。
+歡迎你的協助。可以從[內建代理](../../autoyou_agents/README.md)、[Agent Builder](../admin-ui/agent-workbench-ui.mdx) 或[自訂代理教學](../guides/custom-agent-tutorial.mdx)開始。
+
+- **打造**代理、遊戲、擴充功能、整合或 Web 介面。
+- **改善**安裝、無障礙、平台支援、翻譯、文件，或修正可重現的 bug。
+- **分享**示範、指南，或明確標示為非官方且遵守授權的建置版本。
+
+提交之前請閱讀 [CONTRIBUTING.md](../../CONTRIBUTING.md) 與[行為準則](../../CODE_OF_CONDUCT.md)。原創且獨立的程式碼可以使用你選擇的授權，包括 MIT 或 Apache-2.0。對現有 AutoYou 程式碼的修改沿用其授權。
+
+<a id="license"></a>
 
 ## 授權
 
-AutoYou Server 以[伺服器授權](../../LICENSE)原始碼公開（source-available）的方式提供，目前並非 OSI 認可的開源專案，以 `LICENSE` 中的定義為準。個人使用、本機建置與免費分享在授權條件下允許；機構使用或商業利用需另簽[企業協議](https://www.autoyou.me/enterprise/)。詳見[英文 README](../../README.md#license) 與 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
+AutoYou Server 依據[伺服器授權](../../LICENSE)以 source-available 方式提供。它目前不是 OSI 認可的開放原始碼專案，以 `LICENSE` 中的定義為準。
+
+| 內容或用途 | 條款 |
+| --- | --- |
+| 個人使用、本機建置與免費散布 | 依伺服器授權及其條件允許 |
+| 對 AutoYou 程式碼的修改 | 沿用適用的 AutoYou 授權 |
+| 原創、獨立且可分離的程式碼 | 你選擇的授權，包括 MIT 或 Apache-2.0 |
+| 機構使用或商業利用 | 另行簽訂的 [Enterprise 協議](https://www.autoyou.me/enterprise/) |
+
+請保留聲明、標示非官方建置，並履行所含元件的義務。請參閱 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) 與[商標政策](../legal/trademark-policy.md)。
+
+OpenStorey 將至少 15% 的合格淨收入投入貢獻者資金池，依其[審核與資格規則](../contributors/contributor-pool.md)分配。[資金路線圖](https://www.autoyou.me/donate/)包含一個 500 萬美元的里程碑，用於開放伺服器程式碼；里程碑本身不會改變你已持有副本的授權。詳情：[docs/legal/open-source-commitment.md](../legal/open-source-commitment.md)。
+
+<a id="support"></a>
+
+## 支援
+
+- **問題與安裝協助：** [SUPPORT.md](../../SUPPORT.md) 與[社群](https://www.autoyou.me/community/)。
+- **Bug 與具體建議：** [提交 issue](https://github.com/autoyou-ai/AutoYou-Server/issues)。
+- **安全性漏洞：** 請依 [SECURITY.md](../../SECURITY.md) 的說明私下回報。不要用公開 issue 回報未揭露的漏洞。
+
+代理以伺服器的權限執行：檢查它們在做什麼，只開啟需要的功能，並做好備份。
 
 Copyright &copy; 2026 OpenStorey LLC and contributors.
