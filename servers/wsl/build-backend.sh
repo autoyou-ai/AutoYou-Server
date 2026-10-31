@@ -343,11 +343,11 @@ install_node_service_deps() {
     node_cmd="$(command -v node || true)"
     npm_cmd="$(command -v npm || true)"
     if [[ -z "$node_cmd" || -z "$npm_cmd" ]]; then
-        echo "Node.js 22.12.0+ and npm are required to package the WhatsApp bridge." >&2
+        echo "Node.js 22.12.0+ and npm are required to package WhatsApp and pairing." >&2
         exit 1
     fi
     if ! "$node_cmd" -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 12) ? 0 : 1)'; then
-        echo "Node.js 22.12.0+ is required to package the WhatsApp bridge." >&2
+        echo "Node.js 22.12.0+ is required to package WhatsApp and pairing." >&2
         exit 1
     fi
     for svc in whatsapp tunnelmole; do
@@ -356,8 +356,10 @@ install_node_service_deps() {
             echo "Missing package-lock.json for node/${svc}." >&2
             exit 1
         }
+        local npm_arguments=(ci --omit=dev)
+        [[ "$svc" != "tunnelmole" ]] || npm_arguments+=(--ignore-scripts)
         echo "Installing locked npm dependencies for ${svc}..."
-        (cd "$svc_dir" && "$npm_cmd" ci --omit=dev)
+        (cd "$svc_dir" && TUNNELMOLE_TELEMETRY=0 "$npm_cmd" "${npm_arguments[@]}")
     done
 }
 
@@ -599,9 +601,12 @@ for required_node_path in \
     "${FINAL_BACKEND_ROOT}/node/whatsapp/whatsapp_client.js" \
     "${FINAL_BACKEND_ROOT}/node/whatsapp/wwebjs_recovery.js" \
     "${FINAL_BACKEND_ROOT}/node/whatsapp/node_modules/whatsapp-web.js" \
+    "${FINAL_BACKEND_ROOT}/node/tunnelmole/node_modules/tunnelmole/dist/config.js" \
+    "${FINAL_BACKEND_ROOT}/node/tunnelmole/node_modules/tunnelmole/dist/src/index.js" \
+    "${FINAL_BACKEND_ROOT}/node/tunnelmole/node_modules/tunnelmole/dist/src/node-persist/storage.js" \
     "${FINAL_BACKEND_ROOT}/runtime/node/bin/node"; do
     if [[ ! -e "$required_node_path" ]]; then
-        echo "Packaged WhatsApp bridge is incomplete: missing $required_node_path" >&2
+        echo "Packaged Node.js services are incomplete: missing $required_node_path" >&2
         exit 1
     fi
 done

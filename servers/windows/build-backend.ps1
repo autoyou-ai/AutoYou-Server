@@ -1105,71 +1105,6 @@ print(f"WHISPER_BUNDLE={Path(bundle).resolve()}")
     Write-Host "whisper.cpp runtime bundled from $sourceRoot"
 }
 
-function Install-TunnelmoleRuntime {
-    param(
-        [string]$RuntimeRoot,
-        [string]$PythonExe
-    )
-
-    Write-Host "Preparing tunnelmole runtime..."
-    New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
-
-    $verificationRoot = Join-Path $artifactRoot "verification"
-    New-Item -ItemType Directory -Force -Path $verificationRoot | Out-Null
-
-    $scriptPath = Join-Path $verificationRoot "prepare_tunnelmole_runtime.py"
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    $repoRootPython = $repoRoot.Replace('\', '\\')
-    $pythonCode = @"
-from pathlib import Path
-import sys
-
-REPO_ROOT = Path(r"$repoRootPython").resolve()
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from shared.tunnelmole_downloader import download_tunnelmole
-
-binary = download_tunnelmole(force=True)
-if binary is None:
-    raise SystemExit("tunnelmole runtime binary unavailable")
-
-print(f"TUNNELMOLE_BIN={Path(binary).resolve()}")
-"@
-
-    [System.IO.File]::WriteAllText($scriptPath, $pythonCode, $utf8NoBom)
-
-    try {
-        $pythonOutput = Invoke-CheckedCommand -FilePath $PythonExe -Arguments @($scriptPath) -CaptureOutput
-    }
-    catch {
-        $commandOutput = $_.Exception.Data["CommandOutput"]
-        if (-not $commandOutput) {
-            $commandOutput = $_.Exception.Message
-        }
-        Write-Warning "Failed to prepare tunnelmole runtime: $commandOutput"
-        Write-Warning "Continuing without bundling a standalone tunnelmole binary into the Windows runtime."
-        return
-    }
-
-    $binaryLine = $pythonOutput | Where-Object { $_ -like "TUNNELMOLE_BIN=*" } | Select-Object -Last 1
-    if (-not $binaryLine) {
-        Write-Warning "Could not determine the prepared tunnelmole runtime path. Output: $($pythonOutput -join "`n")"
-        Write-Warning "Continuing without bundling a standalone tunnelmole binary into the Windows runtime."
-        return
-    }
-
-    $sourceBinary = $binaryLine.Substring("TUNNELMOLE_BIN=".Length).Trim()
-    if (-not (Test-Path $sourceBinary)) {
-        Write-Warning "Prepared tunnelmole runtime path '$sourceBinary' does not exist."
-        Write-Warning "Continuing without bundling a standalone tunnelmole binary into the Windows runtime."
-        return
-    }
-
-    Copy-Item $sourceBinary (Join-Path $RuntimeRoot ([System.IO.Path]::GetFileName($sourceBinary))) -Force
-    Write-Host "Tunnelmole runtime bundled from $sourceBinary"
-}
-
 function Assert-BackendRuntimePins {
     param(
         [string]$PythonExe,
@@ -1735,9 +1670,11 @@ foreach ($svc in @("whatsapp", "tunnelmole")) {
     Write-Host "Installing locked Node.js dependencies for '$svc'..."
     $bundledNodeCmd = Join-Path $nodeRuntimeRoot "node.exe"
     $npmScript = Join-Path $nodeRuntimeRoot "node_modules\npm\bin\npm-cli.js"
+    $npmArguments = @("ci", "--omit=dev")
+    if ($svc -eq "tunnelmole") { $npmArguments += "--ignore-scripts" }
     if ((Test-Path $bundledNodeCmd) -and (Test-Path $npmScript)) {
         $pathWithNode = "$nodeRuntimeRoot;$env:PATH"
-        Invoke-CheckedCommand -FilePath $bundledNodeCmd -Arguments @($npmScript, "ci", "--omit=dev", "--prefix", $svcDir) -Environment @{ "npm_config_cache" = (Join-Path $downloadRoot "npm-cache"); "PATH" = $pathWithNode }
+        Invoke-CheckedCommand -FilePath $bundledNodeCmd -Arguments (@($npmScript) + $npmArguments + @("--prefix", $svcDir)) -Environment @{ "npm_config_cache" = (Join-Path $downloadRoot "npm-cache"); "PATH" = $pathWithNode; "TUNNELMOLE_TELEMETRY" = "0" }
     } else {
         # Fall back to system npm (PS 5.1-compatible: no ?. operator)
         $npmCmdObj = Get-Command "npm" -ErrorAction SilentlyContinue
@@ -1747,7 +1684,7 @@ foreach ($svc in @("whatsapp", "tunnelmole")) {
         }
         Push-Location $svcDir
         try {
-            Invoke-CheckedCommand -FilePath $npmCmd -Arguments @("ci", "--omit=dev")
+            Invoke-CheckedCommand -FilePath $npmCmd -Arguments $npmArguments -Environment @{ "TUNNELMOLE_TELEMETRY" = "0" }
         } finally {
             Pop-Location
         }
@@ -2050,10 +1987,9 @@ $runtimeRoot = Join-Path $finalBackendRoot "runtime"
 $runtimeNodeRoot = Join-Path $runtimeRoot "node"
 $runtimePlaywrightRoot = Join-Path $runtimeRoot "playwright"
 $runtimeWhisperRoot = Join-Path $runtimeRoot "whisper"
-$runtimeTunnelmoleRoot = Join-Path $runtimeRoot "tunnelmole"
 $runtimeFfmpegRoot = Join-Path $runtimeRoot "ffmpeg"
 
-New-Item -ItemType Directory -Force -Path $runtimeRoot, $runtimeNodeRoot, $runtimePlaywrightRoot, $runtimeWhisperRoot, $runtimeTunnelmoleRoot, $runtimeFfmpegRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $runtimeRoot, $runtimeNodeRoot, $runtimePlaywrightRoot, $runtimeWhisperRoot, $runtimeFfmpegRoot | Out-Null
 $ffmpegCandidates = @(
     $env:AUTOYOU_TV_FFMPEG,
     $(if (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue) { (Get-Command ffmpeg.exe).Source }),
@@ -2071,19 +2007,16 @@ if ($discoveredFFmpeg) {
 Copy-Item (Join-Path $nodeRuntimeRoot "*") $runtimeNodeRoot -Recurse -Force
 Copy-Item (Join-Path $playwrightRoot "*") $runtimePlaywrightRoot -Recurse -Force
 Install-WhisperCppRuntime -RuntimeRoot $runtimeWhisperRoot -PythonExe $pythonExe
-Install-TunnelmoleRuntime -RuntimeRoot $runtimeTunnelmoleRoot -PythonExe $pythonExe
 
 # ── Verify bundled Node.js is reachable ──────────────────────────────────────
 $bundledNodeExe = Join-Path $runtimeNodeRoot "node.exe"
 if (-not (Test-Path $bundledNodeExe)) {
-    Write-Warning "Bundled node.exe NOT found at expected path: $bundledNodeExe"
-    Write-Warning "Node-dependent services (WhatsApp) will fall back to system PATH."
-    Write-Warning "Ensure Install-PortableNodeRuntime placed node.exe directly inside $nodeRuntimeRoot"
-    # List what's actually there so the developer can diagnose:
-    Write-Host "Contents of $runtimeNodeRoot :"
-    Get-ChildItem $runtimeNodeRoot -ErrorAction SilentlyContinue | Select-Object Name, Length | Format-Table
+    throw "Bundled node.exe missing at $bundledNodeExe; WhatsApp and pairing require the included Node.js runtime."
 } else {
     $nodeVersion = & $bundledNodeExe --version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bundled Node.js could not start at $bundledNodeExe. Rebuild the runtime for the target architecture."
+    }
     Write-Host "Bundled Node.js verified: $bundledNodeExe  ($nodeVersion)"
 }
 
@@ -2098,10 +2031,15 @@ foreach ($svc in $nodeServices) {
     $svcDir = Join-Path $nodeBundledRoot $svc
     $nmDir  = Join-Path $svcDir "node_modules"
     if (-not (Test-Path $nmDir)) {
-        Write-Warning "node_modules missing for service '$svc' at $svcDir"
-        Write-Warning "Run 'npm install' inside $svcDir and rebuild, or the $svc service will not start."
+        throw "node_modules missing for service '$svc' at $svcDir. Restore its lockfile-pinned dependencies and rebuild."
     } else {
         Write-Host "node_modules present for service '$svc'"
+    }
+}
+foreach ($entry in @("dist/config.js", "dist/src/index.js", "dist/src/node-persist/storage.js")) {
+    $clientFile = Join-Path $nodeBundledRoot "tunnelmole/node_modules/tunnelmole/$entry"
+    if (-not (Test-Path -LiteralPath $clientFile -PathType Leaf)) {
+        throw "Packaged Tunnelmole Node.js client is incomplete; missing '$clientFile'."
     }
 }
 $requiredWhatsAppFiles = @("whatsapp_client.js", "wwebjs_recovery.js")

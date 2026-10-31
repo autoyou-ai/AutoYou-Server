@@ -2110,22 +2110,16 @@ def ollama_is_reachable() -> bool:
 
 
 def preseed_tunnelmole(venv_python: Path) -> None:
-    """Download and cache the tmole binary so /pair works out-of-the-box.
-
-    Uses the venv Python so shared.tunnelmole_downloader is importable even
-    before the caller has modified sys.path.  Failure is non-fatal: if the
-    download cannot complete (no network, firewall, etc.) we warn and continue
-    so the rest of setup is not blocked.
-    """
+    """Check pairing dependencies after Node setup, without downloading a fallback."""
     seed_script = REPO_ROOT / "scripts" / "download_tunnelmole.py"
     if not seed_script.is_file():
-        warn("scripts/download_tunnelmole.py not found - skipping tmole pre-seed.")
+        warn("scripts/download_tunnelmole.py not found - pairing runtime was not checked.")
         return
 
-    info("Pre-seeding tmole binary for /pair pairing support...")
+    info("Checking Tunnelmole runtime for /pair pairing support...")
     try:
         result = subprocess.run(
-            [str(venv_python), str(seed_script)],
+            [str(venv_python), str(seed_script), "--check-runtime"],
             capture_output=True,
             text=True,
             timeout=60,
@@ -2135,19 +2129,19 @@ def preseed_tunnelmole(venv_python: Path) -> None:
             if output.startswith("[OK] "):
                 output = output[len("[OK] "):]
             if output:
-                success(f"tmole ready: {output}")
+                success(output)
             else:
-                success("tmole binary is available.")
+                success("Tunnelmole pairing runtime is available.")
         else:
             stderr = (result.stderr or "").strip()
             warn(
-                f"tmole pre-seed failed (exit {result.returncode}). "
-                f"Install tmole manually or set AUTOYOU_TUNNELMOLE_BIN.\n  {stderr}"
+                f"Tunnelmole pairing runtime is unavailable (check exited {result.returncode}). "
+                f"Server setup will continue; public /pair needs the Node.js client or a trusted tmole.\n  {stderr}"
             )
     except subprocess.TimeoutExpired:
-        warn("tmole download timed out. Install tmole manually or set AUTOYOU_TUNNELMOLE_BIN.")
+        warn("Tunnelmole runtime check timed out; pairing availability was not verified.")
     except Exception as exc:
-        warn(f"tmole pre-seed error: {exc}. Install tmole manually or set AUTOYOU_TUNNELMOLE_BIN.")
+        warn(f"Tunnelmole runtime check failed: {exc}. Pairing availability was not verified.")
 
 
 def start_ollama_if_possible() -> None:
@@ -2305,7 +2299,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--skip-node", action="store_true", help="Skip Node.js checks and npm installs.")
     parser.add_argument("--skip-docker", action="store_true", help="Skip Docker checks.")
     parser.add_argument("--skip-ollama", action="store_true", help="Skip local Ollama checks/startup.")
-    parser.add_argument("--skip-tunnelmole", action="store_true", help="Skip pre-seeding the tmole binary (pairing via /pair will require tmole on PATH).")
+    parser.add_argument("--skip-tunnelmole", action="store_true", help="Skip checking the pairing runtime; the installed Node.js client or trusted tmole can still be used.")
     parser.add_argument("--no-software-updates", action="store_true", help="Disable all AutoYou software update requests for this launch.")
     parser.add_argument("--playwright-browsers", default="chromium", help="Comma-separated browsers to install when the internet profile is active.")
     parser.add_argument("--service", default="autoyou", choices=["autoyou", "autoyou-lite"], help="Choose which server to start after bootstrap.")
@@ -2406,14 +2400,14 @@ def main(argv: Sequence[str]) -> int:
         if should_install_playwright:
             install_playwright_browsers(venv_python, browsers)
 
-    if not args.skip_tunnelmole:
-        preseed_tunnelmole(venv_python)
-
     if "messaging" in components:
         if not args.skip_node:
             check_node_and_install_packages(venv_python)
         if not args.skip_docker:
             check_docker()
+
+    if not args.skip_tunnelmole:
+        preseed_tunnelmole(venv_python)
 
     if "local-llm" in components and not args.skip_ollama:
         start_ollama_if_possible()

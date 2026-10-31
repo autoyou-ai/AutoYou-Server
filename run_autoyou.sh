@@ -39,4 +39,6 @@ fi
 # chain remains intact when the terminal or shell is closed.
 # Keep the ordinary launcher browser-capable. An explicit --without internet
 # still removes the component during bootstrap.
+# Bootstrap installs the pinned Node pairing client before checking availability;
+# --skip-tunnelmole skips that check, not the installed client's use by /pair.
 exec "$PYTHON_CMD" scripts/bootstrap_autoyou.py --with internet "$@"

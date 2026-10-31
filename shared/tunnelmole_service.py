@@ -514,7 +514,7 @@ def _should_auto_download_binary() -> bool:
     return raw not in {"1", "true", "yes", "on"}
 
 
-def resolve_tunnelmole_binary() -> Optional[str]:
+def resolve_tunnelmole_binary(*, allow_download: bool = True) -> Optional[str]:
     if is_app_store_build():
         binary = find_app_bundle_resource("runtime/tunnelmole/tmole")
         return str(binary) if binary is not None and binary.is_file() and os.access(binary, os.X_OK) else None
@@ -547,7 +547,7 @@ def resolve_tunnelmole_binary() -> Optional[str]:
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                 return candidate
 
-    if _should_auto_download_binary():
+    if allow_download and _should_auto_download_binary():
         downloaded = download_tunnelmole()
         if isinstance(downloaded, Path) and downloaded.is_file():
             return str(downloaded)
@@ -770,8 +770,6 @@ def _build_public_node_launch(exposed_port: int) -> Optional[Dict[str, Any]]:
     stores an AutoYou API key in its home, and that key must never be offered
     to the third-party public service.
     """
-    if is_app_store_build():
-        return None
     runtime = _resolve_node_tunnelmole_runtime(__file__)
     if runtime is None:
         return None
@@ -781,8 +779,13 @@ def _build_public_node_launch(exposed_port: int) -> Optional[Dict[str, Any]]:
     except Exception as exc:
         LOGGER.warning("Failed to prepare the public tunnelmole Node home: %s", exc)
         return None
+    if is_app_store_build():
+        from .tunnelmole_node_payload import launcher_bytes
+        command = [runtime["node_command"], "--input-type=module", "--eval", launcher_bytes().decode("utf-8")]
+    else:
+        command = [runtime["node_command"], runtime["launcher_path"]]
     return {
-        "command": [runtime["node_command"], runtime["launcher_path"]],
+        "command": command,
         "env": {
             "AUTOYOU_TUNNELMOLE_NODE_PUBLIC": "1",
             "AUTOYOU_TUNNELMOLE_NODE_PACKAGE_DIR": runtime["package_dir"],
@@ -1063,7 +1066,10 @@ class TunnelmoleService:
                 if is_app_store_build():
                     self._upgrade_hint = {"error": "helper_unavailable", "message": _STORE_HELPER_UNAVAILABLE}
                 LOGGER.warning(
-                    "Tunnelmole binary not found. Set AUTOYOU_TUNNELMOLE_BIN or install tmole/tunnelmole on PATH."
+                    _STORE_HELPER_UNAVAILABLE if is_app_store_build() else
+                    "Tunnelmole runtime unavailable. Restore the bundled Node.js client, or run "
+                    "run_autoyou to install the lockfile-pinned node/tunnelmole dependencies. "
+                    "Direct installations may also set AUTOYOU_TUNNELMOLE_BIN to a trusted executable."
                 )
                 self.stop()
                 self._status = "error"

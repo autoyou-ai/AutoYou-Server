@@ -6,8 +6,8 @@
 
 """Tunnelmole binary downloader for AutoYou pairing runtimes.
 
-Used by compiled desktop builds and any source/runtime flow that prefers the
-standalone `tmole` binary over the legacy Node helper.
+Optional fallback for direct installations without the lockfile-pinned Node.js
+client. Store builds use only their included runtime.
 """
 from __future__ import annotations
 
@@ -116,8 +116,8 @@ def _download_file(url: str, destination: Path) -> None:
         except Exception as exc:
             last_exc = exc
             if context is None and certifi_context is not None:
-                LOGGER.warning(
-                    "Tunnelmole download failed with platform TLS roots; retrying with certifi: %s",
+                LOGGER.info(
+                    "Retrying Tunnelmole download with certifi's CA bundle after the system TLS attempt failed: %s",
                     exc,
                 )
                 continue
@@ -158,6 +158,14 @@ def download_tunnelmole(force: bool = False) -> Optional[Path]:
             bin_path.unlink()
         except OSError:
             return None
+
+    if not trusted_binary_hashes() and str(os.environ.get(_ALLOW_UNVERIFIED_ENV, "")).strip().lower() not in {"1", "true", "yes", "on"}:
+        LOGGER.warning(
+            "No reviewed standalone Tunnelmole build is configured for %s; skipping the binary download. "
+            "Use the lockfile-pinned Node.js client or provide an independently reviewed SHA-256.",
+            sys.platform,
+        )
+        return None
 
     LOGGER.info("Downloading Tunnelmole binary for %s...", sys.platform)
     temp_bin_path = bin_path.with_suffix(f"{bin_path.suffix}.download")

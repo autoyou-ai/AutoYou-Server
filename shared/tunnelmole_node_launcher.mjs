@@ -71,5 +71,5 @@ try {
 
     await tunnelmoleModule.tunnelmole(options, true);
 } catch (error) {
-    fail("Failed to start the self-hosted tunnelmole client.", error);
+    fail("Failed to start the Tunnelmole client.", error);
 }

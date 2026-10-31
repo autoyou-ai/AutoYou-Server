@@ -2792,7 +2792,7 @@ install_node_service_deps() {
 
     if [[ -z "$node_exe" ]]; then
         log_warning "node not found - skipping npm install for node services."
-        log_warning "Run 'npm install' inside node/whatsapp and node/tunnelmole before building."
+        log_warning "Restore Node.js and the lockfile-pinned dependencies before building."
         return 0
     fi
 
@@ -2805,70 +2805,23 @@ install_node_service_deps() {
             log_warning "No package.json for node service '${svc}' at ${svc_dir} - skipping."
             continue
         fi
+        local npm_arguments=(ci --omit=dev)
+        [[ "$svc" != "tunnelmole" ]] || npm_arguments+=(--ignore-scripts)
         log "Running locked 'npm ci --omit=dev' for '${svc}'..."
-        if PATH="${node_bin_dir}:${PATH}" \
+        if TUNNELMOLE_TELEMETRY=0 PATH="${node_bin_dir}:${PATH}" \
              "${node_exe}" "$(dirname "$node_bin_dir")/lib/node_modules/npm/bin/npm-cli.js" \
-             ci --omit=dev --prefix "${svc_dir}" 2>&1 | tee -a "${BUILD_DIR}/npm_${svc}.log"; then
+             "${npm_arguments[@]}" --prefix "${svc_dir}" 2>&1 | tee -a "${BUILD_DIR}/npm_${svc}.log"; then
             log_success "Locked npm dependencies installed for '${svc}'."
         else
             # Fallback: try system npm
             if command -v npm &>/dev/null; then
                 log_warning "Bundled npm failed for '${svc}', retrying locked npm ci..."
-                (cd "${svc_dir}" && npm ci --omit=dev 2>&1 | tee -a "${BUILD_DIR}/npm_${svc}.log")
+                (cd "${svc_dir}" && TUNNELMOLE_TELEMETRY=0 npm "${npm_arguments[@]}" 2>&1 | tee -a "${BUILD_DIR}/npm_${svc}.log")
             else
                 log_warning "npm ci failed for '${svc}' - services may not start."
             fi
         fi
     done
-}
-
-install_tunnelmole_runtime() {
-    local runtime_root="$1"
-    local bundle_root="${runtime_root%/runtime/tunnelmole}"
-
-    if [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" \
-            && -x "$bundle_root/runtime/node/bin/node" \
-            && -d "$bundle_root/node/tunnelmole/node_modules/tunnelmole" ]]; then
-        log "Skipping the standalone Tunnelmole fallback; the v2 bundle has its pinned Node client."
-        return 0
-    fi
-
-    log "Preparing tunnelmole runtime..."
-    mkdir -p "$runtime_root"
-
-    local prep_output
-    if ! prep_output=$("$PYTHON_CMD" - <<'PY'
-from pathlib import Path
-import sys
-
-repo_root = Path.cwd().resolve()
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-
-from shared.tunnelmole_downloader import download_tunnelmole
-
-binary = download_tunnelmole(force=True)
-if binary is None:
-    raise SystemExit("tunnelmole runtime binary unavailable")
-
-print(f"TUNNELMOLE_BIN={Path(binary).resolve()}")
-PY
-); then
-        log_error "Failed to prepare tunnelmole runtime"
-        return 1
-    fi
-
-    local source_binary
-    source_binary="$(printf '%s\n' "$prep_output" | awk -F= '/^TUNNELMOLE_BIN=/{print $2}' | tail -1)"
-    if [[ -z "$source_binary" || ! -f "$source_binary" ]]; then
-        log_error "Could not locate the prepared tunnelmole runtime binary"
-        printf '%s\n' "$prep_output"
-        return 1
-    fi
-
-    cp "$source_binary" "$runtime_root/$(basename "$source_binary")"
-    chmod +x "$runtime_root/$(basename "$source_binary")" || true
-    log_success "Tunnelmole runtime bundled from $source_binary"
 }
 
 find_whisper_cpp_source_archive() {
@@ -3810,7 +3763,6 @@ compile_python_backend() {
         fi
     done
 
-    install_tunnelmole_runtime "$resources_root/runtime/tunnelmole"
     if requirements_has_voice || [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
         install_whisper_cpp_runtime "$resources_root/runtime/whisper"
     else
@@ -3841,13 +3793,17 @@ compile_python_backend() {
     [[ -d "$_gate_tm/node_modules" ]] || _gate_failures+=("tunnelmole service node_modules missing: $_gate_tm/node_modules")
     [[ -f "$_gate_wa/whatsapp_client.js" ]] || _gate_failures+=("WhatsApp client missing: $_gate_wa/whatsapp_client.js")
     [[ -f "$_gate_wa/wwebjs_recovery.js" ]] || _gate_failures+=("WhatsApp recovery guard missing: $_gate_wa/wwebjs_recovery.js")
+    local _entry
+    for _entry in dist/config.js dist/src/index.js dist/src/node-persist/storage.js; do
+        [[ -f "$_gate_tm/node_modules/tunnelmole/$_entry" ]] || _gate_failures+=("Tunnelmole client file missing: $_entry")
+    done
     if [[ ${#_gate_failures[@]} -gt 0 ]]; then
         log_error "Backend bundle is incomplete - Node runtime/services did not get bundled:"
         local _gf
         for _gf in "${_gate_failures[@]}"; do
             log_error "  - $_gf"
         done
-        log_error "Shipping this would break the packaged WhatsApp service and force tunnelmole onto the public *.tunnelmole.net URL. Failing the build."
+        log_error "Shipping this would break the packaged WhatsApp service and disable public pairing. Failing the build."
         exit 1
     fi
     log_success "Node runtime + whatsapp/tunnelmole services verified present in bundle"

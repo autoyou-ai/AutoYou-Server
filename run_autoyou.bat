@@ -30,6 +30,8 @@ if not defined PYTHON_CMD (
 :: The ordinary launcher is expected to be browser-capable. The bootstrap
 :: profile remains configurable, and an explicit --without internet still
 :: opts the component out.
+:: Bootstrap installs the pinned Node pairing client before checking availability.
+:: --skip-tunnelmole skips that check; /pair can still use the installed client.
 call %PYTHON_CMD% scripts\bootstrap_autoyou.py --with internet %*
 set "EXIT_CODE=%ERRORLEVEL%"
 endlocal & exit /b %EXIT_CODE%

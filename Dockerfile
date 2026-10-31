@@ -60,6 +60,8 @@ COPY scripts/install_realtimestt_runtime.py ./scripts/install_realtimestt_runtim
 COPY node/whatsapp/package.json ./node/whatsapp/
 COPY node/whatsapp/package-lock.json ./node/whatsapp/
 COPY node/whatsapp/vendor ./node/whatsapp/vendor
+COPY node/tunnelmole/package*.json ./node/tunnelmole/
+COPY node/tunnelmole/vendor ./node/tunnelmole/vendor
 
 # Install dependencies
 # This layer is cached and only re-runs if the dependency files change.
@@ -75,7 +77,8 @@ RUN python -m pip install --upgrade 'pip>=26.1.2,<27' \
 # The image already installs Debian's Chromium above. Do not download a second
 # Puppeteer browser during the build, and keep the vendored extract-zip package
 # available while npm resolves the locked dependency tree.
-RUN PUPPETEER_SKIP_DOWNLOAD=1 npm ci --omit=dev --prefix ./node/whatsapp
+RUN PUPPETEER_SKIP_DOWNLOAD=1 npm ci --omit=dev --prefix ./node/whatsapp \
+    && TUNNELMOLE_TELEMETRY=0 npm ci --omit=dev --prefix ./node/tunnelmole --ignore-scripts
 
 # Create non-root user and set ownership of /app
 RUN groupadd --gid 1000 autoyou \
@@ -89,18 +92,8 @@ RUN test -f vendor/emotivoice/LICENSE \
     && test -f requirements/voice.txt \
     && python scripts/prepare_intent_router.py
 
-# Pre-cache the standalone tunnelmole binary used by the /pair auth tunnel.
-# Baking it into the image layer means /pair works immediately at runtime
-# without any network call from inside the container. Private/local builds can
-# skip this network fetch when they only need Local Pair or already mount/provide
-# AUTOYOU_TUNNELMOLE_BIN.
-# To disable auto-download at runtime, pass -e AUTOYOU_NO_DOWNLOAD_TUNNELMOLE=1.
-ARG AUTOYOU_SKIP_TUNNELMOLE_DOWNLOAD=0
-RUN if [ "$AUTOYOU_SKIP_TUNNELMOLE_DOWNLOAD" = "1" ]; then \
-        echo "Skipping tunnelmole pre-cache for this Docker build."; \
-    else \
-        python scripts/download_tunnelmole.py --quiet || echo "Skipping optional tunnelmole pre-cache due to network restriction."; \
-    fi
+# Verify the installed pairing client without fetching or running an unsigned binary.
+RUN python scripts/download_tunnelmole.py --check-runtime
 
 USER autoyou
 

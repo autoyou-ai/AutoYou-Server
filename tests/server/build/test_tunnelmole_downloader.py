@@ -6,6 +6,8 @@ import hashlib
 import os
 import sys
 
+import pytest
+
 from tests.support.paths import ensure_repo_on_path
 ensure_repo_on_path()
 
@@ -80,3 +82,34 @@ def test_downloads_never_fall_back_to_unverified_tls():
     import inspect
 
     assert "_create_unverified_context" not in inspect.getsource(tunnelmole_downloader)
+
+
+def test_platform_without_reviewed_build_skips_download(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(tunnelmole_downloader, "_binary_path", lambda: tmp_path / "tmole")
+    monkeypatch.setattr(tunnelmole_downloader.sys, "platform", "darwin")
+    monkeypatch.delenv("AUTOYOU_TUNNELMOLE_SHA256", raising=False)
+    monkeypatch.delenv("AUTOYOU_ALLOW_UNVERIFIED_TUNNELMOLE", raising=False)
+    monkeypatch.setattr(tunnelmole_downloader, "_download_file", lambda *a: pytest.fail("no approved build"))
+    assert tunnelmole_downloader.download_tunnelmole() is None
+    assert "No reviewed standalone" in caplog.text
+
+
+def test_certifi_retry_keeps_certificate_verification_and_recovers(monkeypatch, tmp_path, caplog):
+    import io
+    import ssl
+
+    context = ssl.create_default_context()
+    calls = []
+    def urlopen(request, **kwargs):
+        calls.append(kwargs["context"])
+        if len(calls) == 1:
+            raise ssl.SSLCertVerificationError("synthetic system CA failure")
+        return io.BytesIO(b"synthetic-download")
+    monkeypatch.setattr(tunnelmole_downloader, "_certifi_context", lambda: context)
+    monkeypatch.setattr(tunnelmole_downloader.urllib.request, "urlopen", urlopen)
+    target = tmp_path / "download"
+    tunnelmole_downloader._download_file("https://download.example.test/tmole", target)
+    assert calls == [None, context]
+    assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+    assert target.read_bytes() == b"synthetic-download"
+    assert not caplog.records  # A recovered attempt must not look like a setup failure.

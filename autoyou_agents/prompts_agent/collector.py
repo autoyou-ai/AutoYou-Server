@@ -83,11 +83,18 @@ def parse_codex_file(path: Path) -> List[Dict[str, Any]]:
     project_name = "General"
     model = "codex"
     first_ts = None
+    seen_session_meta = False
     # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_3dc3dbac8b8cbf75051141c3
     last_ts = None
 
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        # Codex compresses older rollouts in place; stream them without a disk copy.
+        if path.name.endswith(".jsonl.zst"):
+            import zstandard
+            source = zstandard.open(path, "rt", encoding="utf-8", errors="replace")
+        else:
+            source = open(path, "r", encoding="utf-8", errors="replace")
+        with source as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -107,6 +114,10 @@ def parse_codex_file(path: Path) -> List[Dict[str, Any]]:
                 ptype = str(payload.get("type") or "").lower()
 
                 if rec_type in ("session_meta", "session"):
+                    # Forked rollouts can replay the parent's metadata after their own.
+                    if seen_session_meta:
+                        continue
+                    seen_session_meta = True
                     if payload.get("id") or payload.get("session_id"):
                         session_id = str(payload.get("id") or payload.get("session_id"))
                     if payload.get("cwd"):
@@ -665,6 +676,8 @@ class PromptsCollector:
         self,
         full_resync: bool = False,
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        *,
+        scan_paths: Optional[Dict[str, List[Path]]] = None,
     ) -> Dict[str, Any]:
         """Run incremental or full collection sync across all detected software."""
         if not self._sync_lock.acquire(blocking=False):
@@ -681,7 +694,8 @@ class PromptsCollector:
         error_msg: Optional[str] = None
 
         try:
-            scan_paths = get_default_scan_paths()
+            scan_paths = get_default_scan_paths() if scan_paths is None else scan_paths
+            capture_outputs = self.db.get_setting("capture_outputs", True)
             all_files: List[Tuple[str, Path]] = []
 
             # 1. Gather candidate files
@@ -696,6 +710,8 @@ class PromptsCollector:
                             patterns = ("transcript.jsonl", "transcript_full.jsonl")
                         elif software in ("vscode", "cursor"):
                             patterns = ("*.jsonl", "*.json", "*.vscdb")
+                        elif software == "codex":
+                            patterns = ("*.jsonl", "*.jsonl.zst", "*.json")
                         else:
                             patterns = ("*.jsonl", "*.json")
                         for pat in patterns:
@@ -755,6 +771,15 @@ class PromptsCollector:
                     # Ingest parsed sessions into DB via high-throughput transaction bundle
                     file_sess_count = len(parsed_sessions)
                     for sess in parsed_sessions:
+                        turns = sess.get("turns", [])
+                        if not capture_outputs:
+                            turns = [
+                                {key: value for key, value in turn.items()
+                                 if key not in {"output_text", "is_final_output"}}
+                                for turn in turns if turn.get("role") == "user"
+                            ]
+                        if not turns:
+                            continue
                         sid = sess["session_id"]
                         p_name = sess["project_name"]
                         proj_id = f"proj_{software}_{hashlib.md5(p_name.encode()).hexdigest()[:8]}"
@@ -770,7 +795,7 @@ class PromptsCollector:
                             updated_at=sess.get("updated_at"),
                             model=sess.get("model"),
                             project_id=proj_id,
-                            turns=sess.get("turns", []),
+                            turns=turns,
                         )
                         new_prompts_count += inserted_turns
                         updated_sessions_count += 1
@@ -819,7 +844,7 @@ class PromptsCollector:
         project_name = str(payload.get("project") or payload.get("project_name") or "Custom").strip()
         session_id = str(payload.get("session_id") or f"push_{uuid.uuid4().hex[:10]}")
         title = str(payload.get("title") or prompt_text.splitlines()[0][:80]).strip()
-        output_text = payload.get("output_text")
+        output_text = payload.get("output_text") if self.db.get_setting("capture_outputs", True) else None
         attachments = payload.get("attachments") or []
         model = payload.get("model")
         ts = payload.get("timestamp") or utc_now()

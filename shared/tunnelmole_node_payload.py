@@ -27,7 +27,7 @@ LAUNCHER_FILENAME = "tunnelmole_node_launcher.mjs"
 # LF form only (normalize CRLF first) - a checkout with core.autocrlf=true will
 # otherwise bake Windows line endings in here and desync it from the repo file
 # on every other platform. .gitattributes pins *.mjs to LF to prevent that.
-LAUNCHER_SHA256 = "e1f5173f216535a62c7c0c26a269172f20bce6e04143350862f2f99ceef8332c"
+LAUNCHER_SHA256 = "978e8b35d475a0e998eab22cbcd23bf714e21b182035a70c7fff6eac671a533f"
 _COMPRESSED_LAUNCHER_BASE64 = (
     "eNqlVm1z4jYQ/s6vWDydG3sGnLc2nbuUdmhCWiYEmEDayXQ6nLCXoMSWXEkml8vlv3clGzAc6V2ufDCWtfto9ejZXe3twanMHhW/nRvwowAO9w+PYZChGBmp"
     "8BF6vdMQ2kkCzkSDQo1qgXFY29uDHo9QaIwhFzEqMHOEdm7kjcxhJHMVYbO9YDxh0wSXts5vhDTunnb6ow5w4fwyJe8wMqCkNDCTCpLCnuZplDLDpXC+7e7e"
@@ -42,7 +42,7 @@ _COMPRESSED_LAUNCHER_BASE64 = (
     "nzN+S/vIqQOppHRedSTfQd3RNvzKEg3wYq6NR/+Ff3invSAI5wpnJxVwTbcDcvl2dK0i++fSLUOll58L3BdWXRP3vxfmdGP5sLFMZZ0niHHG8sS8K1mkxGsB"
     "e2DcQNHf/S12gxfJ2XbcZi74rw1uO+8gICgj39LuVmWwJ2nVx7MQ1517Le2TF4y3Wn11uKwp7q+IcmNvoa0ao+KLXyme9U2rclSNt0ihcaWFFTYQ89jltUXm"
     "LOEf0eXKurZt1pIq5s5FKZNSucCuwfSX0PeKTPY2a+2XIKg3Wv+Vd2NZnzb4KY5XZvYaqonIp6KIPq9pKa4p1ZBL63B1gSledvC+LYtw/cEvURp0Zc7RFhaq"
-    "iiaabzWQgvJzetr6JGmvTBV3ihcKV3H7CL1lc7UV61+Lkw4c"
+    "iiaabzWQgvJzetr6JGmvTBV3isoxFDeO0Fs2VFul/gXpzQl+"
 )
 
 
