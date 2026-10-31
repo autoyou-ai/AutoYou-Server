@@ -534,3 +534,23 @@ def test_live_website_connections_need_the_admin_sign_in(monkeypatch):
     except WebSocketDisconnect:
         pass
     assert app.scopes and app.scopes[0]["type"] == "websocket"
+
+
+def test_an_assistant_device_link_passes_the_admin_port_over_https_only(monkeypatch):
+    from shared import assistant_device_access as access
+
+    app = _unlocked_gateway(monkeypatch)
+    monkeypatch.setattr(access, "device_token_valid", lambda token: token == "synthetic-device-link")
+    cookie = {"autoyou_assistant_agent_chat_session": "synthetic-device-link"}
+    kiosk = TestClient(server.admin_app, base_url="https://192.168.50.20:8443", client=("192.168.50.21", 51000),
+                       cookies=cookie, follow_redirects=False)
+    response = kiosk.get("/agent/assistant_agent/", headers={"X-AutoYou-Remote-Access-Role": "admin"})
+    assert response.status_code == 200
+    scope = app.scopes[0]
+    assert scope["client"][0] == "192.168.50.21"  # never presented as this computer
+    assert "x-autoyou-remote-access-role" not in {key.decode().lower() for key, _ in scope["headers"]}
+    assert kiosk.get("/agent/notes_agent/").status_code == 302
+    plain = TestClient(server.admin_app, base_url="http://192.168.50.20:8001", client=("192.168.50.21", 51000),
+                       cookies=cookie, follow_redirects=False)
+    assert plain.get("/agent/assistant_agent/").status_code == 302
+    assert len(app.scopes) == 1

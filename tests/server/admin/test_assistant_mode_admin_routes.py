@@ -85,7 +85,8 @@ CHANGES = [
 
 def test_a_local_admin_can_change_assistant_mode_and_is_told_so(admin):
     status = admin.client.get("/api/assistant-mode").json()
-    assert status["editable"] is True and status["enabled"] is False
+    assert status["editable"] is True and status["enabled"] is True  # on by default
+    assert status["web_auto_start"] is True and status["web_speak_replies"] is True
     assert status["allow_call_toggle"] is True and status["allow_device_teaching"] is True
     saved = admin.client.post("/api/assistant-mode/settings", json={
         "enabled": True, "wake_phrase": "Hey Jarvis", "allow_call_toggle": False,
@@ -196,6 +197,7 @@ def test_browser_wake_requires_a_valid_listener_id(admin, listener_id):
 
 def test_browser_wake_requires_login_and_enabled_assistant(admin):
     body = {"listener_id": "synthetic-browser"}
+    am.save_settings({"enabled": False})
     assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 409
     admin.server.logged_in = False
     assert admin.client.post("/api/assistant-mode/wake", json=body).status_code == 401
@@ -234,3 +236,17 @@ def test_voice_test_uses_saved_sensitivity_and_returns_match_diagnostics(admin, 
     assert model.sensitivity == 0.9
     assert result["diagnostics"]["model_ready"]
     assert result["acoustic"]["threshold"] == round(model.distance_threshold, 5)
+
+
+def test_assistant_device_links_are_made_by_an_admin_on_this_computer(admin, monkeypatch):
+    from shared import assistant_device_access as access
+
+    monkeypatch.setattr(access, "create_device_token", lambda days: "synthetic-token-%d" % days)
+    made = admin.client.post("/api/assistant-mode/device-link", json={"days": 999}).json()
+    assert made["success"] is True and made["token"] == "synthetic-token-365"
+    assert made["path"] == "/agent/assistant_agent/" and made["param"] == "device_token"
+    admin.server.local = False
+    refused = admin.client.post("/api/assistant-mode/device-link", json={})
+    assert refused.status_code == 403 and refused.json()["local_admin_required"] is True
+    admin.server.logged_in = False
+    assert admin.client.post("/api/assistant-mode/device-link", json={}).status_code == 401

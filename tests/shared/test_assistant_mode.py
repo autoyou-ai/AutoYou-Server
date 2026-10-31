@@ -103,7 +103,10 @@ def train_voice_model(rng, phrase="Hey AutoYou"):
 
 
 def test_settings_round_trip_and_phrase_defaults_to_the_server_name(isolated_store):
-    assert am.load_settings()["enabled"] is False
+    defaults = am.load_settings()
+    assert defaults["enabled"] is True
+    assert defaults["web_auto_start"] is True and defaults["web_speak_replies"] is True and defaults["web_follow_up"] is True
+    assert am.save_settings({"enabled": "off"})["enabled"] is False
     saved = am.save_settings({"enabled": "on", "confirm": "nonsense", "sensitivity": 7, "listen_seconds": 99})
     assert saved["enabled"] is True
     assert saved["confirm"] == "voice"
@@ -362,6 +365,7 @@ def _b64(pcm):
 def test_devices_get_the_model_only_when_it_is_ready_and_on():
     rng = np.random.default_rng(30)
     recorder = Recorder()
+    am.save_settings({"enabled": False})
     hub = make_hub(recorder)
     try:
         assert _run_device(hub, "assistant_model_request")[0]["reason"] == "disabled"
@@ -480,6 +484,7 @@ def test_a_device_on_a_call_turns_assistant_mode_on_for_that_call_only():
 
 
 def test_call_mode_follows_the_owners_permissions():
+    am.save_settings({"enabled": False})
     hub = make_hub(Recorder())
     try:
         assert _run_device(hub, "assistant_call_mode", {"enabled": True})[0]["reason"] == "disabled"

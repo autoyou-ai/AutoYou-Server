@@ -114,6 +114,17 @@ _DEVICE_PASS_REQUIRED_PAGE = (
     "<h1>Open this from AutoYou</h1><p>These website apps open for devices paired with this computer. "
     "Open them from the AutoYou app, or sign in to this computer's admin page and choose Website apps.</p></body>"
 )
+def _assistant_device_link_admits(request: Any) -> bool:
+    """The owner's device link opens the Assistant website, and nothing else, without a device pass."""
+    try:
+        from shared.assistant_device_access import admits
+
+        return admits(request.url.path, request.cookies, request.query_params, request.method)
+    except Exception as exc:
+        LOGGER.debug("Assistant device link check failed: %s", exc)
+        return False
+
+
 _DEVICE_PASS_EXPIRED_PAGE = (
     "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
     "<title>AutoYou</title><body style=\"font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem\">"
@@ -1153,7 +1164,7 @@ class AutoYouPageService:
                 return self._redeem_device_pass(request)
             # Being on the Wi-Fi is not being paired: another device needs the
             # device pass a paired app or the admin sign-in handed it.
-            if not self._device_pass_valid(request.cookies):
+            if not self._device_pass_valid(request.cookies) and not _assistant_device_link_admits(request):
                 return HTMLResponse(_DEVICE_PASS_REQUIRED_PAGE, status_code=401, headers={"Cache-Control": "no-store"})
             role = self._remote_access_role()
             if not remote_http_request_allowed(role, method, path):

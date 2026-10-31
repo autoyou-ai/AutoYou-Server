@@ -3374,6 +3374,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.win_security_agent.website.backend.app:app",
         "default_port": 8075,
     },
+    "assistant_agent": {
+        "app_import": "autoyou_agents.assistant_agent.website.backend.app:app",
+        "default_port": 8116,
+    },
     "mac_security_agent": {
         "app_import": "autoyou_agents.mac_security_agent.website.backend.app:app",
         # 8076 belongs to the AutoYou Connect local WebRTC browser proxy.
@@ -3438,6 +3442,7 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "earnings_agent": "Earnings",
     "win_security_agent": "Windows Security",
     "mac_security_agent": "macOS Security",
+    "assistant_agent": "Assistant",
 }
 
 AGENT_WEBSITE_ROUTE_MODE_PATH_PROXY = "path_proxy"
@@ -3451,6 +3456,11 @@ AGENT_WEBSITE_ROUTE_MODES = {
 AGENT_FRONTEND_REQUIRED_DIRECT_FORWARD = {"admin_agent", "ads_watching_agent"}
 
 FRONTEND_CONTROL_HELP: Dict[str, str] = {
+    "assistant_agent": (
+        "Publish the hands-free Assistant website: it listens for the wake word, "
+        "speaks the answer and works on kiosks and screenless devices. Needs an "
+        "authenticator code unless you allow it without OTP."
+    ),
     "backup_agent": (
         "Publish the opt-in Backup Agent website for verified, resumable file "
         "transfers. Remote uploads require editor or admin browser access."

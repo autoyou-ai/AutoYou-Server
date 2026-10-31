@@ -381,6 +381,32 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
             "wake_accepted": accepted,
         })
 
+    @admin_app.post("/api/assistant-mode/device-link")
+    async def assistant_mode_device_link(request: Request):
+        """A sign-in link for one kiosk or screenless device to open the Assistant website. This computer only."""
+        refused = _require_local_admin(request)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        from shared import assistant_device_access as access
+
+        try:
+            days = int((body or {}).get("days") or access.DEVICE_LINK_TTL_DAYS)
+        except (TypeError, ValueError):
+            days = access.DEVICE_LINK_TTL_DAYS
+        days = max(1, min(365, days))
+        token = await asyncio.to_thread(access.create_device_token, days)
+        LOGGER.info("Assistant website device link created (%d days)", days)
+        return server._json_response_no_store({
+            "success": True,
+            "token": token,
+            "param": access.DEVICE_TOKEN_PARAM,
+            "path": access.ASSISTANT_PATH_PREFIX + "/",
+            "days": days,
+        })
+
     def _transcribe(pcm: bytes) -> str:
         try:
             return am.local_transcriber()(pcm)
@@ -396,4 +422,5 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         "assistant_mode_test": assistant_mode_test,
         "assistant_mode_transcribe": assistant_mode_transcribe,
         "assistant_mode_wake": assistant_mode_wake,
+        "assistant_mode_device_link": assistant_mode_device_link,
     }

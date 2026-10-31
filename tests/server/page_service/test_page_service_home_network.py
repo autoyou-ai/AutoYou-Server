@@ -246,3 +246,31 @@ def test_changing_the_password_ends_every_pass(monkeypatch, upstream, device_pas
 
     monkeypatch.setattr(server, "_direct_lan_epoch", lambda: "epoch-after-password-change")
     assert lan.get("/agent/notes_agent/api/notes").status_code == 401
+
+
+def test_an_assistant_device_link_opens_the_assistant_website_only(monkeypatch, upstream):
+    """A kiosk with the owner's device link reaches the Assistant website, held to the viewer role."""
+    from shared import assistant_device_access as access
+
+    monkeypatch.setattr(
+        autoyou_page_service,
+        "load_frontend_registry",
+        lambda: {"frontends": [
+            {"agent_name": "assistant_agent", "proxy_port": 8116, "frontend_port_registered": True},
+            {"agent_name": "notes_agent", "proxy_port": 8094, "frontend_port_registered": True},
+        ]},
+    )
+    monkeypatch.setattr(access, "device_token_valid", lambda token: token == "synthetic-device-link")
+    service = _service(monkeypatch, role="viewer")
+    kiosk = _lan(service, {"autoyou_assistant_agent_chat_session": "synthetic-device-link"})
+
+    assert kiosk.get("/agent/assistant_agent/").status_code == 200
+    assert kiosk.post("/agent/assistant_agent/api/assistant/turn", json={"text": "hi"}).status_code == 200
+    assert kiosk.post("/agent/assistant_agent/api/chat", json={"message": "hi"}).status_code == 403
+    assert kiosk.get("/agent/notes_agent/api/notes").status_code == 401
+    first_visit = _lan(service).get("/agent/assistant_agent/?device_token=synthetic-device-link")
+    assert first_visit.status_code == 200
+    stranger = _lan(service, {"autoyou_assistant_agent_chat_session": "guessed"})
+    assert stranger.get("/agent/assistant_agent/").status_code == 401
+    stamped = [call["headers"] for call in upstream if "/api/assistant/turn" in call["url"]]
+    assert stamped and stamped[0].get("X-AutoYou-Remote-Access-Role", stamped[0].get("x-autoyou-remote-access-role")) == "viewer"

@@ -80,7 +80,9 @@ MAX_NEGATIVE_SECONDS = 8.0
 MAX_MINED_TEMPLATES = 3
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
-    "enabled": False,
+    # On by default. Nothing listens until a device or the Assistant website
+    # is told to, and a voice wake word still needs recordings and training.
+    "enabled": True,
     "wake_phrase": "",
     "confirm": "voice",
     "sensitivity": ww.DEFAULT_SENSITIVITY,
@@ -101,8 +103,18 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # may record and train the wake word from its microphone.
     "allow_call_toggle": True,
     "allow_device_teaching": True,
+    # The Assistant website (assistant_agent). Auto start opens the microphone
+    # and waits for the wake word as soon as the page loads (kiosks, thin and
+    # headless clients). Replies are spoken with this server's voice, and for
+    # a few seconds after a reply the next question needs no wake word.
+    "web_auto_start": True,
+    "web_speak_replies": True,
+    "web_follow_up": True,
     "updated_at": 0.0,
 }
+
+#: Settings for the Assistant website only.
+WEB_KEYS = ("web_auto_start", "web_speak_replies", "web_follow_up")
 
 #: Settings that decide what devices may do. Shown on the Permissions screen too.
 PERMISSION_KEYS = ("enabled", "allow_call_toggle", "allow_device_teaching", "wake_word_in_calls", "use_live_video")
@@ -214,6 +226,7 @@ def normalize_settings(raw: Optional[Mapping[str, Any]], *, previous: Optional[M
         "use_live_video",
         "allow_call_toggle",
         "allow_device_teaching",
+        *WEB_KEYS,
     ):
         if key in source:
             result[key] = _as_bool(source.get(key))
@@ -528,6 +541,9 @@ def public_status(server_name: str, *, include_samples: bool = False) -> Dict[st
         "use_live_video": settings["use_live_video"],
         "allow_call_toggle": settings["allow_call_toggle"],
         "allow_device_teaching": settings["allow_device_teaching"],
+        "web_auto_start": settings["web_auto_start"],
+        "web_speak_replies": settings["web_speak_replies"],
+        "web_follow_up": settings["web_follow_up"],
         "model": None,
         "sample_count": len(list_samples()),
         "min_samples": ww.MIN_TEMPLATES,

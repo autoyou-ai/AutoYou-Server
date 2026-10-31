@@ -83,6 +83,34 @@ class WebsiteGateway:
         forwarded["client"] = ("127.0.0.1", client[1] if len(client) > 1 else 0)
         return forwarded
 
+    @staticmethod
+    def device_link_admits(scope: Dict[str, Any], connection: HTTPConnection, method: str, path: str) -> bool:
+        """The owner's Assistant device link, over HTTPS, opens only the Assistant website."""
+        if scope.get("type") != "http" or str(scope.get("scheme") or "") != "https":
+            return False
+        try:
+            from shared.assistant_device_access import admits
+
+            return admits(path, connection.cookies, connection.query_params, method)
+        except Exception:
+            return False
+
+    @staticmethod
+    def device_scope(scope: Dict[str, Any]) -> Dict[str, Any]:
+        """A device-link browser stays itself: no owner identity, its own address.
+
+        The page service then holds it to the remote client role like any other
+        browser on the home network.
+        """
+        forwarded = {key: value for key, value in scope.items() if key not in _ADMIN_ROUTING_KEYS}
+        forwarded["autoyou.capture_skip"] = True
+        forwarded["headers"] = [
+            (key, value)
+            for key, value in scope.get("headers") or []
+            if key.decode("latin-1").lower() not in REMOTE_BROWSER_IDENTITY_HEADERS
+        ]
+        return forwarded
+
     async def __call__(self, scope, receive, send) -> None:
         connection = HTTPConnection(scope)
         signed_in = self.server._is_logged_in(connection)
@@ -96,6 +124,11 @@ class WebsiteGateway:
 
         method = str(scope.get("method") or "GET").upper()
         path = str(scope.get("path") or "/")
+        if not signed_in and self.device_link_admits(scope, connection, method, path):
+            app = self._page_service_app()
+            if app is not None:
+                await app(self.device_scope(scope), receive, send)
+                return
         if not signed_in:
             wants_page = method in {"GET", "HEAD"} and "/api/" not in path
             response = (

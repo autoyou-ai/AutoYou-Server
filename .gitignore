@@ -79,6 +79,8 @@ agent_install_registry.json
 agent_frontends_registry.json
 agent_desktop_apps_registry.json
 agent_ui_sessions.json
+# Assistant mode store: wake word recordings, trained model, settings
+/assistant_mode/
 ui_preferences.json
 reminders.json
 cron_tasks.json

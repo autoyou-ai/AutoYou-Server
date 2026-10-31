@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#070b1a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>AutoYou Assistant</title>
+  <link rel="icon" href="./assets/robot-icon.png">
+  <link rel="apple-touch-icon" href="./assets/robot-icon.png">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <script id="assistant-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+</head>
+<body data-phase="off">
+  <main class="stage" id="stage">
+    <header class="topbar">
+      <div class="status-chip" id="status-chip" role="status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-text">Starting…</span>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="icon-btn" id="mic-btn" aria-pressed="false" title="Start listening">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          <span class="sr-only" id="mic-btn-label">Start listening</span>
+        </button>
+        <button type="button" class="icon-btn" id="settings-btn" aria-expanded="false" aria-controls="settings" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+          <span class="sr-only">Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <section class="robot-zone" id="robot-zone">
+      <div class="halo" aria-hidden="true"><span></span><span></span><span></span></div>
+      <button type="button" class="robot-button" id="robot-button" aria-label="Talk to the assistant">
+        <svg id="robot" viewBox="0 0 400 540" role="img" aria-labelledby="robot-title">
+          <title id="robot-title">The AutoYou assistant robot</title>
+          <defs>
+            <linearGradient id="g-shell" x1="0" y1="0" x2="0.35" y2="1">
+              <stop offset="0" stop-color="#ffffff"/>
+              <stop offset="0.55" stop-color="#eef1f8"/>
+              <stop offset="1" stop-color="#c7cfe3"/>
+            </linearGradient>
+            <radialGradient id="g-shell-head" cx="0.38" cy="0.28" r="0.8">
+              <stop offset="0" stop-color="#ffffff"/>
+              <stop offset="0.6" stop-color="#eef1f8"/>
+              <stop offset="1" stop-color="#c3cbe0"/>
+            </radialGradient>
+            <radialGradient id="g-visor" cx="0.5" cy="0.42" r="0.7">
+              <stop offset="0" stop-color="#16244f"/>
+              <stop offset="0.65" stop-color="#0a1331"/>
+              <stop offset="1" stop-color="#04081a"/>
+            </radialGradient>
+            <linearGradient id="g-blue" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0" stop-color="#5b86ff"/>
+              <stop offset="0.5" stop-color="#2c4fd1"/>
+              <stop offset="1" stop-color="#1b2f8c"/>
+            </linearGradient>
+            <filter id="f-glow" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="3.2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="f-soft" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="9"/>
+            </filter>
+            <clipPath id="c-visor"><rect x="88" y="100" width="224" height="148" rx="70"/></clipPath>
+          </defs>
+
+          <ellipse id="shadow" cx="200" cy="522" rx="96" ry="12" fill="#000" opacity="0.28" filter="url(#f-soft)"/>
+
+          <g id="bot">
+            <g id="legs">
+              <rect x="152" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <rect x="210" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <circle cx="171" cy="466" r="9" fill="url(#g-blue)"/>
+              <circle cx="229" cy="466" r="9" fill="url(#g-blue)"/>
+              <path d="M134 512c0-16 14-24 37-24s35 8 35 24z" fill="url(#g-blue)"/>
+              <path d="M194 512c0-16 12-24 35-24s37 8 37 24z" fill="url(#g-blue)"/>
+            </g>
+
+            <g id="arm-left">
+              <rect x="97" y="318" width="30" height="66" rx="15" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <circle cx="112" cy="388" r="11" fill="url(#g-blue)"/>
+              <rect x="98" y="390" width="28" height="44" rx="14" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <circle cx="112" cy="446" r="18" fill="url(#g-blue)"/>
+              <circle cx="112" cy="446" r="5.5" fill="#6fe6ff" filter="url(#f-glow)"/>
+            </g>
+            <g id="arm-right">
+              <rect x="273" y="318" width="30" height="66" rx="15" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <circle cx="288" cy="388" r="11" fill="url(#g-blue)"/>
+              <rect x="274" y="390" width="28" height="44" rx="14" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <circle cx="288" cy="446" r="18" fill="url(#g-blue)"/>
+              <circle cx="288" cy="446" r="5.5" fill="#6fe6ff" filter="url(#f-glow)"/>
+            </g>
+
+            <g id="torso">
+              <circle cx="116" cy="322" r="17" fill="url(#g-blue)"/>
+              <circle cx="284" cy="322" r="17" fill="url(#g-blue)"/>
+              <ellipse cx="200" cy="378" rx="82" ry="86" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+              <path d="M200 296c-14 40-14 120 0 166" fill="none" stroke="#c4cbe0" stroke-width="2"/>
+              <path d="M128 432c40 22 104 22 144 0" fill="none" stroke="url(#g-blue)" stroke-width="9" stroke-linecap="round"/>
+              <ellipse cx="166" cy="338" rx="26" ry="12" fill="#fff" opacity="0.65" transform="rotate(-24 166 338)"/>
+              <circle id="core" cx="200" cy="362" r="9" fill="#6fe6ff" filter="url(#f-glow)" opacity="0.7"/>
+            </g>
+
+            <g id="head">
+              <ellipse cx="200" cy="294" rx="40" ry="12" fill="#1a2350"/>
+              <path d="M140 84C132-8 268-8 260 84" fill="none" stroke="url(#g-blue)" stroke-width="10" stroke-linecap="round"/>
+              <path id="antenna-glow" d="M140 84C132-8 268-8 260 84" fill="none" stroke="#6fe6ff" stroke-width="4" stroke-linecap="round" opacity="0.15" filter="url(#f-glow)"/>
+              <ellipse cx="62" cy="176" rx="25" ry="46" fill="url(#g-blue)"/>
+              <ellipse cx="338" cy="176" rx="25" ry="46" fill="url(#g-blue)"/>
+              <ellipse id="ear-l" cx="57" cy="176" rx="11" ry="29" fill="none" stroke="#6fe6ff" stroke-width="4" opacity="0.5" filter="url(#f-glow)"/>
+              <ellipse id="ear-r" cx="343" cy="176" rx="11" ry="29" fill="none" stroke="#6fe6ff" stroke-width="4" opacity="0.5" filter="url(#f-glow)"/>
+              <ellipse cx="200" cy="172" rx="143" ry="126" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2"/>
+              <ellipse cx="146" cy="78" rx="58" ry="17" fill="#fff" opacity="0.8" transform="rotate(-12 146 78)"/>
+              <rect id="visor" x="88" y="100" width="224" height="148" rx="70" fill="url(#g-visor)"/>
+              <g clip-path="url(#c-visor)">
+                <g id="face">
+                  <g id="eye-l" transform="translate(155 168)">
+                    <circle class="eye-ring" r="25" fill="none" stroke="#3fd8ff" stroke-width="9" filter="url(#f-glow)"/>
+                    <path class="eye-happy" d="M-24 8Q0-22 24 8" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
+                  </g>
+                  <g id="eye-r" transform="translate(245 168)">
+                    <circle class="eye-ring" r="25" fill="none" stroke="#3fd8ff" stroke-width="9" filter="url(#f-glow)"/>
+                    <path class="eye-happy" d="M-24 8Q0-22 24 8" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
+                  </g>
+                  <path id="mouth-smile" d="M182 212Q200 226 218 212" fill="none" stroke="#3fd8ff" stroke-width="6" stroke-linecap="round" filter="url(#f-glow)"/>
+                  <path id="mouth-open" d="M182 214Q200 216 218 214Q200 216 182 214Z" fill="#3fd8ff" opacity="0" filter="url(#f-glow)"/>
+                  <g id="eq" opacity="0" fill="#3fd8ff" filter="url(#f-glow)">
+                    <rect x="154" y="210" width="8" height="8" rx="4"/>
+                    <rect x="169" y="210" width="8" height="8" rx="4"/>
+                    <rect x="184" y="210" width="8" height="8" rx="4"/>
+                    <rect x="199" y="210" width="8" height="8" rx="4"/>
+                    <rect x="214" y="210" width="8" height="8" rx="4"/>
+                    <rect x="229" y="210" width="8" height="8" rx="4"/>
+                    <rect x="244" y="210" width="8" height="8" rx="4"/>
+                  </g>
+                  <g id="think" opacity="0" fill="#3fd8ff" filter="url(#f-glow)">
+                    <circle cx="200" cy="216" r="5"/>
+                    <circle cx="200" cy="216" r="5"/>
+                    <circle cx="200" cy="216" r="5"/>
+                  </g>
+                </g>
+              </g>
+              <path d="M112 128c24-20 70-26 96-24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.12"/>
+            </g>
+          </g>
+          <g id="zzz" opacity="0" fill="#9fb4ff" font-family="system-ui, sans-serif" font-weight="700">
+            <text x="300" y="70" font-size="26">z</text>
+            <text x="322" y="44" font-size="20">z</text>
+            <text x="340" y="22" font-size="15">z</text>
+          </g>
+        </svg>
+      </button>
+    </section>
+
+    <section class="captions" aria-live="polite">
+      <p class="caption-you" id="you-text"></p>
+      <p class="caption-reply" id="reply-text"></p>
+    </section>
+
+    <p class="hint" id="hint"></p>
+
+    <form class="ask" id="ask-form" autocomplete="off">
+      <label class="sr-only" for="ask-input">Type a question</label>
+      <input id="ask-input" type="text" maxlength="2000" placeholder="Or type a question…" enterkeyhint="send">
+      <button type="submit" class="ask-send" aria-label="Ask">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </main>
+
+  <div class="overlay" id="unlock" hidden>
+    <button type="button" class="unlock-btn" id="unlock-btn">
+      <span class="unlock-title" id="unlock-title">Tap to start listening</span>
+      <span class="unlock-sub" id="unlock-sub">This browser waits for a tap before it uses the microphone and speaker.</span>
+    </button>
+  </div>
+
+  <aside class="drawer" id="settings" hidden aria-labelledby="settings-title">
+    <div class="drawer-head">
+      <h2 id="settings-title">Assistant</h2>
+      <button type="button" class="icon-btn" id="settings-close" title="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        <span class="sr-only">Close settings</span>
+      </button>
+    </div>
+    <section class="drawer-section">
+      <h3>This device</h3>
+      <label class="switch"><input type="checkbox" data-pref="autoStart"><span>Start listening when this page opens</span></label>
+      <label class="switch"><input type="checkbox" data-pref="speak"><span>Speak replies here</span></label>
+      <label class="switch"><input type="checkbox" data-pref="sounds"><span>Play listening sounds</span></label>
+      <label class="switch"><input type="checkbox" data-pref="robot"><span>Show the robot (turn off for a screenless device)</span></label>
+      <label class="field"><span>Voice</span>
+        <select data-pref="voice">
+          <option value="server">This server's voice</option>
+          <option value="browser">This browser's voice</option>
+        </select>
+      </label>
+    </section>
+    <section class="drawer-section">
+      <h3>Set on the server</h3>
+      <dl class="facts" id="server-facts"></dl>
+      <p class="note">Only an admin on the AutoYou computer changes these: Admin page → Chat → Assistant mode. Whether this page needs an authenticator code is set under Website Apps.</p>
+    </section>
+    <section class="drawer-section">
+      <button type="button" class="text-btn" id="signout-btn" hidden>Sign out of this page</button>
+    </section>
+  </aside>
+
+  <script src="./engine/wake-word.js"></script>
+  <script src="./assets/app.js"></script>
+</body>
+</html>

@@ -5306,7 +5306,10 @@
             wake_word_in_calls: Boolean(status.wake_word_in_calls),
             use_live_video: status.use_live_video !== false,
             allow_call_toggle: status.allow_call_toggle !== false,
-            allow_device_teaching: status.allow_device_teaching !== false
+            allow_device_teaching: status.allow_device_teaching !== false,
+            web_auto_start: status.web_auto_start !== false,
+            web_speak_replies: status.web_speak_replies !== false,
+            web_follow_up: status.web_follow_up !== false
         };
     }
 
@@ -5341,7 +5344,10 @@
             wake_word_in_calls: Boolean(draft.wake_word_in_calls),
             use_live_video: Boolean(draft.use_live_video),
             allow_call_toggle: Boolean(draft.allow_call_toggle),
-            allow_device_teaching: Boolean(draft.allow_device_teaching)
+            allow_device_teaching: Boolean(draft.allow_device_teaching),
+            web_auto_start: Boolean(draft.web_auto_start),
+            web_speak_replies: Boolean(draft.web_speak_replies),
+            web_follow_up: Boolean(draft.web_follow_up)
         }, extra || {});
     }
 
@@ -5813,6 +5819,29 @@
             + assistantCheckbox("use_live_video", "Let it see the camera", "In a video call, what you ask after the wake word includes the latest camera picture, handled like a photo sent in chat.", draft, editable);
     }
 
+    // The Assistant website (assistant_agent): a page any signed-in browser,
+    // kiosk or screenless device can keep open to talk hands-free.
+    function assistantWebsitePath() { return "/agent/assistant_agent/"; }
+
+    function assistantWebsiteMarkup(draft, editable) {
+        var assistant = assistantState();
+        var link = assistant.deviceLink;
+        var linkMarkup = link
+            ? '<div class="ayu-note ayu-note-blue"><strong>Device link (works for ' + Number(link.days) + ' days)</strong><p>Open it once on the kiosk or screenless device. It signs that browser in to the Assistant website only. Anyone with the link can talk to your assistant, so treat it like a key; Website Apps → Sign out all website sessions cancels it.</p><code class="ayu-code" style="word-break:break-all">' + escapeHtml(link.url) + '</code>' + (link.localOnly ? '<p>This computer is not on the home network with HTTPS, so the link works only on this computer. Turn on home network access to use it on other devices.</p>' : '') + '<div class="ayu-assistant-actions">' + button("Copy link", "assistant-device-link-copy", "secondary", "copy", "sm") + '</div></div>'
+            : "";
+        return '<details class="ayu-assistant-more" open><summary>Assistant website</summary><div class="ayu-assistant-more-body">'
+            + '<p class="ayu-field-hint">A page with an animated assistant that listens for the wake word and speaks the answer. Leave it open on any browser, a kiosk, a thin client, or a device with no screen (add ?headless=1). It asks for the authenticator code unless you allow it without OTP in Website Apps.</p>'
+            + '<div class="ayu-assistant-grid">'
+            + assistantCheckbox("web_auto_start", "Start listening when the page opens", "The microphone turns on and it waits for the wake word as soon as the page loads. Browsers that need a tap first show a Tap to start button.", draft, editable)
+            + assistantCheckbox("web_speak_replies", "Speak replies", "Answers are spoken with this computer's voice (Speech settings), or the browser's own voice if that is not available.", draft, editable)
+            + assistantCheckbox("web_follow_up", "Follow-up questions without the wake word", "For a few seconds after an answer, the next question needs no wake word.", draft, editable)
+            + '</div>'
+            + '<div class="ayu-assistant-actions"><a class="ayu-link-btn ayu-btn ayu-btn-ghost ayu-btn-sm" href="' + assistantWebsitePath() + '" target="_blank" rel="noopener noreferrer">' + icon("external") + '<span>Open Assistant website</span></a>'
+            + (editable ? button("Create device link", "assistant-device-link", "secondary", "shield", "sm") : "") + '</div>'
+            + linkMarkup
+            + '</div></details>';
+    }
+
     function assistantPanelMarkup() {
         var assistant = assistantState();
         if (!assistant.open) return "";
@@ -5862,6 +5891,7 @@
             + assistantFlowMarkup(status)
             + '<ol class="ayu-assistant-steps" aria-label="Set up the wake word">' + stepsMarkup + '</ol>'
             + permissions
+            + assistantWebsiteMarkup(draft, editable)
             + fineTune
             + (editable ? '<div class="ayu-assistant-actions">' + button("Save settings", "assistant-save", "primary", "save", "sm") + '</div>' : "")
             + '<div class="ayu-assistant-foot"><p class="ayu-assistant-note">' + escapeHtml(liveLine) + '</p>' + button(listening ? "Stop listening here" : "Listen in this browser", "assistant-listen-toggle", listening ? "primary" : "ghost", "wave", "sm") + '</div>'
@@ -5930,6 +5960,27 @@
             await assistantSaveSettings();
             setNotice("success", "Assistant mode saved.");
             await assistantRefreshBrowserListener();
+            return;
+        }
+        if (action === "assistant-device-link") {
+            var made = await postJson("/api/assistant-mode/device-link", {});
+            var home = getByPath(state.bootstrap, "status.home_network", null);
+            var bases = (home && Array.isArray(home.admin_urls)) ? home.admin_urls : [];
+            var base = bases.length ? String(bases[0]).replace(/\/+$/, "") : window.location.origin;
+            assistant.deviceLink = {
+                url: base + made.path + "?" + encodeURIComponent(made.param) + "=" + encodeURIComponent(made.token),
+                days: made.days,
+                localOnly: !bases.length
+            };
+            renderApp({ passive: true });
+            return;
+        }
+        if (action === "assistant-device-link-copy") {
+            var copyLink = assistant.deviceLink && assistant.deviceLink.url;
+            if (copyLink && navigator.clipboard) {
+                await navigator.clipboard.writeText(copyLink);
+                setNotice("success", "Device link copied.");
+            }
             return;
         }
         if (action === "assistant-enable-toggle") {

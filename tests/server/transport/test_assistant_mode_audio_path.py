@@ -254,8 +254,10 @@ def test_capabilities_advertise_assistant_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "AudioTrackSink", object)
     cfg = server._default_config()
     capability = server._build_webrtc_capabilities(cfg=cfg)["assistant_mode"]
-    assert capability["enabled"] is False
+    assert capability["enabled"] is True  # on by default; devices still opt in
     assert capability["available"] is True
+    am.save_settings({"enabled": False})
+    assert server._build_webrtc_capabilities(cfg=cfg)["assistant_mode"]["enabled"] is False
     am.save_settings({"enabled": True, "wake_phrase": "Hey Jarvis", "confirm": "text"})
     capability = server._build_webrtc_capabilities(cfg=cfg)["assistant_mode"]
     assert capability["enabled"] is True

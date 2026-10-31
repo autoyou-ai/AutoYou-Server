@@ -14,6 +14,8 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 from typing import Any
 
+from shared.assistant_device_access import ASSISTANT_ASK_PATHS
+
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-51589e5fa32b1db0e1efd4dd"
 
 
@@ -96,6 +98,10 @@ def effective_remote_access_method(method: Any, path: Any = "") -> str:
     normalized_path = ("/" + str(path or "").split("?", 1)[0].lstrip("/")).rstrip("/") or "/"
     if any(normalized_path.endswith(suffix) for suffix in _DELETE_CLASS_PATH_SUFFIXES):
         return "DELETE"
+    if normalized_method == "POST" and normalized_path in ASSISTANT_ASK_PATHS:
+        # Asking the Assistant website is what a chat message does; a role that
+        # may chat may ask. Nothing else under that website is widened.
+        return "QUERY"
     if normalized_method == "GET" and any(
         normalized_path == delete_path or normalized_path.endswith(delete_path)
         for delete_path in _DELETE_CLASS_GET_PATHS
