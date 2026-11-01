@@ -173,9 +173,12 @@ class OdysseusClient:
             if not secret:
                 raise OdysseusBackendError("Odysseus login requires 2FA, but no TOTP secret is configured.")
             try:
+                import datetime as _dt
                 import pyotp  # type: ignore[import-not-found]
 
-                payload["totp_code"] = pyotp.TOTP(secret).now()
+                # An explicit UTC datetime: pyotp's naive now() is wrong for an hour
+                # when the clocks go back (DST fallback).
+                payload["totp_code"] = pyotp.TOTP(secret).at(_dt.datetime.now(_dt.timezone.utc))
             except ImportError as exc:
                 raise OdysseusBackendError("Install the AutoYou TOTP extra to use Odysseus 2FA fallback.") from exc
             except Exception as exc:
