@@ -3073,6 +3073,33 @@
       "purl": "pkg:pypi/zeroconf@0.151.3",
       "type": "library",
       "version": "0.151.3"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "zstandard",
+      "properties": [
+        {
+          "name": "requirement",
+          "value": "zstandard==0.25.0"
+        },
+        {
+          "name": "autoyou:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "requirements/base.txt"
+        }
+      ],
+      "purl": "pkg:pypi/zstandard@0.25.0",
+      "type": "library",
+      "version": "0.25.0"
     }
   ],
   "metadata": {
@@ -3105,7 +3132,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-10-30T01:41:57+00:00",
+    "timestamp": "2026-11-01T01:51:32+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3114,7 +3141,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:16d8b307-9d00-45ec-8eec-274a59722a65",
+  "serialNumber": "urn:uuid:20801233-b77c-4f3a-b0dc-2b7df88fa209",
   "specVersion": "1.5",
   "version": 1
 }

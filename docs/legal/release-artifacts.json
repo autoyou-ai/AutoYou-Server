@@ -301,6 +301,7 @@
     "yt-dlp": "Unlicense",
     "yacs": "Apache-2.0",
     "zeroconf": "LGPL-2.1-or-later",
+    "zstandard": "BSD-3-Clause",
     "llmfit": "MIT",
     "onnxruntime-swift-package-manager": "MIT",
     "com.microsoft.onnxruntime:onnxruntime-android": "MIT",

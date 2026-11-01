@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server macOS connector-full build (autoyou-server-macos-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-10-30T01:41:57+00:00
+Generated: 2026-11-01T01:51:32+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -159,6 +159,7 @@ Third-Party Components
 - yacs 0.1.8 [pypi] - Apache-2.0 - requirements/voice.txt
 - yt-dlp [pypi] - Unlicense - requirements/base.txt
 - zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
+- zstandard 0.25.0 [pypi] - BSD-3-Clause - requirements/base.txt
 
 Copyleft Review Notes
 ---------------------
