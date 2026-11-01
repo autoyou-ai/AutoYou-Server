@@ -70,7 +70,7 @@
     // "call" while this device is in a call: the call owns the microphone.
     pausedFor: "", pausedByServer: false, presenceTimer: 0, speakingReported: false,
     // One microphone at a time: a second start while the first opens waits for it.
-    starting: null, hintTimer: 0
+    starting: null, hintTimer: 0, warmTimer: 0
   };
 
   // ---- Server calls -----------------------------------------------------------
@@ -98,7 +98,7 @@
     signedOut = true;
     S.wantListening = false;
     S.turnTicket += 1;
-    clearTimeout(S.presenceTimer); clearTimeout(S.reopenTimer);
+    clearTimeout(S.presenceTimer); clearTimeout(S.reopenTimer); clearTimeout(S.warmTimer);
     closeCapture();
     stopSpeaking();
     setPhase("off");
@@ -538,10 +538,10 @@
       if (S.endpoint.started && (S.endpoint.silence >= 0.6 || burst >= 6)) {
         var audio = join(S.chunks);
         S.chunks = []; S.endpoint = endpointer(); S.busy = true;
-        request("api/assistant/transcribe", {
+        transcribe({
           audio_base64: wav(audio), require_phrase: true, listener_id: S.listenerId, spot_wake: true
-        }).then(function (result) {
-          if (S.phase !== "waiting") return;
+        }, function () { return S.phase === "waiting" && Boolean(S.capture); }).then(function (result) {
+          if (!result || S.phase !== "waiting") return;
           if (result.matched && result.wake_accepted === false) {
             hint(result.message || "Another device in the room is answering.", "warn");
             if (result.pause === "in_call") pauseFor("call", true);
@@ -582,15 +582,18 @@
     setPhase("thinking");
     chime("done");
     var ticket = ++S.turnTicket;
+    var current = function () { return ticket === S.turnTicket; };
     Promise.resolve(wake).then(function (accepted) {
       if (accepted === false) return null;
+      if (S.status && S.status.speech_ready === false && current()) hint(WARMING_NOTE);
       var requirePhrase = S.status.confirm === "both" && via === "voice" && !followUp;
-      return request("api/assistant/transcribe", { audio_base64: wav(audio), require_phrase: requirePhrase, listener_id: S.listenerId });
+      return transcribe({ audio_base64: wav(audio), require_phrase: requirePhrase, listener_id: S.listenerId }, current);
     }).then(function (result) {
       if (ticket !== S.turnTicket) return;
-      if (!result) { resetToWaiting(); return; }
+      if (!result) { clearSlowNote(); resetToWaiting(); return; }
       var text = String(result.command || "").trim();
       if (!text) {
+        clearSlowNote();
         if (!followUp) {
           hint(S.status.confirm === "both" && !result.matched && via === "voice" ? "That didn't sound like the wake word, so nothing was sent." : "Sorry, I didn't catch that.", "", 4);
         }
@@ -605,17 +608,37 @@
   }
 
   // ---- Asking and answering -------------------------------------------------
-  // A quick answer comes back with the question. A slow one (a big local model,
-  // a web search) is collected afterwards, so no proxy gives up on a long wait.
-  function askServer(text, via, ticket) {
-    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "" }).then(function (data) {
-      return data.pending ? collect(data.turn_id, ticket) : data;
+  // A quick result comes back with the request. A slow one is collected
+  // afterwards, so no proxy gives up on a long wait: the first question after a
+  // restart waits for speech recognition to load, the first answer after a
+  // break waits for the local model to load, and a web search takes a while.
+  var WARMING_NOTE = "Getting speech recognition ready. The first answer after a restart takes up to a minute.";
+  var SLOW_NOTE = "Still working on it. The first answer after a break can take up to a minute.";
+  function settle(data, wanted) {
+    if (!data || !data.pending) return Promise.resolve(data);
+    if (wanted()) {
+      var warming = S.status && S.status.speech_ready === false;
+      hint(warming ? WARMING_NOTE : SLOW_NOTE);
+    }
+    return collect(data.job_id || data.turn_id, wanted);
+  }
+  // Each check waits on the server for a few seconds, so this is not a fast poll.
+  function collect(jobId, wanted) {
+    if (!wanted()) return Promise.resolve(null);
+    return request("api/assistant/result/" + encodeURIComponent(jobId)).then(function (data) {
+      return settle(data, wanted);
     });
   }
-  function collect(turnId, ticket) {
-    if (ticket !== S.turnTicket) return Promise.resolve(null);
-    return request("api/assistant/turn/" + encodeURIComponent(turnId)).then(function (data) {
-      return data.pending ? collect(turnId, ticket) : data;
+  function transcribe(body, wanted) {
+    return request("api/assistant/transcribe", body).then(function (data) { return settle(data, wanted); });
+  }
+  function clearSlowNote() {
+    if (ui.hint.textContent === SLOW_NOTE || ui.hint.textContent === WARMING_NOTE) hint("");
+  }
+  function askServer(text, via, ticket) {
+    var current = function () { return ticket === S.turnTicket; };
+    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "" }).then(function (data) {
+      return settle(data, current);
     });
   }
   function ask(text, via) {
@@ -624,10 +647,11 @@
     markReplyStopped();
     addTurn("you", text);
     addTurn("bot", "");
-    hint("");
+    if (ui.hint.textContent !== SLOW_NOTE && ui.hint.textContent !== WARMING_NOTE) hint("");
     setPhase("thinking");
     return askServer(text, via, ticket).then(function (data) {
       if (!data || ticket !== S.turnTicket) return;
+      clearSlowNote();
       var reply = plain(data.reply || "") || "Done.";
       return speakReply(reply, ticket).then(function () {
         if (ticket !== S.turnTicket) return;
@@ -635,6 +659,7 @@
       });
     }).catch(function (error) {
       if (ticket !== S.turnTicket) return;
+      clearSlowNote();
       dropEmptyReply();
       fail(error.message || "The assistant could not answer.");
     });
@@ -897,6 +922,12 @@
         loadDetector().then(function () { if (S.phase === "waiting") resetToWaiting(); });
       }
       if (!status.enabled && S.capture) { stop(); hint("Assistant mode was turned off on the server.", "warn"); }
+      // Right after a restart speech recognition loads for up to a minute:
+      // check again soon, so the page knows when it is ready.
+      clearTimeout(S.warmTimer);
+      if (status.speech_ready === false) {
+        S.warmTimer = setTimeout(function () { refreshStatus(false).catch(function () {}); }, 3000);
+      }
       renderStatus();
       return status;
     });
@@ -952,9 +983,9 @@
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var anim = {
     gazeX: 0, gazeY: 0, gazeTX: 0, gazeTY: 0, nextSaccade: 0, blink: 1, nextBlink: 0, blinkStart: -1,
-    tilt: 0, armR: -6, armL: 6, happy: 0, open: 0, eqOn: 0, thinkOn: 0, sleep: 0, pointer: null, pointerAt: 0, last: 0
+    tilt: 0, armR: -6, armL: 6, happy: 0, open: 0, eqOn: 0, thinkOn: 0, sleep: 1, pointer: null, pointerAt: 0, last: 0
   };
-  function greet() { S.greetUntil = performance.now() + 1900; S.perk = 1; }
+  function greet() { if (S.phase === 'off' || S.phase === 'paused') return; S.greetUntil = performance.now() + 1900; S.perk = 1; }
   function lerp(a, b, k) { return a + (b - a) * k; }
   // Easing per elapsed time, so a slow thin client animates at the same pace.
   var frameFactor = 1;
@@ -1020,26 +1051,32 @@
     anim.gazeX = ease(anim.gazeX, anim.gazeTX, 0.14);
     anim.gazeY = ease(anim.gazeY, anim.gazeTY, 0.14);
 
-    // Blinks.
+    var resting = phase === "off" || phase === "paused";
+    // Blinks (only while awake).
     if (!anim.nextBlink) anim.nextBlink = now + 2000;
-    if (now > anim.nextBlink && anim.blinkStart < 0 && phase !== "off") { anim.blinkStart = now; anim.nextBlink = now + 2400 + Math.random() * 3800; }
+    if (now > anim.nextBlink && anim.blinkStart < 0 && !resting) {
+      anim.blinkStart = now; anim.nextBlink = now + 2400 + Math.random() * 3800;
+    }
     if (anim.blinkStart >= 0) {
       var p = (now - anim.blinkStart) / 150;
       anim.blink = p < 1 ? 1 - p * 0.9 : p < 2 ? 0.1 + (p - 1) * 0.9 : 1;
       if (p >= 2) anim.blinkStart = -1;
     }
-    var resting = phase === "off" || phase === "paused";
-    anim.sleep = ease(anim.sleep, resting ? 1 : 0, resting ? 0.04 : 0.2);
-    var eyeOpen = Math.max(0.1, anim.blink * (1 - anim.sleep * 0.88));
+    anim.sleep = ease(anim.sleep, resting ? 1 : 0, resting ? 0.08 : 0.2);
+    var eyeOpen = Math.max(0.1, anim.blink);
     var eyeScale = 1 + (phase === "command" ? 0.12 + S.level * 0.12 : 0) + S.perk * 0.12;
     anim.happy = ease(anim.happy, (phase === "speaking" && Math.sin(t * 0.8) > 0.55) || greeting ? 1 : 0, 0.2);
     var sad = erroring ? 1 : 0;
+    var sleepOp = Math.max(0, Math.min(1, anim.sleep));
+    var ringOp = (1 - sleepOp) * Math.max(0, 1 - anim.happy);
+    var happyOp = (1 - sleepOp) * Math.max(0, Math.min(1, anim.happy));
     [bot.eyeL, bot.eyeR].forEach(function (eye, index) {
       if (!eye) return;
       var x = (index ? 245 : 155) + anim.gazeX, y = 168 + anim.gazeY + sad * 6;
       eye.setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") scale(" + eyeScale.toFixed(3) + " " + (eyeScale * eyeOpen * (1 - sad * 0.35)).toFixed(3) + ")");
-      setOpacity(eye.querySelector(".eye-ring"), Math.max(0, 1 - anim.happy * 2));
-      setOpacity(eye.querySelector(".eye-happy"), Math.max(0, anim.happy * 2 - 1));
+      setOpacity(eye.querySelector(".eye-ring"), ringOp);
+      setOpacity(eye.querySelector(".eye-happy"), happyOp);
+      setOpacity(eye.querySelector(".eye-sleep"), sleepOp);
     });
 
     // Mouth, equaliser, thinking dots.

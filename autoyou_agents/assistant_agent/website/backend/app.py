@@ -35,6 +35,7 @@ import logging
 import os
 import re
 import secrets
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -66,14 +67,22 @@ MAX_COMMAND_SECONDS = 30.0
 MAX_TURN_CHARS = 2000
 MAX_SPEAK_CHARS = 600
 AI_TURN_TIMEOUT_SECONDS = 180
-# The page service and the paired apps' proxies give up on one request after
-# about 30 s, and a local model with tools can take longer. A quick answer
-# comes back with the question; a slower one is collected by asking again.
+# The page service gives up on one request after 30 s (the paired apps'
+# proxies wait longer), and a cold start takes longer than that: speech
+# recognition loads in up to a minute after a restart, and an idle local model
+# reloads before it answers. A quick result comes back with the request; a slow
+# one is collected by asking again (GET /api/assistant/result/{id}).
 TURN_WAIT_SECONDS = 20.0
+TRANSCRIBE_WAIT_SECONDS = 20.0
 TURN_POLL_WAIT_SECONDS = 10.0
 TURN_KEEP_SECONDS = 600.0
 MAX_TURNS = 64
 _TURNS: Dict[str, Dict[str, Any]] = {}
+SPEECH_WARM_WAIT_SECONDS = 120.0
+_SPEECH_WARMING = threading.Event()
+AI_WARM_INTERVAL_SECONDS = 60.0
+AI_WARM_TIMEOUT_SECONDS = 180.0
+_AI_WARMED_AT = 0.0
 # Below this much speech there is nothing to transcribe; Whisper tends to
 # invent words ("Thank you.") for near-silence.
 MIN_VOICED_SECONDS = 0.2
@@ -246,6 +255,8 @@ def assistant_status() -> Dict[str, Any]:
         "auto_start": bool(status.get("web_auto_start", True)),
         "speak_replies": bool(status.get("web_speak_replies", True)),
         "follow_up": bool(status.get("web_follow_up", True)),
+        # False while speech recognition loads after a restart (up to a minute).
+        "speech_ready": not _SPEECH_WARMING.is_set(),
     }
 
 
@@ -263,13 +274,95 @@ def warm_up_speech(speak: bool) -> None:
             LOGGER.debug("Assistant website: voice warm-up skipped: %s", exc)
 
 
+def _run_warm_up(speak: bool) -> None:
+    try:
+        warm_up_speech(speak)
+    finally:
+        _SPEECH_WARMING.clear()
+
+
 def start_warm_up(status: Dict[str, Any]) -> bool:
     """Warm the speech models once, in the background, while Assistant mode is on."""
     global _WARM_UP_STARTED
     if _WARM_UP_STARTED or not status.get("enabled"):
         return False
     _WARM_UP_STARTED = True
-    asyncio.get_running_loop().run_in_executor(None, warm_up_speech, bool(status.get("speak_replies", True)))
+    _SPEECH_WARMING.set()
+    asyncio.get_running_loop().run_in_executor(None, _run_warm_up, bool(status.get("speak_replies", True)))
+    return True
+
+
+async def wait_for_speech_warm_up(limit: float = SPEECH_WARM_WAIT_SECONDS) -> bool:
+    """A question that arrives while the models load waits for them, not a second load.
+
+    Waits without holding a worker thread, so a burst of requests cannot use
+    up the pool the transcriptions themselves need. True once speech is ready.
+    """
+    deadline = time.monotonic() + limit
+    while _SPEECH_WARMING.is_set() and time.monotonic() < deadline:
+        await asyncio.sleep(0.2)
+    return not _SPEECH_WARMING.is_set()
+
+
+def _ai_provider() -> str:
+    """The AI agent's provider, read the way the agent reads it."""
+    provider = str(os.getenv("AI_PROVIDER", "") or "").strip().lower()
+    if provider:
+        return provider
+    if str(os.getenv("USE_GOOGLE_API", "0") or "").strip().lower() in {"1", "true", "yes"}:
+        return "google"
+    return "ollama"
+
+
+def _ollama_model() -> str:
+    """The Ollama model the AI agent uses, read the way the agent reads it."""
+    model = str(os.getenv("OLLAMA_MODEL", "ministral-3:8b") or "").strip()
+    return re.sub(r"^(?:ollama_chat|ollama|litellm)/", "", model, flags=re.IGNORECASE)
+
+
+def warm_ai_model() -> bool:
+    """Ask the local model to load now (Ollama loads a model for an empty prompt).
+
+    Ollama unloads an idle model after a few minutes; the first question after
+    that pays the load. Started when the wake word is heard, the load overlaps
+    with the question still being spoken. The address and model are this
+    server's own configuration, never anything from the request. A model
+    that is not installed is answered with an error and nothing loads.
+    """
+    if os.getenv("AUTOYOU_TEST_ROOT") or os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    if _ai_provider() != "ollama":
+        return False
+    model = _ollama_model()
+    if not model:
+        return False
+    base = str(os.getenv("OLLAMA_API_BASE") or os.getenv("OLLAMA_API_URL") or "http://localhost:11434").rstrip("/")
+    if not base.lower().startswith(("http://", "https://")):
+        return False
+    import urllib.request
+
+    body = json.dumps({"model": model, "prompt": ""}).encode("utf-8")
+    request = urllib.request.Request(base + "/api/generate", data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=AI_WARM_TIMEOUT_SECONDS) as response:  # noqa: S310 - own config
+        response.read()
+    return True
+
+
+def _warm_ai_quietly() -> None:
+    try:
+        warm_ai_model()
+    except Exception as exc:  # noqa: BLE001 - a warm-up never fails a request
+        LOGGER.debug("Assistant website: AI model warm-up skipped: %s", exc)
+
+
+def start_ai_warm_up() -> bool:
+    """Warm the AI model in the background, at most once a minute."""
+    global _AI_WARMED_AT
+    now = time.monotonic()
+    if _AI_WARMED_AT and now - _AI_WARMED_AT < AI_WARM_INTERVAL_SECONDS:
+        return False
+    _AI_WARMED_AT = now
+    asyncio.get_running_loop().run_in_executor(None, _warm_ai_quietly)
     return True
 
 
@@ -378,28 +471,51 @@ def _forget_old_turns(now: float) -> None:
         _TURNS.pop(next(iter(_TURNS)))
 
 
-async def _run_turn(item: Dict[str, Any], text: str, session_id: str, wake: str) -> None:
+JobResult = Tuple[int, Dict[str, Any]]
+
+
+async def _answer(text: str, session_id: str, wake: str) -> JobResult:
     try:
         data = await ask_assistant(text, session_id=session_id, wake=wake)
-        item["reply"] = str(data.get("response") or "").strip()
-        item["agent_name"] = str(data.get("agent_name") or "")
-        item["state"] = "done"
     except asyncio.TimeoutError:
-        item.update(state="failed", status=504, error="The assistant took too long to answer.")
+        return 504, {"success": False, "error": "The assistant took too long to answer."}
     except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
         LOGGER.warning("Assistant website turn failed: %s", exc)
-        item.update(state="failed", status=502,
-                    error="The assistant could not answer right now. Check that AutoYou AI is running.")
+        return 502, {"success": False,
+                     "error": "The assistant could not answer right now. Check that AutoYou AI is running."}
+    return 200, {"success": True, "reply": str(data.get("response") or "").strip(),
+                 "agent_name": str(data.get("agent_name") or "")}
 
 
-def _turn_response(turn_id: str, item: Dict[str, Any]) -> Response:
-    if item["state"] == "done":
-        return _json({"success": True, "turn_id": turn_id, "reply": item.get("reply", ""),
-                      "agent_name": item.get("agent_name", "")})
-    if item["state"] == "failed":
-        return _error(int(item.get("status") or 502), str(item.get("error") or "The assistant could not answer."),
-                      turn_id=turn_id)
-    return _json({"success": True, "pending": True, "turn_id": turn_id})
+async def _run_job(work: Any, wait: float) -> Response:
+    """Run ``work`` (a coroutine giving status and body) and answer within ``wait`` seconds.
+
+    Done in time: its own answer. Otherwise ``pending`` with an id the page
+    collects at /api/assistant/result/{id}.
+    """
+    now = time.time()
+    _forget_old_turns(now)
+    job_id = secrets.token_urlsafe(18)
+    item: Dict[str, Any] = {"state": "working", "created": now}
+    _TURNS[job_id] = item
+
+    async def runner() -> None:
+        try:
+            status, body = await work
+        except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
+            LOGGER.warning("Assistant website job failed: %s", exc)
+            status, body = 500, {"success": False, "error": "Something went wrong on the server."}
+        item.update(state="done", status=status, body=body)
+
+    item["task"] = asyncio.create_task(runner())
+    await _wait_for_turn(item, wait)
+    return _job_response(job_id, item)
+
+
+def _job_response(job_id: str, item: Dict[str, Any]) -> Response:
+    if item["state"] != "done":
+        return _json({"success": True, "pending": True, "job_id": job_id, "turn_id": job_id})
+    return _json({**item["body"], "job_id": job_id, "turn_id": job_id}, int(item.get("status") or 200))
 
 
 async def _wait_for_turn(item: Dict[str, Any], seconds: float) -> None:
@@ -467,6 +583,7 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
             return refused
         payload = await asyncio.to_thread(assistant_status)
         start_warm_up(payload)
+        payload["speech_ready"] = not _SPEECH_WARMING.is_set()
         auth = _auth(request)
         payload["access"] = "open" if auth.get("auth_mode") == "open" else "otp"
         return _json({"success": True, **payload})
@@ -506,6 +623,9 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         who = _page_listener(request, listener)
         claim = arbiter.contend(who, score=_score(body.get("score")))
         claim = await arbiter.settle(claim, who)
+        if claim.accepted:
+            # The question is still being spoken: load the model meanwhile.
+            start_ai_warm_up()
         return _json({"success": True, **_decision(claim)})
 
     @app.post("/api/assistant/presence")
@@ -567,34 +687,47 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
             # A breath, a click or the room: nothing was said, so nothing is transcribed.
             return _json({"success": True, "transcript": "", "matched": False, "command": "",
                           "wake_phrase": phrase, "wake_accepted": not spotting, "reason": "no_speech"})
-        try:
-            transcript = await asyncio.to_thread(am.local_transcriber(), pcm or b"")
-        except Exception as exc:
-            LOGGER.warning("Assistant website transcription failed: %s", exc)
-            return _error(503, "Speech recognition is not available on this server.")
-        if is_silence_phrase(transcript, voiced):
-            transcript = ""
-        if await asyncio.to_thread(am.load_settings) != settings:
-            return _json({"success": True, "transcript": "", "matched": False, "command": "",
-                          "reason": "settings_changed", "wake_accepted": False})
-        match = ww.match_phrase(phrase, transcript)
         require_phrase = bool(body.get("require_phrase"))
-        command = match.remainder if match.matched else ("" if require_phrase else transcript)
-        accepted = True
-        extra: Dict[str, Any] = {}
-        if spotting and match.matched:
-            # Heard after the fact, so it is dated back and decided at once.
-            spoken_at = received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE)
-            claim = _arbiter().contend(_page_listener(request, listener), spoken_at=spoken_at, score=match.score)
-            accepted = bool(claim.accepted)
-            if not accepted:
-                command = ""
-                decision = _decision(claim)
-                extra = {key: decision[key] for key in ("reason", "message", "pause") if key in decision}
-        elif spotting:
-            accepted = False
-        return _json({"success": True, "transcript": transcript, "matched": match.matched,
-                      "command": command, "wake_phrase": phrase, "wake_accepted": accepted, **extra})
+        if not spotting:
+            # A question is on its way: load the model while it is transcribed.
+            start_ai_warm_up()
+
+        async def work() -> JobResult:
+            # Right after a restart speech recognition is still loading (up to
+            # a minute): this waits for it, and the page collects the result.
+            if not await wait_for_speech_warm_up():
+                return 503, {"success": False, "error": "Speech recognition is still loading. Try again in a moment."}
+            try:
+                transcript = await asyncio.to_thread(am.local_transcriber(), pcm or b"")
+            except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
+                LOGGER.warning("Assistant website transcription failed: %s", exc)
+                return 503, {"success": False, "error": "Speech recognition is not available on this server."}
+            if is_silence_phrase(transcript, voiced):
+                transcript = ""
+            if await asyncio.to_thread(am.load_settings) != settings:
+                return 200, {"success": True, "transcript": "", "matched": False, "command": "",
+                             "reason": "settings_changed", "wake_accepted": False}
+            match = ww.match_phrase(phrase, transcript)
+            command = match.remainder if match.matched else ("" if require_phrase else transcript)
+            accepted = True
+            extra: Dict[str, Any] = {}
+            if spotting and match.matched:
+                # Heard after the fact, so it is dated back and decided at once.
+                spoken_at = received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE)
+                claim = _arbiter().contend(_page_listener(request, listener), spoken_at=spoken_at, score=match.score)
+                accepted = bool(claim.accepted)
+                if accepted:
+                    start_ai_warm_up()
+                else:
+                    command = ""
+                    decision = _decision(claim)
+                    extra = {key: decision[key] for key in ("reason", "message", "pause") if key in decision}
+            elif spotting:
+                accepted = False
+            return 200, {"success": True, "transcript": transcript, "matched": match.matched,
+                         "command": command, "wake_phrase": phrase, "wake_accepted": accepted, **extra}
+
+        return await _run_job(work(), TRANSCRIBE_WAIT_SECONDS)
 
     @app.post("/api/assistant/turn")
     async def turn(request: Request):
@@ -615,26 +748,27 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         wake = str(body.get("wake") or "")[:16]
         if not (await asyncio.to_thread(_assistant_mode().load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
-        now = time.time()
-        _forget_old_turns(now)
-        turn_id = secrets.token_urlsafe(18)
-        item: Dict[str, Any] = {"state": "thinking", "created": now}
-        _TURNS[turn_id] = item
-        item["task"] = asyncio.create_task(_run_turn(item, text, "assistant-web-" + session_id, wake))
-        await _wait_for_turn(item, TURN_WAIT_SECONDS)
-        return _turn_response(turn_id, item)
+        return await _run_job(_answer(text, "assistant-web-" + session_id, wake), TURN_WAIT_SECONDS)
 
-    @app.get("/api/assistant/turn/{turn_id}")
-    async def turn_status(turn_id: str, request: Request):
-        """The answer to a question that took longer than one request; waits a few seconds for it."""
+    async def _job_result(job_id: str, request: Request) -> Response:
         refused = _require_session(request)
         if refused is not None:
             return refused
-        item = _TURNS.get(turn_id) if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", turn_id or "") else None
+        item = _TURNS.get(job_id) if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", job_id or "") else None
         if item is None:
             return _error(404, "That question is no longer being answered. Ask it again.")
         await _wait_for_turn(item, TURN_POLL_WAIT_SECONDS)
-        return _turn_response(turn_id, item)
+        return _job_response(job_id, item)
+
+    @app.get("/api/assistant/result/{job_id}")
+    async def job_result(job_id: str, request: Request):
+        """A transcription or an answer that took longer than one request; waits a few seconds for it."""
+        return await _job_result(job_id, request)
+
+    @app.get("/api/assistant/turn/{turn_id}")
+    async def turn_status(turn_id: str, request: Request):
+        """The same, under the address pages loaded before the transcription change still use."""
+        return await _job_result(turn_id, request)
 
     @app.post("/api/assistant/speak")
     async def speak(request: Request):

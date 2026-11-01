@@ -38,14 +38,20 @@ def test_inject_realtime_datetime_sets_system_instruction():
     assert "[SYSTEM CLOCK]" in config.system_instruction
     assert "real current date" in config.system_instruction
 
-def test_inject_realtime_datetime_prepends_to_existing_instruction():
+def test_inject_realtime_datetime_preserves_cacheable_instruction_prefix(monkeypatch):
     config = SimpleNamespace(system_instruction="You are a helpful assistant.")
     llm_request = SimpleNamespace(config=config)
 
-    inject_realtime_datetime_into_request(llm_request)
+    from autoyou_agents.shared_tools import datetime_tool
 
-    assert config.system_instruction.startswith("[SYSTEM CLOCK]")
-    assert "You are a helpful assistant." in config.system_instruction
+    for minute in (1, 2):
+        monkeypatch.setattr(datetime_tool, "get_current_datetime", lambda: {
+            "iso": f"2026-01-01T12:{minute:02d}:00", "timezone": "system-local",
+        })
+        inject_realtime_datetime_into_request(llm_request)
+        assert config.system_instruction.startswith("You are a helpful assistant.\n\n[SYSTEM CLOCK]")
+        assert f"12:{minute:02d} PM" in config.system_instruction
+        assert config.system_instruction.count("[SYSTEM CLOCK]") == 1
 
 def test_inject_realtime_datetime_does_not_duplicate():
     config = SimpleNamespace(

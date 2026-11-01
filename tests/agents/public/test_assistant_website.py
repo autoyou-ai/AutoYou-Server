@@ -59,6 +59,7 @@ def site(tmp_path, monkeypatch):
     # Never load real speech models in unit tests.
     monkeypatch.setattr(backend, "_WARM_UP_STARTED", False)
     monkeypatch.setattr(backend, "warm_up_speech", lambda speak: None)
+    monkeypatch.setattr(backend, "warm_ai_model", lambda: False)
     client = TestClient(backend.app)
     return SimpleNamespace(client=client, backend=backend, config=config)
 

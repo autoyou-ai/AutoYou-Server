@@ -103,6 +103,97 @@ def test_admin_update_status_uses_linked_server_oauth_token(monkeypatch):
     assert seen["product"] == "autoyou-server"
 
 
+def test_oauth_relink_clears_rejected_update_token_and_checks_core_feed(monkeypatch):
+    import httpx
+    from fastapi.testclient import TestClient
+
+    config = {
+        "server": {"name": "Synthetic test server"},
+        "software_update": {"enabled": True},
+        "cloud": {"pair_enabled": False},
+    }
+    token = "synthetic-oauth-server-token"
+    seen = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "server_token": token,
+                "server_id": "srv_synthetic",
+                "user_id": "usr_synthetic",
+                "email": "operator@example.test",
+                "cloud_pair_enabled": False,
+                "token_issued_at": "2026-10-31T00:00:00Z",
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def post(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    class StubUpdateService:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def check_for_update(self):
+            return {"latest_version": "81.4.0", "update_available": True}
+
+    monkeypatch.delenv("AUTOYOU_SOFTWARE_UPDATES_ENABLED", raising=False)
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
+    monkeypatch.setattr(server, "_loaded_config_for_update", lambda: config)
+    monkeypatch.setattr(server, "_save_and_reload_state_config", lambda value: value)
+    monkeypatch.setattr(server, "_shared_device_server_key_material", lambda **_kwargs: None)
+    monkeypatch.setattr(server, "_cloud_link_cookie_hash", lambda _value: "synthetic-cookie-hash")
+    monkeypatch.setattr(server.STATE, "config", config)
+    monkeypatch.setattr(server.STATE, "cloud_token_rejected", True, raising=False)
+    monkeypatch.setattr(server.STATE, "update_feed_token_rejected", True, raising=False)
+    link_state = "synthetic-cloud-link-state"
+    callback_cookie = "synthetic-cloud-link-cookie"
+    monkeypatch.setattr(server.STATE, "_pending_cloud_states", {
+        link_state: {
+            "created_at": server.time.time(),
+            "cookie_hash": "synthetic-cookie-hash",
+        }
+    }, raising=False)
+
+    client = TestClient(server.admin_app)
+    client.cookies.set(server._CLOUD_LINK_CALLBACK_COOKIE, callback_cookie)
+    try:
+        response = client.get(
+            "/api/cloud/callback",
+            params={"link_token": "synthetic-oauth-link-token", "state": link_state},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert "Free account connected" in response.text
+    assert server.STATE.config["cloud"]["server_token"] == token
+    assert server.STATE.cloud_token_rejected is False
+    assert server.STATE.update_feed_token_rejected is False
+
+    monkeypatch.setattr(update_service, "UpdateService", StubUpdateService)
+    result = asyncio.run(server._software_update_status_payload())
+
+    assert result["success"] is True
+    assert result["signed_in"] is True
+    assert result["update_available"] is True
+    assert seen["auth_token"] == token
+    assert seen["product"] == "autoyou-server"
+
+
 def test_admin_config_patch_persists_software_update_opt_out():
     config, touched, _theme = server._apply_admin_ui_config_patch(
         server._default_config(),

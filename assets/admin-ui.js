@@ -4873,9 +4873,6 @@
             if (event === "readiness") {
                 state.chat.call.readiness = String(payload.state || "unknown");
                 state.chat.call.status = String(payload.detail || "Voice pipeline status updated.");
-            } else if (event === "server_capabilities") {
-                state.chat.call.status = "Voice pipeline connected. Microphone is live.";
-                state.chat.call.readiness = "ready";
             }
             renderApp({ passive: true });
             return;

@@ -262,6 +262,10 @@ def register_routes(
         cfg["cloud"]["registered_at"] = now_iso
         cfg["cloud"]["token_issued_at"] = data.get("token_issued_at", "") or now_iso
         server.STATE.config = server._save_and_reload_state_config(cfg)
+        # OAuth relink replaces a token rejected by the update feed. Clear
+        # stale rejection state so the next bootstrap checks AutoYou Core.
+        server.STATE.cloud_token_rejected = False
+        server.STATE.update_feed_token_rejected = False
 
         if cfg["cloud"]["pair_enabled"]:
             server.asyncio.create_task(server._start_cloud_sse_listener())
@@ -353,6 +357,7 @@ def register_routes(
             server.STATE.cloud_sse_task = None
         server.STATE.cloud_connected = False
         server.STATE.cloud_token_rejected = False
+        server.STATE.update_feed_token_rejected = False
         return RedirectResponse(url="/?cloud_unregistered=1", status_code=302)
 
     @admin_app.post("/api/cloud/activate")
@@ -420,6 +425,7 @@ def register_routes(
           return JSONResponse(await server._activate_current_cloud_server_registration())
 
         server.STATE.cloud_token_rejected = False
+        server.STATE.update_feed_token_rejected = False
         server.asyncio.create_task(server._start_cloud_sse_listener())
         server.LOGGER.info("AutoYou Cloud: reregister triggered - restarting SSE listener.")
         return JSONResponse({

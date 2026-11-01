@@ -5789,27 +5789,9 @@ class WebRTCManager:
 
                     voice_call_status = self.voice_call_status_by_session.get(normalized_session_id)
                     audio_manager_status = self._get_audio_manager_readiness_status(normalized_session_id)
-                    stored_voice_state = (
-                        str(voice_call_status.get("state") or "").lower()
-                        if isinstance(voice_call_status, dict)
-                        else ""
-                    )
-                    live_voice_state = (
-                        str(audio_manager_status.get("state") or "").lower()
-                        if isinstance(audio_manager_status, dict)
-                        else ""
-                    )
-                    if isinstance(audio_manager_status, dict) and (
-                        not isinstance(voice_call_status, dict)
-                        or (
-                            stored_voice_state == "warming"
-                            and live_voice_state != "warming"
-                        )
-                        or (
-                            stored_voice_state == "unavailable"
-                            and live_voice_state in {"warming", "ready"}
-                        )
-                    ):
+                    # A replacement recorder may still be warming while the
+                    # previous connection's cached status says ready.
+                    if isinstance(audio_manager_status, dict):
                         voice_call_status = audio_manager_status
                     if isinstance(voice_call_status, dict):
                         self._track_session_task(

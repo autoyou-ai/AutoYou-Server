@@ -2905,6 +2905,7 @@ async def _rotate_cloud_server_token_if_due(cloud_cfg: Mapping[str, Any], *, for
     current_cloud["token_issued_at"] = str(payload.get("token_issued_at") or now_iso)
     STATE.config = _save_and_reload_state_config(cfg)
     STATE.cloud_token_rejected = False
+    STATE.update_feed_token_rejected = False
     LOGGER.info("AutoYou Cloud: rotated server token for server_id=%s", server_id)
     return True
 
@@ -18321,6 +18322,7 @@ async def _activate_current_cloud_server_registration() -> Dict[str, Any]:
     raise HTTPException(status_code=response.status_code, detail=str(detail))
 
   STATE.cloud_token_rejected = False
+  STATE.update_feed_token_rejected = False
   asyncio.create_task(_start_cloud_sse_listener())
   LOGGER.info("AutoYou Cloud: current server activated via admin UI (server_id=%s)", server_id)
   return {

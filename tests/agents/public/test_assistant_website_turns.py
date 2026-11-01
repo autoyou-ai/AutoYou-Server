@@ -171,6 +171,92 @@ def test_voiced_seconds_measures_speech_not_length(site):
     assert site.backend.voiced_seconds(ww.float_to_pcm16(_speech(1.6))) > 0.4
 
 
+# -- Cold-start and slow transcription --------------------------------------------
+
+
+def test_a_slow_transcription_is_collected_via_result_endpoint(site, monkeypatch):
+    release = threading.Event()
+
+    def slow_transcribe(*a, **k):
+        def _transcribe(pcm):
+            release.wait(timeout=5.0)
+            return "what is the capital of France"
+        return _transcribe
+
+    monkeypatch.setattr(am, "local_transcriber", slow_transcribe)
+    monkeypatch.setattr(site.backend, "TRANSCRIBE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(site.backend, "TURN_POLL_WAIT_SECONDS", 0.05)
+    with TestClient(site.backend.app) as client:
+        first = client.post(
+            "/api/assistant/transcribe",
+            json={"audio_base64": _wav(_speech(1.6)), "listener_id": "abc"},
+            headers=ORIGIN,
+        ).json()
+        assert first["success"] is True and first["pending"] is True
+        job_id = first["job_id"]
+        assert first["turn_id"] == job_id
+        still = client.get("/api/assistant/result/" + job_id).json()
+        assert still["pending"] is True
+        release.set()
+        done = client.get("/api/assistant/result/" + job_id).json()
+        for _ in range(50):
+            if not done.get("pending"):
+                break
+            done = client.get("/api/assistant/result/" + job_id).json()
+        assert done["command"] == "what is the capital of France" and "pending" not in done
+        # The legacy turn endpoint alias also returns the result.
+        legacy = client.get("/api/assistant/turn/" + job_id).json()
+        assert legacy["command"] == "what is the capital of France"
+
+
+def test_speech_recognition_warm_up_status_and_waiting(site):
+    backend = site.backend
+    backend._SPEECH_WARMING.clear()
+    assert backend.assistant_status()["speech_ready"] is True
+
+    backend._SPEECH_WARMING.set()
+    assert backend.assistant_status()["speech_ready"] is False
+
+    backend._SPEECH_WARMING.clear()
+    assert asyncio.run(backend.wait_for_speech_warm_up(limit=0.5)) is True
+
+
+def test_a_failed_slow_transcription_reports_via_result(site, monkeypatch):
+    release = threading.Event()
+
+    def failing_transcribe(*a, **k):
+        def _transcribe(pcm):
+            release.wait(timeout=5.0)
+            raise RuntimeError("synthetic transcription crash")
+        return _transcribe
+
+    monkeypatch.setattr(am, "local_transcriber", failing_transcribe)
+    monkeypatch.setattr(site.backend, "TRANSCRIBE_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(site.backend, "TURN_POLL_WAIT_SECONDS", 0.05)
+    with TestClient(site.backend.app) as client:
+        first = client.post(
+            "/api/assistant/transcribe",
+            json={"audio_base64": _wav(_speech(1.6)), "listener_id": "abc"},
+            headers=ORIGIN,
+        ).json()
+        assert first["pending"] is True
+        release.set()
+        failed = client.get("/api/assistant/result/" + first["job_id"])
+        for _ in range(50):
+            if not failed.json().get("pending"):
+                break
+            failed = client.get("/api/assistant/result/" + first["job_id"])
+        assert failed.status_code == 503 and "not available" in failed.json()["error"]
+
+
+def test_the_robot_sleeping_eyes_are_curved_eyelids_not_squashed_rings():
+    page = (FRONTEND / "index.html").read_text(encoding="utf-8")
+    script = _script()
+    assert 'class="eye-sleep"' in page
+    assert 'eye.querySelector(".eye-sleep")' in script
+    assert "eyeOpen = Math.max(0.1, anim.blink)" in script
+
+
 # -- The page ---------------------------------------------------------------------
 
 

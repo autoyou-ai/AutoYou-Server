@@ -16,6 +16,8 @@ ensure_repo_on_path()
 
 import time
 
+import pytest
+
 import shared.audio_manager as audio_manager_module
 import shared.platform_runtime as platform_runtime
 from shared.audio_manager import AudioManager
@@ -56,6 +58,27 @@ def test_readiness_snapshot_prefers_live_recorder_over_cached_warming_status():
     }
 
     assert manager.get_readiness_status()["state"] == "ready"
+
+
+@pytest.mark.parametrize("stt_state", ["warming", "unavailable"])
+def test_tts_settings_change_does_not_claim_uninitialized_stt_is_ready(monkeypatch, stt_state):
+    settings = _speech_settings()
+    statuses = []
+    monkeypatch.setattr(AudioManager, "_restart_stt", lambda *args, **kwargs: None)
+    manager = AudioManager(
+        lambda _text: None,
+        settings_provider=lambda: settings,
+        status_callback=statuses.append,
+    )
+    try:
+        manager._emit_status(stt_state, "Transcriber has not initialized.")
+        statuses.clear()
+        settings["tts"]["rate"] += 1
+        manager.reload_settings()
+        assert manager.get_readiness_status()["state"] == stt_state
+        assert not any(status["state"] == "ready" for status in statuses)
+    finally:
+        manager.close()
 
 
 class _FakeAudioToTextRecorder:
@@ -301,9 +324,15 @@ def test_audio_manager_replays_audio_buffered_during_stt_warmup(monkeypatch):
     class _FeedRecorder:
         def __init__(self):
             self.chunks = []
+            self.listening = False
+
+        def listen(self):
+            self.listening = True
 
         def feed_audio(self, chunk):
-            self.chunks.append(chunk)
+            # Real VAD discards speech arriving before it has been armed.
+            if self.listening:
+                self.chunks.append(chunk)
 
         def stop(self):
             return None
@@ -319,5 +348,37 @@ def test_audio_manager_replays_audio_buffered_during_stt_warmup(monkeypatch):
         recorder = _FeedRecorder()
         manager._set_recorder_ready(recorder)
         _wait_until(lambda: recorder.chunks == [first_chunk])
+    finally:
+        manager.close()
+
+
+def test_call_stt_delivers_final_text_without_loading_partial_transcription_model(monkeypatch):
+    settings = _speech_settings()
+    transcripts = []
+    captured = {}
+
+    class FinalRecorder(_FakeRecorder):
+        delivered = False
+
+        def text(self):
+            if not self.delivered:
+                self.delivered = True
+                return "Synthetic voice request."
+            return super().text()
+
+    def instantiate(_recorder_cls, kwargs):
+        captured.update(kwargs)
+        return FinalRecorder(), False
+
+    monkeypatch.setattr(audio_manager_module, "AudioToTextRecorder", _FakeAudioToTextRecorder)
+    monkeypatch.setattr(audio_manager_module, "_patch_tqdm_ensure_lock", lambda: None)
+    monkeypatch.setattr(audio_manager_module, "_ensure_torch_hub_repo_trusted", lambda _repo: None)
+    monkeypatch.setattr(audio_manager_module, "_instantiate_realtimestt_recorder", instantiate)
+    monkeypatch.setenv("AUTOYOU_STT_INIT_TIMEOUT_SECONDS", "0")
+    manager = AudioManager(transcripts.append, settings_provider=lambda: settings)
+    try:
+        _wait_until(lambda: transcripts == ["Synthetic voice request."])
+        assert captured["enable_realtime_transcription"] is False
+        assert manager.get_readiness_status()["state"] == "ready"
     finally:
         manager.close()

@@ -522,6 +522,9 @@ def _worker_environment() -> Dict[str, str]:
         env[key] = value
     env.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
+    env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    env.setdefault("OMP_NUM_THREADS", "1")
+    env.setdefault("MKL_NUM_THREADS", "1")
     return env
 
 

@@ -42,7 +42,8 @@ def inject_realtime_datetime_into_request(llm_request: Any) -> None:
 
     Call this from any agent's ``before_model_callback`` to ground the model
     with the live system clock.  Keeps injection minimal (one line) to avoid
-    wasting tokens on cheap hardware.
+    wasting tokens on cheap hardware. Keep it after the stable instruction so
+    minute changes do not invalidate the model's entire cached prompt prefix.
     """
     try:
         dt_payload = get_current_datetime()
@@ -66,7 +67,7 @@ def inject_realtime_datetime_into_request(llm_request: Any) -> None:
         if isinstance(existing, str) and existing.strip():
             cleaned = _SYSTEM_CLOCK_LINE_RE.sub("", existing).strip()
             if cleaned:
-                config.system_instruction = f"{datetime_line}\n\n{cleaned}"
+                config.system_instruction = f"{cleaned}\n\n{datetime_line}"
             else:
                 config.system_instruction = datetime_line
         else:

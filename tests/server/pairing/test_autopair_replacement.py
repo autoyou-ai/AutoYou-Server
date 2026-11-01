@@ -852,7 +852,14 @@ async def test_handle_autopair_offer_replays_cached_voice_status_after_datachann
 
 
 @pytest.mark.asyncio
-async def test_handle_autopair_offer_prefers_live_voice_status_over_stale_client_unavailable(monkeypatch):
+@pytest.mark.parametrize("cached_state, live_state", [
+    ("unavailable", "ready"),
+    ("ready", "warming"),
+    ("ready", "unavailable"),
+])
+async def test_handle_autopair_offer_prefers_live_voice_status_over_stale_client_status(
+    monkeypatch, cached_state, live_state,
+):
     manager = server.WebRTCManager()
     original_audio_managers = dict(server.STATE.audio_managers)
 
@@ -863,12 +870,12 @@ async def test_handle_autopair_offer_prefers_live_voice_status_over_stale_client
         coro.close()
         return asyncio.create_task(_noop_async())
 
-    class _ReadyAudioManager(_FakeAudioManager):
+    class _LiveAudioManager(_FakeAudioManager):
         def get_readiness_status(self):
             return {
                 "event": "readiness",
-                "state": "ready",
-                "detail": "Voice pipeline ready.",
+                "state": live_state,
+                "detail": f"Voice pipeline {live_state}.",
                 "timestamp_ms": 123,
                 "platform": "server",
             }
@@ -881,14 +888,14 @@ async def test_handle_autopair_offer_prefers_live_voice_status_over_stale_client
     monkeypatch.setattr(server, "RTCPeerConnection", _FakePeerConnection)
     monkeypatch.setattr(server, "RTCSessionDescription", lambda sdp, type: SimpleNamespace(sdp=sdp, type=type))
     monkeypatch.setattr(server, "TTSAudioStreamTrack", None)
-    monkeypatch.setattr(server, "AudioManager", _ReadyAudioManager)
+    monkeypatch.setattr(server, "AudioManager", _LiveAudioManager)
     monkeypatch.setattr(server, "DataChannelManager", _FakeDataChannelManager)
 
     _FakePeerConnection.last_instance = None
     _FakeDataChannelManager.instances.clear()
     manager.voice_call_status_by_session["client-device-abc"] = {
-        "state": "unavailable",
-        "detail": "This client connected without voice-call audio.",
+        "state": cached_state,
+        "detail": "Previous connection status.",
     }
 
     try:
@@ -911,9 +918,9 @@ async def test_handle_autopair_offer_prefers_live_voice_status_over_stale_client
             for message in manager.datachannel_managers["client-device-abc"].sent_messages
             if message.payload.get("event") == "readiness"
         ]
-        assert "ready" in sent_readiness
-        assert "unavailable" not in sent_readiness
-        assert manager.voice_call_status_by_session["client-device-abc"]["state"] == "ready"
+        assert live_state in sent_readiness
+        assert cached_state not in sent_readiness
+        assert manager.voice_call_status_by_session["client-device-abc"]["state"] == live_state
     finally:
         server.STATE.audio_managers.clear()
         server.STATE.audio_managers.update(original_audio_managers)

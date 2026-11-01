@@ -1950,7 +1950,8 @@ class AudioManager:
             # short-lived subprocess. Cancel any in-flight speech first so the
             # next utterance picks up the new voice/rate immediately.
             self.stop_speaking(source="reload_settings")
-            self._emit_status("warming", "Applying new voice settings…")
+            if not self._stt_enabled or self.recorder is not None:
+                self._emit_status("warming", "Applying new voice settings...")
             LOGGER.info("TTS settings changed, reconfiguring (provider=%s rate=%s voice=%s)",
                         settings["tts"]["provider"], settings["tts"]["rate"],
                         settings["tts"].get("system_voice", ""))
@@ -1960,8 +1961,10 @@ class AudioManager:
         if stt_changed and self._stt_enabled:
             self._restart_stt(settings, initial=initial)
         elif tts_changed:
-            # Only TTS changed - STT is still running, emit ready immediately.
-            self._emit_status("ready", "Voice pipeline ready.")
+            # A TTS change does not complete an in-flight STT initialization
+            # or recover failed STT. Preserve that pipeline's real status.
+            if not self._stt_enabled or self.recorder is not None:
+                self._emit_status("ready", "Voice pipeline ready.")
 
     def _current_settings(self) -> Dict[str, Any]:
         settings = normalize_speech_config(self.settings_provider())
@@ -2052,6 +2055,7 @@ class AudioManager:
             self._stt_init_retry_count = 0
         self._stt_generation += 1
         generation = self._stt_generation
+        self._stt_init_started_at = time.monotonic()
         old_recorder = self.recorder
         self.recorder = None
         self._stt_initialization_event.clear()
@@ -2186,6 +2190,11 @@ class AudioManager:
                 LOGGER.debug("Recorder %s failed during shutdown: %s", method_name, exc)
 
     def _set_recorder_ready(self, recorder) -> None:
+        # Arm VAD before releasing buffered audio. Otherwise the feeder can
+        # drain the first words before recorder.text() starts listening.
+        listen = getattr(recorder, "listen", None)
+        if callable(listen):
+            listen()
         self.recorder = recorder
         if self._segmentation_hold:
             # A hold engaged before/during STT init (or across a recorder
@@ -2209,6 +2218,13 @@ class AudioManager:
             LOGGER.warning(
                 "Dropped %s oldest buffered inbound audio chunks while STT warmed up",
                 self._warmup_audio_dropped_chunks,
+            )
+        started_at = getattr(self, "_stt_init_started_at", None)
+        if started_at is not None:
+            LOGGER.info(
+                "STT ready in %.3fs; buffered_audio_chunks=%s",
+                time.monotonic() - started_at,
+                pending_chunks,
             )
         self._stt_initialization_event.set()
 
@@ -2497,8 +2513,10 @@ class AudioManager:
                 "language": speech_language(stt_settings["language"]),
                 "device": resolved_device,
                 "compute_type": stt_settings["compute_type"],
-                "enable_realtime_transcription": True,
-                "realtime_model_type": _derive_realtime_model_type(stt_settings["model"]),
+                # Calls consume final transcripts through recorder.text(). No
+                # partial-transcript callback is registered, so a second model
+                # only adds startup work and competes with final STT for CPU.
+                "enable_realtime_transcription": False,
                 "no_log_file": True,
                 "silero_sensitivity": stt_settings["silero_sensitivity"],
                 "post_speech_silence_duration": stt_settings["post_speech_silence_duration"],

@@ -1095,6 +1095,8 @@ class TunnelmoleService:
             )
         except Exception as exc:
             LOGGER.error("Failed to start tunnelmole: %s", exc)
+            if is_app_store_build():
+                self._upgrade_hint = {"error": "helper_unavailable", "message": _STORE_HELPER_UNAVAILABLE}
             self.stop()
             self._status = "error"
             return False
