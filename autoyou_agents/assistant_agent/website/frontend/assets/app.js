@@ -1098,7 +1098,15 @@
     anim.open = ease(anim.open, phase === "speaking" ? S.outLevel : 0, 0.5);
     var hideSmile = Math.max(anim.eqOn, anim.thinkOn, Math.min(1, anim.open * 3));
     setOpacity(bot.smile, (1 - hideSmile) * (1 - anim.sleep * 0.6));
-    if (bot.smile) bot.smile.setAttribute("d", erroring ? "M184 220Q200 208 216 220" : "M182 212Q200 226 218 212");
+    if (bot.smile) {
+      var smileD = erroring ? "M184 220Q200 208 216 220" : "M182 212Q200 226 218 212";
+      if (bot.smile.tagName && bot.smile.tagName.toLowerCase() === "g") {
+        var sp = bot.smile.children;
+        for (var si = 0; si < sp.length; si++) sp[si].setAttribute("d", smileD);
+      } else {
+        bot.smile.setAttribute("d", smileD);
+      }
+    }
     var o = anim.open, w = 16 + o * 8;
     if (bot.mouth) {
       bot.mouth.setAttribute("d", "M" + (200 - w) + " 212Q200 " + (214 - o * 6).toFixed(1) + " " + (200 + w) + " 212Q200 " + (216 + o * 28).toFixed(1) + " " + (200 - w) + " 212Z");
