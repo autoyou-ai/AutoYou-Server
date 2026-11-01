@@ -2624,11 +2624,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "pyasn1>=0.6.4"
+          "value": "pyasn1>=0.6.5"
         },
         {
           "name": "specifier",
-          "value": ">=0.6.4"
+          "value": ">=0.6.5"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4110,7 +4110,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-01T01:51:32+00:00",
+    "timestamp": "2026-11-01T06:05:11+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4119,7 +4119,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:e1221d45-8ffc-4fd8-994c-b33007ffe31a",
+  "serialNumber": "urn:uuid:b0059389-cbde-4104-8a14-3fda1632734d",
   "specVersion": "1.5",
   "version": 1
 }
