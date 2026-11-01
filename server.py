@@ -5741,13 +5741,34 @@ def _describe_totp_capabilities(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "pyotp_available": pyotp is not None,
     }
 
+def _totp_utc_now() -> datetime.datetime:
+    """Return timezone-aware UTC datetime for RFC 6238 TOTP calculations.
+
+    Avoids pyotp defaulting to naive datetime.datetime.now(), whose timetuple
+    causes time.mktime() on Windows to shift by 3600s during ambiguous Daylight
+    Saving Time fallback hours.
+    """
+    return datetime.datetime.now(datetime.timezone.utc)
+
+def _totp_now(secret: str) -> str:
+    """Return the current 6-digit TOTP code using explicit UTC datetime."""
+    return pyotp.TOTP(secret).at(_totp_utc_now())
+
 def _verify_totp_secret(secret: Optional[str], code: Any, *, valid_window: int = 1) -> bool:
     normalized_secret = _normalize_totp_secret(secret)
     normalized_code = str(code or "").strip()
     if not normalized_secret or not normalized_code or pyotp is None:
         return False
     try:
-        return bool(pyotp.TOTP(normalized_secret).verify(normalized_code, valid_window=valid_window))
+        totp = pyotp.TOTP(normalized_secret)
+        utc_now = _totp_utc_now()
+        if totp.verify(normalized_code, for_time=utc_now, valid_window=valid_window):
+            return True
+        # Defensive fallback for naive local time if OS clock / DST has ambiguous hour
+        naive_now = datetime.datetime.now()
+        if totp.verify(normalized_code, for_time=naive_now, valid_window=valid_window):
+            return True
+        return False
     except Exception:
         return False
 
@@ -20978,7 +20999,7 @@ def generate_totp_pair_otp_and_cache() -> str:
         return ""
 
     secret = next(iter(all_secrets.values()))
-    return _pyotp.TOTP(secret).now()
+    return _pyotp.TOTP(secret).at(_totp_utc_now())
 
 
 def _validate_authenticator_otp_hash_live(hash_value: str) -> bool:
@@ -21000,18 +21021,24 @@ def _validate_authenticator_otp_hash_live(hash_value: str) -> bool:
     except ImportError:
         return False
 
-    now = int(time.time())
+    utc_now = _totp_utc_now()
+    naive_now = datetime.datetime.now()
     for secret in all_secrets.values():
         totp = _pyotp.TOTP(secret)
         for step in _PAIRING_TOTP_WINDOW_STEPS:
-            code = totp.at(now + (step * totp.interval))
-            candidate_hash = (
-                generate_hash(f"{code}:{current_password}")
-                if generate_hash
-                else hashlib.sha256(f"{code}:{current_password}".encode()).hexdigest()
-            )
-            if secrets.compare_digest(candidate_hash, hash_value):
-                return True
+            candidate_times = [
+                utc_now + datetime.timedelta(seconds=step * totp.interval),
+                naive_now + datetime.timedelta(seconds=step * totp.interval),
+            ]
+            for candidate_time in candidate_times:
+                code = totp.at(candidate_time)
+                candidate_hash = (
+                    generate_hash(f"{code}:{current_password}")
+                    if generate_hash
+                    else hashlib.sha256(f"{code}:{current_password}".encode()).hexdigest()
+                )
+                if secrets.compare_digest(candidate_hash, hash_value):
+                    return True
     return False
 
 

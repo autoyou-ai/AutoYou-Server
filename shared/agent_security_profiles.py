@@ -250,7 +250,10 @@ class AgentSecurityProfileStore:
             secret = _derive_totp_secret(self._password, salt)
         except Exception:
             return False
-        ok = bool(pyotp.TOTP(secret).verify(code, valid_window=valid_window))
+        import datetime as _dt
+        utc_now = _dt.datetime.now(_dt.timezone.utc)
+        totp = pyotp.TOTP(secret)
+        ok = bool(totp.verify(code, for_time=utc_now, valid_window=valid_window) or totp.verify(code, for_time=_dt.datetime.now(), valid_window=valid_window))
         if ok:
             with self._connect() as conn:
                 conn.execute(
@@ -281,7 +284,8 @@ class AgentSecurityProfileStore:
         now = time.time()
         totp = pyotp.TOTP(secret)
         remaining = max(1, int(totp.interval - (now % totp.interval)))
-        return {"code": totp.at(now), "seconds_remaining": remaining}
+        import datetime as _dt
+        return {"code": totp.at(_dt.datetime.now(_dt.timezone.utc)), "seconds_remaining": remaining}
 
     # ── per-agent assignments ─────────────────────────────────────────────────
 

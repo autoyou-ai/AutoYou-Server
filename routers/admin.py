@@ -1433,7 +1433,7 @@ def register_routes(
             secret = server._get_pairing_totp_secret(cfg)
             if not secret or server.pyotp is None:
                 return JSONResponse(status_code=404, content={"success": False, "error": "No 2FA secret configured."})
-            code = server.pyotp.TOTP(secret).now()
+            code = server._totp_now(secret) if hasattr(server, "_totp_now") else server.pyotp.TOTP(secret).at(server.datetime.datetime.now(server.datetime.timezone.utc))
             return server._json_response_no_store({
                 "success": True,
                 "code": code,

@@ -1,3 +1,4 @@
+import datetime
 # Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
@@ -95,6 +96,10 @@ class TestGenerateTotpPairOtpAndCache:
             pyotp.TOTP(totp_secret).at(int(time.time()) + step * 30)
             for step in server._PAIRING_TOTP_WINDOW_STEPS
         }
+        valid_codes.update({
+            pyotp.TOTP(totp_secret).at(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=step * 30))
+            for step in server._PAIRING_TOTP_WINDOW_STEPS
+        })
         assert result in valid_codes
 
     def test_does_not_cache_anything_but_auth_still_validates_live(self, _authenticator_timed_config, totp_secret):
@@ -104,7 +109,7 @@ class TestGenerateTotpPairOtpAndCache:
         server.generate_totp_pair_otp_and_cache()
         assert server.STATE.otp_cache == {}
 
-        current_code = pyotp.TOTP(totp_secret).now()
+        current_code = server._totp_now(totp_secret) if hasattr(server, "_totp_now") else pyotp.TOTP(totp_secret).now()
         expected_hash = hashlib.sha256(f"{current_code}:testpassword".encode()).hexdigest()
         result = server.validate_otp_hash(expected_hash)
         assert result["valid"] is True

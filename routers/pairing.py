@@ -796,7 +796,7 @@ def register_routes(
             if not secret or server.pyotp is None:
                 return JSONResponse({"success": False, "error": "No 2FA secret configured."}, status_code=404)
             totp = server.pyotp.TOTP(secret)
-            code = totp.now()
+            code = server._totp_now(secret) if hasattr(server, "_totp_now") else totp.at(server.datetime.datetime.now(server.datetime.timezone.utc))
             seconds_remaining = 30 - (int(_time.time()) % 30)
             return JSONResponse({
                 "success": True,
