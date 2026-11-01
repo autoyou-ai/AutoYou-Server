@@ -1037,40 +1037,61 @@
       if (!settings.tilt && !liftEnabled) return;
       const now = performance.now();
       let lifting = false;
+
+      // Orientation-aware lateral and upward vectors (handles portrait, landscape, and inverted)
+      const orientAngle = typeof screen !== 'undefined'
+        ? (screen.orientation?.angle ?? (typeof window !== 'undefined' && typeof window.orientation === 'number' ? (window.orientation + 360) % 360 : 0))
+        : 0;
+      let lateralTilt = orientAngle === 90 ? -y : orientAngle === 270 ? y : orientAngle === 180 ? -x : x;
+      let upwardTilt = orientAngle === 90 ? x : orientAngle === 270 ? -x : orientAngle === 180 ? -y : y;
+      if (orientAngle === 0 && Math.abs(x) > Math.abs(y) * 1.35) {
+        lateralTilt = y;
+        upwardTilt = x;
+      }
+
       if (Number.isFinite(z)) {
         const sample = [x, y, z], magnitude = Math.hypot(x, y, z);
         let lift = state.lift;
         if (!lift || now - lift.at > 300) {
-          state.lift = {gravity: sample, at: now, quiet: 0, pulse: 0, armed: false, until: now + 450};
+          state.lift = {gravity: sample, restingUpward: upwardTilt, at: now, quiet: 0, pulse: 0, armed: false, until: now + 450};
           return;
         }
         const dt = Math.max(0, Math.min((now - lift.at) / 1000, 0.1));
         lift.at = now;
         const gravity = Math.hypot(...lift.gravity);
         if (gravity < 7 || gravity > 12) { state.lift = null; return; }
-        // Projection onto the resting gravity axis works flat, upright, rotated,
-        // and with either native accelerometer sign convention. No displacement integration.
+
+        // Upward against gravity vector works across flat, upright, and reclined tilted holds
         const along = sample.reduce((sum, value, i) => sum + value * lift.gravity[i] / gravity, 0);
         const vertical = along - gravity;
+        const screenUpImpulse = upwardTilt - (lift.restingUpward ?? upwardTilt);
+        const effectiveLift = Math.max(vertical, screenUpImpulse * 0.85);
         const lateral = Math.sqrt(Math.max(0, magnitude * magnitude - along * along));
-        lifting = Math.abs(vertical) > 2.2;
-        if (Math.abs(magnitude - 9.80665) < 1.3 && Math.abs(vertical) < 1.5) {
+        lifting = Math.abs(effectiveLift) > 2.0;
+
+        if (Math.abs(magnitude - 9.80665) < 1.6 && Math.abs(vertical) < 1.5) {
           const alpha = 1 - Math.exp(-dt / 0.25);
           lift.gravity = lift.gravity.map((value, i) => value + (sample[i] - value) * alpha);
+          lift.restingUpward = (lift.restingUpward ?? upwardTilt) + (upwardTilt - (lift.restingUpward ?? upwardTilt)) * alpha;
           lift.quiet += dt;
-          if (lift.quiet >= 0.2 && now >= lift.until) lift.armed = true;
+          if (lift.quiet >= 0.18 && now >= lift.until) lift.armed = true;
         } else lift.quiet = 0;
-        // A downward dip or a large rotation must settle before another lift.
-        if (vertical < -2.5 || lateral > 4) {
-          lift.armed = false; lift.until = Math.max(lift.until, now + 250); lift.pulse = 0;
-          if (Math.abs(magnitude - 9.80665) < 1.3) {
+
+        // Severe downward dip or heavy spin must settle before jump
+        if (vertical < -3.0 || lateral > 6.8) {
+          lift.armed = false; lift.until = Math.max(lift.until, now + 200); lift.pulse = 0;
+          if (Math.abs(magnitude - 9.80665) < 1.5) {
             lift.gravity = sample;
+            lift.restingUpward = upwardTilt;
           }
         }
-        if (lift.armed && vertical > 3.2 && lateral < 3.5) lift.pulse += dt;
+
+        // Upward lift jump trigger: support tilted hold and natural arc
+        if (lift.armed && (vertical > 3.0 || (effectiveLift > 3.2 && lateral < 5.8))) lift.pulse += dt;
         else lift.pulse = 0;
-        if (liftEnabled && lift.pulse >= 0.05) {
-          lift.armed = false; lift.pulse = 0; lift.until = now + 950;
+
+        if (liftEnabled && lift.pulse >= 0.04) {
+          lift.armed = false; lift.pulse = 0; lift.until = now + 900;
           action('jump');
         }
         setText('#motion-status', !settings.tilt ? 'Tilt steering is off. Lift the phone to jump.'
@@ -1078,15 +1099,70 @@
             ? (lift.armed ? 'LIFT READY - lift the phone upward to jump' : 'Hold still briefly to ready lift jump')
             : 'Tilt to steer. Lift jump is off.');
       }
+
       if (!settings.tilt) return;
-      if (!state.tilt) state.tilt = {axis: Math.abs(x) <= Math.abs(y) ? 'x' : 'y', x, y, direction: 0};
+      if (!state.tilt) {
+        const axis = Math.abs(x) <= Math.abs(y) ? 'x' : 'y';
+        state.tilt = {axis, baseline: lateralTilt, x, y, direction: 0, lastActionAt: 0};
+      }
       if (lifting || now < manualSteerUntil) return;
+
       const tilt = state.tilt;
-      const delta = tilt.axis === 'x' ? x - tilt.x : y - tilt.y;
-      const direction = delta < -threshold ? -1 : delta > threshold ? 1 : 0;
-      if (direction && direction !== tilt.direction) {
-        action(direction < 0 ? 'left' : 'right'); tilt.direction = direction;
-      } else if (Math.abs(delta) < threshold * 0.55) tilt.direction = 0;
+      const rawDelta = tilt.axis === 'x' ? x - tilt.x : y - tilt.y;
+      const delta = lateralTilt !== undefined && Number.isFinite(lateralTilt) && Number.isFinite(tilt.baseline)
+        ? lateralTilt - tilt.baseline
+        : rawDelta;
+
+      // Slowly adapt baseline when resting near center
+      if (Math.abs(delta) < threshold * 0.45 && !lifting) {
+        tilt.baseline += (lateralTilt - tilt.baseline) * 0.04;
+        tilt.x += (x - tilt.x) * 0.04;
+        tilt.y += (y - tilt.y) * 0.04;
+      }
+
+      const T1 = threshold;
+      const T2 = threshold * 2.0;
+
+      // 2-step lane transition physics:
+      // Start at center (0): 1 left tilt (delta <= -T1) -> leftmost (-1); 1 right tilt (delta >= T1) -> rightmost (+1)
+      // Leftmost (-1) to rightmost (+1) requires 2 tilt right operations:
+      //   1st tilt right (delta >= T1) moves -1 -> 0 (center); re-arm near neutral; 2nd tilt right moves 0 -> +1 (rightmost)
+      // Rightmost (+1) to leftmost (-1) requires 2 tilt left operations:
+      //   1st tilt left (delta <= -T1) moves +1 -> 0 (center); re-arm near neutral; 2nd tilt left moves 0 -> -1 (leftmost)
+      // Deep continuous tilt past T2 also triggers the 2nd operation after a brief 150ms cadence.
+      if (lane === 0) {
+        if (delta <= -T1 && tilt.direction !== -1) {
+          action('left'); tilt.direction = -1; tilt.lastActionAt = now;
+        } else if (delta >= T1 && tilt.direction !== 1) {
+          action('right'); tilt.direction = 1; tilt.lastActionAt = now;
+        } else if (Math.abs(delta) < T1 * 0.55) {
+          tilt.direction = 0;
+        }
+      } else if (lane === -1) {
+        if (delta >= T1 && tilt.direction !== 1 && tilt.direction !== 2) {
+          // 1st tilt right operation: left extreme (-1) -> center (0)
+          action('right'); tilt.direction = 1; tilt.lastActionAt = now;
+        } else if (delta >= T2 && tilt.direction === 1 && now - tilt.lastActionAt > 150) {
+          // Deep tilt right: center (0) -> rightmost extreme (+1)
+          action('right'); tilt.direction = 2; tilt.lastActionAt = now;
+        } else if (Math.abs(delta) < T1 * 0.55) {
+          tilt.direction = 0;
+        } else if (delta <= -T1) {
+          tilt.direction = -1;
+        }
+      } else if (lane === 1) {
+        if (delta <= -T1 && tilt.direction !== -1 && tilt.direction !== -2) {
+          // 1st tilt left operation: right extreme (+1) -> center (0)
+          action('left'); tilt.direction = -1; tilt.lastActionAt = now;
+        } else if (delta <= -T2 && tilt.direction === -1 && now - tilt.lastActionAt > 150) {
+          // Deep tilt left: center (0) -> leftmost extreme (-1)
+          action('left'); tilt.direction = -2; tilt.lastActionAt = now;
+        } else if (Math.abs(delta) < T1 * 0.55) {
+          tilt.direction = 0;
+        } else if (delta >= T1) {
+          tilt.direction = 1;
+        }
+      }
     }
     window.autoYouGameTilt = (x, y, z) => motionInput(localMotion, x, y, z, 1.8);
 

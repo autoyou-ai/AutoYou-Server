@@ -10869,7 +10869,8 @@
             var interactive = person.mode === "interactive";
             var selected = state.interact.selected.indexOf(id) !== -1;
             var recent = Date.now() / 1000 - Number(person.last_input_at || 0) < 1.5 ? badge(person.last_input || "", "blue") : "";
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : "Watching only") + "</p></div>" + recent + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
+            var layoutBadge = person.layout ? badge(person.layout === "gamepad" ? "Gamepad (Diamond)" : person.layout, "purple") : "";
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : "Watching only") + "</p></div>" + layoutBadge + recent + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
         }).join("");
         var feed = inputs.slice(-30).reverse().map(function (input) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";

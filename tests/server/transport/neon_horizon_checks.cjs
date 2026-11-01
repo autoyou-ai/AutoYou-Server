@@ -410,3 +410,41 @@ test('graphics tiers step down on slow frames only in auto mode', () => {
   g.run("objects = []; for (let i = 0; i < 6; i++) spawnRow(); objects.push({kind: 'power', power: 'surge', lane: 0, z: 0.5}); surge = 2; emit(100, 100, 20, '#fff')");
   for (const t of [0, 1, 2]) { g.run(`setTier(${t}); frame(2000 + ${t} * 16)`); }
 });
+
+test('two-tilt transitions cross from extreme to extreme, and jump physics support landscape and tilted hold', () => {
+  const g = game(); g.start();
+  // Calibrate neutral at center lane (0)
+  g.window.autoYouGameTilt(0, 9.8);
+  assert.equal(g.run('lane'), 0);
+
+  // 1 left tilt moves from center (0) to leftmost (-1)
+  g.window.autoYouGameTilt(-3, 9.8);
+  assert.equal(g.run('lane'), -1);
+
+  // From leftmost (-1), 1st right tilt operation moves to center (0)
+  g.window.autoYouGameTilt(0, 9.8); // re-arm near neutral
+  g.window.autoYouGameTilt(3, 9.8);
+  assert.equal(g.run('lane'), 0);
+
+  // 2nd right tilt operation moves from center (0) to rightmost (+1)
+  g.window.autoYouGameTilt(0, 9.8); // re-arm near neutral
+  g.window.autoYouGameTilt(3, 9.8);
+  assert.equal(g.run('lane'), 1);
+
+  // From rightmost (+1), 1st left tilt operation moves to center (0)
+  g.window.autoYouGameTilt(0, 9.8); // re-arm near neutral
+  g.window.autoYouGameTilt(-3, 9.8);
+  assert.equal(g.run('lane'), 0);
+
+  // 2nd left tilt operation moves from center (0) to leftmost (-1)
+  g.window.autoYouGameTilt(0, 9.8); // re-arm near neutral
+  g.window.autoYouGameTilt(-3, 9.8);
+  assert.equal(g.run('lane'), -1);
+
+  // Tilted hold jump physics test (gravity split across Y and Z: e.g. 45° incline)
+  // Arm the lift at tilted hold: gx=0, gy=6.93, gz=6.93 (magnitude 9.80665)
+  for (let i = 0; i < 24; i++) g.sensor([0, 6.934, 6.934]);
+  // Upward lift in tilted hold: impulse along lift axis
+  for (let i = 0; i < 3; i++) g.sensor([0, 10.5, 10.5]);
+  assert.ok(g.run('jumpTime') > 0, 'jump triggered in tilted hold');
+});
