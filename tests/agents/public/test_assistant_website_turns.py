@@ -310,3 +310,19 @@ def test_the_robot_turns_each_joint_on_its_ball_and_never_through_itself():
     assert "logo" not in page.lower()
     assert re.search(r"target\.armR = clamp\(target\.armR, -140, 8\)", script)
     assert "function drive(j, target, dt)" in script
+
+
+def test_robot_features_glowing_backpack_emblem_and_expressive_eyebrows():
+    page = (FRONTEND / "index.html").read_text(encoding="utf-8")
+    script = _script()
+    # Eyebrows exist in SVG face group above eyes
+    assert 'id="brow-l"' in page and 'id="brow-r"' in page
+    # Forehead blemish (ellipse rx="58" and sheen path M112 128) is removed
+    assert 'rx="58"' not in page and 'M112 128' not in page
+    # Backpack-inspired core emblem is on torso with cloud and network nodes
+    assert 'id="core"' in page
+    assert '<polygon points="0,-5.8 5.5,-2.5 5.5,3.2 0,6.2' in page
+    # Eyebrow spring joints and speech/emotion reactions wired in script
+    assert "browLY: joint(0, 110, 0.6)" in script
+    assert "browLTilt: joint(0, 85, 0.6)" in script
+    assert "bot.browL.setAttribute" in script and "bot.browR.setAttribute" in script

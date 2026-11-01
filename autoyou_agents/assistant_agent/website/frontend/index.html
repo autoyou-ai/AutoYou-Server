@@ -110,7 +110,19 @@
               <path d="M200 296c-14 40-14 120 0 166" fill="none" stroke="#c4cbe0" stroke-width="2"/>
               <path d="M128 432c40 22 104 22 144 0" fill="none" stroke="url(#g-blue)" stroke-width="9" stroke-linecap="round"/>
               <ellipse cx="166" cy="338" rx="26" ry="12" fill="#fff" opacity="0.65" transform="rotate(-24 166 338)"/>
-              <circle id="core" cx="200" cy="362" r="9" fill="#6fe6ff" filter="url(#f-glow)" opacity="0.7"/>
+              <g id="core" transform="translate(200 362) scale(1.18)" opacity="0.7" filter="url(#f-glow)">
+                <path d="M-10 8 L10 8 A 4.5 4.5 0 0 0 14.5 3.5 A 5.5 5.5 0 0 0 12.5 -4.5 A 6.5 6.5 0 0 0 4.5 -9.5 A 7.5 7.5 0 0 0 -4.5 -9.5 A 6.5 6.5 0 0 0 -12.5 -4.5 A 5.5 5.5 0 0 0 -14.5 3.5 A 4.5 4.5 0 0 0 -10 8 Z" fill="none" stroke="#6fe6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <polygon points="0,-5.8 5.5,-2.5 5.5,3.2 0,6.2 -5.5,3.2 -5.5,-2.5" fill="none" stroke="#6fe6ff" stroke-width="1.4" stroke-linejoin="round"/>
+                <polyline points="-5.5,3.2 -8.5,8 8.5,8 5.5,3.2" fill="none" stroke="#6fe6ff" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="0" cy="-5.8" r="1.3" fill="#6fe6ff"/>
+                <circle cx="5.5" cy="-2.5" r="1.3" fill="#6fe6ff"/>
+                <circle cx="-5.5" cy="-2.5" r="1.3" fill="#6fe6ff"/>
+                <circle cx="5.5" cy="3.2" r="1.3" fill="#6fe6ff"/>
+                <circle cx="-5.5" cy="3.2" r="1.3" fill="#6fe6ff"/>
+                <circle cx="0" cy="6.2" r="1.3" fill="#6fe6ff"/>
+                <circle cx="-8.5" cy="8" r="1.3" fill="#6fe6ff"/>
+                <circle cx="8.5" cy="8" r="1.3" fill="#6fe6ff"/>
+              </g>
               <!-- The neck the head rests on: it stays put while the head bobs. -->
               <ellipse cx="200" cy="297" rx="34" ry="9" fill="#1a2350"/>
             </g>
@@ -124,10 +136,15 @@
               <ellipse id="ear-l" cx="57" cy="176" rx="11" ry="29" fill="none" stroke="#6fe6ff" stroke-width="4" opacity="0.5" filter="url(#f-glow)"/>
               <ellipse id="ear-r" cx="343" cy="176" rx="11" ry="29" fill="none" stroke="#6fe6ff" stroke-width="4" opacity="0.5" filter="url(#f-glow)"/>
               <ellipse cx="200" cy="172" rx="143" ry="126" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2"/>
-              <ellipse cx="146" cy="78" rx="58" ry="17" fill="#fff" opacity="0.8" transform="rotate(-12 146 78)"/>
               <rect id="visor" x="88" y="100" width="224" height="148" rx="70" fill="url(#g-visor)"/>
               <g clip-path="url(#c-visor)">
                 <g id="face">
+                  <g id="brow-l" transform="translate(155 127)">
+                    <path d="M-16 2Q0 -4 16 0" fill="none" stroke="#3fd8ff" stroke-width="5" stroke-linecap="round" filter="url(#f-glow)"/>
+                  </g>
+                  <g id="brow-r" transform="translate(245 127)">
+                    <path d="M-16 0Q0 -4 16 2" fill="none" stroke="#3fd8ff" stroke-width="5" stroke-linecap="round" filter="url(#f-glow)"/>
+                  </g>
                   <g id="eye-l" transform="translate(155 168)">
                     <circle class="eye-ring" r="25" fill="none" stroke="#3fd8ff" stroke-width="9" filter="url(#f-glow)"/>
                     <path class="eye-happy" d="M-24 8Q0-22 24 8" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
@@ -156,7 +173,6 @@
                   </g>
                 </g>
               </g>
-              <path d="M112 128c24-20 70-26 96-24" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.12"/>
             </g>
             </g>
           </g>

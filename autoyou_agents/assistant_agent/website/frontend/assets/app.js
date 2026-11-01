@@ -956,7 +956,7 @@
     root: $("bot"), head: $("head"), torso: $("torso"), armL: $("arm-left"), armR: $("arm-right"),
     eyeL: $("eye-l"), eyeR: $("eye-r"), smile: $("mouth-smile"), mouth: $("mouth-open"), eq: $("eq"),
     think: $("think"), zzz: $("zzz"), antenna: $("antenna-glow"), earL: $("ear-l"), earR: $("ear-r"),
-    core: $("core"), shadow: $("shadow"), visor: $("visor"), upper: $("upper"),
+    core: $("core"), shadow: $("shadow"), browL: $("brow-l"), browR: $("brow-r"), visor: $("visor"), upper: $("upper"),
     foreL: $("forearm-left"), foreR: $("forearm-right")
   };
   // Joints: each follows its target like a damped spring (stiffness k, damping
@@ -967,7 +967,7 @@
     lean: joint(0, 38, 0.72), bodyY: joint(0, 95, 0.55), squash: joint(0, 240, 0.3),
     headX: joint(0, 110, 0.62), headY: joint(0, 120, 0.5), tilt: joint(0, 55, 0.6),
     armL: joint(6, 80, 0.55), armR: joint(-6, 80, 0.55),
-    foreL: joint(8, 150, 0.38), foreR: joint(-8, 150, 0.38)
+    foreL: joint(8, 150, 0.38), foreR: joint(-8, 150, 0.38), browLY: joint(0, 110, 0.6), browRY: joint(0, 110, 0.6), browLTilt: joint(0, 85, 0.6), browRTilt: joint(0, 85, 0.6)
   };
   function drive(j, target, dt) {
     var a = j.k * (target - j.x) - j.c * j.v;
@@ -976,8 +976,8 @@
   }
   function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
   // A tap squashes it like a soft toy; a wake word or a pointer arriving makes it perk up.
-  function boop() { J.squash.v -= 2.6; J.headY.v -= 40; }
-  function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; } }
+  function boop() { J.squash.v -= 2.6; J.headY.v -= 40; J.browLY.v -= 18; J.browRY.v -= 18; }
+  function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; J.browLY.v -= 14; J.browRY.v -= 14; } }
   var eqBars = bot.eq ? bot.eq.querySelectorAll("rect") : [];
   var thinkDots = bot.think ? bot.think.querySelectorAll("circle") : [];
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1079,6 +1079,19 @@
       setOpacity(eye.querySelector(".eye-sleep"), sleepOp);
     });
 
+    if (bot.browL) {
+      var blX = 155 + anim.gazeX * 0.6;
+      var blY = 127 + anim.gazeY * 0.5 + J.browLY.x;
+      bot.browL.setAttribute("transform", "translate(" + blX.toFixed(2) + " " + blY.toFixed(2) + ") rotate(" + J.browLTilt.x.toFixed(2) + ")");
+      setOpacity(bot.browL, 1 - sleepOp * 0.45);
+    }
+    if (bot.browR) {
+      var brX = 245 + anim.gazeX * 0.6;
+      var brY = 127 + anim.gazeY * 0.5 + J.browRY.x;
+      bot.browR.setAttribute("transform", "translate(" + brX.toFixed(2) + " " + brY.toFixed(2) + ") rotate(" + J.browRTilt.x.toFixed(2) + ")");
+      setOpacity(bot.browR, 1 - sleepOp * 0.45);
+    }
+
     // Mouth, equaliser, thinking dots.
     anim.eqOn = ease(anim.eqOn, phase === "command" ? 1 : 0, 0.18);
     anim.thinkOn = ease(anim.thinkOn, phase === "thinking" ? 1 : 0, 0.15);
@@ -1132,12 +1145,25 @@
       headY: breathe * 0.7 + (phase === "speaking" ? out * 4 * m : 0) - S.perk * 6 * m + sleep * 8,
       tilt: (phase === "thinking" ? 8 : phase === "command" ? -4 : sleep * 6) + Math.sin(t * 0.7) * 1.5 * m + px * 3 * m + shake,
       armL: 6 + breathe * 0.6, foreL: 8,
-      armR: -6 - breathe * 0.6, foreR: -8
+      armR: -6 - breathe * 0.6, foreR: -8,
+      browLY: 0, browRY: 0, browLTilt: 0, browRTilt: 0
     };
+
+    var speechLift = (phase === "speaking" ? (out * 4.5 + Math.sin(t * 3.6) * 1.4 * out) : 0) * m;
+    var attentiveLift = (phase === "command" ? (3.5 + S.level * 4) : 0) * m;
+    var perkLift = S.perk * 5.5 * m;
+    var happyLift = anim.happy * 4.5 * m;
+
+    target.browLY = -speechLift - attentiveLift - perkLift - happyLift + sleep * 3.5;
+    target.browRY = -speechLift - attentiveLift - perkLift - happyLift + sleep * 3.5;
+    target.browLTilt = -anim.happy * 4 * m - (phase === "command" ? 2 * m : 0);
+    target.browRTilt = anim.happy * 4 * m + (phase === "command" ? 2 * m : 0);
     if (greeting) {
       // A wave beside the head: upper arm out, forearm up, the hand waving from the elbow.
       target.armR = -104 + Math.sin(t * 2.2) * 4 * m;
       target.foreR = -55 + Math.sin(t * 11) * 18 * m;
+      target.browLY -= 5 * m; target.browRY -= 5 * m;
+      target.browLTilt = -6 * m; target.browRTilt = 6 * m;
     } else if (phase === "speaking") {
       target.armR = -12 - out * 16 * m; target.foreR = -14 - out * 18 * m + Math.sin(t * 3.1) * 4 * m;
       target.armL = 9 + Math.sin(t * 2.4) * 4 * m; target.foreL = 10 + Math.sin(t * 2.9) * 5 * m;
@@ -1145,10 +1171,17 @@
       target.armR = -16; target.foreR = -30;
     } else if (phase === "thinking") {
       target.armL = 22; target.foreL = 48 + Math.sin(t * 1.9) * 4 * m;
+      target.browLY -= 5 * m + Math.sin(t * 1.8) * 1.2 * m;
+      target.browRY += 1.5 * m - Math.sin(t * 1.8) * 0.8 * m;
+      target.browLTilt = -8 * m; target.browRTilt = -5 * m;
     } else if (erroring) {
       target.armL = 12; target.foreL = 6; target.armR = -12; target.foreR = -6;
+      target.browLY += 2.5 * m; target.browRY += 2.5 * m;
+      target.browLTilt = 9 * m; target.browRTilt = -9 * m;
     } else if (sleep > 0.5) {
       target.armL = 3; target.foreL = 2; target.armR = -3; target.foreR = -2;
+      target.browLY += 3.5; target.browRY += 3.5;
+      target.browLTilt = -sleep * 1.5; target.browRTilt = sleep * 1.5;
     }
     // Inertia: a forearm trails its upper arm when that swings.
     target.foreL -= J.armL.v * 0.05;
