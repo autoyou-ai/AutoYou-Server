@@ -13,7 +13,10 @@ Fresh installations enable Admin, Ads Watching, Audio, Backup, Client Browser
 Control, Donation, Earnings, Game, Internet, Memory, Notes, Notify, Page, Persona,
 My Prompt, Remote Desktop, Tasks, and TV. The everyday agent websites open without
 an additional OTP prompt by default. Explicit per-agent OTP requirements still
-win. The Admin website remains opt-in for paired browsers and retains its own
+win. My Prompt is not an everyday website: it holds your AI prompts and replies,
+so it asks for the OTP and follows the global OTP setting unless an admin opens it.
+It collects nothing until you turn collection on or connect a hook. The Admin
+website remains opt-in for paired browsers and retains its own
 authentication. Installing Remote Desktop does not enable capture or input
 permissions. TV contains only media the user chooses to publish.
 

@@ -8,8 +8,24 @@ from autoyou_agents.shared_tools import scheduler_mission_control as security
 EVERYDAY_WEBSITES = (
     "ads_watching_agent", "audio_agent", "backup_agent", "donation_agent",
     "earnings_agent", "game_agent", "notes_agent", "notify_agent", "page_agent",
-    "persona_agent", "prompts_agent", "remote_desktop_agent", "tasks_agent", "tv_agent",
+    "persona_agent", "remote_desktop_agent", "tasks_agent", "tv_agent",
 )
+
+
+def test_prompt_history_website_asks_for_otp_by_default(monkeypatch):
+    # My Prompt holds the owner's AI prompts and replies, with export and hook
+    # tokens, so it is not an everyday website: it asks for the OTP and follows
+    # the global switch unless an admin opens it for this agent.
+    cfg = server._default_config()
+    monkeypatch.setattr(server.STATE, "config", cfg)
+    monkeypatch.setattr(security, "_runtime_server", lambda: server)
+    monkeypatch.setattr(security, "_totp_capabilities", lambda: {"totp_configured": True})
+    monkeypatch.setattr(server, "agent_has_assigned_2fa_profile", lambda _: False)
+    settings = security._get_agent_security_settings("prompts_agent")
+    assert settings["auth_mode"] == "totp"
+    assert settings["bypass_global_otp"] is False
+    cfg.setdefault("agent_ui_security", {})["prompts_agent"] = {"auth_mode": "open"}
+    assert security._get_agent_security_settings("prompts_agent")["auth_mode"] == "open"
 
 
 @pytest.mark.parametrize("agent_name", EVERYDAY_WEBSITES)
