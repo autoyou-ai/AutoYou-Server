@@ -2318,6 +2318,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--host", default=os.getenv("AUTOYOU_BIND_HOST", "127.0.0.1"))
     parser.add_argument("--python", dest="python_executable", default=sys.executable, help="System Python used to create .venv when needed.")
+    parser.add_argument(
+        "--secure-desktop",
+        dest="secure_desktop",
+        choices=("install", "uninstall", "status", "service", "helper"),
+        default=None,
+        help=(
+            "Windows only: install, uninstall or check the helper that lets Remote Desktop type on the "
+            "lock screen. Run install from an Administrator prompt after the environment is prepared."
+        ),
+    )
     args = parser.parse_args(list(argv))
     if args.lite_source:
         lite_source = Path(args.lite_source).expanduser().resolve()
@@ -2327,13 +2337,105 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     return args
 
 
+def secure_desktop_args(argv: Sequence[str]) -> list[str] | None:
+    """The ``--secure-desktop`` sub-command and the arguments after it, or None."""
+    for index, arg in enumerate(argv):
+        if arg == "--secure-desktop":
+            return [str(item) for item in argv[index + 1:]]
+        if str(arg).startswith("--secure-desktop="):
+            return [str(arg).split("=", 1)[1], *(str(item) for item in argv[index + 1:])]
+    return None
+
+
+def run_secure_desktop_command(sub_args: Sequence[str]) -> int:
+    """Run ``--secure-desktop install|uninstall|status`` for this source checkout.
+
+    The Windows service re-launches the interpreter that ran ``install``. That
+    has to be the ``.venv`` python, which has pyautogui and the server code, not
+    the system python running this script, so the command goes through
+    ``autoyou_app.py`` in ``.venv`` exactly as the packaged launcher does.
+    """
+    venv_python = venv_python_path()
+    if venv_python.exists():
+        command = [str(venv_python), str(REPO_ROOT / "autoyou_app.py"), "--secure-desktop", *sub_args]
+        try:
+            return subprocess.call(command, cwd=str(REPO_ROOT))
+        except OSError as exc:
+            err(f"Could not start {venv_python}: {exc}")
+            return 1
+    if not sub_args or sub_args[0] in {"install", "service", "helper"}:
+        err(
+            "Prepare the environment first (python scripts/bootstrap_autoyou.py --install-only), "
+            "then rerun this from an Administrator prompt."
+        )
+        return 1
+    from shared.windows_secure_desktop import main as secure_desktop_main
+
+    return secure_desktop_main(list(sub_args))
+
+
+def macos_can_post_input_events() -> bool | None:
+    """Whether macOS lets this terminal post keyboard and pointer events (None: unknown)."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        import ctypes
+        import ctypes.util
+
+        library = ctypes.util.find_library("CoreGraphics") or (
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+        )
+        preflight = getattr(ctypes.CDLL(library), "CGPreflightPostEventAccess", None)
+        if preflight is None:
+            return None
+        preflight.argtypes = []
+        preflight.restype = ctypes.c_bool
+        return bool(preflight())
+    except Exception:
+        return None
+
+
+def report_remote_desktop_input_readiness() -> None:
+    """Say up front when Remote Desktop taps and keys cannot reach a locked screen.
+
+    Windows draws the lock screen on the Winlogon desktop, which only the SYSTEM
+    secure desktop helper can type into. On macOS the app running this script
+    (Terminal, iTerm, VS Code) needs Accessibility access, or every remote tap
+    and key press, including a lock-screen password, is silently dropped.
+    """
+    try:
+        if _is_windows():
+            from shared.windows_secure_desktop import secure_desktop_status
+
+            if not secure_desktop_status().get("installed"):
+                info(
+                    "Remote Desktop cannot type on the Windows lock screen until the AutoYou Secure "
+                    "Desktop Helper is installed. From an Administrator prompt run: "
+                    "python scripts/bootstrap_autoyou.py --secure-desktop install "
+                    "(or use Video & Calls > Remote Desktop in the Admin UI)."
+                )
+        elif macos_can_post_input_events() is False:
+            warn(
+                "macOS has not allowed this terminal to control the computer, so Remote Desktop taps "
+                "and key presses (including a lock-screen password) will be ignored. Turn it on in "
+                "System Settings > Privacy & Security > Accessibility, then restart this script."
+            )
+    except Exception:
+        pass
+
+
 def main(argv: Sequence[str]) -> int:
     os.chdir(REPO_ROOT)
+    secure_desktop_command = secure_desktop_args(argv)
+    if secure_desktop_command is not None:
+        return run_secure_desktop_command(secure_desktop_command)
+
     host_explicit = bool(os.getenv("AUTOYOU_BIND_HOST")) or any(
         arg == "--host" or str(arg).startswith("--host=")
         for arg in argv
     )
     args = parse_args(argv)
+    report_remote_desktop_input_readiness()
     components = resolve_components(args.profile, args.with_components, args.without_components)
 
     print_profile_summary(args.profile, components)

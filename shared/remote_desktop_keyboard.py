@@ -19,7 +19,10 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import os
+import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -100,6 +103,50 @@ def note_remote_desktop_activity() -> None:
         REMOTE_DESKTOP_KEEP_AWAKE.touch()
     except Exception:
         pass
+
+
+# A dark Mac display spends the first remote key press waking up, so a
+# lock-screen password loses its first character. ``caffeinate -u`` declares
+# user activity, which turns the display on. It runs in the background and at
+# most once per interval, so steady typing is never slowed down.
+_DISPLAY_WAKE_LOCK = threading.Lock()
+_DISPLAY_WAKE_STATE: Dict[str, Any] = {"asserted_at": float("-inf"), "input_at": float("-inf"), "proc": None}
+_DISPLAY_WAKE_INTERVAL_SECONDS = 5.0
+# After this long without remote input the display may have gone dark.
+_DISPLAY_WAKE_IDLE_SECONDS = 30.0
+_DISPLAY_WAKE_SETTLE_SECONDS = 0.35
+
+
+def wake_display_for_remote_input(*, settle: bool = False) -> None:
+    """Wake a dark or locked Mac display before remote input lands. Never raises.
+
+    With ``settle``, the first input after a quiet spell waits a moment for the
+    display, so a typed character is not spent waking it.
+    """
+    if sys.platform != "darwin":
+        return
+    now = time.monotonic()
+    started = False
+    with _DISPLAY_WAKE_LOCK:
+        idle_for = now - _DISPLAY_WAKE_STATE["input_at"]
+        _DISPLAY_WAKE_STATE["input_at"] = now
+        proc = _DISPLAY_WAKE_STATE["proc"]
+        # poll() also reaps the previous child once it has exited.
+        running = proc is not None and proc.poll() is None
+        if not running and now - _DISPLAY_WAKE_STATE["asserted_at"] >= _DISPLAY_WAKE_INTERVAL_SECONDS:
+            _DISPLAY_WAKE_STATE["asserted_at"] = now
+            try:
+                _DISPLAY_WAKE_STATE["proc"] = subprocess.Popen(
+                    ["caffeinate", "-u", "-t", "2"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                started = True
+            except Exception:
+                _DISPLAY_WAKE_STATE["proc"] = None
+    if settle and started and idle_for >= _DISPLAY_WAKE_IDLE_SECONDS:
+        time.sleep(_DISPLAY_WAKE_SETTLE_SECONDS)
 
 
 def load_remote_input_backend() -> Any:
@@ -297,6 +344,7 @@ def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool
         except Exception:
             return False
         pyautogui = pyautogui_module
+        wake_display_for_remote_input(settle=True)
 
     try:
         pyautogui.FAILSAFE = False

@@ -619,6 +619,8 @@ def test_audio_manager_reload_settings_cancels_inflight_tts_without_restarting_s
         "stt": dict(initial_settings["stt"]),
     }
     manager = AudioManager.__new__(AudioManager)
+    manager._stt_enabled = True
+    manager.recorder = object()
     manager.settings_provider = lambda: current_settings
     manager._settings_lock = threading.Lock()
     manager._settings_snapshot = initial_settings

@@ -26,6 +26,7 @@ from .remote_desktop_keyboard import (
     load_remote_input_backend,
     note_remote_desktop_activity,
     release_stuck_modifiers,
+    wake_display_for_remote_input,
 )
 from .windows_secure_desktop import SecureDesktopError
 
@@ -249,6 +250,8 @@ def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = N
     note_remote_desktop_activity()
     try:
         backend = _control_backend(pyautogui)
+        if pyautogui is None:
+            wake_display_for_remote_input()
         try:
             backend.FAILSAFE = False
             backend.PAUSE = 0
