@@ -1950,7 +1950,8 @@ class AudioManager:
             # short-lived subprocess. Cancel any in-flight speech first so the
             # next utterance picks up the new voice/rate immediately.
             self.stop_speaking(source="reload_settings")
-            if not self._stt_enabled or self.recorder is not None:
+            stt_on = getattr(self, "_stt_enabled", True)
+            if not stt_on or getattr(self, "recorder", None) is not None:
                 self._emit_status("warming", "Applying new voice settings...")
             LOGGER.info("TTS settings changed, reconfiguring (provider=%s rate=%s voice=%s)",
                         settings["tts"]["provider"], settings["tts"]["rate"],
@@ -1958,12 +1959,13 @@ class AudioManager:
 
         self._setup_tts(settings)
 
-        if stt_changed and self._stt_enabled:
+        stt_on = getattr(self, "_stt_enabled", True)
+        if stt_changed and stt_on:
             self._restart_stt(settings, initial=initial)
         elif tts_changed:
             # A TTS change does not complete an in-flight STT initialization
             # or recover failed STT. Preserve that pipeline's real status.
-            if not self._stt_enabled or self.recorder is not None:
+            if not stt_on or getattr(self, "recorder", None) is not None:
                 self._emit_status("ready", "Voice pipeline ready.")
 
     def _current_settings(self) -> Dict[str, Any]:

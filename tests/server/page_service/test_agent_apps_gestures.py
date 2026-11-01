@@ -149,7 +149,7 @@ def test_sliding_a_finger_previews_apps_without_opening_any(phone):
         phone.touch("touchMove", (x0 + (x2 - x0) * step / 10, y0))
         phone.page.wait_for_timeout(25)
     phone.page.wait_for_timeout(80)
-    assert phone.page.inner_text("#dock-name") == "Tasks Mission Control"
+    assert phone.page.text_content("#dock-name") == "Tasks Mission Control"
     phone.touch("touchEnd")
     phone.page.wait_for_timeout(400)
     assert phone.page.url == phone.url
@@ -182,9 +182,9 @@ def test_a_tap_opens_and_a_vertical_swipe_scrolls(phone):
     phone.page.set_viewport_size({"width": 390, "height": 420})
     phone.page.wait_for_timeout(200)
     before = phone.page.evaluate("window.scrollY")
-    phone.touch("touchStart", (195, 380))
+    phone.touch("touchStart", (195, 300))
     for step in range(1, 12):
-        phone.touch("touchMove", (195, 380 - step * 28))
+        phone.touch("touchMove", (195, 300 - step * 24))
         phone.page.wait_for_timeout(16)
     phone.touch("touchEnd")
     phone.page.wait_for_timeout(500)
@@ -203,6 +203,20 @@ def test_a_tap_opens_and_a_vertical_swipe_scrolls(phone):
 
 
 def test_swiping_the_description_collapses_the_dock_and_the_grabber_restores_it(phone):
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
+
+    # Swipe grabber up to bring it up first
+    x, y = phone.page.evaluate(
+        "() => { const r = document.querySelector('.dock-grab').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
+    )
+    phone.touch("touchStart", (x, y))
+    for step in range(1, 6):
+        phone.touch("touchMove", (x, y - step * 9))
+        phone.page.wait_for_timeout(20)
+    phone.touch("touchEnd")
+    phone.page.wait_for_timeout(350)
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "0"
+
     x, y = phone.page.evaluate(
         "() => { const r = document.querySelector('#dock-desc').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
     )
@@ -236,7 +250,24 @@ def test_swiping_the_top_grabber_collapses_and_restores_the_dock(phone):
     assert phone.page.evaluate(
         "() => !!(document.querySelector('.dock-grab').compareDocumentPosition(document.querySelector('#dock-content')) & Node.DOCUMENT_POSITION_FOLLOWING)"
     )
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
 
+    # Swiping grabber up brings the dock up
+    x, y = phone.page.evaluate(
+        "() => { const r = document.querySelector('.dock-grab').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
+    )
+    phone.touch("touchStart", (x, y))
+    for step in range(1, 6):
+        phone.touch("touchMove", (x, y - step * 9))
+        phone.page.wait_for_timeout(20)
+    phone.touch("touchEnd")
+    phone.page.wait_for_timeout(350)
+
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "0"
+    assert phone.page.get_attribute(".dock-grab", "aria-expanded") == "true"
+    assert phone.page.evaluate("getComputedStyle(document.querySelector('#dock-content')).visibility") == "visible"
+
+    # Swiping grabber down collapses it
     x, y = phone.page.evaluate(
         "() => { const r = document.querySelector('.dock-grab').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
     )
@@ -250,6 +281,7 @@ def test_swiping_the_top_grabber_collapses_and_restores_the_dock(phone):
     assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
     assert phone.page.evaluate("getComputedStyle(document.querySelector('#dock-content')).visibility") == "hidden"
 
+    # Swiping grabber up restores it
     x, y = phone.page.evaluate(
         "() => { const r = document.querySelector('.dock-grab').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
     )
@@ -375,3 +407,32 @@ def test_desktop_mouse_and_keyboard(browser, base_url):
     page.wait_for_timeout(350)
     assert names()[1] == moved
     context.close()
+
+
+def test_autoyougameinput_swipe_dock_gestures(browser, base_url):
+    phone = Phone(browser, base_url)
+    phone.page.wait_for_selector("#grid .cell")
+    phone.page.wait_for_timeout(500)
+
+    # By default on mobile viewport, dock is collapsed
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
+
+    # Native swipe up event dispatched via autoyougameinput
+    phone.page.evaluate("""
+        window.dispatchEvent(new CustomEvent('autoyougameinput', {
+            detail: { type: 'gesture', gesture: 'swipe', direction: 'up' }
+        }));
+    """)
+    phone.page.wait_for_timeout(200)
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "0"
+    assert phone.page.inner_text("#dock-desc").strip() != ""
+
+    # Native swipe down event dispatched via autoyougameinput
+    phone.page.evaluate("""
+        window.dispatchEvent(new CustomEvent('autoyougameinput', {
+            detail: { type: 'gesture', gesture: 'swipe', direction: 'down' }
+        }));
+    """)
+    phone.page.wait_for_timeout(200)
+    assert phone.page.get_attribute("#dock", "data-collapsed") == "1"
+    phone.close()

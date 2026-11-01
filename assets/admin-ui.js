@@ -10326,14 +10326,16 @@
     }
 
     function buildTotpSecretModalHtml(payload) {
-        return "<div class=\"ayu-grid\"><div class=\"ayu-note ayu-note-green\"><strong>Manual setup key</strong><div class=\"ayu-mono\">" + escapeHtml(getByPath(payload, "secret", "")) + "</div></div><div class=\"ayu-note ayu-note-gray\"><strong>Authenticator setup link</strong><div class=\"ayu-mono\">" + escapeHtml(getByPath(payload, "otpauth", "")) + "</div></div></div>";
+        return "<div class=\"ayu-grid\"><div class=\"ayu-note ayu-note-green\"><strong>Manual setup key</strong><div class=\"ayu-mono\">" + escapeHtml(getByPath(payload, "secret", "")) + "</div></div><div class=\"ayu-note ayu-note-gray\"><strong>Authenticator setup link</strong><div class=\"ayu-mono\">" + escapeHtml(getByPath(payload, "otpauth", "")) + "</div></div></div>"
+            + "<div class=\"ayu-inline-actions\" style=\"margin-top:14px;justify-content:center;\">" + button("Show current code", "totp-show-code", "ghost", "key", "sm") + "</div>";
     }
 
     function showTotpSecretModal(payload, title, description) {
+        var qrUrl = getByPath(payload, "qr_url", "") || getByPath(payload, "qr_data_url", "");
         setModal({
             title: title,
             description: description,
-            imageUrl: getByPath(payload, "qr_url", ""),
+            imageUrl: qrUrl,
             html: buildTotpSecretModalHtml(payload),
             copyValue: getByPath(payload, "secret", "")
         });
@@ -10343,7 +10345,8 @@
         var safePeriod = Number(period) || 30;
         var safeSeconds = Math.max(0, Number(secondsRemaining) || safePeriod);
         var pct = Math.max(0, Math.min(100, Math.round((safeSeconds / safePeriod) * 100)));
-        return "<div class=\"ayu-totp-live\"><div class=\"ayu-kicker\">Current authenticator code</div><div id=\"ayu-totp-live-code\" class=\"ayu-totp-code\">" + escapeHtml(code) + "</div><div class=\"ayu-totp-meta\"><div class=\"ayu-progress\"><div id=\"ayu-totp-code-bar\" class=\"ayu-progress-fill\" style=\"width:" + escapeHtml(String(pct)) + "%\"></div></div><span id=\"ayu-totp-code-secs\" class=\"ayu-hint ayu-mono\">" + escapeHtml(String(safeSeconds)) + "s</span></div></div>";
+        return "<div class=\"ayu-totp-live\"><div class=\"ayu-kicker\">Current authenticator code</div><div id=\"ayu-totp-live-code\" class=\"ayu-totp-code\">" + escapeHtml(code) + "</div><div class=\"ayu-totp-meta\"><div class=\"ayu-progress\"><div id=\"ayu-totp-code-bar\" class=\"ayu-progress-fill\" style=\"width:" + escapeHtml(String(pct)) + "%\"></div></div><span id=\"ayu-totp-code-secs\" class=\"ayu-hint ayu-mono\">" + escapeHtml(String(safeSeconds)) + "s</span></div></div>"
+            + "<div class=\"ayu-inline-actions\" style=\"margin-top:14px;justify-content:center;\">" + button("Show authenticator QR", "totp-show-secret", "secondary", "qr", "sm") + "</div>";
     }
 
     async function showTotpCodeModal() {

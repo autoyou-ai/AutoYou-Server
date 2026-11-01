@@ -427,53 +427,110 @@ JS = r"""
     dock.setAttribute('data-collapsed', collapsed ? '1' : '0');
     dockGrab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     dockGrab.setAttribute('aria-label', collapsed ? 'Show selected app details' : 'Hide selected app details');
+    if (!collapsed) {
+      if (dockBody) { dockBody.scrollTop = 0; }
+      if (dockDesc) { void dockDesc.offsetHeight; }
+    } else {
+      try {
+        if (state && state.focus && cells && cells[state.focus] && typeof cells[state.focus].scrollIntoView === 'function') {
+          cells[state.focus].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } catch (_) {}
+    }
     sizeDock();
   }
   function dockIsFixed() {
     try { return win.getComputedStyle(dock).position === 'fixed'; } catch (_) { return false; }
   }
+  function isScrollableDesc(target) {
+    return target && target.closest && target.closest('.dock-desc') && dockBody.scrollTop > 0;
+  }
+  function handleSwipeStart(y, target) {
+    if (!dockIsFixed()) { return null; }
+    if (isScrollableDesc(target)) { return null; }
+    var collapsed = dock.getAttribute('data-collapsed') === '1';
+    return { y0: y, y: y, collapsed: collapsed };
+  }
+  function handleSwipeMove(y, swipe) {
+    if (!swipe) { return null; }
+    var dy = y - swipe.y0;
+    if (swipe.collapsed && dy < -18) {
+      setDockCollapsed(false);
+      suppressDockGrabClickUntil = now() + 450;
+      return null;
+    }
+    if (!swipe.collapsed && dy > 18) {
+      setDockCollapsed(true);
+      suppressDockGrabClickUntil = now() + 450;
+      return null;
+    }
+    swipe.y = y;
+    return swipe;
+  }
+
   dock.addEventListener('click', function (e) {
     var open = e.target.closest ? e.target.closest('#dock-open') : null;
     if (open) { e.preventDefault(); openApp(shownName); return; }
     if (e.target.closest && e.target.closest('#dock-copy')) { copyLink(shownName); return; }
-    if (e.target.closest && e.target.closest('.dock-grab')) {
-      if (now() < suppressDockGrabClickUntil) { e.preventDefault(); return; }
-      setDockCollapsed(dock.getAttribute('data-collapsed') !== '1');
+    if (now() < suppressDockGrabClickUntil) { e.preventDefault(); return; }
+    var collapsed = dock.getAttribute('data-collapsed') === '1';
+    if (collapsed) {
+      setDockCollapsed(false);
       return;
     }
-    if (e.target.closest && e.target.closest('.dock-head')) {
-      dock.setAttribute('data-expanded', dock.getAttribute('data-expanded') === '1' ? '0' : '1');
-      sizeDock();
+    if (e.target.closest && (e.target.closest('.dock-grab') || e.target.closest('.dock-head'))) {
+      setDockCollapsed(true);
+      return;
     }
   });
-  dock.addEventListener('touchstart', function (e) {
-    dockSwipe = null;
-    if (e.touches.length !== 1 || !dockIsFixed()) { return; }
-    var target = e.target.closest ? e.target.closest('.dock-desc, .dock-grab') : null;
-    var collapsed = dock.getAttribute('data-collapsed') === '1';
-    if (collapsed && target && target.classList.contains('dock-grab')) {
-      dockSwipe = { y: e.touches[0].clientY, collapsed: true };
-    } else if (!collapsed && target && (
-      target.classList.contains('dock-grab') ||
-      (target.classList.contains('dock-desc') && dockBody.scrollTop <= 0)
-    )) {
-      dockSwipe = { y: e.touches[0].clientY, collapsed: false };
+
+  dock.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) { return; }
+    if (e.pointerType === 'touch') { return; }
+    if (e.target.closest && (e.target.closest('#dock-open') || e.target.closest('#dock-copy'))) { return; }
+    dockSwipe = handleSwipeStart(e.clientY, e.target);
+  });
+  dock.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'touch') { return; }
+    if (dockSwipe) {
+      dockSwipe = handleSwipeMove(e.clientY, dockSwipe);
     }
+  });
+  function endPointerSwipe(e) {
+    if (e.pointerType === 'touch') { return; }
+    dockSwipe = null;
+  }
+  dock.addEventListener('pointerup', endPointerSwipe);
+  dock.addEventListener('pointercancel', endPointerSwipe);
+
+  dock.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { return; }
+    if (e.target.closest && (e.target.closest('#dock-open') || e.target.closest('#dock-copy'))) { return; }
+    dockSwipe = handleSwipeStart(e.touches[0].clientY, e.target);
   }, { passive: true });
   dock.addEventListener('touchmove', function (e) {
-    if (!dockSwipe) { return; }
-    if (e.touches.length !== 1) { dockSwipe = null; return; }
-    var dy = e.touches[0].clientY - dockSwipe.y;
-    if ((dockSwipe.collapsed && dy < -24) || (!dockSwipe.collapsed && dy > 24)) {
-      if (e.cancelable) { e.preventDefault(); }
-      setDockCollapsed(!dockSwipe.collapsed);
-      dockSwipe = null;
-      suppressDockGrabClickUntil = now() + 500;
+    if (dockSwipe && e.touches.length === 1) {
+      var prev = dockSwipe;
+      dockSwipe = handleSwipeMove(e.touches[0].clientY, dockSwipe);
+      if (prev && !dockSwipe && e.cancelable) {
+        e.preventDefault();
+      }
     }
   }, { passive: false });
   function clearDockSwipe() { dockSwipe = null; }
   dock.addEventListener('touchend', clearDockSwipe, { passive: true });
   dock.addEventListener('touchcancel', clearDockSwipe, { passive: true });
+
+  win.addEventListener('autoyougameinput', function (e) {
+    var detail = e.detail;
+    if (!detail || detail.type !== 'gesture' || detail.gesture !== 'swipe') { return; }
+    if (!dockIsFixed()) { return; }
+    if (detail.direction === 'up' && dock.getAttribute('data-collapsed') === '1') {
+      setDockCollapsed(false);
+    } else if (detail.direction === 'down' && dock.getAttribute('data-collapsed') !== '1') {
+      setDockCollapsed(true);
+    }
+  });
   function sizeDock() {
     var fixed = false;
     try { fixed = win.getComputedStyle(dock).position === 'fixed'; } catch (_) {}

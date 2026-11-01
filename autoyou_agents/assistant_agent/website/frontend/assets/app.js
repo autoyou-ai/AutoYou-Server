@@ -273,13 +273,27 @@
 
   // ---- Microphone --------------------------------------------------------------
   function openCapture() {
-    if (window.isSecureContext === false) {
+    var isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])$/i.test(location.hostname);
+    if (!isLoopback && window.isSecureContext === false && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
       return Promise.reject(new Error("The microphone needs HTTPS (or this computer's own address). Open the Assistant through the HTTPS address and trust this server's certificate."));
     }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    var getMedia = null;
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      getMedia = function (constraints) { return navigator.mediaDevices.getUserMedia(constraints); };
+    } else {
+      var legacy = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+      if (legacy) {
+        getMedia = function (constraints) {
+          return new Promise(function (resolve, reject) {
+            legacy.call(navigator, constraints, resolve, reject);
+          });
+        };
+      }
+    }
+    if (!getMedia) {
       return Promise.reject(new Error("This browser cannot use a microphone."));
     }
-    return navigator.mediaDevices.getUserMedia({
+    return getMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     }).then(function (stream) {
       var Context = window.AudioContext || window.webkitAudioContext, ctx, source;

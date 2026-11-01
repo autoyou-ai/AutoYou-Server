@@ -284,9 +284,16 @@ h1 {
   background: var(--glass); border: 1px solid var(--line); box-shadow: var(--shadow);
   -webkit-backdrop-filter: blur(26px) saturate(1.6); backdrop-filter: blur(26px) saturate(1.6);
   transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.1), max-height 0.25s, padding 0.25s, gap 0.25s;
+  touch-action: pan-y;
+  transform: translateZ(0);
+  will-change: max-height, transform;
 }
-.dock-content { display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.7rem; min-height: 0; overflow: hidden; }
-.dock-grab { align-self: center; display: grid; flex: 0 0 1.4rem; place-items: center; width: 4.5rem; height: 1.4rem; color: var(--faint); }
+.dock-content {
+  display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.7rem; min-height: 0; overflow: hidden;
+  touch-action: pan-y;
+  will-change: opacity, visibility;
+}
+.dock-grab { align-self: center; display: grid; flex: 0 0 1.4rem; place-items: center; width: 4.5rem; height: 1.4rem; color: var(--faint); touch-action: none; }
 .dock-grab i { display: block; width: 2.4rem; height: 0.28rem; border-radius: 99px; background: currentColor; opacity: 0.5; }
 .dock-head { display: flex; align-items: center; gap: 0.85rem; min-width: 0; }
 .dock .icon { width: 3.6rem; border-radius: 23%; }
@@ -299,12 +306,13 @@ h1 {
 }
 .pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
 .pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
-.dock-body { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-right: 0.1rem; }
+.dock-body { min-height: 2.2rem; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-right: 0.1rem; touch-action: pan-y; }
 .dock-desc {
   margin: 0; color: var(--muted); font-size: calc(0.93rem * var(--sd)); line-height: 1.45;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  overflow: hidden; word-break: break-word; text-overflow: ellipsis;
 }
-.dock[data-expanded="1"] .dock-desc { display: block; -webkit-line-clamp: unset; }
+.dock[data-expanded="1"] .dock-desc { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
 .dock-meta { display: none; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
 .dock[data-expanded="1"] .dock-meta { display: flex; }
 .dock-actions { display: flex; gap: 0.6rem; }
@@ -323,8 +331,11 @@ h1 {
 
 @media (max-width: 61.999rem) {
   .dock-grab { touch-action: none; }
-  .dock[data-collapsed="1"] { max-height: 2rem; gap: 0; padding: 0 0.9rem; }
-  .dock[data-collapsed="1"] .dock-content { visibility: hidden; }
+  .dock-head { touch-action: none; }
+  .dock[data-collapsed="1"] { max-height: 2rem; gap: 0; padding: 0 0.9rem; cursor: pointer; }
+  .dock[data-collapsed="1"] .dock-grab { width: 100%; height: 2rem; }
+  .dock[data-collapsed="1"] .dock-content { visibility: hidden; pointer-events: none; }
+  .dock[data-collapsed="0"] .dock-content { visibility: visible; pointer-events: auto; }
 }
 
 /* ---------- appearance sheet ---------- */

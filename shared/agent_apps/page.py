@@ -165,8 +165,8 @@ __SPRITE__
         <p><button type="button" class="link" id="empty-clear">Clear search</button></p>
       </div>
     </main>
-    <aside class="dock" id="dock" data-expanded="0" data-collapsed="0" aria-label="About the selected app">
-      <button type="button" class="dock-grab" aria-label="Hide selected app details" aria-expanded="true" aria-controls="dock-content"><i></i></button>
+    <aside class="dock" id="dock" data-expanded="0" data-collapsed="1" aria-label="About the selected app">
+      <button type="button" class="dock-grab" aria-label="Show selected app details" aria-expanded="false" aria-controls="dock-content"><i></i></button>
       <div class="dock-content" id="dock-content">
         <div class="dock-head">
           <span class="icon" id="dock-icon" style="--a:#8e9bff;--b:#6a3df0"></span>
