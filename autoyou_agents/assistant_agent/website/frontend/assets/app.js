@@ -21,12 +21,19 @@
   var params = new URLSearchParams(location.search);
   var $ = function (id) { return document.getElementById(id); };
   var ui = {
-    body: document.body, status: $("status-text"), hint: $("hint"), you: $("you-text"), reply: $("reply-text"),
+    body: document.body, status: $("status-text"), hint: $("hint"),
+    conversation: $("conversation"), turns: $("turns"), toLatest: $("to-latest"),
     mic: $("mic-btn"), micLabel: $("mic-btn-label"), robotButton: $("robot-button"), settings: $("settings"),
     settingsBtn: $("settings-btn"), settingsClose: $("settings-close"), facts: $("server-facts"),
     unlock: $("unlock"), unlockBtn: $("unlock-btn"), unlockTitle: $("unlock-title"), unlockSub: $("unlock-sub"),
-    askForm: $("ask-form"), askInput: $("ask-input"), signout: $("signout-btn")
+    askForm: $("ask-form"), askInput: $("ask-input"), askSend: $("ask-send"), signout: $("signout-btn"),
+    clear: $("clear-btn")
   };
+
+  // The server draws its sign-in screen over this page. While it shows, this
+  // page stays still (no requests, no microphone), and signing in reloads it.
+  var AUTH = window.__AUTOYOU_AUTH__ || {};
+  var signedOut = Boolean(AUTH.required && !AUTH.authenticated);
 
   // ---- Preferences for this device ------------------------------------------
   var STORE = "autoyou-assistant:";
@@ -59,19 +66,19 @@
     capture: null, out: null, detector: null, modelRevision: "",
     endpoint: null, chunks: [], waited: 0, busy: false, via: "", wake: null, followUp: false,
     speech: null, turnTicket: 0, level: 0, outLevel: 0, bands: new Float32Array(7),
-    greetUntil: 0, perk: 0, errorUntil: 0, wantListening: false, reopenTimer: 0, wakeLock: null
+    greetUntil: 0, perk: 0, errorUntil: 0, wantListening: false, reopenTimer: 0, wakeLock: null,
+    // "call" while this device is in a call: the call owns the microphone.
+    pausedFor: "", pausedByServer: false, presenceTimer: 0, speakingReported: false,
+    // One microphone at a time: a second start while the first opens waits for it.
+    starting: null, hintTimer: 0
   };
 
   // ---- Server calls -----------------------------------------------------------
-  var reloading = false;
   function request(path, body, asBinary) {
     var options = { method: body === undefined ? "GET" : "POST", credentials: "same-origin", headers: {} };
     if (body !== undefined) { options.headers["Content-Type"] = "application/json"; options.body = JSON.stringify(body); }
     return fetch("./" + path, options).then(function (response) {
-      if (response.status === 401 && !reloading) {
-        reloading = true;
-        setTimeout(function () { location.reload(); }, 400);
-      }
+      if (response.status === 401) signedOutNow();
       if (asBinary && response.ok) return response.arrayBuffer();
       return response.json().catch(function () { return {}; }).then(function (data) {
         if (!response.ok || data.success === false) {
@@ -82,6 +89,27 @@
         return data;
       });
     });
+  }
+
+  // The sign-in ended while the page was open (the code expired, or it was
+  // signed out elsewhere). Show the sign-in screen once; never reload in a loop.
+  function signedOutNow() {
+    if (signedOut) return;
+    signedOut = true;
+    S.wantListening = false;
+    S.turnTicket += 1;
+    clearTimeout(S.presenceTimer); clearTimeout(S.reopenTimer);
+    closeCapture();
+    stopSpeaking();
+    setPhase("off");
+    var last = 0;
+    try { last = Number(sessionStorage.getItem(STORE + "authReload") || 0); } catch (e) { /* no storage */ }
+    if (Date.now() - last > 60000) {
+      try { sessionStorage.setItem(STORE + "authReload", String(Date.now())); } catch (e) { /* no storage */ }
+      setTimeout(function () { location.reload(); }, 400);
+    } else {
+      hint("Signed out. Reload this page to sign in again.", "warn");
+    }
   }
 
   // ---- Small helpers ----------------------------------------------------------
@@ -100,6 +128,7 @@
       command: S.followUp ? "Anything else?" : "I'm listening…",
       thinking: "Thinking…",
       speaking: "Speaking…",
+      paused: S.pausedFor === "call" ? "Paused for the call" : "Paused",
       error: "Something went wrong"
     }[S.phase] || "";
     ui.status.textContent = text;
@@ -108,10 +137,29 @@
     ui.mic.title = live ? "Stop listening" : "Start listening";
     ui.micLabel.textContent = ui.mic.title;
     ui.robotButton.setAttribute("aria-label", text + ". " + (live ? "Tap to talk now." : "Tap to start listening."));
+    renderAsk();
   }
-  function hint(text, tone) {
+  // The typed-question bar follows the voice: what it is doing, and a stop
+  // button while it thinks or speaks.
+  function busy() { return S.phase === "thinking" || S.phase === "speaking"; }
+  function renderAsk() {
+    var stop = busy() && !ui.askInput.value.trim();
+    ui.askForm.classList.toggle("can-stop", stop);
+    ui.askSend.setAttribute("aria-label", stop ? "Stop" : "Ask");
+    ui.askSend.title = stop ? "Stop (Esc)" : "Ask";
+    ui.askInput.placeholder = {
+      command: S.followUp ? "Listening for more… or type" : "Listening… or type",
+      thinking: "Thinking… type to ask something else",
+      speaking: "Speaking… press stop, or type",
+      paused: "Paused for the call. You can still type"
+    }[S.phase] || "Or type a question…";
+  }
+  function hint(text, tone, seconds) {
+    clearTimeout(S.hintTimer);
     ui.hint.textContent = text || "";
     ui.hint.className = "hint" + (tone ? " is-" + tone : "");
+    // Passing notes clear themselves, so an old one never sits under a new answer.
+    if (text && seconds) S.hintTimer = setTimeout(function () { if (ui.hint.textContent === text) hint(""); }, seconds * 1000);
   }
   function join(chunks) {
     var total = 0, i;
@@ -143,8 +191,10 @@
     for (var i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
     return 10 * Math.log10(sum / Math.max(1, samples.length) + 1e-12);
   }
-  // Speech start and end on audio time, the server's rule.
-  function endpointer() { return { noise: -60, speech: 0, silence: 0, started: false }; }
+  // Speech start and end on audio time, the server's rule. A follow-up needs a
+  // little more speech before it counts, so a click or the room echoing the last
+  // answer is not taken for a question.
+  function endpointer(startSeconds) { return { noise: -60, speech: 0, silence: 0, started: false, voiced: 0, start: startSeconds || 0.06 }; }
   function observe(endpoint, samples) {
     var seconds = samples.length / SR, level = rmsDbfs(samples);
     var speech = level >= Math.max(-50, endpoint.noise + 10);
@@ -156,7 +206,8 @@
     } else {
       endpoint.silence = 0;
       endpoint.speech += seconds;
-      if (endpoint.speech >= 0.06) endpoint.started = true;
+      endpoint.voiced += seconds;
+      if (endpoint.speech >= endpoint.start) endpoint.started = true;
     }
     return speech;
   }
@@ -244,7 +295,11 @@
       source.connect(analyser);
       var ratio = ctx.sampleRate / SR, position = 0, previous = 0;
       var node = ctx.createScriptProcessor(4096, 1, 1);
+      var capture = { ctx: ctx, stream: stream, source: source, node: node, analyser: analyser, freq: new Uint8Array(analyser.frequencyBinCount) };
       node.onaudioprocess = function (event) {
+        // Only the microphone in use is heard. A second one (a double start)
+        // would otherwise add every stretch of speech twice: "hey hey man man".
+        if (S.capture !== capture) return;
         var input = event.inputBuffer.getChannelData(0);
         if (Math.abs(ratio - 1) < 1e-9) { onChunk(Float64Array.from(input)); return; }
         var out = [];
@@ -265,18 +320,21 @@
       mute.gain.value = 0;
       node.connect(mute); mute.connect(ctx.destination);
       stream.getAudioTracks().forEach(function (track) {
-        track.addEventListener("ended", function () { if (S.capture && S.capture.stream === stream) micLost(); });
+        track.addEventListener("ended", function () { if (S.capture === capture) micLost(); });
       });
-      return { ctx: ctx, stream: stream, source: source, node: node, analyser: analyser, freq: new Uint8Array(analyser.frequencyBinCount) };
+      return capture;
     });
+  }
+  function stopCapture(capture) {
+    if (!capture) return;
+    try { capture.node.onaudioprocess = null; capture.node.disconnect(); capture.source.disconnect(); } catch (e) { /* gone */ }
+    capture.stream.getTracks().forEach(function (track) { track.stop(); });
+    try { var closing = capture.ctx.close(); if (closing && closing.catch) closing.catch(function () {}); } catch (e) { /* closed */ }
   }
   function closeCapture() {
     var capture = S.capture;
     S.capture = null;
-    if (!capture) return;
-    try { capture.node.disconnect(); capture.source.disconnect(); } catch (e) { /* gone */ }
-    capture.stream.getTracks().forEach(function (track) { track.stop(); });
-    try { var closing = capture.ctx.close(); if (closing && closing.catch) closing.catch(function () {}); } catch (e) { /* closed */ }
+    stopCapture(capture);
   }
   function micLost() {
     closeCapture();
@@ -300,18 +358,77 @@
     });
   }
 
+  // ---- Telling the server what this page is doing ---------------------------
+  // While this page listens, its device's other listeners stand down; while it
+  // speaks an answer, no wake counts in the home; while its device is in a
+  // call, the call owns the microphone and this page waits.
+  function presence(extra) {
+    var body = { listener_id: S.listenerId, listening: Boolean(S.capture) && !S.pausedFor };
+    if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
+    return request("api/assistant/presence", body).then(function (data) {
+      if (data.pause === "in_call" && !S.pausedFor && (S.capture || S.wantListening)) pauseFor("call", true);
+      else if (!data.in_call && S.pausedFor === "call" && S.pausedByServer) resumeAfterPause();
+      return data;
+    }).catch(function () { return null; });
+  }
+  function schedulePresence() {
+    clearTimeout(S.presenceTimer);
+    if (!S.capture && !S.pausedFor) return;
+    S.presenceTimer = setTimeout(function () { presence().then(schedulePresence); }, S.pausedFor ? 5000 : 15000);
+  }
+  function reportSpeaking(text) {
+    // Roughly how long the rest of the answer takes to say, renewed per stretch.
+    S.speakingReported = true;
+    presence({ speaking: true, seconds: Math.min(60, 1 + String(text || "").length / 14) });
+  }
+  function reportSpeakingDone() {
+    if (!S.speakingReported) return;
+    S.speakingReported = false;
+    presence({ speaking: false });
+  }
+  function pauseFor(reason, byServer) {
+    if (S.pausedFor) { S.pausedByServer = S.pausedByServer && Boolean(byServer); return; }
+    S.pausedFor = reason;
+    S.pausedByServer = Boolean(byServer);
+    S.turnTicket += 1;
+    stopSpeaking();
+    clearTimeout(S.reopenTimer);
+    closeCapture();
+    releaseWakeLock();
+    setPhase("paused");
+    hint(reason === "call" ? "Paused while this device is in a call. I'll listen again when it ends." : "Paused.");
+    presence({ listening: false, speaking: false });
+    schedulePresence();
+  }
+  function resumeAfterPause() {
+    if (!S.pausedFor) return;
+    S.pausedFor = "";
+    S.pausedByServer = false;
+    clearTimeout(S.presenceTimer);
+    if (S.wantListening) { hint(""); start(); }
+    else { setPhase("off"); hint("Tap the robot to start listening."); }
+  }
+
   // ---- Listening ---------------------------------------------------------------
   function start() {
     S.wantListening = true;
+    if (S.pausedFor) {
+      setPhase("paused");
+      hint("Paused while this device is in a call. I'll listen again when it ends.");
+      return Promise.resolve();
+    }
     if (S.capture) return Promise.resolve();
+    // Already opening (a tap or the mic button during the permission prompt):
+    // wait for that one rather than open a second microphone.
+    if (S.starting) return S.starting;
     if (!S.status || !S.status.enabled) {
       setPhase("off");
       hint("Assistant mode is off on the server. Turn it on in the Admin page.", "warn");
       return Promise.resolve();
     }
     setPhase("starting");
-    return openCapture().then(function (capture) {
-      if (!S.wantListening) { S.capture = capture; closeCapture(); return; }
+    var opening = openCapture().then(function (capture) {
+      if (!S.wantListening || S.pausedFor || S.capture) { stopCapture(capture); return; }
       S.capture = capture;
       return audioRunning(capture.ctx).then(function (running) {
         if (!running) {
@@ -322,7 +439,9 @@
         outContext() && audioRunning(outContext().ctx);
         return loadDetector();
       }).then(function () {
+        if (S.pausedFor || !S.wantListening) { closeCapture(); return; }
         resetToWaiting();
+        presence().then(schedulePresence);
         if (S.status.listening === "needs_training") {
           hint("No wake word is trained yet, so tap me (or press Space) and speak. Train one on the Admin page to talk hands-free.", "warn");
         } else if (S.status.listening === "text") {
@@ -345,16 +464,24 @@
       var denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError");
       hint(denied ? "Microphone access was blocked. Allow it for this site, then tap the robot." : (error.message || "The microphone could not start."), "error");
       chime("error");
+    }).then(function () {
+      if (S.starting === opening) S.starting = null;
     });
+    S.starting = opening;
+    return opening;
   }
   function stop() {
     S.wantListening = false;
+    S.pausedFor = "";
+    S.pausedByServer = false;
+    clearTimeout(S.presenceTimer);
     closeCapture();
     stopSpeaking();
     S.turnTicket += 1;
     setPhase("off");
     hint("Tap the robot or the microphone to listen again.");
     releaseWakeLock();
+    presence({ listening: false, speaking: false });
   }
   function resetToWaiting() {
     S.followUp = false;
@@ -363,16 +490,31 @@
     if (S.detector) S.detector.reset();
     setPhase(S.capture ? "waiting" : "off");
   }
-  function beginCommand(preRoll, via, alreadyAccepted, followUp) {
+  // Stop what it is saying or working on, and listen for the word again.
+  function stopTurn() {
+    S.turnTicket += 1;
+    stopSpeaking();
+    hint("Stopped.", "", 2);
+    markReplyStopped();
+    resetToWaiting();
+  }
+  function beginCommand(preRoll, via, alreadyAccepted, followUp, score) {
     S.via = via;
     S.followUp = Boolean(followUp);
-    S.wake = alreadyAccepted ? Promise.resolve(true) : request("api/assistant/wake", { listener_id: S.listenerId }).then(function (data) {
-      if (!data.accepted) hint("Another device in the room is answering.", "warn");
+    // The server answers after a moment: the device that heard the word best
+    // in this home answers, and the others stay quiet.
+    var claim = { listener_id: S.listenerId };
+    if (typeof score === "number" && isFinite(score)) claim.score = score;
+    S.wake = alreadyAccepted ? Promise.resolve(true) : request("api/assistant/wake", claim).then(function (data) {
+      if (!data.accepted) {
+        hint(data.message || "Another device in the room is answering.", "warn");
+        if (data.pause === "in_call") pauseFor("call", true);
+      }
       return Boolean(data.accepted);
     }).catch(function (error) { hint(error.message, "error"); return false; });
     S.chunks = preRoll ? [preRoll] : [];
     S.waited = 0;
-    S.endpoint = endpointer();
+    S.endpoint = endpointer(followUp ? 0.25 : 0.06);
     S.perk = 1;
     setPhase("command");
     if (!followUp) chime("wake");
@@ -381,12 +523,12 @@
   function onChunk(chunk) {
     if (!S.capture) return;
     // Half duplex: what the speaker says is never taken as a question.
-    if (S.phase === "thinking" || S.phase === "speaking" || S.phase === "starting" || S.phase === "off") return;
+    if (S.phase === "thinking" || S.phase === "speaking" || S.phase === "starting" || S.phase === "off" || S.phase === "paused") return;
     var speech = observe(S.endpoint, chunk);
     if (S.phase === "waiting") {
       if (S.detector) {
         var hit = S.detector.feed(chunk);
-        if (hit) beginCommand(S.status.confirm === "both" ? hit.preRoll : null, "voice", false, false);
+        if (hit) beginCommand(S.status.confirm === "both" ? hit.preRoll : null, "voice", false, false, hit.score);
         return;
       }
       if (S.status.listening !== "text" || S.busy) return;
@@ -400,7 +542,11 @@
           audio_base64: wav(audio), require_phrase: true, listener_id: S.listenerId, spot_wake: true
         }).then(function (result) {
           if (S.phase !== "waiting") return;
-          if (result.matched && result.wake_accepted === false) { hint("Another device in the room is answering.", "warn"); return; }
+          if (result.matched && result.wake_accepted === false) {
+            hint(result.message || "Another device in the room is answering.", "warn");
+            if (result.pause === "in_call") pauseFor("call", true);
+            return;
+          }
           if (result.matched && result.command) { chime("wake"); return ask(result.command, "text"); }
           if (result.matched) beginCommand(null, "text", true, false);
         }).catch(function () {}).then(function () { S.busy = false; });
@@ -424,7 +570,15 @@
 
   function finishCommand() {
     var audio = join(S.chunks), via = S.via, followUp = S.followUp, wake = S.wake;
+    var voiced = S.endpoint ? S.endpoint.voiced : 1;
     S.chunks = [];
+    // Hardly any speech (a cough, a click, the room): nothing to ask. A follow-up
+    // simply goes back to waiting; nobody has to hear "didn't catch that".
+    if (voiced < 0.2) {
+      if (!followUp) hint("Sorry, I didn't catch that.", "", 4);
+      resetToWaiting();
+      return;
+    }
     setPhase("thinking");
     chime("done");
     var ticket = ++S.turnTicket;
@@ -437,7 +591,9 @@
       if (!result) { resetToWaiting(); return; }
       var text = String(result.command || "").trim();
       if (!text) {
-        hint(S.status.confirm === "both" && !result.matched && via === "voice" ? "That didn't sound like the wake word, so nothing was sent." : "Sorry, I didn't catch that.");
+        if (!followUp) {
+          hint(S.status.confirm === "both" && !result.matched && via === "voice" ? "That didn't sound like the wake word, so nothing was sent." : "Sorry, I didn't catch that.", "", 4);
+        }
         resetToWaiting();
         return;
       }
@@ -449,15 +605,29 @@
   }
 
   // ---- Asking and answering -------------------------------------------------
+  // A quick answer comes back with the question. A slow one (a big local model,
+  // a web search) is collected afterwards, so no proxy gives up on a long wait.
+  function askServer(text, via, ticket) {
+    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "" }).then(function (data) {
+      return data.pending ? collect(data.turn_id, ticket) : data;
+    });
+  }
+  function collect(turnId, ticket) {
+    if (ticket !== S.turnTicket) return Promise.resolve(null);
+    return request("api/assistant/turn/" + encodeURIComponent(turnId)).then(function (data) {
+      return data.pending ? collect(turnId, ticket) : data;
+    });
+  }
   function ask(text, via) {
     var ticket = ++S.turnTicket;
     stopSpeaking();
-    ui.you.textContent = text;
-    ui.reply.textContent = "";
+    markReplyStopped();
+    addTurn("you", text);
+    addTurn("bot", "");
     hint("");
     setPhase("thinking");
-    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "" }).then(function (data) {
-      if (ticket !== S.turnTicket) return;
+    return askServer(text, via, ticket).then(function (data) {
+      if (!data || ticket !== S.turnTicket) return;
       var reply = plain(data.reply || "") || "Done.";
       return speakReply(reply, ticket).then(function () {
         if (ticket !== S.turnTicket) return;
@@ -465,6 +635,7 @@
       });
     }).catch(function (error) {
       if (ticket !== S.turnTicket) return;
+      dropEmptyReply();
       fail(error.message || "The assistant could not answer.");
     });
   }
@@ -472,12 +643,13 @@
     if (!S.capture) { setPhase("off"); return; }
     if (!(S.status && S.status.follow_up)) { resetToWaiting(); return; }
     // A short window for the next question without the wake word. The mic
-    // stays closed a moment longer so the end of the reply is not heard.
+    // stays closed a moment longer, so the room's echo of the answer has died
+    // away before it listens.
     setTimeout(function () {
       if (ticket === S.turnTicket && S.capture && (S.phase === "speaking" || S.phase === "thinking")) {
         beginCommand(null, "follow_up", true, true);
       }
-    }, 450);
+    }, 650);
   }
   function fail(message) {
     S.errorUntil = performance.now() + 2200;
@@ -515,20 +687,103 @@
     if (current.trim()) out.push(current.trim());
     return out.filter(Boolean);
   }
+  // ---- The conversation on screen ---------------------------------------------
+  // Questions and answers stay in a list that scrolls (wheel, touch or keys)
+  // without a scrollbar. It is kept on this device only, for this page's
+  // conversation, and can be cleared in Settings.
+  var HISTORY_LIMIT = 60;
+  var history = (function () {
+    var saved = load("history", []);
+    return Array.isArray(saved) ? saved.filter(function (item) {
+      return item && (item.who === "you" || item.who === "bot") && typeof item.text === "string";
+    }).slice(-HISTORY_LIMIT) : [];
+  })();
+  var replyEl = null;
+  function saveHistory() { save("history", history.slice(-HISTORY_LIMIT)); }
+  function nearBottom() {
+    var box = ui.conversation;
+    return !box || box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  }
+  function toLatest(smooth) {
+    var box = ui.conversation;
+    if (!box) return;
+    box.scrollTo ? box.scrollTo({ top: box.scrollHeight, behavior: smooth ? "smooth" : "auto" }) : (box.scrollTop = box.scrollHeight);
+    ui.toLatest.hidden = true;
+  }
+  function follow(wasNear) {
+    // Keep the newest words in view, unless someone scrolled up to read.
+    if (wasNear) toLatest(true); else ui.toLatest.hidden = false;
+  }
+  function turnElement(who, text) {
+    var item = document.createElement("li");
+    item.className = "turn " + who;
+    var p = document.createElement("p");
+    p.textContent = text;
+    item.appendChild(p);
+    return item;
+  }
+  function markEarlier() {
+    Array.prototype.forEach.call(ui.turns.children, function (item, index, all) {
+      item.classList.toggle("earlier", index < all.length - 2);
+    });
+  }
+  function renderHistory() {
+    ui.turns.textContent = "";
+    history.forEach(function (item) { ui.turns.appendChild(turnElement(item.who, item.text)); });
+    markEarlier();
+    replyEl = null;
+    toLatest(false);
+  }
+  function addTurn(who, text) {
+    var wasNear = nearBottom();
+    var item = turnElement(who, text);
+    ui.turns.appendChild(item);
+    while (ui.turns.children.length > HISTORY_LIMIT) ui.turns.removeChild(ui.turns.firstChild);
+    if (who === "bot") replyEl = item.querySelector("p");
+    else { history.push({ who: who, text: text, at: Date.now() }); saveHistory(); }
+    markEarlier();
+    follow(wasNear);
+  }
+  function dropEmptyReply() {
+    if (replyEl && !replyEl.textContent) { var item = replyEl.parentNode; if (item) item.remove(); replyEl = null; markEarlier(); }
+  }
+  function keepReply() {
+    if (!replyEl || replyEl.dataset.kept || !replyEl.textContent.trim()) return;
+    replyEl.dataset.kept = "1";
+    history.push({ who: "bot", text: replyEl.textContent.trim(), at: Date.now() });
+    saveHistory();
+  }
+  function markReplyStopped() {
+    if (!replyEl) return;
+    if (!replyEl.textContent) { dropEmptyReply(); return; }
+    // What was not said yet stays readable, just dimmer, and stays in the history.
+    Array.prototype.forEach.call(replyEl.querySelectorAll(".saying"), function (span) { span.className = "said"; });
+    keepReply();
+  }
   function showReply(parts, index) {
-    ui.reply.textContent = "";
+    if (!replyEl) addTurn("bot", "");
+    var wasNear = nearBottom();
+    replyEl.textContent = "";
     parts.forEach(function (part, i) {
       var span = document.createElement("span");
       span.className = i < index ? "said" : (i === index ? "saying" : "unsaid");
       span.textContent = part + " ";
-      ui.reply.appendChild(span);
+      replyEl.appendChild(span);
     });
-    var current = ui.reply.querySelector(".saying");
-    if (current && current.scrollIntoView) current.scrollIntoView({ block: "nearest" });
+    // The whole answer is out: keep it in the conversation.
+    if (index >= parts.length) keepReply();
+    follow(wasNear);
+  }
+  function clearHistory() {
+    history = [];
+    saveHistory();
+    renderHistory();
+    hint("Conversation cleared on this device.", "", 3);
   }
 
   function speakingEnabled() {
-    return !voiceOff && prefs.speak && (!S.status || S.status.speak_replies !== false);
+    // Never over a call on this device: the answer is shown instead.
+    return !voiceOff && !S.pausedFor && prefs.speak && (!S.status || S.status.speak_replies !== false);
   }
   function speakReply(text, ticket) {
     var parts = stretches(text);
@@ -542,9 +797,11 @@
       return fetches[i];
     }
     function step(i) {
-      if (ticket !== S.turnTicket) return Promise.resolve();
-      if (i >= parts.length) { showReply(parts, parts.length); return Promise.resolve(); }
+      if (ticket !== S.turnTicket) { reportSpeakingDone(); return Promise.resolve(); }
+      if (i >= parts.length) { showReply(parts, parts.length); reportSpeakingDone(); return Promise.resolve(); }
       showReply(parts, i);
+      // Other devices in the home ignore the wake word while this is said.
+      reportSpeaking(parts.slice(i).join(" "));
       var pending = fetchPart(i);
       fetchPart(i + 1);
       var played = pending ? pending.then(function (audio) {
@@ -606,12 +863,14 @@
   function stopSpeaking() {
     if (S.speech) S.speech.stop();
     if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) { /* none */ } }
+    reportSpeakingDone();
   }
 
   // ---- Talk now: tap, Space, or the microphone button -------------------------
   function talkNow() {
+    if (S.pausedFor) { hint("Paused while this device is in a call. Type a question instead, or try again after the call."); return; }
     if (!S.capture) { start(); return; }
-    if (S.phase === "speaking") { S.turnTicket += 1; stopSpeaking(); resetToWaiting(); beginCommand(null, "tap", true, false); return; }
+    if (S.phase === "speaking") { S.turnTicket += 1; stopSpeaking(); markReplyStopped(); resetToWaiting(); beginCommand(null, "tap", true, false); return; }
     if (S.phase === "waiting") { beginCommand(null, "tap", true, false); return; }
     if (S.phase === "command" && S.endpoint && S.endpoint.started) { finishCommand(); return; }
     if (S.phase === "command") { resetToWaiting(); }
@@ -666,8 +925,28 @@
     root: $("bot"), head: $("head"), torso: $("torso"), armL: $("arm-left"), armR: $("arm-right"),
     eyeL: $("eye-l"), eyeR: $("eye-r"), smile: $("mouth-smile"), mouth: $("mouth-open"), eq: $("eq"),
     think: $("think"), zzz: $("zzz"), antenna: $("antenna-glow"), earL: $("ear-l"), earR: $("ear-r"),
-    core: $("core"), shadow: $("shadow"), visor: $("visor")
+    core: $("core"), shadow: $("shadow"), visor: $("visor"), upper: $("upper"),
+    foreL: $("forearm-left"), foreR: $("forearm-right")
   };
+  // Joints: each follows its target like a damped spring (stiffness k, damping
+  // ratio z), so a move speeds up, overshoots a touch and settles, and a part
+  // carried by another lags behind it. Angles are in degrees, offsets in pixels.
+  function joint(x, k, z) { return { x: x, v: 0, k: k, c: 2 * z * Math.sqrt(k) }; }
+  var J = {
+    lean: joint(0, 38, 0.72), bodyY: joint(0, 95, 0.55), squash: joint(0, 240, 0.3),
+    headX: joint(0, 110, 0.62), headY: joint(0, 120, 0.5), tilt: joint(0, 55, 0.6),
+    armL: joint(6, 80, 0.55), armR: joint(-6, 80, 0.55),
+    foreL: joint(8, 150, 0.38), foreR: joint(-8, 150, 0.38)
+  };
+  function drive(j, target, dt) {
+    var a = j.k * (target - j.x) - j.c * j.v;
+    j.v += a * dt;
+    j.x += j.v * dt;
+  }
+  function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
+  // A tap squashes it like a soft toy; a wake word or a pointer arriving makes it perk up.
+  function boop() { J.squash.v -= 2.6; J.headY.v -= 40; }
+  function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; } }
   var eqBars = bot.eq ? bot.eq.querySelectorAll("rect") : [];
   var thinkDots = bot.think ? bot.think.querySelectorAll("circle") : [];
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -749,7 +1028,8 @@
       anim.blink = p < 1 ? 1 - p * 0.9 : p < 2 ? 0.1 + (p - 1) * 0.9 : 1;
       if (p >= 2) anim.blinkStart = -1;
     }
-    anim.sleep = ease(anim.sleep, phase === "off" ? 1 : 0, phase === "off" ? 0.04 : 0.2);
+    var resting = phase === "off" || phase === "paused";
+    anim.sleep = ease(anim.sleep, resting ? 1 : 0, resting ? 0.04 : 0.2);
     var eyeOpen = Math.max(0.1, anim.blink * (1 - anim.sleep * 0.88));
     var eyeScale = 1 + (phase === "command" ? 0.12 + S.level * 0.12 : 0) + S.perk * 0.12;
     anim.happy = ease(anim.happy, (phase === "speaking" && Math.sin(t * 0.8) > 0.55) || greeting ? 1 : 0, 0.2);
@@ -798,21 +1078,65 @@
     if (bot.zzz) bot.zzz.setAttribute("transform", "translate(0 " + (Math.sin(t * 1.2) * 4).toFixed(2) + ")");
     if (bot.visor) bot.visor.setAttribute("opacity", (1 - anim.sleep * 0.25).toFixed(3));
 
-    // Body: breathing, a perk on the wake word, nods while it talks, a shake on errors.
-    var breathe = Math.sin(t * 1.6) * 2.2 * motion * (1 - anim.sleep * 0.5);
-    var nod = phase === "speaking" ? S.outLevel * 4 * motion : 0;
-    var tiltTarget = phase === "thinking" ? 8 : phase === "command" ? -4 : anim.sleep * 6;
-    anim.tilt = ease(anim.tilt, tiltTarget + Math.sin(t * 0.7) * 1.5 * motion, 0.06);
-    var shake = erroring ? Math.sin(t * 30) * 3 * motion * Math.max(0, (S.errorUntil - now) / 2200) : 0;
-    var lift = -S.perk * 10 * motion;
-    if (bot.head) bot.head.setAttribute("transform", "translate(" + shake.toFixed(2) + " " + (breathe * 1.3 + nod + lift + anim.sleep * 8).toFixed(2) + ") rotate(" + (anim.tilt + shake).toFixed(2) + " 200 292)");
-    if (bot.torso) bot.torso.setAttribute("transform", "translate(0 " + (breathe * 0.6 + lift * 0.5).toFixed(2) + ")");
-    var waving = greeting ? -148 + Math.sin(t * 11) * 20 * motion : phase === "speaking" ? -14 - S.outLevel * 22 * motion : phase === "command" ? -18 : -6;
-    anim.armR = ease(anim.armR, waving, greeting ? 0.25 : 0.08);
-    anim.armL = ease(anim.armL, phase === "thinking" ? 26 : phase === "speaking" ? 10 + Math.sin(t * 2.4) * 5 * motion : 6 + breathe, 0.08);
-    if (bot.armR) bot.armR.setAttribute("transform", "translate(0 " + (breathe * 0.6 + lift * 0.5).toFixed(2) + ") rotate(" + anim.armR.toFixed(2) + " 288 322)");
-    if (bot.armL) bot.armL.setAttribute("transform", "translate(0 " + (breathe * 0.6 + lift * 0.5).toFixed(2) + ") rotate(" + anim.armL.toFixed(2) + " 112 322)");
-    if (bot.shadow) bot.shadow.setAttribute("rx", (96 - lift * 0.8 - breathe).toFixed(1));
+    // Body. Targets come from what it is doing; the springs above turn them into
+    // motion. Upper arms turn on the centre of the shoulder balls and forearms on
+    // the elbow balls, both drawn over the joint, and every angle stays inside a
+    // range where no part passes through another (the waving hand stays clear of
+    // the ear, the arms never sweep into the chest).
+    var m = motion, out = S.outLevel, sleep = anim.sleep;
+    var breathe = Math.sin(t * 1.6) * 2.2 * m * (1 - sleep * 0.5);
+    var pointer = anim.pointer && now - anim.pointerAt < 2500 ? anim.pointer : null;
+    var px = pointer ? pointer.x : 0;
+    var shake = erroring ? Math.sin(t * 30) * 3 * m * Math.max(0, (S.errorUntil - now) / 2200) : 0;
+    var target = {
+      lean: (Math.sin(t * 0.45) * 0.8 + px * 1.6 + (phase === "speaking" ? Math.sin(t * 1.3) * 1.2 * out : 0)) * m,
+      bodyY: breathe * 0.6 - S.perk * 5 * m + sleep * 2,
+      headX: shake + px * 3.5 * m,
+      headY: breathe * 0.7 + (phase === "speaking" ? out * 4 * m : 0) - S.perk * 6 * m + sleep * 8,
+      tilt: (phase === "thinking" ? 8 : phase === "command" ? -4 : sleep * 6) + Math.sin(t * 0.7) * 1.5 * m + px * 3 * m + shake,
+      armL: 6 + breathe * 0.6, foreL: 8,
+      armR: -6 - breathe * 0.6, foreR: -8
+    };
+    if (greeting) {
+      // A wave beside the head: upper arm out, forearm up, the hand waving from the elbow.
+      target.armR = -104 + Math.sin(t * 2.2) * 4 * m;
+      target.foreR = -55 + Math.sin(t * 11) * 18 * m;
+    } else if (phase === "speaking") {
+      target.armR = -12 - out * 16 * m; target.foreR = -14 - out * 18 * m + Math.sin(t * 3.1) * 4 * m;
+      target.armL = 9 + Math.sin(t * 2.4) * 4 * m; target.foreL = 10 + Math.sin(t * 2.9) * 5 * m;
+    } else if (phase === "command") {
+      target.armR = -16; target.foreR = -30;
+    } else if (phase === "thinking") {
+      target.armL = 22; target.foreL = 48 + Math.sin(t * 1.9) * 4 * m;
+    } else if (erroring) {
+      target.armL = 12; target.foreL = 6; target.armR = -12; target.foreR = -6;
+    } else if (sleep > 0.5) {
+      target.armL = 3; target.foreL = 2; target.armR = -3; target.foreR = -2;
+    }
+    // Inertia: a forearm trails its upper arm when that swings.
+    target.foreL -= J.armL.v * 0.05;
+    target.foreR -= J.armR.v * 0.05;
+    target.armL = clamp(target.armL, -8, 140); target.armR = clamp(target.armR, -140, 8);
+    target.foreL = clamp(target.foreL, -20, 75); target.foreR = clamp(target.foreR, -75, 20);
+    // Fixed small steps keep the springs steady on a slow device.
+    var steps = Math.max(1, Math.min(8, Math.ceil(dt / (1 / 120)))), h = dt / steps;
+    for (var s = 0; s < steps; s += 1) {
+      Object.keys(J).forEach(function (name) { drive(J[name], name === "squash" ? 0 : target[name], h); });
+    }
+    J.armL.x = clamp(J.armL.x, -10, 142); J.armR.x = clamp(J.armR.x, -142, 10);
+    J.foreL.x = clamp(J.foreL.x, -22, 78); J.foreR.x = clamp(J.foreR.x, -78, 22);
+    var sx = 1 - J.squash.x * 0.04, sy = 1 + J.squash.x * 0.06;
+    if (bot.root) bot.root.setAttribute("transform", "translate(200 512) scale(" + sx.toFixed(4) + " " + sy.toFixed(4) + ") translate(-200 -512)");
+    if (bot.upper) bot.upper.setAttribute("transform", "translate(0 " + J.bodyY.x.toFixed(2) + ") rotate(" + J.lean.x.toFixed(2) + " 200 448)");
+    if (bot.head) bot.head.setAttribute("transform", "translate(" + J.headX.x.toFixed(2) + " " + J.headY.x.toFixed(2) + ") rotate(" + J.tilt.x.toFixed(2) + " 200 292)");
+    if (bot.armL) bot.armL.setAttribute("transform", "rotate(" + J.armL.x.toFixed(2) + " 116 322)");
+    if (bot.armR) bot.armR.setAttribute("transform", "rotate(" + J.armR.x.toFixed(2) + " 284 322)");
+    if (bot.foreL) bot.foreL.setAttribute("transform", "rotate(" + J.foreL.x.toFixed(2) + " 116 388)");
+    if (bot.foreR) bot.foreR.setAttribute("transform", "rotate(" + J.foreR.x.toFixed(2) + " 284 388)");
+    if (bot.shadow) {
+      bot.shadow.setAttribute("rx", (96 + J.bodyY.x * 0.8 - breathe + J.squash.x * 6).toFixed(1));
+      bot.shadow.setAttribute("opacity", (0.28 - Math.min(0.08, Math.max(-0.08, J.bodyY.x * 0.01))).toFixed(3));
+    }
     document.documentElement.style.setProperty("--halo-scale", (0.7 + S.level * 0.25).toFixed(3));
   }
 
@@ -837,18 +1161,28 @@
     if (open) { bindPrefs(); ui.settingsClose.focus(); } else { ui.settingsBtn.focus(); }
   }
 
-  ui.robotButton.addEventListener("click", function () { outContext() && outContext().ctx.resume().catch(function () {}); talkNow(); });
-  ui.mic.addEventListener("click", function () { if (S.capture) stop(); else start(); });
+  ui.robotButton.addEventListener("click", function () {
+    outContext() && outContext().ctx.resume().catch(function () {});
+    boop();
+    talkNow();
+  });
+  ui.robotButton.addEventListener("pointerenter", function () { notice(); });
+  ui.mic.addEventListener("click", function () { if (S.capture || S.starting) stop(); else start(); });
   ui.settingsBtn.addEventListener("click", function () { toggleSettings(ui.settings.hidden); });
   ui.settingsClose.addEventListener("click", function () { toggleSettings(false); });
   ui.unlockBtn.addEventListener("click", onUnlockTap);
   ui.signout.addEventListener("click", function () {
     request("api/auth/logout", {}).catch(function () {}).then(function () { location.reload(); });
   });
+  ui.clear.addEventListener("click", clearHistory);
+  ui.toLatest.addEventListener("click", function () { toLatest(true); });
+  ui.conversation.addEventListener("scroll", function () { if (nearBottom()) ui.toLatest.hidden = true; }, { passive: true });
+  ui.askInput.addEventListener("input", renderAsk);
   ui.askForm.addEventListener("submit", function (event) {
     event.preventDefault();
     var text = ui.askInput.value.trim();
-    if (!text) return;
+    // While it thinks or speaks, the empty bar's button is a stop button.
+    if (!text) { if (busy()) stopTurn(); return; }
     ui.askInput.value = "";
     outContext() && outContext().ctx.resume().catch(function () {});
     ask(text, "typed");
@@ -857,7 +1191,7 @@
     var typing = event.target && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
     if (event.key === "Escape") {
       if (!ui.settings.hidden) { toggleSettings(false); return; }
-      if (S.phase === "speaking" || S.phase === "thinking") { S.turnTicket += 1; stopSpeaking(); resetToWaiting(); }
+      if (busy()) stopTurn();
       return;
     }
     if (!typing && (event.code === "Space" || event.key === " ") && !event.repeat) {
@@ -876,24 +1210,48 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") requestWakeLock();
   });
-  window.addEventListener("pagehide", function () { closeCapture(); });
+  window.addEventListener("pagehide", function () {
+    closeCapture();
+    // Best effort: the server also forgets a silent page after a short while.
+    try {
+      fetch("./api/assistant/presence", {
+        method: "POST", credentials: "same-origin", keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listener_id: S.listenerId, listening: false, speaking: false })
+      }).catch(function () {});
+    } catch (e) { /* page is going away */ }
+  });
 
   // For kiosks and embedded devices: a hardware button or a kiosk script can
   // drive the assistant without the screen (for example a GPIO button that
   // runs AutoYouAssistant.talk() through the browser's automation port).
+  // The v2 apps call pause("call") when a call starts on the device and
+  // resume() when it ends, so the call has the microphone to itself.
   window.AutoYouAssistant = {
     talk: talkNow,
     start: start,
     stop: stop,
     ask: function (text) { return ask(String(text || ""), "typed"); },
+    pause: function (reason) { pauseFor(String(reason || "call"), false); },
+    resume: function () {
+      if (!S.pausedFor) return;
+      // The app knows its own calls; the server is asked again only when it paused the page.
+      if (S.pausedByServer) { presence(); return; }
+      resumeAfterPause();
+    },
+    get paused() { return S.pausedFor; },
     get phase() { return S.phase; },
     get listening() { return Boolean(S.capture); }
   };
 
   // ---- Start --------------------------------------------------------------------
   applyRobotPref();
-  requestAnimationFrame(frame);
   setPhase("off");
+  // Signed out: the server's sign-in screen covers the page. Nothing here may
+  // run until it reloads the page after the code is accepted.
+  if (signedOut) return;
+  renderHistory();
+  requestAnimationFrame(frame);
   refreshStatus(true).then(function (status) {
     var param = params.get("autostart");
     var auto = param === "1" ? true : param === "0" ? false : (prefs.autoStart === null ? Boolean(status.auto_start) : Boolean(prefs.autoStart));

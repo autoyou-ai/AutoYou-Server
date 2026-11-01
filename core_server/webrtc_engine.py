@@ -57,7 +57,13 @@ from shared.room_bridge import (
 from shared.call_listener_coordinator import CallListenerCoordinator
 from shared.assistant_mode import (
     DEVICE_EVENTS as ASSISTANT_DEVICE_EVENTS,
+    HOME as ASSISTANT_HOME,
+    LISTENER_CALL as ASSISTANT_LISTENER_CALL,
+    LISTENER_DEVICE as ASSISTANT_LISTENER_DEVICE,
+    MAX_SPEAKING_SECONDS as ASSISTANT_MAX_SPEAKING_SECONDS,
     AssistantModeHub,
+    WakeListener,
+    _is_home_address as _assistant_is_home_address,
     handle_device_control as handle_assistant_device_control,
     local_transcriber,
 )
@@ -148,6 +154,7 @@ class WebRTCManager:
             submit=self._assistant_submit_threadsafe,
             transcribe=local_transcriber(),
             server_name=lambda: _runtime.get_configured_server_name(),
+            describe_listener=self._assistant_listener_for_session,
         )
         self.room_bridge_expiry_tasks: Dict[str, asyncio.Task] = {}
         self.http_proxy_request_tasks: Dict[str, Dict[str, asyncio.Task]] = {}  # session_id -> request_id -> proxy task
@@ -941,6 +948,76 @@ class WebRTCManager:
     def _session_streams_microphone(self, session_id: str) -> bool:
         state = self._background_audio_state_for_session(session_id)
         return bool(state.get("active") and (state.get("silent_recording") or state.get("assistant_listening")))
+
+    #: Public links: a device reached through one is outside the home.
+    _ASSISTANT_AWAY_TRANSPORTS = frozenset({"tunnelmole", "public", "pair"})
+
+    def _assistant_listener_for_session(self, session_id: str) -> WakeListener:
+        """A session as the wake arbiter sees it: its device, its place, its call.
+
+        Runs on the Assistant worker thread as well as the event loop, so it
+        only reads. A device paired from this computer is this computer; a
+        cloud-paired device whose connection runs over the internet, or one
+        on a public link, is away from home and decides its own wakes.
+        """
+        key = str(session_id or "").strip()
+        try:
+            identity = self._resolve_chat_identity(key)
+        except Exception:
+            identity = None
+        owner_key = self._owner_key_from_identity(identity) if identity is not None else ""
+        in_call = self._voice_call_client_active_for_session(key)
+        kind = ASSISTANT_LISTENER_CALL if in_call and self._assistant_gates_calls(key) else ASSISTANT_LISTENER_DEVICE
+        if self._same_machine_audio_session(key):
+            device = "this-computer"
+        else:
+            device = "webrtc:" + (owner_key or key)
+        place = "away:" + device if self._assistant_session_is_away(key, identity) else ASSISTANT_HOME
+        return WakeListener(key=key, kind=kind, device=device, place=place, in_call=in_call)
+
+    def _assistant_session_is_away(self, session_id: str, identity: Any) -> bool:
+        transport = str(getattr(identity, "transport", "") or "").strip().lower()
+        pairing_mode = str(getattr(identity, "pairing_mode", "") or "").strip().lower()
+        if transport in self._ASSISTANT_AWAY_TRANSPORTS:
+            return True
+        if transport != "cloud" and pairing_mode != "cloud_pair":
+            return False
+        # Cloud Pair says how the device found this computer, not where it is.
+        # The connection's own path does: a home address means it is at home.
+        remote = self._nominated_remote_host(session_id)
+        return bool(remote) and not _assistant_is_home_address(remote)
+
+    def _nominated_remote_host(self, session_id: str) -> str:
+        """The address the device's connection actually uses, when known."""
+        for candidate_id in self._ordered_related_session_ids(session_id):
+            peer = self.session_peers.get(candidate_id)
+            if peer is None:
+                continue
+            transports = []
+            try:
+                transports.append(peer.sctp.transport.transport)
+            except Exception:
+                pass
+            try:
+                transports.extend(t.receiver.transport.transport for t in peer.getTransceivers())
+            except Exception:
+                pass
+            for ice in transports:
+                nominated = getattr(getattr(ice, "_connection", None), "_nominated", None) or {}
+                for pair in list(nominated.values()):
+                    remote = getattr(pair, "remote_addr", None) or ()
+                    if remote:
+                        return str(remote[0])
+        return ""
+
+    def _assistant_note_speaking(self, session_id: str, text: str) -> None:
+        """A call is about to speak a reply: no wake counts in its place meanwhile."""
+        try:
+            seconds = min(ASSISTANT_MAX_SPEAKING_SECONDS, 1.0 + len(str(text or "")) / 14.0)
+            hub = self.assistant_mode
+            hub.wake_arbiter.speaking(hub.listener_for(session_id), seconds)
+        except Exception as exc:
+            _runtime.LOGGER.debug("Assistant speaking note skipped: %s", exc)
 
     async def _handle_assistant_control(self, session_id: str, event_name: str, payload: Mapping[str, Any]) -> None:
         if not session_id:
@@ -9098,6 +9175,9 @@ class WebRTCManager:
                         session_id,
                     )
             elif session_id in _runtime.STATE.audio_managers:
+                # Spoken aloud on that device: other listeners in its place must
+                # not take the wake word in the answer as a new question.
+                self._assistant_note_speaking(session_id, reply)
                 _speak_audio_manager(_runtime.STATE.audio_managers[session_id], reply, context=text)
             else:
                 _runtime.LOGGER.warning(f"AudioManager missing for {session_id}, cannot speak response")

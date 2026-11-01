@@ -5609,9 +5609,13 @@
         renderApp({ passive: true });
     }
 
-    function assistantBeginCommand(listen, preRoll, alreadyAccepted) {
-        listen.wake = alreadyAccepted ? Promise.resolve(true) : postJson("/api/assistant-mode/wake", { listener_id: listen.listenerId }).then(function (result) {
-            if (!result.accepted && assistantState().listen === listen) setNotice("info", "Another device is answering this wake word.");
+    function assistantBeginCommand(listen, preRoll, alreadyAccepted, score) {
+        // The server decides after a moment which listener in the home heard
+        // the word best; an Assistant page on this computer always takes it.
+        var claim = { listener_id: listen.listenerId };
+        if (typeof score === "number" && isFinite(score)) claim.score = score;
+        listen.wake = alreadyAccepted ? Promise.resolve(true) : postJson("/api/assistant-mode/wake", claim).then(function (result) {
+            if (!result.accepted && assistantState().listen === listen) setNotice("info", result.message || "Another device is answering this wake word.");
             return Boolean(result.accepted);
         }).catch(function (error) {
             if (assistantState().listen === listen) setNotice("error", error.message || "The wake word could not be checked.");
@@ -5630,7 +5634,7 @@
         if (listen.phase === "waiting") {
             if (listen.detector) {
                 var hit = listen.detector.feed(chunk);
-                if (hit) assistantBeginCommand(listen, listen.confirm === "both" ? hit.preRoll : null);
+                if (hit) assistantBeginCommand(listen, listen.confirm === "both" ? hit.preRoll : null, false, hit.score);
                 return;
             }
             // Typed text only: short bursts go to the server and are discarded
@@ -5647,7 +5651,7 @@
                 assistantTranscribe(audio, true, listen, true).then(function (result) {
                     if (assistantState().listen !== listen) return;
                     if (result.matched && result.wake_accepted === false) {
-                        setNotice("info", "Another device is answering this wake word.");
+                        setNotice("info", result.message || "Another device is answering this wake word.");
                         return;
                     }
                     if (result.matched && result.command) return assistantSendCommand(result.command, "text");

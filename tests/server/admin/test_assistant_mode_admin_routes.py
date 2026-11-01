@@ -145,6 +145,18 @@ def test_browser_and_phone_share_the_same_wake_decision(admin, wake_hub, first):
         assert not wake_hub._claim_wake("synthetic-phone")
 
 
+def test_the_admin_listener_stands_down_for_an_assistant_page_on_this_computer(admin, wake_hub):
+    """One listener per device: the Assistant page on this computer answers, not Chat & History."""
+    am.save_settings({"enabled": True, "confirm": "text"})
+    local_page = am.WakeListener(key="web:synthetic-local-page", kind=am.LISTENER_PAGE, device="this-computer")
+    wake_hub.wake_arbiter.page_listening(local_page, True)
+    refused = admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser", "score": 0.9}).json()
+    assert refused["accepted"] is False and refused["reason"] == "assistant_page"
+    assert refused["message"] == am.REFUSAL_MESSAGES["assistant_page"]
+    wake_hub.wake_arbiter.page_listening(local_page, False)
+    assert admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser"}).json()["accepted"]
+
+
 def test_browser_wakes_are_deduplicated_without_a_webrtc_runtime(admin):
     am.save_settings({"enabled": True, "confirm": "text"})
     first = admin.client.post("/api/assistant-mode/wake", json={"listener_id": "synthetic-browser-1"}).json()

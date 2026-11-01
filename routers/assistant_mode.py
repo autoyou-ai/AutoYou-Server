@@ -117,9 +117,24 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         value = str(body.get("listener_id") or "")
         return "browser:" + value if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value) else ""
 
-    def _claim_browser_wake(listener_id: str, *, spoken_at: Optional[float] = None) -> bool:
-        arbiter = getattr(_hub(), "wake_arbiter", browser_wakes)
-        return arbiter.claim(listener_id, spoken_at=spoken_at)
+    def _arbiter() -> Any:
+        return getattr(_hub(), "wake_arbiter", browser_wakes)
+
+    def _admin_listener(request: Request, listener_id: str) -> am.WakeListener:
+        return am.browser_listener(request, listener_id, kind=am.LISTENER_ADMIN, hub=_hub())
+
+    def _score(value: Any) -> Optional[float]:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        number = float(value)
+        return number if number == number and abs(number) < 1e6 else None
+
+    def _decision(claim: am.WakeClaim) -> Dict[str, Any]:
+        reason = "wake_word" if claim.accepted else (claim.reason or "answered_elsewhere")
+        payload: Dict[str, Any] = {"accepted": bool(claim.accepted), "reason": reason}
+        if not claim.accepted:
+            payload["message"] = am.REFUSAL_MESSAGES.get(reason, am.REFUSAL_MESSAGES["answered_elsewhere"])
+        return payload
 
     async def _after_change() -> None:
         hub = _hub()
@@ -329,11 +344,11 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
             return _error(400, "A valid listener_id is required.")
         if not (await asyncio.to_thread(am.load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
-        accepted = _claim_browser_wake(listener_id)
-        return server._json_response_no_store({
-            "success": True, "accepted": accepted,
-            "reason": "wake_word" if accepted else "answered_elsewhere",
-        })
+        arbiter = _arbiter()
+        who = _admin_listener(request, listener_id)
+        claim = arbiter.contend(who, score=_score((body or {}).get("score")))
+        claim = await arbiter.settle(claim, who)
+        return server._json_response_no_store({"success": True, **_decision(claim)})
 
     @admin_app.post("/api/assistant-mode/transcribe")
     async def assistant_mode_transcribe(request: Request):
@@ -366,11 +381,20 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
         require_phrase = bool((body or {}).get("require_phrase"))
         command = match.remainder if match.matched else ("" if require_phrase else transcript)
         accepted = True
-        if spotting:
-            accepted = bool(match.matched and _claim_browser_wake(
-                listener_id, spoken_at=received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE)))
+        extra: Dict[str, Any] = {}
+        if spotting and match.matched:
+            claim = _arbiter().contend(
+                _admin_listener(request, listener_id),
+                spoken_at=received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE),
+                score=match.score,
+            )
+            accepted = bool(claim.accepted)
             if not accepted:
                 command = ""
+                decision = _decision(claim)
+                extra = {"reason": decision["reason"], "message": decision["message"]}
+        elif spotting:
+            accepted = False
         return server._json_response_no_store({
             "success": True,
             "transcript": transcript,
@@ -379,6 +403,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
             "command": command,
             "wake_phrase": phrase,
             "wake_accepted": accepted,
+            **extra,
         })
 
     @admin_app.post("/api/assistant-mode/device-link")

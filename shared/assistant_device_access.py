@@ -31,9 +31,11 @@ DEVICE_LINK_TTL_DAYS = 90
 #: The Assistant website's question-and-answer calls. They do what a chat
 #: message does, so a device whose remote role may chat may make them; they are
 #: treated like the safe ``QUERY`` method by the remote access policy.
+#: ``presence`` only reports that page's own listening and speaking, which the
+#: wake arbiter keeps in memory for a few seconds; it changes no setting.
 ASSISTANT_ASK_PATHS = frozenset(
     ASSISTANT_PATH_PREFIX + "/api/assistant/" + name
-    for name in ("wake", "transcribe", "turn", "speak")
+    for name in ("wake", "transcribe", "turn", "speak", "presence")
 )
 
 

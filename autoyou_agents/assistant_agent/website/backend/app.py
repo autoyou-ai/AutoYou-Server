@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -65,6 +66,20 @@ MAX_COMMAND_SECONDS = 30.0
 MAX_TURN_CHARS = 2000
 MAX_SPEAK_CHARS = 600
 AI_TURN_TIMEOUT_SECONDS = 180
+# The page service and the paired apps' proxies give up on one request after
+# about 30 s, and a local model with tools can take longer. A quick answer
+# comes back with the question; a slower one is collected by asking again.
+TURN_WAIT_SECONDS = 20.0
+TURN_POLL_WAIT_SECONDS = 10.0
+TURN_KEEP_SECONDS = 600.0
+MAX_TURNS = 64
+_TURNS: Dict[str, Dict[str, Any]] = {}
+# Below this much speech there is nothing to transcribe; Whisper tends to
+# invent words ("Thank you.") for near-silence.
+MIN_VOICED_SECONDS = 0.2
+_SILENCE_PHRASES = frozenset({
+    "you", "thank you", "thanks", "thank you so much", "thanks for watching", "bye", "okay", "ok",
+})
 
 # Used only when this process has no WebRTC hub (its arbiter is shared with
 # phones and the Admin page when there is one).
@@ -117,10 +132,13 @@ def _wake_word():
     return ww
 
 
+def _hub() -> Any:
+    return getattr(getattr(_server(), "WEBRTC", None), "assistant_mode", None)
+
+
 def _arbiter() -> Any:
     global _FALLBACK_ARBITER
-    hub = getattr(getattr(_server(), "WEBRTC", None), "assistant_mode", None)
-    arbiter = getattr(hub, "wake_arbiter", None)
+    arbiter = getattr(_hub(), "wake_arbiter", None)
     if arbiter is not None:
         return arbiter
     if _FALLBACK_ARBITER is None:
@@ -131,6 +149,31 @@ def _arbiter() -> Any:
 def _listener(body: Dict[str, Any]) -> str:
     value = str(body.get("listener_id") or "")
     return "web:" + value if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value) else ""
+
+
+def _page_listener(request: Request, listener_key: str) -> Any:
+    """This page as the wake arbiter sees it: its device, its place, its call."""
+    am = _assistant_mode()
+    return am.browser_listener(request, listener_key, kind=am.LISTENER_PAGE, hub=_hub())
+
+
+def _score(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if number == number and abs(number) < 1e6 else None
+
+
+def _decision(claim: Any) -> Dict[str, Any]:
+    am = _assistant_mode()
+    reason = "wake_word" if claim.accepted else (claim.reason or "answered_elsewhere")
+    payload: Dict[str, Any] = {"accepted": bool(claim.accepted), "reason": reason}
+    if not claim.accepted:
+        payload["message"] = am.REFUSAL_MESSAGES.get(reason, am.REFUSAL_MESSAGES["answered_elsewhere"])
+    if reason == "in_call":
+        # A call owns this device's microphone: the page waits until it ends.
+        payload["pause"] = "in_call"
+    return payload
 
 
 async def _json_body(request: Request) -> Tuple[Optional[Dict[str, Any]], Optional[Response]]:
@@ -290,6 +333,8 @@ async def ask_assistant(text: str, *, session_id: str, wake: str) -> Dict[str, A
         "metadata": {
             "assistant_mode": True,
             "source": "assistant_website",
+            # Chat & History names the conversation after where it was asked.
+            "client": "assistant-website",
             "assistant_turn": {"text": text, "at": time.time(), "wake": wake, "live_frame": False},
         },
     }
@@ -305,6 +350,66 @@ async def ask_assistant(text: str, *, session_id: str, wake: str) -> Dict[str, A
                 message = data.get("error") or data.get("detail") if isinstance(data, dict) else ""
                 raise RuntimeError(str(message or f"The AI answered with HTTP {response.status}."))
             return data
+
+
+def voiced_seconds(pcm: bytes) -> float:
+    """How much of a recording is speech: 20 ms frames well above its quiet floor."""
+    ww = _wake_word()
+    samples = ww.pcm16_to_float(pcm or b"")
+    frame = int(0.02 * ww.SAMPLE_RATE)
+    if samples.size < frame:
+        return 0.0
+    levels = [ww.rms_dbfs(samples[start:start + frame]) for start in range(0, samples.size - frame + 1, frame)]
+    floor = sorted(levels)[len(levels) // 5]
+    threshold = max(-50.0, floor + 10.0)
+    return sum(1 for level in levels if level >= threshold) * 0.02
+
+
+def is_silence_phrase(transcript: str, voiced: float) -> bool:
+    """A stock phrase Whisper returns for a breath or a click, not something said."""
+    words = re.sub(r"[^a-z ]+", "", str(transcript or "").lower()).strip()
+    return voiced < 1.0 and words in _SILENCE_PHRASES
+
+
+def _forget_old_turns(now: float) -> None:
+    for key in [k for k, item in _TURNS.items() if now - item["created"] > TURN_KEEP_SECONDS]:
+        _TURNS.pop(key, None)
+    while len(_TURNS) >= MAX_TURNS:
+        _TURNS.pop(next(iter(_TURNS)))
+
+
+async def _run_turn(item: Dict[str, Any], text: str, session_id: str, wake: str) -> None:
+    try:
+        data = await ask_assistant(text, session_id=session_id, wake=wake)
+        item["reply"] = str(data.get("response") or "").strip()
+        item["agent_name"] = str(data.get("agent_name") or "")
+        item["state"] = "done"
+    except asyncio.TimeoutError:
+        item.update(state="failed", status=504, error="The assistant took too long to answer.")
+    except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
+        LOGGER.warning("Assistant website turn failed: %s", exc)
+        item.update(state="failed", status=502,
+                    error="The assistant could not answer right now. Check that AutoYou AI is running.")
+
+
+def _turn_response(turn_id: str, item: Dict[str, Any]) -> Response:
+    if item["state"] == "done":
+        return _json({"success": True, "turn_id": turn_id, "reply": item.get("reply", ""),
+                      "agent_name": item.get("agent_name", "")})
+    if item["state"] == "failed":
+        return _error(int(item.get("status") or 502), str(item.get("error") or "The assistant could not answer."),
+                      turn_id=turn_id)
+    return _json({"success": True, "pending": True, "turn_id": turn_id})
+
+
+async def _wait_for_turn(item: Dict[str, Any], seconds: float) -> None:
+    task = item.get("task")
+    if task is None or task.done():
+        return
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=seconds)
+    except asyncio.TimeoutError:
+        pass
 
 
 def _strip_device_token(request: Request) -> str:
@@ -379,21 +484,56 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
 
     @app.post("/api/assistant/wake")
     async def wake(request: Request):
-        """Claim a wake heard by this page, so only one listener in the room answers."""
+        """Claim a wake heard by this page, so only one listener in the home answers.
+
+        Answers after the short decision window: the device that heard the word
+        best answers, a call keeps its device's microphone, and no wake counts
+        while another device is speaking an answer.
+        """
         refused = _require_session(request)
         if refused is not None:
             return refused
         body, error = await _json_body(request)
         if error is not None:
             return error
-        listener = _listener(body or {})
+        body = body or {}
+        listener = _listener(body)
         if not listener:
             return _error(400, "A valid listener_id is required.")
         if not (await asyncio.to_thread(_assistant_mode().load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
-        accepted = bool(_arbiter().claim(listener))
-        return _json({"success": True, "accepted": accepted,
-                      "reason": "wake_word" if accepted else "answered_elsewhere"})
+        arbiter = _arbiter()
+        who = _page_listener(request, listener)
+        claim = arbiter.contend(who, score=_score(body.get("score")))
+        claim = await arbiter.settle(claim, who)
+        return _json({"success": True, **_decision(claim)})
+
+    @app.post("/api/assistant/presence")
+    async def presence(request: Request):
+        """This page says whether it is listening or speaking; it hears whether its device is in a call.
+
+        While a page listens, its device's other listeners stand down; while it
+        speaks an answer, no wake counts in its home. A page on a device that is
+        in a call pauses until the call ends.
+        """
+        refused = _require_session(request)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        body = body or {}
+        listener = _listener(body)
+        if not listener:
+            return _error(400, "A valid listener_id is required.")
+        arbiter = _arbiter()
+        who = _page_listener(request, listener)
+        in_call = bool(who.in_call)
+        arbiter.page_listening(who, bool(body.get("listening")) and not in_call)
+        if "speaking" in body:
+            seconds = _score(body.get("seconds")) if body.get("speaking") else 0.0
+            arbiter.speaking(who, seconds if seconds is not None else 8.0)
+        return _json({"success": True, "in_call": in_call, "pause": "in_call" if in_call else ""})
 
     @app.post("/api/assistant/transcribe")
     async def transcribe(request: Request):
@@ -422,11 +562,18 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
             # everything said before the word.
             return _error(409, "Spotting the wake word as text is only used with Typed text only.")
         phrase = am.effective_phrase(settings, _server_name())
+        voiced = await asyncio.to_thread(voiced_seconds, pcm or b"")
+        if voiced < MIN_VOICED_SECONDS:
+            # A breath, a click or the room: nothing was said, so nothing is transcribed.
+            return _json({"success": True, "transcript": "", "matched": False, "command": "",
+                          "wake_phrase": phrase, "wake_accepted": not spotting, "reason": "no_speech"})
         try:
             transcript = await asyncio.to_thread(am.local_transcriber(), pcm or b"")
         except Exception as exc:
             LOGGER.warning("Assistant website transcription failed: %s", exc)
             return _error(503, "Speech recognition is not available on this server.")
+        if is_silence_phrase(transcript, voiced):
+            transcript = ""
         if await asyncio.to_thread(am.load_settings) != settings:
             return _json({"success": True, "transcript": "", "matched": False, "command": "",
                           "reason": "settings_changed", "wake_accepted": False})
@@ -434,13 +581,20 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         require_phrase = bool(body.get("require_phrase"))
         command = match.remainder if match.matched else ("" if require_phrase else transcript)
         accepted = True
-        if spotting:
+        extra: Dict[str, Any] = {}
+        if spotting and match.matched:
+            # Heard after the fact, so it is dated back and decided at once.
             spoken_at = received_at - len(pcm or b"") / (2.0 * ww.SAMPLE_RATE)
-            accepted = bool(match.matched and _arbiter().claim(listener, spoken_at=spoken_at))
+            claim = _arbiter().contend(_page_listener(request, listener), spoken_at=spoken_at, score=match.score)
+            accepted = bool(claim.accepted)
             if not accepted:
                 command = ""
+                decision = _decision(claim)
+                extra = {key: decision[key] for key in ("reason", "message", "pause") if key in decision}
+        elif spotting:
+            accepted = False
         return _json({"success": True, "transcript": transcript, "matched": match.matched,
-                      "command": command, "wake_phrase": phrase, "wake_accepted": accepted})
+                      "command": command, "wake_phrase": phrase, "wake_accepted": accepted, **extra})
 
     @app.post("/api/assistant/turn")
     async def turn(request: Request):
@@ -461,15 +615,26 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         wake = str(body.get("wake") or "")[:16]
         if not (await asyncio.to_thread(_assistant_mode().load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
-        try:
-            data = await ask_assistant(text, session_id="assistant-web-" + session_id, wake=wake)
-        except asyncio.TimeoutError:
-            return _error(504, "The assistant took too long to answer.")
-        except Exception as exc:
-            LOGGER.warning("Assistant website turn failed: %s", exc)
-            return _error(502, "The assistant could not answer right now. Check that AutoYou AI is running.")
-        reply = str(data.get("response") or "").strip()
-        return _json({"success": True, "reply": reply, "agent_name": str(data.get("agent_name") or "")})
+        now = time.time()
+        _forget_old_turns(now)
+        turn_id = secrets.token_urlsafe(18)
+        item: Dict[str, Any] = {"state": "thinking", "created": now}
+        _TURNS[turn_id] = item
+        item["task"] = asyncio.create_task(_run_turn(item, text, "assistant-web-" + session_id, wake))
+        await _wait_for_turn(item, TURN_WAIT_SECONDS)
+        return _turn_response(turn_id, item)
+
+    @app.get("/api/assistant/turn/{turn_id}")
+    async def turn_status(turn_id: str, request: Request):
+        """The answer to a question that took longer than one request; waits a few seconds for it."""
+        refused = _require_session(request)
+        if refused is not None:
+            return refused
+        item = _TURNS.get(turn_id) if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", turn_id or "") else None
+        if item is None:
+            return _error(404, "That question is no longer being answered. Ask it again.")
+        await _wait_for_turn(item, TURN_POLL_WAIT_SECONDS)
+        return _turn_response(turn_id, item)
 
     @app.post("/api/assistant/speak")
     async def speak(request: Request):

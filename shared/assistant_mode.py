@@ -132,6 +132,17 @@ ENROLL_TIMEOUT_SECONDS = 60.0
 PRE_ROLL_MARGIN_SECONDS = 0.3
 #: A second device hearing the same wake word within this window stays quiet.
 CROSS_DEVICE_WAKE_WINDOW_SECONDS = 1.5
+#: Live wakes that reach the server within this long of the first one are the
+#: same word heard by several devices: the one that heard it best answers.
+WAKE_DECISION_SECONDS = 0.3
+#: After a spoken answer ends, the room gets this long before a wake counts.
+SPEAKING_TAIL_SECONDS = 0.8
+#: The longest one "speaking" report keeps the home quiet without renewal.
+MAX_SPEAKING_SECONDS = 60.0
+#: An Assistant page counts as listening this long after its last report.
+PAGE_PRESENCE_SECONDS = 40.0
+#: Bounds the arbiter's memory of pages and speakers; the oldest go first.
+MAX_TRACKED_LISTENERS = 256
 # A device that heard the word itself uploads it with what followed, seconds
 # later. Its wake is dated back by the audio's length; this covers the word's
 # own length and the upload's latency between that estimate and a live wake.
@@ -824,8 +835,9 @@ class _SessionAssistant:
         pre_roll: bytes = b"",
         spoken_at: Optional[float] = None,
     ) -> None:
-        if not self.hub._claim_wake(self.session_id, spoken_at=spoken_at):
-            self._set_state("idle", "answered_elsewhere")
+        claim = self.hub._contend_wake(self.session_id, spoken_at=spoken_at, score=score)
+        if not claim:
+            self._refused(claim)
             return
         self.ticket += 1
         self.text_check_pending = False
@@ -923,11 +935,12 @@ class _SessionAssistant:
         now = time.monotonic()
         if self.device_wake is not None and self.device_wake[0] == wake_id:
             return  # Retrying an announcement must not change its decision.
-        accepted = self.hub._claim_wake(self.session_id)
+        claim = self.hub._contend_wake(self.session_id, score=score)
+        accepted = claim.accepted
         self.device_wake = (wake_id, accepted, now + DEVICE_WAKE_RESERVATION_SECONDS)
         self.device_wake_consumed = False
         if not accepted:
-            self.hub._emit(self.session_id, {"event": "assistant_state", "state": "idle", "reason": "answered_elsewhere"})
+            self.hub._emit(self.session_id, _refusal_event(claim))
             return
         self.ticket += 1
         self.text_check_pending = False
@@ -955,8 +968,9 @@ class _SessionAssistant:
         else:
             # Compatibility for older clients without wake announcements.
             spoken_at = time.monotonic() - len(pcm) / (2.0 * ww.SAMPLE_RATE)
-            if not self.hub._claim_wake(self.session_id, spoken_at=spoken_at):
-                self._set_state("idle", "answered_elsewhere")
+            claim = self.hub._contend_wake(self.session_id, spoken_at=spoken_at, score=score)
+            if not claim:
+                self._refused(claim)
                 return
             self.ticket += 1
             self.stats["wakes"] += 1
@@ -1002,6 +1016,32 @@ class _SessionAssistant:
         if self.detector is not None:
             self.detector.reset()
 
+    def _refused(self, claim: "WakeClaim") -> None:
+        self.state = "idle"
+        self.state_started = self.elapsed
+        self.hub._emit(self.session_id, _refusal_event(claim))
+
+    def revoke(self, reason: str) -> None:
+        """Another listener heard the same word better: give the wake back.
+
+        Only happens within the short decision window, before a command could
+        have ended. An announced device wake keeps its id but is now refused,
+        so the upload that follows is turned away like any other duplicate.
+        """
+        if self.device_wake is not None and not self.device_wake_consumed:
+            wake_id, _accepted, expires = self.device_wake
+            self.device_wake = (wake_id, False, expires)
+        elif self.state not in {"listening", "thinking"}:
+            return
+        self.ticket += 1
+        self.text_check_pending = False
+        self.buffer = bytearray()
+        self.endpointer.reset()
+        self._reset_detector()
+        self.wake_score = None
+        self.stats["wakes"] = max(0, self.stats["wakes"] - 1)
+        self._set_state("idle", reason)
+
     # -- results (executor thread, re-entered on the worker) ------------------
 
     def on_transcript(self, purpose: str, text: str, config: _Config) -> None:
@@ -1014,7 +1054,7 @@ class _SessionAssistant:
             if not match.matched:
                 return  # Ordinary speech: dropped, never stored, never sent.
             if match.remainder:
-                if not self.hub._claim_wake(self.session_id, spoken_at=self.spoken_at):
+                if not self.hub._contend_wake(self.session_id, spoken_at=self.spoken_at, score=match.score):
                     return
                 self.stats["wakes"] += 1
                 self.wake_source = "text"
@@ -1059,26 +1099,275 @@ class _SessionAssistant:
         self._set_state("idle", "submitted")
 
 
+#: Kinds of listener, for deciding which one answers.
+LISTENER_PAGE = "page"  # The Assistant website, in any browser or the v2 Assistant section.
+LISTENER_ADMIN = "admin"  # The Admin page's Chat & History listener.
+LISTENER_DEVICE = "device"  # A paired device: its own detector, or its stream heard here.
+LISTENER_CALL = "call"  # A call that answers only after the wake word.
+LISTENER_KINDS = (LISTENER_PAGE, LISTENER_ADMIN, LISTENER_DEVICE, LISTENER_CALL)
+
+#: The place every listener shares unless it is known to be somewhere else.
+HOME = "home"
+
+
+@dataclass(frozen=True)
+class WakeListener:
+    """Who claims a wake: which listener, on which device, and where it is.
+
+    ``device`` groups listeners that share one microphone (this computer, or a
+    paired device and the pages it opens); ``place`` groups listeners that can
+    hear the same spoken word. A device away from home has a place of its own.
+    """
+
+    key: str
+    kind: str = LISTENER_DEVICE
+    device: str = ""
+    place: str = HOME
+    in_call: bool = False
+
+    @property
+    def device_key(self) -> str:
+        return self.device or self.key
+
+
+@dataclass(frozen=True)
+class WakeClaim:
+    """A wake decision. ``reason`` says why a claim was refused.
+
+    A live claim is provisional until ``decided_at`` (monotonic): until then a
+    device that heard the same word better can still take it. Listeners that
+    cannot be told later (web pages) wait until then and ask :meth:`WakeArbiter.holds`.
+    """
+
+    accepted: bool
+    reason: str
+    round_id: int = 0
+    decided_at: float = 0.0
+
+    def __bool__(self) -> bool:
+        return self.accepted
+
+
+@dataclass
+class _Candidate:
+    listener: WakeListener
+    score: Optional[float]
+    on_revoke: Optional[Callable[[str], None]] = None
+
+
+@dataclass
+class _WakeRound:
+    round_id: int
+    place: str
+    opened_at: float  # When the first claim reached the server.
+    wake_at: float  # When the word was spoken.
+    estimated: bool
+    leader: _Candidate
+
+    @property
+    def decided_at(self) -> float:
+        return self.opened_at if self.estimated else self.opened_at + WAKE_DECISION_SECONDS
+
+    def covers(self, when: float, estimated: bool) -> bool:
+        window = CROSS_DEVICE_WAKE_WINDOW_SECONDS
+        if estimated or self.estimated:
+            window += ESTIMATED_WAKE_SLACK_SECONDS
+        return abs(when - self.wake_at) < window
+
+
+def _beats(challenger: _Candidate, leader: _Candidate) -> bool:
+    """Whether a later claim in the same round takes the wake from the leader.
+
+    On one device the Assistant page wins. Between devices the clearer match
+    wins, which is usually the nearest device; without both scores the first
+    claim keeps it.
+    """
+    if challenger.listener.device_key == leader.listener.device_key:
+        return challenger.listener.kind == LISTENER_PAGE and leader.listener.kind != LISTENER_PAGE
+    if challenger.score is None or leader.score is None:
+        return False
+    return challenger.score > leader.score
+
+
 class WakeArbiter:
-    """Share one wake decision across streamed, on-device and admin listeners."""
+    """One wake decision across every listener: streams, devices, pages and calls.
+
+    The rules, in order:
+
+    1. A call owns its device's microphone: while a device is in a call only
+       the call may answer a wake there.
+    2. One listener per device, and the Assistant page wins: while a page
+       listens on a device, that device's other listeners stand down.
+    3. One answer per home: listeners in the same place share each wake. The
+       one that heard it best within ``WAKE_DECISION_SECONDS`` answers, and no
+       wake counts there while an answer is being spoken.
+
+    ``claim`` keeps the original yes/no form for callers that only need that.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._last_wake: Tuple[str, float, bool] = ("", -math.inf, False)
+        self._rounds: Dict[str, _WakeRound] = {}
+        self._decided: Dict[int, str] = {}
+        self._next_round = 0
+        self._pages: Dict[str, Tuple[str, float]] = {}
+        self._speakers: Dict[str, Tuple[str, float]] = {}
 
-    def claim(self, session_id: str, *, spoken_at: Optional[float] = None) -> bool:
+    @staticmethod
+    def _listener(listener: Any) -> WakeListener:
+        if isinstance(listener, WakeListener):
+            return listener
+        return WakeListener(key=str(listener or ""))
+
+    def claim(self, listener: Any, *, spoken_at: Optional[float] = None, score: Optional[float] = None) -> bool:
+        return self.contend(listener, spoken_at=spoken_at, score=score).accepted
+
+    def contend(
+        self,
+        listener: Any,
+        *,
+        score: Optional[float] = None,
+        spoken_at: Optional[float] = None,
+        on_revoke: Optional[Callable[[str], None]] = None,
+    ) -> WakeClaim:
+        """Decide one wake. ``spoken_at`` dates a wake reported after the fact.
+
+        ``on_revoke`` is called (outside the lock) if a device that heard the
+        same word better takes the wake back during the decision window.
+        """
+        who = self._listener(listener)
+        now = time.monotonic()
         estimated = spoken_at is not None
-        when = float(spoken_at) if estimated else time.monotonic()
+        when = float(spoken_at) if estimated else now
+        candidate = _Candidate(who, score if score is None else float(score), on_revoke)
+        revoked: Optional[_Candidate] = None
         with self._lock:
-            other, at, other_estimated = self._last_wake
-            window = CROSS_DEVICE_WAKE_WINDOW_SECONDS
-            if estimated or other_estimated:
-                window += ESTIMATED_WAKE_SLACK_SECONDS
-            if other and other != session_id and abs(when - at) < window:
-                return False
-            if not other or when >= at or other != session_id:
-                self._last_wake = (session_id, when, estimated)
-            return True
+            self._forget_expired(now)
+            refused = self._standing_rule(who, now)
+            if refused:
+                return WakeClaim(False, refused, decided_at=now)
+            current = self._rounds.get(who.place)
+            if current is not None and current.covers(when, estimated):
+                if current.leader.listener.key == who.key:
+                    # Its own wake again (a retry or the next question): a new
+                    # round from this wake, so others can still contest it.
+                    current = None
+                elif estimated or current.estimated or now >= current.decided_at:
+                    return WakeClaim(False, "answered_elsewhere", current.round_id, now)
+                elif _beats(candidate, current.leader):
+                    revoked = current.leader
+                    current.leader = candidate
+                    result = WakeClaim(True, "wake_word", current.round_id, current.decided_at)
+                else:
+                    return WakeClaim(False, "answered_elsewhere", current.round_id, now)
+            else:
+                current = None
+            if current is None:
+                self._next_round += 1
+                current = _WakeRound(self._next_round, who.place, now, when, estimated, candidate)
+                self._rounds[who.place] = current
+                result = WakeClaim(True, "wake_word", current.round_id, current.decided_at)
+            self._decided[current.round_id] = current.leader.listener.key
+            while len(self._decided) > MAX_TRACKED_LISTENERS:
+                self._decided.pop(next(iter(self._decided)))
+        if revoked is not None and revoked.on_revoke is not None:
+            try:
+                revoked.on_revoke("answered_elsewhere")
+            except Exception as exc:  # pragma: no cover - a listener must not break the decision
+                LOGGER.debug("Assistant wake revocation was not delivered: %s", exc)
+        return result
+
+    def holds(self, listener: Any, round_id: int) -> bool:
+        """Whether this listener still has the wake from round ``round_id``."""
+        with self._lock:
+            return bool(round_id) and self._decided.get(int(round_id)) == self._listener(listener).key
+
+    async def settle(self, claim: WakeClaim, listener: Any) -> WakeClaim:
+        """Wait out the decision window, then return the final decision."""
+        import asyncio
+
+        if not claim.accepted:
+            return claim
+        wait = claim.decided_at - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(min(wait, WAKE_DECISION_SECONDS))
+        if self.holds(listener, claim.round_id):
+            return claim
+        return WakeClaim(False, "answered_elsewhere", claim.round_id, claim.decided_at)
+
+    # -- what listeners report --------------------------------------------------
+
+    def page_listening(self, listener: Any, listening: bool, *, seconds: float = PAGE_PRESENCE_SECONDS) -> None:
+        """An Assistant page says it is (or stopped) listening on its device."""
+        who = self._listener(listener)
+        now = time.monotonic()
+        with self._lock:
+            self._pages.pop(who.key, None)
+            if listening:
+                self._pages[who.key] = (who.device_key, now + max(1.0, min(PAGE_PRESENCE_SECONDS, float(seconds))))
+                while len(self._pages) > MAX_TRACKED_LISTENERS:
+                    self._pages.pop(next(iter(self._pages)))
+
+    def speaking(self, listener: Any, seconds: float) -> None:
+        """A listener speaks an answer for about ``seconds``; 0 means it finished."""
+        who = self._listener(listener)
+        now = time.monotonic()
+        try:
+            length = max(0.0, min(MAX_SPEAKING_SECONDS, float(seconds)))
+        except (TypeError, ValueError):
+            length = 0.0
+        with self._lock:
+            previous = self._speakers.pop(who.key, None)
+            if length > 0:
+                self._speakers[who.key] = (who.place, now + length + SPEAKING_TAIL_SECONDS)
+            elif previous is not None and previous[1] > now:
+                # Finished: the room still gets the short tail.
+                self._speakers[who.key] = (who.place, min(previous[1], now + SPEAKING_TAIL_SECONDS))
+            while len(self._speakers) > MAX_TRACKED_LISTENERS:
+                self._speakers.pop(next(iter(self._speakers)))
+
+    def page_listening_on(self, device: str, *, exclude: str = "") -> bool:
+        with self._lock:
+            return self._page_on(str(device or ""), time.monotonic(), exclude=exclude)
+
+    def snapshot(self) -> Dict[str, Any]:
+        now = time.monotonic()
+        with self._lock:
+            self._forget_expired(now)
+            return {
+                "pages_listening": len(self._pages),
+                "speaking": sorted({place for place, _until in self._speakers.values()}),
+            }
+
+    # -- internals -----------------------------------------------------------
+
+    def _standing_rule(self, who: WakeListener, now: float) -> str:
+        if who.in_call and who.kind != LISTENER_CALL:
+            return "in_call"
+        if who.kind not in {LISTENER_PAGE, LISTENER_CALL} and self._page_on(who.device_key, now, exclude=who.key):
+            return "assistant_page"
+        if any(place == who.place and until > now for key, (place, until) in self._speakers.items() if key != who.key):
+            return "speaking"
+        return ""
+
+    def _page_on(self, device: str, now: float, *, exclude: str = "") -> bool:
+        return any(
+            key != exclude and page_device == device and until > now
+            for key, (page_device, until) in self._pages.items()
+        )
+
+    def _forget_expired(self, now: float) -> None:
+        # A device may upload up to MAX_DEVICE_UTTERANCE_SECONDS after its own
+        # wake, dated back by the audio's length: keep each place's latest
+        # round at least that long so the late copy still matches it.
+        horizon = MAX_DEVICE_UTTERANCE_SECONDS + CROSS_DEVICE_WAKE_WINDOW_SECONDS + ESTIMATED_WAKE_SLACK_SECONDS + 5.0
+        for place in [p for p, item in self._rounds.items() if now - item.opened_at > horizon]:
+            self._rounds.pop(place, None)
+        while len(self._rounds) > MAX_TRACKED_LISTENERS:
+            self._rounds.pop(next(iter(self._rounds)))
+        for table in (self._pages, self._speakers):
+            for key in [k for k, (_v, until) in table.items() if until <= now]:
+                table.pop(key, None)
 
 
 class AssistantModeHub:
@@ -1097,11 +1386,15 @@ class AssistantModeHub:
         submit: Submit,
         transcribe: Transcribe,
         server_name: Callable[[], str] = lambda: "AutoYou",
+        describe_listener: Optional[Callable[[str], WakeListener]] = None,
     ) -> None:
         self._emit_cb = emit
         self._submit_cb = submit
         self._transcribe_cb = transcribe
         self._server_name = server_name
+        # Which device a session is, where it is, and whether it is in a call.
+        # Without one every session is its own device at home.
+        self._describe_listener = describe_listener
         self._queue: "queue.Queue[Tuple[str, str, Any]]" = queue.Queue(maxsize=FEED_QUEUE_MAX_ITEMS)
         self._sessions: Dict[str, _SessionAssistant] = {}
         self._lock = threading.Lock()
@@ -1268,6 +1561,7 @@ class AssistantModeHub:
             "call_mode_sessions": calls,
             "dropped_frames": self.dropped_frames,
             "queued": self._queue.qsize(),
+            **self.wake_arbiter.snapshot(),
         }
 
     def session_state(self, session_id: str) -> str:
@@ -1355,6 +1649,12 @@ class AssistantModeHub:
             if after_training is not None and payload.get("state") == "done":
                 after_training()
             return
+        if kind == "revoke":
+            with self._lock:
+                existing = self._sessions.get(session_id)
+            if existing is not None:
+                existing.revoke(str(value or "answered_elsewhere"))
+            return
         config = self.config()
         item = self._session(session_id)
         if kind == "audio":
@@ -1378,14 +1678,42 @@ class AssistantModeHub:
         elif kind == "cancel":
             item.cancel(str(value or "cancelled"))
 
-    def _claim_wake(self, session_id: str, *, spoken_at: Optional[float] = None) -> bool:
-        """Arbitrate a wake across listeners within the cross-device time window.
+    def listener_for(self, session_id: str) -> WakeListener:
+        """This session as the wake arbiter sees it; never raises."""
+        key = str(session_id or "")
+        if self._describe_listener is not None:
+            try:
+                described = self._describe_listener(key)
+                if isinstance(described, WakeListener) and described.key:
+                    return described
+            except Exception as exc:  # pragma: no cover - a lookup must not stop a wake
+                LOGGER.debug("Assistant listener lookup failed: %s", exc)
+        return WakeListener(key=key)
+
+    def _contend_wake(
+        self,
+        session_id: str,
+        *,
+        spoken_at: Optional[float] = None,
+        score: Optional[float] = None,
+    ) -> "WakeClaim":
+        """Arbitrate a wake across every listener (see :class:`WakeArbiter`).
 
         ``spoken_at`` (monotonic) dates a wake that reaches the server after the
         fact: a legacy on-device upload or a transcribed burst, estimated from the
-        audio's length. A live wake is dated now.
+        audio's length. A live wake is dated now and may be taken back within
+        the decision window by a device that heard the word better.
         """
-        return self.wake_arbiter.claim(session_id, spoken_at=spoken_at)
+        key = str(session_id)
+        return self.wake_arbiter.contend(
+            self.listener_for(key),
+            spoken_at=spoken_at,
+            score=score,
+            on_revoke=lambda reason: self._post(key, "revoke", reason),
+        )
+
+    def _claim_wake(self, session_id: str, *, spoken_at: Optional[float] = None) -> bool:
+        return self._contend_wake(session_id, spoken_at=spoken_at).accepted
 
     def _executor_ready(self) -> ThreadPoolExecutor:
         if self._executor is None:
@@ -1435,6 +1763,126 @@ class AssistantModeHub:
 
     def _submit(self, session_id: str, text: str, meta: Dict[str, Any]) -> None:
         self._submit_cb(session_id, text, meta)
+
+
+def _refusal_event(claim: WakeClaim) -> Dict[str, Any]:
+    """What a device is told when its wake is not answered.
+
+    ``reason`` stays ``answered_elsewhere`` for clients that predate the finer
+    causes; ``cause`` names the rule that decided it (``in_call``,
+    ``assistant_page``, ``speaking``).
+    """
+    payload: Dict[str, Any] = {"event": "assistant_state", "state": "idle", "reason": "answered_elsewhere"}
+    if claim.reason and claim.reason != "answered_elsewhere":
+        payload["cause"] = claim.reason
+    return payload
+
+
+#: What a refused wake means, for pages and the Admin page.
+REFUSAL_MESSAGES = {
+    "answered_elsewhere": "Another device heard that more clearly and is answering.",
+    "in_call": "This device is in a call, so the call answers.",
+    "assistant_page": "The Assistant page on this device is answering.",
+    "speaking": "Another device is speaking an answer.",
+}
+
+
+def _is_home_address(value: Any) -> bool:
+    """Loopback, link-local and private addresses: this home's own network."""
+    import ipaddress
+
+    text = str(value or "").strip().strip("[]")
+    if not text:
+        return True
+    try:
+        address = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return text.lower() in {"localhost", "testclient"}
+    mapped = getattr(address, "ipv4_mapped", None)
+    if mapped is not None:
+        address = mapped
+    return bool(address.is_loopback or address.is_private or address.is_link_local)
+
+
+def browser_listener(
+    request: Any,
+    listener_key: str,
+    *,
+    kind: str,
+    hub: Any = None,
+) -> WakeListener:
+    """A listener running in a browser (an Assistant page or the Admin page).
+
+    Who it is comes only from AutoYou's own stamps, which every entry point
+    strips from what a browser sends: a page opened through a paired app's
+    connection is that device (and shares its place and its calls); a browser
+    on the home network is itself, at home; one reached through a public link
+    is away; anything else is this computer.
+    """
+    from shared.remote_access_policy import REMOTE_BROWSER_HEADER, REMOTE_BROWSER_VIA_WEBRTC
+
+    headers = getattr(request, "headers", None) or {}
+
+    def header(name: str) -> str:
+        try:
+            return str(headers.get(name) or "").strip()
+        except Exception:
+            return ""
+
+    via = header(REMOTE_BROWSER_HEADER).lower()
+    session_id = header("X-AutoYou-WebRTC-Session-Id")
+    if via == REMOTE_BROWSER_VIA_WEBRTC and session_id:
+        describe = getattr(hub, "listener_for", None)
+        device = callable(describe) and describe(session_id)
+        if isinstance(device, WakeListener):
+            return WakeListener(
+                key=listener_key, kind=kind, device=device.device_key, place=device.place, in_call=device.in_call
+            )
+        owner = header("X-AutoYou-WebRTC-Owner-Key") or session_id
+        return WakeListener(key=listener_key, kind=kind, device="webrtc:" + owner)
+    client = str(getattr(getattr(request, "client", None), "host", "") or "")
+    tunnel_client = header("X-AutoYou-Tunnel-Client-IP")
+    if tunnel_client or not _is_home_address(client):
+        # Reached through a public link: nobody at home hears this browser.
+        return WakeListener(key=listener_key, kind=kind, device=listener_key, place="away:" + listener_key)
+    if _is_this_computer(client):
+        if via:
+            # A home-network browser relayed by this computer's page service:
+            # its own device, though its address reads as this computer's.
+            return WakeListener(key=listener_key, kind=kind, device="lan:" + listener_key)
+        # The page service sets X-Forwarded-Host from the address the browser
+        # used. This computer's network address (an admin signed in on another
+        # device through the admin port) is another device at home; only a
+        # loopback address is this computer itself.
+        forwarded_host = _host_only(header("X-Forwarded-Host"))
+        if forwarded_host and not _is_this_computer(forwarded_host):
+            return WakeListener(key=listener_key, kind=kind, device="lan:" + listener_key)
+        return WakeListener(key=listener_key, kind=kind, device="this-computer")
+    return WakeListener(key=listener_key, kind=kind, device="lan:" + client)
+
+
+def _host_only(value: str) -> str:
+    """``192.168.1.208`` from ``192.168.1.208:8443``, ``::1`` from ``[::1]:8443``."""
+    text = str(value or "").strip().split(",", 1)[0].strip()
+    if text.startswith("["):
+        return text[1:].split("]", 1)[0]
+    if text.count(":") == 1:
+        return text.split(":", 1)[0]
+    return text
+
+
+def _is_this_computer(value: str) -> bool:
+    import ipaddress
+
+    text = str(value or "").strip().strip("[]")
+    if text.lower() in {"", "localhost", "testclient"}:
+        return True
+    try:
+        address = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool((mapped or address).is_loopback)
 
 
 def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]]] = None) -> Transcribe:

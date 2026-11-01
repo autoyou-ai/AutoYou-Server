@@ -200,6 +200,10 @@ def test_turn_payload_marks_the_assistant_turn(monkeypatch):
     assert metadata["assistant_mode"] is True
     assert metadata["assistant_turn"]["text"] == "open example.com"
     assert metadata["assistant_turn"]["wake"] == "voice"
+    # Every turn lands in Chat & History, named after where it was asked.
+    from shared.chat_history_identity import conversation_origin
+
+    assert conversation_origin(captured["json"]["user_id"], metadata) == "Assistant website"
 
 
 def test_speak_returns_wav_or_asks_for_the_browser_voice(site, monkeypatch):

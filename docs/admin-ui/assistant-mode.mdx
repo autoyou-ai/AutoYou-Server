@@ -148,6 +148,23 @@ answers only what follows the wake word. Hang up, and the next call starts norma
 again. If **Wake word in every call** is on, the switch shows as on and cannot be turned
 off from the device.
 
+### When several devices hear you
+
+Only one listener answers each wake word:
+
+1. **A call comes first.** While a device is in a call, only the call answers there. The
+   Assistant website or the apps' **Assistant** section on that device pauses until the
+   call ends, and never speaks over it.
+2. **The Assistant page wins on its device.** While it listens, that device's other
+   listeners wait: the Calls page's **Assistant mode (wake word)**, the phone's own wake
+   word, and this page's **Listen in this browser**. The Calls page says so.
+3. **One answer per home.** The device that heard the word most clearly answers, usually
+   the nearest. While any device speaks an answer, the others ignore the word. A device
+   paired through AutoYou Cloud that is away from home answers for itself.
+
+Every question and answer is saved in Chat & History; questions asked on the Assistant
+website show as **Assistant website**.
+
 ### What you can ask
 
 The Assistant agent answers most requests itself or hands them to the right agent:
@@ -191,6 +208,7 @@ The Assistant agent answers most requests itself or hands them to the right agen
 | `POST /api/assistant-mode/train`, `DELETE /api/assistant-mode/model` | Admin on this computer |
 | `GET /api/assistant-mode/model`, `GET /api/assistant-mode/samples/{id}/audio` | Any admin |
 | `POST /api/assistant-mode/test`, `POST /api/assistant-mode/transcribe` | Any admin |
+| `POST /api/assistant-mode/wake` | Any admin. Answers `accepted` and `reason` after a short decision window: `answered_elsewhere`, `in_call`, `assistant_page` or `speaking`, with a `message` |
 
 Devices use `voice_call_control` events on the DataChannel: `assistant_model_request`,
 `assistant_utterance`, `assistant_wake`, `assistant_sample`, `assistant_enroll`,
@@ -200,6 +218,9 @@ for the word) and a `reason` when refused (`disabled`, `not_allowed`). Capabilit
 advertise `assistant_mode.call_toggle`, `call_mode_forced` and `device_teaching`, and
 `model_revision`, which changes when the model is retrained or its word, sensitivity,
 listening time or confirmation changes; devices fetch the model again when it does.
+A wake that another listener takes gets `assistant_state` `idle` with `reason`
+`answered_elsewhere` and a `cause` (`in_call`, `assistant_page` or `speaking`) when a
+rule other than "heard it better" decided.
 
 On-device listeners send `assistant_wake {wake_id}` as soon as the word matches,
 without a microphone stream. Their later `assistant_utterance` carries that same

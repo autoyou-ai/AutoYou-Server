@@ -71,6 +71,8 @@ CLIENT_LABELS = {
     "signal": "Signal",
     "chatgpt": "ChatGPT",
     "scheduler": "Scheduler",
+    # Questions asked hands-free on the Assistant website.
+    "assistant-website": "Assistant website",
 }
 CHANNEL_LABELS = (
     ("user::telegram", "Telegram"),
