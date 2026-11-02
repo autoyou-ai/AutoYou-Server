@@ -8,6 +8,7 @@
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import json
+from pathlib import Path
 import re
 import sys
 from datetime import datetime, timedelta
@@ -204,6 +205,33 @@ def test_presenter_describes_each_kind_of_item(feed):
     assert article["byline"] == ["Article", "aeon.co"]
     assert (document["label"], document["size"], document["open_url"]) == ("PDF", 2048, "./api/blob/doc-1")
     assert (article["title"], article["label"], article["favicon"]) == ("aeon.co", "Ae", "https://www.aeon.co/favicon.ico")
+
+
+def test_platform_links_published_as_articles_show_as_their_post(feed):
+    service, client = feed
+    present = service._present_item
+    reel = present({"type": "article", "url": "https://www.instagram.com/reel/SyntheticReel1/?igsh=synthetic", "title": ""})
+    sky = present({"type": "article", "url": "https://bsky.app/profile/synthetic.example/post/3synthetic", "title": ""})
+    plain = present({"type": "article", "url": "https://example.test/video/feature", "title": "Feature"})
+
+    assert (reel["kind"], reel["label"], reel["tab"]) == ("Instagram", "Instagram", "social")
+    assert (sky["kind"], sky["label"], sky["title"]) == ("Bluesky", "Bluesky", "Post by @synthetic.example")
+    assert plain["kind"] == "Article"
+
+    created = client.post("/api/feed", headers=EDITOR, json={
+        "type": "article", "url": "https://www.threads.com/@synthetic/post/SyntheticPost", "title": "", "content": "",
+    }).json()["item"]
+    assert created["type"] == "threads"
+    kept = client.post("/api/feed", headers=EDITOR, json={
+        "type": "article", "url": "https://example.test/video/feature", "title": "Feature", "content": "",
+    }).json()["item"]
+    assert kept["type"] == "article"
+
+
+def test_page_script_embeds_platform_posts_by_url():
+    script = (Path(__file__).resolve().parents[3] / "autoyou_agents/page_agent/website/frontend/assets/page.js").read_text(encoding="utf-8")
+    assert "function itemType(item)" in script and "embed.bsky.app/embed/" in script and "/embed`" in script
+    assert "canonicalType(item.type);" not in script.split("function itemType(item)")[1]
 
 
 def test_legacy_query_endpoint_treats_a_zero_window_as_the_whole_feed(feed):

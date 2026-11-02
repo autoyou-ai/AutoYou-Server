@@ -14,6 +14,7 @@ from shared.url_hosts import host_matches, social_platform, url_hostname
         ("https://m.tiktok.com/@user/video/1", "tiktok"),
         ("https://www.threads.net/@user/post/1", "threads"),
         ("https://instagram.com/p/abc/", "instagram"),
+        ("https://bsky.app/profile/synthetic.example/post/3abc", "bluesky"),
         ("https://x.com/user/status/1", "twitter"),
         ("https://mobile.twitter.com/user/status/1", "twitter"),
     ],

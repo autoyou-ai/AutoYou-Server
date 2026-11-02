@@ -101,6 +101,7 @@ _ITEM_KINDS: Dict[str, tuple[str, str, str, str]] = {
     "twitter": ("X post", "social", "slate", "chat"),
     "instagram": ("Instagram", "social", "rose", "image"),
     "threads": ("Threads", "social", "slate", "chat"),
+    "bluesky": ("Bluesky", "social", "blue", "chat"),
     "image": ("Photo", "photos", "green", "image"),
     "gif": ("GIF", "photos", "green", "image"),
     "audio": ("Audio", "audio", "purple", "wave"),
@@ -108,23 +109,28 @@ _ITEM_KINDS: Dict[str, tuple[str, str, str, str]] = {
     "text": ("Text", "files", "slate", "doc"),
     "file": ("File", "files", "slate", "doc"),
 }
-_SOCIAL_TILE_LABELS = {"twitter": "X", "instagram": "Instagram", "threads": "Threads", "tiktok": "TikTok"}
+_SOCIAL_TILE_LABELS = {"twitter": "X", "instagram": "Instagram", "threads": "Threads", "tiktok": "TikTok", "bluesky": "Bluesky"}
 # Type tabs on the page and the stored types each one shows.
 FEED_TYPE_TABS: Dict[str, List[str]] = {
     "latest": [],
     "articles": ["article"],
     "videos": ["video", "youtube", "tiktok"],
-    "social": ["twitter", "instagram", "threads", "tiktok"],
+    "social": ["twitter", "instagram", "threads", "tiktok", "bluesky"],
     "photos": ["image", "gif"],
     "audio": ["audio"],
     "files": ["document", "text", "file"],
 }
 
 
-def _canonical_item_type(value: Any) -> str:
+def _canonical_item_type(value: Any, url: Any = None) -> str:
     normalized = str(value or "").strip().lower()
     if normalized == "x":
         return "twitter"
+    # Phones publish every link as an article; show a platform link as its post.
+    if normalized in {"", "article"} and url:
+        platform = social_platform(str(url))
+        if platform:
+            return platform
     return normalized or "article"
 
 
@@ -708,8 +714,11 @@ class PageFeedService:
             "tiktok": "TikTok video",
             "instagram": "Instagram post",
             "youtube": "YouTube video",
+            "bluesky": "Bluesky post",
         }.get(item_type, "")
-        if handle and item_type in {"twitter", "threads", "tiktok"}:
+        if item_type == "bluesky" and len(parts) >= 2 and parts[0] == "profile":
+            handle = re.sub(r"[^A-Za-z0-9_.]", "", parts[1])[:40]
+        if handle and item_type in {"twitter", "threads", "tiktok", "bluesky"}:
             return f"Post by @{handle}" if item_type != "tiktok" else f"TikTok by @{handle}"
         return fallback
 
@@ -724,7 +733,7 @@ class PageFeedService:
         return letters[0].upper() + (letters[1].lower() if len(letters) > 1 else "")
 
     def _present_item(self, item: Dict[str, Any], blob_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        item_type = _canonical_item_type(item.get("type"))
+        item_type = _canonical_item_type(item.get("type"), item.get("url"))
         url = str(item.get("url") or "").strip()
         is_blob = url.startswith("blob://")
         blob_id = url.split("://", 1)[1] if is_blob else ""
@@ -735,7 +744,7 @@ class PageFeedService:
         ext_source = filename or ("" if is_blob else (urlparse(url).path if url else ""))
         ext = os.path.splitext(ext_source)[1].lstrip(".").upper()[:4]
         title = str(item.get("title") or "").strip()
-        platform = item_type in {"youtube", "twitter", "instagram", "threads", "tiktok"}
+        platform = item_type in {"youtube", "twitter", "instagram", "threads", "tiktok", "bluesky"}
         display_title = (
             title
             or filename
@@ -1635,6 +1644,9 @@ class PageFeedService:
                 url = str(data.get("url", "")).strip()
                 content = str(data.get("content") or "")[:50000]
                 item_type = str(data.get("type") or (self._classify_url(url) if url else "text"))
+                # Clients that only know "article" still get the platform's post view.
+                if url and not url.lower().startswith("blob://") and item_type.strip().lower() in {"", "article"}:
+                    item_type = social_platform(url) or item_type
                 if not url and not content:
                     raise HTTPException(status_code=400, detail="url or content is required")
                 if not url:

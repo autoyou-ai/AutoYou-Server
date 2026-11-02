@@ -53,7 +53,9 @@ def test_node_packaging_refreshes_existing_trees_and_stops_on_failure(tmp_path, 
     assert result.returncode == install_exit, result.stderr
     calls = tmp_path / "npm-calls"
     assert calls.exists(), "Packaging reused an unverified stale dependency tree"
-    assert calls.read_text(encoding="utf-8").splitlines() == ["ci --omit=dev"] * (1 if install_exit else 2)
+    # WhatsApp first; the pinned Tunnelmole runtime installs without lifecycle scripts.
+    expected = ["ci --omit=dev", "ci --omit=dev --ignore-scripts"]
+    assert calls.read_text(encoding="utf-8").splitlines() == expected[: 1 if install_exit else 2]
 
 
 def test_wsl_build_backend_uses_packaged_runtime_builder_and_hardening():

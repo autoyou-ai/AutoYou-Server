@@ -206,7 +206,17 @@
     ["threads", ["threads.net", "threads.com"]],
     ["instagram", ["instagram.com"]],
     ["twitter", ["twitter.com", "x.com"]],
+    ["bluesky", ["bsky.app"]],
   ];
+
+  // Links saved as plain articles (as phones publish them) still show as
+  // their platform's post.
+  function itemType(item) {
+    const type = canonicalType(item && item.type);
+    if (type !== "article" || !item || !item.url) return type;
+    const platform = classifyUrl(item.url);
+    return platform === "video" ? type : platform;
+  }
 
   function hostMatches(host, ...domains) {
     const value = String(host || "").toLowerCase().replace(/\.$/, "");
@@ -269,6 +279,34 @@
     return parts.length >= 2 && ["p", "reel", "tv"].includes(parts[0])
       ? `https://www.instagram.com/${parts[0]}/${cleanId(parts[1])}/embed/`
       : "";
+  }
+
+  function threadsEmbed(value) {
+    const url = parseUrl(value);
+    if (!url || !hostMatches(url.hostname, "threads.net", "threads.com")) return "";
+    const parts = url.pathname.split("/").filter(Boolean);
+    const user = parts[0] && parts[0].startsWith("@") ? parts[0].slice(1).replace(/[^A-Za-z0-9_.]/g, "") : "";
+    return user && parts[1] === "post" && parts[2] ? `https://www.threads.com/@${user}/post/${cleanId(parts[2])}/embed` : "";
+  }
+
+  function blueskyEmbed(value) {
+    const url = parseUrl(value);
+    if (!url || !hostMatches(url.hostname, "bsky.app")) return "";
+    const parts = url.pathname.split("/").filter(Boolean);
+    const actor = parts[0] === "profile" && parts[1] ? parts[1].replace(/[^A-Za-z0-9._:-]/g, "") : "";
+    return actor && parts[2] === "post" && parts[3] ? `https://embed.bsky.app/embed/${actor}/app.bsky.feed.post/${cleanId(parts[3])}` : "";
+  }
+
+  // The embeddable post page for X, Instagram, Threads or Bluesky, or "".
+  function postEmbed(item, theme) {
+    const type = itemType(item);
+    if (type === "twitter" && twitterId(item.url)) {
+      return `https://platform.twitter.com/embed/Tweet.html?id=${twitterId(item.url)}&dnt=true&theme=${theme}&conversation=none`;
+    }
+    if (type === "instagram") return instagramEmbed(item.url);
+    if (type === "threads") return threadsEmbed(item.url);
+    if (type === "bluesky") return blueskyEmbed(item.url);
+    return "";
   }
 
   function tiktokId(value) {
@@ -951,17 +989,15 @@
 
   function mediaMarkup(item) {
     const view = item.view || {};
-    const type = canonicalType(item.type);
+    const type = itemType(item);
     const open = safeUrl(view.open_url);
     const title = view.title || item.title || "Saved item";
     if (type === "youtube" && youtubeId(item.url)) {
       return embedFrame(`https://www.youtube-nocookie.com/embed/${youtubeId(item.url)}?rel=0&playsinline=1`, "ratio-video", title);
     }
-    if (type === "twitter" && twitterId(item.url)) {
-      return embedFrame(`https://platform.twitter.com/embed/Tweet.html?id=${twitterId(item.url)}&dnt=true&theme=${currentTheme()}&conversation=none`, "social", title, 560);
-    }
-    if (type === "instagram" && instagramEmbed(item.url)) {
-      return embedFrame(instagramEmbed(item.url), "social", title, 640);
+    const post = postEmbed(item, currentTheme());
+    if (post) {
+      return embedFrame(post, "social", title, type === "twitter" ? 560 : 640);
     }
     if (type === "tiktok" && tiktokId(item.url)) {
       return embedFrame(`https://www.tiktok.com/embed/v2/${tiktokId(item.url)}`, "social", title, 740);
@@ -988,7 +1024,7 @@
 
   function actionsMarkup(item) {
     const view = item.view || {};
-    const type = canonicalType(item.type);
+    const type = itemType(item);
     const open = safeUrl(view.open_url);
     const buttons = [];
     if (open) {
@@ -1728,13 +1764,13 @@
 
   function reelKind(item) {
     const view = item.view || {};
-    const type = canonicalType(item.type);
+    const type = itemType(item);
     const open = safeUrl(view.open_url);
     if ((type === "image" || type === "gif") && photoSources(item).preview) return "photo";
     if (type === "video" && open) return "video";
     if (type === "youtube" && youtubeId(item.url)) return "youtube";
     if (type === "tiktok" && tiktokId(item.url)) return "tiktok";
-    if ((type === "twitter" && twitterId(item.url)) || (type === "instagram" && instagramEmbed(item.url))) return "post";
+    if (postEmbed(item, "dark")) return "post";
     if (type === "audio" && open) return "audio";
     if (type === "text" && view.uploaded && open) return "text";
     if (view.uploaded || view.tab === "files") return "file";
@@ -1883,9 +1919,7 @@
       return `<div class="reel-embed">${live ? reelFrame(player, title) : `<span class="reel-embed-tile">${thumbMarkup(view)}</span>`}</div>`;
     }
     if (kind === "post") {
-      const src = canonicalType(item.type) === "twitter"
-        ? `https://platform.twitter.com/embed/Tweet.html?id=${twitterId(item.url)}&dnt=true&theme=dark&conversation=none`
-        : instagramEmbed(item.url);
+      const src = postEmbed(item, "dark");
       return live
         ? `<div class="reel-post">${reelFrame(src, title)}</div>`
         : `<div class="reel-center">${thumbMarkup(view)}</div>`;

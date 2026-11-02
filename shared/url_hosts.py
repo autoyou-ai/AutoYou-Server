@@ -22,6 +22,7 @@ SOCIAL_PLATFORM_DOMAINS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("threads", ("threads.net", "threads.com")),
     ("instagram", ("instagram.com",)),
     ("twitter", ("twitter.com", "x.com")),
+    ("bluesky", ("bsky.app",)),
 )
 
 
