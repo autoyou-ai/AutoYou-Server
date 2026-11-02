@@ -20,6 +20,7 @@ services:
     environment:
       - "AUTOYOU_SERVER_PASSWORD=${AUTOYOU_SERVER_PASSWORD:?Set AUTOYOU_SERVER_PASSWORD before starting AutoYou}"
       - AUTOYOU_NO_DOWNLOAD_TUNNELMOLE=${AUTOYOU_NO_DOWNLOAD_TUNNELMOLE:-0}
+      - AUTOYOU_ADVERTISED_HOST=${AUTOYOU_ADVERTISED_HOST:-}
       - OLLAMA_API_BASE=http://host.docker.internal:11434
       - SIGNAL_API_URL=http://signal:8080
       # 8067 is published on the host's loopback only, so the Docker gateway
