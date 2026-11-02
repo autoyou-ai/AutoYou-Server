@@ -79,7 +79,7 @@ pystray>=0.19.3
 Pillow>=13.0.0
 protobuf>=6.33.5,<7
 pyOpenSSL>=26.4.0
-pyasn1>=0.6.4
+pyasn1>=0.6.5
 filelock>=4.2.4,<5
 pyttsx3>=2.90
 # Native multilingual speech ships with every server profile. Runtime downloads
