@@ -650,7 +650,10 @@
     if (ui.hint.textContent === SLOW_NOTE || ui.hint.textContent === WARMING_NOTE) hint("");
   }
   var pendingAttachments = [];
-  var MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB limit
+  // Files travel inside the question request, so they must fit in memory and
+  // under the server's limit (backend MAX_TURN_ATTACHMENT_BYTES).
+  var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+  var MAX_ATTACHMENTS = 10;
 
   function renderAttachments() {
     if (!ui.askAttachments) return;
@@ -683,11 +686,19 @@
 
   function addFiles(files) {
     var list = Array.prototype.slice.call(files || []);
+    var total = pendingAttachments.reduce(function (sum, att) { return sum + (att.size_bytes || 0); }, 0);
+    var count = pendingAttachments.length;
     list.forEach(function (file) {
-      if (file.size > MAX_FILE_SIZE) {
-        hint(file.name + " exceeds 5 GB limit", "warn");
+      if (count >= MAX_ATTACHMENTS) {
+        hint("Attach up to " + MAX_ATTACHMENTS + " files at a time.", "warn");
         return;
       }
+      if (total + (file.size || 0) > MAX_ATTACHMENT_BYTES) {
+        hint(file.name + " is too large. Attachments can total up to 25 MB.", "warn");
+        return;
+      }
+      total += file.size || 0;
+      count += 1;
       var reader = new FileReader();
       reader.onload = function () {
         var res = String(reader.result || "");

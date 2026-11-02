@@ -38,7 +38,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, parse_qsl
 
 from fastapi import FastAPI, Request
@@ -63,6 +63,10 @@ ENGINE_END = "// </autoyou-wake-word-engine v1>"
 DEVICE_TOKEN_PARAM = "device_token"
 
 MAX_JSON_BYTES = 4 * 1024 * 1024
+# A typed question may carry files, base64 encoded in the request body.
+MAX_TURN_ATTACHMENTS = 10
+MAX_TURN_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_TURN_JSON_BYTES = MAX_JSON_BYTES + (MAX_TURN_ATTACHMENT_BYTES * 4) // 3 + 64 * 1024
 MAX_COMMAND_SECONDS = 30.0
 MAX_TURN_CHARS = 2000
 MAX_SPEAK_CHARS = 600
@@ -185,9 +189,12 @@ def _decision(claim: Any) -> Dict[str, Any]:
     return payload
 
 
-async def _json_body(request: Request) -> Tuple[Optional[Dict[str, Any]], Optional[Response]]:
+async def _json_body(request: Request, limit: int = MAX_JSON_BYTES) -> Tuple[Optional[Dict[str, Any]], Optional[Response]]:
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None, _error(413, "The request is too large.")
     raw = await request.body()
-    if len(raw) > MAX_JSON_BYTES:
+    if len(raw) > limit:
         return None, _error(413, "The request is too large.")
     try:
         body = json.loads(raw or b"{}")
@@ -196,6 +203,33 @@ async def _json_body(request: Request) -> Tuple[Optional[Dict[str, Any]], Option
     if not isinstance(body, dict):
         return None, _error(400, "The request must be a JSON object.")
     return body, None
+
+
+def _clean_attachments(raw: Any) -> Tuple[List[Dict[str, Any]], Optional[Response]]:
+    """Files sent with a typed question, checked before they reach the AI."""
+    if not raw:
+        return [], None
+    if not isinstance(raw, list):
+        return [], _error(400, "attachments must be a list.")
+    if len(raw) > MAX_TURN_ATTACHMENTS:
+        return [], _error(413, f"Attach up to {MAX_TURN_ATTACHMENTS} files at a time.")
+    cleaned: List[Dict[str, Any]] = []
+    total = 0
+    for item in raw:
+        data = item.get("data") if isinstance(item, dict) else None
+        if not isinstance(data, str) or not data:
+            return [], _error(400, "Each attachment needs its file data.")
+        size = (len(data) * 3) // 4 - (len(data) - len(data.rstrip("=")))
+        total += size
+        if total > MAX_TURN_ATTACHMENT_BYTES:
+            return [], _error(413, "Attachments can total up to 25 MB.")
+        cleaned.append({
+            "filename": str(item.get("filename") or "attachment")[:255],
+            "mimetype": str(item.get("mimetype") or "application/octet-stream")[:127],
+            "data": data,
+            "size_bytes": size,
+        })
+    return cleaned, None
 
 
 def _decode_pcm(body: Dict[str, Any], max_seconds: float) -> Tuple[Optional[bytes], Optional[Response]]:
@@ -742,7 +776,7 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         refused = _require_session(request)
         if refused is not None:
             return refused
-        body, error = await _json_body(request)
+        body, error = await _json_body(request, MAX_TURN_JSON_BYTES)
         if error is not None:
             return error
         body = body or {}
@@ -753,9 +787,9 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,96}", session_id):
             return _error(400, "A valid session_id is required.")
         wake = str(body.get("wake") or "")[:16]
-        attachments = body.get("attachments") or []
-        if not isinstance(attachments, list):
-            attachments = []
+        attachments, refused = _clean_attachments(body.get("attachments"))
+        if refused is not None:
+            return refused
         if not (await asyncio.to_thread(_assistant_mode().load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
         return await _run_job(_answer(text, "assistant-web-" + session_id, wake, attachments=attachments), TURN_WAIT_SECONDS)

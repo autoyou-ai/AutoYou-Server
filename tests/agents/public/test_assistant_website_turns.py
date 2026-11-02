@@ -326,3 +326,48 @@ def test_robot_features_glowing_backpack_emblem_and_expressive_eyebrows():
     assert "browLY: joint(0, 110, 0.6)" in script
     assert "browLTilt: joint(0, 85, 0.6)" in script
     assert "bot.browL.setAttribute" in script and "bot.browR.setAttribute" in script
+
+
+# -- Attachments -------------------------------------------------------------------
+
+
+def test_attachments_reach_the_assistant_and_oversized_ones_are_refused(site, monkeypatch):
+    seen = {}
+
+    async def ask_with_files(text, *, session_id, wake, attachments=None):
+        seen["attachments"] = attachments
+        return {"response": "Got it.", "agent_name": "assistant_agent"}
+
+    monkeypatch.setattr(site.backend, "ask_assistant", ask_with_files)
+    note = {"filename": "synthetic-note.txt", "mimetype": "text/plain", "data": base64.b64encode(b"hello").decode()}
+    with TestClient(site.backend.app) as client:
+        ok = client.post("/api/assistant/turn", json={"text": "read this", "session_id": "synthetic-1234",
+                                                      "attachments": [note]}, headers=ORIGIN)
+        too_many = client.post("/api/assistant/turn", json={"text": "read these", "session_id": "synthetic-1234",
+                                                            "attachments": [note] * 11}, headers=ORIGIN)
+        bad = client.post("/api/assistant/turn", json={"text": "read this", "session_id": "synthetic-1234",
+                                                       "attachments": [{"filename": "x"}]}, headers=ORIGIN)
+    assert ok.json()["reply"] == "Got it."
+    assert seen["attachments"][0]["filename"] == "synthetic-note.txt" and seen["attachments"][0]["size_bytes"] == 5
+    assert too_many.status_code == 413
+    assert bad.status_code == 400
+
+
+def test_attachment_total_is_capped_before_the_body_is_read(site, monkeypatch):
+    monkeypatch.setattr(site.backend, "MAX_TURN_ATTACHMENT_BYTES", 6)
+    note = {"filename": "synthetic.bin", "mimetype": "application/octet-stream", "data": base64.b64encode(b"0123456789").decode()}
+    with TestClient(site.backend.app) as client:
+        refused = client.post("/api/assistant/turn", json={"text": "too big", "session_id": "synthetic-1234",
+                                                           "attachments": [note]}, headers=ORIGIN)
+        huge = client.post("/api/assistant/turn", content=b"{" + b" " * 64 + b"}", headers={**ORIGIN, "Content-Type": "application/json",
+                                                                                         "Content-Length": str(site.backend.MAX_TURN_JSON_BYTES + 1)})
+    assert refused.status_code == 413
+    assert huge.status_code == 413
+
+
+def test_the_pages_keep_attachments_within_what_the_server_accepts():
+    page = (FRONTEND / "assets" / "app.js").read_text(encoding="utf-8")
+    admin = ADMIN_UI_JS.read_text(encoding="utf-8")
+    assert "5 * 1024 * 1024 * 1024" not in page and "5 * 1024 * 1024 * 1024" not in admin
+    assert "MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024" in page
+    assert "var maxFileBytes = 25 * 1024 * 1024;" in admin

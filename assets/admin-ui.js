@@ -4740,10 +4740,11 @@
     async function chatReadSelectedFiles(files) {
         var selected = Array.prototype.slice.call(files || []);
         var accepted = [];
-        var maxFileBytes = 5 * 1024 * 1024 * 1024; // 5 GB limit
+        // Files travel inside the chat request, so the browser must hold them in memory.
+        var maxFileBytes = 25 * 1024 * 1024;
         for (var index = 0; index < selected.length; index += 1) {
             if (selected[index].size > maxFileBytes) {
-                setNotice("error", selected[index].name + " is larger than the 5 GB limit.");
+                setNotice("error", selected[index].name + " is larger than the 25 MB browser limit.");
                 continue;
             }
             accepted.push(await chatReadFile(selected[index]));
