@@ -27,7 +27,7 @@ litellm==1.100.4
 # transitive releases yet. Keep shared pins compatible with optional Cognee.
 jiter>=0.6.1,<0.14
 rich>=13.7.0,<15.0.0
-packaging>=21,<25
+packaging>=26.3,<27
 python-dotenv>=1.2.2
 pydantic>=2.10.0,<3.0.0
 requests>=2.33.0
