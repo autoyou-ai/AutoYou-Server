@@ -101,8 +101,14 @@ def _is_virtual_subnet(address: ipaddress.IPv4Address) -> bool:
 
 def _adapter_ipv4_classification() -> Dict[str, str]:
     """Inspect local network adapters and classify IPv4 addresses into
-    'wifi', 'ethernet', or 'virtual'. Works on Windows, macOS, and Linux.
+    'wifi', 'ethernet', or 'virtual'. Works on Windows, macOS, and Linux
+    (including WSL and Docker).
     """
+    # In automated test suites, do not probe the operator's live hardware
+    # adapters unless explicitly requested by the test harness.
+    if os.environ.get("AUTOYOU_TEST_ROOT") and not os.environ.get("AUTOYOU_LIVE_ADAPTERS"):
+        return {}
+
     classified: Dict[str, str] = {}
     if os.name == "nt":
         import subprocess
@@ -133,6 +139,26 @@ def _adapter_ipv4_classification() -> Dict[str, str]:
     elif sys.platform == "darwin":
         import subprocess
         try:
+            # Map hardware ports to interface names (e.g., Wi-Fi -> en0 or en1, Ethernet -> en0 or en1)
+            # This accurately handles MacBooks (Wi-Fi=en0) and Mac Mini / Mac Pro (Ethernet=en0, Wi-Fi=en1).
+            port_to_dev: Dict[str, str] = {}
+            try:
+                hw_out = subprocess.check_output(
+                    ["networksetup", "-listallhardwareports"],
+                    text=True, timeout=2.0, stderr=subprocess.DEVNULL
+                )
+                current_port = ""
+                for line in hw_out.splitlines():
+                    line = line.strip()
+                    if line.startswith("Hardware Port:"):
+                        current_port = line.split(":", 1)[1].strip().lower()
+                    elif current_port and line.startswith("Device:"):
+                        dev = line.split(":", 1)[1].strip().lower()
+                        port_to_dev[dev] = current_port
+                        current_port = ""
+            except Exception:
+                pass
+
             out = subprocess.check_output(["ifconfig"], text=True, timeout=2.0, stderr=subprocess.DEVNULL)
             current_iface = ""
             for line in out.splitlines():
@@ -143,8 +169,13 @@ def _adapter_ipv4_classification() -> Dict[str, str]:
                     if len(parts) >= 2:
                         ip_cand = parts[1].strip()
                         if _usable_lan_ipv4(ip_cand):
-                            if current_iface.startswith(("utun", "bridge", "vbox", "vmnet", "docker")):
+                            hw_kind = port_to_dev.get(current_iface, "")
+                            if current_iface.startswith(("utun", "bridge", "vbox", "vmnet", "docker", "tailscale", "wg")):
                                 classified[ip_cand] = "virtual"
+                            elif "wi-fi" in hw_kind or "wifi" in hw_kind or "wireless" in hw_kind:
+                                classified[ip_cand] = "wifi"
+                            elif "ethernet" in hw_kind or "lan" in hw_kind:
+                                classified[ip_cand] = "ethernet"
                             elif current_iface == "en0":
                                 classified[ip_cand] = "wifi"
                             elif current_iface.startswith("en"):
@@ -152,15 +183,71 @@ def _adapter_ipv4_classification() -> Dict[str, str]:
         except Exception:
             pass
     else:
+        # Linux (native Linux, WSL, Docker)
+        import subprocess
+        # 1. Parse Linux interfaces via ip tool or ifconfig
         try:
-            net_dir = Path("/sys/class/net")
-            if net_dir.is_dir():
-                for iface_path in net_dir.iterdir():
-                    iface_name = iface_path.name.lower()
-                    if iface_name == "lo" or iface_name.startswith(("docker", "veth", "br-", "virbr", "vmnet", "vbox")):
-                        continue
+            out = subprocess.check_output(["ip", "-o", "-4", "addr", "show"], text=True, timeout=2.0, stderr=subprocess.DEVNULL)
+            for line in out.splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 4 and parts[2] == "inet":
+                    iface = parts[1].strip().lower()
+                    ip_cand = parts[3].split("/", 1)[0].strip()
+                    if _usable_lan_ipv4(ip_cand):
+                        if any(iface.startswith(p) for p in ("docker", "veth", "br-", "virbr", "vmnet", "vbox", "tun", "tap", "tailscale", "wg", "zt")):
+                            classified[ip_cand] = "virtual"
+                        elif any(iface.startswith(p) for p in ("wl", "wlan", "wifi")):
+                            classified[ip_cand] = "wifi"
+                        elif any(iface.startswith(p) for p in ("eth", "en")):
+                            classified[ip_cand] = "ethernet"
         except Exception:
-            pass
+            try:
+                out = subprocess.check_output(["ifconfig"], text=True, timeout=2.0, stderr=subprocess.DEVNULL)
+                current_iface = ""
+                for line in out.splitlines():
+                    if line and not line[0].isspace() and ":" in line:
+                        current_iface = line.split(":", 1)[0].strip().lower()
+                    elif current_iface and "inet " in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            ip_cand = parts[1].replace("addr:", "").strip()
+                            if _usable_lan_ipv4(ip_cand):
+                                if any(current_iface.startswith(p) for p in ("docker", "veth", "br-", "virbr", "vmnet", "vbox", "tun", "tap", "tailscale", "wg", "zt")):
+                                    classified[ip_cand] = "virtual"
+                                elif any(current_iface.startswith(p) for p in ("wl", "wlan", "wifi")):
+                                    classified[ip_cand] = "wifi"
+                                elif any(current_iface.startswith(p) for p in ("eth", "en")):
+                                    classified[ip_cand] = "ethernet"
+            except Exception:
+                pass
+
+        # 2. If running inside WSL with Windows interop, query Windows host physical Wi-Fi/Ethernet adapters
+        if any(os.environ.get(k) for k in ("WSL_DISTRO_NAME", "WSL_INTEROP")) or Path("/proc/sys/fs/binfmt_misc/WSLInterop").exists():
+            try:
+                ps_out = subprocess.check_output(
+                    ["powershell.exe", "-NoProfile", "-Command", "netsh interface ipv4 show addresses"],
+                    text=True, timeout=2.0, stderr=subprocess.DEVNULL
+                )
+                current_iface = ""
+                for line in ps_out.splitlines():
+                    line = line.strip()
+                    if line.startswith("Configuration for interface"):
+                        m = re.search(r'"([^"]+)"', line)
+                        current_iface = (m.group(1).lower() if m else "").strip()
+                    elif current_iface and line.startswith("IP Address:"):
+                        parts = line.split(":", 1)
+                        if len(parts) == 2:
+                            ip_cand = parts[1].strip()
+                            if _usable_lan_ipv4(ip_cand):
+                                if any(k in current_iface for k in ("vethernet", "virtual", "vmware", "vbox", "docker", "hyper-v", "wsl")):
+                                    classified[ip_cand] = "virtual"
+                                elif any(k in current_iface for k in ("wi-fi", "wifi", "wireless", "wlan")):
+                                    classified[ip_cand] = "wifi"
+                                elif any(k in current_iface for k in ("ethernet", "local area connection", "lan")):
+                                    classified[ip_cand] = "ethernet"
+            except Exception:
+                pass
+
     return classified
 
 def _score_lan_ipv4(candidate: str, classified_adapters: Dict[str, str], primary_ip: Optional[str]) -> int:
