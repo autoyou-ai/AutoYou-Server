@@ -411,7 +411,7 @@ def synthesize_speech(text: str) -> Optional[Tuple[bytes, str]]:
             LOGGER.debug("Could not remove a spoken reply file")
 
 
-async def ask_assistant(text: str, *, session_id: str, wake: str) -> Dict[str, Any]:
+async def ask_assistant(text: str, *, session_id: str, wake: str, attachments: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Send one question to the AI as an Assistant mode turn and return its answer."""
     import aiohttp
 
@@ -419,10 +419,14 @@ async def ask_assistant(text: str, *, session_id: str, wake: str) -> Dict[str, A
     token = _smc._get_internal_api_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    context: List[Dict[str, Any]] = []
+    if attachments:
+        context.append({"source": "assistant_website", "attachments": attachments})
     payload = {
         "message": text,
         "user_id": "assistant-website",
         "session_id": session_id,
+        "context": context,
         "metadata": {
             "assistant_mode": True,
             "source": "assistant_website",
@@ -474,9 +478,9 @@ def _forget_old_turns(now: float) -> None:
 JobResult = Tuple[int, Dict[str, Any]]
 
 
-async def _answer(text: str, session_id: str, wake: str) -> JobResult:
+async def _answer(text: str, session_id: str, wake: str, attachments: Optional[List[Dict[str, Any]]] = None) -> JobResult:
     try:
-        data = await ask_assistant(text, session_id=session_id, wake=wake)
+        data = await ask_assistant(text, session_id=session_id, wake=wake, attachments=attachments)
     except asyncio.TimeoutError:
         return 504, {"success": False, "error": "The assistant took too long to answer."}
     except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
@@ -746,9 +750,12 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,96}", session_id):
             return _error(400, "A valid session_id is required.")
         wake = str(body.get("wake") or "")[:16]
+        attachments = body.get("attachments") or []
+        if not isinstance(attachments, list):
+            attachments = []
         if not (await asyncio.to_thread(_assistant_mode().load_settings))["enabled"]:
             return _error(409, "Assistant mode is off.")
-        return await _run_job(_answer(text, "assistant-web-" + session_id, wake), TURN_WAIT_SECONDS)
+        return await _run_job(_answer(text, "assistant-web-" + session_id, wake, attachments=attachments), TURN_WAIT_SECONDS)
 
     async def _job_result(job_id: str, request: Request) -> Response:
         refused = _require_session(request)

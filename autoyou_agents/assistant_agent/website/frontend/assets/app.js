@@ -27,7 +27,7 @@
     settingsBtn: $("settings-btn"), settingsClose: $("settings-close"), facts: $("server-facts"),
     unlock: $("unlock"), unlockBtn: $("unlock-btn"), unlockTitle: $("unlock-title"), unlockSub: $("unlock-sub"),
     askForm: $("ask-form"), askInput: $("ask-input"), askSend: $("ask-send"), signout: $("signout-btn"),
-    clear: $("clear-btn")
+    clear: $("clear-btn"), askAttach: $("ask-attach"), askFileInput: $("ask-file-input"), askAttachments: $("ask-attachments")
   };
 
   // The server draws its sign-in screen over this page. While it shows, this
@@ -649,9 +649,67 @@
   function clearSlowNote() {
     if (ui.hint.textContent === SLOW_NOTE || ui.hint.textContent === WARMING_NOTE) hint("");
   }
+  var pendingAttachments = [];
+  var MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB limit
+
+  function renderAttachments() {
+    if (!ui.askAttachments) return;
+    ui.askAttachments.textContent = "";
+    if (!pendingAttachments.length) {
+      ui.askAttachments.hidden = true;
+      return;
+    }
+    ui.askAttachments.hidden = false;
+    pendingAttachments.forEach(function (att, idx) {
+      var chip = document.createElement("div");
+      chip.className = "ask-attachment-chip";
+      chip.textContent = att.filename + " (" + Math.round(att.size_bytes / 1024) + " KB) ";
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.textContent = "×";
+      rm.onclick = function () {
+        pendingAttachments.splice(idx, 1);
+        renderAttachments();
+      };
+      chip.appendChild(rm);
+      ui.askAttachments.appendChild(chip);
+    });
+  }
+
+  function clearAttachments() {
+    pendingAttachments = [];
+    renderAttachments();
+  }
+
+  function addFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    list.forEach(function (file) {
+      if (file.size > MAX_FILE_SIZE) {
+        hint(file.name + " exceeds 5 GB limit", "warn");
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var res = String(reader.result || "");
+        var comma = res.indexOf(",");
+        var data = comma >= 0 ? res.slice(comma + 1) : res;
+        pendingAttachments.push({
+          filename: file.name || "attachment",
+          mimetype: file.type || "application/octet-stream",
+          data: data,
+          size_bytes: file.size || 0
+        });
+        renderAttachments();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function askServer(text, via, ticket) {
     var current = function () { return ticket === S.turnTicket; };
-    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "" }).then(function (data) {
+    var attachments = pendingAttachments.slice();
+    clearAttachments();
+    return request("api/assistant/turn", { text: text, session_id: sessionId, wake: via || "", attachments: attachments }).then(function (data) {
       return settle(data, current);
     });
   }
@@ -1274,10 +1332,52 @@
     event.preventDefault();
     var text = ui.askInput.value.trim();
     // While it thinks or speaks, the empty bar's button is a stop button.
-    if (!text) { if (busy()) stopTurn(); return; }
+    if (!text && !pendingAttachments.length) { if (busy()) stopTurn(); return; }
     ui.askInput.value = "";
     outContext() && outContext().ctx.resume().catch(function () {});
-    ask(text, "typed");
+    ask(text || "(attached files)", "typed");
+  });
+  if (ui.askAttach && ui.askFileInput) {
+    ui.askAttach.addEventListener("click", function () { ui.askFileInput.click(); });
+    ui.askFileInput.addEventListener("change", function () {
+      addFiles(this.files);
+      this.value = "";
+    });
+  }
+
+  document.addEventListener("paste", function (event) {
+    var items = (event.clipboardData || {}).items;
+    if (!items || !items.length) return;
+    var files = [];
+    for (var i = 0; i < items.length; i += 1) {
+      if (items[i].kind === "file") {
+        var file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length) {
+      event.preventDefault();
+      addFiles(files);
+    }
+  });
+
+  document.addEventListener("dragover", function (event) {
+    if (event.dataTransfer && event.dataTransfer.types && Array.prototype.indexOf.call(event.dataTransfer.types, "Files") >= 0) {
+      event.preventDefault();
+      ui.askForm.classList.add("drag-over");
+    }
+  });
+  document.addEventListener("dragleave", function (event) {
+    if (!event.relatedTarget || !ui.askForm.contains(event.relatedTarget)) {
+      ui.askForm.classList.remove("drag-over");
+    }
+  });
+  document.addEventListener("drop", function (event) {
+    ui.askForm.classList.remove("drag-over");
+    if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+      event.preventDefault();
+      addFiles(event.dataTransfer.files);
+    }
   });
   document.addEventListener("keydown", function (event) {
     var typing = event.target && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);

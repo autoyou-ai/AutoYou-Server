@@ -191,6 +191,26 @@ body[data-phase="thinking"] .halo span:first-child {
   background: var(--panel); border: 1px solid var(--line);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
+.ask-attach {
+  width: 40px; height: 40px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--line); color: var(--ink);
+  display: grid; place-items: center; transition: background 0.2s ease, transform 0.15s ease;
+}
+.ask-attach:active { transform: scale(0.94); }
+.ask.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px var(--accent);
+}
+.ask-attachments {
+  display: flex; flex-wrap: wrap; gap: 8px; max-width: 560px; width: 100%; margin-top: 6px;
+}
+.ask-attachment-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); font-size: 0.85rem; color: var(--ink);
+}
+.ask-attachment-chip button {
+  background: none; border: 0; cursor: pointer; color: var(--ink-faint); padding: 0 2px; font-weight: bold;
+}
 .ask input {
   flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px 14px;
   font-size: 1rem; outline: none;

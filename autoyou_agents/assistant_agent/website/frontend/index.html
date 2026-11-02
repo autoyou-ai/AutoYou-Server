@@ -223,6 +223,10 @@
     <p class="hint" id="hint"></p>
 
     <form class="ask" id="ask-form" autocomplete="off">
+      <button type="button" class="ask-attach" id="ask-attach" aria-label="Add file" title="Add file">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <input type="file" id="ask-file-input" multiple style="display:none">
       <label class="sr-only" for="ask-input">Type a question</label>
       <input id="ask-input" type="text" maxlength="2000" placeholder="Or type a question…" enterkeyhint="send">
       <button type="submit" class="ask-send" id="ask-send" aria-label="Ask" title="Ask">
@@ -230,6 +234,7 @@
         <svg class="icon-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
       </button>
     </form>
+    <div class="ask-attachments" id="ask-attachments" hidden></div>
   </main>
 
   <div class="overlay" id="unlock" hidden>

@@ -9143,10 +9143,25 @@ class WebRTCManager:
                 playback_status_after_turn,
             )
             ai_audio_replies_enabled = _runtime._get_ai_audio_replies_enabled(cfg=(_runtime.STATE.config or {}))
-            suppress_reply_tts = audio_playback_started or not ai_audio_replies_enabled
+            client_source = str(
+                (metadata_extra or {}).get("client")
+                or (metadata_extra or {}).get("source")
+                or ""
+            ).strip().lower()
+            is_web_client = (
+                client_source in {"admin-web", "assistant-web", "assistant-website", "website"}
+                or (metadata_extra or {}).get("source") == "assistant_website"
+                or bool((metadata_extra or {}).get("web_turn"))
+            )
+            suppress_reply_tts = audio_playback_started or not ai_audio_replies_enabled or is_web_client
 
             if suppress_reply_tts:
-                if audio_playback_started:
+                if is_web_client:
+                    _runtime.LOGGER.info(
+                        "Suppressing spoken voice reply for %s over WebRTC because turn originated from web assistant.",
+                        session_id,
+                    )
+                elif audio_playback_started:
                     _runtime.LOGGER.info(
                         "Suppressing spoken voice reply for %s because outbound audio playback started.",
                         session_id,
@@ -9185,7 +9200,9 @@ class WebRTCManager:
             )
             if suppress_reply_tts:
                 response_metadata["voice_reply_tts_suppression_reason"] = (
-                    "audio_playback_started" if audio_playback_started else "ai_audio_replies_disabled"
+                    "web_assistant_turn"
+                    if is_web_client
+                    else ("audio_playback_started" if audio_playback_started else "ai_audio_replies_disabled")
                 )
             response_message = _runtime.create_chat_message(
                 message=reply,

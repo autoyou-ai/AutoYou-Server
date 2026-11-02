@@ -4740,9 +4740,10 @@
     async function chatReadSelectedFiles(files) {
         var selected = Array.prototype.slice.call(files || []);
         var accepted = [];
+        var maxFileBytes = 5 * 1024 * 1024 * 1024; // 5 GB limit
         for (var index = 0; index < selected.length; index += 1) {
-            if (selected[index].size > 25 * 1024 * 1024) {
-                setNotice("error", selected[index].name + " is larger than the 25 MB browser limit.");
+            if (selected[index].size > maxFileBytes) {
+                setNotice("error", selected[index].name + " is larger than the 5 GB limit.");
                 continue;
             }
             accepted.push(await chatReadFile(selected[index]));
@@ -13561,6 +13562,52 @@
         window.visualViewport.addEventListener("resize", scheduleChatViewport);
         window.visualViewport.addEventListener("scroll", scheduleChatViewport);
     }
+
+    document.addEventListener("paste", function (event) {
+        var items = (event.clipboardData || {}).items;
+        if (!items || !items.length) return;
+        var files = [];
+        for (var i = 0; i < items.length; i += 1) {
+            if (items[i].kind === "file") {
+                var file = items[i].getAsFile();
+                if (file) files.push(file);
+            }
+        }
+        if (files.length) {
+            event.preventDefault();
+            chatReadSelectedFiles(files).catch(function (error) {
+                setNotice("error", error.message || "Could not read pasted files.");
+            });
+        }
+    });
+
+    document.addEventListener("dragover", function (event) {
+        if (event.dataTransfer && event.dataTransfer.types && Array.prototype.indexOf.call(event.dataTransfer.types, "Files") >= 0) {
+            var dropzone = event.target && event.target.closest && event.target.closest(".ayu-chat-workspace, .ayu-chat-composer");
+            if (dropzone) {
+                event.preventDefault();
+                dropzone.classList.add("ayu-drop-target");
+            }
+        }
+    });
+
+    document.addEventListener("dragleave", function (event) {
+        var dropzone = event.target && event.target.closest && event.target.closest(".ayu-chat-workspace, .ayu-chat-composer");
+        if (dropzone) {
+            dropzone.classList.remove("ayu-drop-target");
+        }
+    });
+
+    document.addEventListener("drop", function (event) {
+        var dropzone = event.target && event.target.closest && event.target.closest(".ayu-chat-workspace, .ayu-chat-composer");
+        if (dropzone && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+            event.preventDefault();
+            dropzone.classList.remove("ayu-drop-target");
+            chatReadSelectedFiles(event.dataTransfer.files).catch(function (error) {
+                setNotice("error", error.message || "Could not read dropped files.");
+            });
+        }
+    });
 
     document.addEventListener("keydown", function (event) {
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.target && event.target.getAttribute("data-role") === "chat-input") {
