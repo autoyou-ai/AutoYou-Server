@@ -74,7 +74,7 @@ async def test_discovery_identity_survives_restart_rename_and_network_change(mon
     assert records[0].server == records[1].server != records[2].server
     assert records[1].parsed_addresses() == ["192.168.20.30"]
     assert records[1].port == 9001
-    assert records[1].decoded_properties == {"v": "1", "name": "Renamed PC"}
+    assert records[1].decoded_properties == {"v": "1", "name": "Renamed PC", "ips": "192.168.20.30"}
     assert "synthetic-installation" not in records[0].server
     with pytest.raises(ValueError, match="saved installation ID"):
         await ServerAdvertisement().start(bind_host="192.168.10.20", port=8001, name="test", installation_id="")
