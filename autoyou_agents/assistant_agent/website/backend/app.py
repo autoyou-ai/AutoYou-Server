@@ -480,7 +480,10 @@ JobResult = Tuple[int, Dict[str, Any]]
 
 async def _answer(text: str, session_id: str, wake: str, attachments: Optional[List[Dict[str, Any]]] = None) -> JobResult:
     try:
-        data = await ask_assistant(text, session_id=session_id, wake=wake, attachments=attachments)
+        kwargs = {"session_id": session_id, "wake": wake}
+        if attachments:
+            kwargs["attachments"] = attachments
+        data = await ask_assistant(text, **kwargs)
     except asyncio.TimeoutError:
         return 504, {"success": False, "error": "The assistant took too long to answer."}
     except Exception as exc:  # noqa: BLE001 - reported to the page, logged here

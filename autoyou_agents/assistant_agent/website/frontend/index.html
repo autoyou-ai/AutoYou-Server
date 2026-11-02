@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-autoyou-scroll-managed="1">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#070b1a">
   <meta name="mobile-web-app-capable" content="yes">
@@ -110,7 +110,7 @@
               <path d="M200 296c-14 40-14 120 0 166" fill="none" stroke="#c4cbe0" stroke-width="2"/>
               <path d="M128 432c40 22 104 22 144 0" fill="none" stroke="url(#g-blue)" stroke-width="9" stroke-linecap="round"/>
               <ellipse cx="166" cy="338" rx="26" ry="12" fill="#fff" opacity="0.65" transform="rotate(-24 166 338)"/>
-              <!-- Chest Reactor: Solid housing with pulsing AutoYou core logo inside -->
+              <!-- Chest Reactor: Solid housing with pulsing AutoYou core emblem inside -->
               <g id="reactor" transform="translate(200 365)">
                 <circle r="31" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="1.5"/>
                 <circle r="26.5" fill="#080f26"/>
@@ -228,7 +228,7 @@
       </button>
       <input type="file" id="ask-file-input" multiple style="display:none">
       <label class="sr-only" for="ask-input">Type a question</label>
-      <input id="ask-input" type="text" maxlength="2000" placeholder="Or type a question…" enterkeyhint="send">
+      <textarea id="ask-input" rows="1" maxlength="2000" placeholder="Or type a question…" enterkeyhint="send" autocomplete="off" autocorrect="on" spellcheck="true"></textarea>
       <button type="submit" class="ask-send" id="ask-send" aria-label="Ask" title="Ask">
         <svg class="icon-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6"/></svg>
         <svg class="icon-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>

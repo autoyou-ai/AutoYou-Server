@@ -321,7 +321,7 @@ def test_robot_features_glowing_backpack_emblem_and_expressive_eyebrows():
     assert 'rx="58"' not in page and 'M112 128' not in page
     # Backpack-inspired core emblem is on torso with cloud and network nodes
     assert 'id="core"' in page
-    assert '<polygon points="0,-5.8 5.5,-2.5 5.5,3.2 0,6.2' in page
+    assert '<polygon points="0,-25.5 22.5,-12.5 22.5,12.5 0,25.5 -22.5,12.5 -22.5,-12.5"' in page
     # Eyebrow spring joints and speech/emotion reactions wired in script
     assert "browLY: joint(0, 110, 0.6)" in script
     assert "browLTilt: joint(0, 85, 0.6)" in script

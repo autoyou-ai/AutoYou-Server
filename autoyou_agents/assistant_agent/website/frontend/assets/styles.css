@@ -37,8 +37,9 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html { height: 100%; }
 body {
+  height: 100%; margin: 0;
   font-family: var(--font);
   color: var(--ink);
   background:
@@ -53,22 +54,30 @@ body {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, textarea, select { font: inherit; color: inherit; }
 
 .stage {
+  width: 100%;
   height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-  padding: max(14px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
-  gap: 6px;
+  height: 100dvh;
+  height: var(--visual-viewport-height, 100dvh);
+  max-height: var(--visual-viewport-height, 100dvh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(12px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+  gap: 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  position: relative;
 }
 
 /* Top bar */
 .topbar {
   width: 100%; max-width: 980px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex: none;
 }
 .status-chip {
   display: inline-flex; align-items: center; gap: 10px; min-width: 0;
@@ -115,18 +124,44 @@ body[data-phase="error"] .status-dot { background: var(--error); }
 
 /* Robot */
 .robot-zone {
-  position: relative; width: 100%; height: 100%; min-height: 0;
-  /* One fixed-size cell, so the robot shrinks when a long answer needs room. */
-  display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
-  place-items: center;
+  position: relative; width: 100%; min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: flex 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.25s ease, opacity 0.2s ease, margin 0.2s ease;
 }
 .robot-button {
   position: relative; z-index: 1;
-  width: 100%; height: 100%; min-height: 0; max-height: min(62vh, 620px);
+  width: 100%; height: 100%; min-height: 0; max-height: min(58vh, 580px);
   padding: 0; border: 0; background: none; cursor: pointer;
   border-radius: 40%;
+  transition: max-height 0.25s ease;
 }
-.robot-button svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.robot-button svg { width: 100%; height: 100%; overflow: visible; display: block; margin: 0 auto; }
+
+/* Compact mobile keyboard/focus states: smoothly shrink robot so conversation & input are fully visible */
+body.input-focused .robot-zone,
+body.keyboard-open .robot-zone {
+  flex: 0 0 68px;
+  max-height: 68px;
+  min-height: 48px;
+  opacity: 0.75;
+}
+body.input-focused .robot-button,
+body.keyboard-open .robot-button {
+  max-height: 68px;
+}
+body.input-focused .halo,
+body.keyboard-open .halo {
+  opacity: 0;
+  pointer-events: none;
+}
+body.input-focused .stage,
+body.keyboard-open .stage {
+  padding-bottom: 8px;
+  gap: 6px;
+}
 .halo {
   position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
 }
@@ -152,12 +187,19 @@ body[data-phase="thinking"] .halo span:first-child {
 /* Conversation: scrolls by wheel, touch or keys, with no scrollbar drawn. The
    edges fade so it is clear there is more above. */
 .conversation {
-  position: relative; width: 100%; max-width: 760px; min-height: 4.6em;
-  max-height: min(30vh, 300px);
+  position: relative; width: 100%; max-width: 760px; min-height: 4.2em;
+  flex: 0 1 auto;
+  max-height: min(32vh, 300px);
   overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth;
   scrollbar-width: none; -ms-overflow-style: none;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 10px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 10px), transparent 100%);
+}
+body.input-focused .conversation,
+body.keyboard-open .conversation {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 3em;
 }
 .conversation::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .turns { list-style: none; margin: 0; padding: 18px 4px 6px; display: grid; gap: 10px; }
@@ -187,19 +229,30 @@ body[data-phase="thinking"] .halo span:first-child {
 /* Typed question */
 .ask {
   width: 100%; max-width: 560px; display: flex; gap: 8px;
-  padding: 6px; border-radius: 999px;
-  background: var(--panel); border: 1px solid var(--line);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  align-items: flex-end;
+  padding: 6px 6px 6px 14px;
+  border-radius: 26px;
+  background: var(--panel); border: 1.5px solid var(--line);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  flex: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .ask-attach {
   width: 40px; height: 40px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
   background: var(--line); color: var(--ink);
   display: grid; place-items: center; transition: background 0.2s ease, transform 0.15s ease;
+  margin-bottom: 1px;
 }
-.ask-attach:active { transform: scale(0.94); }
+.ask-attach:active { transform: scale(0.92); }
 .ask.drag-over {
   border-color: var(--accent);
   box-shadow: 0 0 16px var(--accent);
+}
+.ask:focus-within {
+  border-color: var(--accent);
+  background: var(--panel-solid);
+  box-shadow: 0 0 0 3px rgba(63, 216, 255, 0.25), 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 .ask-attachments {
   display: flex; flex-wrap: wrap; gap: 8px; max-width: 560px; width: 100%; margin-top: 6px;
@@ -211,15 +264,28 @@ body[data-phase="thinking"] .halo span:first-child {
 .ask-attachment-chip button {
   background: none; border: 0; cursor: pointer; color: var(--ink-faint); padding: 0 2px; font-weight: bold;
 }
-.ask input {
-  flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px 14px;
-  font-size: 1rem; outline: none;
+.ask textarea, .ask input {
+  flex: 1; min-width: 0; border: 0; background: transparent;
+  padding: 8px 2px;
+  font-family: inherit; font-size: 16px; /* 16px prevents iOS Safari auto-zoom */
+  line-height: 1.42; color: var(--ink);
+  outline: none; resize: none;
+  max-height: 130px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  -webkit-appearance: none;
+  border-radius: 0;
+  box-sizing: border-box;
 }
-.ask input::placeholder { color: var(--ink-faint); }
+.ask textarea::placeholder, .ask input::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
 .ask-send {
   width: 40px; height: 40px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
   background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff;
   display: grid; place-items: center; transition: background 0.2s ease, transform 0.15s ease;
+  margin-bottom: 1px;
 }
 .ask-send:active { transform: scale(0.94); }
 .ask-send .icon-stop { display: none; fill: currentColor; stroke: none; }
@@ -273,12 +339,12 @@ body[data-phase="thinking"] .halo span:first-child {
 
 /* A device with no screen, or one that should not show the robot. */
 body.no-robot .robot-zone { display: none; }
-body.no-robot .stage { grid-template-rows: auto 1fr auto auto auto; align-content: center; }
-body.no-robot .conversation { align-self: center; max-height: 62vh; }
+body.no-robot .stage { justify-content: center; }
+body.no-robot .conversation { flex: 1 1 auto; max-height: 62vh; }
 
-@media (max-height: 520px) {
-  .ask { display: none; }
-  .robot-button { max-height: 52vh; }
+@media (max-height: 380px) and (orientation: landscape) {
+  body:not(.input-focused):not(.keyboard-open) .ask { display: none; }
+  .robot-button { max-height: 48vh; }
 }
 @media (prefers-reduced-motion: reduce) {
   .halo span, .status-dot, .unlock-btn, .drawer, .turn { animation: none !important; }

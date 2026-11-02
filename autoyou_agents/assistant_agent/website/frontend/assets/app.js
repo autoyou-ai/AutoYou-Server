@@ -1327,13 +1327,80 @@
   ui.clear.addEventListener("click", clearHistory);
   ui.toLatest.addEventListener("click", function () { toLatest(true); });
   ui.conversation.addEventListener("scroll", function () { if (nearBottom()) ui.toLatest.hidden = true; }, { passive: true });
-  ui.askInput.addEventListener("input", renderAsk);
+  function adjustTextareaHeight() {
+    if (!ui.askInput) return;
+    ui.askInput.style.height = "auto";
+    var scrollHeight = ui.askInput.scrollHeight;
+    if (scrollHeight > 0) {
+      ui.askInput.style.height = Math.min(scrollHeight, 130) + "px";
+    }
+  }
+
+  function scrollInputIntoView() {
+    if (ui.askForm) {
+      try {
+        ui.askForm.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      } catch (e) {
+        ui.askForm.scrollIntoView(false);
+      }
+    }
+  }
+
+  ui.askInput.addEventListener("input", function () {
+    adjustTextareaHeight();
+    renderAsk();
+  });
+  ui.askInput.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      if (event.isComposing) return;
+      event.preventDefault();
+      if (ui.askForm.requestSubmit) {
+        ui.askForm.requestSubmit();
+      } else {
+        ui.askForm.dispatchEvent(new Event("submit", { cancelable: true }));
+      }
+    }
+  });
+  ui.askInput.addEventListener("focus", function () {
+    document.body.classList.add("input-focused");
+    setTimeout(function () {
+      scrollInputIntoView();
+      toLatest(true);
+    }, 100);
+    setTimeout(function () {
+      scrollInputIntoView();
+    }, 320);
+  });
+  ui.askInput.addEventListener("blur", function () {
+    document.body.classList.remove("input-focused");
+  });
+
+  function updateVisualViewport() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    var h = vv.height;
+    document.documentElement.style.setProperty("--visual-viewport-height", h + "px");
+    var isKeyboard = (window.innerHeight - h) > 130;
+    document.body.classList.toggle("keyboard-open", isKeyboard);
+    if (isKeyboard && document.activeElement === ui.askInput) {
+      scrollInputIntoView();
+    }
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateVisualViewport);
+    window.visualViewport.addEventListener("scroll", updateVisualViewport);
+    updateVisualViewport();
+  }
+  window.addEventListener("resize", updateVisualViewport);
+
   ui.askForm.addEventListener("submit", function (event) {
     event.preventDefault();
     var text = ui.askInput.value.trim();
     // While it thinks or speaks, the empty bar's button is a stop button.
-    if (!text && !pendingAttachments.length) { if (busy()) stopTurn(); return; }
+    if (!text && pendingAttachments && pendingAttachments.length) text = '(attached files)';
+    if (!text) { if (busy()) stopTurn(); return; }
     ui.askInput.value = "";
+    adjustTextareaHeight();
     outContext() && outContext().ctx.resume().catch(function () {});
     ask(text || "(attached files)", "typed");
   });
