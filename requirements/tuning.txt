@@ -7,7 +7,7 @@ torchvision
 # runtime lock so existing installs do not keep a stale 4.x wheel.
 transformers>=5.12.1,<6
 # Datasets 5.0.1 accepts the patched shared filesystem dependency.
-datasets>=5.0.1,<6
+datasets>=5.1.0,<6
 fsspec[http]==2026.6.0
 peft>=0.12.0
 accelerate>=0.33.0
