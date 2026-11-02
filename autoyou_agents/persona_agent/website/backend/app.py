@@ -32,6 +32,8 @@ from fastapi.staticfiles import StaticFiles
 from autoyou_agents.persona_agent.agent import (
     append_persona,
     diary_media_store,
+    get_diary_entry,
+    list_diary_entries,
     publish_diary_entry,
     get_persona_status,
     read_persona,
@@ -321,6 +323,28 @@ def api_wipe(request: Request) -> JSONResponse:
     if not _check_auth(request):
         return _auth_error()
     return _json_response({"success": True, **wipe_persona()})
+
+
+@app.get("/api/persona/entries")
+def api_list_diary_entries(request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _auth_error()
+    order = str(request.query_params.get("order") or "desc")
+    entries = list_diary_entries(order=order)
+    return _json_response({"success": True, "entries": entries, "total": len(entries)})
+
+
+@app.get("/api/persona/entries/{entry_id}")
+def api_get_diary_entry(entry_id: str, request: Request) -> JSONResponse:
+    if not _check_auth(request):
+        return _auth_error()
+    try:
+        entry = get_diary_entry(entry_id)
+    except Exception:
+        entry = None
+    if not entry:
+        return _json_response({"success": False, "error": "Diary entry not found."}, status_code=404)
+    return _json_response({"success": True, "entry": entry})
 
 
 @app.post("/api/persona/entries")

@@ -876,6 +876,31 @@ class PageFeedDB:
             )
         return items
 
+    def get_item(self, item_id: int) -> Optional[FeedItemFull]:
+        """Fetch single feed item by id including its tags."""
+        sql = "SELECT id, type, url, title, content, source, added_at, favourite FROM feed_items WHERE id = ?"
+        with self._connect() as con:
+            cur = con.execute(sql, (int(item_id),))
+            r = cur.fetchone()
+            if not r:
+                return None
+            tcur = con.execute("SELECT tag FROM item_tags WHERE item_id = ? ORDER BY tag ASC", (int(item_id),))
+            tags = [str(row[0]) for row in tcur.fetchall()]
+        item_type = _canonicalize_feed_type(r[1])
+        item_url = _canonicalize_x_url(r[2]) if item_type == "twitter" else str(r[2])
+        item_source = _canonicalize_source(r[5]) if item_type == "twitter" else str(r[5] or "")
+        return FeedItemFull(
+            id=int(r[0]),
+            type=item_type,
+            url=item_url,
+            title=str(r[3] or ""),
+            content=str(r[4] or ""),
+            source=item_source,
+            added_at=str(r[6]),
+            favourite=bool(int(r[7] or 0)),
+            tags=tags,
+        )
+
     def summary(self, tag_limit: int = 8) -> Dict[str, Any]:
         """Whole-feed totals and the most used tags, for the page header."""
         with self._connect() as con:

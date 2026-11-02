@@ -1827,6 +1827,58 @@ class PageFeedService:
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @app.get("/api/feed/catalog")
+        async def api_feed_catalog(request: Request) -> JSONResponse:
+            """Lightweight catalog of feed items without full content for mobile sync."""
+            try:
+                qp = request.query_params
+                order = (qp.get("order") or "desc").lower()
+                try:
+                    limit = int(qp.get("limit")) if qp.get("limit") is not None else 100
+                except ValueError:
+                    limit = 100
+                if limit <= 0:
+                    limit = 100
+
+                if getattr(self, "db", None) is not None:
+                    full_items = self.db.query_items(
+                        order=("asc" if order == "asc" else "desc"),
+                        limit=limit,
+                        ignore_date_default=True,
+                    )
+                else:
+                    full_items = list(self.feed_items)
+                    full_items.sort(key=lambda x: str(x.get("added_at") or ""), reverse=(order != "asc"))
+                    full_items = full_items[:limit]
+
+                catalog = [
+                    {
+                        "id": str(i.get("id")),
+                        "type": str(i.get("type") or "text"),
+                        "title": str(i.get("title") or ""),
+                        "url": str(i.get("url") or ""),
+                        "tags": list(i.get("tags") or []),
+                        "added_at": str(i.get("added_at") or ""),
+                        "source": str(i.get("source") or ""),
+                    }
+                    for i in full_items
+                ]
+                return JSONResponse({"items": catalog})
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @app.get("/api/feed/item/{item_id}")
+        async def api_feed_get_item(item_id: int) -> JSONResponse:
+            """Full feed item details including content for on-demand download."""
+            if getattr(self, "db", None) is not None:
+                item = self.db.get_item(item_id)
+                if item:
+                    return JSONResponse({"item": dict(item)})
+            for i in self.feed_items:
+                if i.get("id") == item_id:
+                    return JSONResponse({"item": i})
+            return JSONResponse({"error": "Item not found"}, status_code=404)
+
         @app.get("/api/feed/page")
         async def api_feed_page(request: Request) -> JSONResponse:
             """One page of the website feed, with display details, for infinite scroll."""

@@ -354,3 +354,36 @@ def test_page_ships_the_full_screen_feed_and_photo_viewer(feed):
     # Opened photos load the original file; the list keeps the light preview.
     assert "./api/blob/synthetic-photo?preview=1" in html
     assert "const full = safeUrl(view.open_url);" in script
+
+
+def test_feed_catalog_and_get_item(feed):
+    service, client = feed
+    item1 = service.db.insert("article", "https://example.com/one", title="Article One", content="Full text of article one")
+    service.db.add_tag(item1["id"], "news")
+    service.db.add_tag(item1["id"], "tech")
+    item2 = service.db.insert("text", "https://example.com/two", title="Note Two", content="Short note content")
+    service.db.add_tag(item2["id"], "quick")
+
+    # Test catalog listing
+    resp = client.get("/api/feed/catalog?order=desc")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert items[0]["id"] == str(item2["id"])
+    assert items[0]["title"] == "Note Two"
+    assert "content" not in items[0]  # Catalog is lightweight, does not include content
+    assert items[0]["tags"] == ["quick"]
+    assert items[1]["id"] == str(item1["id"])
+    assert items[1]["title"] == "Article One"
+
+    # Test get single item
+    resp_item = client.get(f"/api/feed/item/{item1['id']}")
+    assert resp_item.status_code == 200
+    single = resp_item.json()["item"]
+    assert single["id"] == item1["id"]
+    assert single["title"] == "Article One"
+    assert single["content"] == "Full text of article one"
+    assert "news" in single["tags"]
+
+    # Test 404 on missing item
+    assert client.get("/api/feed/item/999999").status_code == 404

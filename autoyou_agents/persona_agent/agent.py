@@ -31,7 +31,7 @@ import shutil
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from google.adk.agents import Agent
 
@@ -83,6 +83,68 @@ def publish_diary_entry(entry_id: str, markdown: str) -> Dict[str, Any]:
     except Exception:
         LOGGER.exception("publish_diary_entry failed")
         return {"status": "error", "message": "Could not publish the diary entry. Existing profile was preserved."}
+
+
+def list_diary_entries(order: str = "desc") -> List[Dict[str, Any]]:
+    """Return catalog of diary entries from persona.md without full content."""
+    with _PERSONA_LOCK:
+        store = _store()
+        text = store.read() or ""
+    pattern = re.compile(
+        r"(?ms)^<!-- autoyou-diary:([0-9a-fA-F-]{36}) -->\s*\n"
+        r"### (\d{4}-\d{2}-\d{2})\s*\n\n"
+        r"#### ([^\n]+)\s*\n\n"
+        r"##### ([^\n]*)\s*\n\n"
+        r"(.*?)\s*\n"
+        r"<!-- /autoyou-diary:\1 -->"
+    )
+    entries = []
+    for match in pattern.finditer(text):
+        entry_id, date, time_val, title, body = match.groups()
+        preview = " ".join(body.strip().split())[:120]
+        entries.append({
+            "id": entry_id,
+            "date": date,
+            "time": time_val.strip(),
+            "title": title.strip() or "Untitled",
+            "preview": preview,
+            "has_media": "Attachments:" in body or "/media/" in body,
+        })
+    reverse = (str(order or "desc").strip().lower() != "asc")
+    entries.sort(key=lambda e: (e["date"], e["time"]), reverse=reverse)
+    return entries
+
+
+def get_diary_entry(entry_id: str) -> Optional[Dict[str, Any]]:
+    """Return full diary entry by id."""
+    try:
+        identifier = str(uuid.UUID(str(entry_id)))
+    except (ValueError, TypeError):
+        return None
+    with _PERSONA_LOCK:
+        store = _store()
+        text = store.read() or ""
+    marker = re.escape(identifier)
+    pattern = re.compile(
+        rf"(?ms)^<!-- autoyou-diary:{marker} -->\s*\n"
+        r"### (\d{4}-\d{2}-\d{2})\s*\n\n"
+        r"#### ([^\n]+)\s*\n\n"
+        r"##### ([^\n]*)\s*\n\n"
+        r"(.*?)\s*\n"
+        rf"<!-- /autoyou-diary:{marker} -->"
+    )
+    match = pattern.search(text)
+    if not match:
+        return None
+    date, time_val, title, body = match.groups()
+    return {
+        "id": identifier,
+        "date": date,
+        "time": time_val.strip(),
+        "title": title.strip() or "Untitled",
+        "body": body.strip(),
+        "markdown": match.group(0),
+    }
 
 
 def _encryption_enabled() -> bool:

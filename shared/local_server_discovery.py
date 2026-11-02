@@ -77,7 +77,7 @@ class ServerAdvertisement:
             port=port,
             parsed_addresses=addresses,
             server=f"autoyou-{service_id}.local.",
-            properties={"v": "1", "name": label},
+            properties={"v": "1", "name": label, "ips": ",".join(addresses)},
         )
         try:
             await (await self.zeroconf.async_register_service(self.info))
