@@ -20,8 +20,8 @@ with scripts/build_game_package.py. Complete packages support up to 5 GiB; keep 
 under 8 MiB and put large content in assets. The server mobile_games library accepts project
 folders and packages, and connected clients transfer them over WebRTC or approved Peer Links.
 Every offline game must draw its own Quit (X) button next to its Pause and Settings buttons and call
-AutoYouGame.quit() from it. AutoYou clients show no close button over a game, and the server and
-clients reject packages or pages whose entry page never calls AutoYouGame.quit().
+AutoYouGame.quit() from it; AutoYou clients then show no close button over the game. The server
+refuses to build, upload or publish a game that never calls AutoYouGame.quit().
 Use AutoYouGame.db.execute, transaction and readAsset for the game's private native SQLite runtime.
 Declare database seed, schema_version and migrations in game.json. Export captures committed WAL
 data. Updates replace assets and migrate private progress; replacing a seed alone does not overwrite

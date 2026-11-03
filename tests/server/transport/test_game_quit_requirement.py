@@ -55,7 +55,7 @@ def test_build_accepts_a_quit_call_in_a_script_file_and_refuses_a_game_without_o
     assert not (tmp_path / "bad.aygame").exists()
 
 
-def test_catalog_hides_stored_packages_without_quit(tmp_path, monkeypatch):
+def test_catalog_still_serves_stored_packages_without_quit(tmp_path, monkeypatch):
     data = tmp_path / "data"
     (data / "mobile_games").mkdir(parents=True)
     game_package.build(_project(tmp_path / "good", "AutoYouGame.quit()"), data / "mobile_games" / "synthetic-quit.aygame")
@@ -67,9 +67,10 @@ def test_catalog_hides_stored_packages_without_quit(tmp_path, monkeypatch):
     game_package.build(project, data / "mobile_games" / "synthetic-legacy.aygame")
     monkeypatch.undo()
     catalog = GamePackages(tmp_path / "app", data)
-    assert [game["id"] for game in catalog.listing()["games"]] == ["synthetic-quit"]
-    with pytest.raises(ValueError, match=re.escape("AutoYouGame.quit()")):
-        catalog.resolve("synthetic-legacy")
+    # Older games stay downloadable: the phone shows its own close button over a game without Quit.
+    assert [game["id"] for game in catalog.listing()["games"]] == ["synthetic-legacy", "synthetic-quit"]
+    assert not game_package.package_supports_quit(catalog.resolve("synthetic-legacy"))
+    assert game_package.package_supports_quit(catalog.resolve("synthetic-quit"))
 
 
 def test_neon_horizon_has_its_own_quit_next_to_pause_and_settings():

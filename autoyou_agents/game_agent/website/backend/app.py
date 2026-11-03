@@ -288,9 +288,9 @@ def _extra_routes(app, agent_name):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         return JSONResponse({
             "version": "autoyou_game_v1",
-            "quit": ("Required for offline games: draw a Quit (X) button next to Pause and Settings that calls "
-                     "AutoYouGame.quit(). Native clients show no close button over a game; packages and pages "
-                     "without the call are rejected."),
+            "quit": ("Required for new offline games: draw a Quit (X) button next to Pause and Settings that calls "
+                     "AutoYouGame.quit(). Native clients then show no close button over the game. Building, uploading "
+                     "or publishing a game without the call is refused; older games still play with a native close button."),
             "stream": "/api/webrtc/game-input/stream",
             "connection": "/api/webrtc/game-input/connection",
             "events": ["touch", "sensor", "axis", "button", "session_start", "state_reset", "session_end",

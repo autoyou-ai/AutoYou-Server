@@ -33,7 +33,6 @@ class GamePackages:
         if source.suffix == ".aygame":
             manifest, _ = package.read_manifest(source)
             if manifest["id"] != identifier: raise ValueError("Game id does not match its package")
-            if not package.package_supports_quit(source): raise ValueError(package.QUIT_REQUIREMENT)
             return source
         descriptor = json.loads((source / "game.json").read_text()) if source.is_dir() else None
         names = ["game.json", *(descriptor.get("files") or [])] if descriptor else [source.name]
