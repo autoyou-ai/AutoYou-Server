@@ -193,3 +193,67 @@ async def test_compact_internet_replays_verified_wikipedia_fallback_search():
     assert "Wikipedia article instead" in response.content.parts[0].text
     assert "Collateralized loan obligation" in response.content.parts[0].text
     assert response.custom_metadata["internet_verified_tool_result"] is True
+
+
+async def test_news_from_a_named_site_reads_that_site_instead_of_searching_the_sentence():
+    # Owner report 2026-11-02: this searched the web for "Using internet_agent get
+    # latest news from from bbc.com as of <date>" and summarized grammar pages
+    # about the word "using".
+    request = _llm_request(
+        "Using internet_agent get latest news from from example.test and summarize only new ones every 6 hours"
+    )
+
+    expanded = SimpleNamespace(state={}, invocation_id="named-site-expanded")
+    dispatch = await _internet_expanded_before_model_callback(expanded, request)
+    function_call = dispatch.content.parts[0].function_call
+    assert function_call.name == "scrape_website"
+    assert function_call.args == {"url": "https://example.test"}
+
+    # Small models choose the page tool themselves; no sentence search is forced on them.
+    compact = SimpleNamespace(state={}, invocation_id="named-site-compact")
+    assert await _internet_before_model_callback(compact, request) is None
+
+
+async def test_a_stopped_request_does_not_stop_the_next_one_in_the_chat():
+    # Owner's chat 2026-11-02: one request hit the loop guard. Its stop flag and
+    # pages stayed in the conversation state, so every later request would have
+    # refused all network calls and repeated the old pages.
+    from autoyou_agents.internet_agent import expanded_harness
+
+    state = {
+        "_autoyou_internet_terminal": True,
+        "_autoyou_internet_terminal_reason": "Earlier request stopped.",
+        "_autoyou_internet_evidence": [
+            {"kind": "page", "url": "https://stale.example/", "title": "Stale page", "text": "", "headlines": []}
+        ],
+        "_autoyou_internet_request_invocation_id": "synthetic-earlier-request",
+    }
+    context = SimpleNamespace(state=state, invocation_id="synthetic-next-request")
+
+    dispatch = await _internet_expanded_before_model_callback(context, _llm_request("What's new on example.test?"))
+
+    assert dispatch.content.parts[0].function_call.name == "scrape_website"
+    assert state["_autoyou_internet_terminal"] is False
+    assert state["_autoyou_internet_evidence"] == []
+    allowed = await expanded_harness.before_tool_callback(
+        SimpleNamespace(name="scrape_website"), {"url": "https://example.test"}, context
+    )
+    assert allowed is None
+
+
+def test_steering_words_never_reach_a_search_query():
+    for text in (
+        "search synthetic release notes using @internet",
+        "Using internet_agent search for synthetic release notes",
+        "Via the internet agent, search for synthetic release notes",
+    ):
+        assert _normalize_live_search_query(text) == "synthetic release notes"
+
+
+def test_file_names_are_not_sites_to_read():
+    from autoyou_agents.internet_agent.agent import _named_site_to_read
+
+    assert _named_site_to_read("summarize report.pdf") is None
+    assert _named_site_to_read("what's new in Node.js") is None
+    assert _named_site_to_read("compare example.test and other.test headlines") is None
+    assert _named_site_to_read("what's new on example.test") == "https://example.test"

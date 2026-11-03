@@ -449,7 +449,10 @@ def test_continuity_callbacks_are_installed_once_and_run_last():
     root_agent_module._install_conversation_continuity_callbacks(agent)
 
     assert len(agent.before_model_callback) == 2 and agent.before_model_callback[0] is own_callback
-    assert len(agent.on_model_error_callback) == 1
+    assert [getattr(item, "_autoyou_callback_marker", "") for item in agent.on_model_error_callback] == [
+        "context_overflow:autoyou_example_agent",
+        "malformed_tool_call:autoyou_example_agent",
+    ]
 
 
 def test_an_overflow_that_survives_refitting_becomes_a_clear_reply():

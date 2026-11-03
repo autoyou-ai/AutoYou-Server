@@ -26,11 +26,15 @@ from .prompt import (
 )
 from autoyou_agents.model_config import model_uses_expanded_harness
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime, inject_realtime_datetime_into_request
+from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
 from .expanded_harness import (
+    _EVIDENCE_STATE_KEY as _EXPANDED_EVIDENCE_STATE_KEY,
+    _format_evidence as _format_expanded_evidence,
     after_model_callback as _expanded_after_model_callback,
     after_tool_callback as _expanded_after_tool_callback,
     before_tool_callback as _expanded_before_tool_callback,
+    start_request as _start_expanded_request,
 )
 
 __debug_provenance_j__ = "AUTOYOU-PROVENANCE-J-fifteenpercent-12f2455061f3b50545aeceb4"
@@ -82,8 +86,16 @@ _INTERNET_CONTROL_CONTEXT_PATTERN = re.compile(
 )
 _INTERNET_ROUTE_PREFIX_PATTERN = re.compile(
     r"^\s*(?:(?:begin|start)\s+fresh[.!,:;\s-]*)?"
-    r"(?:use|go\s+to|switch\s+to|route\s+to|delegate\s+to|handoff\s+to|open)\s+"
-    r"(?:the\s+)?(?:autoyou[_ -]?)?internet[_ -]?agent\b[.!,:;\s-]*",
+    r"(?:(?:use|using|via|with|ask|go\s+to|switch\s+to|route\s+to|delegate\s+to|handoff\s+to|open)\s+"
+    r"(?:the\s+)?(?:autoyou[_ -]?)?internet[_ -]?agent\b|@internet(?:[_-]?agent)?\b)[.!,:;\s-]*",
+    re.IGNORECASE,
+)
+# The same steering words later in the message ("... using the internet agent",
+# "search example.com using @internet"). They name who should answer and are
+# never part of what to search for.
+_INTERNET_ROUTE_MENTION_PATTERN = re.compile(
+    r"[,;:]?\s*(?:\b(?:using|via|with)\s+(?:the\s+)?(?:autoyou[_ -]?)?internet[_ -]?agent\b"
+    r"|(?:\b(?:using|via|with)\s+)?(?<![\w@])@internet(?:[_-]?agent)?\b)[,;:]?",
     re.IGNORECASE,
 )
 _INTERNET_QUERY_OUTPUT_CLAUSE_PATTERN = re.compile(
@@ -212,8 +224,11 @@ def _strip_internet_request_boilerplate(user_text: str) -> str:
     if marker:
         text = text[:marker.start()].rstrip()
     text = _INTERNET_ROUTE_PREFIX_PATTERN.sub("", text, count=1)
+    text = _INTERNET_ROUTE_MENTION_PATTERN.sub(" ", text)
+    text = re.sub(r"[ \t]{2,}", " ", text).strip()
     text = re.sub(
-        r"^to\s+(?=(?:search|look\s+up|google|browse|scrape|visit|open|navigate|download|fetch|read)\b)",
+        r"^to\s+(?=(?:search|look\s+up|google|browse|scrape|visit|open|navigate|download|fetch|read|"
+        r"get|find|check|summari[sz]e)\b)",
         "",
         text,
         count=1,
@@ -252,6 +267,8 @@ def _ensure_internet_request_state(state: Any, invocation_id: str, user_text: st
     stored_invocation_id = str(
         _state_get(state, _INTERNET_REQUEST_INVOCATION_ID_STATE_KEY, "") or ""
     ).strip()
+    if invocation_id and stored_invocation_id != invocation_id:
+        _start_expanded_request(state)
     if not invocation_id or stored_invocation_id != invocation_id:
         mode = _classify_internet_request_mode(user_text)
         clean_request = _strip_internet_request_boilerplate(user_text)
@@ -266,12 +283,120 @@ def _ensure_internet_request_state(state: Any, invocation_id: str, user_text: st
 
 
 def _request_must_start_with_browsing(user_text: str) -> bool:
-    """Keep page and multi-source work in the model-owned tool sequence."""
+    """Keep page and multi-source work in the model-owned tool sequence.
+
+    A named site counts too: "the latest news from example.com" is that site's
+    page to read, never a web search for the whole sentence.
+    """
     text = _strip_internet_request_boilerplate(user_text)
     return bool(
         _INTERNET_BROWSE_ACTION_PATTERN.search(text)
         or _INTERNET_MULTI_SOURCE_PATTERN.search(text)
+        or _named_site_to_read(text)
     )
+
+
+_INTERNET_FULL_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_INTERNET_BARE_SITE_PATTERN = re.compile(
+    r"(?<![\w@./-])((?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:/[^\s<>\"']*)?)",
+    re.IGNORECASE,
+)
+# File names look like sites ("notes.txt", "Node.js"); they are never a page to read.
+_INTERNET_FILE_SUFFIXES = frozenset({
+    "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "json", "md", "py", "js", "ts",
+    "html", "htm", "xml", "yaml", "yml", "png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "mp4",
+    "wav", "mov", "zip", "exe", "log", "ini", "cfg",
+})
+# What a request wants from the one site it names.
+_INTERNET_SITE_CONTENT_PATTERN = re.compile(
+    r"\b(?:news|headlines?|stories|articles?|updates?|latest|front\s*page|home\s*page|top\s+stories|"
+    r"what(?:'s|\s+is)\s+(?:new|on)|summari[sz]e|digest|roundup|brief)\b",
+    re.IGNORECASE,
+)
+
+
+def _named_site_urls(user_text: str) -> list[str]:
+    """Each distinct site a request names, as a URL (file names left out)."""
+    text = str(user_text or "")
+    candidates = [match.group(0) for match in _INTERNET_FULL_URL_PATTERN.finditer(text)]
+    candidates += [
+        "https://" + match.group(1)
+        for match in _INTERNET_BARE_SITE_PATTERN.finditer(_INTERNET_FULL_URL_PATTERN.sub(" ", text))
+    ]
+    urls: list[str] = []
+    hosts: set[str] = set()
+    for candidate in candidates:
+        url = candidate.rstrip(".,;:!?)]}\"'")
+        try:
+            host = (urlsplit(url).hostname or "").lower()
+        except ValueError:
+            continue
+        if "." not in host or host.rsplit(".", 1)[-1] in _INTERNET_FILE_SUFFIXES:
+            continue
+        key = host[4:] if host.startswith("www.") else host
+        if key not in hosts:
+            hosts.add(key)
+            urls.append(url)
+    return urls
+
+
+def _named_site_to_read(user_text: str) -> Optional[str]:
+    """The one site a request asks to read ("the latest news from example.com").
+
+    None when the request is a web search, names no site or several, or does
+    not say what to get from the site.
+    """
+    text = _strip_internet_request_boilerplate(user_text)
+    if not text or _extract_search_query(text) or _INTERNET_SEARCH_ACTION_PATTERN.search(text):
+        return None
+    urls = _named_site_urls(text)
+    if len(urls) != 1:
+        return None
+    if not (_INTERNET_BROWSE_ACTION_PATTERN.search(text) or _INTERNET_SITE_CONTENT_PATTERN.search(text)):
+        return None
+    return urls[0]
+
+
+# The app's browser is the user's screen, not where this agent works. It is
+# moved only by a request that is just "open/show <one site>".
+_INTERNET_SHOW_PAGE_PATTERN = re.compile(
+    r"^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?"
+    r"(?:open|show(?:\s+me)?|pull\s+up|bring\s+up|display|load|go\s+to|navigate\s+to)\b",
+    re.IGNORECASE,
+)
+# Anything to find out or produce from a page is work done on this computer,
+# answered in chat.
+_INTERNET_PAGE_WORK_PATTERN = re.compile(
+    r"\b(?:summari[sz]e|synthesi[sz]e|extract|compare|analy[sz]e|explain|tell|what|which|who|when|where|how|"
+    r"why|list|find|get|check|read|search|look\s+up|scrape|crawl|download|screenshot|translate|count|report|"
+    r"news|headlines?|title|prices?|identify|monitor|verify|every|daily|hourly)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_scheduled_run(state: Any, request_text: str) -> bool:
+    task = _state_get(state, AUTOYOU_SCHEDULED_TASK_STATE_KEY, None)
+    if not isinstance(task, dict):
+        return False
+    instruction = " ".join(str(task.get("instruction") or "").lower().split())
+    request = " ".join(str(request_text or "").lower().split())
+    return not instruction or (bool(request) and request in instruction)
+
+
+def _page_to_show(state: Any) -> str:
+    """The page the user asked to see in the connected app's browser, or "".
+
+    Research, summaries and news are fetched on this computer and answered in
+    chat, and a scheduled run never moves the user's browser.
+    """
+    request_text = str(_state_get(state, _INTERNET_USER_REQUEST_STATE_KEY, "") or "").strip()
+    if not request_text or _is_scheduled_run(state, request_text):
+        return ""
+    words_around_links = _INTERNET_BARE_SITE_PATTERN.sub(" ", _INTERNET_FULL_URL_PATTERN.sub(" ", request_text))
+    if not _INTERNET_SHOW_PAGE_PATTERN.search(request_text) or _INTERNET_PAGE_WORK_PATTERN.search(words_around_links):
+        return ""
+    urls = _named_site_urls(request_text)
+    return urls[0] if len(urls) == 1 else ""
 
 
 def _extract_search_query(user_text: str) -> Optional[str]:
@@ -547,6 +672,12 @@ async def _internet_expanded_before_model_callback(callback_context: Any, llm_re
         page_url
         and re.search(r"\b(?:open|visit|load|scrape|page\s+title|visible\s+headlines?)\b", user_text, re.IGNORECASE)
     )
+    if not direct_page_request:
+        # "The latest news from example.com": read that site on this computer
+        # first, rather than search the web for the sentence.
+        named_site = _named_site_to_read(user_text)
+        if named_site:
+            page_url, direct_page_request = named_site, True
     if direct_page_request and not _tool_dispatch_already_happened(callback_context.state, invocation_id):
         _mark_tool_dispatch(callback_context.state, invocation_id)
         return create_tool_call_llm_response(
@@ -604,12 +735,10 @@ async def _internet_after_tool_callback(
         elif status in {"error", "partial", "disabled"} and error_message:
             _record_tool_error(tool_context.state, invocation_id, error_message)
 
-        url = str(args.get("url") or tool_response.get("url") or "").strip()
-        if tool_name == "internet_search":
-            # A named website opens in the connected app after its search succeeds.
-            # General searches do not open an arbitrary result or the app directory.
-            request_text = str(_state_get(tool_context.state, _INTERNET_USER_REQUEST_STATE_KEY, "") or "")
-            url = _extract_explicit_page_url(_strip_internet_request_boilerplate(request_text)) or ""
+        # Everything is fetched and processed on this computer. The connected
+        # app's browser opens only the page the user asked to see ("open
+        # example.com"), once; pages the agent reads while working stay here.
+        url = _page_to_show(tool_context.state)
         if status == "success" and url:
             from autoyou_agents.client_browser_control_agent.agent import (
                 _dispatch_client_browser_control_payload,
@@ -639,6 +768,41 @@ async def _internet_after_tool_callback(
     return None
 
 
+_MALFORMED_TOOL_CALL_PATTERN = re.compile(
+    r"invalid tool call arguments|unexpected end of json input|"
+    r"(?:failed|error|unable) (?:to )?pars(?:e|ing) (?:the )?(?:tool|function) call",
+    re.IGNORECASE,
+)
+
+
+async def _internet_model_error_callback(callback_context: Any, llm_request: Any, error: Exception) -> Any:
+    """The model garbled a tool call after pages were read: answer from what was read.
+
+    With nothing retrieved yet this returns None, and the root's generic
+    handler explains the broken tool call instead.
+    """
+    del llm_request
+    if not _MALFORMED_TOOL_CALL_PATTERN.search(str(error or "")):
+        return None
+    state = callback_context.state
+    reason = "The AI model sent a broken tool call, so the items already retrieved are shown."
+    evidence = _state_get(state, _EXPANDED_EVIDENCE_STATE_KEY, [])
+    if isinstance(evidence, list) and evidence:
+        text = _format_expanded_evidence(state, reason)
+    else:
+        invocation_id = _get_invocation_id(callback_context)
+        recorded = str(_state_get(state, _INTERNET_TOOL_SUCCESS_INVOCATION_ID_STATE_KEY, "") or "").strip()
+        text = str(_state_get(state, _INTERNET_TOOL_RESULT_MESSAGE_STATE_KEY, "") or "").strip()
+        if not invocation_id or recorded != invocation_id or not text:
+            return None
+    logger.warning("Internet agent answered from retrieved evidence after a malformed tool call: %s",
+                   str(error or "")[:300])
+    return create_text_llm_response(
+        text,
+        custom_metadata={"response_author": AGENT_NAME, "internet_fallback": True, "malformed_tool_call": True},
+    )
+
+
 def create_internet_agent(model_config):
     """Create a model-appropriate Internet agent."""
     tools = [
@@ -666,6 +830,7 @@ def create_internet_agent(model_config):
             else _internet_compact_before_model_pipeline
         ),
         "after_tool_callback": [_internet_after_tool_callback],
+        "on_model_error_callback": [_internet_model_error_callback],
         "tools": tools,
     }
     if expanded:

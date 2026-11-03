@@ -432,3 +432,47 @@ def test_expanded_internet_replaces_snippet_only_summary_with_page_headlines():
     assert "Synthetic verified headline" in result.content.parts[0].text
     assert "https://www.cnn.com/2026/synthetic-story" in result.content.parts[0].text
     assert result.custom_metadata["internet_fallback"] is True
+
+
+def _model_text(text):
+    return SimpleNamespace(content=types.Content(role="model", parts=[types.Part(text=text)]))
+
+
+def test_expanded_internet_keeps_a_summary_written_from_the_page_and_names_the_source():
+    # Owner report 2026-11-02: an accurate summary of eight retrieved headlines
+    # was thrown away for not pasting their links, and the raw list shown instead.
+    context = SimpleNamespace(
+        state={
+            "_autoyou_internet_user_request": "get the latest news from news.example and summarize it",
+            "_autoyou_internet_evidence": [
+                {
+                    "kind": "page",
+                    "url": "https://news.example",
+                    "title": "Synthetic News",
+                    "text": "",
+                    "headlines": [
+                        {"title": "Synthetic river bridge reopens after storm repairs", "url": "https://news.example/a"},
+                        {"title": "Synthetic council approves larger library budget", "url": "https://news.example/b"},
+                        {"title": "Synthetic orchestra announces winter festival tour", "url": "https://news.example/c"},
+                    ],
+                }
+            ],
+        },
+        invocation_id="synthetic-own-words-summary",
+    )
+    summary = (
+        "Here is today's news: 1. The river bridge reopens after storm repairs. "
+        "2. The council approves a larger library budget."
+    )
+
+    result = asyncio.run(expanded_harness.after_model_callback(context, _model_text(summary)))
+
+    text = result.content.parts[0].text
+    assert text.startswith(summary)
+    assert text.endswith("Source: https://news.example")
+    assert result.custom_metadata["internet_sources_appended"] is True
+
+    invented = asyncio.run(
+        expanded_harness.after_model_callback(context, _model_text("Markets rallied on strong earnings today."))
+    )
+    assert invented.custom_metadata["internet_fallback"] is True

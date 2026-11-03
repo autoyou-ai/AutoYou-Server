@@ -2577,6 +2577,20 @@ def _live_web_routing_text(callback_context: Any, user_text: str) -> str:
     return _scheduled_request_text(callback_context, user_text)
 
 
+# Work on a live page that a fetch cannot do: the Browser agent's real browser.
+_REAL_BROWSER_TASK_PATTERN = re.compile(
+    r"\b(?:click|tap\s+on|fill\s+(?:in|out)|log\s*(?:in|into)|sign\s*(?:in|into)|submit|"
+    r"type\s+(?:in|into)|add\s+(?:\w+\s+){0,3}to\s+(?:the\s+|my\s+)?(?:cart|basket)|"
+    r"scroll\s+(?:down|up)|real\s+browser|browser\s+agent)\b",
+    re.IGNORECASE,
+)
+
+
+def _needs_real_browser(user_text: str) -> bool:
+    """True when a web request means interacting with a page, not reading it."""
+    return bool(_REAL_BROWSER_TASK_PATTERN.search(str(user_text or "")))
+
+
 _MEMORY_QUERY_PATTERNS = (
     re.compile(r"\bfrom memory\b", re.IGNORECASE),
     re.compile(r"\bwhat do you remember\b", re.IGNORECASE),
@@ -3289,6 +3303,43 @@ def _make_context_overflow_error_callback(agent_name: str):
     return _context_overflow_error_callback
 
 
+# The local runtime rejects a tool call whose arguments are not valid JSON
+# (Ollama's llama.cpp runner: "llama-server returned invalid tool call
+# arguments ... unexpected end of JSON input"). litellm raises it as a server
+# error, and without this the whole turn ended with no answer at all.
+_MALFORMED_TOOL_CALL_ERROR_PATTERN = re.compile(
+    r"invalid tool call arguments|unexpected end of json input|"
+    r"(?:failed|error|unable) (?:to )?pars(?:e|ing) (?:the )?(?:tool|function) call",
+    re.IGNORECASE,
+)
+
+
+def _make_malformed_tool_call_error_callback(agent_name: str):
+    """Turn a tool call the model garbled into a reply the user can act on."""
+
+    async def _malformed_tool_call_error_callback(callback_context: Any, llm_request: Any, error: Exception) -> Any:
+        del callback_context, llm_request
+        error_text = str(error or "")
+        if not _MALFORMED_TOOL_CALL_ERROR_PATTERN.search(error_text):
+            return None
+        tool = re.search(r'for \\?"([A-Za-z0-9_.-]{1,64})\\?"', error_text)
+        logger.error("Malformed tool call from the model in %s: %s", agent_name, error_text[:400])
+        return create_text_llm_response(
+            "The AI model sent a broken tool call"
+            + (f" ({tool.group(1)})" if tool else "")
+            + ", so this request stopped before it finished. Please ask again. If it keeps happening, "
+            "choose a different model under Models on this computer's Admin Page.",
+            custom_metadata={
+                "response_author": agent_name,
+                "agent_name": agent_name,
+                "malformed_tool_call": error_text[:400],
+            },
+        )
+
+    _malformed_tool_call_error_callback._autoyou_callback_marker = f"malformed_tool_call:{agent_name}"
+    return _malformed_tool_call_error_callback
+
+
 def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
     """Give one specialist its conversation context and overflow handling.
 
@@ -3307,6 +3358,11 @@ def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
         agent_instance.on_model_error_callback = _callback_list_with_guard(
             getattr(agent_instance, "on_model_error_callback", None),
             _make_context_overflow_error_callback(agent_name),
+            prepend=False,
+        )
+        agent_instance.on_model_error_callback = _callback_list_with_guard(
+            agent_instance.on_model_error_callback,
+            _make_malformed_tool_call_error_callback(agent_name),
             prepend=False,
         )
     except Exception as exc:
@@ -4240,8 +4296,12 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
         return at_route
 
     searchable_text = _mask_at_agent_ignored_regions(str(user_text or ""))
-    route_candidates: list[tuple[int, int, str, re.Match[str]]] = []
+    route_candidates: list[tuple[int, int, str, re.Match[str], bool]] = []
     route_prefix = r"\b(?:go to|switch to|route to|delegate to|handoff to|send (?:to|in)|ask|open|use)\b(?:\s+the)?(?:\s+exact)?\s+"
+    # "Using the internet agent, ..." and "... via notes_agent" name a specialist
+    # as well, but only together with the word agent: "using the internet" is
+    # not steering. The request is then everything around the phrase.
+    instrument_prefix = r"\b(?:using|via)\s+(?:the\s+)?"
     for runtime_agent_name, aliases in _EXPLICIT_ROUTE_ALIASES.items():
         for alias in aliases:
             alias_pattern = _alias_to_route_pattern(alias)
@@ -4250,32 +4310,42 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
             pattern = re.compile(route_prefix + alias_pattern + r"\b", re.IGNORECASE)
             match = pattern.search(searchable_text)
             if match:
-                route_candidates.append((match.start(), -len(alias), runtime_agent_name, match))
+                route_candidates.append((match.start(), -len(alias), runtime_agent_name, match, False))
+            if re.fullmatch(r"(?:\w+[_\s]+)+agent", str(alias or "").strip(), re.IGNORECASE):
+                match = re.compile(instrument_prefix + alias_pattern + r"\b", re.IGNORECASE).search(searchable_text)
+                if match:
+                    route_candidates.append((match.start(), -len(alias), runtime_agent_name, match, True))
 
     # Keep direct steering open to every installed or user-built specialist,
     # instead of requiring each ``xxx_agent`` identifier to be copied into the
     # hand-maintained alias table above.
-    identifier_pattern = re.compile(
-        route_prefix + r"(?P<agent>(?:autoyou_)?[a-z0-9]+(?:_[a-z0-9]+)*_agent)\b",
-        re.IGNORECASE,
-    )
-    identifier_match = identifier_pattern.search(searchable_text)
-    if identifier_match:
-        identifier = str(identifier_match.group("agent") or "").lower()
-        runtime_agent_name = resolve_runtime_agent_name(identifier)
-        if runtime_agent_name:
-            route_candidates.append(
-                (identifier_match.start(), -len(identifier), runtime_agent_name, identifier_match)
-            )
+    identifier = r"(?P<agent>(?:autoyou_)?[a-z0-9]+(?:_[a-z0-9]+)*_agent)\b"
+    for prefix, instrument in ((route_prefix, False), (instrument_prefix, True)):
+        identifier_match = re.compile(prefix + identifier, re.IGNORECASE).search(searchable_text)
+        if identifier_match:
+            name = str(identifier_match.group("agent") or "").lower()
+            runtime_agent_name = resolve_runtime_agent_name(name)
+            if runtime_agent_name:
+                route_candidates.append(
+                    (identifier_match.start(), -len(name), runtime_agent_name, identifier_match, instrument)
+                )
 
     if not route_candidates:
         return None
 
-    _, _, runtime_agent_name, match = sorted(route_candidates, key=lambda item: (item[0], item[1]))[0]
-    residual = _clean_explicit_route_residual(str(user_text or "")[match.end():], runtime_agent_name)
+    _, _, runtime_agent_name, match, instrument = sorted(
+        route_candidates, key=lambda item: (item[0], item[1])
+    )[0]
+    text = str(user_text or "")
+    if instrument:
+        before = re.sub(r"[\s,;:\-]+$", "", text[:match.start()])
+        after = re.sub(r"^[\s,;:\-]+", "", text[match.end():])
+        residual = re.sub(r"\s+([.!?])$", r"\1", f"{before} {after}".strip())
+    else:
+        residual = text[match.end():]
     return {
         "runtime_agent_name": runtime_agent_name,
-        "request": residual,
+        "request": _clean_explicit_route_residual(residual, runtime_agent_name),
     }
 
 _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
@@ -5195,22 +5265,29 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
         and _looks_like_internet_agent_request(live_routing_text, url_is_signal=not awaiting_answer)
     ):
         browser_runtime = resolve_runtime_agent_name("browser_agent")
-        target_web_agent = None
+        browser_ready = False
         if browser_runtime and _is_runtime_agent_enabled(browser_runtime):
             try:
                 from autoyou_agents.browser_agent.browser_tool import (
                     is_browser_agent_enabled,
                     is_auto_browser_available,
                 )
-                if is_browser_agent_enabled() and is_auto_browser_available():
-                    target_web_agent = browser_runtime
+                browser_ready = bool(is_browser_agent_enabled() and is_auto_browser_available())
             except Exception:
-                target_web_agent = None
+                browser_ready = False
+        internet_runtime = resolve_runtime_agent_name("internet_agent")
+        internet_ready = bool(internet_runtime and _is_runtime_agent_enabled(internet_runtime))
 
-        if not target_web_agent:
-            internet_runtime = resolve_runtime_agent_name("internet_agent")
-            if internet_runtime and _is_runtime_agent_enabled(internet_runtime):
-                target_web_agent = internet_runtime
+        # Searching, reading and summarising the web is one fetch on this
+        # computer: the Internet agent's job. The Browser agent drives a real
+        # browser, so it gets the work that needs one (clicking, typing,
+        # signing in), or everything when the Internet agent is not installed.
+        if browser_ready and (_needs_real_browser(live_routing_text) or not internet_ready):
+            target_web_agent = browser_runtime
+        elif internet_ready:
+            target_web_agent = internet_runtime
+        else:
+            target_web_agent = None
 
         if target_web_agent:
             _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)

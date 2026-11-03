@@ -2410,3 +2410,107 @@ def test_root_router_still_falls_through_when_agent_is_not_installed(monkeypatch
     )
 
     assert response is None
+
+
+def _web_agents_ready(monkeypatch, installed):
+    monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
+    monkeypatch.setattr(
+        root_agent_module,
+        "is_agent_installed",
+        lambda agent_name, agents_root=None: agent_name in installed,
+    )
+    from autoyou_agents.browser_agent import browser_tool
+
+    monkeypatch.setattr(browser_tool, "is_browser_agent_enabled", lambda: True)
+    monkeypatch.setattr(browser_tool, "is_auto_browser_available", lambda: True)
+
+
+def _route_web(text, invocation_id="synthetic-web-route"):
+    callback_context = SimpleNamespace(state={}, invocation_id=invocation_id)
+    response = asyncio.run(
+        root_agent_module._root_router_before_model_callback(callback_context, _llm_request(text))
+    )
+    assert response is not None
+    return response.content.parts[0].function_call
+
+
+@pytest.mark.parametrize("request_text", [
+    "What's the latest news on example.test?",
+    "Search the web for synthetic release notes",
+    "open example.test",
+])
+def test_reading_the_web_goes_to_the_internet_agent_even_with_a_real_browser(monkeypatch, request_text):
+    # Owner report 2026-11-02: with the Browser agent installed, a news request
+    # went to its real browser (allowed to open example.com only), which failed
+    # after three minutes, instead of the Internet agent fetching the page here.
+    _web_agents_ready(monkeypatch, {"internet_agent", "browser_agent"})
+
+    assert _routed_agent(_route_web(request_text)) == "autoyou_internet_agent"
+
+
+def test_interacting_with_a_page_goes_to_the_browser_agent(monkeypatch):
+    _web_agents_ready(monkeypatch, {"internet_agent", "browser_agent"})
+
+    function_call = _route_web("Open example.test and click the sign in button")
+
+    assert _routed_agent(function_call) == "autoyou_browser_agent"
+
+
+def test_the_browser_agent_still_reads_the_web_without_an_internet_agent(monkeypatch):
+    _web_agents_ready(monkeypatch, {"browser_agent"})
+
+    assert _routed_agent(_route_web("What's the latest news on example.test?")) == "autoyou_browser_agent"
+
+
+@pytest.mark.parametrize("request_text,expected", [
+    (
+        "Using internet_agent get latest news from from example.test and summarize only new ones every 6 hours",
+        "get latest news from from example.test and summarize only new ones every 6 hours",
+    ),
+    ("Summarize the example.test front page using the internet agent.", "Summarize the example.test front page."),
+    ("Via internet_agent: check example.test", "check example.test"),
+])
+def test_naming_an_agent_with_using_or_via_routes_to_it(monkeypatch, request_text, expected):
+    _web_agents_ready(monkeypatch, {"internet_agent", "browser_agent"})
+
+    function_call = _route_web(request_text)
+
+    assert _routed_agent(function_call) == "autoyou_internet_agent"
+    assert _routed_args(function_call) == {"request": expected}
+
+
+@pytest.mark.parametrize("request_text", [
+    "I keep using the internet for banking",
+    "Write this up using the agent's notes",
+])
+def test_using_without_an_agent_name_is_not_steering(request_text):
+    assert root_agent_module._extract_explicit_route_request(request_text) is None
+
+
+_GARBLED_TOOL_CALL = (
+    'litellm.InternalServerError: Ollama_chatException - {"error":"llama-server returned invalid tool call '
+    'arguments for \\"browser_navigate\\": unexpected end of JSON input"}'
+)
+
+
+def test_a_garbled_tool_call_becomes_a_reply_not_a_failed_turn():
+    callback = root_agent_module._make_malformed_tool_call_error_callback("autoyou_browser_agent")
+
+    response = asyncio.run(callback(SimpleNamespace(state={}), None, RuntimeError(_GARBLED_TOOL_CALL)))
+
+    text = response.content.parts[0].text
+    assert "broken tool call (browser_navigate)" in text
+    assert "Admin Page" in text
+    assert asyncio.run(callback(SimpleNamespace(state={}), None, RuntimeError("synthetic timeout"))) is None
+
+
+def test_every_specialist_gets_the_garbled_tool_call_reply():
+    specialist = SimpleNamespace(
+        name="autoyou_synthetic_agent", before_model_callback=None, on_model_error_callback=None
+    )
+
+    root_agent_module._install_conversation_continuity_callbacks(specialist)
+    root_agent_module._install_conversation_continuity_callbacks(specialist)
+
+    markers = [getattr(item, "_autoyou_callback_marker", "") for item in specialist.on_model_error_callback]
+    assert markers.count("malformed_tool_call:autoyou_synthetic_agent") == 1
