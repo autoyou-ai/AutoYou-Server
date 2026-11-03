@@ -43,7 +43,7 @@ def test_game_publishing_requires_otp_even_with_public_browsing(tmp_path, monkey
     with TestClient(game_studio.app) as client:
         route = "/api/game/publish-auth"
         assert client.get(route + "/status").json() == {"success": True, "required": True, "authenticated": False}
-        html = b"<html><head></head><body>Synthetic game</body></html>"
+        html = b"<html><head></head><body>Synthetic game<button onclick=\"AutoYouGame.quit()\">Quit</button></body></html>"
         assert client.post("/api/game/publish/synthetic-publishing", content=html).status_code == 401
         assert client.post(route + "/login", json={}).status_code == 400
         assert client.post(route + "/login", json=[]).status_code == 400
@@ -70,7 +70,7 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(game_studio._smc, "_agent_chat_session_is_valid", lambda agent, token: auth["authenticated"] and agent == "game_agent" and token == "synthetic-game-session")
     monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
-    html = b"<html><head></head><body>synthetic game</body></html>"
+    html = b"<html><head></head><body>synthetic game<button onclick=\"AutoYouGame.quit()\">Quit</button></body></html>"
     # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_4b1a7244afa42397d2600afd
     target = tmp_path / "mobile_games" / "synthetic-runner.html"
 
@@ -82,6 +82,9 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
         assert client.post("/api/game/publish/INVALID", content=html).status_code == 400
         assert client.post("/api/game/publish/synthetic-runner", content=b"<html>no head</html>").status_code == 400
         assert client.post("/api/game/publish/synthetic-runner", content=b"\xff<head></head>").status_code == 400
+        # AutoYou shows no close button over a game, so a page without its own Quit is refused.
+        refused = client.post("/api/game/publish/synthetic-runner", content=b"<html><head></head><body>no quit</body></html>")
+        assert refused.status_code == 400 and "AutoYouGame.quit()" in refused.json()["error"]
         assert client.post("/api/game/publish/synthetic-runner", content=b"x" * (game_studio._MAX_MOBILE_GAME_BYTES + 1)).status_code == 413
         assert not target.exists()
         assert client.post("/api/game/publish/synthetic-runner", content=html).status_code == 200

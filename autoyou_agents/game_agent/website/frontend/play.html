@@ -54,6 +54,7 @@
   <div class="corner">
     <button id="pause" class="icon" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
     <button id="settings-open" class="icon" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.7 7.7 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.7 7.7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.7 7.7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.7 7.7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+    <button id="quit" class="icon" type="button" aria-label="Quit game"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></svg></button>
   </div>
   <div id="feedback" role="status" aria-live="polite"></div>
   <div id="motion-status">Swipe once per lane. Swipe up or tap JUMP. Swipe down to slam.</div>
@@ -1022,6 +1023,14 @@
     addEventListener('gamepadconnected', () => { if (!padLoop) { padLoop = true; requestAnimationFrame(pollGamepads); } });
     addEventListener('gamepaddisconnected', event => pads.delete(event.gamepad.index));
     document.querySelector('#pause').addEventListener('click', () => { if (mode === 'running') pause(); else if (mode === 'paused') beginOrResume(); });
+    // AutoYou shows no close button over games: this X is the way out. In a plain browser it goes back.
+    function quitGame() {
+      if (mode === 'running') pause();
+      saveBest();
+      try { if (window.AutoYouGame?.quit?.()) return; } catch (_) { /* Leave the page instead. */ }
+      if (history.length > 1) history.back(); else window.close();
+    }
+    document.querySelector('#quit').addEventListener('click', quitGame);
     addEventListener('resize', () => { resize(); resetMotion(); });
     addEventListener('blur', pause);
     addEventListener('pagehide', saveBest);

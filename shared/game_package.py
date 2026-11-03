@@ -28,6 +28,47 @@ MAX_HTML = 8 * 1024 * 1024
 MAX_FILES = 4096
 CHUNK = 64 * 1024
 GAME_ID = re.compile(r"[a-z0-9-]{1,64}\Z")
+# AutoYou shows no close button over a game. Every game draws its own Quit (X) next to Pause
+# and Settings and calls AutoYouGame.quit() (game_sdk.js); games without it are not accepted.
+QUIT_CALL = re.compile(r"AutoYouGame\s*\??\.\s*quit\s*(?:\?\.)?\s*\(")
+QUIT_REQUIREMENT = ("Add an in-game Quit (X) button next to Pause and Settings that calls AutoYouGame.quit(). "
+                    "AutoYou no longer shows its own close button over games.")
+
+
+def supports_quit(html):
+    """True when the game's entry page calls AutoYouGame.quit()."""
+    text = html.decode("utf-8", "replace") if isinstance(html, (bytes, bytearray)) else str(html)
+    return QUIT_CALL.search(text) is not None
+
+
+def require_quit(html):
+    if not supports_quit(html): raise ValueError(QUIT_REQUIREMENT)
+
+
+QUIT_SCRIPT_SUFFIXES = (".html", ".htm", ".js", ".mjs")
+
+
+def _scripts(files):
+    """Pages and scripts small enough to hold the game's own code."""
+    return [item for item in files if item["path"].lower().endswith(QUIT_SCRIPT_SUFFIXES) and item["size"] <= MAX_HTML]
+
+
+def folder_supports_quit(root, files):
+    """True when any page or script in an exported or extracted game calls AutoYouGame.quit()."""
+    return any(supports_quit((Path(root) / item["path"]).read_bytes()) for item in _scripts(files))
+
+
+def package_supports_quit(package):
+    """The same check for a built package, read in place without extracting it."""
+    manifest, offset = read_manifest(package)
+    wanted = {item["path"] for item in _scripts(manifest["files"])}
+    with Path(package).open("rb") as stream:
+        for item in manifest["files"]:
+            if item["path"] in wanted:
+                stream.seek(offset)
+                if supports_quit(stream.read(item["size"])): return True
+            offset += item["size"]
+    return False
 HASH = re.compile(r"[a-f0-9]{64}\Z")
 
 
@@ -177,6 +218,7 @@ def build(source, output, *, game_id=None):
         validate(manifest)
         entry = (staged / manifest["entrypoint"]).read_text(encoding="utf-8")
         if not re.search(r"<head(?=[\s>])[^>]*>", entry, re.I): raise ValueError("The game entry page needs a head element")
+        if not folder_supports_quit(staged, files): raise ValueError(QUIT_REQUIREMENT)
         raw = canonical(manifest)
         output.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=output.parent, suffix=".part", delete=False) as temp:

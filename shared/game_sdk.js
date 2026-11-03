@@ -1,6 +1,7 @@
 /* Shared by every offline AutoYou game runtime. No server connection is used. */
 (() => {
-  if (window.AutoYouGame) return;
+  // A single-page game may already hold the host's small quit-only stand-in; replace it.
+  if (window.AutoYouGame && !window.AutoYouGame.hostShim) return;
   const request = async (statements, asset) => {
     const reply = await fetch('/__autoyou/db', {method: 'POST', credentials: 'same-origin',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify({statements, asset})});
@@ -85,7 +86,13 @@
     if (typeof DeviceMotionEvent === 'function') dispatchEvent(new DeviceMotionEvent('devicemotion', {acceleration: motion.acceleration,
       accelerationIncludingGravity: motion.accelerationIncludingGravity, rotationRate: motion.rotationRate, interval: motion.interval}));
   }});
-  window.AutoYouGame = Object.freeze({version: 1, db: Object.freeze({execute,
+  // Games draw their own Quit (X) next to Pause and Settings and call this; AutoYou shows no close button.
+  const quit = () => {
+    try { const host = window.webkit?.messageHandlers?.gameQuit; if (host) { host.postMessage(true); return true; } } catch (_) { /* Try the next host. */ }
+    try { if (window.AutoYouGameHost?.quit) { window.AutoYouGameHost.quit(); return true; } } catch (_) { /* No native host. */ }
+    return false;
+  };
+  window.AutoYouGame = Object.freeze({version: 1, quit, db: Object.freeze({execute,
     transaction: statements => request(statements),
     readAsset: async (path, sql, params = []) => (await request([{sql, params}], path))[0]}), input});
   dispatchEvent(new Event('autoyougameready'));

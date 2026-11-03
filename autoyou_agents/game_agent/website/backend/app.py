@@ -65,6 +65,7 @@ def _local_game_page(websocket: WebSocket) -> bool:
 
 
 def _extra_routes(app, agent_name):
+    from shared import game_package as game_rules
     from shared.game_package_catalog import GamePackages
     from shared.game_package_uploads import GamePackageUploads
     uploads = None
@@ -182,6 +183,8 @@ def _extra_routes(app, agent_name):
             html.decode("utf-8")
         except UnicodeError:
             return JSONResponse({"success": False, "error": "Game must be UTF-8 HTML"}, status_code=400)
+        if not game_rules.supports_quit(html):
+            return JSONResponse({"success": False, "error": game_rules.QUIT_REQUIREMENT}, status_code=400)
         head = re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE)
         if head is None:
             return JSONResponse({"success": False, "error": "Game HTML needs a head element"}, status_code=400)
@@ -285,6 +288,9 @@ def _extra_routes(app, agent_name):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         return JSONResponse({
             "version": "autoyou_game_v1",
+            "quit": ("Required for offline games: draw a Quit (X) button next to Pause and Settings that calls "
+                     "AutoYouGame.quit(). Native clients show no close button over a game; packages and pages "
+                     "without the call are rejected."),
             "stream": "/api/webrtc/game-input/stream",
             "connection": "/api/webrtc/game-input/connection",
             "events": ["touch", "sensor", "axis", "button", "session_start", "state_reset", "session_end",
