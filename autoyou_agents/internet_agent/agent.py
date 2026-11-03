@@ -63,8 +63,12 @@ _INTERNET_BROWSE_ACTION_PATTERN = re.compile(
     r"\b(?:browse|scrape|visit|open|navigate|download|fetch|read)\b",
     re.IGNORECASE,
 )
+# Words that ask for an answer written from the pages, not the pages replayed.
+# "Send a concise summary" and "identify the new headlines" are such requests:
+# a scheduled task worded that way came back as a raw page dump.
 _INTERNET_SYNTHESIS_PATTERN = re.compile(
-    r"\b(?:summari[sz]e|synthesi[sz]e|compare|analy[sz]e|explain|brief|roundup|digest|report)\b",
+    r"\b(?:summar(?:y|ies|i[sz]e[sd]?)|synthesi[sz]e|compare|analy[sz]e|explain|brief(?:ly)?|roundup|digest|"
+    r"report|identify)\b",
     re.IGNORECASE,
 )
 _INTERNET_RESULT_ONLY_PATTERN = re.compile(

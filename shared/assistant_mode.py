@@ -1727,10 +1727,18 @@ class AssistantModeHub:
         spoken_at = time.monotonic() - len(audio) / (2.0 * ww.SAMPLE_RATE)
 
         def job() -> None:
-            try:
-                text = self._transcribe_cb(audio)
-            except Exception as exc:
-                LOGGER.warning("Assistant mode transcription failed: %s", exc)
+            # Nothing said (a breath, a click, the room): nothing to transcribe,
+            # and what Whisper invents for it never becomes a question.
+            voiced = speech_seconds(audio)
+            text = ""
+            if voiced >= MIN_QUESTION_SPEECH_SECONDS:
+                try:
+                    text = self._transcribe_cb(audio)
+                except Exception as exc:
+                    LOGGER.warning("Assistant mode transcription failed: %s", exc)
+                    text = ""
+            if text and transcript_is_noise(text, voiced):
+                LOGGER.info("Assistant mode dropped a transcript that is not speech (%.2f s voiced)", voiced)
                 text = ""
             self._post(item.session_id, "result", (item, purpose, text, ticket, spoken_at))
 
@@ -1885,8 +1893,92 @@ def _is_this_computer(value: str) -> bool:
     return bool((mapped or address).is_loopback)
 
 
+# ---------------------------------------------------------------------------
+# Telling a spoken question from Whisper's inventions
+# ---------------------------------------------------------------------------
+
+#: Below this much speech there is nothing to transcribe.
+MIN_QUESTION_SPEECH_SECONDS = 0.2
+#: Only a sound this short can be one of Whisper's stock phrases.
+STOCK_PHRASE_MAX_SPEECH_SECONDS = 1.2
+# Phrases Whisper writes for a breath, a click or the room, in the languages
+# it most often invents them in. Spoken questions are never just these.
+_STOCK_PHRASES = frozenset({
+    "you", "thank you", "thanks", "thank you so much", "thanks for watching", "thank you for watching",
+    "bye", "bye bye", "okay", "ok", "so", "oh", "uh", "um", "hmm", "mm",
+    "merci", "merci beaucoup", "gracias", "danke", "obrigado", "obrigada", "grazie",
+    "спасибо", "ありがとう", "ありがとうございました", "谢谢", "謝謝", "감사합니다",
+})
+# Captions from the subtitled video Whisper learned from; never something said.
+_SUBTITLE_CREDIT_RE = re.compile(
+    r"amara\.org|subtitles? by|captions? by|sous-titr|untertitel|subtítulos|subtitulado|字幕|ご視聴|"
+    r"radio-canada|\bzdf\b|mbc ?뉴스",
+    re.IGNORECASE,
+)
+
+
+def speech_seconds(pcm: bytes) -> float:
+    """How much of a recording is speech: 20 ms frames well above its quiet floor.
+
+    A frame loud enough to be speech counts even with no quieter moment to
+    compare it with, so an utterance recorded without a pause is not "nothing".
+    """
+    samples = ww.pcm16_to_float(pcm or b"")
+    frame = int(0.02 * ww.SAMPLE_RATE)
+    if samples.size < frame:
+        return 0.0
+    levels = [ww.rms_dbfs(samples[start:start + frame]) for start in range(0, samples.size - frame + 1, frame)]
+    floor = sorted(levels)[len(levels) // 5]
+    threshold = min(max(-50.0, floor + 10.0), -32.0)
+    return sum(1 for level in levels if level >= threshold) * 0.02
+
+
+def _words(text: str) -> List[str]:
+    return re.findall(r"\w+", str(text or "").casefold())
+
+
+def _loops(words: List[str]) -> bool:
+    """A Whisper repetition loop: a word or phrase over and over."""
+    for n in (1, 2, 3):
+        for start in range(0, len(words) - 3 * n + 1):
+            unit = words[start:start + n]
+            if words[start + n:start + 2 * n] == unit and words[start + 2 * n:start + 3 * n] == unit:
+                return True
+    if len(words) >= 6:
+        for n in (2, 3):
+            counts: Dict[Tuple[str, ...], int] = {}
+            for start in range(0, len(words) - n + 1):
+                key = tuple(words[start:start + n])
+                counts[key] = counts.get(key, 0) + 1
+            if any(count >= 3 and count * n * 2 >= len(words) for count in counts.values()):
+                return True
+    return False
+
+
+def transcript_is_noise(text: str, voiced: Optional[float] = None) -> bool:
+    """True when a transcript is Whisper's invention, not a question.
+
+    The same in every language: no words, a stock phrase from a short sound,
+    a subtitle credit, or a repetition loop ("since since since", "20g de
+    quake 20g de quake 20g de quake").
+    """
+    words = _words(text)
+    if not words:
+        return True
+    if _SUBTITLE_CREDIT_RE.search(str(text)):
+        return True
+    short = voiced is None or voiced < STOCK_PHRASE_MAX_SPEECH_SECONDS
+    if short and " ".join(words) in _STOCK_PHRASES:
+        return True
+    return _loops(words)
+
+
 def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]]] = None) -> Transcribe:
-    """Local Whisper via the voice-note path; audio is a temp file deleted at once."""
+    """Local Whisper via the voice-note path; audio is a temp file deleted at once.
+
+    Strict: Whisper decodes only where it hears speech and drops segments that
+    are probably silence or loop on themselves.
+    """
 
     def transcribe(pcm: bytes) -> str:
         import tempfile
@@ -1899,7 +1991,7 @@ def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]
             with open(path, "wb") as output:
                 output.write(ww.pcm16_to_wav_bytes(pcm))
             settings = settings_provider() if settings_provider else None
-            return str(transcribe_voice_note(path, settings=dict(settings) if settings else None) or "").strip()
+            return str(transcribe_voice_note(path, settings=dict(settings) if settings else None, strict=True) or "").strip()
         finally:
             try:
                 os.unlink(path)

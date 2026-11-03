@@ -497,9 +497,14 @@ def voiced_seconds(pcm: bytes) -> float:
 
 
 def is_silence_phrase(transcript: str, voiced: float) -> bool:
-    """A stock phrase Whisper returns for a breath or a click, not something said."""
+    """Whisper's invention rather than something said: a stock phrase for a breath
+    or a click, a subtitle credit, or a repetition loop, in any language.
+
+    The same check as the wake-word path on calls and phones."""
     words = re.sub(r"[^a-z ]+", "", str(transcript or "").lower()).strip()
-    return voiced < 1.0 and words in _SILENCE_PHRASES
+    if voiced < 1.0 and words in _SILENCE_PHRASES:
+        return True
+    return bool(str(transcript or "").strip()) and _assistant_mode().transcript_is_noise(transcript, voiced)
 
 
 def _forget_old_turns(now: float) -> None:

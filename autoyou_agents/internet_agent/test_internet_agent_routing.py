@@ -241,6 +241,20 @@ async def test_a_stopped_request_does_not_stop_the_next_one_in_the_chat():
     assert allowed is None
 
 
+def test_a_task_asking_for_a_summary_gets_one_not_the_page_replayed():
+    # Owner's scheduled task 2026-11-03: it answered with "Retrieved the page
+    # 'BBC Home ...'" and 700 characters of page text, because "summary" and
+    # "identify" were not read as asking for a written answer.
+    from autoyou_agents.internet_agent.agent import _classify_internet_request_mode
+
+    task = (
+        "Use the internet agent to visit example.test, identify any headlines or stories that are newer "
+        "than your last check, and send the user a concise summary of only those new items."
+    )
+    assert _classify_internet_request_mode(task) == "research"
+    assert _classify_internet_request_mode("Open https://example.test/ and tell me the page title.") == "search_results"
+
+
 def test_steering_words_never_reach_a_search_query():
     for text in (
         "search synthetic release notes using @internet",

@@ -353,9 +353,16 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Any:
         _whisper_model_key = key
         return _whisper_model
 
-def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = None) -> str:
+def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = None, strict: bool = False) -> str:
     """Transcribe an audio *file* locally using faster-whisper. Returns ``""`` when
-    transcription is unavailable (caller should then fall back to today's behavior)."""
+    transcription is unavailable (caller should then fall back to today's behavior).
+
+    ``strict`` is for short spoken questions (Assistant mode): Whisper decodes
+    only where its voice detector hears speech, nothing carries over between
+    segments, and a segment that is probably not speech or that loops on itself
+    is dropped. Without this, near-silence came back as "You" and a mumble as
+    "200g de quake 20g de quake 20g de quake". Works the same in every language.
+    """
     if not path or not os.path.isfile(path):
         return ""
     from shared.speech_config import normalize_speech_config, speech_language
@@ -396,16 +403,40 @@ def transcribe_voice_note(path: str, *, settings: Optional[Dict[str, Any]] = Non
         beam_size = int(stt.get("beam_size") or 5)
     except Exception:
         beam_size = 5
+    options: Dict[str, Any] = {"language": language, "beam_size": beam_size}
+    if strict:
+        options.update(
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+            condition_on_previous_text=False,
+        )
     try:
         with materialize_secure_file(path) as readable_path:
-            segments, _info = model.transcribe(str(readable_path), language=language, beam_size=beam_size)
+            segments, _info = model.transcribe(str(readable_path), **options)
             # faster-whisper returns a lazy generator; consume it before the
             # decrypted temporary file is removed by materialize_secure_file.
-            text = " ".join((segment.text or "").strip() for segment in segments).strip()
+            kept = [segment for segment in segments if not strict or _segment_is_speech(segment)]
+            text = " ".join((segment.text or "").strip() for segment in kept).strip()
         return text
     except Exception as exc:
         LOGGER.error("Voice note transcription failed for %s: %s", path, exc)
         return ""
+
+def _segment_is_speech(segment: Any) -> bool:
+    """Whisper's own signals that a segment is real speech.
+
+    No-speech probability above 0.6 with low confidence is Whisper's rule for
+    silence; a compression ratio above 2.4 is its sign of a repetition loop.
+    """
+    no_speech = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
+    avg_logprob = float(getattr(segment, "avg_logprob", 0.0) or 0.0)
+    compression = float(getattr(segment, "compression_ratio", 0.0) or 0.0)
+    if no_speech > 0.6 and avg_logprob < -1.0:
+        return False
+    if no_speech > 0.85:
+        return False
+    return compression <= 2.4
+
 
 async def transcribe_voice_note_async(path: str, *, settings: Optional[Dict[str, Any]] = None) -> str:
     return await asyncio.to_thread(transcribe_voice_note, path, settings=settings)
