@@ -50,6 +50,8 @@
     lastTap: 0,
     tapSlide: null,
     tapTimer: null,
+    captionTimer: null,
+    quietTimer: null,
     scrollTimer: null,
     targetIndex: null,
     targetTimer: null,
@@ -1762,12 +1764,22 @@
     return reel.open ? reelSlides()[reel.index] || null : null;
   }
 
+  // An Instagram reel is a vertical video. Played as one it keeps its own
+  // shape; Instagram's embed crops it to a 4:5 card, which looks stretched
+  // once the card is as wide as the screen.
+  function instagramReel(item) {
+    const url = parseUrl(item && item.url);
+    if (!url || !hostMatches(url.hostname, "instagram.com")) return false;
+    return ["reel", "reels", "tv"].includes(url.pathname.split("/").filter(Boolean)[0]);
+  }
+
   function reelKind(item) {
     const view = item.view || {};
     const type = itemType(item);
     const open = safeUrl(view.open_url);
     if ((type === "image" || type === "gif") && photoSources(item).preview) return "photo";
     if (type === "video" && open) return "video";
+    if (type === "instagram" && open && instagramReel(item)) return "video";
     if (type === "youtube" && youtubeId(item.url)) return "youtube";
     if (type === "tiktok" && tiktokId(item.url)) return "tiktok";
     if (postEmbed(item, "dark")) return "post";
@@ -1778,7 +1790,7 @@
   }
 
   function reelShape(item, kind) {
-    if (kind === "tiktok") return "portrait";
+    if (kind === "tiktok" || (kind === "video" && instagramReel(item))) return "portrait";
     if (kind === "youtube") {
       const url = parseUrl(item.url);
       return url && url.pathname.split("/").filter(Boolean)[0] === "shorts" ? "portrait" : "wide";
@@ -1786,6 +1798,20 @@
     return kind === "post" ? "post" : "wide";
   }
 
+  // A link saved without a title reads as its address, minus tracking noise.
+  function captionTitle(item) {
+    const view = item.view || {};
+    const title = String(view.title || item.title || "").trim();
+    const url = parseUrl(title);
+    if (!url || !/^https?:$/.test(url.protocol)) {
+      return title || "Saved item";
+    }
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${url.hostname.replace(/^www\./, "")}${path}` || title;
+  }
+
+  // The caption sits over the item like subtitles: it shows when asked for
+  // and goes away again, so the item keeps the whole screen.
   function reelInfoMarkup(item) {
     const view = item.view || {};
     const meta = [...byline(view), relativeDay(item.added_at)].filter(Boolean).join(" · ");
@@ -1794,8 +1820,8 @@
       .join("");
     return '<div class="reel-info">'
       + `<p class="reel-meta"><span class="reel-kind accent-${safeAccent(view.accent)}">${icon(safeIcon(view.icon))}</span>`
-      + `<span>${escapeHtml(meta)}</span></p>`
-      + `<h2 class="reel-title">${escapeHtml(view.title || item.title || "Saved item")}</h2>`
+      + `<span class="reel-line">${escapeHtml(meta)}</span></p>`
+      + `<h2 class="reel-title"><span class="reel-line">${escapeHtml(captionTitle(item))}</span></h2>`
       + (tags ? `<div class="reel-tags">${tags}</div>` : "")
       + "</div>";
   }
@@ -1830,6 +1856,7 @@
     if (!view.uploaded && safeUrl(item.url)) {
       buttons.push(railButton("share", "share", "Share", "Share link"));
     }
+    buttons.push(railButton("caption", "captions", "Text", "Show the text", ' aria-pressed="false"'));
     return `<div class="reel-rail">${buttons.join("")}</div>`;
   }
 
@@ -2016,6 +2043,12 @@
     }
     if (!source) {
       const item = findItem(slide.dataset.itemId);
+      // A reel that can't be fetched as a video still shows as Instagram's post.
+      const embed = item && instagramReel(item) ? postEmbed(item, "dark") : "";
+      if (embed) {
+        holder.outerHTML = `<div class="reel-post">${reelFrame(embed, captionTitle(item))}</div>`;
+        return;
+      }
       holder.innerHTML = '<div class="reel-card"><p class="reel-card-meta">This video can\'t play here.</p>'
         + `${item ? reelOpenButton(item.view || {}, "Open original") : ""}</div>`;
       return;
@@ -2149,6 +2182,7 @@
       }
       if (distance !== 0) {
         delete slide.dataset.userPaused;
+        markCaptions(slide, false);
       }
       slide.inert = distance !== 0;
       slide.classList.toggle("is-current", distance === 0);
@@ -2159,10 +2193,57 @@
     playCurrent();
     updateReelChrome();
     if (changed) {
+      window.clearTimeout(reel.captionTimer);
+      wakeHeading();
       syncReelHash();
       announceReel();
       maybeLoadMore();
     }
+  }
+
+  const CAPTION_MS = 6000;
+  const HEADING_MS = 2600;
+
+  function markCaptions(slide, on) {
+    slide.classList.toggle("captions-on", on);
+    const button = slide.querySelector('[data-reel-action="caption"]');
+    if (button) {
+      button.setAttribute("aria-pressed", String(on));
+      button.setAttribute("aria-label", on ? "Hide the text" : "Show the text");
+    }
+  }
+
+  // The text shows over the item when asked for, then goes away by itself.
+  function setCaptions(slide, on) {
+    if (!slide) {
+      return;
+    }
+    markCaptions(slide, on);
+    window.clearTimeout(reel.captionTimer);
+    window.clearTimeout(reel.quietTimer);
+    $("reel").classList.toggle("is-quiet", !on);
+    if (on) {
+      reel.captionTimer = window.setTimeout(() => setCaptions(slide, false), CAPTION_MS);
+    }
+  }
+
+  function toggleCaptions(slide) {
+    if (slide) {
+      setCaptions(slide, !slide.classList.contains("captions-on"));
+    }
+  }
+
+  // Where you are shows for a moment on each item, then fades so the item
+  // has the whole screen; the text button brings it back with the caption.
+  function wakeHeading() {
+    const shell = $("reel");
+    window.clearTimeout(reel.quietTimer);
+    shell.classList.remove("is-quiet");
+    reel.quietTimer = window.setTimeout(() => {
+      if (!currentSlide()?.classList.contains("captions-on")) {
+        shell.classList.add("is-quiet");
+      }
+    }, HEADING_MS);
   }
 
   function syncReelHash() {
@@ -2288,6 +2369,7 @@
     };
     slide.querySelector(".reel-info")?.replaceWith(build(reelInfoMarkup(item)));
     slide.querySelector(".reel-rail")?.replaceWith(build(reelRailMarkup(item)));
+    markCaptions(slide, slide.classList.contains("captions-on"));
     slide.setAttribute("aria-label", (item.view && item.view.title) || item.title || "Saved item");
     if (focused) {
       slide.querySelector(`[data-reel-action="${focused}"]`)?.focus();
@@ -2330,6 +2412,9 @@
     const last = currentSlide();
     const lastId = last ? Number(last.dataset.itemId) : null;
     window.clearTimeout(reel.tapTimer);
+    window.clearTimeout(reel.captionTimer);
+    window.clearTimeout(reel.quietTimer);
+    $("reel").classList.remove("is-quiet");
     closePhoto();
     closeSheet("item-sheet", { restoreFocus: false });
     reel.open = false;
@@ -2440,8 +2525,9 @@
     window.setTimeout(() => heart.remove(), 900);
   }
 
-  // A tap plays or pauses a video or opens a photo; a double tap adds the
-  // item to favourites for people who can edit the Page.
+  // A tap plays or pauses a video or opens a photo, and on anything else
+  // shows or hides the text; a double tap adds the item to favourites for
+  // people who can edit the Page.
   function handleStageTap(slide, event) {
     const now = Date.now();
     if (access.can_edit && reel.tapSlide === slide && now - reel.lastTap < DOUBLE_TAP_MS) {
@@ -2467,6 +2553,8 @@
         toggleSlideVideo(slide);
       } else if (slide.dataset.kind === "photo") {
         openPhoto(findItem(slide.dataset.itemId), slide.querySelector(".reel-rail button, .reel-rail a"));
+      } else {
+        toggleCaptions(slide);
       }
     }, access.can_edit ? DOUBLE_TAP_MS : 0);
   }
@@ -2532,6 +2620,8 @@
       openItem(item.id, control, { withMedia: false });
     } else if (name === "share" && item) {
       void shareItem(item);
+    } else if (name === "caption" && slide) {
+      toggleCaptions(slide);
     }
   }
 
@@ -2560,6 +2650,8 @@
       toggleSlideVideo(slide);
     } else if (key === "m" || key === "M") {
       toggleSound();
+    } else if (key === "c" || key === "C") {
+      toggleCaptions(currentSlide());
     } else {
       return;
     }
