@@ -55,6 +55,8 @@
     scrollTimer: null,
     targetIndex: null,
     targetTimer: null,
+    modeOverrides: new Map(),
+    resolvedMedia: new Map(),
   };
   const photo = { open: false, zoomed: false, trigger: null, lastTap: 0 };
   const profilePhoto = { uploading: false };
@@ -1773,6 +1775,32 @@
     return ["reel", "reels", "tv"].includes(url.pathname.split("/").filter(Boolean)[0]);
   }
 
+  function getReelSlideMode(item) {
+    if (!item) return "video";
+    const itemId = String(item.id);
+    if (reel.modeOverrides?.has(itemId)) {
+      return reel.modeOverrides.get(itemId);
+    }
+    try {
+      const saved = localStorage.getItem(`autoyou.page.itemMode.${itemId}`);
+      if (saved === "embed" || saved === "video") return saved;
+      const defaultPref = localStorage.getItem("autoyou.page.reelDefaultMode");
+      if (defaultPref === "embed") return "embed";
+    } catch (_) {}
+    return "video";
+  }
+
+  function setReelSlideMode(item, mode) {
+    if (!item) return;
+    const itemId = String(item.id);
+    if (!reel.modeOverrides) reel.modeOverrides = new Map();
+    reel.modeOverrides.set(itemId, mode);
+    try {
+      localStorage.setItem(`autoyou.page.itemMode.${itemId}`, mode);
+      localStorage.setItem("autoyou.page.reelDefaultMode", mode);
+    } catch (_) {}
+  }
+
   function reelKind(item) {
     const view = item.view || {};
     const type = itemType(item);
@@ -1818,9 +1846,14 @@
     const tags = (Array.isArray(item.tags) ? item.tags : []).slice(0, 8)
       .map((tag) => `<button class="reel-tag" type="button" data-reel-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`)
       .join("");
+    const isInsta = instagramReel(item);
+    const mode = isInsta ? getReelSlideMode(item) : "";
+    const badge = isInsta
+      ? `<span class="reel-stream-badge" data-stream-badge data-mode="${mode === "embed" ? "embed" : "direct"}">${mode === "embed" ? "Embed" : "Direct"}</span>`
+      : "";
     return '<div class="reel-info">'
       + `<p class="reel-meta"><span class="reel-kind accent-${safeAccent(view.accent)}">${icon(safeIcon(view.icon))}</span>`
-      + `<span class="reel-line">${escapeHtml(meta)}</span></p>`
+      + `<span class="reel-line">${escapeHtml(meta)}</span>${badge}</p>`
       + `<h2 class="reel-title"><span class="reel-line">${escapeHtml(captionTitle(item))}</span></h2>`
       + (tags ? `<div class="reel-tags">${tags}</div>` : "")
       + "</div>";
@@ -1846,6 +1879,16 @@
       ));
     }
     buttons.push(railButton("details", "info", "Details", "Details"));
+    if (instagramReel(item)) {
+      const isEmbed = getReelSlideMode(item) === "embed";
+      buttons.push(railButton(
+        "toggle-embed",
+        isEmbed ? "play-fill" : "instagram",
+        isEmbed ? "Video" : "Instagram",
+        isEmbed ? "Play as vertical video" : "Play from Instagram embed",
+        ` aria-pressed="${isEmbed}" data-slide-mode="${isEmbed ? "embed" : "video"}"`,
+      ));
+    }
     // Link cards carry their own "Read on" button.
     if (open && (view.uploaded || reelKind(item) !== "link")) {
       const download = view.uploaded ? " download" : ' target="_blank" rel="noopener"';
@@ -1863,8 +1906,11 @@
   function reelSlideMarkup(item, index) {
     const view = item.view || {};
     const kind = reelKind(item);
-    return `<article class="reel-slide" data-index="${index}" data-item-id="${Number(item.id)}" data-kind="${kind}" `
-      + `data-shape="${reelShape(item, kind)}" aria-roledescription="item" `
+    const mode = instagramReel(item) ? getReelSlideMode(item) : "default";
+    const effectiveKind = mode === "embed" ? "post" : kind;
+    const effectiveShape = mode === "embed" ? "post" : reelShape(item, kind);
+    return `<article class="reel-slide" data-index="${index}" data-item-id="${Number(item.id)}" data-kind="${effectiveKind}" `
+      + `data-shape="${effectiveShape}" data-base-kind="${kind}" data-slide-mode="${mode}" aria-roledescription="item" `
       + `aria-label="${escapeHtml(view.title || item.title || "Saved item")}" inert>`
       + '<div class="reel-frame"><div class="reel-stage"></div>'
       + `<span class="reel-glyph" aria-hidden="true">${icon("play-fill")}</span>`
@@ -1901,8 +1947,12 @@
       + 'sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>';
   }
 
-  function reelVideoMarkup(src) {
-    return `<video class="reel-video" src="${escapeHtml(src)}" playsinline loop muted preload="metadata"></video>`
+  function reelVideoMarkup(src, directSrc = "", relaySrc = "", streamMode = "direct") {
+    const isDirect = streamMode === "direct" && directSrc;
+    const initialSrc = isDirect ? directSrc : (src || relaySrc);
+    const modeAttr = directSrc && relaySrc ? ` data-direct-src="${escapeHtml(directSrc)}" data-relay-src="${escapeHtml(relaySrc)}" data-stream-mode="${isDirect ? "direct" : "relay"}"` : "";
+    const refAttr = initialSrc.startsWith("http") ? ' referrerpolicy="no-referrer"' : "";
+    return `<video class="reel-video" src="${escapeHtml(initialSrc)}"${modeAttr}${refAttr} playsinline loop muted preload="metadata"></video>`
       + '<input class="reel-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="Video position">';
   }
 
@@ -1984,7 +2034,9 @@
     if (!stage || !item) {
       return;
     }
-    const kind = slide.dataset.kind;
+    const isInstaReel = instagramReel(item);
+    const slideMode = isInstaReel ? getReelSlideMode(item) : "default";
+    const kind = slideMode === "embed" ? "post" : slide.dataset.kind;
     const remoteVideo = kind === "video" && !(item.view && item.view.uploaded);
     const mode = live && (LIVE_ONLY_KINDS.has(kind) || remoteVideo) ? "live" : "still";
     if (stage.dataset.mode !== mode) {
@@ -2024,6 +2076,136 @@
     delete slide.dataset.userPaused;
   }
 
+  function updateStreamBadge(slide, mode) {
+    const badge = slide?.querySelector("[data-stream-badge]");
+    if (!badge) return;
+    badge.setAttribute("data-mode", mode);
+    badge.textContent = mode === "embed" ? "Embed" : (mode === "relay" ? "Relay" : "Direct");
+  }
+
+  function updateSlideModeButton(slide, item, mode) {
+    const button = slide?.querySelector('[data-reel-action="toggle-embed"]');
+    if (!button) return;
+    const isEmbed = mode === "embed";
+    button.setAttribute("aria-pressed", String(isEmbed));
+    button.setAttribute("data-slide-mode", isEmbed ? "embed" : "video");
+    button.setAttribute("aria-label", isEmbed ? "Play as vertical video" : "Play from Instagram embed");
+    const iconSpan = button.querySelector(".rail-icon");
+    if (iconSpan) {
+      iconSpan.innerHTML = icon(isEmbed ? "play-fill" : "instagram");
+    }
+    const labelSpan = button.querySelector(".rail-label");
+    if (labelSpan) {
+      labelSpan.textContent = isEmbed ? "Video" : "Instagram";
+    }
+  }
+
+  function toggleSlideMode(slide, item) {
+    const currentMode = getReelSlideMode(item);
+    const newMode = currentMode === "embed" ? "video" : "embed";
+    setReelSlideMode(item, newMode);
+
+    const stage = slide.querySelector(".reel-stage");
+    if (!stage) return;
+
+    releaseMedia(stage);
+
+    if (newMode === "embed") {
+      const embed = postEmbed(item, "dark");
+      slide.dataset.shape = "post";
+      slide.dataset.kind = "post";
+      slide.dataset.slideMode = "embed";
+      stage.dataset.mode = "live";
+      stage.innerHTML = `<div class="reel-post">${reelFrame(embed, captionTitle(item))}</div>`;
+      toast("Playing Instagram embed (phone network)");
+    } else {
+      slide.dataset.shape = "portrait";
+      slide.dataset.kind = "video";
+      slide.dataset.slideMode = "video";
+      stage.dataset.mode = "live";
+      const open = safeUrl(item.view?.open_url || item.url);
+      stage.innerHTML = `<div class="reel-center" data-remote-video="${escapeHtml(open)}"><p class="reel-note">Preparing video...</p></div>`;
+      void resolveReelVideo(slide, stage);
+      toast("Playing full-screen video");
+    }
+
+    updateSlideModeButton(slide, item, newMode);
+    updateStreamBadge(slide, newMode);
+    updateReelChrome();
+  }
+
+  function setupVideoFallback(video, slide, stage) {
+    if (!video || !video.dataset.relaySrc) return;
+    let fallbackTriggered = false;
+    let stallTimer = null;
+
+    function triggerRelayFallback() {
+      if (fallbackTriggered) return;
+      if (video.dataset.streamMode !== "direct") return;
+      fallbackTriggered = true;
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+      const relayUrl = video.dataset.relaySrc;
+      if (!relayUrl) return;
+      video.dataset.streamMode = "relay";
+      video.src = relayUrl;
+      video.load();
+      updateStreamBadge(slide, "relay");
+      if (slide === currentSlide() && !slide.dataset.userPaused) {
+        video.play().catch(() => slide.classList.add("is-paused"));
+      }
+    }
+
+    function triggerEmbedFallback() {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+      const item = findItem(slide.dataset.itemId);
+      const embed = item && instagramReel(item) ? postEmbed(item, "dark") : "";
+      if (embed && stage && stage.isConnected) {
+        releaseMedia(stage);
+        stage.innerHTML = `<div class="reel-post">${reelFrame(embed, captionTitle(item))}</div>`;
+        slide.dataset.shape = "post";
+        slide.dataset.kind = "post";
+        slide.dataset.slideMode = "embed";
+        setReelSlideMode(item, "embed");
+        updateSlideModeButton(slide, item, "embed");
+        updateStreamBadge(slide, "embed");
+      }
+    }
+
+    function clearStall() {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+    }
+
+    if (video.dataset.streamMode === "direct") {
+      stallTimer = window.setTimeout(() => {
+        if (video.readyState < 2 && video.currentTime === 0 && !video.paused) {
+          triggerRelayFallback();
+        }
+      }, 3800);
+    }
+
+    video.addEventListener("loadeddata", clearStall, { once: true });
+    video.addEventListener("canplay", clearStall, { once: true });
+    video.addEventListener("playing", clearStall);
+
+    video.addEventListener("error", () => {
+      clearStall();
+      if (video.dataset.streamMode === "direct") {
+        triggerRelayFallback();
+      } else {
+        triggerEmbedFallback();
+      }
+    });
+  }
+
   async function resolveReelVideo(slide, stage) {
     const holder = stage.querySelector("[data-remote-video]");
     if (!holder) {
@@ -2031,13 +2213,25 @@
     }
     const original = holder.getAttribute("data-remote-video");
     let source = "";
-    try {
-      const response = await fetch(`./api/media/resolve?url=${encodeURIComponent(original)}`, { cache: "no-store" });
-      const payload = await readJson(response);
-      if (response.ok && payload.ok && payload.url) {
-        source = `./api/media/stream?url=${encodeURIComponent(payload.url)}`;
-      }
-    } catch (_) {}
+    let directCdn = "";
+
+    const cached = reel.resolvedMedia?.get(original);
+    if (cached && (Date.now() - cached.timestamp < 1800000)) {
+      source = cached.source;
+      directCdn = cached.direct;
+    } else {
+      try {
+        const response = await fetch(`./api/media/resolve?url=${encodeURIComponent(original)}`, { cache: "no-store" });
+        const payload = await readJson(response);
+        if (response.ok && payload.ok && payload.url) {
+          source = `./api/media/stream?url=${encodeURIComponent(payload.url)}`;
+          directCdn = payload.url;
+          if (!reel.resolvedMedia) reel.resolvedMedia = new Map();
+          reel.resolvedMedia.set(original, { source, direct: directCdn, timestamp: Date.now() });
+        }
+      } catch (_) {}
+    }
+
     if (!holder.isConnected) {
       return;
     }
@@ -2053,7 +2247,13 @@
         + `${item ? reelOpenButton(item.view || {}, "Open original") : ""}</div>`;
       return;
     }
-    holder.outerHTML = reelVideoMarkup(source);
+
+    // Direct-first: play from client CDN network directly; fall back to relay on error/stall
+    holder.outerHTML = reelVideoMarkup(source, directCdn, source, "direct");
+    const video = stage.querySelector("video.reel-video");
+    if (video) {
+      setupVideoFallback(video, slide, stage);
+    }
     if (slide === currentSlide()) {
       playCurrent();
     }
@@ -2622,6 +2822,8 @@
       void shareItem(item);
     } else if (name === "caption" && slide) {
       toggleCaptions(slide);
+    } else if (name === "toggle-embed" && slide && item) {
+      toggleSlideMode(slide, item);
     }
   }
 
@@ -2652,6 +2854,12 @@
       toggleSound();
     } else if (key === "c" || key === "C") {
       toggleCaptions(currentSlide());
+    } else if ((key === "e" || key === "E") && currentSlide()) {
+      const slide = currentSlide();
+      const item = slide ? findItem(slide.dataset.itemId) : null;
+      if (item && instagramReel(item)) {
+        toggleSlideMode(slide, item);
+      }
     } else {
       return;
     }

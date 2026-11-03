@@ -1174,6 +1174,16 @@ class PageFeedService:
             if any(url.lower().endswith(ext) for ext in direct_exts):
                 return url
 
+            # In-memory LRU/TTL cache to avoid repeated yt-dlp extractions
+            now = time.monotonic()
+            cache = getattr(self, "_media_resolve_cache", None)
+            if cache is None:
+                cache = {}
+                self._media_resolve_cache = cache
+            cached = cache.get(url)
+            if cached and (now - cached[1] < 1800.0):
+                return cached[0]
+
             yt_dlp = None
             with suppress(Exception):
                 import yt_dlp  # type: ignore
@@ -1199,6 +1209,11 @@ class PageFeedService:
                             break
                 if resolved and not is_safe_http_url(resolved):
                     return None
+                if resolved:
+                    if len(cache) > 200:
+                        for k in list(cache.keys())[:50]:
+                            cache.pop(k, None)
+                    cache[url] = (resolved, now)
                 return resolved
         except Exception:
             return None
@@ -2236,6 +2251,14 @@ class PageFeedService:
                 if cr:
                     resp.headers["Content-Range"] = cr
                 resp.headers["Accept-Ranges"] = "bytes"
+                etag = upstream.headers.get("ETag")
+                if etag:
+                    resp.headers["ETag"] = etag
+                lm = upstream.headers.get("Last-Modified")
+                if lm:
+                    resp.headers["Last-Modified"] = lm
+                resp.headers["Cache-Control"] = "private, max-age=86400"
+                resp.headers["X-AutoYou-Media-Cache"] = "private, max-age=604800, immutable"
                 # Security hardening (H-11): this handler proxies bytes from
                 # an arbitrary third-party URL. Force the browser to honour
                 # the declared Content-Type (no MIME sniffing) and sandbox
