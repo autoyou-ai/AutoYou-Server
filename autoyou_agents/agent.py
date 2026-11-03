@@ -2661,12 +2661,38 @@ _SPECIALIST_AGENT_TOOLS: Dict[str, Any] = {}
 _SPECIALIST_AGENT_DESCRIPTIONS: Dict[str, str] = {}
 
 
+# Listing every specialist as its own root tool costs the window, whatever the
+# model's size: with 42 installed specialists the schemas took ~4,100 of a
+# 12,288-token window (measured 2026-11-02, qwen38-turbo 27B: 9,956 prompt
+# tokens before the first word of conversation, 5,845 with the dispatcher).
+# Below this window the root keeps the dispatcher for every model.
+_EXPANDED_ROOT_TOOLS_MIN_CONTEXT = 65536
+# The window the current root was built for, so the topology chosen at build
+# time and the routing decisions made per turn always agree.
+_ROOT_CONTEXT_WINDOW: Optional[int] = None
+
+
+def _root_context_window() -> int:
+    """The local model's context window, or 0 when unknown or not local."""
+    if _ROOT_CONTEXT_WINDOW:
+        return int(_ROOT_CONTEXT_WINDOW)
+    if _active_ai_provider_name() != "ollama":
+        return 0
+    try:
+        return int(resolve_ollama_num_ctx(os.getenv("OLLAMA_MODEL", "") or None)[0] or 0)
+    except Exception:  # noqa: BLE001 - unknown window: the model policy decides
+        return 0
+
+
 def _two_stage_routing_enabled() -> bool:
     if _active_ai_provider_name() == "apple_intelligence":
         return True
     raw = str(os.getenv("AUTOYOU_TWO_STAGE_ROUTER", "") or "").strip().lower()
     if raw:
         return raw not in {"0", "false", "no", "off"}
+    window = _root_context_window()
+    if 0 < window < _EXPANDED_ROOT_TOOLS_MIN_CONTEXT:
+        return True
     # The specialist callback harness and the root tool topology are separate:
     # Gemma e4b keeps its expanded child-agent callbacks but must not receive
     # every installed specialist as a root-level JSON schema. The model policy
@@ -5751,9 +5777,53 @@ def _active_ai_provider_name() -> str:
         return "google"
     return "ollama"
 
+def _llm_compaction_enabled() -> bool:
+    """ADK's model-written history summaries: off unless the operator opts in.
+
+    Every request is already fitted to the window without a model call
+    (`_fit_ollama_request`: the current question and its tool chain whole,
+    older turns ranked by recency and topic, long tool results trimmed first).
+    The summaries replaced the turns they covered and were replayed as the
+    assistant's own words. Local models often wrote a reply instead of a
+    summary ("I don't have access to your personal information ..."), and the
+    trigger counted the fixed instructions and tool schemas, so with those
+    above it compaction ran on every turn, an extra model call each time.
+    """
+    return str(os.getenv("AUTOYOU_ADK_COMPACTION", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _install_stored_compaction_bypass() -> None:
+    """Read conversations from their original turns, not stored summaries.
+
+    ADK keeps every raw event when it compacts and only hides the ones a
+    summary covers. While LLM compaction is off, summaries written earlier are
+    skipped, so those conversations get their real turns back and the fitter
+    chooses what fits.
+    """
+    try:
+        from google.adk.flows.llm_flows.context import _contents as adk_contents
+    except Exception as exc:  # noqa: BLE001 - an older ADK simply keeps its behaviour
+        logger.debug("ADK contents module unavailable; stored compaction summaries still apply: %s", exc)
+        return
+    original = getattr(adk_contents, "_process_compaction_events", None)
+    if original is None or getattr(original, "_autoyou_compaction_bypass", False):
+        return
+
+    def _process_compaction_events(events, agent_name=""):
+        if _llm_compaction_enabled():
+            return original(events, agent_name)
+        return [event for event in events if not (getattr(event, "actions", None) and event.actions.compaction)]
+
+    _process_compaction_events._autoyou_compaction_bypass = True
+    adk_contents._process_compaction_events = _process_compaction_events
+
+
+_install_stored_compaction_bypass()
+
+
 def _build_events_compaction_config() -> Optional[EventsCompactionConfig]:
-    """Compact older Ollama conversation events before the active window fills."""
-    if _active_ai_provider_name() != "ollama":
+    """Compact older Ollama conversation events, only when the operator opts in."""
+    if _active_ai_provider_name() != "ollama" or not _llm_compaction_enabled():
         return None
 
     try:
@@ -5800,7 +5870,7 @@ def initialize_root_agent():
     UI (or by agent_builder_agent patching) are reflected immediately on every
     AI-agent restart, without requiring a full binary rebuild.
     """
-    global root_agent
+    global root_agent, _ROOT_CONTEXT_WINDOW
     try:
         _reload_prompt_from_disk()
         try:
@@ -5815,6 +5885,15 @@ def initialize_root_agent():
             )
             model_config = _build_resilient_fallback_model()
         logger.info("Successfully configured model: %s", getattr(model_config, "model", model_config))
+        try:
+            _ROOT_CONTEXT_WINDOW = int((getattr(model_config, "_additional_args", None) or {}).get("num_ctx") or 0) or None
+        except (TypeError, ValueError):
+            _ROOT_CONTEXT_WINDOW = None
+        logger.info(
+            "Root context window=%s; specialists reached through %s",
+            _ROOT_CONTEXT_WINDOW or "unknown",
+            "one dispatcher" if _two_stage_routing_enabled() else "one tool each",
+        )
 
         try:
             installed_agents = get_installed_agent_names(agents_root=_AGENTS_ROOT)
