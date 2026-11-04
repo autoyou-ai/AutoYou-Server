@@ -114,12 +114,34 @@ def _auth(request: Request) -> Dict[str, Any]:
     return _smc._describe_chat_auth_state(request, AGENT_NAME)
 
 
+def _connected_device_request(request: Request) -> bool:
+    """True when the request arrives from a paired native client over the WebRTC tunnel."""
+    return (
+        request.headers.get("X-AutoYou-Agent-Frontend", "").strip() == AGENT_NAME
+        and bool(request.headers.get("X-AutoYou-WebRTC-Session-Id", "").strip())
+    )
+
+
 def _require_session(request: Request) -> Optional[Response]:
     """A signed-in visitor of this website (or open access); 401 otherwise."""
     auth = _auth(request)
     if auth.get("authenticated"):
         return None
     return _json({"success": False, "error": "Not authenticated", "auth": auth}, 401)
+
+
+def _require_skin_or_session(request: Request, *, write: bool = False) -> Optional[Response]:
+    """Allow an authenticated web session, open access, or a paired WebRTC device."""
+    if _connected_device_request(request):
+        role = str(
+            request.headers.get("X-AutoYou-Remote-Access-Role")
+            or request.headers.get("X-AutoYou-Remote-Role")
+            or ""
+        ).strip().lower()
+        if write and role == "viewer":
+            return _error(403, "Remote access is set to viewer; changing assistant skin or settings requires editor or admin access.")
+        return None
+    return _require_session(request)
 
 
 def _server() -> Any:
@@ -283,6 +305,7 @@ def assistant_status() -> Dict[str, Any]:
         "assistant_name": status.get("assistant_name") or "AutoYou",
         "wake_phrase": status.get("wake_phrase") or "",
         "confirm": confirm,
+        "sensitivity": float(status.get("sensitivity", 0.5)),
         "listen_seconds": status.get("listen_seconds") or 8,
         "listening": listening,
         "model_revision": am.model_revision(status),
@@ -292,6 +315,37 @@ def assistant_status() -> Dict[str, Any]:
         # False while speech recognition loads after a restart (up to a minute).
         "speech_ready": not _SPEECH_WARMING.is_set(),
     }
+
+
+def _apply_assistant_settings_sync(raw_settings: Any) -> None:
+    if not isinstance(raw_settings, dict):
+        return
+    am = _assistant_mode()
+    updates: Dict[str, Any] = {}
+    if "enabled" in raw_settings:
+        updates["enabled"] = raw_settings["enabled"]
+    if "wake_phrase" in raw_settings:
+        updates["wake_phrase"] = raw_settings["wake_phrase"]
+    if "sensitivity" in raw_settings:
+        updates["sensitivity"] = raw_settings["sensitivity"]
+    if "confirm" in raw_settings:
+        updates["confirm"] = raw_settings["confirm"]
+    if "listen_seconds" in raw_settings:
+        updates["listen_seconds"] = raw_settings["listen_seconds"]
+    if "speak_replies" in raw_settings or "web_speak_replies" in raw_settings:
+        updates["web_speak_replies"] = raw_settings.get("speak_replies", raw_settings.get("web_speak_replies"))
+    if "auto_start" in raw_settings or "web_auto_start" in raw_settings:
+        updates["web_auto_start"] = raw_settings.get("auto_start", raw_settings.get("web_auto_start"))
+    if "follow_up" in raw_settings or "web_follow_up" in raw_settings:
+        updates["web_follow_up"] = raw_settings.get("follow_up", raw_settings.get("web_follow_up"))
+    if updates:
+        am.save_settings(updates)
+        hub = _hub()
+        if hub is not None and hasattr(hub, "reload"):
+            try:
+                hub.reload()
+            except Exception:
+                pass
 
 
 def warm_up_speech(speak: bool) -> None:
@@ -632,12 +686,152 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         payload["speech_ready"] = not _SPEECH_WARMING.is_set()
         auth = _auth(request)
         payload["access"] = "open" if auth.get("auth_mode") == "open" else "otp"
+        from shared import assistant_skin
+        payload["skin"] = assistant_skin.get_active_skin()
         return _json({"success": True, **payload})
+
+    @app.get("/api/assistant/skin")
+    async def get_skin(request: Request):
+        """Active assistant appearance, physics skin pack, and synced assistant settings."""
+        refused = _require_skin_or_session(request, write=False)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        skin = await asyncio.to_thread(assistant_skin.get_active_skin)
+        settings = await asyncio.to_thread(assistant_status)
+        return _json({"success": True, "skin": skin, "settings": settings})
+
+    @app.post("/api/assistant/skin")
+    async def set_skin(request: Request):
+        """Update active assistant appearance, physics skin, and optional assistant settings."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        from shared import assistant_skin
+        if isinstance(body, dict) and isinstance(body.get("settings"), dict):
+            await asyncio.to_thread(_apply_assistant_settings_sync, body["settings"])
+        skin_data = (body or {}).get("skin") if isinstance(body, dict) and "skin" in body else body
+        try:
+            saved = await asyncio.to_thread(assistant_skin.save_active_skin, skin_data)
+        except Exception as exc:
+            return _error(400, str(exc))
+        settings = await asyncio.to_thread(assistant_status)
+        return _json({"success": True, "skin": saved, "settings": settings})
+
+    @app.get("/api/assistant/settings")
+    async def get_assistant_settings(request: Request):
+        """Active assistant behavior settings and skin for native device sync."""
+        refused = _require_skin_or_session(request, write=False)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        settings = await asyncio.to_thread(assistant_status)
+        skin = await asyncio.to_thread(assistant_skin.get_active_skin)
+        return _json({"success": True, "settings": settings, "skin": skin})
+
+    @app.post("/api/assistant/settings")
+    async def set_assistant_settings(request: Request):
+        """Update assistant behavior settings and optional skin from native device or web drawer."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        from shared import assistant_skin
+        settings_data = (body or {}).get("settings") if isinstance(body, dict) and isinstance(body.get("settings"), dict) else body
+        await asyncio.to_thread(_apply_assistant_settings_sync, settings_data)
+        if isinstance(body, dict) and isinstance(body.get("skin"), dict):
+            try:
+                await asyncio.to_thread(assistant_skin.save_active_skin, body["skin"])
+            except Exception as exc:
+                return _error(400, str(exc))
+        settings = await asyncio.to_thread(assistant_status)
+        skin = await asyncio.to_thread(assistant_skin.get_active_skin)
+        return _json({"success": True, "settings": settings, "skin": skin})
+
+    @app.get("/api/assistant/skin/presets")
+    async def get_skin_presets(request: Request):
+        """Available built-in assistant skins."""
+        refused = _require_skin_or_session(request, write=False)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        presets = await asyncio.to_thread(assistant_skin.list_presets)
+        return _json({"success": True, "presets": presets})
+
+    @app.post("/api/assistant/skin/preset/{preset_id}")
+    async def apply_skin_preset(preset_id: str, request: Request):
+        """Apply a built-in assistant skin preset."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        try:
+            saved = await asyncio.to_thread(assistant_skin.apply_preset, preset_id)
+        except ValueError as exc:
+            return _error(404, str(exc))
+        except Exception as exc:
+            return _error(400, str(exc))
+        return _json({"success": True, "skin": saved})
+
+    @app.get("/api/assistant/skin/export")
+    async def export_skin(request: Request):
+        """Export active assistant skin as a downloadable JSON pack."""
+        refused = _require_skin_or_session(request, write=False)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        pack = await asyncio.to_thread(assistant_skin.export_skin_pack)
+        filename = f"{assistant_skin.get_active_skin().get('id', 'assistant')}.ayskin.json"
+        return Response(
+            pack,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @app.post("/api/assistant/skin/import")
+    async def import_skin(request: Request):
+        """Upload and apply an assistant skin pack."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            body, error = await _json_body(request)
+            if error is not None:
+                return error
+            raw_text = json.dumps(body)
+        else:
+            raw_body = await request.body()
+            raw_text = raw_body.decode("utf-8", errors="replace")
+        from shared import assistant_skin
+        try:
+            saved = await asyncio.to_thread(assistant_skin.import_skin_pack, raw_text)
+        except Exception as exc:
+            return _error(400, f"Failed to import skin pack: {exc}")
+        return _json({"success": True, "skin": saved})
+
+    @app.post("/api/assistant/skin/reset")
+    async def reset_skin(request: Request):
+        """Reset assistant skin to default."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        from shared import assistant_skin
+        reset_val = await asyncio.to_thread(assistant_skin.reset_active_skin)
+        return _json({"success": True, "skin": reset_val})
 
     @app.get("/api/assistant/model")
     async def model(request: Request):
-        """The trained wake word for the in-page detector (acoustic templates only)."""
-        refused = _require_session(request)
+        """The trained wake word for the in-page or on-device detector (acoustic templates only)."""
+        refused = _require_skin_or_session(request, write=False)
         if refused is not None:
             return refused
         payload = await asyncio.to_thread(_assistant_mode().device_model_payload, _server_name())

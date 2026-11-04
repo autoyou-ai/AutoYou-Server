@@ -27,7 +27,10 @@
     settingsBtn: $("settings-btn"), settingsClose: $("settings-close"), facts: $("server-facts"),
     unlock: $("unlock"), unlockBtn: $("unlock-btn"), unlockTitle: $("unlock-title"), unlockSub: $("unlock-sub"),
     askForm: $("ask-form"), askInput: $("ask-input"), askSend: $("ask-send"), signout: $("signout-btn"),
-    clear: $("clear-btn"), askAttach: $("ask-attach"), askFileInput: $("ask-file-input"), askAttachments: $("ask-attachments")
+    clear: $("clear-btn"), askAttach: $("ask-attach"), askFileInput: $("ask-file-input"), askAttachments: $("ask-attachments"),
+    skinPreset: $("skin-preset"), skinGlow: $("skin-glow"), skinAccent: $("skin-accent"), skinCore: $("skin-core"),
+    skinEyeStyle: $("skin-eye-style"), skinBreath: $("skin-breath"), skinExportBtn: $("skin-export-btn"),
+    skinImportBtn: $("skin-import-btn"), skinFileInput: $("skin-file-input"), skinResetBtn: $("skin-reset-btn")
   };
 
   // The server draws its sign-in screen over this page. While it shows, this
@@ -995,10 +998,185 @@
   function releaseWakeLock() { if (S.wakeLock) { S.wakeLock.release().catch(function () {}); S.wakeLock = null; } }
 
   // ---- Server settings ----------------------------------------------------------
+  function applySkin(skin) {
+    if (!skin) return;
+    S.activeSkin = skin;
+    if (skin.palette) {
+      var p = skin.palette;
+      if (p.glow_primary) {
+        document.documentElement.style.setProperty("--accent", p.glow_primary);
+        var glowNodes = document.querySelectorAll("#antenna-glow, #ear-l, #ear-r, .eye-ring, .eye-happy, .eye-sleep, #mouth-smile path, #mouth-open, #eq rect, #think circle");
+        for (var i = 0; i < glowNodes.length; i++) {
+          if (glowNodes[i].getAttribute("stroke")) glowNodes[i].setAttribute("stroke", p.glow_primary);
+          if (glowNodes[i].getAttribute("fill") && glowNodes[i].getAttribute("fill") !== "none") glowNodes[i].setAttribute("fill", p.glow_primary);
+        }
+      }
+      if (p.shell_gradient && p.shell_gradient.length >= 3) {
+        var gShell = $("g-shell");
+        if (gShell) {
+          var stops = gShell.querySelectorAll("stop");
+          if (stops.length >= 3) {
+            stops[0].setAttribute("stop-color", p.shell_gradient[0]);
+            stops[1].setAttribute("stop-color", p.shell_gradient[1]);
+            stops[2].setAttribute("stop-color", p.shell_gradient[2]);
+          }
+        }
+      }
+      var headGrad = (p.shell_head_gradient && p.shell_head_gradient.length >= 3) ? p.shell_head_gradient : p.shell_gradient;
+      if (headGrad && headGrad.length >= 3) {
+        var gShellHead = $("g-shell-head");
+        if (gShellHead) {
+          var hStops = gShellHead.querySelectorAll("stop");
+          if (hStops.length >= 3) {
+            hStops[0].setAttribute("stop-color", headGrad[0]);
+            hStops[1].setAttribute("stop-color", headGrad[1]);
+            hStops[2].setAttribute("stop-color", headGrad[2]);
+          }
+        }
+      }
+      if (p.visor_gradient && p.visor_gradient.length >= 3) {
+        var gVisor = $("g-visor");
+        if (gVisor) {
+          var vStops = gVisor.querySelectorAll("stop");
+          if (vStops.length >= 3) {
+            vStops[0].setAttribute("stop-color", p.visor_gradient[0]);
+            vStops[1].setAttribute("stop-color", p.visor_gradient[1]);
+            vStops[2].setAttribute("stop-color", p.visor_gradient[2]);
+          }
+        }
+      }
+      if (p.accent_gradient && p.accent_gradient.length >= 3) {
+        var gBlue = $("g-blue");
+        if (gBlue) {
+          var bStops = gBlue.querySelectorAll("stop");
+          if (bStops.length >= 3) {
+            bStops[0].setAttribute("stop-color", p.accent_gradient[0]);
+            bStops[1].setAttribute("stop-color", p.accent_gradient[1]);
+            bStops[2].setAttribute("stop-color", p.accent_gradient[2]);
+          }
+        }
+      }
+      if (p.core_color) {
+        var corePaths = document.querySelectorAll("#core path, #core polygon, #core polyline");
+        for (var c = 0; c < corePaths.length; c++) {
+          if (corePaths[c].getAttribute("opacity") === "0.95") {
+            corePaths[c].setAttribute("stroke", p.core_color);
+          }
+        }
+      }
+    }
+    if (skin.physics) {
+      if (skin.physics.breath_speed) S.breathSpeed = skin.physics.breath_speed;
+      if (skin.physics.breath_amplitude) S.breathAmplitude = skin.physics.breath_amplitude;
+      if (skin.physics.gaze_sensitivity) S.gazeSensitivity = skin.physics.gaze_sensitivity;
+      if (skin.physics.springs) {
+        Object.keys(skin.physics.springs).forEach(function (k) {
+          if (J[k] && skin.physics.springs[k]) {
+            if (skin.physics.springs[k].k) J[k].k = skin.physics.springs[k].k;
+            if (skin.physics.springs[k].c) J[k].c = skin.physics.springs[k].c;
+          }
+        });
+      }
+    }
+    if (skin.emotes && skin.emotes.eye_style) {
+      var eyeStyle = skin.emotes.eye_style;
+      var eyeRings = document.querySelectorAll("#eye-l .eye-ring, #eye-r .eye-ring");
+      for (var er = 0; er < eyeRings.length; er++) {
+        if (eyeStyle === "visor_bar") {
+          eyeRings[er].setAttribute("r", "18");
+          eyeRings[er].setAttribute("stroke-width", "14");
+        } else if (eyeStyle === "neon") {
+          eyeRings[er].setAttribute("r", "26");
+          eyeRings[er].setAttribute("stroke-width", "5.5");
+        } else {
+          eyeRings[er].setAttribute("r", "25");
+          eyeRings[er].setAttribute("stroke-width", "9");
+        }
+      }
+    }
+    if (ui.skinPreset && skin.id) ui.skinPreset.value = skin.id;
+    if (ui.skinGlow && skin.palette && skin.palette.glow_primary) ui.skinGlow.value = skin.palette.glow_primary;
+    if (ui.skinAccent && skin.palette && skin.palette.accent_gradient) ui.skinAccent.value = skin.palette.accent_gradient[0];
+    if (ui.skinCore && skin.palette && skin.palette.core_color) ui.skinCore.value = skin.palette.core_color;
+    if (ui.skinBreath && skin.physics && skin.physics.breath_speed) ui.skinBreath.value = skin.physics.breath_speed;
+    if (ui.skinEyeStyle && skin.emotes && skin.emotes.eye_style) ui.skinEyeStyle.value = skin.emotes.eye_style;
+  }
+
+  function initSkinHandlers() {
+    if (ui.skinPreset) {
+      ui.skinPreset.addEventListener("change", function () {
+        var presetId = ui.skinPreset.value;
+        request("api/assistant/skin/preset/" + encodeURIComponent(presetId), {}).then(function (res) {
+          if (res && res.skin) applySkin(res.skin);
+        }).catch(function (e) { hint("Could not apply preset: " + e.message, "warn"); });
+      });
+    }
+    function updateCustomColors() {
+      if (!S.activeSkin) return;
+      var current = JSON.parse(JSON.stringify(S.activeSkin));
+      if (!current.palette) current.palette = {};
+      if (ui.skinGlow) current.palette.glow_primary = ui.skinGlow.value;
+      if (ui.skinAccent) {
+        var acc = ui.skinAccent.value;
+        current.palette.accent_gradient = [acc, acc, acc];
+      }
+      if (ui.skinCore) current.palette.core_color = ui.skinCore.value;
+      if (ui.skinBreath && current.physics) current.physics.breath_speed = parseFloat(ui.skinBreath.value);
+      if (ui.skinEyeStyle && current.emotes) current.emotes.eye_style = ui.skinEyeStyle.value;
+      current.id = "custom";
+      applySkin(current);
+      request("api/assistant/skin", { skin: current }).catch(function () {});
+    }
+    if (ui.skinGlow) ui.skinGlow.addEventListener("change", updateCustomColors);
+    if (ui.skinAccent) ui.skinAccent.addEventListener("change", updateCustomColors);
+    if (ui.skinCore) ui.skinCore.addEventListener("change", updateCustomColors);
+    if (ui.skinBreath) ui.skinBreath.addEventListener("change", updateCustomColors);
+    if (ui.skinEyeStyle) ui.skinEyeStyle.addEventListener("change", updateCustomColors);
+
+    if (ui.skinExportBtn) {
+      ui.skinExportBtn.addEventListener("click", function () {
+        location.href = "./api/assistant/skin/export";
+      });
+    }
+    if (ui.skinImportBtn && ui.skinFileInput) {
+      ui.skinImportBtn.addEventListener("click", function () { ui.skinFileInput.click(); });
+      ui.skinFileInput.addEventListener("change", function () {
+        var file = ui.skinFileInput.files && ui.skinFileInput.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            var parsed = JSON.parse(e.target.result);
+            request("api/assistant/skin/import", parsed).then(function (res) {
+              if (res && res.skin) {
+                applySkin(res.skin);
+                hint("Assistant skin imported successfully!", "ok", 3);
+              }
+            }).catch(function (err) { hint("Invalid skin pack: " + err.message, "warn", 4); });
+          } catch (err) {
+            hint("Could not read skin file as JSON.", "warn", 3);
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+    if (ui.skinResetBtn) {
+      ui.skinResetBtn.addEventListener("click", function () {
+        request("api/assistant/skin/reset", {}).then(function (res) {
+          if (res && res.skin) {
+            applySkin(res.skin);
+            hint("Skin reset to default.", "ok", 2);
+          }
+        }).catch(function (e) { hint("Could not reset skin: " + e.message, "warn"); });
+      });
+    }
+  }
+
   function refreshStatus(first) {
     return request("api/assistant/status").then(function (status) {
       var before = S.status;
       S.status = status;
+      if (status.skin) applySkin(status.skin);
       renderFacts();
       ui.signout.hidden = status.access === "open";
       if (!first && before && S.capture && (before.model_revision !== status.model_revision || before.listening !== status.listening)) {
@@ -1121,14 +1299,15 @@
     S.perk = Math.max(0, S.perk - dt * 2.2);
 
     // Gaze: follows a pointer when there is one, otherwise looks around.
+    var gazeSens = S.gazeSensitivity || 1.0;
     if (anim.pointer && now - anim.pointerAt < 2500) {
-      anim.gazeTX = anim.pointer.x * 13; anim.gazeTY = anim.pointer.y * 9;
+      anim.gazeTX = anim.pointer.x * 13 * gazeSens; anim.gazeTY = anim.pointer.y * 9 * gazeSens;
     } else if (phase === "thinking") {
       anim.gazeTX = 9 + Math.sin(t * 1.7) * 3; anim.gazeTY = -8;
     } else if (phase === "command" || phase === "speaking") {
       anim.gazeTX = Math.sin(t * 0.9) * 2; anim.gazeTY = 1;
     } else if (now > anim.nextSaccade) {
-      anim.gazeTX = (Math.random() * 2 - 1) * 11; anim.gazeTY = (Math.random() * 2 - 1) * 6;
+      anim.gazeTX = (Math.random() * 2 - 1) * 11 * gazeSens; anim.gazeTY = (Math.random() * 2 - 1) * 6 * gazeSens;
       anim.nextSaccade = now + 1200 + Math.random() * 2600;
     }
     anim.gazeX = ease(anim.gazeX, anim.gazeTX, 0.14);
@@ -1225,7 +1404,7 @@
     // range where no part passes through another (the waving hand stays clear of
     // the ear, the arms never sweep into the chest).
     var m = motion, out = S.outLevel, sleep = anim.sleep;
-    var breathe = Math.sin(t * 1.6) * 2.2 * m * (1 - sleep * 0.5);
+    var breathe = Math.sin(t * (S.breathSpeed || 1.6)) * (S.breathAmplitude || 2.2) * m * (1 - sleep * 0.5);
     var pointer = anim.pointer && now - anim.pointerAt < 2500 ? anim.pointer : null;
     var px = pointer ? pointer.x : 0;
     var shake = erroring ? Math.sin(t * 30) * 3 * m * Math.max(0, (S.errorUntil - now) / 2200) : 0;
@@ -1313,6 +1492,12 @@
         save(key, prefs[key]);
         if (key === "robot") applyRobotPref();
         if (key === "speak" && !prefs.speak) stopSpeaking();
+        if (key === "autoStart" || key === "speak") {
+          var syncPayload = {};
+          if (key === "autoStart") syncPayload.enabled = Boolean(prefs.autoStart);
+          if (key === "speak") syncPayload.speak_replies = Boolean(prefs.speak);
+          request("api/assistant/settings", { settings: syncPayload }).catch(function () {});
+        }
       };
     });
   }
@@ -1521,6 +1706,7 @@
   // run until it reloads the page after the code is accepted.
   if (signedOut) return;
   renderHistory();
+  initSkinHandlers();
   requestAnimationFrame(frame);
   refreshStatus(true).then(function (status) {
     var param = params.get("autostart");
