@@ -27,6 +27,10 @@ AUTOYOU_LAST_SCHEDULED_TASK_USER_STATE_KEY = "user:autoyou_last_scheduled_task"
 # One wake-word Assistant mode turn: {"text", "at", "wake", "live_frame"}.
 # The root agent acts on it only while it matches the current message.
 AUTOYOU_ASSISTANT_TURN_STATE_KEY = "autoyou_assistant_turn"
+# Which continuation of the current turn a model call is (0 for the user's own
+# message). Set by the server on every run; the root then adds a system note
+# instead of the server sending made-up words as the user.
+AUTOYOU_TURN_CONTINUATION_STATE_KEY = "autoyou_turn_continuation"
 
 
 def normalize_assistant_turn(value: Any) -> Optional[Dict[str, Any]]:

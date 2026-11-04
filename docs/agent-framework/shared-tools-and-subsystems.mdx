@@ -322,6 +322,16 @@ No module docstring.
 | `scan_entire_memory` | function | Scan all matching memory in the current logical conversation by default. |
 | `scan_all_client_memory` | function | Privileged owner-level memory search across all connected client identities. |
 
+## `outbox.py`
+
+One way for any agent to send the user another message.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `follow_up_target` | function | Where a follow-up from this turn goes, read from the turn's session state. |
+| `post_follow_up` | function | Hand a message to the server's outbox for this conversation. |
+| `send_follow_up` | function | Send the user another message in this conversation, separate from your reply. |
+
 ## `scheduler_mission_control.py`
 
 No module docstring.

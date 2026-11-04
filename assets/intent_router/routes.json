@@ -12,7 +12,11 @@
         "Add a personal detail to my persona journal.",
         "Update my personal profile.",
         "Write in my diary that today was a good day.",
-        "Show my diary entry from yesterday."
+        "Show my diary entry from yesterday.",
+        "¿Cómo me llamo?",
+        "Muestra mi perfil personal.",
+        "Recuerda que prefiero respuestas cortas.",
+        "Escribe en mi diario que hoy fue un buen día."
       ]
     },
     {
@@ -23,7 +27,11 @@
         "Jot down that we need more printer ink.",
         "Find my notes about the project.",
         "Show my saved notes.",
-        "Update the title of my note."
+        "Update the title of my note.",
+        "Crea una nota para mí.",
+        "Guarda esta idea en mis notas.",
+        "Busca mis notas sobre el proyecto.",
+        "Muestra mis notas guardadas."
       ]
     },
     {
@@ -33,7 +41,10 @@
         "Show my scheduled tasks.",
         "Run this research task at five oclock.",
         "Stop the scheduled agent job.",
-        "Check the status of my running tasks."
+        "Check the status of my running tasks.",
+        "Programa una tarea de IA cada mañana.",
+        "Muestra mis tareas programadas.",
+        "Detén la tarea programada."
       ]
     },
     {
@@ -42,7 +53,10 @@
         "Remind me to water plants tomorrow.",
         "Set a reminder for my appointment.",
         "Cancel that reminder.",
-        "Send me a notification at five oclock."
+        "Send me a notification at five oclock.",
+        "Recuérdame regar las plantas mañana.",
+        "Pon un recordatorio para mi cita.",
+        "Cancela ese recordatorio."
       ]
     },
     {
@@ -52,7 +66,10 @@
         "Share this link on my page feed.",
         "Show my page feed.",
         "Publish an update to my public page.",
-        "Delete the last post from my page."
+        "Delete the last post from my page.",
+        "Publica esta foto en mi página.",
+        "Comparte este enlace en mi página.",
+        "Muestra el feed de mi página."
       ]
     },
     {
@@ -63,7 +80,11 @@
         "Research this topic online.",
         "Find the weather forecast.",
         "Check the latest price online.",
-        "Read and summarize this website."
+        "Read and summarize this website.",
+        "Busca en internet las últimas noticias.",
+        "Busca reseñas recientes de esta cámara.",
+        "Consulta el pronóstico del tiempo.",
+        "Lee y resume esta página web."
       ]
     },
     {
@@ -73,7 +94,10 @@
         "List files in my downloads folder.",
         "Search my documents for a filename.",
         "Move this file into another folder.",
-        "Delete a file from my computer."
+        "Delete a file from my computer.",
+        "Busca un archivo en mi computadora.",
+        "Lista los archivos de mi carpeta de descargas.",
+        "Mueve este archivo a otra carpeta."
       ]
     },
     {
@@ -83,7 +107,10 @@
         "Pause the song.",
         "Skip to the next track.",
         "Find an album in my music collection.",
-        "Stop playing music."
+        "Stop playing music.",
+        "Pon música de mi biblioteca.",
+        "Pausa la canción.",
+        "Salta a la siguiente canción."
       ]
     },
     {
@@ -93,7 +120,10 @@
         "Check my fine tuning job progress.",
         "Prepare a training dataset.",
         "Install my trained model.",
-        "Evaluate the local intent classifier."
+        "Evaluate the local intent classifier.",
+        "Entrena un modelo local con mis datos.",
+        "Revisa el progreso de mi entrenamiento.",
+        "Prepara un conjunto de datos de entrenamiento."
       ]
     },
     {
@@ -101,7 +131,10 @@
       "examples": [
         "What time is it right now?",
         "Tell me today's date.",
-        "What day of the week is it?"
+        "What day of the week is it?",
+        "¿Qué hora es ahora?",
+        "Dime la fecha de hoy.",
+        "¿Qué día de la semana es?"
       ]
     },
     {
@@ -111,7 +144,11 @@
         "Tell me a joke.",
         "Explain what photosynthesis means.",
         "Thank you for your help.",
-        "What do you think about this idea?"
+        "What do you think about this idea?",
+        "Hola, ¿cómo estás?",
+        "Cuéntame un chiste.",
+        "Explica qué significa la fotosíntesis.",
+        "Gracias por tu ayuda."
       ]
     },
     {
@@ -120,9 +157,12 @@
         "I want to speak with the owner personally.",
         "Can you meet me at five?",
         "Can you agree to this deal?",
-        "Please ask the owner to call me back."
+        "Please ask the owner to call me back.",
+        "Quiero hablar con el dueño en persona.",
+        "¿Puedes reunirte conmigo a las cinco?",
+        "Pide al dueño que me llame."
       ]
     }
   ],
-  "defer_pattern": "\\b(?:not|never|no|don't|doesn't|can't|cannot|won't|wouldn't|shouldn't|instead|ignore|unless|except|if)\\b"
+  "defer_pattern": "\\b(?:not|never|no|don't|doesn't|can't|cannot|won't|wouldn't|shouldn't|instead|ignore|unless|except|if|nunca|jam[aá]s|en\\s+(?:vez|lugar)\\s+de|a\\s+menos\\s+que|excepto|salvo|si)\\b"
 }

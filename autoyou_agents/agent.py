@@ -57,6 +57,7 @@ from autoyou_agents.model_config import (
     resolve_ollama_num_ctx,
 )
 from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_tool_response
+from autoyou_agents.arithmetic import calculate, calculator_note
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
@@ -83,7 +84,7 @@ from autoyou_agents.shared_tools.memory_tool import (
     scan_entire_memory,
 )
 from shared.platform_runtime import is_compiled
-from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
+from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY, AUTOYOU_TURN_CONTINUATION_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
 from shared.secure_storage import SecureStorageError
 
@@ -4639,6 +4640,28 @@ _CORRECTION_REDISPATCH_INSTALL_NAMES = frozenset({"internet_agent", "browser_age
 _CORRECTION_REDISPATCH_WINDOW_SECONDS = 300.0
 
 
+_TURN_CONTINUATION_NOTE = (
+    "[Turn continuation] Your last reply only said what you were about to do, so the user's latest "
+    "request is still unanswered. Do it now: use your tools if you need them, then reply with the "
+    "actual result, in the language the user wrote in. Do not announce steps."
+)
+
+
+def _turn_continuation_note(callback_context: Any) -> str:
+    """The note for a model call the server made to finish an unanswered turn.
+
+    The server re-sends the user's own message and marks the run in session
+    state, instead of writing English words as the user, so the reply keeps the
+    user's language and routing sees the real request.
+    """
+    state = getattr(callback_context, "state", None)
+    try:
+        attempt = int((state.get(AUTOYOU_TURN_CONTINUATION_STATE_KEY) if state is not None else 0) or 0)
+    except (AttributeError, TypeError, ValueError):
+        attempt = 0
+    return _TURN_CONTINUATION_NOTE if attempt > 0 else ""
+
+
 def _append_root_instruction(llm_request: Any, text: str) -> None:
     config = getattr(llm_request, "config", None)
     if config is None or not text:
@@ -5382,6 +5405,16 @@ async def _root_before_model_callback(callback_context: Any, llm_request: Any) -
             _append_root_instruction(llm_request, _root_conversation_note(callback_context))
         except Exception:
             logger.debug("Could not add the conversation note to the root request", exc_info=True)
+        # A plain arithmetic question gets its exact result: models get the
+        # order of operations wrong ("37x52-3/3" answered as 1921/3).
+        try:
+            _append_root_instruction(llm_request, calculator_note(_extract_text_from_llm_request(llm_request)))
+        except Exception:
+            logger.debug("Could not add the calculator note to the root request", exc_info=True)
+        try:
+            _append_root_instruction(llm_request, _turn_continuation_note(callback_context))
+        except Exception:
+            logger.debug("Could not add the turn continuation note to the root request", exc_info=True)
     return response
 
 
@@ -5954,8 +5987,18 @@ def initialize_root_agent():
         effective_instruction = _build_effective_agent_instruction(available_agent_names)
         memory_agent = initialized_agents.get("memory_agent")
 
-        # Prepare base tools list
-        tools = [remember_long_term_memory, scan_entire_memory, get_current_datetime, process_media_content]
+        # Prepare base tools list. `calculate` answers arithmetic exactly in any
+        # language; `send_follow_up` lets a turn post another message into the
+        # conversation (now, or for work that finishes later).
+        from autoyou_agents.shared_tools.outbox import send_follow_up
+        tools = [
+            remember_long_term_memory,
+            scan_entire_memory,
+            get_current_datetime,
+            process_media_content,
+            calculate,
+            send_follow_up,
+        ]
         if initialized_agents.get("persona_agent") is not None:
             # The website and chat must read/append the same persona.md journal.
             from autoyou_agents.persona_agent.agent import read_persona, append_persona

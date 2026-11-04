@@ -2563,6 +2563,55 @@ def _set_ai_agent_multiprocessing_executable() -> None:
         runtime.LOGGER.debug("Could not set AI Agent multiprocessing executable to %s: %s", executable, exc)
 
 
+def _warmup_num_ctx(runtime: Any, model: str) -> Optional[int]:
+    """The context size the agent will ask Ollama for, resolved as model_config does."""
+    try:
+        behavior = (runtime.STATE.config or {}).get("model_behavior") or {}
+        override = int(behavior.get("num_ctx") or 0)
+        if override > 0:
+            return override
+    except (AttributeError, TypeError, ValueError):
+        pass
+    try:
+        from shared.ollama_context_policy import recommend_ollama_num_ctx
+
+        return int(recommend_ollama_num_ctx(model))
+    except Exception:
+        return None
+
+
+def _schedule_ai_runtime_warmup(runtime: Any, probe_host: str) -> None:
+    """Build the agent tree and load the model now, so the first message does not wait.
+
+    The first message after a start took 53.8 s (owner report 2026-11-03).
+    """
+    try:
+        from core_server import ai_warmup
+
+        api_base: Optional[str] = None
+        model: Optional[str] = None
+        num_ctx: Optional[int] = None
+        provider = str(runtime.os.getenv("AI_PROVIDER", "") or "").strip().lower()
+        if provider == "ollama":
+            candidate = str(runtime.os.getenv("OLLAMA_API_BASE", "http://localhost:11434") or "").strip()
+            if candidate and runtime._is_local_ollama_api_base(candidate):
+                api_base = candidate
+                model = runtime._normalize_ollama_model_reference(
+                    runtime.os.getenv("OLLAMA_MODEL", runtime.DEFAULT_WIZARD_MODEL)
+                )
+                num_ctx = _warmup_num_ctx(runtime, model)
+        ai_warmup.schedule(
+            host=probe_host,
+            port=runtime.AI_AGENT_SERVER_PORT,
+            ollama_api_base=api_base,
+            ollama_model=model,
+            num_ctx=num_ctx,
+            log=runtime.LOGGER.info,
+        )
+    except Exception as exc:
+        runtime.LOGGER.debug("AI runtime warm-up was not scheduled: %s", exc)
+
+
 async def start_ai_agent_server_background() -> bool:
     """Start AI Agent Server in background process."""
     runtime = _runtime()
@@ -2614,6 +2663,7 @@ async def start_ai_agent_server_background() -> bool:
             process=runtime.STATE.agent_process,
         ):
             runtime.LOGGER.info("AI Agent Server became healthy on %s:%s", probe_host, runtime.AI_AGENT_SERVER_PORT)
+            _schedule_ai_runtime_warmup(runtime, probe_host)
             await _sync_frontends_after_ai_attempt()
             return True
 
@@ -2727,6 +2777,7 @@ async def start_ai_agent_server_background() -> bool:
     )
     if became_ready:
         runtime.LOGGER.info(f"AI Agent Server is accepting connections on {probe_host}:{runtime.AI_AGENT_SERVER_PORT}")
+        _schedule_ai_runtime_warmup(runtime, probe_host)
 
     if not became_ready:
         runtime.LOGGER.warning(f"AI Agent Server did not become ready within timeout on {probe_host}:{runtime.AI_AGENT_SERVER_PORT}")

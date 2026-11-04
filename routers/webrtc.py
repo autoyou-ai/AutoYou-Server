@@ -694,6 +694,60 @@ def register_routes(
           content={"success": False, "error": internal_error_message(e)}
         )
 
+    @admin_app.post("/api/outbox/follow-up")
+    async def outbox_follow_up(request: Request):
+      """Deliver a follow-up into the conversation it belongs to.
+
+      Live when the device is connected; otherwise pushed and delivered when it
+      reconnects, through the scheduler's notification queue. One path for
+      every agent's later or extra message (owner request 2026-11-03), where
+      `/api/webrtc/send` reaches a device only while it is connected.
+      """
+      auth_response = server._require_webrtc_playback_auth_json(request)
+      if auth_response is not None:
+        return auth_response
+      try:
+        data = await request.json()
+      except Exception:
+        data = None
+      if not isinstance(data, dict):
+        return server.JSONResponse(status_code=400, content={"success": False, "error": "Expected a JSON object"})
+      message = str(data.get("message") or "").strip()
+      owner_key = str(data.get("owner_key") or "").strip()
+      reply_target = data.get("reply_target") if isinstance(data.get("reply_target"), dict) else None
+      if not message:
+        return server.JSONResponse(status_code=400, content={"success": False, "error": "Missing 'message'"})
+      if not owner_key and not reply_target:
+        return server.JSONResponse(
+          status_code=400,
+          content={"success": False, "error": "Missing 'owner_key' or 'reply_target'"},
+        )
+
+      def _text(key: str):
+        return str(data.get(key) or "").strip() or None
+
+      try:
+        from shared import scheduler_service
+
+        result = await scheduler_service._queue_notification_for_delivery(
+          message,
+          owner_key=owner_key or None,
+          canonical_user_id=_text("canonical_user_id"),
+          external_session_id=_text("external_session_id"),
+          conversation_session_id=_text("conversation_session_id"),
+          reply_target=reply_target,
+          source=_text("source") or "follow_up",
+        )
+      except Exception as e:
+        server.LOGGER.error(f"Outbox follow-up failed: {e}")
+        return server.JSONResponse(status_code=500, content={"success": False, "error": internal_error_message(e)})
+      delivered = str(result.get("status") or "") == "success"
+      return {
+        "success": delivered or bool(result.get("queued")),
+        "queued": bool(result.get("queued")),
+        "message": str(result.get("message") or ""),
+      }
+
     @admin_app.post("/api/webrtc/rewarded-ad")
     async def admin_trigger_webrtc_rewarded_ad(request: Request):
       """Send a native rewarded-ad control message to a connected WebRTC client."""

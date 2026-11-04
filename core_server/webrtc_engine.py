@@ -8713,6 +8713,11 @@ class WebRTCManager:
             async def stream_chunk(chunk: dict):
                 if execution_manager.cancellation_requested(identity):
                     return
+                if chunk.get("_autoyou_stream_reset"):
+                    # What streamed so far only announced a step and the turn
+                    # is continuing: the next text replaces it, not joins it.
+                    current_bubble.clear()
+                    return
                 if chunk.get("_autoyou_progress"):
                     now = _runtime.time.monotonic()
                     if now - progress_state["last_sent_at"] < 12.0:
