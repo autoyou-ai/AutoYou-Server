@@ -1094,6 +1094,8 @@ def _classify_ai_backend_error(error_message: Any) -> Optional[Dict[str, str]]:
             "/api/chat",
             "requires more system memory",
             "memory layout cannot be allocated",
+            "llama-server process",
+            "error loading model",
         )
     )
 
@@ -1120,6 +1122,38 @@ def _classify_ai_backend_error(error_message: Any) -> Optional[Dict[str, str]]:
                     "The selected Ollama model could not allocate enough memory on this machine. "
                     "Choose a smaller Ollama model in the Admin Dashboard under AI Provider, "
                     "or free memory and try again."
+                ),
+            }
+        # Reached only when no smaller installed model could answer instead
+        # (autoyou_agents/model_fallback.py tries those first).
+        if any(
+            fragment in lowered
+            for fragment in ("bad_alloc", "out of memory", "unable to allocate", "failed to allocate", "resource limitations")
+        ):
+            return {
+                "provider": "ollama",
+                "kind": "ollama_insufficient_memory",
+                "user_message": (
+                    "The selected Ollama model couldn't load because this computer is low on memory, "
+                    "and no smaller installed model could answer instead. Restarting the computer usually "
+                    "fixes this. You can also choose a smaller Ollama model in the Admin Dashboard under AI Provider."
+                ),
+            }
+        if any(
+            fragment in lowered
+            for fragment in (
+                "error loading model",
+                "llama-server process has terminated",
+                "runner has unexpectedly stopped",
+                "runner process has terminated",
+            )
+        ):
+            return {
+                "provider": "ollama",
+                "kind": "ollama_model_load_failed",
+                "user_message": (
+                    "The selected Ollama model failed to load. Restart Ollama or update it, or choose "
+                    "another model in the Admin Dashboard under AI Provider, then try again."
                 ),
             }
         if any(

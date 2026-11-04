@@ -23,6 +23,22 @@ from shared.session_execution import SESSION_CONTROL_STATE_KEY
 __debug_provenance_t__ = "AUTOYOU-PROVENANCE-T-address-da16506f8e4518271716d724"
 
 
+@pytest.fixture(autouse=True)
+def _no_live_ai_worker_lookup(monkeypatch):
+    """Keep these tests off the operator's running AI worker on 127.0.0.1:8081.
+
+    `process_chat_message` looks the mapped AI session up over HTTP; the tests
+    that did not stub it sent a real GET for a synthetic session to the live
+    worker (seen in the live server log, 2026-11-04). A missing session is what
+    both a live 404 and a stopped worker gave; tests that need more stub it.
+    """
+
+    async def _session_not_found(user_id, session_id, ai_agent_url=None):
+        return None
+
+    monkeypatch.setattr(rest_api, "get_ai_agent_session", _session_not_found)
+
+
 class _DummySessionManager:
     def __init__(self):
         self.mapping = {"external-session": "old-internal"}
@@ -382,6 +398,23 @@ async def test_process_chat_message_surfaces_ollama_memory_error(monkeypatch):
     assert response.metadata["error"] is True
     assert response.metadata["ai_backend_error"]["kind"] == "ollama_insufficient_memory"
     assert "model requires more system memory" in response.metadata["error_message"]
+
+
+def test_an_ollama_model_that_cannot_load_is_explained_not_called_an_internal_error():
+    # The wire form the live server logged on 2026-11-04, when no fallback model loaded either.
+    bad_alloc = rest_api._classify_ai_backend_error(
+        "litellm.InternalServerError: litellm.InternalServerError: Ollama_chatException - "
+        '{"error":"llama-server process has terminated: exit status 1: error loading model: std::bad_alloc"}'
+    )
+    assert bad_alloc["kind"] == "ollama_insufficient_memory"
+    assert "low on memory" in bad_alloc["user_message"]
+    assert "Restarting the computer" in bad_alloc["user_message"]
+
+    broken = rest_api._classify_ai_backend_error(
+        '{"error":"llama-server process has terminated: error loading model: unknown model architecture"}'
+    )
+    assert broken["kind"] == "ollama_model_load_failed"
+    assert "failed to load" in broken["user_message"]
 
 
 @pytest.mark.asyncio

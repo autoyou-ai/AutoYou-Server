@@ -58,6 +58,11 @@ from autoyou_agents.model_config import (
 )
 from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_tool_response
 from autoyou_agents.arithmetic import calculate, calculator_note
+from autoyou_agents.model_fallback import (
+    add_fallback_notice,
+    answer_with_fallback_model,
+    route_to_loadable_model,
+)
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
@@ -3392,8 +3397,29 @@ def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
             _make_malformed_tool_call_error_callback(agent_name),
             prepend=False,
         )
+        _install_model_fallback_callbacks(agent_instance)
     except Exception as exc:
         logger.warning("Failed to install conversation continuity callbacks for %s: %s", agent_name, exc)
+    return agent_instance
+
+
+def _install_model_fallback_callbacks(agent_instance: Any) -> Any:
+    """Let an agent answer with a smaller installed model when its own will not load.
+
+    The before-model callback goes last so the request it redirects is the
+    one every other callback already shaped; the after-model one goes last so
+    an agent's own response handling runs first.
+    """
+    for attribute, callback in (
+        ("before_model_callback", route_to_loadable_model),
+        ("after_model_callback", add_fallback_notice),
+        ("on_model_error_callback", answer_with_fallback_model),
+    ):
+        setattr(
+            agent_instance,
+            attribute,
+            _callback_list_with_guard(getattr(agent_instance, attribute, None), callback, prepend=False),
+        )
     return agent_instance
 
 
@@ -6102,7 +6128,7 @@ def initialize_root_agent():
             "tools": tools
         }
 
-        root_agent = Agent(**agent_kwargs)
+        root_agent = _install_model_fallback_callbacks(Agent(**agent_kwargs))
         _refresh_adk_app_binding(root_agent)
         return root_agent
 
@@ -6116,13 +6142,13 @@ def initialize_root_agent():
             fallback_instruction = _build_effective_agent_instruction(
                 get_installed_agent_names(agents_root=_AGENTS_ROOT)
             ) or str(root_prompt.AGENT_INSTRUCTION or "")
-            root_agent = Agent(
+            root_agent = _install_model_fallback_callbacks(Agent(
                 name=root_prompt.AGENT_NAME,
                 model=_build_resilient_fallback_model(),
                 description=root_prompt.AGENT_DESCRIPTION,
                 instruction=fallback_instruction,
                 tools=[get_current_datetime],
-            )
+            ))
             _refresh_adk_app_binding(root_agent)
             logger.warning("Initialized fallback root_agent with minimal configuration")
             return root_agent
