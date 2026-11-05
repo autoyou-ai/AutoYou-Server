@@ -60,3 +60,30 @@ def test_wake_import_validates_before_writing_and_keeps_disabled_setting(tmp_pat
         with pytest.raises(ValueError):
             assistant_mode.import_model(invalid)
         assert assistant_mode.load_model().to_dict() == imported
+
+
+def test_pictures_travel_in_the_pack_without_external_or_oversized_images(tmp_path, monkeypatch):
+    import base64
+    import io
+    from PIL import Image
+    monkeypatch.setenv("AUTOYOU_ASSISTANT_MODE_DIR", str(tmp_path / "world"))
+    def jpeg(size):
+        data = io.BytesIO()
+        Image.new("RGB", size, "#88abc0").save(data, "JPEG")
+        return "data:image/jpeg;base64," + base64.b64encode(data.getvalue()).decode()
+    image = jpeg((96,64))
+    scene = validate_world({"background_photo":image, "objects":[{"shape":"photo","photo":image,"x":12,"size":24},{"shape":"symbol","glyph":"🦊"}]})
+    assistant_skin.save_active_skin({"id":"autoyou_classic","world":scene})
+    assert assistant_skin.import_skin_pack(assistant_skin.export_skin_pack())["world"] == scene
+    import json
+    from autoyou_agents.assistant_agent.agent import assistant_get_world, assistant_update_world
+    view = assistant_get_world()
+    assert image not in json.dumps(view)
+    view["objects"][0]["x"] = 42
+    result = assistant_update_world(json.dumps(view))
+    assert result["success"] and image not in json.dumps(result)
+    saved = assistant_skin.get_active_skin()["world"]
+    assert saved["background_photo"] == saved["objects"][0]["photo"] == image and saved["objects"][0]["x"] == 42
+    for invalid in ("https://example.invalid/scene.jpg", "data:image/svg+xml;base64,PHN2Zz4=", jpeg((1600,1)), "data:image/jpeg;base64,not-a-photo"):
+        with pytest.raises(ValueError):
+            validate_world({"objects":[{"shape":"photo","photo":invalid}]})

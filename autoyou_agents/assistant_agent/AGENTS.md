@@ -202,7 +202,7 @@ schema and validation live in `shared/assistant_world.py`, `AssistantWorld.swift
 and Android `AssistantWorld.kt`. A world has sky/ground colors, robot size, optional
 `robot_glow` and `robot_shell` colors (omitting them restores the skin palette), idle,
 professional, wandering and sound switches, and up to 96 objects. Objects use
-built-in shapes or bounded SVG path coordinates, named animations/reactions and
+built-in shapes, system symbols, locally embedded JPEG photos or bounded SVG path coordinates, named animations/reactions and
 locally synthesized sounds. Packs contain no executable scripts or remote assets.
 A world is limited to 128 KiB; a skin pack remains limited to 256 KiB. Changing an
 appearance preset preserves the current world; importing a pack replaces it.
@@ -212,11 +212,10 @@ The canonical web renderer supplies all native graphics through
 11 idle gestures (0–10), walks between bounded positions and debounces repeated
 presses. Professional mode reduces movement; it does not change authentication.
 Animation suspends when hidden and runs at a lower rate while idle. Desktop v2
-views use this same Assistant website. Native world views can expand into a
-landscape presentation with chat alongside the scene.
+views use this same Assistant website. Native full screen respects orientation: chat sits below the scene on narrow screens or beside it on wide screens. The manual editor works on a draft, accepts local photos, and stores normalized object positions and sizes in the pack.
 
 Native `@world` requests use the selected on-device or API/network model and validate
-its complete JSON before saving. Repair attempts are bounded by a user setting
+incremental edits before saving. Model prompts omit photo data. The bundled model can fall back to the portable catalog for named objects after incomplete output; an empty or unchanged proposal is not a successful edit. Explicitly pasted world JSON still replaces the scene. Repair attempts are bounded by a user setting
 (default 4, maximum 32 per model); Stop cancels the turn. Invalid output leaves the
 previous scene unchanged. Connected Server mode remains a separate conversation;
 select an on-device or API/network model to edit the phone's world, or edit the

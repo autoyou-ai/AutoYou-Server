@@ -1557,6 +1557,8 @@
     var group = svgNode("g", {fill: obj.color, stroke: "none"});
     function add(tag, attrs) { group.appendChild(svgNode(tag, attrs)); }
     switch (obj.shape) {
+      case "photo": if (worldPhoto(obj.photo)) add("image", {x:-45,y:-45,width:90,height:90,href:obj.photo,preserveAspectRatio:"xMidYMid meet"}); break;
+      case "symbol": var glyph = svgNode("text", {x:0,y:20,"text-anchor":"middle","font-size":66,"font-family":"Apple Color Emoji, Noto Color Emoji, sans-serif"}); glyph.textContent = String(obj.glyph || "").slice(0,16); group.appendChild(glyph); break;
       case "tree": add("rect", {x: -5, y: -12, width: 10, height: 45, rx: 3, fill: "#805a42"}); add("path", {d: "M0 -42L-28 2H-18L-34 20H34L18 2H28Z"}); break;
       case "cloud": add("path", {d: "M-30 12A15 15 0 0 1 -21 -15A20 20 0 0 1 17 -22A17 17 0 0 1 31 12Z"}); break;
       case "mountain": add("path", {d: "M-48 35L-7 -38L40 35Z"}); add("path", {d: "M-7 -38L-20 -15L-7 -19L4 -13Z", fill: "#f3f6ff"}); break;
@@ -1572,8 +1574,17 @@
       case "path": if (/^[MmLlHhVvCcSsQqTtAaZz0-9.,+eE\s-]{1,4096}$/.test(obj.path || "")) add("path", {d: obj.path}); break;
       default: add("circle", {r: 28}); add("circle", {cx: -8, cy: -9, r: 7, fill: "#ffffff", opacity: .3});
     }
-    if (obj.label) { var label = svgNode("text", {y: 48, "text-anchor": "middle", fill: "#ffffff", "font-size": 13, "font-family": "system-ui"}); label.textContent = String(obj.label).slice(0, 80); group.appendChild(label); }
+    if (obj.label && obj.shape !== "symbol" && obj.shape !== obj.label) { var label = svgNode("text", {y: 48, "text-anchor": "middle", fill: "#ffffff", "font-size": 13, "font-family": "system-ui"}); label.textContent = String(obj.label).slice(0, 80); group.appendChild(label); }
     return group;
+  }
+  var worldSizeObserver;
+  function sizeWorldArt() {
+    if (!worldLayer || !world.enabled) return;
+    var rect=worldLayer.getBoundingClientRect(), ratio=rect.width && rect.height ? 1000*rect.height/(600*rect.width) : 1;
+    worldNodes.forEach(function(item){item.el.firstChild.setAttribute("transform","scale("+Math.min(1,ratio)+" "+Math.min(1,1/ratio)+")");});
+  }
+  function worldPhoto(uri) {
+    return typeof uri === "string" && uri.length <= 87407 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(uri);
   }
   function applyWorld(raw) {
     raw = raw && typeof raw === "object" ? raw : {};
@@ -1591,17 +1602,22 @@
     zone.classList.toggle("world-on", world.enabled);
     worldLayer.style.display = world.enabled ? "block" : "none";
     if (world.enabled) {
-      worldLayer.appendChild(svgNode("rect", {width: 1000, height: 600, fill: world.sky}));
-      worldLayer.appendChild(svgNode("path", {d: "M0 455Q250 410 500 456T1000 440V600H0Z", fill: world.ground}));
+      var hasPhoto = worldPhoto(raw.background_photo);
+      worldLayer.style.backgroundImage = hasPhoto ? 'url("' + raw.background_photo + '")' : "";
+      worldLayer.style.backgroundSize = "cover"; worldLayer.style.backgroundPosition = "center";
+      worldLayer.appendChild(svgNode("rect", {width: 1000, height: 600, fill: hasPhoto ? "transparent" : world.sky}));
+      if (!hasPhoto) worldLayer.appendChild(svgNode("path", {d: "M0 455Q250 410 500 456T1000 440V600H0Z", fill: world.ground}));
       (Array.isArray(raw.objects) ? raw.objects.slice(0, 96) : []).forEach(function (source, i) {
         if (!source || typeof source !== "object") return;
         var obj = {id: String(source.id || "object-" + i).slice(0, 48), shape: source.shape, color: color(source.color, "#57b894"),
           x: clamp(Number(source.x) || 0, 0, 100), y: clamp(Number(source.y) || 0, 0, 100), size: clamp(Number(source.size) || 12, 2, 45),
-          label: source.label, path: source.path, animation: source.animation, reaction: source.reaction, sound: source.sound};
-        var node = worldShape(obj); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
+          label: source.label, path: source.path, glyph: source.glyph, photo: source.photo, animation: source.animation, reaction: source.reaction, sound: source.sound};
+        var node = svgNode("g"); node.appendChild(worldShape(obj)); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
         worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, touched: -10000}); world.objects.push(obj);
       });
     } else { ui.robotButton.style.removeProperty("left"); ui.robotButton.style.removeProperty("height"); }
+    if (!worldSizeObserver) { worldSizeObserver=new ResizeObserver(sizeWorldArt); worldSizeObserver.observe(zone); }
+    sizeWorldArt();
     var idleInput = $("world-idle"), professionalInput = $("world-professional"), soundsInput = $("world-sounds");
     if (idleInput) idleInput.checked = world.idle_enabled;
     if (professionalInput) professionalInput.checked = world.professional;
@@ -1701,6 +1717,111 @@
     });
   }
 
+  // Edit a draft. The host validates and saves it once, on Done; browsing photos never changes the live scene.
+  function editWorld(original, commit, cancel) {
+    if (document.querySelector(".world-editor")) return;
+    var draft = JSON.parse(JSON.stringify(original || {})), selected = null, drag = null, busy = false;
+    draft.enabled = true; draft.objects = draft.objects || [];
+    var panel = document.createElement("section");
+    panel.className = "world-editor"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-label","Edit world");
+    panel.innerHTML = '<header><button data-act="cancel">Cancel</button><strong>Edit world</strong><button data-act="save">Done</button></header>' +
+      '<div class="world-paper"><svg viewBox="0 0 1000 600" preserveAspectRatio="none" aria-label="World canvas"></svg></div>' +
+      '<div class="world-tools"><div><label>Shape <select aria-label="Shape"></select></label><button data-act="add">Add shape</button><button data-act="photo">Object photo</button><button data-act="background">Background photo</button><button data-act="clearbg">Remove background</button></div>' +
+      '<div><label>Object <select aria-label="Selected object"></select></label><label>Size <input aria-label="Object size" type="range" min="2" max="45"></label><button data-act="remove">Delete</button></div>' +
+      '<small role="status">Drag an object to place it. Arrow keys move the selected object.</small></div>';
+    document.body.appendChild(panel);
+    var svg = panel.querySelector("svg"), paper = svg.parentElement, choices = panel.querySelector("[aria-label=Shape]"),
+      list = panel.querySelector("[aria-label=\"Selected object\"]"), slider = panel.querySelector("input[type=range]"), status = panel.querySelector("[role=status]");
+    var palette = {tree:"#50855d",cloud:"#e5effa",mountain:"#8290aa",flower:"#f09eab",star:"#ffda78",sun:"#ffd25e",moon:"#ffe8b2",rock:"#9aa1a8",pond:"#74bddc",house:"#deaa79",ball:"#db877b",sign:"#cc9f6b",circle:"#64bea2",rect:"#80a8d2"};
+    Object.keys(palette).forEach(function (shape) { choices.add(new Option(shape,shape)); });
+    function current() { return draft.objects.find(function (o) { return o.id === selected; }); }
+    function note(message) { status.textContent = message; }
+    function draw() {
+      svg.replaceChildren();
+      var bounds = svg.getBoundingClientRect(), aspect = bounds.width && bounds.height ? 1000*bounds.height/(600*bounds.width) : 1;
+      svg.appendChild(svgNode("rect",{width:1000,height:600,fill:draft.sky || "#142449"}));
+      if (worldPhoto(draft.background_photo)) {
+        paper.style.backgroundImage = 'url("' + draft.background_photo + '")'; svg.firstChild.setAttribute("opacity","0");
+      } else {
+        paper.style.backgroundImage = ""; svg.appendChild(svgNode("path",{d:"M0 455Q250 410 500 456T1000 440V600H0Z",fill:draft.ground || "#244a51"}));
+      }
+      draft.objects.forEach(function(o) {
+        var g = svgNode("g",{"data-id":o.id,transform:"translate("+o.x*10+" "+o.y*6+") scale("+o.size/8*Math.min(1,aspect)+" "+o.size/8*Math.min(1,1/aspect)+")"});
+        g.appendChild(svgNode("rect",{x:-50,y:-48,width:100,height:100,rx:7,fill:"transparent",stroke:o.id===selected?"#fff":"none","stroke-dasharray":"5 3","vector-effect":"non-scaling-stroke"}));
+        g.appendChild(worldShape(o)); svg.appendChild(g);
+      });
+    }
+    function refresh() {
+      list.replaceChildren(new Option("Choose an object",""));
+      draft.objects.forEach(function(o,i) {list.add(new Option((o.label||o.shape)+" · "+(i+1),o.id));});
+      list.value=selected||""; slider.disabled=!current(); slider.value=current()?current().size:12;
+      panel.querySelector("[data-act=remove]").disabled=!current();
+      panel.querySelector("[data-act=clearbg]").hidden=!draft.background_photo;
+      draw();
+    }
+    function position(event) { var rect=svg.getBoundingClientRect(); return {x:(event.clientX-rect.left)*100/rect.width, y:(event.clientY-rect.top)*100/rect.height}; }
+    svg.addEventListener("pointerdown",function(e) {
+      if (drag || !e.isPrimary) return;
+      var g=e.target.closest("[data-id]"); if(!g) return;
+      selected=g.getAttribute("data-id"); var p=position(e),o=current();
+      drag={id:e.pointerId,dx:o.x-p.x,dy:o.y-p.y}; svg.setPointerCapture(e.pointerId); refresh(); e.preventDefault();
+    });
+    svg.addEventListener("pointermove",function(e) {
+      if(!drag || drag.id!==e.pointerId) return;
+      var p=position(e),o=current(); o.x=Math.round(clamp(p.x+drag.dx,0,100)); o.y=Math.round(clamp(p.y+drag.dy,0,100)); draw();
+    });
+    ["pointerup","pointercancel","lostpointercapture"].forEach(function(name){svg.addEventListener(name,function(e){if(drag && drag.id===e.pointerId) drag=null;});});
+    list.onchange=function(){ selected=list.value; refresh(); };
+    slider.oninput=function(){if(current()){current().size=Number(slider.value);draw();}};
+    panel.addEventListener("keydown",function(e){if(!current()||e.target===slider||e.target.tagName==="SELECT")return;
+      var delta={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];if(delta){current().x=clamp(current().x+delta[0],0,100);current().y=clamp(current().y+delta[1],0,100);draw();e.preventDefault();}
+    });
+    function add(shape,photo){
+      if(draft.objects.length>=96) throw Error("This world already has 96 objects.");
+      var id="item-"+crypto.getRandomValues(new Uint32Array(2)).join("-"),o={id:id,shape:shape,x:24+(draft.objects.length*31)%56,y:57,size:18,color:palette[shape]||"#ffffff",animation:"none",reaction:"bounce",sound:"none",label:"",path:""};
+      if(photo)o.photo=photo;draft.objects.push(o);selected=id;refresh();
+    }
+    var picker=document.createElement("input"); picker.type="file";picker.accept="image/*";picker.hidden=true;panel.appendChild(picker);
+    var background=false, observer=new ResizeObserver(draw); observer.observe(paper);
+    picker.onchange=async function(){
+      var file=picker.files[0];picker.value="";if(!file)return;
+      busy=true;var img=new Image();
+      try {
+        if(file.size>40*1024*1024 || (file.type && (!file.type.startsWith("image/") || file.type==="image/svg+xml"))) throw Error("Choose a photo under 40 MB.");
+        var data=await new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);});
+        img.src=data; await img.decode(); if(!panel.isConnected)return;
+        var canvas=document.createElement("canvas"),dim=background?1280:512,limit=background?65000:18000,uri;
+        do {
+          var ratio=Math.min(1,dim/Math.max(img.naturalWidth,img.naturalHeight));
+          canvas.width=Math.max(1,Math.round(img.naturalWidth*ratio)); canvas.height=Math.max(1,Math.round(img.naturalHeight*ratio));
+          var ctx=canvas.getContext("2d");ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          uri=canvas.toDataURL("image/jpeg",.76);dim=Math.floor(dim*.77);
+        }while(uri.length>limit && dim>=48);
+        if(!worldPhoto(uri))throw Error("This picture could not be converted to JPEG.");
+        var bytes=new TextEncoder().encode(JSON.stringify(draft)).length-(background?(draft.background_photo||"").length:0)+uri.length;
+        if(bytes>126000)throw Error("This world is full. Remove an object photo before adding another.");
+        if(background){draft.background_photo=uri;refresh();}else add("photo",uri);
+        note(background?"Background added.":"Photo added. Drag it to place it.");
+      }catch(e){note(e.message||"This photo could not be opened.");}finally{img.removeAttribute("src");busy=false;}
+    };
+    function close(){observer.disconnect();panel.remove();}
+    panel.addEventListener("click",async function(e){
+      var action=e.target.closest("[data-act]")?.dataset.act;if(!action)return;
+      try{
+        if(action==="cancel"){close();cancel();return;}
+        if(busy)return;
+        if(action==="save"){
+          busy=true;
+          try {await commit(draft);close();}finally{busy=false;}
+        }else if(action==="add"){add(choices.value);}
+        else if(action==="remove"){draft.objects=draft.objects.filter(function(o){return o.id!==selected;});selected=null;refresh();}
+        else if(action==="clearbg"){delete draft.background_photo;refresh();}
+        else if(action==="photo"||action==="background"){background=action==="background";picker.click();}
+      }catch(err){note(err.message||"Could not save the world.");}
+    });
+    refresh();
+  }
+
   // Native owns conversation, microphone and TTS. This offline surface only draws.
   if (nativeRenderer) {
     prefs.robot = true; S.phase = "waiting";
@@ -1720,6 +1841,17 @@
         document.body.classList.toggle("renderer-paused", !nativeVisible);
         if (!nativeVisible) { if (worldAudio) worldAudio.suspend(); worldMotion.pressed = false; clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; }
         else scheduleFrame();
+      },
+      editWorld: function (initial) {
+        function send(value) {
+          var json=JSON.stringify(value);
+          if(window.webkit && window.webkit.messageHandlers.worldEditor) window.webkit.messageHandlers.worldEditor.postMessage(json);
+          else if(window.AutoYouWorldHost) window.AutoYouWorldHost.finish(json);
+        }
+        editWorld(initial, function(value){return new Promise(function(resolve,reject){
+          window.AutoYouAssistantRenderer.editorResult=function(error){if(error)reject(Error(error));else resolve();};
+          send(value);
+        });}, function(){send(null);});
       },
       boop: boop,
       get phase() { return S.phase; }
@@ -1776,6 +1908,15 @@
   var interaction = $("world-interaction");
   interaction.value = prefs.interaction;
   interaction.addEventListener("change", function () { prefs.interaction = interaction.value; save("interaction", prefs.interaction); if (prefs.interaction !== "wake_word") stop(); });
+  $("world-edit").addEventListener("click",function(){
+    var original=JSON.stringify((S.activeSkin||{}).world||{}); toggleSettings(false);
+    editWorld(JSON.parse(original),async function(next){
+      if(JSON.stringify((S.activeSkin||{}).world||{})!==original)throw Error("The scene changed. Cancel and reopen the editor.");
+      var skin=Object.assign({},S.activeSkin,{world:next});
+      var result=await request("api/assistant/skin",{skin:skin});
+      applySkin(result.skin || skin);
+    },function(){});
+  });
   [["world-idle", "idle_enabled"], ["world-professional", "professional"], ["world-sounds", "sound_enabled"]].forEach(function (entry) {
     $(entry[0]).addEventListener("change", function () {
       var skin = JSON.parse(JSON.stringify(S.activeSkin || {})); skin.world = skin.world || {}; skin.world[entry[1]] = $(entry[0]).checked;

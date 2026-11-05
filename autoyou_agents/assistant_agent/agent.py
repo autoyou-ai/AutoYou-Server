@@ -84,11 +84,20 @@ async def _assistant_before_model_callback(callback_context: Any, llm_request: A
     return None
 
 
+def _world_for_model(world: dict) -> dict:
+    # Keep private image bytes out of model prompts and tool results.
+    view = dict(world)
+    if "background_photo" in view:
+        view["background_photo"] = "keep"
+    view["objects"] = [{**obj, "photo": "keep"} if "photo" in obj else obj for obj in world["objects"]]
+    return view
+
+
 def assistant_get_world() -> dict:
-    """Read the current portable Assistant world before editing it."""
+    """Read the current Assistant world. Uploaded pictures are represented by 'keep'."""
     from shared.assistant_skin import get_active_skin
     from shared.assistant_world import validate_world
-    return validate_world(get_active_skin().get("world"))
+    return _world_for_model(validate_world(get_active_skin().get("world")))
 
 
 def assistant_update_world(world_json: str) -> dict:
@@ -99,11 +108,25 @@ def assistant_update_world(world_json: str) -> dict:
     try:
         if len(world_json.encode("utf-8")) > 131072:
             raise ValueError("World must be at most 128 KiB")
-        world = validate_world(json.loads(world_json))
         skin = get_active_skin()
+        draft = json.loads(world_json)
+        if not isinstance(draft, dict):
+            raise ValueError("World must be a JSON object")
+        old = skin.get("world") or {}
+        if draft.get("background_photo", "keep") == "keep":
+            draft["background_photo"] = old.get("background_photo")
+        elif draft["background_photo"] is not None:
+            raise ValueError("Choose a background picture in Edit world.")
+        photos = {obj["id"]: obj["photo"] for obj in old.get("objects", []) if "photo" in obj}
+        for obj in draft.get("objects", []):
+            if isinstance(obj, dict) and (obj.get("shape") == "photo" or "photo" in obj):
+                if obj.get("photo", "keep") != "keep" or not isinstance(obj.get("id"), str) or obj["id"] not in photos:
+                    raise ValueError("Choose an object picture in Edit world.")
+                obj["photo"] = photos[obj["id"]]
+        world = validate_world(draft)
         skin["world"] = world
         save_active_skin(skin)
-        return {"success": True, "world": world}
+        return {"success": True, "world": _world_for_model(world)}
     except (ValueError, TypeError) as exc:
         return {"success": False, "error": str(exc)}
 
