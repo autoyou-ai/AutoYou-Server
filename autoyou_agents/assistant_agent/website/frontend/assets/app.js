@@ -1264,7 +1264,7 @@
     root: $("bot"), head: $("head"), torso: $("torso"), armL: $("arm-left"), armR: $("arm-right"),
     eyeL: $("eye-l"), eyeR: $("eye-r"), smile: $("mouth-smile"), mouth: $("mouth-open"), eq: $("eq"),
     think: $("think"), zzz: $("zzz"), antenna: $("antenna-glow"), earL: $("ear-l"), earR: $("ear-r"),
-    core: $("core"), shadow: $("shadow"), browL: $("brow-l"), browR: $("brow-r"), visor: $("visor"), upper: $("upper"),
+    reactorPulse: $("reactor-pulse"), shadow: $("shadow"), browL: $("brow-l"), browR: $("brow-r"), visor: $("visor"), upper: $("upper"),
     foreL: $("forearm-left"), foreR: $("forearm-right"), legL: $("leg-left"), legR: $("leg-right")
   };
   // Joints: each follows its target like a damped spring (stiffness k, damping
@@ -1455,7 +1455,8 @@
     setOpacity(bot.antenna, Math.max(0.05, attention));
     var ears = S.activeSkin && S.activeSkin.audio_reactivity && S.activeSkin.audio_reactivity.ear_glow_enabled === false ? 0 : 0.35 + S.level * 0.65 + S.perk * 0.3;
     setOpacity(bot.earL, ears); setOpacity(bot.earR, ears);
-    setOpacity(bot.core, 0.35 + attention * 0.55 + Math.sin(t * 2) * 0.08);
+    // Pulse the ring; Android WebView can clip the entire nested emblem when its group opacity animates.
+    setOpacity(bot.reactorPulse, 0.45 + attention * 0.45 + Math.sin(t * 2) * 0.08);
     setOpacity(bot.zzz, anim.sleep > 0.5 ? (0.4 + 0.4 * Math.sin(t * 1.6)) * anim.sleep : 0);
     if (bot.zzz) bot.zzz.setAttribute("transform", "translate(0 " + (Math.sin(t * 1.2) * 4).toFixed(2) + ")");
     if (bot.visor) bot.visor.setAttribute("opacity", (1 - anim.sleep * 0.25).toFixed(3));

@@ -362,6 +362,8 @@ html[data-native-assistant] { height: 100%; }
 html[data-native-assistant] body { height: 100%; min-height: 0; background: transparent; overflow: hidden; }
 html[data-native-assistant] .robot-zone { height: 100%; min-height: 0; margin: 0; padding: 0; }
 html[data-native-assistant] .robot-button { width: 100%; height: 100%; max-height: none; pointer-events: none; }
+/* Keep the filtered eyes in one composited SVG; Android WebView otherwise clips the moving glow. */
+html[data-native-assistant] #robot { transform: translateZ(0); }
 .renderer-paused * { animation-play-state: paused !important; }
 .halo span { border-color: var(--halo-color, #4c75ff); }
 
