@@ -20,7 +20,7 @@ spring-damper physics, and dynamic facial optics:
 ```
 [bot] (root container, origin: 200, 512, scaled by squash sx, sy)
   ├── [shadow] (ellipse at cx:200, cy:522, rx:96, ry:12, opacity: 0.28)
-  ├── [legs] (stationary base, left rect x:152 y:430, right rect x:210 y:430, foot capsules)
+  ├── [legs] (leg-left and leg-right pivot independently at 171,437 and 229,437 for steps and idle motion)
   └── [upper] (leans around hip pivot: 200, 448; translates vertically bodyY)
         ├── [arm-left] (rotates around shoulder ball center: 116, 322)
         │     └── [forearm-left] (rotates around elbow ball center: 116, 388)
@@ -194,3 +194,40 @@ The AutoYou-Server `assistant_agent` website backend provides the following endp
 
 Both iOS and Android apps communicate with these endpoints over local proxy/WebRTC
 when connected, and persist their own local offline copy when offline.
+
+## Portable worlds and native voice interaction
+
+The optional `skin.world` field travels inside the existing skin pack. Its version-1
+schema and validation live in `shared/assistant_world.py`, `AssistantWorld.swift`,
+and Android `AssistantWorld.kt`. A world has sky/ground colors, robot size, idle,
+professional, wandering and sound switches, and up to 96 objects. Objects use
+built-in shapes or bounded SVG path coordinates, named animations/reactions and
+locally synthesized sounds. Packs contain no executable scripts or remote assets.
+A world is limited to 128 KiB; a skin pack remains limited to 256 KiB. Changing an
+appearance preset preserves the current world; importing a pack replaces it.
+
+The canonical web renderer supplies all native graphics through
+`scripts/sync_assistant_renderer.py`. It follows touch or pointer position, supports
+11 idle gestures (0–10), walks between bounded positions and debounces repeated
+presses. Professional mode reduces movement; it does not change authentication.
+Animation suspends when hidden and runs at a lower rate while idle. Desktop v2
+views use this same Assistant website. Native world views can expand into a
+landscape presentation with chat alongside the scene.
+
+Native `@world` requests use the selected on-device or API/network model and validate
+its complete JSON before saving. Repair attempts are bounded by a user setting
+(default 4, maximum 32 per model); Stop cancels the turn. Invalid output leaves the
+previous scene unchanged. Connected Server mode remains a separate conversation;
+select an on-device or API/network model to edit the phone's world, or edit the
+computer's world through `assistant_get_world`/`assistant_update_world` and download
+its skin. Appearance packs and trained wake-word models can be uploaded or downloaded
+through the paired device transport using the existing editor/admin authorization.
+
+Native interaction mode is local to the device: tap, trained wake word, hold to talk,
+or off (microphone button only). Tapped input has adjustable silence processing;
+hold input finishes on release. Wake input uses the trained acoustic model and the
+configured silence interval. An open native Assistant suppresses computer background
+wake capture; calls and Lobby microphone use retain priority. Closing or backgrounding
+the native Assistant releases its capture before computer listening resumes. Skin
+transfer never enables the computer's global listening switch. Trained model upload
+uses authenticated `POST /api/assistant/model`; viewer writes remain forbidden.

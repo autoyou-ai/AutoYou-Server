@@ -17,6 +17,7 @@ import copy
 import json
 import logging
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -391,7 +392,9 @@ def validate_skin(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
             if clean_part and clean_path:
                 custom_paths[clean_part] = clean_path
 
+    from shared.assistant_world import validate_world
     return {
+        "world": validate_world(source.get("world")),
         "id": skin_id,
         "name": name,
         "author": author,
@@ -431,18 +434,25 @@ def save_active_skin(skin_data: Mapping[str, Any]) -> Dict[str, Any]:
     """Validate and persist the active assistant skin."""
     validated = validate_skin(skin_data)
     path = _skin_file_path()
+    temporary = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(validated, indent=2, sort_keys=True), encoding="utf-8")
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as output:
+            temporary = Path(output.name)
+            output.write(json.dumps(validated, indent=2, sort_keys=True))
+        temporary.replace(path)
     except Exception as exc:
         LOGGER.error("Failed to save active assistant skin: %s", exc)
         raise RuntimeError(f"Could not save assistant skin: {exc}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return validated
 
 
 def reset_active_skin() -> Dict[str, Any]:
     """Reset active skin to the default AutoYou Classic preset."""
-    return save_active_skin(DEFAULT_SKIN)
+    return save_active_skin({**DEFAULT_SKIN, "world": get_active_skin().get("world")})
 
 
 def list_presets() -> List[Dict[str, Any]]:
@@ -469,7 +479,7 @@ def apply_preset(preset_id: str) -> Dict[str, Any]:
     preset = PRESET_SKINS.get(resolved_id)
     if not preset:
         raise ValueError(f"Unknown preset: {preset_id}")
-    return save_active_skin(preset)
+    return save_active_skin({**preset, "world": get_active_skin().get("world")})
 
 
 def export_skin_pack(skin_data: Optional[Mapping[str, Any]] = None) -> str:

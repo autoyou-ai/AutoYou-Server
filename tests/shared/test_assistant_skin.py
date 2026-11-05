@@ -307,4 +307,11 @@ def test_paired_device_skin_and_settings_commute(tmp_path: Path, monkeypatch: py
     assert client.get("/api/assistant/skin", headers=viewer_headers).status_code == 200
     assert client.post("/api/assistant/skin", headers=viewer_headers, json={"skin": {"id": "neon_cyber"}}).status_code == 403
 
+    model = {"format": "autoyou-wake-word", "version": 1, "phrase": "Nova", "templates": [{"mfcc": [[0.1] * 12]}]}
+    assert client.post("/api/assistant/model", json={"model": model}).status_code == 401
+    assert client.post("/api/assistant/model", headers=viewer_headers, json={"model": model}).status_code == 403
+    assert client.post("/api/assistant/model", headers=device_headers, json={"model": model}).status_code == 200
+    assert client.get("/api/assistant/model", headers=device_headers).json()["model"]["wake_phrase"] == "Nova"
+    assert client.post("/api/assistant/model", headers=device_headers, json={"model": {"templates": []}}).status_code == 400
+
 

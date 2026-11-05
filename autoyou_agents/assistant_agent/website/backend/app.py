@@ -842,6 +842,20 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
             return _error(404, "No wake word has been trained for the current phrase.")
         return _json({"success": True, "model": payload})
 
+    @app.post("/api/assistant/model")
+    async def import_wake_model(request: Request):
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request, 1024 * 1024)
+        if error is not None:
+            return error
+        try:
+            model = await asyncio.to_thread(_assistant_mode().import_model, body.get("model", body))
+        except (ValueError, TypeError, KeyError) as exc:
+            return _error(400, str(exc))
+        return _json({"success": True, "model": model})
+
     @app.post("/api/assistant/wake")
     async def wake(request: Request):
         """Claim a wake heard by this page, so only one listener in the home answers.

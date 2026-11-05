@@ -49,6 +49,7 @@
   function save(key, value) { try { localStorage.setItem(STORE + key, JSON.stringify(value)); } catch (e) { /* private mode */ } }
   var headlessParam = params.get("headless") === "1";
   var prefs = {
+    interaction: load("interaction", "wake_word"),
     autoStart: load("autoStart", null),           // null: follow the server setting
     speak: load("speak", true),
     sounds: load("sounds", true),
@@ -459,7 +460,7 @@
         return loadDetector();
       }).then(function () {
         if (S.pausedFor || !S.wantListening) { closeCapture(); return; }
-        resetToWaiting();
+        resetToWaiting(true);
         presence().then(schedulePresence);
         if (S.status.listening === "needs_training") {
           hint("No wake word is trained yet, so tap me (or press Space) and speak. Train one on the Admin page to talk hands-free.", "warn");
@@ -468,7 +469,7 @@
         } else {
           hint("");
         }
-        greet();
+        if (prefs.interaction === "wake_word") greet();
         requestWakeLock();
         // A device with no screen cannot read the hint above: say it once.
         if (!prefs.robot && S.status.listening === "needs_training") {
@@ -502,7 +503,8 @@
     releaseWakeLock();
     presence({ listening: false, speaking: false });
   }
-  function resetToWaiting() {
+  function resetToWaiting(keepCapture) {
+    if (!keepCapture && prefs.interaction !== "wake_word") { S.wantListening = false; closeCapture(); releaseWakeLock(); }
     S.followUp = false;
     S.chunks = []; S.waited = 0; S.busy = false; S.wake = null; S.via = "";
     S.endpoint = endpointer();
@@ -547,6 +549,7 @@
     if (S.phase === "thinking" || S.phase === "speaking" || S.phase === "starting" || S.phase === "off" || S.phase === "paused") return;
     var speech = observe(S.endpoint, chunk);
     if (S.phase === "waiting") {
+      if (prefs.interaction !== "wake_word") return;
       if (S.detector) {
         var hit = S.detector.feed(chunk);
         if (hit) beginCommand(S.status.confirm === "both" ? hit.preRoll : null, "voice", false, false, hit.score);
@@ -579,20 +582,21 @@
     S.waited += chunk.length / SR;
     var window_ = Number((S.status && S.status.listen_seconds) || 8);
     if (!S.endpoint.started) {
-      if (S.waited >= window_) {
+      if ((!heldCommand && S.waited >= window_) || S.waited >= 30) {
         if (!S.followUp) hint("I didn't hear anything after the wake word.");
         resetToWaiting();
       }
       return;
     }
     var seconds = join(S.chunks).length / SR;
-    if (S.endpoint.silence >= 1.0 || seconds >= 20) finishCommand();
+    if ((!heldCommand && S.endpoint.silence >= 1.0) || seconds >= 30) finishCommand();
   }
 
   function finishCommand() {
     var audio = join(S.chunks), via = S.via, followUp = S.followUp, wake = S.wake;
     var voiced = S.endpoint ? S.endpoint.voiced : 1;
     S.chunks = [];
+    if (prefs.interaction === "off" || prefs.interaction === "hold") { S.wantListening = false; closeCapture(); releaseWakeLock(); }
     // Hardly any speech (a cough, a click, the room): nothing to ask. A follow-up
     // simply goes back to waiting; nobody has to hear "didn't catch that".
     if (voiced < 0.2) {
@@ -743,6 +747,7 @@
     return askServer(text, via, ticket).then(function (data) {
       if (!data || ticket !== S.turnTicket) return;
       clearSlowNote();
+      request("api/assistant/skin").then(function (data) { if (data.skin) applySkin(data.skin); }).catch(function () {});
       var reply = plain(data.reply || "") || "Done.";
       return speakReply(reply, ticket).then(function () {
         if (ticket !== S.turnTicket) return;
@@ -985,8 +990,8 @@
   // ---- Talk now: tap, Space, or the microphone button -------------------------
   function talkNow() {
     if (S.pausedFor) { hint("Paused while this device is in a call. Type a question instead, or try again after the call."); return; }
-    if (!S.capture) { start(); return; }
-    if (S.phase === "speaking") { S.turnTicket += 1; stopSpeaking(); markReplyStopped(); resetToWaiting(); beginCommand(null, "tap", true, false); return; }
+    if (!S.capture) { start().then(function () { if (prefs.interaction !== "wake_word" && S.capture && S.phase === "waiting") talkNow(); }); return; }
+    if (S.phase === "speaking") { S.turnTicket += 1; stopSpeaking(); markReplyStopped(); resetToWaiting(true); beginCommand(null, "tap", true, false); return; }
     if (S.phase === "waiting") { beginCommand(null, "tap", true, false); return; }
     if (S.phase === "command" && S.endpoint && S.endpoint.started) { finishCommand(); return; }
     if (S.phase === "command") { resetToWaiting(); }
@@ -1017,6 +1022,7 @@
     Object.keys(J).forEach(function (key) { J[key].k = defaultJoints[key].k; J[key].c = defaultJoints[key].c; });
     S.breathSpeed = 1.6; S.breathAmplitude = 2.2; S.gazeSensitivity = 1;
     S.activeSkin = skin;
+    applyWorld(skin.world);
     if (!originalSkinGradients) {
       originalSkinGradients = ["g-shell", "g-shell-head", "g-visor", "g-blue"].map(function (id) { return $(id).cloneNode(true); });
     }
@@ -1048,7 +1054,7 @@
         if (stops.length !== colors.length) {
           while (gradient.firstChild) gradient.removeChild(gradient.firstChild);
           colors.forEach(function (_, index) {
-            var stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+            var stop = document.createElementNS($("robot").namespaceURI, "stop");
             stop.setAttribute("offset", index / (colors.length - 1)); gradient.appendChild(stop);
           });
           stops = gradient.querySelectorAll("stop");
@@ -1109,7 +1115,7 @@
     if (bot.eq && eqBars.length !== bands) {
       while (bot.eq.firstChild) bot.eq.removeChild(bot.eq.firstChild);
       for (var band = 0; band < bands; band++) {
-        var bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        var bar = document.createElementNS($("robot").namespaceURI, "rect");
         bar.setAttribute("x", 156 + band * 88 / bands); bar.setAttribute("y", "211");
         bar.setAttribute("width", 60 / bands); bar.setAttribute("height", "6"); bar.setAttribute("rx", "2");
         bot.eq.appendChild(bar);
@@ -1252,7 +1258,7 @@
     eyeL: $("eye-l"), eyeR: $("eye-r"), smile: $("mouth-smile"), mouth: $("mouth-open"), eq: $("eq"),
     think: $("think"), zzz: $("zzz"), antenna: $("antenna-glow"), earL: $("ear-l"), earR: $("ear-r"),
     core: $("core"), shadow: $("shadow"), browL: $("brow-l"), browR: $("brow-r"), visor: $("visor"), upper: $("upper"),
-    foreL: $("forearm-left"), foreR: $("forearm-right")
+    foreL: $("forearm-left"), foreR: $("forearm-right"), legL: $("leg-left"), legR: $("leg-right")
   };
   // Joints: each follows its target like a damped spring (stiffness k, damping
   // ratio z), so a move speeds up, overshoots a touch and settles, and a part
@@ -1272,7 +1278,8 @@
   }
   function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
   // A tap squashes it like a soft toy; a wake word or a pointer arriving makes it perk up.
-  function boop() { var impulse = S.activeSkin && S.activeSkin.physics && S.activeSkin.physics.squash_impulse; J.squash.v += Number.isFinite(impulse) ? clamp(impulse, -10, 0) : -2.6; J.headY.v -= 40; J.browLY.v -= 18; J.browRY.v -= 18; }
+  var lastBoop = -1000;
+  function boop() { if (performance.now() - lastBoop < 250) return; lastBoop = performance.now(); var impulse = S.activeSkin && S.activeSkin.physics && S.activeSkin.physics.squash_impulse; J.squash.v += Number.isFinite(impulse) ? clamp(impulse, -10, 0) : -2.6; J.headY.v -= 40; J.browLY.v -= 18; J.browRY.v -= 18; }
   function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; J.browLY.v -= 14; J.browRY.v -= 14; } }
   var eqBars = bot.eq ? bot.eq.querySelectorAll("rect") : [];
   var thinkDots = bot.think ? bot.think.querySelectorAll("circle") : [];
@@ -1339,8 +1346,8 @@
     anim.last = now;
     frameFactor = Math.max(0.2, dt * 60);
     readLevels();
-    var t = now / 1000, phase = S.phase, motion = reduceMotion ? 0.25 : 1;
-    var greeting = now < S.greetUntil, erroring = phase === "error" || now < S.errorUntil;
+    var t = now / 1000, phase = S.phase, motion = reduceMotion || world.professional ? 0.25 : 1;
+    var greeting = !world.professional && now < S.greetUntil, erroring = phase === "error" || now < S.errorUntil;
     S.perk = Math.max(0, S.perk - dt * 2.2);
 
     // Gaze: follows a pointer when there is one, otherwise looks around.
@@ -1501,6 +1508,7 @@
       target.browLY += 3.5; target.browRY += 3.5;
       target.browLTilt = -sleep * 1.5; target.browRTilt = sleep * 1.5;
     }
+    worldFrame(now, dt, phase, target);
     // Inertia: a forearm trails its upper arm when that swings.
     target.foreL -= J.armL.v * 0.05;
     target.foreR -= J.armR.v * 0.05;
@@ -1528,6 +1536,163 @@
     document.documentElement.style.setProperty("--halo-scale", (0.7 + S.level * 0.25).toFixed(3));
   }
 
+  // Portable world: only built-in SVG primitives and bounded path data are rendered.
+  var world = { idle_enabled: true, professional: false, enabled: false, wander: true, objects: [] };
+  var worldKey = "", worldNodes = [], worldLayer = null, worldAudio = null;
+  var worldMotion = { x: 50, target: 50, next: 0, pressed: false, lastTouch: -1000, emote: -1, emoteUntil: 0 };
+  function svgNode(tag, attrs) {
+    var el = document.createElementNS($("robot").namespaceURI, tag);
+    Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, attrs[key]); });
+    return el;
+  }
+  function worldShape(obj) {
+    var group = svgNode("g", {fill: obj.color, stroke: "none"});
+    function add(tag, attrs) { group.appendChild(svgNode(tag, attrs)); }
+    switch (obj.shape) {
+      case "tree": add("rect", {x: -5, y: -12, width: 10, height: 45, rx: 3, fill: "#805a42"}); add("path", {d: "M0 -42L-28 2H-18L-34 20H34L18 2H28Z"}); break;
+      case "cloud": add("path", {d: "M-30 12A15 15 0 0 1 -21 -15A20 20 0 0 1 17 -22A17 17 0 0 1 31 12Z"}); break;
+      case "mountain": add("path", {d: "M-48 35L-7 -38L40 35Z"}); add("path", {d: "M-7 -38L-20 -15L-7 -19L4 -13Z", fill: "#f3f6ff"}); break;
+      case "flower": add("path", {d: "M0 0V40M0 26Q-26 4 -26 21Q-20 36 0 30", stroke: "#409469", "stroke-width": 4, fill: "none"}); for (var p = 0; p < 6; p++) add("ellipse", {cx: 0, cy: -17, rx: 10, ry: 16, transform: "rotate(" + p * 60 + ")"}); add("circle", {r: 10, fill: "#ffe59a"}); break;
+      case "star": add("path", {d: "M0 -35L10 -11L36 -11L16 6L23 32L0 18L-23 32L-16 6L-36 -11L-10 -11Z"}); break;
+      case "sun": for (var r = 0; r < 8; r++) add("path", {d: "M0 -28V-39", transform: "rotate(" + r * 45 + ")", stroke: obj.color, "stroke-width": 4}); add("circle", {r: 22}); break;
+      case "moon": add("path", {d: "M12 -34A35 35 0 1 0 29 24A31 31 0 0 1 12 -34Z"}); break;
+      case "rock": add("path", {d: "M-37 20L-23 -15L5 -24L29 -13L39 20Z"}); break;
+      case "pond": add("ellipse", {rx: 46, ry: 20, opacity: .8}); add("ellipse", {rx: 29, ry: 11, fill: "none", stroke: "#b6e9ff", "stroke-width": 2}); break;
+      case "house": add("rect", {x: -30, y: -5, width: 60, height: 44, rx: 3}); add("path", {d: "M-39 -5L0 -37L39 -5Z", fill: "#936554"}); add("rect", {x: -7, y: 11, width: 14, height: 28, rx: 2, fill: "#e9d4a7"}); break;
+      case "sign": add("rect", {x: -3, y: 0, width: 6, height: 40}); add("rect", {x: -42, y: -27, width: 84, height: 40, rx: 6}); break;
+      case "rect": add("rect", {x: -35, y: -25, width: 70, height: 50, rx: 6}); break;
+      case "path": if (/^[MmLlHhVvCcSsQqTtAaZz0-9.,+eE\s-]{1,4096}$/.test(obj.path || "")) add("path", {d: obj.path}); break;
+      default: add("circle", {r: 28}); add("circle", {cx: -8, cy: -9, r: 7, fill: "#ffffff", opacity: .3});
+    }
+    if (obj.label) { var label = svgNode("text", {y: 48, "text-anchor": "middle", fill: "#ffffff", "font-size": 13, "font-family": "system-ui"}); label.textContent = String(obj.label).slice(0, 80); group.appendChild(label); }
+    return group;
+  }
+  function applyWorld(raw) {
+    raw = raw && typeof raw === "object" ? raw : {};
+    var key = JSON.stringify(raw);
+    if (key === worldKey) return;
+    worldKey = key;
+    var color = function (value, fallback) { return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback; };
+    world = { enabled: raw.enabled === true, idle_enabled: raw.idle_enabled !== false, professional: raw.professional === true,
+      wander: raw.wander !== false, sound_enabled: raw.sound_enabled === true, robot_size: clamp(Number(raw.robot_size) || 48, 20, 80),
+      sky: color(raw.sky, "#142449"), ground: color(raw.ground, "#244a51"), objects: [] };
+    var zone = $("robot-zone");
+    if (!zone) return;
+    if (!worldLayer) { worldLayer = svgNode("svg", {"class": "assistant-world", viewBox: "0 0 1000 600", preserveAspectRatio: "none", "aria-label": "Assistant world"}); zone.insertBefore(worldLayer, zone.firstChild); }
+    worldLayer.replaceChildren(); worldNodes = [];
+    zone.classList.toggle("world-on", world.enabled);
+    worldLayer.style.display = world.enabled ? "block" : "none";
+    if (world.enabled) {
+      worldLayer.appendChild(svgNode("rect", {width: 1000, height: 600, fill: world.sky}));
+      worldLayer.appendChild(svgNode("path", {d: "M0 455Q250 410 500 456T1000 440V600H0Z", fill: world.ground}));
+      (Array.isArray(raw.objects) ? raw.objects.slice(0, 96) : []).forEach(function (source, i) {
+        if (!source || typeof source !== "object") return;
+        var obj = {id: String(source.id || "object-" + i).slice(0, 48), shape: source.shape, color: color(source.color, "#57b894"),
+          x: clamp(Number(source.x) || 0, 0, 100), y: clamp(Number(source.y) || 0, 0, 100), size: clamp(Number(source.size) || 12, 2, 45),
+          label: source.label, path: source.path, animation: source.animation, reaction: source.reaction, sound: source.sound};
+        var node = worldShape(obj); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
+        worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, touched: -10000}); world.objects.push(obj);
+      });
+    } else { ui.robotButton.style.removeProperty("left"); ui.robotButton.style.removeProperty("height"); }
+    var idleInput = $("world-idle"), professionalInput = $("world-professional"), soundsInput = $("world-sounds");
+    if (idleInput) idleInput.checked = world.idle_enabled;
+    if (professionalInput) professionalInput.checked = world.professional;
+    if (soundsInput) soundsInput.checked = world.sound_enabled;
+  }
+  function worldSound(kind) {
+    if (!world.sound_enabled || kind === "none" || !kind) return;
+    try {
+      var Audio = window.AudioContext || window.webkitAudioContext;
+      worldAudio = worldAudio || new Audio(); worldAudio.resume();
+      var oscillator = worldAudio.createOscillator(), gain = worldAudio.createGain(), time = worldAudio.currentTime;
+      oscillator.type = "sine"; oscillator.frequency.setValueAtTime(kind === "bell" ? 880 : kind === "water" ? 320 : 520, time);
+      oscillator.frequency.exponentialRampToValueAtTime(kind === "water" ? 640 : 220, time + .18);
+      gain.gain.setValueAtTime(.025, time); gain.gain.exponentialRampToValueAtTime(.001, time + .22);
+      oscillator.connect(gain); gain.connect(worldAudio.destination); oscillator.start(time); oscillator.stop(time + .24);
+      oscillator.onended = function () { oscillator.disconnect(); gain.disconnect(); };
+    } catch (_) { /* Sound may require a platform user gesture; the visual reaction still works. */ }
+  }
+  function pointAt(x, y, pressed) {
+    var now = performance.now();
+    var bounds = $("robot-zone").getBoundingClientRect(), robot = ui.robotButton.getBoundingClientRect();
+    var gazeX = x + 1 - 2 * (robot.left - bounds.left + robot.width / 2) / Math.max(1, bounds.width);
+    var gazeY = y + 1 - 2 * (robot.top - bounds.top + robot.height * .32) / Math.max(1, bounds.height);
+    anim.pointer = {x: clamp(gazeX, -1, 1), y: clamp(gazeY, -1, 1)}; anim.pointerAt = now;
+    if (pressed && !worldMotion.pressed && now - worldMotion.lastTouch > 250) {
+      worldMotion.lastTouch = now; boop();
+      var px = (x + 1) * 50, py = (y + 1) * 50;
+      if (world.enabled && world.wander && !world.professional) worldMotion.target = clamp(px, 12, 88);
+      worldNodes.forEach(function (item) {
+        if (Math.abs(item.obj.x - px) < item.obj.size / 2 && Math.abs(item.obj.y - py) < item.obj.size) { item.touched = now; worldSound(item.obj.sound); }
+      });
+    }
+    worldMotion.pressed = pressed;
+  }
+  function worldFrame(now, dt, phase, target) {
+    var t = now / 1000, idle = phase === "waiting" || phase === "off";
+    var play = world.idle_enabled && !world.professional && !reduceMotion;
+    var emote = play && idle ? (worldMotion.emoteUntil > now ? worldMotion.emote : Math.floor(t / 7) % 11) : -1;
+    var beat = Math.sin(t * 3), wave = Math.sin(t * 1.5);
+    if (emote === 1) { target.armR = -80 + beat * 8; target.foreR = -35 + beat * 10; }
+    if (emote === 2) { target.lean += wave * 5; target.armL += beat * 12; target.armR -= beat * 12; }
+    if (emote === 3) { target.bodyY -= Math.abs(beat) * 10; }
+    if (emote === 4) { target.armL = 45; target.armR = -45; target.headY -= 3; }
+    if (emote === 5) { target.tilt += wave * 10; target.browLY -= 4; }
+    if (emote === 6) { target.bodyY += 5 + beat * 3; target.foreL += 25; target.foreR -= 25; }
+    if (emote === 7) { target.armL = 20 + beat * 8; target.foreL = 40; }
+    if (emote === 8) { target.lean += beat * 4; target.headX += wave * 6; }
+    if (emote === 9) { target.bodyY -= 4; target.armR -= 30; target.foreR -= 20; }
+    if (emote === 10) { target.tilt -= 5; target.browRY -= 5; }
+    var walking = false;
+    if (world.enabled) {
+      if (play && idle && world.wander && now > worldMotion.next && !worldMotion.pressed) {
+        worldMotion.target = 18 + (Math.sin(t * .17) + 1) * 32; worldMotion.next = now + 9000;
+      }
+      var delta = worldMotion.target - worldMotion.x;
+      walking = play && idle && world.wander && Math.abs(delta) > .2;
+      if (walking) { worldMotion.x += Math.sign(delta) * Math.min(Math.abs(delta), dt * 6); target.bodyY += Math.abs(Math.sin(t * 8)) * 3; }
+      ui.robotButton.style.left = worldMotion.x.toFixed(2) + "%";
+      ui.robotButton.style.height = world.robot_size + "%";
+    }
+    if (bot.legL && bot.legR) {
+      var step = walking ? Math.sin(t * 8) * 12 : emote === 0 || emote === 2 || emote === 10 ? Math.sin(t * 3) * 6 : 0;
+      bot.legL.setAttribute("transform", "rotate(" + step.toFixed(2) + " 171 437)");
+      bot.legR.setAttribute("transform", "rotate(" + (-step).toFixed(2) + " 229 437)");
+    }
+    worldNodes.forEach(function (item, i) {
+      var o = item.obj, age = (now - item.touched) / 1000, hit = age >= 0 && age < 1 ? Math.sin(age * Math.PI) : 0;
+      var angle = 0, dy = 0, scale = o.size / 8;
+      if (!reduceMotion) {
+        if (o.animation === "sway") angle = Math.sin(t * 1.2 + i) * 5;
+        if (o.animation === "spin") angle = t * 20;
+        if (o.animation === "float") dy = Math.sin(t * 1.3 + i) * 8;
+        if (o.animation === "pulse") scale *= 1 + Math.sin(t * 1.4 + i) * .05;
+        if (o.reaction === "bounce") dy -= hit * 25;
+        if (o.reaction === "grow") scale *= 1 + hit * .25;
+        if (o.reaction === "spin") angle += hit * 120;
+      }
+      item.el.style.filter = o.reaction === "color" && hit > 0 ? "hue-rotate(" + (hit * 160) + "deg)" : "";
+      item.el.setAttribute("transform", "translate(" + (o.x * 10) + " " + (o.y * 6 + dy) + ") scale(" + scale.toFixed(3) + ") rotate(" + angle.toFixed(2) + ")");
+    });
+  }
+
+  if (!nativeRenderer) {
+    var zone = $("robot-zone");
+    function worldPointer(event, pressed) {
+      var box = zone.getBoundingClientRect();
+      pointAt((event.clientX - box.left) / Math.max(1, box.width) * 2 - 1, (event.clientY - box.top) / Math.max(1, box.height) * 2 - 1, pressed);
+    }
+    zone.addEventListener("pointermove", function (event) { worldPointer(event, worldMotion.pressed); }, {passive: true});
+    zone.addEventListener("pointerdown", function (event) { worldPointer(event, true); }, {passive: true});
+    window.addEventListener("pointerup", function (event) { worldPointer(event, false); }, {passive: true});
+    window.addEventListener("pointercancel", function () { worldMotion.pressed = false; });
+    window.addEventListener("keydown", function (event) {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.repeat) return;
+      var tenth = event.code === "Digit0" && event.shiftKey;
+      if (/^[0-9]$/.test(event.key) || tenth) { worldMotion.emote = tenth ? 10 : Number(event.key); worldMotion.emoteUntil = performance.now() + 5000; }
+    });
+  }
+
   // Native owns conversation, microphone and TTS. This offline surface only draws.
   if (nativeRenderer) {
     prefs.robot = true; S.phase = "waiting";
@@ -1536,13 +1701,16 @@
         if (!state || typeof state !== "object") return;
         if (["waiting", "command", "thinking", "speaking", "off", "paused", "error"].indexOf(state.phase) >= 0) S.phase = state.phase;
         if (state.skin) applySkin(state.skin);
+        if (state.pointer && Number.isFinite(state.pointer.x) && Number.isFinite(state.pointer.y)) pointAt(state.pointer.x, state.pointer.y, state.pressed === true);
+        else if (state.pressed === false) worldMotion.pressed = false;
+        if (Number.isInteger(state.emote) && state.emote >= 0 && state.emote <= 10) { worldMotion.emote = state.emote; worldMotion.emoteUntil = performance.now() + 5000; }
         if (typeof state.visible === "boolean") nativeVisible = state.visible;
-        S.level = clamp(Number(state.mic) || 0, 0, 1);
-        S.outLevel = clamp(Number(state.speech) || 0, 0, 1);
+        if (state.mic !== undefined) S.level = clamp(Number(state.mic) || 0, 0, 1);
+        if (state.speech !== undefined) S.outLevel = clamp(Number(state.speech) || 0, 0, 1);
         for (var b = 0; b < 7; b++) S.bands[b] = S.level * (0.65 + 0.35 * Math.sin(b + performance.now() / 130));
         document.body.setAttribute("data-phase", S.phase);
         document.body.classList.toggle("renderer-paused", !nativeVisible);
-        if (!nativeVisible) { clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; }
+        if (!nativeVisible) { if (worldAudio) worldAudio.suspend(); worldMotion.pressed = false; clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; }
         else scheduleFrame();
       },
       boop: boop,
@@ -1579,13 +1747,47 @@
     if (open) { bindPrefs(); ui.settingsClose.focus(); } else { ui.settingsBtn.focus(); }
   }
 
-  ui.robotButton.addEventListener("click", function () {
+  $("robot-zone").addEventListener("click", function () {
+    if (prefs.interaction !== "tap" && prefs.interaction !== "wake_word") return;
     outContext() && outContext().ctx.resume().catch(function () {});
     boop();
     talkNow();
   });
+  var heldCommand = false, holdSequence = 0;
+  $("robot-zone").addEventListener("pointerdown", function (event) {
+    if (prefs.interaction !== "hold" || !event.isPrimary || heldCommand) return;
+    heldCommand = true; var sequence = ++holdSequence;
+    var begin = function () { if (heldCommand && sequence === holdSequence) talkNow(); else if (prefs.interaction === "hold") stop(); };
+    if (!S.capture) start().then(begin).catch(function () { heldCommand = false; }); else begin();
+  });
+  window.addEventListener("pointerup", function () {
+    if (!heldCommand) return; heldCommand = false; holdSequence++;
+    if (S.phase === "command") finishCommand();
+  });
+  window.addEventListener("pointercancel", function () { heldCommand = false; holdSequence++; if (S.phase === "command") resetToWaiting(); });
+  var interaction = $("world-interaction");
+  interaction.value = prefs.interaction;
+  interaction.addEventListener("change", function () { prefs.interaction = interaction.value; save("interaction", prefs.interaction); if (prefs.interaction !== "wake_word") stop(); });
+  [["world-idle", "idle_enabled"], ["world-professional", "professional"], ["world-sounds", "sound_enabled"]].forEach(function (entry) {
+    $(entry[0]).addEventListener("change", function () {
+      var skin = JSON.parse(JSON.stringify(S.activeSkin || {})); skin.world = skin.world || {}; skin.world[entry[1]] = $(entry[0]).checked;
+      request("api/assistant/skin", {skin: skin}).then(function (data) { if (data.skin) applySkin(data.skin); }).catch(function (error) { hint(error.message, "warn"); });
+    });
+  });
+  $("world-expand").addEventListener("click", function () {
+    var full = document.body.classList.toggle("world-fullscreen");
+    $("world-expand").setAttribute("aria-label", full ? "Collapse world" : "Expand world");
+    if (full) {
+      var skin = JSON.parse(JSON.stringify(S.activeSkin || {})); skin.world = skin.world || {}; skin.world.enabled = true; applySkin(skin);
+      if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().then(function () { if (screen.orientation && screen.orientation.lock) return screen.orientation.lock("landscape"); }).catch(function () {});
+    } else if (document.fullscreenElement) document.exitFullscreen().catch(function () {});
+  });
+  document.addEventListener("fullscreenchange", function () { if (!document.fullscreenElement) document.body.classList.remove("world-fullscreen"); });
   ui.robotButton.addEventListener("pointerenter", function () { notice(); });
-  ui.mic.addEventListener("click", function () { if (S.capture || S.starting) stop(); else start(); });
+  ui.mic.addEventListener("click", function () {
+    if (prefs.interaction !== "wake_word") { talkNow(); return; }
+    if (S.capture || S.starting) stop(); else start();
+  });
   ui.settingsBtn.addEventListener("click", function () { toggleSettings(ui.settings.hidden); });
   ui.settingsClose.addEventListener("click", function () { toggleSettings(false); });
   ui.unlockBtn.addEventListener("click", onUnlockTap);
@@ -1721,12 +1923,13 @@
       if (busy()) stopTurn();
       return;
     }
-    if (!typing && (event.code === "Space" || event.key === " ") && !event.repeat) {
+    if (prefs.interaction !== "off" && !typing && (event.code === "Space" || event.key === " ") && !event.repeat) {
       event.preventDefault();
       talkNow();
     }
   });
   window.addEventListener("pointermove", function (event) {
+    if (zone.contains(event.target)) return;
     var box = ui.robotButton.getBoundingClientRect();
     if (!box.width) return;
     var x = (event.clientX - (box.left + box.width / 2)) / (window.innerWidth / 2);
@@ -1783,7 +1986,7 @@
   refreshStatus(true).then(function (status) {
     var param = params.get("autostart");
     var auto = param === "1" ? true : param === "0" ? false : (prefs.autoStart === null ? Boolean(status.auto_start) : Boolean(prefs.autoStart));
-    if (auto && status.enabled) {
+    if (auto && status.enabled && prefs.interaction === "wake_word") {
       start();
     } else if (!status.enabled) {
       hint("Assistant mode is off on the server. Turn it on in the Admin page.", "warn");

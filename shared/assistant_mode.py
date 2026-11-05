@@ -299,6 +299,41 @@ def load_model() -> Optional[ww.WakeWordModel]:
         return None
 
 
+def import_model(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Import bounded acoustic templates; never import executable code or credentials."""
+    if not isinstance(payload, Mapping) or len(json.dumps(payload)) > 1024 * 1024:
+        raise ValueError("Wake word model must be at most 1 MiB")
+    templates = payload.get("templates")
+    if not isinstance(templates, list) or not 1 <= len(templates) <= 8:
+        raise ValueError("Wake word model needs 1 to 8 templates")
+    def finite(value):
+        try:
+            return type(value) in (int, float) and math.isfinite(value)
+        except OverflowError:
+            return False
+    for key in ("base_threshold", "sensitivity", "listen_seconds", "created_at"):
+        value = payload.get(key)
+        if value is not None and not finite(value):
+            raise ValueError("Invalid wake word settings")
+    for item in templates:
+        rows = item.get("mfcc") if isinstance(item, Mapping) else None
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 500:
+            raise ValueError("Invalid wake word template length")
+        if item.get("duration_seconds") is not None and not finite(item["duration_seconds"]):
+            raise ValueError("Invalid wake word template duration")
+        for row in rows:
+            if not isinstance(row, list) or len(row) != 12 or not all(finite(v) for v in row):
+                raise ValueError("Invalid wake word acoustic features")
+    model = ww.WakeWordModel.from_dict(payload)
+    phrase = clean_phrase_text(payload.get("wake_phrase") or model.phrase)
+    if not phrase:
+        raise ValueError("Wake phrase is required")
+    model.phrase = phrase
+    _write_json(MODEL_FILENAME, model.to_dict())
+    save_settings({"wake_phrase": phrase})
+    return model.to_dict()
+
+
 def delete_model() -> None:
     path = assistant_mode_dir() / MODEL_FILENAME
     try:

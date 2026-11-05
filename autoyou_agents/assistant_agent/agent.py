@@ -22,6 +22,8 @@ from autoyou_agents.shared_tools.datetime_tool import (
     inject_realtime_datetime_into_request,
 )
 
+from shared.assistant_world import WORLD_INSTRUCTIONS
+
 from . import assistant_tool
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
 
@@ -82,14 +84,38 @@ async def _assistant_before_model_callback(callback_context: Any, llm_request: A
     return None
 
 
+def assistant_get_world() -> dict:
+    """Read the current portable Assistant world before editing it."""
+    from shared.assistant_skin import get_active_skin
+    from shared.assistant_world import validate_world
+    return validate_world(get_active_skin().get("world"))
+
+
+def assistant_update_world(world_json: str) -> dict:
+    """Replace the Assistant world with validated JSON. No scripts, network assets or credentials."""
+    import json
+    from shared.assistant_skin import get_active_skin, save_active_skin
+    from shared.assistant_world import validate_world
+    try:
+        if len(world_json.encode("utf-8")) > 131072:
+            raise ValueError("World must be at most 128 KiB")
+        world = validate_world(json.loads(world_json))
+        skin = get_active_skin()
+        skin["world"] = world
+        save_active_skin(skin)
+        return {"success": True, "world": world}
+    except (ValueError, TypeError) as exc:
+        return {"success": False, "error": str(exc)}
+
+
 def create_assistant_agent(model_config: Any) -> Agent:
     """Factory used by the root agent's static agent map."""
     return Agent(
         name=AGENT_NAME,
         model=model_config,
         description=AGENT_DESCRIPTION,
-        instruction=AGENT_INSTRUCTION,
-        tools=[assistant_open_web_page, assistant_list_windows, assistant_focus_window, get_current_datetime],
+        instruction=AGENT_INSTRUCTION + "\n" + WORLD_INSTRUCTIONS,
+        tools=[assistant_get_world, assistant_update_world, assistant_open_web_page, assistant_list_windows, assistant_focus_window, get_current_datetime],
         before_agent_callback=_assistant_before_agent_callback,
         before_model_callback=_assistant_before_model_callback,
     )
