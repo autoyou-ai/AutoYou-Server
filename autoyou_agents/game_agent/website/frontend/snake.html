@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <link rel="icon" href="data:,">
-  <title>Neon Viper - Game Studio</title>
+  <title>Jungle Viper - Game Studio</title>
   <style>
     :root{
       --bg:#0d1f12;--panel:#132a19f4;--panel-border:#5ebd3e;--panel-glow:#2d6e2266;
@@ -162,9 +162,24 @@
     let settingsOpen = false, settingsFocus = 0, resetArmed = 0, resetFloor = 0;
     let manualSteerUntil = 0;
 
-    const BEST_KEY = 'autoyou.neon-viper.best.v1', MAX_SCORE = 1000000000;
-    const SETTINGS_KEY = 'autoyou.neon-viper.settings.v1', PROGRESS_KEY = 'autoyou.neon-viper.progress.v1';
-    const CLEARED_KEY = 'autoyou.neon-viper.cleared.v1';
+    const BEST_KEY = 'autoyou.jungle-viper.best.v1', MAX_SCORE = 1000000000;
+    const SETTINGS_KEY = 'autoyou.jungle-viper.settings.v1', PROGRESS_KEY = 'autoyou.jungle-viper.progress.v1';
+    const CLEARED_KEY = 'autoyou.jungle-viper.cleared.v1';
+    const MIGRATED_KEY = 'autoyou.jungle-viper.migrated.v1';
+    function migrateLegacySaves() {
+      try {
+        if (localStorage.getItem(MIGRATED_KEY) === '1') return;
+        // Upgrade the previous game name once without replacing newer saves or undoing score resets.
+        const legacyPrefix = 'autoyou.neon-viper.';
+        for (const key of [BEST_KEY, SETTINGS_KEY, PROGRESS_KEY, CLEARED_KEY]) {
+          if (localStorage.getItem(key) !== null) continue;
+          const legacyKey = legacyPrefix + key.slice('autoyou.jungle-viper.'.length);
+          const value = localStorage.getItem(legacyKey);
+          if (value !== null) localStorage.setItem(key, value);
+        }
+        localStorage.setItem(MIGRATED_KEY, '1');
+      } catch (_) { /* Keep playing when browser storage is unavailable. */ }
+    }
     const pointers = new Map();
     let localMotion = {};
     const offline = document.body.hasAttribute('data-offline');
@@ -2329,6 +2344,7 @@
       requestAnimationFrame(frame);
     }
 
+    migrateLegacySaves();
     loadSettings();
     loadProgress();
     describeMissions();

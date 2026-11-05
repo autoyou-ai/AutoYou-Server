@@ -151,6 +151,17 @@ def test_snake_game_compatibility_powerups_and_route(tmp_path, monkeypatch):
     assert snake_path.is_file()
     raw = snake_path.read_bytes()
     html = raw.decode("utf-8")
+    assert "<title>Jungle Viper - Game Studio</title>" in html
+    assert "Launch Jungle Viper (Snake)" in (snake_path.parent / "index.html").read_text(encoding="utf-8")
+    assert (snake_path.parent / "assets/snake.html").read_bytes() == raw
+    from shared.game_package_catalog import GamePackages
+    server_root = snake_path.parents[4]
+    offline_path = server_root / "assets/game/jungle-viper.html"
+    assert offline_path.read_bytes() == game_catalog.frame_html(raw)
+    library = game_catalog.listing(game_catalog.catalog_dirs(server_root, tmp_path))
+    assert {"id": "jungle-viper", "title": "Jungle Viper", "default": False} in library
+    exported, _ = game_package.read_manifest(GamePackages(server_root, tmp_path).resolve("jungle-viper"))
+    assert exported["id"] == "jungle-viper" and exported["title"] == "Jungle Viper"
 
     # Verify Quit (X) button next to Pause and Settings and offline/package compatibility
     corner = re.search(r'<div class="corner">(.*?)</div>', html, re.S).group(1)
@@ -162,9 +173,9 @@ def test_snake_game_compatibility_powerups_and_route(tmp_path, monkeypatch):
     assert "connect-src 'none'" in framed and "window.autoYouGameInput = handleRemoteFrame" in framed
 
     # Verify .aygame packaging for iOS, Android, v2 Windows, and v2 macOS
-    aygame = tmp_path / "neon-viper.aygame"
-    manifest = game_package.wrap_html(snake_path, aygame, "neon-viper", "Neon Viper")
-    assert manifest["id"] == "neon-viper" and manifest["title"] == "Neon Viper"
+    aygame = tmp_path / "jungle-viper.aygame"
+    manifest = game_package.wrap_html(snake_path, aygame, "jungle-viper", "Jungle Viper")
+    assert manifest["id"] == "jungle-viper" and manifest["title"] == "Jungle Viper"
     assert game_package.package_supports_quit(aygame)
 
     # Verify /snake route and publishing in Game Studio
@@ -183,8 +194,8 @@ def test_snake_game_compatibility_powerups_and_route(tmp_path, monkeypatch):
         res = client.get("/snake")
         assert res.status_code == 200 and "JUNGLE VIPER" in res.text
         client.headers["Authorization"] = "Bearer synthetic-game-session"
-        assert client.post("/api/game/publish/neon-viper", content=raw).status_code == 200
-        assert (tmp_path / "mobile_games" / "neon-viper.html").read_bytes() == raw
+        assert client.post("/api/game/publish/jungle-viper", content=raw).status_code == 200
+        assert (tmp_path / "mobile_games" / "jungle-viper.html").read_bytes() == raw
 
     # Exercise gameplay, power-up systems, audio, and cross-platform inputs in Node VM
     node = shutil.which("node")
@@ -199,7 +210,12 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const source = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/i)[1];
 
 let clock = 0, quitCalled = 0;
-const elements = new Map(), storage = new Map();
+const elements = new Map(), storage = new Map([
+  ['autoyou.neon-viper.best.v1', '2345'],
+  ['autoyou.neon-viper.settings.v1', JSON.stringify({theme: 'jungle', music: false})],
+  ['autoyou.neon-viper.progress.v1', JSON.stringify({rank: 3, stars: 2, missions: []})],
+  ['autoyou.neon-viper.cleared.v1', '123'],
+]);
 const gradient = {addColorStop() {}};
 const context = new Proxy({}, {get: (_, name) => name.startsWith('create') ? () => gradient : () => {}});
 function element(id) {
@@ -245,6 +261,23 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source.replace('    best = loadBest();', '    globalThis.inspect = text => eval(text);\n    best = loadBest();'), sandbox);
 const run = sandbox.inspect;
+
+// Upgrade existing browser saves without overwriting newer records or reviving cleared scores.
+assert.equal(run('best'), 2345);
+assert.equal(run('settings.music'), false);
+assert.equal(run('progress.rank'), 3);
+assert.equal(run('progress.stars'), 2);
+assert.equal(storage.get('autoyou.jungle-viper.cleared.v1'), '123');
+assert.equal(storage.get('autoyou.jungle-viper.migrated.v1'), '1');
+assert.equal(storage.get('autoyou.neon-viper.best.v1'), '2345');
+storage.set('autoyou.jungle-viper.best.v1', '3456');
+storage.set('autoyou.neon-viper.best.v1', '9999');
+storage.delete('autoyou.jungle-viper.migrated.v1');
+run('migrateLegacySaves(); best = loadBest()');
+assert.equal(run('best'), 3456);
+run('deleteBest(); migrateLegacySaves()');
+assert.equal(run('loadBest()'), 0);
+assert.equal(storage.get('autoyou.jungle-viper.best.v1'), '0');
 
 // 1. Verify WAV sound synthesis
 const sound = run("wavSound(440, 0.1, 'sine')");
