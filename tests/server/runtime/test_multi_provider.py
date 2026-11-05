@@ -57,6 +57,7 @@ def test_ollama_only_kwargs_frozenset():
     assert "top_k" in _OLLAMA_ONLY_KWARGS
     assert "think" in _OLLAMA_ONLY_KWARGS
     assert "num_predict" in _OLLAMA_ONLY_KWARGS
+    assert "keep_alive" in _OLLAMA_ONLY_KWARGS
     # Verify it is a frozenset (immutable)
     assert isinstance(_OLLAMA_ONLY_KWARGS, frozenset)
 
@@ -193,6 +194,9 @@ def test_configure_ollama_model_disables_thinking_by_default(monkeypatch):
             "num_ctx": 32768,
             "think": False,
             "num_predict": 1024,
+            # Ollama would unload an idle model after 5 minutes and the next
+            # message would wait for a full load.
+            "keep_alive": "30m",
         }
     ]
 

@@ -76,6 +76,8 @@ systemd/user/
 # 4. Registries, Sessions & User Preferences
 # ------------------------------------------------------------------------------
 agent_install_registry.json
+ollama_context_registry.json
+ollama_context_registry.json.tmp
 agent_frontends_registry.json
 agent_desktop_apps_registry.json
 agent_ui_sessions.json

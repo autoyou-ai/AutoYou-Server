@@ -72,10 +72,35 @@ def _pick_device(torch: Any) -> str:
     if requested != "auto":
         return requested
     if cuda_ok:
-        return "cuda"
+        return "cuda" if _cuda_has_room(torch) else "cpu"
     if mps_ok:
         return "mps"
     return "cpu"
+
+
+def _cuda_has_room(torch: Any) -> bool:
+    """Whether the GPU has the free memory Chatterbox needs (default 4 GB).
+
+    With a chat model already loaded there, starting this one anyway pushes the
+    chat model partly onto the CPU. ``AUTOYOU_VOICE_CLONE_MIN_FREE_GB`` changes
+    the figure; 0 turns the check off.
+    """
+    try:
+        needed_gb = float(os.environ.get("AUTOYOU_VOICE_CLONE_MIN_FREE_GB", "4") or 4)
+    except ValueError:
+        needed_gb = 4.0
+    if needed_gb <= 0:
+        return True
+    try:
+        free_bytes, _total_bytes = torch.cuda.mem_get_info()
+    except Exception:
+        return True
+    if free_bytes >= needed_gb * 1024 ** 3:
+        return True
+    sys.stderr.write(
+        f"voice clone: the GPU has {free_bytes / 1024 ** 3:.1f} GB free and needs {needed_gb:.1f} GB; using the CPU\n"
+    )
+    return False
 
 
 def _accelerator_name(torch: Any, device: str) -> str:

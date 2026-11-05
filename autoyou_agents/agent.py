@@ -56,6 +56,11 @@ from autoyou_agents.model_config import (
     model_uses_compact_root_tool_routing,
     resolve_ollama_num_ctx,
 )
+from shared.ollama_context_policy import (
+    context_limit as _ollama_context_limit,
+    record_context_limit as _record_ollama_context_limit,
+    resolve_ollama_keep_alive,
+)
 from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_tool_response
 from autoyou_agents.arithmetic import calculate, calculator_note
 from autoyou_agents.model_fallback import (
@@ -401,6 +406,24 @@ def _learn_from_response_usage(
         conversation_context.observe_prompt_tokens(model, estimated, prompt_tokens)
 
 
+def _with_ollama_context_limit(model_name: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Hold a request to the window measured to fit this model on this machine.
+
+    Set when Ollama could not allocate the cache or the model spilled onto the
+    CPU at start; every call then asks for the same smaller window, so the
+    model is not loaded again at the larger size.
+    """
+    limit = _ollama_context_limit(model_name)
+    try:
+        requested = int(kwargs.get("num_ctx") or 0)
+    except (TypeError, ValueError):
+        requested = 0
+    if limit and requested > limit:
+        kwargs = dict(kwargs)
+        kwargs["num_ctx"] = limit
+    return kwargs
+
+
 def _context_overflow_already_handled(exc: Any) -> bool:
     return bool(getattr(exc, _OLLAMA_CONTEXT_OVERFLOW_HANDLED_MARKER, False))
 
@@ -422,6 +445,8 @@ async def _patched_acompletion(*args, **kwargs):
         model_name = args[0]
 
     is_ollama = is_ollama_chat_model(model_name)
+    if is_ollama:
+        kwargs = _with_ollama_context_limit(model_name, kwargs)
     # Unfitted (but prepared) messages: a refit after an overflow re-selects
     # from the whole history rather than from an already-trimmed copy.
     original_messages = None
@@ -504,6 +529,9 @@ async def _patched_acompletion(*args, **kwargs):
                         )
                         kwargs = dict(kwargs)
                         kwargs["num_ctx"] = new_num_ctx
+                        # Every later call uses the smaller window too; halving
+                        # only this call reloaded the model twice per turn.
+                        _record_ollama_context_limit(model_name, new_num_ctx, "memory_error")
                         # A smaller window needs a smaller prompt, or the retry
                         # trades a memory error for an overflow.
                         _set_request_messages(
@@ -664,6 +692,7 @@ try:
                     sorted(kwargs.keys()),
                 )
             if is_ollama:
+                kwargs = _with_ollama_context_limit(model, kwargs)
                 tools = prepare_tools_for_ollama(tools)
                 prepared_messages = prepare_messages_for_ollama(list(messages) if messages else [])
                 messages = _fit_ollama_request(model, prepared_messages, tools, kwargs)
@@ -718,6 +747,7 @@ try:
                                 )
                                 current_kwargs = dict(current_kwargs)
                                 current_kwargs["num_ctx"] = new_num_ctx
+                                _record_ollama_context_limit(model, new_num_ctx, "memory_error")
                                 messages = _fit_ollama_request(model, prepared_messages, tools, current_kwargs)
                                 continue
                         if _is_ollama_truncated_tool_call_error(exc):
@@ -5581,7 +5611,17 @@ def _build_resilient_fallback_model():
     if "/" not in base_model:
         base_model = f"ollama_chat/{base_model}"
     api_base = os.getenv("OLLAMA_API_BASE", os.getenv("OLLAMA_API_URL", "http://localhost:11434"))
-    return LiteLlm(model=base_model, api_base=api_base)
+    # The same window and keep-alive as every other caller of this model, so
+    # Ollama does not load it again at a different size.
+    options: Dict[str, Any] = {}
+    try:
+        options["num_ctx"] = int(resolve_ollama_num_ctx(base_model.split("/", 1)[-1])[0])
+    except Exception:
+        pass
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        options["keep_alive"] = keep_alive
+    return LiteLlm(model=base_model, api_base=api_base, **options)
 
 def process_media_content(
     attachments: List[Dict[str, Any]],

@@ -351,19 +351,31 @@ def _normalize_voice_language(value: Any) -> str:
     return text
 
 def _resolve_stt_device(requested_device: str) -> str:
-    normalized = str(requested_device or "").strip().lower()
-    if normalized == "cpu":
-        return "cpu"
-    if normalized == "cuda":
-        return "cuda"
-    if normalized == "auto":
-        try:
-            import torch
+    """``cuda`` only when faster-whisper's engine, CTranslate2, can use a GPU.
 
-            return "cuda" if bool(torch.cuda.is_available()) else "cpu"
-        except Exception:
-            return "cpu"
+    PyTorch's ROCm build reports CUDA on AMD GPUs and Apple has no CUDA; the
+    standard CTranslate2 wheels run on NVIDIA only, so asking PyTorch picked a
+    GPU the recorder then could not open.
+    """
+    normalized = str(requested_device or "").strip().lower()
+    if normalized not in {"cuda", "auto"}:
+        return "cpu"
+    from shared.gpu_memory import ctranslate2_cuda_available
+
+    if ctranslate2_cuda_available():
+        return "cuda"
+    if normalized == "cuda":
+        LOGGER.warning("Speech-to-text was set to cuda, but CTranslate2 sees no CUDA GPU; using the CPU")
     return "cpu"
+
+
+def _stt_device_with_room(device: str, requested_device: str, model_name: str) -> str:
+    """With ``auto``, keep Whisper off a GPU too full for it (the chat model would spill)."""
+    if device != "cuda" or str(requested_device or "").strip().lower() != "auto":
+        return device
+    from shared.gpu_memory import whisper_device
+
+    return whisper_device("auto", model_name)
 
 def _ensure_torch_hub_repo_trusted(repo_name: str) -> None:
     try:
@@ -2506,7 +2518,9 @@ class AudioManager:
             from shared.platform_runtime import configure_whisper_cache_environment
             whisper_cache = configure_whisper_cache_environment()
             requested_device = stt_settings.get("device", "cpu")
-            resolved_device = _resolve_stt_device(requested_device)
+            resolved_device = _stt_device_with_room(
+                _resolve_stt_device(requested_device), requested_device, stt_settings["model"]
+            )
             _patch_tqdm_ensure_lock()
             stt_kwargs = {
                 "spinner": False,

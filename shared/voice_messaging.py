@@ -326,6 +326,12 @@ def _get_whisper_model(model_name: str, device: str, compute_type: str) -> Any:
     global _whisper_model, _whisper_model_key
     if _WhisperModel is None:
         return None
+    if str(device or "").strip().lower() in {"auto", "cuda"}:
+        # The GPU only when CTranslate2 can use it and Whisper fits beside
+        # whatever model is already loaded there.
+        from shared.gpu_memory import whisper_device
+
+        device = whisper_device(device, model_name)
     key = (model_name, device, compute_type)
     with _whisper_lock:
         if _whisper_model is not None and _whisper_model_key == key:

@@ -42,8 +42,11 @@ def test_warmup_builds_the_tree_and_loads_the_model_with_the_agents_context(monk
     ))
 
     assert ("http://127.0.0.1:8081/apps/autoyou_agents/app-info", None) in calls
-    # Same num_ctx as the agent's requests, or Ollama would load the model again.
-    assert ("http://127.0.0.1:11434/api/generate", {"model": "synthetic-model:latest", "options": {"num_ctx": 12288}}) in calls
+    # Same num_ctx and keep-alive as the agent's requests, or Ollama would load the model again.
+    assert (
+        "http://127.0.0.1:11434/api/generate",
+        {"model": "synthetic-model:latest", "options": {"num_ctx": 12288}, "keep_alive": "30m"},
+    ) in calls
     assert report["agent_tree"]["ok"] is True and report["model"]["ok"] is True
 
 

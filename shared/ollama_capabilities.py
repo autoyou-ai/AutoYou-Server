@@ -22,6 +22,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 import httpx
 
+from shared.ollama_context_policy import kv_profile_from_show
+
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-3ab2060fd5f4243db422ed05"
 
 
@@ -146,6 +148,8 @@ def capabilities_from_show_payload(model_name: str, payload: Any) -> Dict[str, A
         "parameter_size": str(details.get("parameter_size") or ""),
         "quantization_level": str(details.get("quantization_level") or ""),
         "capability_source": "ollama_api_show",
+        # Context-cache cost per token, for sizing the window to the GPU.
+        "kv_profile": kv_profile_from_show(data),
     }
 
 
@@ -191,6 +195,7 @@ def inspect_ollama_model_capabilities(
             "parameter_size": "",
             "quantization_level": "",
             "capability_source": "unavailable",
+            "kv_profile": None,
             "error": str(exc),
         }
 

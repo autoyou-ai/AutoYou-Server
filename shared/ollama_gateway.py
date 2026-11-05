@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import aiohttp
 
 from .ollama_capabilities import capabilities_from_show_payload
-from .ollama_context_policy import recommend_ollama_num_ctx
+from .ollama_context_policy import resolve_context_window, resolve_ollama_keep_alive
 
 __debug_provenance_g__ = "AUTOYOU-PROVENANCE-G-annual-07fba9dd3ccef52b9d63e070"
 
@@ -244,7 +244,8 @@ def resolve_ollama_gateway_options(
         num_ctx = int(explicit_num_ctx) if explicit_num_ctx is not None else 0
     except (TypeError, ValueError):
         num_ctx = 0
-    options["num_ctx"] = num_ctx if num_ctx > 0 else recommend_ollama_num_ctx(model_name)
+    # The window the agent uses for this model: another size would make Ollama load it again.
+    options["num_ctx"] = num_ctx if num_ctx > 0 else resolve_context_window(model_name)[0]
     return options
 
 
@@ -367,6 +368,9 @@ async def call_ollama_gateway(
     }
     if think is not None:
         payload["think"] = think
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     resolved_options = {str(key): value for key, value in (options or {}).items() if value is not None}
     num_predict = resolve_ollama_num_predict(
         thinking=_think_enables_reasoning(think),

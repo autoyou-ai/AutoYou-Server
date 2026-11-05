@@ -25,6 +25,7 @@ import os
 import uuid
 import base64
 import tempfile
+import time
 import mimetypes
 import re
 from pathlib import Path
@@ -82,8 +83,8 @@ from shared.media_messaging import (
     extract_media_reply_attachments,
     public_media_reply_metadata,
 )
-from shared.ollama_context_policy import build_context_compaction_policy
-from shared.ollama_capabilities import resolve_ollama_think_option
+from shared.ollama_context_policy import build_context_compaction_policy, resolve_ollama_keep_alive
+from shared.ollama_capabilities import inspect_ollama_model_capabilities, resolve_ollama_think_option
 from shared.ollama_gateway import (
     OllamaConversationStore,
     OllamaGatewayError,
@@ -2179,6 +2180,72 @@ def _native_ollama_settings() -> Dict[str, Any]:
     }
 
 
+# Longest side, in pixels, of an image sent to a local model. Ollama's vision
+# models scale images down to well under this themselves; a full-size photo
+# only costs upload, decoding and, on some models, context tokens.
+_OLLAMA_IMAGE_MAX_SIDE = 1536
+_MEDIA_CAPABILITY_TTL_SECONDS = 300.0
+_media_capability_cache: Dict[Any, Any] = {}
+
+
+def _cached_ollama_capabilities(api_base: str, model: str) -> Dict[str, Any]:
+    key = (api_base, model)
+    now = time.monotonic()
+    cached = _media_capability_cache.get(key)
+    if cached and now - cached[0] < _MEDIA_CAPABILITY_TTL_SECONDS:
+        return cached[1]
+    capabilities = inspect_ollama_model_capabilities(api_base, model, timeout_seconds=3.0)
+    if capabilities.get("available"):
+        _media_capability_cache[key] = (now, capabilities)
+    return capabilities
+
+
+async def _media_input_policy() -> Dict[str, Any]:
+    """Which attachments go to the active model inline, as base64.
+
+    Local Ollama models: images only when the model reports vision (an unknown
+    answer keeps sending them), shrunk first; never audio, which LiteLLM's
+    Ollama path drops anyway - speech reaches the model as its transcript.
+    Other providers are unchanged.
+    """
+    if _active_ai_provider() != "ollama":
+        return {"images": True, "audio": True, "max_image_side": None, "model": ""}
+    settings = _native_ollama_settings()
+    model = _normalize_ollama_model_name(settings.get("model") or os.environ.get("OLLAMA_MODEL") or "")
+    vision = None
+    if model:
+        try:
+            capabilities = await asyncio.to_thread(_cached_ollama_capabilities, settings["api_base"], model)
+            vision = capabilities.get("supports_vision") if capabilities.get("available") else None
+        except Exception:
+            vision = None
+    return {"images": vision is not False, "audio": False, "max_image_side": _OLLAMA_IMAGE_MAX_SIDE, "model": model}
+
+
+def _shrink_image_for_model(data: bytes, mime_type: str, max_side: Optional[int]) -> tuple:
+    """The image scaled so its longest side is at most ``max_side``, else unchanged."""
+    if not max_side or not data:
+        return data, mime_type
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            if max(image.size) <= max_side:
+                return data, mime_type
+            image.thumbnail((max_side, max_side))
+            buffer = io.BytesIO()
+            if str(mime_type).lower() == "image/png" and image.mode in {"RGBA", "LA", "P"}:
+                image.save(buffer, format="PNG", optimize=True)
+                return buffer.getvalue(), "image/png"
+            image.convert("RGB").save(buffer, format="JPEG", quality=90)
+            return buffer.getvalue(), "image/jpeg"
+    except Exception as exc:
+        logger.debug("Image left at full size: %s", exc)
+        return data, mime_type
+
+
 def _native_odysseus_settings() -> Dict[str, str]:
     """Read the encrypted Server config first, then its documented env fallbacks."""
     config: Dict[str, Any] = {}
@@ -2304,6 +2371,17 @@ async def _send_autoyou_signtoross_legal_advice_via_ollama(
             "num_predict": 160,
         },
     }
+    # The chat agent's window and keep-alive: a different num_ctx makes
+    # Ollama load the same model again.
+    try:
+        from autoyou_agents.model_config import resolve_ollama_num_ctx
+
+        payload["options"]["num_ctx"] = int(resolve_ollama_num_ctx(model_name)[0])
+    except Exception:
+        pass
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
 
     url = f"{_ollama_api_base_url()}/api/chat"
     try:
@@ -3197,6 +3275,11 @@ async def send_message_to_ai_agent(
                 atts = _extract_attachments_from_context(context or [])
                 if atts:
                     summary_items = []
+                    media_policy = (
+                        await _media_input_policy()
+                        if any(str(a.get("mimetype") or "").lower().startswith(("image/", "audio/")) for a in atts)
+                        else None
+                    )
                     for a in atts:
                         name = a.get("filename") or "attachment"
                         mt = str(a.get("mimetype") or "unknown/unknown")
@@ -3209,12 +3292,29 @@ async def send_message_to_ai_agent(
                         else:
                             summary_items.append(f"{name} ({mt})")
 
-                        # Forward vision/audio bytes to ADK natively via inline_data
-                        if mt_lower.startswith("image/") or mt_lower.startswith("audio/"):
+                        # Forward vision/audio bytes to ADK natively via inline_data,
+                        # when the active model can take them (the path above still
+                        # reaches the specialists either way).
+                        is_media = mt_lower.startswith("image/") or mt_lower.startswith("audio/")
+                        media_kind = "audio" if mt_lower.startswith("audio/") else "images"
+                        if is_media and media_policy is not None and not media_policy[media_kind]:
+                            logger.info(
+                                "Not sending %s to %s inline: %s",
+                                name,
+                                media_policy.get("model") or "the model",
+                                "Ollama takes no audio; the transcript carries it"
+                                if media_kind == "audio"
+                                else "the model reports no vision",
+                            )
+                        elif is_media:
                             # Apply sensible limits to prevent payload explosions: 10MB image, 25MB audio
                             max_size = 25 * 1024 * 1024 if mt_lower.startswith("audio/") else 10 * 1024 * 1024
                             try:
                                 data_bytes, error = _load_attachment_bytes(a)
+                                if data_bytes and media_kind == "images" and media_policy is not None:
+                                    data_bytes, mt = _shrink_image_for_model(
+                                        data_bytes, mt, media_policy.get("max_image_side")
+                                    )
                                 if data_bytes and len(data_bytes) <= max_size:
                                     encoded = base64.b64encode(data_bytes).decode("ascii")
                                     parts.append({

@@ -2564,18 +2564,21 @@ def _set_ai_agent_multiprocessing_executable() -> None:
 
 
 def _warmup_num_ctx(runtime: Any, model: str) -> Optional[int]:
-    """The context size the agent will ask Ollama for, resolved as model_config does."""
+    """The context size the agent will ask Ollama for, resolved as model_config does.
+
+    The worker records the window it chose when it built the model, so this
+    reads the same answer (``resolve_context_window``).
+    """
+    override = None
     try:
         behavior = (runtime.STATE.config or {}).get("model_behavior") or {}
-        override = int(behavior.get("num_ctx") or 0)
-        if override > 0:
-            return override
-    except (AttributeError, TypeError, ValueError):
+        override = behavior.get("num_ctx")
+    except (AttributeError, TypeError):
         pass
     try:
-        from shared.ollama_context_policy import recommend_ollama_num_ctx
+        from shared.ollama_context_policy import resolve_context_window
 
-        return int(recommend_ollama_num_ctx(model))
+        return int(resolve_context_window(model, override=override)[0])
     except Exception:
         return None
 

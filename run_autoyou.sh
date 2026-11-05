@@ -41,4 +41,6 @@ fi
 # still removes the component during bootstrap.
 # Bootstrap installs the pinned Node pairing client before checking availability;
 # --skip-tunnelmole skips that check, not the installed client's use by /pair.
-exec "$PYTHON_CMD" scripts/bootstrap_autoyou.py --with internet "$@"
+# Voice (speech-to-text, text-to-speech) is installed when it can be; if it
+# fails, the launch continues without it. --without voice skips it.
+exec "$PYTHON_CMD" scripts/bootstrap_autoyou.py --with internet --with-optional voice "$@"
