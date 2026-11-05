@@ -217,6 +217,12 @@ def _extra_routes(app, agent_name):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         return FileResponse(_FRONTEND_DIR / "play.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/snake")
+    async def play_snake(request: Request):
+        if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
+            return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        return FileResponse(_FRONTEND_DIR / "snake.html", headers={"Cache-Control": "no-store"})
+
     @app.get("/api/game/native-input/status")
     async def native_input_status(request: Request):
         if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
