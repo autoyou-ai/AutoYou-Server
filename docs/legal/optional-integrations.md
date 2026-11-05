@@ -1,6 +1,6 @@
 # Optional Integration and Runtime Review
 
-Last reviewed: 2026-09-28
+Last reviewed: 2026-11-04 (Release 81.6.0)
 
 This is the public record for AutoYou Server source and optional runtime
 profiles. It does not declare an external provider approved for every use case,
@@ -99,6 +99,8 @@ implementation boundary.
   have their own [service terms](https://huggingface.co/terms-of-service), and
   every selected model has its own license, model card, and possible use
   restrictions. Review each model before download, bundling, or redistribution.
+- **Page Agent media and embeds (`autoyou_agents/page_agent/`):** direct-first CDN video/reel playback (`referrerpolicy=no-referrer`), computer stream relay fallback, and optional inline third-party/Instagram embed playback operate only on user-directed pages in the owner's browser session. No third-party media is cached, re-hosted, or redistributed by OpenStorey LLC.
+- **Assistant Agent skin packs (`.ayskin`):** custom skin packages validated by `shared/assistant_skin.py` remain independent works of their respective creators and must not infringe third-party trademarks, trade dress, or copyrights.
 
 ## Future binary or container release conditions
 

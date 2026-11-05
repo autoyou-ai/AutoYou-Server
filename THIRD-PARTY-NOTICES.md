@@ -1,6 +1,6 @@
 # AutoYou Third-Party Notices
 
-Last updated: 2026-10-10
+Last updated: 2026-11-04 (Release 81.6.0)
 
 This file is the repository-level notice index for AutoYou. It does not replace the exact license texts that must be included with final release artifacts.
 
@@ -123,3 +123,5 @@ SBOMs retain the versions recorded from those packages until a new release is bu
 - EmotiVoice's inference code includes or is adapted from ESPnet (Apache-2.0), HiFi-GAN (MIT), WeTTS (Apache-2.0), KAN-TTS (MIT), StyleTTS (MIT), `keithito/tacotron` (MIT), NVIDIA Tacotron 2 (BSD-3-Clause), and torch-stft (BSD-3-Clause), and uses PyTorch and Hugging Face Transformers. Their notices are in `vendor/emotivoice/LICENSE` and must accompany the vendored code in every distribution.
 - AmplitudeJS 5.3.2 (`https://github.com/521dimensions/amplitudejs`, MIT, Copyright (c) 2021 521 Dimensions) is vendored as the minified file `autoyou_agents/audio_agent/website/frontend/amplitude.min.js`. It is not covered by the AutoYou license. Its MIT notice is `autoyou_agents/audio_agent/website/frontend/LICENSE-amplitudejs.txt` and must accompany the file in every distribution.
 - Odysseus (https://github.com/odysseus-dev/odysseus) is AGPL-3.0-or-later. AutoYou Server integrates with its authenticated HTTP companion API, while the optional checkout remains external and gitignored at `vendor/odysseus/`. AutoYou distributions do not bundle the Odysseus source. Any combined image, installer, or hosted distribution must complete a separate AGPL corresponding-source and licensing review.
+- Assistant Agent skin packages (`.ayskin` format with local picture support handled by `shared/assistant_skin.py`), portable interactive Assistant worlds (`shared/assistant_world.py`), trained wake-word exchange (`shared/wake_word.py`), streaming large chat file transfers (`shared/chat_file_transfer.py`), and bundled offline HTML5 games (`neon-horizon.aygame` with the `AutoYouGame.quit()` host bridge in `shared/game_sdk.js`) are first-party AutoYou materials under the AutoYou Source-Available Personal-Use License unless a separate license is declared inside an independent `.ayskin` or `.aygame` archive. User-imported skin packs and optional third-party media/social embeds or direct-first CDN media playback (`referrerpolicy=no-referrer` in `autoyou_agents/page_agent/`) remain the responsibility of the operator and are subject to the applicable third-party platform terms.
+- Security dependency updates in Release 81.6.0 pin `joserfc` 1.7.6 (BSD-3-Clause), `pyasn1` 0.6.5 (BSD-2-Clause), `follow-redirects` 1.16.2 (MIT), and `datasets` >=5.1.0,<6 (Apache-2.0).

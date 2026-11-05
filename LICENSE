@@ -1,219 +1,333 @@
 # AutoYou Source-Available Personal-Use License
 
-Version 1.5 (October 3, 2026)
+Version 1.5 (November 4, 2026 — Release 81.6.0)
 
 Copyright (c) 2026 OpenStorey LLC and the respective contributors.
 
-This License is offered by OpenStorey LLC, a California limited liability
-company ("OpenStorey"), for the Licensed Materials. It is a source-available
-license, not an OSI-approved open-source license. Exercising its permissions
-is subject to these terms. Rights you have independently under applicable law
-are unaffected.
+This AutoYou Source-Available Personal-Use License ("License") is offered by
+OpenStorey LLC, a California limited liability company ("OpenStorey"), for the
+Licensed Materials. It is a source-available license, not an OSI-approved
+open-source license. Exercising its permissions is subject to these terms.
+Rights you have independently under mandatory applicable law are unaffected.
 
 ## 1. Scope and definitions
 
-"Licensed Materials" means the AutoYou Server source, documentation, scripts,
-assets, and object-code builds distributed under this License, including
-modifications. Separately licensed components and independent works are
-excluded to the extent described in section 5.
+"Licensed Materials" means the AutoYou source code, AutoYou Server, AutoYou
+Lite, client applications, built-in agents, bundled first-party `.ayskin`
+assistant skins and `.aygame` HTML5 packages, documentation, scripts, assets,
+and object-code builds distributed by OpenStorey under this License, including
+modifications to those materials. Separately licensed third-party components
+and independent works are excluded to the extent described in section 5.
 
 For original AutoYou materials included in this distribution, OpenStorey also
-offers this version as an alternative to earlier AutoYou license versions
+offers this Version 1.5 as an alternative to earlier AutoYou license versions
 identified in file metadata. This does not relicense third-party materials or
 change the terms of copies previously distributed under another version.
 
-"Individual Use" means use by a natural person, under that person's own
-control, for their own activities and productivity on equipment they own or
-are authorized to use. An activity does not cease to be Individual Use solely
-because it is performed in a professional setting or produces income. It
-includes incidental assistance to another person, without charge or for total
-compensation no greater than the applicable local statutory minimum hourly
-wage for the time spent providing that assistance. This limit defines a
-license permission; it does not determine employment status or alter wage
-law. Where no such minimum applies, the exception covers assistance without
-charge. Individual Use excludes Institutional Use and Commercial Exploitation.
+"Individual Use" (also referred to in AutoYou documentation and packaging as
+"Personal Use") means use by a natural person, under that person's own control,
+for their own personal, household, educational, accessibility, research, or
+individual productivity activities on equipment they own or are authorized to
+use. An activity does not cease to be Individual Use solely because it is
+performed in a professional setting or produces personal income. It includes
+incidental assistance to another person, without charge or for total
+compensation no greater than the applicable local statutory minimum hourly wage
+for the time spent providing that assistance. This limit defines a license
+permission; it does not determine employment status or alter wage law. Where no
+such minimum applies, the exception covers assistance without charge.
+Individual Use excludes Institutional Use and Commercial Exploitation.
 
-"Institutional Use" means deployment, provision, or administration of the
-Licensed Materials by or on behalf of a legal entity, institution, or organized
-operation for use by its personnel, customers, members, or other beneficiaries,
-or as part of its organized delivery of services. A natural person's
-independently controlled use does not become Institutional Use merely because
-an organization benefits from that person's work.
+"Institutional Use" (also referred to as "Enterprise Use") means deployment,
+provision, or administration of the Licensed Materials by or on behalf of a
+legal entity, employer, company, partnership, public body, educational or
+nonprofit institution as an organization, or other organized operation for use
+by its personnel, customers, members, or other beneficiaries, or as part of its
+organized delivery of products or services. A natural person's independently
+controlled use does not become Institutional Use merely because an organization
+benefits from that person's work.
 
-"Commercial Exploitation" means selling, renting, sublicensing for a fee,
-commercially distributing, or supplying paid access to the Licensed Materials
-or a product or service incorporating them; operating them as a hosted or
-managed service for others; or charging for their deployment or bundled
-support. Incidental assistance expressly permitted above is excluded. Income
-from independent works is governed by section 5.
+"Commercial Exploitation" means selling, renting, leasing, sublicensing for a
+fee, commercially distributing, white-labeling, or supplying paid access to the
+Licensed Materials or a product or service incorporating them; operating them
+as a hosted, managed, or customer-support service for others; or charging for
+their deployment or bundled support. Incidental assistance expressly permitted
+above is excluded. Income from independent works is governed by section 5.
 
-"Official Build" means a release expressly designated and distributed by
-OpenStorey or its authorized release operator as an official AutoYou release.
-A source build, fork, or modified package does not become official by using
-the same version number or retaining copyright notices.
+"Official Build" means a release artifact expressly designated, signed, and
+distributed by OpenStorey or its authorized release operator as an official
+AutoYou release. A source build, fork, or modified package does not become an
+Official Build by using the same version number or retaining copyright notices.
+
+"AutoYou Owner Board" refers to an internal governance designation used by
+OpenStorey. It is not a separate legal entity, contracting party, licensor,
+guarantor, fiduciary, or joint operator. OpenStorey LLC is the sole licensor
+for this License.
 
 ## 2. Permission to use, modify, build, and share
 
 Subject to this License, OpenStorey grants you a worldwide, non-exclusive,
 royalty-free copyright license to copy, inspect, run, modify, and compile the
-Licensed Materials for Individual Use, and to distribute unmodified or
-modified copies in source or object form without charge under section 3.
-These permissions include changing bootstrap scripts and making local builds.
-They do not require an AutoYou account or official release approval.
+Licensed Materials for Individual Use (Personal Use), and to distribute
+unmodified or modified copies in source or object form without charge under
+section 3. These permissions include changing bootstrap scripts and making
+local builds for Individual Use. They do not require an AutoYou account or
+official release approval.
 
 Institutional Use and Commercial Exploitation require a separate written
-Enterprise agreement with OpenStorey before that use begins. A donation,
-subscription, contribution, download, acknowledgement, or build authorization
-does not itself grant Enterprise rights. Contact
-https://www.autoyou.me/enterprise/ for an agreement.
+Enterprise agreement signed by OpenStorey before that use begins. A donation,
+subscription, contribution, download, runtime checkbox, build token, or build
+authorization does not itself grant Enterprise rights. Contact
+https://www.autoyou.me/enterprise/ for an Enterprise agreement.
 
 ## 3. Conditions for redistribution
 
-For every copy you distribute:
+For every copy or modified build you distribute for Individual Use:
 
-1. Include this License and preserve applicable copyright and attribution
-   notices. Supply all notices, license texts, corresponding source, source
-   offers, and other materials required by the included components' licenses.
-2. Identify modifications and identify your source or compiled distribution
-   as unofficial. Provide version and change information. Do not imply
-   approval, signing, certification, support, or warranty by OpenStorey or
-   the original contributors.
-3. Distribute without a fee, mandatory purchase, or other consideration for
-   access to the Licensed Materials. Permitted compensation for incidental
-   assistance does not authorize a separate software charge.
-4. Do not include secrets, credentials, signing keys, personal information,
-   or confidential material you lack authority to distribute.
+1. Include this License and preserve applicable copyright, attribution, safety,
+   and third-party notices. Supply all notices, license texts, corresponding
+   source, source offers, and other materials required by the included
+   components' licenses.
+2. Identify modifications and clearly label your source or compiled
+   distribution as unofficial. Provide version and change information. Do not
+   state or imply approval, signing, certification, endorsement, support, or
+   warranty by OpenStorey, the AutoYou Owner Board, or the original
+   contributors.
+3. Distribute without a fee, mandatory purchase, paywall, or other commercial
+   consideration for access to the Licensed Materials. Permitted compensation
+   for incidental assistance does not authorize a software charge.
+4. Do not include signing keys, private service configurations, credentials,
+   personal data, or confidential material you lack authority to distribute.
 5. Inform recipients that the Licensed Materials remain subject to this
    License. Each recipient receives the applicable permissions directly from
-   the relevant licensor. Sharing does not grant Enterprise rights or permit
-   relicensing the Licensed Materials.
+   OpenStorey. Sharing does not grant Enterprise rights or permit relicensing
+   the Licensed Materials.
 
-You may distribute object code without publishing your modifications unless
-an included component's license requires otherwise. Providing source only on
-request satisfies an obligation only where that component's license permits
-that method and you meet its conditions.
+You may distribute object code without publishing your modifications unless an
+included third-party component's license requires otherwise. Providing source
+only on request satisfies an obligation only where that component's license
+permits that method and you meet its conditions.
 
-## 4. Reserved rights and restrictions
+## 4. Reserved rights, patent defense, and restrictions
 
-Except as expressly granted here or in a separate written agreement, you must
-not engage in Institutional Use or Commercial Exploitation of the Licensed
-Materials, remove required notices, or misrepresent a distribution as official.
-No AutoYou or OpenStorey trademark, logo, domain, signing identity, service
-entitlement, or endorsement is licensed. Accurate descriptive references and
-required notices are permitted; see docs/legal/trademark-policy.md.
+Except as expressly granted here or in a separate written agreement signed by
+OpenStorey, you must not engage in Institutional Use or Commercial Exploitation
+of the Licensed Materials, remove required notices, bypass entitlement or
+release-authorization controls for commercial or hosted gain, or misrepresent a
+distribution as an Official Build. No AutoYou or OpenStorey trademark, trade
+dress, logo, domain, signing identity, service entitlement, or endorsement is
+licensed. Accurate descriptive references and required notices are permitted;
+see docs/legal/trademark-policy.md.
 
-You must not use the Licensed Materials as training, fine-tuning, or
-reinforcement data for a machine learning model, or assemble them into a
-dataset for those purposes, without OpenStorey's written permission. Using an
-AI assistant to read, explain, modify, or help contribute within this License
-is allowed. Separately licensed components retain their own permissions.
+You must not use the Licensed Materials, in whole or in part, as training,
+fine-tuning, distillation, or reinforcement data for a machine learning model,
+large language model, or code-generation system, or assemble them into a
+dataset for those purposes, without OpenStorey's prior written permission.
+Using an AI assistant to read, explain, modify, or help contribute within this
+License for Individual Use is allowed. Separately licensed components retain
+their own permissions.
 
-You may configure or modify your installation, including for local-only
-operation. This does not authorize access to another person's systems,
+You may configure or modify your installation for local-only operation within
+Individual Use. This does not authorize access to another person's systems,
 accounts, paid services, signing credentials, or other resources without
 permission, or circumvention of controls protecting those resources.
-No patent license is granted here; separate patent grants remain effective.
+
+No patent license is granted by implication, exhaustion, or estoppel under this
+License; any separate express patent grants from third-party components remain
+effective for those components. **Defensive Patent Termination:** If you or any
+of your affiliates initiate, file, or participate in any patent litigation,
+administrative invalidity challenge, or formal patent assertion (including a
+cross-claim, counterclaim, or international trade proceeding in any
+jurisdiction) alleging that the Licensed Materials, an Official Build, or the
+authorized use thereof infringes any patent, then all permissions and grants
+to you and your affiliates under this License terminate automatically and
+immediately as of the date such claim or proceeding is initiated.
 
 ## 5. Independent works and third-party materials
 
 You retain ownership of material you independently create. Original, separable
-agents, extensions, integrations, and other works that do not copy or adapt the
-Licensed Materials may be used, published, or licensed under terms you choose,
-including MIT or Apache-2.0. This License does not restrict their independent
-commercial use. Interoperability alone does not bring independent code under
-this License.
+agents, extensions, integrations, custom `.ayskin` assistant skin packages,
+independent `.aygame` HTML5 games, and other works that do not copy or adapt
+the Licensed Materials may be used, published, or licensed under terms you
+choose, including MIT or Apache-2.0. This License does not restrict their
+independent commercial use. Interoperability through documented APIs, host
+bridges (such as `AutoYouGame`), or skin-pack manifests alone does not bring
+independent code or artwork under this License.
 
-Copying or modifying existing AutoYou code does not make it independent. The
-Licensed Materials and modifications to them remain subject to this License,
-including when combined with independently licensed code. A permissive license
-on a new component does not relicense the combined AutoYou distribution.
-Submissions for inclusion are also subject to CONTRIBUTING.md and the
-applicable contributor agreement.
+Copying, adapting, or modifying existing AutoYou code or assets does not make
+the result independent. The Licensed Materials and modifications to them remain
+subject to this License, including when combined with independently licensed
+code. A permissive license on a new component does not relicense the combined
+AutoYou distribution. Submissions for inclusion in OpenStorey repositories are
+subject to CONTRIBUTING.md and the applicable contributor agreement.
 
-Third-party software, models, data, services, and separately licensed files
-retain their own terms. This License neither narrows their permissions nor
-removes their obligations. Assess attribution, source, relinking, and
-network-source obligations for the actual components and distribution method.
-A NOTICE file or SBOM alone does not satisfy every such obligation.
+Third-party software, models, SDKs, fonts, data, services, and separately
+licensed files retain their own terms. This License neither narrows their
+permissions nor removes their obligations. Assess attribution, source,
+relinking, and network-source obligations for the actual components and
+distribution method. A NOTICE file or SBOM alone does not satisfy every such
+obligation.
 
 ## 6. User Responsibility and Lawful Operation
 
-You are responsible for your deployment, modifications, access controls,
-credentials, backups, dependencies, connected services, and authorized actions.
-Obtain required rights, consents, and permissions, and comply with applicable
-law and provider terms. Do not use the Licensed Materials for unauthorized
-access, unlawful surveillance, malware, deception, harassment, infringement,
-or other unlawful conduct.
+AutoYou is user-directed, self-operated software. You are solely responsible
+for your deployment, modifications, access controls, device/biometric locks,
+credentials, backups, dependencies, prompts, local or cloud AI models (and any
+automatic fallback models), automated browser or desktop actions, connected
+messaging or cloud services, user-imported `.ayskin` skin packs, HTML5 games,
+media streams, optional third-party social/media embeds, and authorized
+actions.
 
-Review generated outputs and automated actions before relying on them. The
-Licensed Materials are not an emergency service or a substitute for qualified
-professional judgment. Security controls and audits do not guarantee freedom
-from loss, unauthorized access, or dependency compromise.
+You must obtain all required rights, notices, consents, and permissions, and
+comply with applicable law and third-party platform or provider terms in every
+jurisdiction where you operate or reach recipients. Do not use the Licensed
+Materials for unauthorized system access, unlawful surveillance, non-consensual
+recording or wiretapping, malware, spam, bulk unsolicited messaging,
+circumvention of technological protection measures, intellectual-property or
+likeness infringement (including importing third-party character art or audio
+in `.ayskin` packages without permission), deceptive AI impersonation
+(including removing mandatory `(AI)` disclosures on automated replies),
+harassment, or other unlawful conduct.
 
-This License grants no access to hosted accounts, relays, provider APIs,
-app-store applications, support, or future updates. Separately supplied
-applications and services have their own terms and privacy notices. Those
-terms do not change this License for a standalone source installation.
-Providers may charge fees, change services, or restrict access.
+When you use Page Agent media playback, direct-first CDN media fetches, or
+optional inline third-party embeds (such as Instagram or other external media
+frames), your browser or device communicates directly with those third-party
+hosts under their terms and privacy policies unless routed through your own
+server relay. You are responsible for ensuring your access and playback comply
+with the applicable content provider's terms.
+
+Review generated outputs, transcriptions, translations, calculations, and
+automated actions before relying on them. The Licensed Materials are not an
+emergency service, medical device, legal or financial advisory service, or a
+substitute for qualified human judgment. Local biometric or device-credential
+locks (such as Apple `LocalAuthentication` Face ID / Touch ID or Android
+`BiometricPrompt`), loopback OTP autofill, and encryption controls reduce risk
+but do not guarantee freedom from data loss, unauthorized access, or dependency
+compromise.
+
+This License grants no right to hosted AutoYou accounts, Cloud Pair, relays,
+STUN/TURN/ICE servers, push notification gateways, reverse proxies, provider
+APIs, app-store distributions, support, or future updates. Separately supplied
+applications and hosted services have their own terms and privacy notices;
+those terms do not alter this License for a standalone source installation.
 
 ## 7. Disclaimer of warranties
 
 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED MATERIALS ARE
-PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTIES
-OF ANY KIND, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE, TITLE, NONINFRINGEMENT, SECURITY, ACCURACY,
-AVAILABILITY, OR COMPATIBILITY. NO UNAUTHORIZED STATEMENT CREATES A WARRANTY
-ON BEHALF OF OPENSTOREY OR A CONTRIBUTOR.
+PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTIES OF
+ANY KIND, EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING ANY WARRANTIES
+OF MERCHANTABILITY, SATISFACTORY QUALITY, FITNESS FOR A PARTICULAR PURPOSE,
+TITLE, NONINFRINGEMENT, SECURITY, ACCURACY, AVAILABILITY, QUIET ENJOYMENT, OR
+COMPATIBILITY WITH ANY THIRD-PARTY PLATFORM OR SERVICE. NO ORAL OR WRITTEN
+STATEMENT CREATES A WARRANTY ON BEHALF OF OPENSTOREY, THE AUTOYOU OWNER BOARD,
+OR ANY CONTRIBUTOR.
 
-No promise is made that operation will be uninterrupted, errors corrected,
-data preserved, integrations maintained, or any particular use compliant with
-legal, professional, or platform requirements.
+No promise is made that operation will be uninterrupted, errors corrected, data
+preserved, third-party integrations maintained, or any particular configuration
+suitable for regulated, high-risk, or platform-restricted environments.
 
-## 8. Limitation of liability
+## 8. Limitation of liability and indemnification
 
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, OPENSTOREY AND ITS
-CONTRIBUTORS, LICENSORS, OFFICERS, DIRECTORS, EMPLOYEES, CONTRACTORS, AND
-AUTHORIZED GOVERNANCE REPRESENTATIVES SHALL NOT BE LIABLE UNDER ANY THEORY
-FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE
-DAMAGES, OR LOSS OF PROFITS, REVENUE, DATA, GOODWILL, OR BUSINESS OPPORTUNITY
-ARISING OUT OF THIS LICENSE OR THE LICENSED MATERIALS, EVEN IF ADVISED OF
-THEIR POSSIBILITY.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, OPENSTOREY, THE AUTOYOU
+OWNER BOARD, CONTRIBUTORS, LICENSORS, OFFICERS, DIRECTORS, MEMBERS, EMPLOYEES,
+CONTRACTORS, AND AUTHORIZED GOVERNANCE REPRESENTATIVES SHALL NOT BE LIABLE
+UNDER ANY THEORY OF CONTRACT, TORT, NEGLIGENCE, STRICT LIABILITY, OR OTHERWISE
+FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE
+DAMAGES, OR FOR LOSS OF PROFITS, REVENUE, DATA, CREDENTIALS, GOODWILL, OR
+BUSINESS OPPORTUNITY, OR FOR THIRD-PARTY ACCOUNT SUSPENSION OR PLATFORM ACTION,
+ARISING OUT OF OR RELATING TO THIS LICENSE OR THE LICENSED MATERIALS, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
-TO THE SAME EXTENT, THOSE PARTIES' AGGREGATE LIABILITY ARISING OUT OF THIS
-LICENSE OR THE LICENSED MATERIALS SHALL NOT EXCEED THE GREATER OF US $100 OR
-THE AMOUNTS YOU PAID OPENSTOREY SPECIFICALLY FOR THE LICENSED MATERIALS DURING
-THE THREE MONTHS BEFORE THE EVENT GIVING RISE TO THE CLAIM.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE AGGREGATE LIABILITY OF
+OPENSTOREY AND THE PERSONS IDENTIFIED ABOVE ARISING OUT OF OR RELATING TO THIS
+LICENSE OR THE LICENSED MATERIALS SHALL NOT EXCEED THE GREATER OF US $100
+(ONE HUNDRED U.S. DOLLARS) OR THE AMOUNTS YOU PAID DIRECTLY TO OPENSTOREY
+SPECIFICALLY FOR THE LICENSED MATERIALS DURING THE THREE (3) MONTHS BEFORE THE
+EVENT GIVING RISE TO THE CLAIM.
 
-These provisions do not exclude or limit fraud, willful injury, gross
-negligence, violation of law, death or personal injury, or any other liability
-to the extent applicable law prohibits its exclusion or limitation. Mandatory
-consumer rights and remedies remain unaffected.
+**Indemnification and Hold Harmless:** To the maximum extent permitted by
+applicable law, you agree to defend, indemnify, and hold harmless OpenStorey,
+the AutoYou Owner Board, contributors, officers, directors, employees,
+contractors, and authorized governance representatives from and against any
+third-party claims, demands, actions, regulatory penalties, damages, losses,
+liabilities, and reasonable attorneys' fees arising out of or relating to:
+(a) your deployment, operation, prompts, automated actions, connected accounts,
+user-supplied `.ayskin` skin packs, games, or third-party media embeds;
+(b) your breach of this License or violation of applicable law or third-party
+rights; or (c) any unofficial build, modification, or redistribution you make
+or supply to others.
+
+These provisions do not exclude or limit liability for fraud, willful
+misconduct, gross negligence, death or personal injury caused by negligence, or
+any other liability to the extent applicable law prohibits its exclusion or
+limitation. Mandatory statutory consumer rights and remedies remain unaffected.
 
 The protections above extend to OpenStorey, the AutoYou Owner Board, contributors,
-and the other persons identified above to the extent permitted by law.
-OpenStorey is the licensor; this License does not make a board or an individual
-a licensor or create a personal guarantee. No person is exempt from
-responsibility that applicable law imposes on that person.
+and the other persons identified above to the extent permitted by law, each of
+whom is an intended third-party beneficiary of Sections 6, 7, 8, and 9.
+OpenStorey LLC is the sole licensor; this License does not make the AutoYou
+Owner Board or any individual board member or contributor a licensor, contracting
+party, or personal guarantor. No person is exempt from responsibility that
+mandatory applicable law imposes directly on that person.
 
-## 9. Termination and general provisions
+## 9. Termination and multi-regional general provisions
 
-Your permissions terminate upon material breach. Cease the infringing use and
-distribution. If the breach can be cured and you cure it within 30 days of
-discovering it or receiving notice, whichever is earlier, your permissions are
+Your permissions under this License terminate automatically upon material
+breach. Upon termination, you must cease the unauthorized use and distribution.
+If a non-patent breach can be cured and you cure it within 30 days of
+discovering it or receiving notice (whichever is earlier), your permissions are
 reinstated unless OpenStorey previously reinstated them for the same type of
-breach. Reinstatement does not resolve claims for past conduct. Compliant
-recipients retain their independent permissions. Provisions concerning
-ownership, accrued obligations, third-party rights, disclaimers, liability,
-and dispute law survive termination.
+breach. Reinstatement does not waive remedies for past conduct. Compliant
+recipients retain their independent permissions. Sections 1, 4, 5, 6, 7, 8, and
+9 survive termination.
 
-California law governs, excluding conflict-of-laws rules, subject to mandatory
-law and consumer protections. This License does not impose arbitration, waive
-a statutory remedy, or override a signed agreement expressly governing the
-relevant use. An unenforceable provision will be limited only as necessary;
-the remaining provisions continue to apply.
+**Governing Law and Regional Statutory Savings (NORAM, EMEA, LATAM, APAC):**
+Except to the extent pre-empted by mandatory local law, this License is
+governed by the laws of the State of California and applicable federal laws of
+the United States, excluding conflict-of-laws rules and the UN Convention on
+Contracts for the International Sale of Goods (CISG).
+
+- **NORAM (United States and Canada):** Nothing in this License waives
+  non-waivable statutory consumer protections under applicable U.S. federal or
+  state law or Canadian provincial consumer-protection statutes (including,
+  where applicable to consumers, the Quebec Consumer Protection Act).
+- **EMEA (European Union, EEA, United Kingdom, Switzerland, Middle East, and
+  Africa):** Nothing in this License restricts mandatory decompilation or
+  interoperability rights expressly granted by applicable law (such as Articles
+  5 and 6 of EU Directive 2009/24/EC or equivalent UK law), nor does it limit
+  mandatory statutory consumer rights under EU Directive 2019/770, the UK
+  Consumer Rights Act 2015, or the Swiss Code of Obligations. Where you deploy
+  the Licensed Materials Yourself, you act as the independent data controller
+  and deployer under the EU/UK GDPR, Swiss FADP, and the EU Artificial
+  Intelligence Act (Regulation (EU) 2024/1689); OpenStorey does not operate or
+  control your self-hosted instances.
+- **LATAM (Latin America, including Brazil, Mexico, Colombia, Argentina, and
+  Chile):** Nothing in this License excludes mandatory statutory rights of
+  consumers under the Brazilian Consumer Defense Code (Código de Defesa do
+  Consumidor — Law No. 8.078/1990), Mexico's Federal Consumer Protection Law
+  (LFPC), or equivalent non-waivable Latin American consumer statutes. For
+  self-hosted deployments, you are the independent data processing agent under
+  Brazil's LGPD (Law No. 13.709/2018) and applicable regional data laws.
+- **APAC (Asia-Pacific, including Australia, New Zealand, Japan, South Korea,
+  Singapore, and India):** Nothing in this License excludes, restricts, or
+  modifies any mandatory consumer guarantee under the Australian Consumer Law
+  (Schedule 2 of the Competition and Consumer Act 2010), the New Zealand
+  Consumer Guarantees Act 1993, the Consumer Contract Act of Japan, or
+  equivalent non-waivable APAC statutes; where liability under such a statutory
+  guarantee may lawfully be limited to resupply or repair of the software, it
+  is so limited. For self-hosted deployments, you act as the independent Data
+  Fiduciary / data controller under India's Digital Personal Data Protection
+  Act 2023 (DPDP Act), Japan's APPI, South Korea's PIPA, and Singapore's PDPA.
+
+This License does not itself impose binding arbitration on standalone source
+use, waive a mandatory statutory remedy, or override a signed written agreement
+expressly governing the relevant use. If any provision is held invalid or
+unenforceable in a jurisdiction, it shall be modified or limited to the minimum
+extent necessary to make it enforceable while preserving the allocation of risk
+protecting OpenStorey, the AutoYou Owner Board, and contributors, and the
+remaining provisions shall continue in full force and effect.
 
 The license accompanying a release governs that release. New versions do not
-retroactively change permissions already granted for earlier copies. Summaries,
-FAQs, roadmap statements, and funding milestones do not amend this License.
-A future release under another license must expressly identify that license
-and the materials it covers.
+retroactively revoke permissions already granted for earlier copies. Summaries,
+FAQs, roadmap statements, and funding milestones do not amend this License. A
+future release under another license must expressly identify that license and
+the materials it covers.

@@ -273,6 +273,8 @@ PUBLIC_DOC_EXACT_PATHS = {
     "docs/index.md",
     "docs/releases/81.0.1.md",
     "docs/releases/81.0.2.md",
+    "docs/releases/81.4.0.md",
+    "docs/releases/81.6.0.md",
     "docs/legal/adk-runtime-license-review.md",
     "docs/legal/release-artifacts.json",
     "docs/legal/release-model.md",
