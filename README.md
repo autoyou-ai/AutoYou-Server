@@ -778,12 +778,13 @@ Apache-2.0. Changes to existing AutoYou code keep its applicable license.
 AutoYou Server is source-available under the [server license](LICENSE). It is not currently an
 OSI-approved open-source project, and the definitions in `LICENSE` control.
 
-| Material or use                                | Terms                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------- |
-| Individual use, local builds, and free sharing | Permitted under the server license and its conditions               |
-| Modifications to AutoYou code                  | Retain the applicable AutoYou license                               |
-| Independent original, separable code           | Your chosen license, including MIT or Apache-2.0                    |
-| Institutional use or commercial exploitation   | Separate [Enterprise agreement](https://www.autoyou.me/enterprise/) |
+| Material or use                                          | Terms                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------- |
+| Individual use, local builds, and free sharing           | Permitted under the server license and its conditions               |
+| Educational use, student projects, hackathons, and demos | Permitted under the server license and [PROVENANCE.md](PROVENANCE.md) |
+| Modifications to AutoYou code                            | Retain the applicable AutoYou license and provenance notices        |
+| Independent original, separable code                     | Your chosen license, including MIT or Apache-2.0                    |
+| Institutional use or commercial exploitation             | Separate [Enterprise agreement](https://www.autoyou.me/enterprise/) |
 
 Preserve notices, identify unofficial builds, and meet the obligations of included components. See
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and the [trademark policy](docs/legal/trademark-policy.md).

@@ -35,7 +35,9 @@ compensation no greater than the applicable local statutory minimum hourly wage
 for the time spent providing that assistance. This limit defines a license
 permission; it does not determine employment status or alter wage law. Where no
 such minimum applies, the exception covers assistance without charge.
-Individual Use excludes Institutional Use and Commercial Exploitation.
+Individual Use excludes Institutional Use (except as expressly permitted under
+the educational and demonstration grant in section 2) and Commercial
+Exploitation.
 
 "Institutional Use" (also referred to as "Enterprise Use") means deployment,
 provision, or administration of the Licensed Materials by or on behalf of a
@@ -73,11 +75,28 @@ section 3. These permissions include changing bootstrap scripts and making
 local builds for Individual Use. They do not require an AutoYou account or
 official release approval.
 
-Institutional Use and Commercial Exploitation require a separate written
+Institutional Use and Commercial Exploitation (outside the educational and
+demonstration activities expressly permitted below) require a separate written
 Enterprise agreement signed by OpenStorey before that use begins. A donation,
 subscription, contribution, download, runtime checkbox, build token, or build
 authorization does not itself grant Enterprise rights. Contact
 https://www.autoyou.me/enterprise/ for an Enterprise agreement.
+
+Notwithstanding the restrictions on Institutional Use, OpenStorey grants
+individuals, students, educational institutions, and institutions conducting
+demonstrations permission to copy, run, modify, compile, rebuild, and
+demonstrate the Licensed Materials for institutional or student demos,
+students' own projects, teaching, learning, and hackathons. Institutions may
+administer installations and provide participants access for these activities,
+including temporary hosted access for a demo or event. Participants may share
+original or modified source and rebuilt binaries without charge, subject to
+section 3. Ordinary tuition, general event admission, sponsorship, and
+hackathon prizes do not by themselves disqualify these activities, provided
+they are not a disguised charge for access to the Licensed Materials. This
+exception does not authorize resale, paid access to AutoYou as a product or
+service, white-label commercialization, ongoing hosted or managed services for
+others outside these activities, or an institution's general operational
+deployment.
 
 ## 3. Conditions for redistribution
 

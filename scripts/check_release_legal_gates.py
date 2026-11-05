@@ -154,6 +154,8 @@ LEGACY_LEGAL_WORDING = (
     "Unauthorized copying, modification, or distribution of this file is strictly prohibited",
     "open-source server components",
     "--accept-" + "legal",
+    "Draft for legal and " + "rights-holder approval",
+    "has not been " + "approved by counsel",
 )
 LEGAL_WORDING_SKIP_PARTS = {
     ".git",
@@ -177,6 +179,11 @@ RUNTIME_ACCEPTANCE_MARKERS = (('Root license',
   ('AutoYou Source-Available Personal-Use License',
    'User Responsibility and Lawful Operation',
    'OpenStorey, the AutoYou Owner Board, contributors')),
+ ('Provenance and commercial compliance policy',
+  'PROVENANCE.md',
+  ('Effective policy — governed by [LICENSE](LICENSE)',
+   'Blocked without a signed Enterprise Agreement (Commercial Exploitation and Institutional Use)',
+   'PROVENANCE_MANIFEST.json')),
  ('Trademark policy',
   'docs/legal/trademark-policy.md',
   ('Forked from AutoYou',
@@ -380,6 +387,7 @@ def _should_scan_legal_wording(path: Path) -> bool:
 def check_legacy_legal_wording(report: GateReport) -> None:
     roots = [
         REPO_ROOT / "LICENSE",
+        REPO_ROOT / "PROVENANCE.md",
         REPO_ROOT / "README.md",
         REPO_ROOT / "server.py",
         REPO_ROOT / "run_autoyou.bat",
