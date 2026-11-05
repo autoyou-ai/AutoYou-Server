@@ -739,6 +739,12 @@ def build_model(
     return model, report
 
 
+def corroborated_distance(distances: Sequence[float]) -> float:
+    """One stray enrollment recording cannot wake a multi-recording model."""
+    ordered = sorted(distances)
+    return ordered[min(1, len(ordered) - 1)] if ordered else math.inf
+
+
 def evaluate_clip(model: WakeWordModel, pcm: bytes | np.ndarray) -> Dict[str, Any]:
     """Best match of the model anywhere in a clip, for "test my wake word"."""
     samples = pcm16_to_float(pcm)
@@ -751,7 +757,7 @@ def evaluate_clip(model: WakeWordModel, pcm: bytes | np.ndarray) -> Dict[str, An
             start_frame = max(0, end_frame - width)
             segment = samples[start_frame * HOP_LENGTH : (end_frame - 1) * HOP_LENGTH + FRAME_LENGTH]
             raw = mfcc(segment, normalize=False)
-            distance = min(match_distances([template.features for template in model.templates], raw))
+            distance = corroborated_distance(match_distances([template.features for template in model.templates], raw))
             if distance < best:
                 best = distance
                 best_at = end_frame * HOP_LENGTH / SAMPLE_RATE
@@ -825,10 +831,7 @@ class StreamingWakeWordDetector:
             raw,
             abandon_above=self.model.distance_threshold,
         )
-        best = min(distances)
-        best_id: Optional[str] = None
-        if math.isfinite(best):
-            best_id = self.model.templates[distances.index(best)].id
+        best = corroborated_distance(distances)
         if math.isfinite(best) and best <= self.model.distance_threshold:
             self._last_hit_at = self._clock
             pre_roll = float_to_pcm16(self._buffer)
@@ -836,7 +839,7 @@ class StreamingWakeWordDetector:
             return WakeDetection(
                 score=self.model.score(best),
                 distance=best,
-                template_id=best_id,
+                template_id=self.model.templates[distances.index(min(distances))].id,
                 at=self._clock,
                 pre_roll=pre_roll,
             )
@@ -868,6 +871,26 @@ class PhraseMatch:
     remainder: str
     start: int = -1
     end: int = -1
+
+
+_SPOKEN_WORD = re.compile(r"[^\W_]+(?:['’][^\W_]+)*", re.UNICODE)
+
+
+def match_wake_prefix(phrase: str, transcript: str) -> PhraseMatch:
+    """An invocation starts with the complete phrase. Ignore case, spacing and punctuation, never surrounding speech."""
+    def letters(word: str) -> str:
+        return word.casefold().replace("'", "").replace("’", "")
+
+    target = "".join(letters(word) for word in _SPOKEN_WORD.findall(phrase))
+    heard = ""
+    for count, word in enumerate(_SPOKEN_WORD.finditer(transcript), 1):
+        heard += letters(word.group())
+        if heard == target:
+            command = transcript[word.end():].lstrip(" \t\r\n,.;:!?…—–，。！？、").strip()
+            return PhraseMatch(True, 1.0, command if _SPOKEN_WORD.search(command) else "", 0, count)
+        if not target.startswith(heard):
+            break
+    return PhraseMatch(False, 0.0, transcript.strip())
 
 
 def match_phrase(phrase: str, transcript: str, *, min_ratio: float = 0.78) -> PhraseMatch:

@@ -158,6 +158,7 @@ def test_no_wake_counts_in_the_home_while_an_answer_is_spoken(clock):
     kiosk = page("web:kiosk", "lan:192.168.1.40")
     phone = device("phone-session", "webrtc:synthetic-phone")
     arbiter.speaking(kiosk, 4.0)
+    assert arbiter.contend(kiosk, score=1.0).reason == "speaking"
     refused = arbiter.contend(phone, score=0.9)
     assert not refused.accepted and refused.reason == "speaking"
     # Someone away from home is not held up by the robot speaking here.
@@ -167,6 +168,8 @@ def test_no_wake_counts_in_the_home_while_an_answer_is_spoken(clock):
     arbiter.speaking(kiosk, 0)
     assert arbiter.contend(phone, score=0.9).reason == "speaking"
     clock["t"] += am.SPEAKING_TAIL_SECONDS + 0.01
+    assert arbiter.snapshot()["speaking"] == []
+    assert arbiter.contend(kiosk, score=1.0, spoken_at=clock["t"]-am.SPEAKING_TAIL_SECONDS).reason == "speaking"
     assert arbiter.contend(phone, score=0.9).accepted
 
 
@@ -258,7 +261,7 @@ def test_a_device_away_from_home_answers_for_itself(clock):
 
 
 def test_a_streamed_wake_is_handed_back_when_a_page_heard_it_better(clock):
-    am.save_settings({"enabled": True, "wake_phrase": "Jarvis"})
+    am.save_settings({"enabled": True, "wake_phrase": "Jarvis", "confirm": "voice"})
     recorder = Recorder()
     describe = lambda sid: am.WakeListener(key=sid, device="webrtc:synthetic-" + sid)  # noqa: E731
     hub = make_hub(recorder, describe)
@@ -299,7 +302,7 @@ def test_an_announced_phone_wake_is_refused_after_it_was_handed_back(clock):
 
 
 def test_a_refused_device_is_told_why(clock):
-    am.save_settings({"enabled": True, "wake_phrase": "Jarvis"})
+    am.save_settings({"enabled": True, "wake_phrase": "Jarvis", "confirm": "voice"})
     recorder = Recorder()
     describe = lambda sid: am.WakeListener(key=sid, device="webrtc:synthetic-phone", in_call=True)  # noqa: E731
     hub = make_hub(recorder, describe)

@@ -107,6 +107,6 @@ def test_a_call_speaking_its_answer_keeps_the_home_from_waking(webrtc):
     other = am.WakeListener(key="web:kiosk", kind=am.LISTENER_PAGE, device="lan:192.168.1.40")
     refused = webrtc.assistant_mode.wake_arbiter.contend(other, score=0.9)
     assert not refused.accepted and refused.reason == "speaking"
-    # The call itself is not held back by its own voice.
+    # The connected device's microphone can hear the reply too.
     own = webrtc.assistant_mode.wake_arbiter.contend(webrtc.assistant_mode.listener_for("synthetic-call"), score=0.9)
-    assert own.accepted
+    assert not own.accepted and own.reason == "speaking"

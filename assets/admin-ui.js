@@ -5263,7 +5263,8 @@
             if (!levels.length || voiced / levels.length < MIN_SPEECH_RATIO) return null;
             this.evaluations += 1;
             var distances = matchDistances(this.model.templates, mfcc(windowSamples, false));
-            var best = Math.min.apply(null, distances);
+            distances.sort(function (a, b) { return a - b; });
+            var best = distances[Math.min(1, distances.length - 1)];
             if (isFinite(best) && best <= this.model.threshold) {
                 this.lastHit = this.clock;
                 var preRoll = this.buffer.slice(0);
@@ -5297,7 +5298,7 @@
         return {
             enabled: Boolean(status.enabled),
             wake_phrase: status.wake_phrase_configured ? String(status.wake_phrase || "") : "",
-            confirm: status.confirm || "voice",
+            confirm: status.confirm || "both",
             sensitivity: Math.round(Number(status.sensitivity || 0.5) * 100),
             listen_seconds: Number(status.listen_seconds || 8),
             listen_during_safety_recording: Boolean(status.listen_during_safety_recording),
@@ -5335,7 +5336,7 @@
         return Object.assign({
             enabled: Boolean(draft.enabled),
             wake_phrase: String(draft.wake_phrase || "").trim(),
-            confirm: draft.confirm || "voice",
+            confirm: draft.confirm || "both",
             sensitivity: Math.max(0, Math.min(100, Number(draft.sensitivity == null ? 50 : draft.sensitivity))) / 100,
             listen_seconds: Math.max(3, Math.min(30, Number(draft.listen_seconds || 8))),
             listen_during_safety_recording: Boolean(draft.listen_during_safety_recording),
@@ -5864,9 +5865,9 @@
             return '<li class="ayu-assistant-step ' + stateClass + '"><span class="ayu-assistant-step-n" aria-hidden="true">' + (step.done && !step.skipped ? icon("check") : String(index + 1)) + '</span><div class="ayu-assistant-step-body"><strong>' + escapeHtml(step.title) + '</strong><small>' + escapeHtml(step.detail) + '</small>' + assistantStepBody(step, status, draft, editable) + '</div></li>';
         }).join("");
         var choices = [
-            ["voice", "Recorded voice", "Nothing is transcribed until your recorded word matches. Best for most people."],
-            ["both", "Recorded voice + text", "Your word must match, and the transcript must contain it. Fewest false wakes."],
-            ["text", "Typed text only", "No recordings. Short bursts of speech are transcribed on this server and thrown away unless they contain the word. Uses more CPU."]
+            ["both", "Recorded voice + text (recommended)", "Start with your wake phrase. The computer checks both the sound and the words before sending a message."],
+            ["voice", "Recorded voice only", "A sound match starts a command without checking the words. Similar speech can trigger it."],
+            ["text", "Typed text only", "No recordings needed. Speech is transcribed on this computer and discarded unless it starts with the wake phrase."]
         ].map(function (choice) {
             return '<label class="ayu-assistant-choice' + (draft.confirm === choice[0] ? " selected" : "") + '"><input type="radio" name="assistant-confirm" value="' + choice[0] + '" data-assistant-field="confirm"' + (draft.confirm === choice[0] ? " checked" : "") + (editable ? "" : " disabled") + '><span><strong>' + escapeHtml(choice[1]) + '</strong><small>' + escapeHtml(choice[2]) + '</small></span></label>';
         }).join("");

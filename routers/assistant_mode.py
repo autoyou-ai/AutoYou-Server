@@ -313,7 +313,7 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
             result["acoustic"] = await asyncio.to_thread(ww.evaluate_clip, model, pcm or b"")
         if settings["confirm"] in {"text", "both"} or bool((body or {}).get("transcribe")):
             transcript = await asyncio.to_thread(_transcribe, pcm or b"")
-            match = ww.match_phrase(phrase, transcript)
+            match = ww.match_wake_prefix(phrase, transcript)
             result["transcript"] = transcript
             result["phrase_match"] = {"matched": match.matched, "score": round(match.score, 3), "command": match.remainder}
         acoustic_ok = bool((result.get("acoustic") or {}).get("detected"))
@@ -377,9 +377,9 @@ def register_routes(admin_app: FastAPI, auth_app: FastAPI, server: Any) -> Dict[
                 "success": True, "transcript": "", "matched": False, "command": "",
                 "reason": "settings_changed", "wake_accepted": False,
             })
-        match = ww.match_phrase(phrase, transcript)
+        match = ww.match_wake_prefix(phrase, transcript)
         require_phrase = bool((body or {}).get("require_phrase"))
-        command = match.remainder if match.matched else ("" if require_phrase else transcript)
+        command = match.remainder if match.matched else ("" if require_phrase or spotting else transcript)
         accepted = True
         extra: Dict[str, Any] = {}
         if spotting and match.matched:

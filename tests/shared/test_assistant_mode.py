@@ -115,7 +115,7 @@ def test_settings_round_trip_and_phrase_defaults_to_the_server_name(isolated_sto
     assert am.save_settings({"enabled": "off"})["enabled"] is False
     saved = am.save_settings({"enabled": "on", "confirm": "nonsense", "sensitivity": 7, "listen_seconds": 99})
     assert saved["enabled"] is True
-    assert saved["confirm"] == "voice"
+    assert saved["confirm"] == "both"
     assert saved["sensitivity"] == 1.0
     assert saved["listen_seconds"] == 30
     assert am.load_settings()["enabled"] is True
@@ -123,6 +123,17 @@ def test_settings_round_trip_and_phrase_defaults_to_the_server_name(isolated_sto
     am.save_settings({"wake_phrase": "  Hey\tJarvis\n"})
     assert am.effective_phrase(am.load_settings(), "AutoYou-Server") == "Hey Jarvis"
     assert (isolated_store / am.SETTINGS_FILENAME).is_file()
+
+
+def test_legacy_voice_default_upgrades_but_an_explicit_voice_only_choice_persists():
+    am._write_json(am.SETTINGS_FILENAME, {"enabled": False, "confirm": "voice", "wake_phrase": "Hey Orbit"})
+    upgraded = am.load_settings()
+    assert upgraded["confirm"] == "both" and upgraded["wake_phrase"] == "Hey Orbit" and not upgraded["enabled"]
+    am.save_settings({"confirm": "voice"})
+    am.save_settings({"listen_seconds": 5})
+    assert am.load_settings()["confirm"] == "voice"
+    am._write_json(am.SETTINGS_FILENAME, {"confirm": "text"})
+    assert am.load_settings()["confirm"] == "text"
 
 
 def test_samples_are_checked_bounded_and_deletable():
@@ -304,7 +315,7 @@ def test_client_detected_wake_opens_listening_and_times_out_without_speech():
 
 
 def test_only_one_device_answers_a_wake_word_heard_by_two():
-    am.save_settings({"enabled": True, "wake_phrase": "Jarvis"})
+    am.save_settings({"enabled": True, "wake_phrase": "Jarvis", "confirm": "voice"})
     recorder = Recorder()
     hub = make_hub(recorder)
     try:
@@ -405,7 +416,7 @@ def test_devices_get_the_model_only_when_it_is_ready_and_on():
         train_voice_model(rng)
         model = _run_device(hub, "assistant_model_request")[0]["model"]
         assert model["format"] == ww.MODEL_FORMAT and len(model["templates"]) == 3
-        assert model["wake_phrase"] == "Hey AutoYou" and model["confirm"] == "voice"
+        assert model["wake_phrase"] == "Hey AutoYou" and model["confirm"] == "both"
         assert ww.WakeWordModel.from_dict(model).distance_threshold > 0
     finally:
         hub.close()
@@ -449,6 +460,30 @@ def test_an_uploaded_utterance_after_an_on_device_wake_reaches_the_conversation(
         assert recorder.wait_for(lambda r: ("idle", "not_confirmed") in r.states("pi"))
         assert len(recorder.commands) == 1
         assert _run_device(hub, "assistant_utterance", {"audio_base64": "not base64!"})[0]["reason"] == "bad_audio"
+    finally:
+        hub.close()
+
+
+def test_unverified_device_hits_cannot_submit_ambient_conversation(monkeypatch):
+    rng = np.random.default_rng(85)
+    train_voice_model(rng, phrase="Hey Orbit")
+    am.save_settings({"enabled": True, "wake_phrase": "Hey Orbit"})
+    recorder = Recorder(transcripts=["ordinary room conversation", "we discussed Hey Orbit", "Hey Orbits, start", "Hey Orbit, open the map"])
+    hub = make_hub(recorder)
+    clock = {"t": 100.0}
+    monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["t"], time=time.time))
+    pcm = ww.float_to_pcm16(spoken(2))
+    try:
+        hub._dispatch("synthetic-phone", "client_wake", 1.0)
+        assert hub.session_state("synthetic-phone") == "idle"  # no audio proof in this legacy announcement
+        for i in range(4):
+            clock["t"] += 20
+            wake_id = f"synthetic-{i}"
+            hub.reserve_device_wake("synthetic-phone", wake_id, score=0.99)
+            hub.device_utterance("synthetic-phone", pcm, score=0.99, wake_id=wake_id)
+            assert recorder.wait_for(lambda r: r.states("synthetic-phone").count(("idle","not_confirmed")) + len(r.commands) == i+1)
+            assert [c[1] for c in recorder.commands] == (["open the map"] if i==3 else [])
+        assert recorder.states("synthetic-phone").count(("idle","not_confirmed")) == 3
     finally:
         hub.close()
 
@@ -687,7 +722,7 @@ def test_devices_refetch_the_model_when_its_settings_change():
 def test_one_device_answers_even_when_another_uploads_seconds_later(monkeypatch):
     clock = {"now": 100.0}
     monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["now"], time=time.time))
-    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "confirm": "voice"})
     recorder = Recorder(transcripts=["hey autoyou what time is it"] * 4)
     hub = make_hub(recorder)
     try:

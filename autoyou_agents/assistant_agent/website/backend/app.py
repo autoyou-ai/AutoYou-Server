@@ -964,8 +964,8 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
             if await asyncio.to_thread(am.load_settings) != settings:
                 return 200, {"success": True, "transcript": "", "matched": False, "command": "",
                              "reason": "settings_changed", "wake_accepted": False}
-            match = ww.match_phrase(phrase, transcript)
-            command = match.remainder if match.matched else ("" if require_phrase else transcript)
+            match = ww.match_wake_prefix(phrase, transcript)
+            command = match.remainder if match.matched else ("" if require_phrase or spotting else transcript)
             accepted = True
             extra: Dict[str, Any] = {}
             if spotting and match.matched:
