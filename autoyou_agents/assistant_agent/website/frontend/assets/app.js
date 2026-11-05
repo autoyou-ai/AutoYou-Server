@@ -1023,6 +1023,13 @@
     S.breathSpeed = 1.6; S.breathAmplitude = 2.2; S.gazeSensitivity = 1;
     S.activeSkin = skin;
     applyWorld(skin.world);
+    if (skin.world && (skin.world.robot_glow || skin.world.robot_shell)) {
+      var palette = Object.assign({}, skin.palette);
+      var glow = skin.world.robot_glow, shell = skin.world.robot_shell;
+      if (/^#[0-9a-f]{6}$/i.test(glow)) palette.glow_primary = palette.core_color = glow;
+      if (/^#[0-9a-f]{6}$/i.test(shell)) palette.shell_head_gradient = palette.shell_gradient = ["#ffffff", shell, shell];
+      skin = Object.assign({}, skin, {palette: palette});
+    }
     if (!originalSkinGradients) {
       originalSkinGradients = ["g-shell", "g-shell-head", "g-visor", "g-blue"].map(function (id) { return $(id).cloneNode(true); });
     }

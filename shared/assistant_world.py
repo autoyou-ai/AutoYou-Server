@@ -75,6 +75,7 @@ def validate_world(raw: Any) -> dict:
         })
     return {
         "version": 1, **flags,
+        **{key: _color(source[key], "") for key in ("robot_glow", "robot_shell") if key in source and source[key] is not None},
         "name": _text(source.get("name"), "My Assistant world", 80),
         "sky": _color(source.get("sky"), "#142449"),
         "ground": _color(source.get("ground"), "#244a51"),
@@ -85,6 +86,7 @@ def validate_world(raw: Any) -> dict:
 WORLD_INSTRUCTIONS = """Edit the Assistant's 2D world using assistant_update_world. First read it with assistant_get_world.
 Use a complete JSON object: version:1, enabled:true, name, sky and ground (#RRGGBB), idle_enabled,
 professional (calm movements), wander, sound_enabled (default false), robot_size (20..80 percent of height),
+optional robot_glow (eyes, mouth and reactor) and robot_shell (body) colors in #RRGGBB; omit to use the skin's colors,
 objects (at most 96). Each object: unique id, shape (tree/cloud/mountain/flower/star/sun/moon/rock/pond/house/ball/sign/circle/rect/path),
 x/y (0..100 percent), size (2..45 percent), color (#RRGGBB), label (80 chars), animation (none/sway/float/spin/pulse),
 reaction (bounce/spin/grow/color/none), sound (none/bell/pop/water). Optional SVG path coordinates only, no markup.

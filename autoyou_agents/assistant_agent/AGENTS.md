@@ -199,7 +199,8 @@ when connected, and persist their own local offline copy when offline.
 
 The optional `skin.world` field travels inside the existing skin pack. Its version-1
 schema and validation live in `shared/assistant_world.py`, `AssistantWorld.swift`,
-and Android `AssistantWorld.kt`. A world has sky/ground colors, robot size, idle,
+and Android `AssistantWorld.kt`. A world has sky/ground colors, robot size, optional
+`robot_glow` and `robot_shell` colors (omitting them restores the skin palette), idle,
 professional, wandering and sound switches, and up to 96 objects. Objects use
 built-in shapes or bounded SVG path coordinates, named animations/reactions and
 locally synthesized sounds. Packs contain no executable scripts or remote assets.

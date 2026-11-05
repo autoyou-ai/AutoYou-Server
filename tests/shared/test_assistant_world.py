@@ -7,7 +7,8 @@ from pathlib import Path
 
 def test_world_roundtrip_and_appearance_preserve_scene(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTOYOU_ASSISTANT_MODE_DIR", str(tmp_path / "assistant"))
-    world = validate_world({"enabled": True, "objects": [{"id": "tree", "shape": "tree", "sound": "bell"}]})
+    world = validate_world({"enabled": True, "robot_glow": "#ffaa33", "objects": [{"id": "tree", "shape": "tree", "sound": "bell"}]})
+    assert world["robot_glow"] == "#ffaa33"
     assistant_skin.save_active_skin({"id": "autoyou_classic", "world": world})
     assert assistant_skin.apply_preset("neon_cyber")["world"] == world
     assert assistant_skin.reset_active_skin()["world"] == world
@@ -39,7 +40,7 @@ def test_assistant_world_tools_report_only_saved_changes(tmp_path, monkeypatch):
     [], {"objects": [{}] * 97}, {"objects": [{"id": "same"}, {"id": "same"}]},
     {"objects": [{"shape": "script"}]}, {"objects": [{"path": '<image href="https://example.invalid"/>'}]},
     {"objects": [{"x": float("nan")}]}, {"objects": [{"x": 101}]}, {"enabled": "false"},
-    {"version": 99}, {"version": True}, {"objects": [{"x": 10 ** 400}]}, {"objects": [{"path": "0" * 4097}]},
+    {"version": 99}, {"version": True}, {"robot_shell": "url(external)"}, {"objects": [{"x": 10 ** 400}]}, {"objects": [{"path": "0" * 4097}]},
 ])
 def test_invalid_world_is_rejected(world):
     with pytest.raises(ValueError):
