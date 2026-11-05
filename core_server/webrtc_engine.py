@@ -6528,7 +6528,7 @@ class WebRTCManager:
                 )
                 if audio_call_enabled:
                     nonlocal audio_manager
-                    if voice_pipeline_enabled:
+                    if voice_pipeline_enabled or audio_manager is not None:
                         # Prefer the live STATE entry, fall back to the pre-captured
                         # reference in case a concurrent cleanup evicted it from STATE.
                         mgr = _runtime.STATE.audio_managers.get(chat_id) or audio_manager
@@ -7267,7 +7267,7 @@ class WebRTCManager:
         All resource teardown is consolidated in _async_cleanup_session.
         """
         current_pc = self.session_peers.get(session_id)
-        if expected_pc is not None and current_pc is not None and current_pc is not expected_pc:
+        if expected_pc is not None and current_pc is not expected_pc:
              _runtime.LOGGER.info(f"Ignoring stale cleanup for {session_id}; active peer connection has already been replaced")
              return
 
@@ -7309,17 +7309,15 @@ class WebRTCManager:
         Must be called under _cleanup_locks[session_id] to prevent races.
         """
         current_pc = self.session_peers.get(session_id)
-        if expected_pc is not None and current_pc is not None and current_pc is not expected_pc:
+        # A retired peer also loses ownership while the registry is empty:
+        # its replacement allocates voice resources before SDP negotiation
+        # registers the new peer. Late close callbacks must not consume them.
+        if expected_pc is not None and current_pc is not expected_pc:
             _runtime.LOGGER.info(f"Skipping stale async cleanup for {session_id}; session has already been replaced")
             return
 
         cleanup_ids = set(self._ordered_related_session_ids(session_id))
         previous_host_owner = self.host_audio_owner()
-        for cleanup_id in cleanup_ids:
-            self._suspend_room_bridge_transport(str(cleanup_id))
-            if getattr(self, "_tv_cast_leases", None):
-                await self._tv_cast_leases.release(cleanup_id)
-
         # Clean up ping-pong game state for all related sessions
         try:
             game_ping_pong.ping_pong_scorer_manager.cleanup_session(session_id)
@@ -7441,6 +7439,13 @@ class WebRTCManager:
             if current is not expected:
                 return missing
             return mapping.pop(key, missing)
+
+        # Capture ownership above before the first await. Another offer may
+        # register its voice resources while a transport lease is released.
+        for cleanup_id in cleanup_ids:
+            self._suspend_room_bridge_transport(str(cleanup_id))
+            if getattr(self, "_tv_cast_leases", None):
+                await self._tv_cast_leases.release(cleanup_id)
 
         for cleanup_id in cleanup_ids:
             expected_cleanup_pc = expected_peer_connections.get(cleanup_id, missing)
