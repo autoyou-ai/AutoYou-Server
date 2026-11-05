@@ -1547,7 +1547,7 @@
   // Portable world: only built-in SVG primitives and bounded path data are rendered.
   var world = { idle_enabled: true, professional: false, enabled: false, wander: true, objects: [] };
   var worldKey = "", worldNodes = [], worldLayer = null, worldAudio = null;
-  var worldMotion = { x: 50, target: 50, next: 0, pressed: false, lastTouch: -1000, emote: -1, emoteUntil: 0 };
+  var worldMotion = { x: 50, target: 50, halfWidth: 0, next: 0, pressed: false, lastTouch: -1000, emote: -1, emoteUntil: 0 };
   function svgNode(tag, attrs) {
     var el = document.createElementNS($("robot").namespaceURI, tag);
     Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, attrs[key]); });
@@ -1578,9 +1578,22 @@
     return group;
   }
   var worldSizeObserver;
+  function walkLimit() { return Math.max(12, worldMotion.halfWidth + 2); }
+  function positionRobot() { ui.robotButton.style.left = (worldMotion.x - worldMotion.halfWidth).toFixed(3) + "%"; }
   function sizeWorldArt() {
     if (!worldLayer || !world.enabled) return;
-    var rect=worldLayer.getBoundingClientRect(), ratio=rect.width && rect.height ? 1000*rect.height/(600*rect.width) : 1;
+    var zone = worldLayer.parentNode, w = zone.clientWidth, h = zone.clientHeight;
+    var box = $("robot").viewBox.baseVal, aspect = box.width / box.height;
+    // Resolve both axes from the stage. WebKit can retain an intrinsic SVG width from an earlier layout.
+    var height = Math.min(h * world.robot_size / 100, w * .45 / aspect), width = height * aspect;
+    ui.robotButton.style.width = width + "px";
+    ui.robotButton.style.height = height + "px";
+    worldMotion.halfWidth = w ? width * 50 / w : 0;
+    var limit = walkLimit();
+    worldMotion.x = clamp(worldMotion.x, limit, 100 - limit);
+    worldMotion.target = clamp(worldMotion.target, limit, 100 - limit);
+    positionRobot();
+    var ratio = w && h ? 1000 * h / (600 * w) : 1;
     worldNodes.forEach(function(item){item.el.firstChild.setAttribute("transform","scale("+Math.min(1,ratio)+" "+Math.min(1,1/ratio)+")");});
   }
   function worldPhoto(uri) {
@@ -1615,7 +1628,7 @@
         var node = svgNode("g"); node.appendChild(worldShape(obj)); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
         worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, touched: -10000}); world.objects.push(obj);
       });
-    } else { ui.robotButton.style.removeProperty("left"); ui.robotButton.style.removeProperty("height"); }
+    } else { ["left", "height", "width"].forEach(function (key) { ui.robotButton.style.removeProperty(key); }); }
     if (!worldSizeObserver) { worldSizeObserver=new ResizeObserver(sizeWorldArt); worldSizeObserver.observe(zone); }
     sizeWorldArt();
     var idleInput = $("world-idle"), professionalInput = $("world-professional"), soundsInput = $("world-sounds");
@@ -1645,7 +1658,10 @@
     if (pressed && !worldMotion.pressed && now - worldMotion.lastTouch > 250) {
       worldMotion.lastTouch = now; boop();
       var px = (x + 1) * 50, py = (y + 1) * 50;
-      if (world.enabled && world.wander && !world.professional) worldMotion.target = clamp(px, 12, 88);
+      if (world.enabled && world.wander && !world.professional) {
+        worldMotion.target = clamp(px, walkLimit(), 100 - walkLimit());
+        worldMotion.next = now + 9000;
+      }
       worldNodes.forEach(function (item) {
         if (Math.abs(item.obj.x - px) < item.obj.size / 2 && Math.abs(item.obj.y - py) < item.obj.size) { item.touched = now; worldSound(item.obj.sound); }
       });
@@ -1670,13 +1686,18 @@
     var walking = false;
     if (world.enabled) {
       if (play && idle && world.wander && now > worldMotion.next && !worldMotion.pressed) {
-        worldMotion.target = 18 + (Math.sin(t * .17) + 1) * 32; worldMotion.next = now + 9000;
+        var limit = Math.max(18, walkLimit());
+        worldMotion.target = clamp(50 + Math.sin(t * .17) * 32, limit, 100 - limit);
+        if (Math.abs(worldMotion.target - worldMotion.x) < 12) worldMotion.target = worldMotion.x < 50 ? 100 - limit : limit;
+        worldMotion.next = now + 9000;
       }
       var delta = worldMotion.target - worldMotion.x;
       walking = play && idle && world.wander && Math.abs(delta) > .2;
-      if (walking) { worldMotion.x += Math.sign(delta) * Math.min(Math.abs(delta), dt * 6); target.bodyY += Math.abs(Math.sin(t * 8)) * 3; }
-      ui.robotButton.style.left = worldMotion.x.toFixed(2) + "%";
-      ui.robotButton.style.height = world.robot_size + "%";
+      if (walking) {
+        worldMotion.x += Math.sign(delta) * Math.min(Math.abs(delta), dt * 6);
+        target.bodyY += Math.abs(Math.sin(t * 8)) * 3;
+        positionRobot();
+      }
     }
     if (bot.legL && bot.legR) {
       var step = walking ? Math.sin(t * 8) * 12 : emote === 0 || emote === 2 || emote === 10 ? Math.sin(t * 3) * 6 : 0;
