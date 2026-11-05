@@ -260,12 +260,12 @@
   function youtubeId(value) {
     const url = parseUrl(value);
     if (!url) return "";
-    if (hostMatches(url.hostname, "youtu.be")) return cleanId(url.pathname.slice(1));
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (hostMatches(url.hostname, "youtu.be")) return parts[0] ? cleanId(parts[0]) : "";
     if (!hostMatches(url.hostname, "youtube.com", "youtube-nocookie.com")) return "";
     const fromQuery = url.searchParams.get("v");
     if (fromQuery) return cleanId(fromQuery);
-    const parts = url.pathname.split("/").filter(Boolean);
-    return parts.length >= 2 && ["embed", "shorts", "live"].includes(parts[0]) ? cleanId(parts[1]) : "";
+    return parts.length >= 2 && ["embed", "shorts", "live", "v", "e", "watch"].includes(parts[0]) ? cleanId(parts[1]) : "";
   }
 
   function twitterId(value) {
@@ -280,15 +280,25 @@
     const url = parseUrl(value);
     if (!url || !hostMatches(url.hostname, "instagram.com")) return "";
     const parts = url.pathname.split("/").filter(Boolean);
-    return parts.length >= 2 && ["p", "reel", "tv"].includes(parts[0])
-      ? `https://www.instagram.com/${parts[0]}/${cleanId(parts[1])}/embed/`
-      : "";
+    let kind = "";
+    let code = "";
+    if (parts.length >= 2 && ["p", "reel", "reels", "tv"].includes(parts[0])) {
+      kind = parts[0] === "reels" ? "reel" : parts[0];
+      code = cleanId(parts[1]);
+    } else if (parts.length >= 3 && ["p", "reel", "reels", "tv"].includes(parts[1])) {
+      kind = parts[1] === "reels" ? "reel" : parts[1];
+      code = cleanId(parts[2]);
+    }
+    return kind && code ? `https://www.instagram.com/${kind}/${code}/embed/` : "";
   }
 
   function threadsEmbed(value) {
     const url = parseUrl(value);
     if (!url || !hostMatches(url.hostname, "threads.net", "threads.com")) return "";
     const parts = url.pathname.split("/").filter(Boolean);
+    if (parts[0] === "post" && parts[1]) {
+      return `https://www.threads.com/post/${cleanId(parts[1])}/embed`;
+    }
     const user = parts[0] && parts[0].startsWith("@") ? parts[0].slice(1).replace(/[^A-Za-z0-9_.]/g, "") : "";
     return user && parts[1] === "post" && parts[2] ? `https://www.threads.com/@${user}/post/${cleanId(parts[2])}/embed` : "";
   }
@@ -981,14 +991,18 @@
   function linkCardMarkup(item) {
     const view = item.view || {};
     const address = safeUrl(item.url);
+    const isWebArticle = itemType(item) === "article" && !view.uploaded && Boolean(address);
     let shown = address;
     try {
       const parsed = new URL(address);
       shown = `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname === "/" ? "" : parsed.pathname}`;
     } catch (_) {}
-    return `<div class="media-stage"><div class="link-card">${thumbMarkup(view)}`
+    const previewAttr = isWebArticle ? ` data-website-preview="${escapeHtml(address)}"` : "";
+    return `<div class="media-stage"${previewAttr}><img class="link-card-preview-img" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" hidden>`
+      + `<div class="link-card">${thumbMarkup(view)}`
       + `<span class="link-card-copy"><span class="link-card-host">${escapeHtml(view.host)}</span>`
-      + `<span class="link-card-url">${escapeHtml(shown || view.kind)}</span></span></div></div>`;
+      + `<span class="link-card-url">${escapeHtml(shown || view.kind)}</span></span></div>`
+      + `<p class="link-card-desc" hidden></p></div>`;
   }
 
   function mediaMarkup(item) {
@@ -999,7 +1013,12 @@
     if (type === "youtube" && youtubeId(item.url)) {
       const params = new URLSearchParams({ rel: "0", playsinline: "1" });
       if (/^https?:$/.test(window.location.protocol)) params.set("origin", window.location.origin);
-      return embedFrame(`https://www.youtube-nocookie.com/embed/${youtubeId(item.url)}?${params}`, "ratio-video", title, null, true)
+      const embedSrc = `https://www.youtube-nocookie.com/embed/${youtubeId(item.url)}?${params}`;
+      const poster = safeUrl(view.thumb);
+      return `<div class="media-stage" data-youtube-stage="${escapeHtml(item.url || "")}" data-youtube-embed="${escapeHtml(embedSrc)}" data-youtube-title="${escapeHtml(title)}" data-youtube-poster="${escapeHtml(poster)}"><div class="media-frame ratio-video">`
+        + `<iframe src="${escapeHtml(embedSrc)}" title="${escapeHtml(title)}" loading="lazy" allowfullscreen `
+        + 'allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write" '
+        + 'referrerpolicy="strict-origin-when-cross-origin"></iframe></div></div>'
         + '<p class="field-help">Playback depends on the video owner and YouTube availability. '
         + `<a href="${escapeHtml(open)}" target="_blank" rel="noopener">Watch on YouTube</a></p>`;
     }
@@ -1034,14 +1053,19 @@
     const view = item.view || {};
     const type = itemType(item);
     const open = safeUrl(view.open_url);
+    const downloadUrl = safeUrl(view.download_url) || (view.uploaded && open ? `${open}${open.includes("?") ? "&" : "?"}download=1` : "");
+    const downloadName = String(view.filename || view.title || item.name || item.title || "download").trim();
     const buttons = [];
     if (open) {
       const label = view.uploaded ? "Open file" : type === "article" ? "Open website" : "Open original";
       buttons.push(`<a class="button primary" href="${escapeHtml(open)}" target="_blank" rel="noopener">${icon("external")}${label}</a>`);
     }
-    if (view.uploaded && open) {
-      buttons.push(`<a class="button subtle" href="${escapeHtml(open)}" download>${icon("download")}Download</a>`);
-    } else if (safeUrl(item.url)) {
+    if (!view.uploaded && type === "article" && open) {
+      buttons.push(`<button class="button subtle" type="button" data-action="preview-website" data-preview-url="${escapeHtml(open)}" aria-expanded="false">${icon("globe")}Preview website</button>`);
+    }
+    if (view.uploaded && downloadUrl) {
+      buttons.push(`<a class="button subtle" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(downloadName)}">${icon("download")}Download</a>`);
+    } else if (safeUrl(item.url) || open) {
       buttons.push(`<button class="button subtle" type="button" data-action="copy-link">${icon("copy")}Copy link</button>`);
     }
     return buttons.length ? `<div class="action-row">${buttons.join("")}</div>` : "";
@@ -1132,13 +1156,16 @@
     const content = $("item-content");
     stopMedia(content);
     // Opened from the full-screen feed, the sheet leaves the media to the feed.
-    const textBody = item.content ? `<p class="native-text-content">${escapeHtml(item.content)}</p>` : "";
+    const textContent = item.content || view.content || "";
+    const textBody = textContent ? `<p class="native-text-content">${escapeHtml(textContent)}</p>` : "";
     const primaryActions = item.attachments?.length && String(item.url || "").startsWith("blob://") ? "" : actionsMarkup(item);
     content.innerHTML = (state.sheetMedia ? attachmentsMarkup(item) : "") + textBody + primaryActions + tagsMarkup(item) + infoMarkup(item);
     setupPostGalleries(content);
     content.scrollTop = 0;
     upgradePhoto(content.querySelector(".media-stage.photo img"));
     void activateRemoteVideo(content);
+    void resolveBlueskyEmbeds(content);
+    void resolveWebsitePreviews(content);
   }
 
   function syncFavouriteButton(item) {
@@ -1150,6 +1177,31 @@
   }
 
   async function activateRemoteVideo(root) {
+    const ytStage = root.querySelector("[data-youtube-stage]");
+    if (ytStage) {
+      const original = ytStage.getAttribute("data-youtube-stage") || "";
+      const embedSrc = ytStage.getAttribute("data-youtube-embed") || "";
+      const title = ytStage.getAttribute("data-youtube-title") || "YouTube video";
+      const poster = ytStage.getAttribute("data-youtube-poster") || "";
+      if (original) {
+        try {
+          const response = await fetch(`./api/media/resolve?url=${encodeURIComponent(original)}`, { cache: "no-store" });
+          const payload = await readJson(response);
+          if (ytStage.isConnected && response.ok && payload.ok && payload.url) {
+            const streamSrc = `./api/media/stream?url=${encodeURIComponent(payload.url)}`;
+            const posterAttr = poster ? ` poster="${escapeHtml(poster)}"` : "";
+            ytStage.innerHTML = `<video controls playsinline preload="metadata"${posterAttr} src="${escapeHtml(streamSrc)}"></video>`;
+            const video = ytStage.querySelector("video");
+            if (video && embedSrc) {
+              video.addEventListener("error", () => {
+                if (!ytStage.isConnected) return;
+                ytStage.innerHTML = `<div class="media-frame ratio-video"><iframe src="${escapeHtml(embedSrc)}" title="${escapeHtml(title)}" loading="lazy" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+              }, { once: true });
+            }
+          }
+        } catch (_) {}
+      }
+    }
     const stage = root.querySelector("[data-remote-video]");
     if (!stage) {
       return;
@@ -1170,6 +1222,94 @@
     stage.innerHTML = source
       ? `<video controls playsinline preload="metadata" src="${escapeHtml(source)}"></video>`
       : '<p class="media-note">This video can\'t play here. Open the original instead.</p>';
+  }
+
+  async function resolveBlueskyEmbeds(root) {
+    const frames = root.querySelectorAll('iframe[src^="https://embed.bsky.app/embed/"]');
+    for (const frame of frames) {
+      const currentSrc = frame.getAttribute("src") || "";
+      const match = /^https:\/\/embed\.bsky\.app\/embed\/([^/]+)\/app\.bsky\.feed\.post\/([^/?#]+)/.exec(currentSrc);
+      if (!match) continue;
+      const actor = match[1];
+      const rkey = match[2];
+      if (actor.toLowerCase().startsWith("did:")) continue;
+      let embedUrl = "";
+      try {
+        const postUrl = `https://bsky.app/profile/${actor}/post/${rkey}`;
+        const response = await fetch(`./api/media/preview?url=${encodeURIComponent(postUrl)}`, { cache: "no-store" });
+        const payload = await readJson(response);
+        if (response.ok && payload.embed_url && String(payload.embed_url).includes("/embed/did:")) {
+          embedUrl = String(payload.embed_url);
+        }
+      } catch (_) {}
+      if (!embedUrl) {
+        try {
+          const resolveResp = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(actor)}`);
+          const resolveData = await readJson(resolveResp);
+          if (resolveResp.ok && resolveData.did && String(resolveData.did).startsWith("did:")) {
+            embedUrl = `https://embed.bsky.app/embed/${resolveData.did}/app.bsky.feed.post/${rkey}`;
+          }
+        } catch (_) {}
+      }
+      if (embedUrl && frame.isConnected && frame.getAttribute("src") === currentSrc) {
+        frame.src = embedUrl;
+      }
+    }
+  }
+
+  async function resolveWebsitePreviews(root) {
+    const cards = root.querySelectorAll("[data-website-preview]");
+    for (const card of cards) {
+      const url = card.getAttribute("data-website-preview") || "";
+      if (!url) continue;
+      card.removeAttribute("data-website-preview");
+      try {
+        const response = await fetch(`./api/media/preview?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+        const payload = await readJson(response);
+        if (!card.isConnected || !response.ok || !payload.ok) continue;
+        const img = card.querySelector(".link-card-preview-img");
+        const imgUrl = safeUrl(payload.image || payload.url);
+        if (img && imgUrl) {
+          img.src = imgUrl;
+          img.hidden = false;
+          img.addEventListener("error", () => { img.hidden = true; }, { once: true });
+        }
+        const desc = card.querySelector(".link-card-desc, .reel-card-desc");
+        if (desc && payload.description) {
+          desc.textContent = String(payload.description);
+          desc.hidden = false;
+        }
+      } catch (_) {}
+    }
+  }
+
+  function toggleWebsitePreview(button) {
+    const url = safeUrl(button.getAttribute("data-preview-url"));
+    const content = $("item-content");
+    if (!url || !content) return;
+    const existing = content.querySelector(".website-preview-wrap");
+    if (existing) {
+      existing.remove();
+      button.setAttribute("aria-expanded", "false");
+      return;
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "website-preview-wrap";
+    const frame = document.createElement("iframe");
+    frame.className = "website-preview-frame";
+    frame.src = url;
+    frame.title = "Website preview";
+    frame.loading = "lazy";
+    frame.referrerPolicy = "no-referrer";
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups");
+    wrap.appendChild(frame);
+    const actionRow = button.closest(".action-row");
+    if (actionRow) {
+      actionRow.insertAdjacentElement("beforebegin", wrap);
+    } else {
+      content.prepend(wrap);
+    }
+    button.setAttribute("aria-expanded", "true");
   }
 
   function openItem(id, trigger, { withMedia = true } = {}) {
@@ -1443,9 +1583,25 @@
     void refreshSummary();
   }
 
-  async function copyLink() {
-    const item = activeItem();
-    const link = item ? safeUrl(item.url) : "";
+  async function copyLink(trigger) {
+    const gallery = trigger?.closest?.(".post-gallery");
+    let item = gallery ? findItem(gallery.dataset.parentItemId) : activeItem();
+    const attachmentIndex = trigger?.closest?.("[data-attachment-index]")?.dataset.attachmentIndex;
+    if (attachmentIndex !== undefined && item?.attachments?.[Number(attachmentIndex)]) {
+      item = item.attachments[Number(attachmentIndex)];
+    }
+    if (!item) return;
+    let link = safeUrl(item.url);
+    if (!link && item.view?.open_url) {
+      const open = safeUrl(item.view.open_url);
+      if (open) {
+        try {
+          link = new URL(open, window.location.href).href;
+        } catch (_) {
+          link = open;
+        }
+      }
+    }
     if (link) {
       await copyText(link, "Link copied");
     }
@@ -1581,7 +1737,7 @@
     if (mime === "image/gif" || name.endsWith(".gif")) return "gif";
     if (mime.startsWith("image/") || /\.(png|jpe?g|heic|heif|webp)$/.test(name)) return "image";
     if (/\.(pdf|xls|xlsx|doc|docx|rtf|ppt|pptx)$/.test(name)) return "document";
-    if (mime.startsWith("text/") || name.endsWith(".txt")) return "text";
+    if (mime.startsWith("text/") || /\.(txt|md|markdown)$/.test(name)) return "text";
     return "file";
   }
 
@@ -1833,7 +1989,8 @@
   function instagramReel(item) {
     const url = parseUrl(item && item.url);
     if (!url || !hostMatches(url.hostname, "instagram.com")) return false;
-    return ["reel", "reels", "tv"].includes(url.pathname.split("/").filter(Boolean)[0]);
+    const parts = url.pathname.split("/").filter(Boolean);
+    return ["reel", "reels", "tv"].includes(parts[0]) || (parts.length >= 3 && ["reel", "reels", "tv"].includes(parts[1]));
   }
 
   function getReelSlideMode(item) {
@@ -1953,8 +2110,10 @@
     }
     // Link cards carry their own "Read on" button.
     if (open && (view.uploaded || reelKind(item) !== "link")) {
-      const download = view.uploaded ? " download" : ' target="_blank" rel="noopener"';
-      buttons.push(`<a class="rail-button" href="${escapeHtml(open)}"${download} aria-label="${view.uploaded ? "Download" : "Open original"}">`
+      const dlHref = view.uploaded ? (safeUrl(view.download_url) || `${open}${open.includes("?") ? "&" : "?"}download=1`) : open;
+      const dlName = String(view.filename || view.title || item.title || "download").trim();
+      const download = view.uploaded ? ` download="${escapeHtml(dlName)}"` : ' target="_blank" rel="noopener"';
+      buttons.push(`<a class="rail-button" href="${escapeHtml(dlHref)}"${download} aria-label="${view.uploaded ? "Download" : "Open original"}">`
         + `<span class="rail-icon">${icon(view.uploaded ? "download" : "external")}</span>`
         + `<span class="rail-label">${view.uploaded ? "Save" : "Open"}</span></a>`);
     }
@@ -2084,9 +2243,13 @@
         + (facts ? `<p class="reel-card-meta">${escapeHtml(facts)}</p>` : "")
         + `${reelOpenButton(view, "Open file")}</div></div>`;
     }
-    return `<div class="reel-center"><div class="reel-card">${thumbMarkup(view)}`
+    const webPreviewAttr = itemType(item) === "article" && !view.uploaded && safeUrl(item.url)
+      ? ` data-website-preview="${escapeHtml(safeUrl(item.url))}"`
+      : "";
+    return `<div class="reel-center"><div class="reel-card"${webPreviewAttr}><img class="link-card-preview-img" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" hidden>${thumbMarkup(view)}`
       + `<p class="reel-card-host">${escapeHtml(view.host || view.kind)}</p>`
       + `<p class="reel-card-title">${escapeHtml(title)}</p>`
+      + `<p class="reel-card-desc" hidden></p>`
       + `${reelOpenButton(view, view.host && !view.uploaded ? `Read on ${view.host}` : "Open")}</div></div>`;
   }
 
@@ -2112,6 +2275,15 @@
       stage.dataset.mode = mode;
       if (remoteVideo && mode === "live") {
         void resolveReelVideo(slide, stage);
+      }
+      if (kind === "youtube" && mode === "live") {
+        void resolveReelYoutube(slide, stage, item);
+      }
+      if (kind === "post" && mode === "live") {
+        void resolveBlueskyEmbeds(stage);
+      }
+      if (kind === "link") {
+        void resolveWebsitePreviews(stage);
       }
       if (kind === "text") {
         void loadReelText(stage);
@@ -2324,6 +2496,29 @@
     if (slide === currentSlide()) {
       playCurrent();
     }
+  }
+
+  async function resolveReelYoutube(slide, stage, item) {
+    const embedBox = stage.querySelector(".reel-embed");
+    if (!embedBox || !item || !item.url) return;
+    const fallbackHtml = embedBox.innerHTML;
+    try {
+      const response = await fetch(`./api/media/resolve?url=${encodeURIComponent(item.url)}`, { cache: "no-store" });
+      const payload = await readJson(response);
+      if (!embedBox.isConnected || !response.ok || !payload.ok || !payload.url) return;
+      const streamSrc = `./api/media/stream?url=${encodeURIComponent(payload.url)}`;
+      embedBox.outerHTML = reelVideoMarkup(streamSrc, "", streamSrc, "relay");
+      const video = stage.querySelector("video.reel-video");
+      if (video) {
+        video.addEventListener("error", () => {
+          if (!stage.isConnected) return;
+          video.parentElement.innerHTML = `${reelBackdrop(safeUrl(item.view?.thumb))}<div class="reel-embed">${fallbackHtml}</div>`;
+        }, { once: true });
+      }
+      if (slide === currentSlide()) {
+        playCurrent();
+      }
+    } catch (_) {}
   }
 
   // Text files show their opening lines; the full file opens separately.
@@ -3158,7 +3353,9 @@
           renderSummary();
           reloadFeed();
         } else if (name === "copy-link") {
-          void copyLink();
+          void copyLink(action);
+        } else if (name === "preview-website") {
+          toggleWebsitePreview(action);
         } else if (name === "view-photo") {
           const gallery = action.closest(".post-gallery");
           const item = gallery ? findItem(gallery.dataset.parentItemId) : activeItem();

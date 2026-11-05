@@ -3244,3 +3244,41 @@ body.modal-open .fab {
   .post-edit .text-input { font-size: 16px; }
   .sheet:has(.post-edit:not([hidden])) .sheet-title { max-height: 2.5em; overflow: hidden; }
 }
+
+.link-card-preview-img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-bottom: 1px solid var(--line);
+}
+.link-card-desc {
+  margin: 0;
+  padding: 0 16px 14px;
+  color: var(--text-2);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.website-preview-wrap {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+.website-preview-frame {
+  display: block;
+  width: 100%;
+  height: min(62dvh, 520px);
+  border: 0;
+  background: #ffffff;
+}
+.reel-card-desc {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}

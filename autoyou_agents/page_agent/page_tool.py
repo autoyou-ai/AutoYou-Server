@@ -88,6 +88,7 @@ _MIMETYPE_EXTENSION_HINTS = {
     "audio/mpeg": ".mp3",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
+    "text/markdown": ".md",
 }
 
 _FALLBACK_KIND_MIMETYPES = {
@@ -157,6 +158,8 @@ def _classify_blob_item_type(mimetype_value: str) -> str:
         return "video"
     if mt_l.startswith("audio/"):
         return "audio"
+    if mt_l.startswith("text/"):
+        return "text"
     if mt_l in (
         "application/pdf",
         "application/msword",
