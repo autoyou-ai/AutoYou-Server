@@ -77,3 +77,13 @@ def test_the_voice_clone_worker_leaves_a_full_gpu_to_the_chat_model(monkeypatch)
     monkeypatch.setenv("AUTOYOU_VOICE_CLONE_MIN_FREE_GB", "4")
     monkeypatch.setenv("AUTOYOU_VOICE_CLONE_DEVICE", "cuda")  # an explicit choice is kept
     assert voice_clone_worker._pick_device(_torch(free_gb=2.0)) == "cuda"
+
+
+def test_on_shared_memory_the_voice_clone_keeps_the_gpu(monkeypatch):
+    """DGX Spark, Jetson: the CPU would use the same RAM, so falling back only slows it down."""
+    monkeypatch.delenv("AUTOYOU_VOICE_CLONE_DEVICE", raising=False)
+    monkeypatch.delenv("AUTOYOU_VOICE_CLONE_MIN_FREE_GB", raising=False)
+    torch = _torch(free_gb=2.0)
+    torch.cuda.get_device_properties = lambda index: SimpleNamespace(is_integrated=1)
+
+    assert voice_clone_worker._pick_device(torch) == "cuda"

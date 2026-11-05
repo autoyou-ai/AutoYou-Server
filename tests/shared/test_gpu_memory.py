@@ -56,7 +56,7 @@ def test_nvidia_smi_output_is_read_and_the_largest_gpu_counts(monkeypatch):
 
     found = module._from_nvidia_smi()
 
-    assert astuple(found) == (24576 * 1024 ** 2, 20480 * 1024 ** 2, "nvidia", "nvidia-smi", False)
+    assert astuple(found) == (24576 * 1024 ** 2, 20480 * 1024 ** 2, "nvidia", "nvidia-smi", False, None)
 
 
 def test_amd_sysfs_counters_give_total_and_free(monkeypatch):
@@ -69,7 +69,7 @@ def test_amd_sysfs_counters_give_total_and_free(monkeypatch):
     }
     monkeypatch.setattr(module, "_read_int", lambda path: values.get(path))
 
-    assert astuple(module._from_amd_sysfs()) == (16 * GIB, 12 * GIB, "amd", "amdgpu-sysfs", False)
+    assert astuple(module._from_amd_sysfs()) == (16 * GIB, 12 * GIB, "amd", "amdgpu-sysfs", False, None)
 
 
 def test_apple_silicon_shares_its_ram_with_the_gpu(monkeypatch):
@@ -123,4 +123,99 @@ def test_speech_to_text_uses_cuda_only_when_ctranslate2_can_and_there_is_room(mo
     assert gpu_memory.whisper_device("cuda", "large-v3") == "cuda"
     # Free memory unknown: the GPU is used.
     monkeypatch.setattr(gpu_memory, "free_gpu_memory_bytes", lambda: None)
+    assert gpu_memory.whisper_device("auto", "large-v3") == "cuda"
+
+
+# ── Platforms whose GPU memory is not a plain VRAM figure (owner, 2026-11-05) ──
+
+
+def test_dgx_spark_shares_its_ram_when_nvidia_smi_reports_no_memory(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.shutil, "which", lambda name: "nvidia-smi")
+    # DGX Spark's GB10 answers "[N/A]" for memory: the GPU uses the 128 GB of system RAM.
+    monkeypatch.setattr(module, "_run", lambda command: "[N/A], [N/A], 12.1\n")
+    monkeypatch.setattr(module, "_system_ram", lambda: (128 * GIB, 100 * GIB))
+
+    found = module._from_nvidia_smi()
+
+    assert found.unified and found.vendor == "nvidia" and found.source == "nvidia-smi-unified"
+    assert found.total_bytes == int(128 * GIB * 0.85) and found.free_bytes == 100 * GIB
+    assert found.compute_capability == 12.1
+
+
+def test_an_older_nvidia_smi_without_compute_cap_is_asked_again(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.shutil, "which", lambda name: "nvidia-smi")
+    answers = {"memory.total,memory.free,compute_cap": "", "memory.total,memory.free": "11264, 10000\n"}
+    monkeypatch.setattr(module, "_run", lambda command: answers[command[1].split("=", 1)[1]])
+
+    found = module._from_nvidia_smi()
+
+    assert found.total_bytes == 11264 * 1024 ** 2 and found.compute_capability is None
+
+
+def test_nvidia_smi_is_found_at_its_wsl_path(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(module.os.path, "isfile", lambda path: path == "/usr/lib/wsl/lib/nvidia-smi")
+    seen = []
+    monkeypatch.setattr(module, "_run", lambda command: seen.append(command[0]) or "24576, 20000, 8.9\n")
+
+    assert module._from_nvidia_smi().total_bytes == 24576 * 1024 ** 2
+    assert seen[0] == "/usr/lib/wsl/lib/nvidia-smi"
+
+
+def test_a_jetson_without_nvidia_smi_shares_its_ram(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.sys, "platform", "linux")
+    monkeypatch.setattr(module.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(module.os.path, "exists", lambda path: path == "/etc/nv_tegra_release")
+    monkeypatch.setattr(module, "_system_ram", lambda: (64 * GIB, 50 * GIB))
+
+    found = module._from_jetson()
+
+    assert found.unified and found.source == "jetson" and found.total_bytes == int(64 * GIB * 0.85)
+    monkeypatch.setattr(module.platform, "machine", lambda: "x86_64")
+    assert module._from_jetson() is None
+
+
+def test_apple_silicon_follows_a_raised_gpu_memory_limit(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(module, "_system_ram", lambda: (64 * GIB, 40 * GIB))
+    monkeypatch.setattr(module, "_run", lambda command: "57344\n")
+
+    found = module._from_apple_unified()
+
+    assert found.total_bytes == 56 * GIB and found.source == "iogpu.wired_limit_mb"
+    monkeypatch.setattr(module, "_run", lambda command: "0\n")  # the default limit
+    assert module._from_apple_unified().total_bytes == int(64 * GIB * 0.75)
+
+
+def test_windows_on_arm_counts_as_a_cpu_machine(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.os, "name", "nt")
+    monkeypatch.setattr(module.platform, "machine", lambda: "ARM64")
+    assert module._from_windows_registry() is None
+
+
+def test_an_amd_gpu_counts_from_1_gb_of_vram_like_ollama(monkeypatch):
+    module = _fresh_module()
+    monkeypatch.setattr(module.sys, "platform", "linux")
+    monkeypatch.setattr(module.glob, "glob", lambda pattern: ["/sys/class/drm/card0/device/mem_info_vram_total"])
+    sizes = {"/sys/class/drm/card0/device/mem_info_vram_total": int(1.5 * GIB)}
+    monkeypatch.setattr(module, "_read_int", lambda path: sizes.get(path))
+    assert module._from_amd_sysfs().total_bytes == int(1.5 * GIB)
+    sizes["/sys/class/drm/card0/device/mem_info_vram_total"] = 512 * 1024 ** 2  # an iGPU carve-out
+    assert module._from_amd_sysfs() is None
+
+
+def test_on_unified_memory_whisper_is_not_moved_to_the_cpu_for_room(monkeypatch):
+    monkeypatch.setattr(gpu_memory, "ctranslate2_cuda_available", lambda: True)
+    monkeypatch.setattr(gpu_memory, "free_gpu_memory_bytes", lambda: int(0.5 * GIB))
+    monkeypatch.setattr(
+        gpu_memory, "detect_gpu_memory",
+        lambda refresh=False: GpuMemory(108 * GIB, int(0.5 * GIB), "nvidia", "nvidia-smi-unified", unified=True),
+    )
     assert gpu_memory.whisper_device("auto", "large-v3") == "cuda"

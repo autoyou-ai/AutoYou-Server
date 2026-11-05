@@ -332,13 +332,18 @@ def kv_profile_from_show(payload: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def kv_bytes_per_element() -> float:
+def kv_bytes_per_element(gpu: Any = None) -> float:
     """Bytes per cached value: f16 unless Ollama's 8-bit or 4-bit cache is on.
 
     Ollama quantizes the cache only with flash attention, so both settings
-    have to be visible here (bootstrap sets them when it starts Ollama).
+    have to be visible here (bootstrap sets them when it starts Ollama), and
+    the GPU has to support it: Ollama leaves flash attention off on NVIDIA
+    GPUs before Volta (compute capability 7.0), such as the GTX 10 series.
     """
     if str(os.environ.get("OLLAMA_FLASH_ATTENTION", "")).strip().lower() not in _TRUE:
+        return 2.0
+    capability = getattr(gpu, "compute_capability", None)
+    if getattr(gpu, "vendor", "") == "nvidia" and capability is not None and capability < 7.0:
         return 2.0
     cache_type = str(os.environ.get("OLLAMA_KV_CACHE_TYPE", "")).strip().lower()
     return {"q8_0": 34 / 32, "q4_0": 18 / 32}.get(cache_type, 2.0)
@@ -360,7 +365,7 @@ def estimate_num_ctx_for_gpu(profile: Optional[Mapping[str, Any]], *, weights_by
     total = _positive_int(getattr(gpu, "total_bytes", None))
     if not profile or not weights or not total:
         return None
-    element_bytes = kv_bytes_per_element() * _num_parallel()
+    element_bytes = kv_bytes_per_element(gpu) * _num_parallel()
     per_token = float(profile.get("kv_elements_per_token") or 0) * element_bytes
     fixed = float(profile.get("kv_fixed_elements") or 0) * element_bytes
     reserve = max(float(_GIB), 0.05 * weights)

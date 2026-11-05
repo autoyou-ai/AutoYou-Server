@@ -10,13 +10,22 @@ fits on the GPU. Every source is optional and cheap; when none applies the
 answer is None and callers keep their previous behaviour.
 
 - ``AUTOYOU_GPU_MEMORY_GB``: the operator's figure wins (total memory for models).
-- NVIDIA: ``nvidia-smi`` (total and free).
+- NVIDIA: ``nvidia-smi`` (total, free and compute capability; also found at
+  its WSL and older Windows paths). A GPU that reports no memory of its own
+  shares the RAM - DGX Spark's GB10 - and so does a Jetson board, found by
+  its device tree when it has no ``nvidia-smi``: 85% of RAM, the rest left to
+  the operating system.
 - AMD on Linux: the amdgpu driver's VRAM counters in sysfs (total and used).
+  Like Ollama, an integrated GPU with under 1 GB of VRAM counts as none.
 - Apple silicon: memory is unified; Metal lets the GPU use about two thirds
-  of RAM, three quarters above 36 GB.
+  of RAM, three quarters above 36 GB, or ``iogpu.wired_limit_mb`` when the
+  user has raised it.
 - Windows: the display driver's dedicated memory size in the registry (no
   free figure). On AMD APUs this is the Variable Graphics Memory share.
+  Windows on Arm is skipped: Ollama runs on the CPU there.
 
+Anything else - Intel, AMD and Arm CPUs without a usable GPU, Intel GPUs on
+Linux - is None, and the context window keeps the name-and-RAM rule.
 GPUs with less than 2 GB of their own memory are treated as having none.
 """
 
@@ -41,6 +50,14 @@ GPU_MEMORY_ENV = "AUTOYOU_GPU_MEMORY_GB"
 GIB = 1024 ** 3
 _MIB = 1024 ** 2
 _MIN_GPU_BYTES = 2 * GIB
+# Ollama skips an AMD integrated GPU below this much VRAM and runs on the CPU.
+_MIN_AMD_VRAM_BYTES = 1 * GIB
+# Share of RAM a GPU on unified memory (DGX Spark, Jetson) may use for models.
+_NVIDIA_UNIFIED_SHARE = 0.85
+_NVIDIA_SMI_FALLBACKS = (
+    "/usr/lib/wsl/lib/nvidia-smi",
+    r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+)
 _WINDOWS_DISPLAY_CLASS = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
 
 
@@ -51,6 +68,8 @@ class GpuMemory:
     vendor: str
     source: str
     unified: bool = False
+    # NVIDIA only: Ollama turns on flash attention (and so the 8-bit cache) from 7.0.
+    compute_capability: Optional[float] = None
 
 
 _detected: dict = {}
@@ -76,25 +95,83 @@ def _run(command: List[str]) -> str:
     return result.stdout if result.returncode == 0 else ""
 
 
+def _number(value: str) -> Optional[float]:
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _nvidia_smi_path() -> Optional[str]:
+    found = shutil.which("nvidia-smi")
+    if found:
+        return found
+    return next((candidate for candidate in _NVIDIA_SMI_FALLBACKS if os.path.isfile(candidate)), None)
+
+
 def _from_nvidia_smi() -> Optional[GpuMemory]:
-    tool = shutil.which("nvidia-smi")
+    tool = _nvidia_smi_path()
     if not tool:
         return None
-    try:
-        output = _run([tool, "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"])
-    except Exception as exc:
-        logger.debug("nvidia-smi did not answer: %s", exc)
-        return None
-    best: Optional[GpuMemory] = None
-    for line in output.splitlines():
+    output = ""
+    # Older drivers do not know compute_cap; ask again without it.
+    for fields in ("memory.total,memory.free,compute_cap", "memory.total,memory.free"):
         try:
-            total_mib, free_mib = (float(value) for value in line.split(",")[:2])
-        except ValueError:
+            output = _run([tool, f"--query-gpu={fields}", "--format=csv,noheader,nounits"])
+        except Exception as exc:
+            logger.debug("nvidia-smi did not answer: %s", exc)
+            return None
+        if output.strip():
+            break
+    best: Optional[GpuMemory] = None
+    shares_ram = False
+    shared_capability: Optional[float] = None
+    for line in output.splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) < 2 or not any(fields):
             continue
-        candidate = GpuMemory(int(total_mib * _MIB), int(free_mib * _MIB), "nvidia", "nvidia-smi")
+        total_mib, free_mib = _number(fields[0]), _number(fields[1])
+        capability = _number(fields[2]) if len(fields) > 2 else None
+        if total_mib is None:
+            # "[N/A]" or "Not Supported": the GPU has no memory of its own (DGX Spark's GB10).
+            shares_ram = True
+            shared_capability = shared_capability or capability
+            continue
+        candidate = GpuMemory(
+            int(total_mib * _MIB),
+            int(free_mib * _MIB) if free_mib is not None else None,
+            "nvidia",
+            "nvidia-smi",
+            compute_capability=capability,
+        )
         if best is None or candidate.total_bytes > best.total_bytes:
             best = candidate
-    return best if best and best.total_bytes >= _MIN_GPU_BYTES else None
+    if best is not None:
+        return best if best.total_bytes >= _MIN_GPU_BYTES else None
+    return _nvidia_unified("nvidia-smi-unified", shared_capability) if shares_ram else None
+
+
+def _nvidia_unified(source: str, capability: Optional[float] = None) -> Optional[GpuMemory]:
+    total_ram, available = _system_ram()
+    if not total_ram:
+        return None
+    total = int(total_ram * _NVIDIA_UNIFIED_SHARE)
+    free = min(total, available) if available is not None else None
+    return GpuMemory(total, free, "nvidia", source, unified=True, compute_capability=capability)
+
+
+def _from_jetson() -> Optional[GpuMemory]:
+    """A Jetson board without nvidia-smi: its GPU shares the RAM."""
+    if not sys.platform.startswith("linux") or platform.machine().lower() not in {"aarch64", "arm64"}:
+        return None
+    try:
+        with open("/proc/device-tree/model", encoding="utf-8", errors="ignore") as handle:
+            model = handle.read()
+    except OSError:
+        model = ""
+    if "jetson" not in model.lower() and not os.path.exists("/etc/nv_tegra_release"):
+        return None
+    return _nvidia_unified("jetson")
 
 
 def _read_int(path: str) -> Optional[int]:
@@ -118,7 +195,7 @@ def _from_amd_sysfs() -> Optional[GpuMemory]:
         candidate = GpuMemory(total, free, "amd", "amdgpu-sysfs")
         if best is None or candidate.total_bytes > best.total_bytes:
             best = candidate
-    return best if best and best.total_bytes >= _MIN_GPU_BYTES else None
+    return best if best and best.total_bytes >= _MIN_AMD_VRAM_BYTES else None
 
 
 def _system_ram() -> tuple[Optional[int], Optional[int]]:
@@ -131,20 +208,36 @@ def _system_ram() -> tuple[Optional[int], Optional[int]]:
         return None, None
 
 
+def _apple_wired_limit_bytes() -> Optional[int]:
+    """The GPU memory limit the user set with ``sysctl iogpu.wired_limit_mb`` (0 means the default)."""
+    for tool in ("/usr/sbin/sysctl", "sysctl"):
+        try:
+            value = _number(_run([tool, "-n", "iogpu.wired_limit_mb"]))
+        except Exception:
+            continue
+        if value is not None:
+            return int(value * _MIB) if value > 0 else None
+    return None
+
+
 def _from_apple_unified() -> Optional[GpuMemory]:
     if sys.platform != "darwin" or platform.machine() != "arm64":
         return None
     total_ram, available = _system_ram()
     if not total_ram:
         return None
+    raised = _apple_wired_limit_bytes()
     share = 0.75 if total_ram > 36 * GIB else 0.67
-    total = int(total_ram * share)
+    total = min(raised, total_ram) if raised else int(total_ram * share)
     free = min(total, available) if available is not None else None
-    return GpuMemory(total, free, "apple", "unified-memory", unified=True)
+    return GpuMemory(total, free, "apple", "iogpu.wired_limit_mb" if raised else "unified-memory", unified=True)
 
 
 def _from_windows_registry() -> Optional[GpuMemory]:
     if os.name != "nt":
+        return None
+    if platform.machine().lower() in {"arm64", "aarch64"}:
+        # Windows on Arm: Ollama has no GPU backend there and runs on the CPU.
         return None
     try:
         import winreg
@@ -201,7 +294,7 @@ def detect_gpu_memory(*, refresh: bool = False) -> Optional[GpuMemory]:
     if "value" in _detected and not refresh:
         return _detected["value"]
     found: Optional[GpuMemory] = None
-    for source in (_from_env, _from_nvidia_smi, _from_amd_sysfs, _from_apple_unified, _from_windows_registry):
+    for source in (_from_env, _from_nvidia_smi, _from_jetson, _from_amd_sysfs, _from_apple_unified, _from_windows_registry):
         try:
             found = source()
         except Exception as exc:
@@ -276,7 +369,9 @@ def whisper_device(requested: str, model_name: str = "base") -> str:
         if normalized == "cuda":
             logger.warning("Speech-to-text was set to cuda, but CTranslate2 sees no CUDA GPU; using the CPU")
         return "cpu"
-    if normalized == "auto":
+    gpu = detect_gpu_memory()
+    # On unified memory the CPU uses the same RAM, so moving Whisper there frees nothing.
+    if normalized == "auto" and not (gpu is not None and gpu.unified):
         free = free_gpu_memory_bytes()
         needed = whisper_gpu_bytes(model_name)
         if free is not None and free < needed:

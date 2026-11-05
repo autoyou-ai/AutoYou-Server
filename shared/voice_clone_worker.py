@@ -92,6 +92,12 @@ def _cuda_has_room(torch: Any) -> bool:
     if needed_gb <= 0:
         return True
     try:
+        # DGX Spark, Jetson: the GPU shares the RAM, so the CPU would use the same memory, only slower.
+        if bool(getattr(torch.cuda.get_device_properties(0), "is_integrated", False)):
+            return True
+    except Exception:
+        pass
+    try:
         free_bytes, _total_bytes = torch.cuda.mem_get_info()
     except Exception:
         return True

@@ -174,3 +174,16 @@ def test_keep_alive_defaults_to_30_minutes_and_follows_the_settings(monkeypatch)
     assert policy.resolve_ollama_keep_alive() == -1
     monkeypatch.setenv(policy.KEEP_ALIVE_ENV, "default")
     assert policy.resolve_ollama_keep_alive() is None
+
+
+def test_the_8_bit_cache_is_not_counted_on_nvidia_gpus_without_flash_attention(monkeypatch):
+    monkeypatch.setenv("OLLAMA_FLASH_ATTENTION", "1")
+    monkeypatch.setenv("OLLAMA_KV_CACHE_TYPE", "q8_0")
+    pascal = GpuMemory(11 * GIB, None, "nvidia", "nvidia-smi", compute_capability=6.1)
+    ada = GpuMemory(24 * GIB, None, "nvidia", "nvidia-smi", compute_capability=8.9)
+    apple = GpuMemory(48 * GIB, None, "apple", "unified-memory", unified=True)
+
+    assert policy.kv_bytes_per_element(pascal) == 2.0
+    assert policy.kv_bytes_per_element(ada) == 34 / 32
+    assert policy.kv_bytes_per_element(apple) == 34 / 32
+    assert policy.kv_bytes_per_element() == 34 / 32
