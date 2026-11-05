@@ -21,6 +21,7 @@
     "ip-address": "10.7.4",
     "js-yaml": "4.3.2",
     "zod": "4.6.7",
-    "extract-zip": "$extract-zip"
+    "extract-zip": "$extract-zip",
+    "glob": "14.0.3"
   }
 }

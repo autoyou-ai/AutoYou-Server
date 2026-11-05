@@ -84,6 +84,18 @@ References:
   affects every deepmerge release through 4.3.1 and has no upstream fix.
   `node/tunnelmole/vendor/deepmerge` is 4.3.1 with own `__proto__` keys
   dropped (see its `AUTOYOU-PATCH.md`); `security.test.js` checks the fix.
+- **glob and minimatch, WhatsApp helper (2026-11-05):**
+  [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)
+  (glob 9.0.0 through 14.0.1 keeps walking after an AbortSignal fires) and
+  [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+  (minimatch 7.0.0 to 11.0.0 glob-part amplification) reached `node/whatsapp`
+  through whatsapp-web.js, archiver 7.0.1 and archiver-utils 5.0.2, which asks
+  for glob ^10 (10.5.0, minimatch 9.0.9). No 10.x release is fixed, so
+  `node/whatsapp` overrides glob to 14.0.3, which brings minimatch 11.0.4.
+  archiver-utils only calls `require('glob').sync`, which glob 14 still
+  exports; archiving a directory and a glob pattern with archiver 7.0.1 and the
+  override produced the expected zip entries. readdir-glob keeps minimatch
+  5.1.9, outside the affected range. `npm audit` reports 0 vulnerabilities.
 - **multidict 7.2.1 / aiohttp 3.14.5 / soupsieve 3.0.4:** taken from the
   Dependabot updates. soupsieve 3.0.4 fixes quadratic `:dir()` matching.
 
