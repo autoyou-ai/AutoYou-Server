@@ -240,6 +240,18 @@ class PageFeedDB:
             con.execute("CREATE INDEX IF NOT EXISTS idx_blobs_created_at ON blobs(created_at)")
             con.execute("CREATE INDEX IF NOT EXISTS idx_blobs_mimetype ON blobs(mimetype)")
 
+            if "client_post_id" not in {row[1] for row in con.execute("PRAGMA table_info(feed_items)")}:
+                con.execute("ALTER TABLE feed_items ADD COLUMN client_post_id TEXT")
+            con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_client_post ON feed_items(client_post_id) WHERE client_post_id IS NOT NULL")
+            con.execute("""CREATE TABLE IF NOT EXISTS feed_attachments (
+                item_id INTEGER NOT NULL REFERENCES feed_items(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                blob_id TEXT NOT NULL REFERENCES blobs(id),
+                client_media_id TEXT NOT NULL,
+                PRIMARY KEY(item_id, position), UNIQUE(item_id, client_media_id)
+            )""")
+            con.execute("CREATE INDEX IF NOT EXISTS idx_feed_attachment_blob ON feed_attachments(blob_id)")
+
             # Lightweight migration: if an older table exists with INTEGER id, migrate to TEXT UUID
             try:
                 cur = con.execute("PRAGMA table_info(blobs)")
@@ -342,6 +354,54 @@ class PageFeedDB:
         except Exception:
             return ""
 
+    def post_details(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Batch-load ordered attachments for a feed page."""
+        if not items:
+            return items
+        ids = [int(item["id"]) for item in items]
+        marks = ",".join("?" for _ in ids)
+        with self._connect() as con:
+            posts = dict(con.execute(f"SELECT id, client_post_id FROM feed_items WHERE id IN ({marks})", ids))
+            rows = con.execute(f"""SELECT a.item_id, a.blob_id, a.client_media_id, b.filename, b.mimetype, b.size
+                FROM feed_attachments a JOIN blobs b ON b.id = a.blob_id
+                WHERE a.item_id IN ({marks}) ORDER BY a.item_id, a.position""", ids).fetchall()
+        attachments: Dict[int, list] = {}
+        for item_id, blob_id, media_id, name, mime, size in rows:
+            attachments.setdefault(item_id, []).append({
+                "blob_id": blob_id, "client_media_id": media_id, "url": f"blob://{blob_id}",
+                "name": name, "mime": mime or "application/octet-stream", "size": size,
+            })
+        return [{**item, "client_post_id": posts.get(int(item["id"])),
+                 "attachments": attachments.get(int(item["id"]), [])} for item in items]
+
+    def upsert_post(self, client_post_id: str, item_type: str, url: str, title: str,
+                    content: str, source: str, attachments: List[Dict[str, str]]) -> FeedItemFull:
+        """Publish an entire native draft atomically; retries keep the same item."""
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            for attachment in attachments:
+                if not con.execute("SELECT 1 FROM blobs WHERE id = ?", (attachment["blob_id"],)).fetchone():
+                    raise ValueError("An attachment is missing. Upload it before publishing.")
+            row = con.execute("SELECT id FROM feed_items WHERE client_post_id = ?", (client_post_id,)).fetchone()
+            if row:
+                item_id = int(row[0])
+                con.execute("UPDATE feed_items SET type=?, url=?, title=?, content=?, source=? WHERE id=?",
+                            (item_type, url, title, content, source, item_id))
+            else:
+                cur = con.execute("""INSERT INTO feed_items (type,url,title,content,source,added_at,client_post_id)
+                    VALUES (?,?,?,?,?,?,?)""", (item_type, url, title, content, source, datetime.now().isoformat(), client_post_id))
+                item_id = int(cur.lastrowid)
+            con.execute("DELETE FROM feed_attachments WHERE item_id = ?", (item_id,))
+            con.executemany("INSERT INTO feed_attachments (item_id,position,blob_id,client_media_id) VALUES (?,?,?,?)",
+                            [(item_id, position, a["blob_id"], a["client_media_id"]) for position, a in enumerate(attachments)])
+        return self.post_details([self.get_item(item_id)])[0]
+
+    def update_post(self, item_id: int, *, title: str, url: str, content: str, item_type: str, source: str) -> bool:
+        with self._connect() as con:
+            cur = con.execute("UPDATE feed_items SET title=?,url=?,content=?,type=?,source=? WHERE id=?",
+                              (title, url, content, item_type, source, item_id))
+            return cur.rowcount > 0
+
     def delete(self, item_id: int) -> bool:
         """Delete an item by id. Returns True if a row was deleted."""
         with self._connect() as con:
@@ -384,76 +444,46 @@ class PageFeedDB:
             return cur.rowcount > 0
 
     def delete_item_and_cleanup(self, item_id: int, uploads_dir: Optional[str] = None) -> Dict[str, Any]:
-        """Delete an item and clean up related data.
-
-        - Deletes the item from `feed_items`.
-        - Ensures tags are removed (via FK cascade or explicit).
-        - If the item references a local blob (blob://<id>) and no other items
-          reference it, deletes the blob metadata and removes the file from disk.
-
-        Returns a summary dict with counts and flags.
-        """
-        result: Dict[str, Any] = {
-            "deleted": 0,
-            "tags_deleted": 0,
-            "blob_id": None,
-            "blob_deleted": 0,
-            "file_deleted": 0,
-        }
-
+        """Remove a post and blobs no other post or attachment references."""
+        result = {"deleted": 0, "tags_deleted": 0, "blob_id": None, "blob_deleted": 0, "file_deleted": 0}
         with self._connect() as con:
-            # Fetch the item's URL before deletion to discover blob reference
-            cur = con.execute("SELECT url FROM feed_items WHERE id = ?", (item_id,))
-            row = cur.fetchone()
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT url FROM feed_items WHERE id = ?", (item_id,)).fetchone()
             if not row:
                 return result
-            url = str(row[0] or "")
-            blob_id = self._extract_blob_id(url)
-            result["blob_id"] = blob_id
-
-            # Delete the item
-            dcur = con.execute("DELETE FROM feed_items WHERE id = ?", (item_id,))
-            result["deleted"] = int(dcur.rowcount or 0)
-
-            # Explicit tag cleanup for compatibility if FK cascades are off
-            with suppress(Exception):
-                tcur = con.execute("DELETE FROM item_tags WHERE item_id = ?", (item_id,))
-                result["tags_deleted"] = int(tcur.rowcount or 0)
-
-            # If a blob was referenced, check if any remaining items reference it
-            if blob_id:
-                blob_url = f"blob://{blob_id}"
-                cur2 = con.execute("SELECT COUNT(1) FROM feed_items WHERE url = ?", (blob_url,))
-                (ref_count,) = cur2.fetchone() or (0,)
-                if int(ref_count or 0) == 0:
-                    # Retrieve blob path to delete file
-                    cur3 = con.execute("SELECT path FROM blobs WHERE id = ?", (blob_id,))
-                    row3 = cur3.fetchone()
-                    path = str(row3[0]) if row3 and row3[0] else None
-                    # Delete blob metadata
-                    bcur = con.execute("DELETE FROM blobs WHERE id = ?", (blob_id,))
-                    result["blob_deleted"] = int(bcur.rowcount or 0)
-                    # Delete file on disk if exists
-                    if path and os.path.exists(path):
-                        with suppress(Exception):
-                            os.remove(path)
-                            result["file_deleted"] = 1
-                    # Also consider uploads_dir cleanup in case of moved files
-                    if not path and uploads_dir:
-                        # Attempt to find likely file by prefix of blob id
-                        with suppress(Exception):
-                            for name in os.listdir(uploads_dir):
-                                p = os.path.join(uploads_dir, name)
-                                if os.path.isfile(p) and blob_id in name:
-                                    os.remove(p)
-                                    result["file_deleted"] = 1
-                                    break
-
+            primary = self._extract_blob_id(row[0])
+            result["blob_id"] = primary
+            blobs = {r[0] for r in con.execute("SELECT blob_id FROM feed_attachments WHERE item_id = ?", (item_id,))}
+            if primary:
+                blobs.add(primary)
+            con.execute("DELETE FROM feed_attachments WHERE item_id = ?", (item_id,))
+            result["tags_deleted"] = con.execute("DELETE FROM item_tags WHERE item_id = ?", (item_id,)).rowcount
+            result["deleted"] = con.execute("DELETE FROM feed_items WHERE id = ?", (item_id,)).rowcount
+            for blob_id in blobs:
+                held = con.execute("SELECT 1 FROM feed_items WHERE url = ? UNION ALL SELECT 1 FROM feed_attachments WHERE blob_id = ? LIMIT 1",
+                                   (f"blob://{blob_id}", blob_id)).fetchone()
+                if held:
+                    continue
+                meta = con.execute("SELECT path FROM blobs WHERE id = ?", (blob_id,)).fetchone()
+                result["blob_deleted"] += con.execute("DELETE FROM blobs WHERE id = ?", (blob_id,)).rowcount
+                if meta and meta[0]:
+                    with suppress(OSError):
+                        os.remove(meta[0])
+                        result["file_deleted"] += 1
+                elif uploads_dir:
+                    with suppress(OSError):
+                        for name in os.listdir(uploads_dir):
+                            path = os.path.join(uploads_dir, name)
+                            if blob_id in name and os.path.isfile(path):
+                                os.remove(path)
+                                result["file_deleted"] += 1
+                                break
         return result
 
     def clear(self) -> int:
         """Delete all items. Returns number of rows deleted."""
         with self._connect() as con:
+            con.execute("DELETE FROM feed_attachments")
             cur = con.execute("DELETE FROM feed_items")
             return cur.rowcount or 0
 
@@ -475,6 +505,7 @@ class PageFeedDB:
 
         with self._connect() as con:
             # Delete items and tags
+            con.execute("DELETE FROM feed_attachments")
             cur_items = con.execute("DELETE FROM feed_items")
             result["items_deleted"] = int(cur_items.rowcount or 0)
             with suppress(Exception):

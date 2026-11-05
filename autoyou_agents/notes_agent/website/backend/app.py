@@ -38,7 +38,8 @@ except ImportError:
             self.app = app
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.notes_agent.notes_tool import NotesStorageSealedError, NotesTool

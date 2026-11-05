@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.fine_tuning_agent.fine_tuning_tool import (

@@ -44,7 +44,8 @@ from urllib.parse import parse_qs, quote, urlparse
 import requests
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
 from shared.url_hosts import host_matches, social_platform
@@ -791,6 +792,8 @@ class PageFeedService:
         }
 
     def _present_items(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if getattr(self, "db", None) is not None and hasattr(self.db, "post_details"):
+            items = self.db.post_details(items)
         blob_ids = [
             str(item.get("url") or "")[len("blob://"):]
             for item in items
@@ -806,7 +809,14 @@ class PageFeedService:
                 continue
             url = str(item.get("url") or "")
             meta = metas.get(url[len("blob://"):]) if url.startswith("blob://") else None
-            presented.append({**item, "view": self._present_item(item, meta)})
+            attachments = []
+            for attachment in item.get("attachments", []):
+                mime = str(attachment.get("mime") or "")
+                family = mime.split("/", 1)[0]
+                attachment_type = family if family in {"image", "video", "audio"} else "file"
+                attachment_item = {**attachment, "type": attachment_type, "title": attachment.get("name", "Attachment")}
+                attachments.append({**attachment_item, "view": self._present_item(attachment_item, {"filename": attachment.get("name"), "size": attachment.get("size")})})
+            presented.append({**item, "attachments": attachments, "view": self._present_item(item, meta)})
         return presented
 
     @staticmethod
@@ -1596,6 +1606,7 @@ class PageFeedService:
                 "db_available": getattr(self, "db", None) is not None,
                 "loaded_items": len(self.feed_items),
                 "capabilities": [
+                    "grouped_posts",
                     "feed_query",
                     "blob_upload",
                     "range_blob_streaming",
@@ -1656,6 +1667,8 @@ class PageFeedService:
             """Add a new item to the feed from a link."""
             try:
                 data = await request.json()
+                if "client_post_id" in data:
+                    return await publish_native_post(data)
                 url = str(data.get("url", "")).strip()
                 content = str(data.get("content") or "")[:50000]
                 item_type = str(data.get("type") or (self._classify_url(url) if url else "text"))
@@ -1713,6 +1726,71 @@ class PageFeedService:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
+
+        async def publish_native_post(data: Dict[str, Any]) -> JSONResponse:
+            post_id = str(data.get("client_post_id") or "").strip()
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", post_id):
+                raise HTTPException(400, "A valid client_post_id is required")
+            raw = data.get("attachments", [])
+            if not isinstance(raw, list) or len(raw) > 500:
+                raise HTTPException(400, "Attach up to 500 files")
+            attachments = []
+            for entry in raw:
+                if not isinstance(entry, dict) or not entry.get("blob_id") or not entry.get("client_media_id"):
+                    raise HTTPException(400, "Each attachment needs blob_id and client_media_id")
+                attachments.append({"blob_id": str(entry["blob_id"])[:128], "client_media_id": str(entry["client_media_id"])[:128]})
+            if len({a["client_media_id"] for a in attachments}) != len(attachments) or len({a["blob_id"] for a in attachments}) != len(attachments):
+                raise HTTPException(400, "Attachments must be unique")
+            if self.db is None:
+                raise HTTPException(503, "Post storage is unavailable")
+            url = str(data.get("url") or "").strip()
+            if url and (urlparse(url).scheme not in {"http", "https"} or not self._safe_link(url)):
+                raise HTTPException(400, "Use an http or https link")
+            content = str(data.get("content") or "")[:50000]
+            if not url and not content and not attachments:
+                raise HTTPException(400, "Add text, a link or an attachment")
+            item_type = self._classify_url(url) if url else "text"
+            if not url and attachments:
+                first = self.db.get_blob_meta(attachments[0]["blob_id"])
+                if not first:
+                    raise HTTPException(400, "An attachment is missing")
+                family = str(first.get("mimetype") or "").split("/", 1)[0]
+                item_type = family if family in {"image", "audio", "video"} else "file"
+                url = "blob://" + attachments[0]["blob_id"]
+            try:
+                item = self.db.upsert_post(post_id, item_type, url, str(data.get("title") or "")[:300],
+                                           content, self._default_source(url), attachments)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            self.feed_items = [i for i in self.feed_items if i.get("id") != item["id"]] + [item]
+            return JSONResponse({"item": self._present_items([item])[0]})
+
+        @app.post("/api/item/{item_id}/update")
+        async def api_item_update(item_id: int, request: Request) -> JSONResponse:
+            try:
+                data = await request.json()
+            except ValueError as exc:
+                raise HTTPException(400, "Use a JSON object to edit the post") from exc
+            if not isinstance(data, dict):
+                raise HTTPException(400, "Use a JSON object to edit the post")
+            item = self.db.get_item(item_id) if self.db else None
+            if not item:
+                raise HTTPException(404, "Item not found")
+            title = str(data.get("title", item["title"]))[:300].strip()
+            content = str(data.get("content", item.get("content", "")))[:50000]
+            url = str(data.get("url", item["url"])).strip()
+            if item["url"].startswith("blob://"):
+                if url != item["url"]:
+                    raise HTTPException(400, "Uploaded media cannot be replaced by editing its link")
+            elif url and (urlparse(url).scheme not in {"http", "https"} or not self._safe_link(url)):
+                raise HTTPException(400, "Use an http or https link")
+            if not title or (not url and not content):
+                raise HTTPException(400, "Add a title and a link or text")
+            item_type = item["type"] if url.startswith("blob://") else self._classify_url(url) if url else "text"
+            self.db.update_post(item_id, title=title, url=url, content=content, item_type=item_type, source=self._default_source(url))
+            updated = self._present_items([self.db.get_item(item_id)])[0]
+            self.feed_items = [updated if i.get("id") == item_id else i for i in self.feed_items]
+            return JSONResponse({"ok": True, "item": updated})
 
         @app.delete("/api/feed/{item_id}")
         async def api_feed_delete(item_id: int) -> JSONResponse:
@@ -1900,7 +1978,7 @@ class PageFeedService:
             if getattr(self, "db", None) is not None:
                 item = self.db.get_item(item_id)
                 if item:
-                    return JSONResponse({"item": dict(item)})
+                    return JSONResponse({"item": self._present_items([dict(item)])[0]})
             for i in self.feed_items:
                 if i.get("id") == item_id:
                     return JSONResponse({"item": i})

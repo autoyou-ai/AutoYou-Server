@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 from shared.secure_storage import secure_storage_enabled
 
 from autoyou_agents.prompts_agent.collector import get_global_collector

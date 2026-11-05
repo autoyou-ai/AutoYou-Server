@@ -968,13 +968,13 @@
     return state.activeItemId === null ? null : findItem(state.activeItemId);
   }
 
-  function embedFrame(src, variant, title, height) {
+  function embedFrame(src, variant, title, height, trusted = false) {
     const style = height ? ` style="--frame-height: ${Number(height)}px"` : "";
     return `<div class="media-stage"><div class="media-frame ${variant}"${style}>`
       + `<iframe src="${escapeHtml(src)}" title="${escapeHtml(title)}" loading="lazy" allowfullscreen `
       + 'allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write" '
       + 'referrerpolicy="strict-origin-when-cross-origin" '
-      + 'sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>'
+      + (trusted ? '></iframe>' : 'sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>')
       + "</div></div>";
   }
 
@@ -997,7 +997,11 @@
     const open = safeUrl(view.open_url);
     const title = view.title || item.title || "Saved item";
     if (type === "youtube" && youtubeId(item.url)) {
-      return embedFrame(`https://www.youtube-nocookie.com/embed/${youtubeId(item.url)}?rel=0&playsinline=1`, "ratio-video", title);
+      const params = new URLSearchParams({ rel: "0", playsinline: "1" });
+      if (/^https?:$/.test(window.location.protocol)) params.set("origin", window.location.origin);
+      return embedFrame(`https://www.youtube-nocookie.com/embed/${youtubeId(item.url)}?${params}`, "ratio-video", title, null, true)
+        + '<p class="field-help">Playback depends on the video owner and YouTube availability. '
+        + `<a href="${escapeHtml(open)}" target="_blank" rel="noopener">Watch on YouTube</a></p>`;
     }
     const post = postEmbed(item, currentTheme());
     if (post) {
@@ -1076,19 +1080,62 @@
     return `<dl class="detail-info">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
   }
 
+  function attachmentsMarkup(item) {
+    const attachments = item.attachments || [];
+    if (!attachments.length) return mediaMarkup(item);
+    return `<section class="post-gallery" data-parent-item-id="${Number(item.id)}" aria-label="Post attachments">`
+      + '<div class="gallery-track" tabindex="0" aria-label="Swipe through attachments">'
+      + attachments.map((attachment, index) => `<article class="gallery-slide" data-attachment-index="${index}" aria-label="Attachment ${index + 1} of ${attachments.length}">`
+        + mediaMarkup(attachment) + `<p class="field-help">${escapeHtml(attachment.name || "Attachment")}</p>`
+        + actionsMarkup(attachment) + '</article>').join("")
+      + '</div>'
+      + (attachments.length > 1 ? '<div class="gallery-controls">'
+        + '<button type="button" class="button subtle compact" data-action="gallery-prev" aria-label="Previous attachment">Previous</button>'
+        + `<span class="gallery-count" aria-live="polite">1 of ${attachments.length}</span>`
+        + '<button type="button" class="button subtle compact" data-action="gallery-next" aria-label="Next attachment">Next</button></div>' : "")
+      + '</section>';
+  }
+
+  function setupPostGalleries(root) {
+    root.querySelectorAll(".gallery-track").forEach((track) => {
+      const sync = () => {
+        const count = track.children.length;
+        const index = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+        const gallery = track.closest(".post-gallery");
+        const label = gallery.querySelector(".gallery-count");
+        if (label) label.textContent = `${index + 1} of ${count}`;
+        const previous = gallery.querySelector('[data-action="gallery-prev"]');
+        const next = gallery.querySelector('[data-action="gallery-next"]');
+        if (previous) previous.disabled = index === 0;
+        if (next) next.disabled = index >= count - 1;
+      };
+      track.addEventListener("scroll", sync, { passive: true });
+      track.addEventListener("keydown", (event) => {
+        if (event.target === track && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
+          event.preventDefault();
+          track.scrollBy({ left: (event.key === "ArrowLeft" ? -1 : 1) * track.clientWidth, behavior: "smooth" });
+        }
+      });
+      sync();
+    });
+  }
+
   function renderItemSheet(item) {
     const view = item.view || {};
     $("item-kicker").innerHTML = `<span class="kicker-tile accent-${safeAccent(view.accent)}">${icon(safeIcon(view.icon))}</span>`
       + `<span class="kicker-text">${escapeHtml([...byline(view), relativeDay(item.added_at)].filter(Boolean).join(" · "))}</span>`;
     $("item-title").textContent = view.title || item.title || "Saved item";
     $("item-rename-form").hidden = true;
+    $("item-content").hidden = false;
     $("item-rename").hidden = false;
     syncFavouriteButton(item);
     const content = $("item-content");
     stopMedia(content);
     // Opened from the full-screen feed, the sheet leaves the media to the feed.
     const textBody = item.content ? `<p class="native-text-content">${escapeHtml(item.content)}</p>` : "";
-    content.innerHTML = (state.sheetMedia ? mediaMarkup(item) : "") + textBody + actionsMarkup(item) + tagsMarkup(item) + infoMarkup(item);
+    const primaryActions = item.attachments?.length && String(item.url || "").startsWith("blob://") ? "" : actionsMarkup(item);
+    content.innerHTML = (state.sheetMedia ? attachmentsMarkup(item) : "") + textBody + primaryActions + tagsMarkup(item) + infoMarkup(item);
+    setupPostGalleries(content);
     content.scrollTop = 0;
     upgradePhoto(content.querySelector(".media-stage.photo img"));
     void activateRemoteVideo(content);
@@ -1321,13 +1368,21 @@
     $("item-rename-input").value = String(item.title || "").trim() || (item.view && item.view.title) || "";
     $("item-rename-form").hidden = false;
     $("item-rename").hidden = true;
+    $("item-content").hidden = true;
+    $("item-link-input").value = String(item.url || "");
+    $("item-link-input").hidden = $("item-link-label").hidden = String(item.url || "").startsWith("blob://");
+    $("item-link-input").disabled = $("item-link-input").hidden;
+    $("item-text-input").value = String(item.content || "");
+    $("item-edit-error").hidden = true;
     $("item-rename-input").focus();
     $("item-rename-input").select();
   }
 
   function cancelRename() {
+    if ($("item-rename-form").contains(document.activeElement)) document.activeElement.blur();
     $("item-rename-form").hidden = true;
     $("item-rename").hidden = false;
+    $("item-content").hidden = false;
   }
 
   async function saveRename(event) {
@@ -1337,15 +1392,21 @@
     if (!item || !title) {
       return;
     }
-    const result = await sendJson(`./api/item/${Number(item.id)}/title`, "POST", { title });
+    $("item-edit-save").disabled = true;
+    const result = await sendJson(`./api/item/${Number(item.id)}/update`, "POST", {
+      title, url: $("item-link-input").value.trim(), content: $("item-text-input").value,
+    });
+    $("item-edit-save").disabled = false;
     if (!result.ok) {
-      toast(result.error);
+      $("item-edit-error").textContent = result.error;
+      $("item-edit-error").hidden = false;
       return;
     }
-    updateItem(item.id, { title, view: Object.assign({}, item.view, { title }) });
-    $("item-title").textContent = title;
-    cancelRename();
-    toast("Title saved");
+    const stillOpen = Number(state.activeItemId) === Number(item.id) && $("item-sheet").classList.contains("open");
+    if (stillOpen && $("item-rename-form").contains(document.activeElement)) document.activeElement.blur();
+    updateItem(item.id, result.payload.item);
+    if (stillOpen) renderItemSheet(result.payload.item);
+    toast("Post saved");
   }
 
   async function addTag(form) {
@@ -1802,6 +1863,7 @@
   }
 
   function reelKind(item) {
+    if (item.attachments?.length) return "gallery";
     const view = item.view || {};
     const type = itemType(item);
     const open = safeUrl(view.open_url);
@@ -1899,7 +1961,7 @@
     if (!view.uploaded && safeUrl(item.url)) {
       buttons.push(railButton("share", "share", "Share", "Share link"));
     }
-    buttons.push(railButton("caption", "captions", "Text", "Show the text", ' aria-pressed="false"'));
+    if (itemType(item) !== "youtube") buttons.push(railButton("caption", "captions", "Text", "Show the text", ' aria-pressed="false"'));
     return `<div class="reel-rail">${buttons.join("")}</div>`;
   }
 
@@ -1940,11 +2002,11 @@
       : "";
   }
 
-  function reelFrame(src, title) {
+  function reelFrame(src, title, trusted = false) {
     return `<iframe src="${escapeHtml(src)}" title="${escapeHtml(title)}" allowfullscreen `
       + 'allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write" '
       + 'referrerpolicy="strict-origin-when-cross-origin" '
-      + 'sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>';
+      + (trusted ? '></iframe>' : 'sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>');
   }
 
   function reelVideoMarkup(src, directSrc = "", relaySrc = "", streamMode = "direct") {
@@ -1967,6 +2029,10 @@
     const view = item.view || {};
     const title = view.title || item.title || "Saved item";
     const open = safeUrl(view.open_url);
+    if (kind === "gallery") {
+      return '<div class="reel-native-post">' + attachmentsMarkup(item)
+        + `<h2>${escapeHtml(title)}</h2><p class="native-text-content">${escapeHtml(item.content || "")}</p></div>`;
+    }
     if (kind === "photo") {
       const sources = photoSources(item);
       return reelBackdrop(sources.preview)
@@ -1985,9 +2051,9 @@
       const id = youtubeId(item.url);
       const poster = safeUrl(view.thumb);
       const player = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=${reel.muted ? 1 : 0}`
-        + `&playsinline=1&rel=0&loop=1&playlist=${id}&enablejsapi=1`;
+        + `&playsinline=1&rel=0&loop=1&playlist=${id}&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
       const inner = live
-        ? reelFrame(player, title)
+        ? reelFrame(player, title, true)
         : (poster ? `<img class="reel-poster" src="${escapeHtml(poster)}" alt="" decoding="async" referrerpolicy="no-referrer">` : "");
       return reelBackdrop(poster) + `<div class="reel-embed">${inner}</div>`;
     }
@@ -2042,6 +2108,7 @@
     if (stage.dataset.mode !== mode) {
       releaseMedia(stage);
       stage.innerHTML = reelStageMarkup(item, kind, mode === "live");
+      setupPostGalleries(stage);
       stage.dataset.mode = mode;
       if (remoteVideo && mode === "live") {
         void resolveReelVideo(slide, stage);
@@ -3061,12 +3128,20 @@
     document.addEventListener("click", (event) => {
       const opener = event.target.closest('[data-action="open"][data-item-id]');
       if (opener) {
-        openReel(opener.getAttribute("data-item-id"), opener);
+        const id = opener.getAttribute("data-item-id");
+        const item = findItem(id);
+        if (itemType(item) === "youtube" || item?.attachments?.length) openItem(id, opener);
+        else openReel(id, opener);
         return;
       }
       const action = event.target.closest("[data-action]");
       if (action) {
         const name = action.getAttribute("data-action");
+        if (name === "gallery-prev" || name === "gallery-next") {
+          const track = action.closest(".post-gallery").querySelector(".gallery-track");
+          track.scrollBy({ left: (name === "gallery-prev" ? -1 : 1) * track.clientWidth, behavior: "smooth" });
+          return;
+        }
         if (name === "show-all") {
           state.range = state.windowDays > 0 ? "all" : "default";
           renderFilters();
@@ -3085,7 +3160,10 @@
         } else if (name === "copy-link") {
           void copyLink();
         } else if (name === "view-photo") {
-          openPhoto(activeItem(), action);
+          const gallery = action.closest(".post-gallery");
+          const item = gallery ? findItem(gallery.dataset.parentItemId) : activeItem();
+          const attachmentIndex = action.closest("[data-attachment-index]")?.dataset.attachmentIndex;
+          openPhoto(attachmentIndex === undefined ? item : item?.attachments?.[Number(attachmentIndex)], action);
         } else if (name === "remove-tag") {
           void removeTag(action.getAttribute("data-tag") || "");
         }

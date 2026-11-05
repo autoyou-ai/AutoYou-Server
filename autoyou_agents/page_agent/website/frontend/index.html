@@ -146,17 +146,24 @@
         </div>
         <div class="title-row">
           <h2 id="item-title" class="sheet-title"></h2>
-          <button id="item-rename" class="link-button requires-edit" type="button" aria-label="Rename item">
+          <button id="item-rename" class="link-button requires-edit" type="button" aria-label="Edit post">
             <i class="ic ic-pencil" aria-hidden="true"></i>
           </button>
         </div>
-        <form id="item-rename-form" class="rename-form" hidden>
-          <label class="sr-only" for="item-rename-input">Title</label>
-          <input id="item-rename-input" class="text-input" type="text" maxlength="300" enterkeyhint="done">
-          <button class="button primary compact" type="submit">Save</button>
-          <button id="item-rename-cancel" class="button subtle compact" type="button">Cancel</button>
-        </form>
       </header>
+      <form id="item-rename-form" class="post-edit" hidden>
+        <label class="field-label" for="item-rename-input">Title</label>
+        <input id="item-rename-input" class="text-input" type="text" maxlength="300" required>
+        <label id="item-link-label" class="field-label" for="item-link-input">Link</label>
+        <input id="item-link-input" class="text-input" type="url" inputmode="url" autocomplete="off" spellcheck="false">
+        <label class="field-label" for="item-text-input">Text or transcript</label>
+        <textarea id="item-text-input" class="text-input" rows="5" maxlength="50000"></textarea>
+        <p id="item-edit-error" class="form-error" role="alert" hidden></p>
+        <div class="action-row">
+          <button id="item-edit-save" class="button primary" type="submit">Save changes</button>
+          <button id="item-rename-cancel" class="button subtle" type="button">Cancel</button>
+        </div>
+      </form>
       <div id="item-content" class="sheet-content"></div>
     </section>
   </div>

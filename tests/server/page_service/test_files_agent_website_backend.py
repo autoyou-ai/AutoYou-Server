@@ -8,10 +8,23 @@
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 import autoyou_agents.files_agent.website.backend.app as files_app
+
+
+def test_windows_drive_discovery_without_python_listdrives(monkeypatch):
+    import ctypes
+    monkeypatch.delattr(files_app.os, "listdrives", raising=False)
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=SimpleNamespace(GetLogicalDrives=lambda: (1 << 2) | (1 << 3) | (1 << 25))), raising=False)
+    assert files_app._windows_drive_roots() == ["C:\\", "D:\\", "Z:\\"]
+
+
+def test_windows_drive_discovery_uses_python_api_when_available(monkeypatch):
+    monkeypatch.setattr(files_app.os, "listdrives", lambda: ["C:\\", "E:\\"], raising=False)
+    assert files_app._windows_drive_roots() == ["C:\\", "E:\\"]
 
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-1bff25fe89c0f7c172ab5eb4"
 

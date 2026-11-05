@@ -37,7 +37,8 @@ except ImportError:
             self.app = app
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.tasks_agent.agent import _extract_send_message_action
@@ -854,7 +855,8 @@ def _inject_frontend_auth_gate(
     body_close = html_content.lower().rfind("</body>")
     if body_close >= 0:
         html_content = html_content[:body_close] + gate_script + html_content[body_close:]
-    return html_content
+    from autoyou_agents.shared_tools.agent_input_ux import inject_agent_input_ux
+    return inject_agent_input_ux(html_content)
 
 
 def _set_agent_session_cookie(
