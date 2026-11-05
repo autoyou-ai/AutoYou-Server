@@ -116,6 +116,35 @@ def test_a_quick_answer_comes_back_with_the_question(site, monkeypatch):
     assert data["reply"] == "Paris." and "pending" not in data and data["turn_id"]
 
 
+def test_stopping_a_turn_cancels_work_and_cannot_be_overwritten_by_a_late_reply(site, monkeypatch):
+    cancelled = threading.Event()
+    release = threading.Event()
+
+    async def slow_ask(text, *, session_id, wake):
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.set()
+            while not release.is_set():
+                await asyncio.sleep(0.001)
+            return {"response": "A stale reply", "agent_name": "assistant_agent"}
+
+    monkeypatch.setattr(site.backend, "ask_assistant", slow_ask)
+    monkeypatch.setattr(site.backend, "TURN_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr(site.backend, "TURN_POLL_WAIT_SECONDS", 0.01)
+    with TestClient(site.backend.app) as client:
+        first = client.post("/api/assistant/turn", json={"text": "Synthetic slow turn", "session_id": "synthetic-1234"}, headers=ORIGIN).json()
+        url = "/api/assistant/cancel/" + first["job_id"]
+        viewer = {**ORIGIN, "X-AutoYou-Agent-Frontend": "assistant_agent", "X-AutoYou-WebRTC-Session-Id": "synthetic-device", "X-AutoYou-Remote-Role": "viewer"}
+        assert client.post(url, headers=viewer).status_code == 403
+        assert client.post(url, headers=ORIGIN).json()["cancelled"]
+        assert cancelled.wait(1)
+        release.set()
+        done = client.get("/api/assistant/result/" + first["job_id"]).json()
+        assert done["cancelled"] and "reply" not in done and "pending" not in done
+        assert client.post(url, headers=ORIGIN).json()["success"]
+
+
 def test_a_failed_slow_answer_reports_why(site, monkeypatch):
     async def broken_ask(text, *, session_id, wake):
         await asyncio.sleep(0.1)

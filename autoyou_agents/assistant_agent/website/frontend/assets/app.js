@@ -17,6 +17,8 @@
     return;
   }
 
+  var nativeRenderer = document.documentElement.dataset.nativeAssistant === "1";
+  var nativeVisible = true;
   var SR = 16000;
   var params = new URLSearchParams(location.search);
   var $ = function (id) { return document.getElementById(id); };
@@ -509,6 +511,8 @@
   }
   // Stop what it is saying or working on, and listen for the word again.
   function stopTurn() {
+    if (S.activeJob) request("api/assistant/cancel/" + encodeURIComponent(S.activeJob), {}).catch(function () {});
+    S.activeJob = null;
     S.turnTicket += 1;
     stopSpeaking();
     hint("Stopped.", "", 2);
@@ -641,7 +645,8 @@
   }
   // Each check waits on the server for a few seconds, so this is not a fast poll.
   function collect(jobId, wanted) {
-    if (!wanted()) return Promise.resolve(null);
+    if (!wanted()) { request("api/assistant/cancel/" + encodeURIComponent(jobId), {}).catch(function () {}); return Promise.resolve(null); }
+    S.activeJob = jobId;
     return request("api/assistant/result/" + encodeURIComponent(jobId)).then(function (data) {
       return settle(data, wanted);
     });
@@ -998,9 +1003,35 @@
   function releaseWakeLock() { if (S.wakeLock) { S.wakeLock.release().catch(function () {}); S.wakeLock = null; } }
 
   // ---- Server settings ----------------------------------------------------------
+  var originalSkinAttributes = null;
+  var originalSkinGradients = null;
   function applySkin(skin) {
-    if (!skin) return;
+    if (!skin || typeof skin !== "object") return;
+    // A pack is data, never HTML, scripts or remote assets.
+    var color = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+    skin = JSON.parse(JSON.stringify(skin));
+    Object.keys(skin.palette || {}).forEach(function (key) {
+      var value = skin.palette[key];
+      if (Array.isArray(value) ? (value.length < 2 || value.length > 4) || !value.every(function (v) { return color.test(v); }) : !color.test(value)) delete skin.palette[key];
+    });
+    Object.keys(J).forEach(function (key) { J[key].k = defaultJoints[key].k; J[key].c = defaultJoints[key].c; });
+    S.breathSpeed = 1.6; S.breathAmplitude = 2.2; S.gazeSensitivity = 1;
     S.activeSkin = skin;
+    if (!originalSkinGradients) {
+      originalSkinGradients = ["g-shell", "g-shell-head", "g-visor", "g-blue"].map(function (id) { return $(id).cloneNode(true); });
+    }
+    originalSkinGradients.forEach(function (saved) {
+      var gradient = $(saved.id);
+      while (gradient.firstChild) gradient.removeChild(gradient.firstChild);
+      Array.prototype.forEach.call(saved.childNodes, function (stop) { gradient.appendChild(stop.cloneNode(true)); });
+    });
+    if (!originalSkinAttributes) {
+      originalSkinAttributes = Array.prototype.map.call(document.querySelectorAll("#robot [stroke], #robot [fill]"), function (node) {
+        return { node: node, attrs: ["stroke", "fill", "stroke-width", "r", "stop-color"].map(function (key) { return [key, node.getAttribute(key)]; }) };
+      });
+    } else originalSkinAttributes.forEach(function (saved) {
+      saved.attrs.forEach(function (pair) { if (pair[1] === null) saved.node.removeAttribute(pair[0]); else saved.node.setAttribute(pair[0], pair[1]); });
+    });
     if (skin.palette) {
       var p = skin.palette;
       if (p.glow_primary) {
@@ -1011,51 +1042,29 @@
           if (glowNodes[i].getAttribute("fill") && glowNodes[i].getAttribute("fill") !== "none") glowNodes[i].setAttribute("fill", p.glow_primary);
         }
       }
-      if (p.shell_gradient && p.shell_gradient.length >= 3) {
-        var gShell = $("g-shell");
-        if (gShell) {
-          var stops = gShell.querySelectorAll("stop");
-          if (stops.length >= 3) {
-            stops[0].setAttribute("stop-color", p.shell_gradient[0]);
-            stops[1].setAttribute("stop-color", p.shell_gradient[1]);
-            stops[2].setAttribute("stop-color", p.shell_gradient[2]);
-          }
+      function gradientColors(id, colors) {
+        if (!colors) return;
+        var gradient = $(id), stops = gradient.querySelectorAll("stop");
+        if (stops.length !== colors.length) {
+          while (gradient.firstChild) gradient.removeChild(gradient.firstChild);
+          colors.forEach(function (_, index) {
+            var stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+            stop.setAttribute("offset", index / (colors.length - 1)); gradient.appendChild(stop);
+          });
+          stops = gradient.querySelectorAll("stop");
         }
+        colors.forEach(function (color, index) { stops[index].setAttribute("stop-color", color); });
       }
-      var headGrad = (p.shell_head_gradient && p.shell_head_gradient.length >= 3) ? p.shell_head_gradient : p.shell_gradient;
-      if (headGrad && headGrad.length >= 3) {
-        var gShellHead = $("g-shell-head");
-        if (gShellHead) {
-          var hStops = gShellHead.querySelectorAll("stop");
-          if (hStops.length >= 3) {
-            hStops[0].setAttribute("stop-color", headGrad[0]);
-            hStops[1].setAttribute("stop-color", headGrad[1]);
-            hStops[2].setAttribute("stop-color", headGrad[2]);
-          }
-        }
-      }
-      if (p.visor_gradient && p.visor_gradient.length >= 3) {
-        var gVisor = $("g-visor");
-        if (gVisor) {
-          var vStops = gVisor.querySelectorAll("stop");
-          if (vStops.length >= 3) {
-            vStops[0].setAttribute("stop-color", p.visor_gradient[0]);
-            vStops[1].setAttribute("stop-color", p.visor_gradient[1]);
-            vStops[2].setAttribute("stop-color", p.visor_gradient[2]);
-          }
-        }
-      }
-      if (p.accent_gradient && p.accent_gradient.length >= 3) {
-        var gBlue = $("g-blue");
-        if (gBlue) {
-          var bStops = gBlue.querySelectorAll("stop");
-          if (bStops.length >= 3) {
-            bStops[0].setAttribute("stop-color", p.accent_gradient[0]);
-            bStops[1].setAttribute("stop-color", p.accent_gradient[1]);
-            bStops[2].setAttribute("stop-color", p.accent_gradient[2]);
-          }
-        }
-      }
+      gradientColors("g-shell", p.shell_gradient);
+      gradientColors("g-shell-head", p.shell_head_gradient || p.shell_gradient);
+      gradientColors("g-visor", p.visor_gradient);
+      gradientColors("g-blue", p.accent_gradient);
+      originalSkinAttributes.forEach(function (saved) {
+        saved.attrs.forEach(function (pair) {
+          if (pair[1] === "#3fd8ff" && p.glow_primary) saved.node.setAttribute(pair[0], p.glow_primary);
+          if (pair[1] === "#25b0ff" && p.glow_secondary) saved.node.setAttribute(pair[0], p.glow_secondary);
+        });
+      });
       if (p.core_color) {
         var corePaths = document.querySelectorAll("#core path, #core polygon, #core polyline");
         for (var c = 0; c < corePaths.length; c++) {
@@ -1066,14 +1075,16 @@
       }
     }
     if (skin.physics) {
-      if (skin.physics.breath_speed) S.breathSpeed = skin.physics.breath_speed;
-      if (skin.physics.breath_amplitude) S.breathAmplitude = skin.physics.breath_amplitude;
-      if (skin.physics.gaze_sensitivity) S.gazeSensitivity = skin.physics.gaze_sensitivity;
+      if (Number.isFinite(skin.physics.breath_speed)) S.breathSpeed = clamp(skin.physics.breath_speed, 0.2, 5);
+      if (Number.isFinite(skin.physics.breath_amplitude)) S.breathAmplitude = clamp(skin.physics.breath_amplitude, 0, 10);
+      if (Number.isFinite(skin.physics.gaze_sensitivity)) S.gazeSensitivity = clamp(skin.physics.gaze_sensitivity, 0, 3);
       if (skin.physics.springs) {
         Object.keys(skin.physics.springs).forEach(function (k) {
-          if (J[k] && skin.physics.springs[k]) {
-            if (skin.physics.springs[k].k) J[k].k = skin.physics.springs[k].k;
-            if (skin.physics.springs[k].c) J[k].c = skin.physics.springs[k].c;
+          if (Object.prototype.hasOwnProperty.call(J, k) && skin.physics.springs[k]) {
+            var spring = skin.physics.springs[k];
+            if (Number.isFinite(spring.k)) J[k].k = clamp(spring.k, 5, 500);
+            // Packs store a damping ratio, not the damping coefficient.
+            J[k].c = 2 * clamp(Number.isFinite(spring.c) ? spring.c : 0.6, 0.05, 3) * Math.sqrt(J[k].k);
           }
         });
       }
@@ -1094,6 +1105,29 @@
         }
       }
     }
+    var bands = clamp(Math.round(Number(skin.audio_reactivity && skin.audio_reactivity.mic_equalizer_bands) || 7), 3, 16);
+    if (bot.eq && eqBars.length !== bands) {
+      while (bot.eq.firstChild) bot.eq.removeChild(bot.eq.firstChild);
+      for (var band = 0; band < bands; band++) {
+        var bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bar.setAttribute("x", 156 + band * 88 / bands); bar.setAttribute("y", "211");
+        bar.setAttribute("width", 60 / bands); bar.setAttribute("height", "6"); bar.setAttribute("rx", "2");
+        bot.eq.appendChild(bar);
+      }
+      eqBars = bot.eq.querySelectorAll("rect");
+    }
+    if (bot.eq) bot.eq.setAttribute("fill", skin.palette && skin.palette.glow_primary || "#3fd8ff");
+    if (bot.mouth && skin.emotes && skin.emotes.mouth_style === "classic_curve") {
+      bot.mouth.setAttribute("fill", "none"); bot.mouth.setAttribute("stroke", skin.palette && skin.palette.glow_primary || "#3fd8ff");
+      bot.mouth.setAttribute("stroke-width", "4");
+    }
+    var custom = skin.assets && skin.assets.custom_svg_paths || {};
+    document.querySelectorAll("#core path").forEach(function (path) {
+      if (!path.dataset.originalPath) path.dataset.originalPath = path.getAttribute("d");
+      var d = custom.reactor_core;
+      path.setAttribute("d", typeof d === "string" && d.length <= 2048 && /^[Mm][MmLlHhVvCcSsQqTtAaZz0-9.,+eE\s-]+$/.test(d) ? d : path.dataset.originalPath);
+    });
+    document.documentElement.style.setProperty("--halo-color", skin.palette && skin.palette.halo_color || "#4c75ff");
     if (ui.skinPreset && skin.id) ui.skinPreset.value = skin.id;
     if (ui.skinGlow && skin.palette && skin.palette.glow_primary) ui.skinGlow.value = skin.palette.glow_primary;
     if (ui.skinAccent && skin.palette && skin.palette.accent_gradient) ui.skinAccent.value = skin.palette.accent_gradient[0];
@@ -1230,6 +1264,7 @@
     armL: joint(6, 80, 0.55), armR: joint(-6, 80, 0.55),
     foreL: joint(8, 150, 0.38), foreR: joint(-8, 150, 0.38), browLY: joint(0, 110, 0.6), browRY: joint(0, 110, 0.6), browLTilt: joint(0, 85, 0.6), browRTilt: joint(0, 85, 0.6)
   };
+  var defaultJoints = JSON.parse(JSON.stringify(J));
   function drive(j, target, dt) {
     var a = j.k * (target - j.x) - j.c * j.v;
     j.v += a * dt;
@@ -1237,7 +1272,7 @@
   }
   function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
   // A tap squashes it like a soft toy; a wake word or a pointer arriving makes it perk up.
-  function boop() { J.squash.v -= 2.6; J.headY.v -= 40; J.browLY.v -= 18; J.browRY.v -= 18; }
+  function boop() { var impulse = S.activeSkin && S.activeSkin.physics && S.activeSkin.physics.squash_impulse; J.squash.v += Number.isFinite(impulse) ? clamp(impulse, -10, 0) : -2.6; J.headY.v -= 40; J.browLY.v -= 18; J.browRY.v -= 18; }
   function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; J.browLY.v -= 14; J.browRY.v -= 14; } }
   var eqBars = bot.eq ? bot.eq.querySelectorAll("rect") : [];
   var thinkDots = bot.think ? bot.think.querySelectorAll("circle") : [];
@@ -1246,7 +1281,7 @@
     gazeX: 0, gazeY: 0, gazeTX: 0, gazeTY: 0, nextSaccade: 0, blink: 1, nextBlink: 0, blinkStart: -1,
     tilt: 0, armR: -6, armL: 6, happy: 0, open: 0, eqOn: 0, thinkOn: 0, sleep: 1, pointer: null, pointerAt: 0, last: 0
   };
-  function greet() { if (S.phase === 'off' || S.phase === 'paused') return; S.greetUntil = performance.now() + 1900; S.perk = 1; }
+  function greet() { if (S.activeSkin && S.activeSkin.emotes && S.activeSkin.emotes.greeting_wave_enabled === false) return; if (S.phase === 'off' || S.phase === 'paused') return; S.greetUntil = performance.now() + 1900; S.perk = 1; }
   function lerp(a, b, k) { return a + (b - a) * k; }
   // Easing per elapsed time, so a slow thin client animates at the same pace.
   var frameFactor = 1;
@@ -1254,6 +1289,7 @@
   function setOpacity(el, value) { if (el) el.setAttribute("opacity", value.toFixed(3)); }
 
   function readLevels() {
+    if (nativeRenderer) return;
     // Microphone: overall level and seven bands for the visor equaliser.
     var capture = S.capture;
     if (capture && capture.analyser) {
@@ -1287,10 +1323,19 @@
     }
   }
 
+  var animationTimer = 0;
+  function scheduleFrame() {
+    if (animationTimer || document.hidden || !nativeVisible || !prefs.robot) return;
+    animationTimer = setTimeout(function () { frame(performance.now()); }, reduceMotion ? 100 : S.phase === "waiting" || S.phase === "off" ? 66 : 33);
+  }
+  document.addEventListener("visibilitychange", function () {
+    clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; scheduleFrame();
+  });
   function frame(now) {
-    requestAnimationFrame(frame);
-    if (!prefs.robot || document.hidden || !bot.root) return;
-    var dt = Math.min(0.25, (now - (anim.last || now)) / 1000);
+    animationTimer = 0;
+    if (!prefs.robot || document.hidden || !nativeVisible || !bot.root) return;
+    scheduleFrame();
+    var dt = Math.min(1 / 15, (now - (anim.last || now)) / 1000);
     anim.last = now;
     frameFactor = Math.max(0.2, dt * 60);
     readLevels();
@@ -1299,7 +1344,7 @@
     S.perk = Math.max(0, S.perk - dt * 2.2);
 
     // Gaze: follows a pointer when there is one, otherwise looks around.
-    var gazeSens = S.gazeSensitivity || 1.0;
+    var gazeSens = S.gazeSensitivity === undefined ? 1.0 : S.gazeSensitivity;
     if (anim.pointer && now - anim.pointerAt < 2500) {
       anim.gazeTX = anim.pointer.x * 13 * gazeSens; anim.gazeTY = anim.pointer.y * 9 * gazeSens;
     } else if (phase === "thinking") {
@@ -1313,11 +1358,12 @@
     anim.gazeX = ease(anim.gazeX, anim.gazeTX, 0.14);
     anim.gazeY = ease(anim.gazeY, anim.gazeTY, 0.14);
 
-    var resting = phase === "off" || phase === "paused";
+    var emotes = S.activeSkin && S.activeSkin.emotes || {};
+    var resting = phase === "off" || phase === "paused" || emotes.eye_style === "sleep";
     // Blinks (only while awake).
     if (!anim.nextBlink) anim.nextBlink = now + 2000;
     if (now > anim.nextBlink && anim.blinkStart < 0 && !resting) {
-      anim.blinkStart = now; anim.nextBlink = now + 2400 + Math.random() * 3800;
+      anim.blinkStart = now; anim.nextBlink = now + clamp(Number(S.activeSkin && S.activeSkin.emotes && S.activeSkin.emotes.blink_interval_seconds) || 3.8, 1, 15) * (800 + Math.random() * 400);
     }
     if (anim.blinkStart >= 0) {
       var p = (now - anim.blinkStart) / 150;
@@ -1327,7 +1373,7 @@
     anim.sleep = ease(anim.sleep, resting ? 1 : 0, resting ? 0.08 : 0.2);
     var eyeOpen = Math.max(0.1, anim.blink);
     var eyeScale = 1 + (phase === "command" ? 0.12 + S.level * 0.12 : 0) + S.perk * 0.12;
-    anim.happy = ease(anim.happy, (phase === "speaking" && Math.sin(t * 0.8) > 0.55) || greeting ? 1 : 0, 0.2);
+    anim.happy = ease(anim.happy, (phase === "speaking" && Math.sin(t * 0.8) > 0.55) || greeting || emotes.eye_style === "happy" ? 1 : 0, 0.2);
     var sad = erroring ? 1 : 0;
     var sleepOp = Math.max(0, Math.min(1, anim.sleep));
     var ringOp = (1 - sleepOp) * Math.max(0, 1 - anim.happy);
@@ -1355,9 +1401,9 @@
     }
 
     // Mouth, equaliser, thinking dots.
-    anim.eqOn = ease(anim.eqOn, phase === "command" ? 1 : 0, 0.18);
+    anim.eqOn = ease(anim.eqOn, phase === "command" || phase === "speaking" && emotes.mouth_style === "equalizer_only" ? 1 : 0, 0.18);
     anim.thinkOn = ease(anim.thinkOn, phase === "thinking" ? 1 : 0, 0.15);
-    anim.open = ease(anim.open, phase === "speaking" ? S.outLevel : 0, 0.5);
+    anim.open = ease(anim.open, phase === "speaking" && emotes.mouth_style !== "equalizer_only" && !(S.activeSkin && S.activeSkin.audio_reactivity && S.activeSkin.audio_reactivity.speaker_mouth_tracking === false) ? S.outLevel : 0, 0.5);
     var hideSmile = Math.max(anim.eqOn, anim.thinkOn, Math.min(1, anim.open * 3));
     setOpacity(bot.smile, (1 - hideSmile) * (1 - anim.sleep * 0.6));
     if (bot.smile) {
@@ -1372,11 +1418,13 @@
     var o = anim.open, w = 16 + o * 8;
     if (bot.mouth) {
       bot.mouth.setAttribute("d", "M" + (200 - w) + " 212Q200 " + (214 - o * 6).toFixed(1) + " " + (200 + w) + " 212Q200 " + (216 + o * 28).toFixed(1) + " " + (200 - w) + " 212Z");
+      if (emotes.mouth_style === "classic_curve") bot.mouth.setAttribute("d", "M182 212Q200 " + (220 + o * 14).toFixed(1) + " 218 212");
       setOpacity(bot.mouth, Math.min(1, o * 3) * (1 - anim.thinkOn));
     }
     setOpacity(bot.eq, anim.eqOn);
     for (var e = 0; e < eqBars.length; e += 1) {
-      var h = 6 + (S.bands[e] * 34 + Math.sin(t * 9 + e) * 2.5 * S.level) * motion;
+      var energy = phase === "speaking" ? S.outLevel : S.bands[Math.floor(e * 7 / eqBars.length)];
+      var h = 6 + energy * (30 + Math.sin(t * 9 + e) * 4) * motion;
       eqBars[e].setAttribute("height", h.toFixed(1));
       eqBars[e].setAttribute("y", (214 - h / 2).toFixed(1));
     }
@@ -1391,8 +1439,8 @@
     // Glow: ears follow the microphone, the antenna and chest show attention.
     var attention = phase === "command" ? 1 : phase === "thinking" ? 0.6 + 0.4 * Math.sin(t * 6) : phase === "speaking" ? 0.4 + S.outLevel * 0.6 : phase === "waiting" ? 0.18 : 0.05;
     setOpacity(bot.antenna, Math.max(0.05, attention));
-    setOpacity(bot.earL, 0.35 + S.level * 0.65 + S.perk * 0.3);
-    setOpacity(bot.earR, 0.35 + S.level * 0.65 + S.perk * 0.3);
+    var ears = S.activeSkin && S.activeSkin.audio_reactivity && S.activeSkin.audio_reactivity.ear_glow_enabled === false ? 0 : 0.35 + S.level * 0.65 + S.perk * 0.3;
+    setOpacity(bot.earL, ears); setOpacity(bot.earR, ears);
     setOpacity(bot.core, 0.35 + attention * 0.55 + Math.sin(t * 2) * 0.08);
     setOpacity(bot.zzz, anim.sleep > 0.5 ? (0.4 + 0.4 * Math.sin(t * 1.6)) * anim.sleep : 0);
     if (bot.zzz) bot.zzz.setAttribute("transform", "translate(0 " + (Math.sin(t * 1.2) * 4).toFixed(2) + ")");
@@ -1404,7 +1452,7 @@
     // range where no part passes through another (the waving hand stays clear of
     // the ear, the arms never sweep into the chest).
     var m = motion, out = S.outLevel, sleep = anim.sleep;
-    var breathe = Math.sin(t * (S.breathSpeed || 1.6)) * (S.breathAmplitude || 2.2) * m * (1 - sleep * 0.5);
+    var breathe = Math.sin(t * (S.breathSpeed || 1.6)) * (S.breathAmplitude === undefined ? 2.2 : S.breathAmplitude) * m * (1 - sleep * 0.5);
     var pointer = anim.pointer && now - anim.pointerAt < 2500 ? anim.pointer : null;
     var px = pointer ? pointer.x : 0;
     var shake = erroring ? Math.sin(t * 30) * 3 * m * Math.max(0, (S.errorUntil - now) / 2200) : 0;
@@ -1480,8 +1528,32 @@
     document.documentElement.style.setProperty("--halo-scale", (0.7 + S.level * 0.25).toFixed(3));
   }
 
+  // Native owns conversation, microphone and TTS. This offline surface only draws.
+  if (nativeRenderer) {
+    prefs.robot = true; S.phase = "waiting";
+    window.AutoYouAssistantRenderer = {
+      update: function (state) {
+        if (!state || typeof state !== "object") return;
+        if (["waiting", "command", "thinking", "speaking", "off", "paused", "error"].indexOf(state.phase) >= 0) S.phase = state.phase;
+        if (state.skin) applySkin(state.skin);
+        if (typeof state.visible === "boolean") nativeVisible = state.visible;
+        S.level = clamp(Number(state.mic) || 0, 0, 1);
+        S.outLevel = clamp(Number(state.speech) || 0, 0, 1);
+        for (var b = 0; b < 7; b++) S.bands[b] = S.level * (0.65 + 0.35 * Math.sin(b + performance.now() / 130));
+        document.body.setAttribute("data-phase", S.phase);
+        document.body.classList.toggle("renderer-paused", !nativeVisible);
+        if (!nativeVisible) { clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; }
+        else scheduleFrame();
+      },
+      boop: boop,
+      get phase() { return S.phase; }
+    };
+    scheduleFrame();
+    return;
+  }
+
   // ---- Wiring -------------------------------------------------------------------
-  function applyRobotPref() { ui.body.classList.toggle("no-robot", !prefs.robot); }
+  function applyRobotPref() { ui.body.classList.toggle("no-robot", !prefs.robot); if (prefs.robot) scheduleFrame(); }
   function bindPrefs() {
     Array.prototype.forEach.call(document.querySelectorAll("[data-pref]"), function (input) {
       var key = input.getAttribute("data-pref");
@@ -1707,7 +1779,7 @@
   if (signedOut) return;
   renderHistory();
   initSkinHandlers();
-  requestAnimationFrame(frame);
+  scheduleFrame();
   refreshStatus(true).then(function (status) {
     var param = params.get("autostart");
     var auto = param === "1" ? true : param === "0" ? false : (prefs.autoStart === null ? Boolean(status.auto_start) : Boolean(prefs.autoStart));

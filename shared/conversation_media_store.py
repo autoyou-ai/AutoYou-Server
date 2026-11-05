@@ -190,6 +190,9 @@ def archive_attachment(
     if not user_id or not session_id or not media_archive_enabled(cfg):
         return None
     try:
+        path = attachment.get("path")
+        if path and os.path.isfile(path) and os.path.getsize(path) > MAX_ARCHIVED_MEDIA_BYTES:
+            return None
         data = _attachment_bytes(attachment, trusted_path=role == "assistant")
         if not data or len(data) > MAX_ARCHIVED_MEDIA_BYTES:
             return None

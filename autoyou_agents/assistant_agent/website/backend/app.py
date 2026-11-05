@@ -602,10 +602,13 @@ async def _run_job(work: Any, wait: float) -> Response:
     async def runner() -> None:
         try:
             status, body = await work
+        except asyncio.CancelledError:
+            status, body = 200, {"success": False, "cancelled": True, "error": "Stopped."}
         except Exception as exc:  # noqa: BLE001 - reported to the page, logged here
             LOGGER.warning("Assistant website job failed: %s", exc)
             status, body = 500, {"success": False, "error": "Something went wrong on the server."}
-        item.update(state="done", status=status, body=body)
+        if not item.get("body", {}).get("cancelled"):
+            item.update(state="done", status=status, body=body)
 
     item["task"] = asyncio.create_task(runner())
     await _wait_for_turn(item, wait)
@@ -1007,6 +1010,19 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
     async def job_result(job_id: str, request: Request):
         """A transcription or an answer that took longer than one request; waits a few seconds for it."""
         return await _job_result(job_id, request)
+
+    @app.post("/api/assistant/cancel/{job_id}")
+    async def cancel_job(job_id: str, request: Request):
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        item = _TURNS.get(job_id) if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", job_id or "") else None
+        if item is None:
+            return _error(404, "That question is no longer being answered.")
+        if item["state"] != "done":
+            item["task"].cancel()
+            item.update(state="done", status=200, body={"success": False, "cancelled": True, "error": "Stopped."})
+        return _json({"success": True, "cancelled": True})
 
     @app.get("/api/assistant/turn/{turn_id}")
     async def turn_status(turn_id: str, request: Request):
