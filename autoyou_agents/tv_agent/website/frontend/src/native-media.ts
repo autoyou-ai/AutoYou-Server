@@ -15,7 +15,10 @@ declare global {
 }
 
 export function nativeMediaAvailable() {
-  if (!['127.0.0.1', 'localhost', '::1', '[::1]', 'autoyou.localhost'].includes(window.location.hostname)) return false;
+  const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]', 'autoyou.localhost'].includes(location.hostname);
+  // The mobile bridge independently verifies the pinned computer origin and confines the media to this title.
+  if (!loopback && !(location.protocol === 'https:' && location.pathname.startsWith('/agent/tv_agent/') &&
+      (window.AutoYouNativeMediaAndroid || window.webkit?.messageHandlers?.autoyouNativeMedia))) return false;
   if (window.AutoYouNativeMedia?.available && !window.AutoYouNativeMedia.available()) return false;
   return !!(window.AutoYouNativeMedia || window.AutoYouNativeMediaAndroid || window.webkit?.messageHandlers?.autoyouNativeMedia);
 }

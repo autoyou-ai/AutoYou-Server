@@ -7317,6 +7317,8 @@ class WebRTCManager:
         previous_host_owner = self.host_audio_owner()
         for cleanup_id in cleanup_ids:
             self._suspend_room_bridge_transport(str(cleanup_id))
+            if getattr(self, "_tv_cast_leases", None):
+                await self._tv_cast_leases.release(cleanup_id)
 
         # Clean up ping-pong game state for all related sessions
         try:
@@ -9717,6 +9719,35 @@ class WebRTCManager:
             )
         )
 
+    async def _tv_cast_offer(self, session_id, native):
+        from shared.tv_cast import TVCastLeases, cast_interface
+        from shared.local_network_info import get_lan_ipv4_addresses
+        if not isinstance(native, dict) or not session_id:
+            return {}
+        identity = self._resolve_chat_identity(session_id)
+        if not identity or not self._owner_key_from_identity(identity):
+            return {}
+        leases = getattr(self, "_tv_cast_leases", None)
+        request_id = str(native.get("request_id", ""))
+        if native.get("release") == "true":
+            if leases:
+                await leases.release(session_id, request_id)
+            return {}
+        bind = str(_runtime.SERVER_BIND_HOST)
+        if _runtime._bind_host_is_loopback(bind):
+            return {}
+        host = await _runtime.asyncio.to_thread(cast_interface, bind, native.get("phone"), get_lan_ipv4_addresses)
+        if not host:
+            return {}
+        leases = getattr(self, "_tv_cast_leases", None)
+        if leases is None:
+            leases = self._tv_cast_leases = TVCastLeases()
+        path = "/agent/tv_agent/api"
+        upstream = _runtime._get_autoyou_page_service_base_url() + path
+        headers = self._sanitize_forward_headers({}, upstream)
+        headers.update(self._agent_frontend_context_headers(path, upstream, session_id))
+        return await leases.offer(session_id, request_id, str(native.get("source", "")), host, upstream, headers)
+
     async def _handle_http_request(self, message: 'DataChannelMessage') -> None:
         """Handle HTTP requests received via datachannel with compression optimization."""
         try:
@@ -9990,7 +10021,7 @@ class WebRTCManager:
                     ))
                 return
 
-            if method.upper() == "GET" and request_path == "/api/v1/direct-lan":
+            if method.upper() == "GET" and request_path in {"/api/v1/direct-lan", "/api/v1/tv-cast"}:
                 # Answered only here, over this device's authenticated data
                 # channel: the HTTPS key to pin and a one-time device-pass code
                 # must never come from the network the device is about to use.
@@ -9998,7 +10029,9 @@ class WebRTCManager:
                 # this channel can reach this path too, but its requests are
                 # built from the page's HTTP request and never carry this
                 # message field, so a page cannot obtain a code to leak.
-                if message.payload.get("direct_lan_offer") is not True:
+                if request_path == "/api/v1/tv-cast":
+                    offer = await self._tv_cast_offer(message.header.session_id, message.payload.get("tv_cast"))
+                elif message.payload.get("direct_lan_offer") is not True:
                     offer = {"available": False, "reason": "Only the AutoYou app can ask for direct websites."}
                 else:
                     offer = _runtime._direct_lan_offer(message.header.session_id)

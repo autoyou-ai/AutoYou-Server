@@ -79,3 +79,64 @@ async def test_real_hls_encoding_publishes_only_complete_versions(tmp_path):
     assert "#EXT-X-ENDLIST" in playlist and playlist.count("#EXTINF:") == 3
     assert len(list((root / "360p").glob("*.ts"))) == 3
     assert source.is_file() and not list(root.rglob("*.tmp"))
+
+
+@pytest.mark.asyncio
+async def test_computer_cast_receiver_reads_one_title_without_mobile_or_browser_credentials(tmp_path, monkeypatch):
+    import socket
+    from urllib.parse import urljoin
+    import aiohttp
+    import uvicorn
+    from shared import tv_cast
+
+    # A real TV Agent and independent HTTP receiver; all sockets stay on loopback in CI.
+    with TestClient(create_app(tmp_path)) as client:
+        item, file, root, version = seed(client)
+    host = "127.0.0.1"
+    monkeypatch.setattr(tv_cast, "lan_ipv4", lambda addr: addr == host)
+    sock = socket.socket()
+    sock.bind((host, 0))
+    backend = uvicorn.Server(uvicorn.Config(create_app(tmp_path), log_level="error", access_log=False))
+    runner = asyncio.create_task(backend.serve(sockets=[sock]))
+    leases = tv_cast.TVCastLeases()
+    sid, rid = "synthetic-session", "00000000-0000-4000-8000-000000000001"
+    ident = item["id"]
+    try:
+        for _ in range(1000):
+            if backend.started: break
+            if runner.done(): await runner
+            await asyncio.sleep(.01)
+        assert backend.started
+        upstream = f"http://{host}:{sock.getsockname()[1]}/api"
+        assert not await leases.offer(sid, rid, f"stream/{ident}/../settings", host, upstream)
+        async with aiohttp.ClientSession() as receiver:
+            url = (await leases.offer(sid, rid, "stream/" + ident, host, upstream))["url"]
+            async with receiver.head(url) as resp:
+                assert resp.status == 200 and int(resp.headers["Content-Length"]) == file.stat().st_size
+                assert resp.headers["X-AutoYou-TV-Title"] == ident
+            async with receiver.get(url, headers={"Range": "bytes=-5"}) as resp:
+                assert resp.status == 206 and await resp.read() == file.read_bytes()[-5:]
+            for target in (url[:-24] + "c" * 24, url.replace("/tv/", "/other/"), url.replace("/stream/", "/settings/")):
+                async with receiver.get(target) as resp:
+                    assert resp.status == 404
+            async with receiver.post(url) as resp:
+                assert resp.status == 404
+            new_id = rid[:-1] + "2"
+            master = (await leases.offer(sid, new_id, f"playback/{ident}/{version}/master.m3u8", host, upstream))["url"]
+            await leases.release(sid, rid)  # A late dismissal from the previous player cannot revoke this one.
+            async with receiver.get(master) as resp:
+                assert resp.status == 200
+                variant = urljoin(master, (await resp.text()).splitlines()[-1])
+            async with receiver.get(variant) as resp:
+                assert resp.status == 200
+                segment = urljoin(variant, next(line for line in (await resp.text()).splitlines() if line.endswith(".ts")))
+            async with receiver.get(segment) as resp:
+                assert resp.status == 200 and await resp.read() == (root / "360p/segment-00000.ts").read_bytes()
+            await leases.release(sid, new_id)
+            with pytest.raises(aiohttp.ClientConnectionError):
+                await receiver.get(master)
+    finally:
+        await leases.release(sid)
+        backend.should_exit = True
+        await runner
+        sock.close()
