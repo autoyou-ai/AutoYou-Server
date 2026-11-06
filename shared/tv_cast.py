@@ -136,6 +136,7 @@ class _Lease:
             headers = {h: request.headers[h] for h in ("Range", "If-Range", "If-None-Match") if h in request.headers}
             headers.update(self.context_headers)  # Only server-supplied context reaches the paired website.
             headers["Accept-Encoding"] = "identity"
+            headers["X-AutoYou-TV-Presentation"] = "1"
             async with self.client.request(request.method, self.upstream + "/" + resource, params=request.query,
                                            headers=headers, allow_redirects=False) as source:
                 if source.status not in {200, 206, 304, 416} or source.content_type == "text/html":

@@ -572,3 +572,6 @@ progress::-moz-progress-bar { background: var(--accent); }
 }
 
 .photo-stage img { display: block; width: 100%; max-height: 75vh; object-fit: contain; }
+
+/* Keep long paginated libraries cheap to paint without changing keyboard or screen-reader order. */
+.media-card { content-visibility: auto; contain-intrinsic-size: auto 330px; }

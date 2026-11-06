@@ -140,3 +140,44 @@ async def test_computer_cast_receiver_reads_one_title_without_mobile_or_browser_
         backend.should_exit = True
         await runner
         sock.close()
+
+
+def test_photo_previews_and_receiver_images_are_bounded_and_keep_originals(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    with TestClient(create_app(tmp_path)) as client:
+        store = client.app.state.store
+        path = store.media_dir / "Synthetic-photo.jpg"
+        Image.new("RGB", (3600, 2400), "purple").save(path)
+        original = path.read_bytes()
+        item, _ = store.add_item(source_key="synthetic-photo", title="Synthetic photo", kind="photo", file_path=str(path))
+        public = client.get(f"/api/items/{item['id']}").json()
+        assert public["artwork_url"] == f"api/artwork/{item['id']}"
+        preview = client.get("/" + public["artwork_url"])
+        assert preview.status_code == 200
+        assert max(Image.open(BytesIO(preview.content)).size) <= 640
+        receiver = client.get("/" + public["stream_url"], headers={"X-AutoYou-TV-Presentation": "1", "Range": "bytes=0-31"})
+        assert receiver.status_code == 206 and len(receiver.content) == 32
+        full_receiver = client.get("/" + public["stream_url"], headers={"X-AutoYou-TV-Presentation": "1"})
+        assert max(Image.open(BytesIO(full_receiver.content)).size) <= 1280
+        assert client.get("/" + public["stream_url"]).content == original == path.read_bytes()
+        assert client.get("/" + public["download_url"]).content == original
+        # Source edits invalidate the on-disk derivative, and deleting a title denies a cached preview.
+        Image.new("RGB", (1800, 3000), "green").save(path)
+        changed = client.get("/" + public["artwork_url"])
+        assert changed.content != preview.content
+        assert Image.open(BytesIO(changed.content)).height == 640
+        store.update_item(item["id"], {"status": "deleted"})
+        assert client.get("/" + public["artwork_url"]).status_code == 404
+
+
+def test_photo_and_ebook_native_descriptors_remain_title_scoped(tmp_path):
+    with TestClient(create_app(tmp_path)) as client:
+        store = client.app.state.store
+        for extension, kind, mime in [("gif", "photo", "image/gif"), ("pdf", "document", "application/pdf"), ("epub", "document", "application/epub+zip")]:
+            path = store.media_dir / ("Synthetic." + extension); path.write_bytes(b"synthetic descriptor fixture")
+            item, _ = store.add_item(source_key="synthetic-" + extension, title="Synthetic", kind=kind, file_path=str(path))
+            descriptor = client.get(f"/api/items/{item['id']}/playback?compatible=true").json()
+            assert descriptor["ready"] and descriptor["mime_type"] == mime
+            assert descriptor["url"] == f"api/stream/{item['id']}"
+            assert str(tmp_path) not in str(descriptor)

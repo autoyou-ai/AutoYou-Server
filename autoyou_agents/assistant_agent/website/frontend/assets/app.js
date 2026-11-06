@@ -18,7 +18,8 @@
   }
 
   var nativeRenderer = document.documentElement.dataset.nativeAssistant === "1";
-  var nativeVisible = true;
+  var nativeVisible = !nativeRenderer;
+  var nativeTyping = false;
   var SR = 16000;
   var params = new URLSearchParams(location.search);
   var $ = function (id) { return document.getElementById(id); };
@@ -1290,7 +1291,9 @@
   function notice() { if (S.phase !== "off" && S.phase !== "paused") { J.headY.v -= 25; J.tilt.v += (Math.random() - 0.5) * 30; J.browLY.v -= 14; J.browRY.v -= 14; } }
   var eqBars = bot.eq ? bot.eq.querySelectorAll("rect") : [];
   var thinkDots = bot.think ? bot.think.querySelectorAll("circle") : [];
-  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var motionQuery = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduceMotion = motionQuery && motionQuery.matches;
+  if (motionQuery) motionQuery.addEventListener("change", function (event) { reduceMotion = event.matches; stopFrames(); scheduleFrame(); });
   var anim = {
     gazeX: 0, gazeY: 0, gazeTX: 0, gazeTY: 0, nextSaccade: 0, blink: 1, nextBlink: 0, blinkStart: -1,
     tilt: 0, armR: -6, armL: 6, happy: 0, open: 0, eqOn: 0, thinkOn: 0, sleep: 1, pointer: null, pointerAt: 0, last: 0
@@ -1337,18 +1340,31 @@
     }
   }
 
-  var animationTimer = 0;
+  var animationTimer = 0, animationFrame = 0;
+  function stopFrames() {
+    clearTimeout(animationTimer); cancelAnimationFrame(animationFrame);
+    animationTimer = animationFrame = 0; anim.last = 0;
+  }
+  function moving() {
+    return !reduceMotion && (["command", "thinking", "speaking", "error"].indexOf(S.phase) >= 0 ||
+      performance.now() - worldMotion.lastTouch < 1500 ||
+      world.enabled && world.idle_enabled && !world.professional && !nativeTyping && world.wander && Math.abs(worldMotion.target - worldMotion.x) > .2);
+  }
   function scheduleFrame() {
-    if (animationTimer || document.hidden || !nativeVisible || !prefs.robot) return;
-    animationTimer = setTimeout(function () { frame(performance.now()); }, reduceMotion ? 100 : S.phase === "waiting" || S.phase === "off" ? 66 : 33);
+    if (animationTimer || animationFrame || document.hidden || !nativeVisible || !prefs.robot) return;
+    if (moving()) animationFrame = requestAnimationFrame(frame);
+    else animationTimer = setTimeout(function () { frame(performance.now()); }, reduceMotion ? 100 : 66);
   }
   document.addEventListener("visibilitychange", function () {
-    clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; scheduleFrame();
+    stopFrames(); scheduleFrame();
   });
   function frame(now) {
-    animationTimer = 0;
+    animationTimer = animationFrame = 0;
     if (!prefs.robot || document.hidden || !nativeVisible || !bot.root) return;
-    scheduleFrame();
+    // The preference can change before its event reaches an already scheduled frame.
+    reduceMotion = motionQuery && motionQuery.matches;
+    // Cap ProMotion displays at 60; idle and reduced-motion scenes keep their cheaper cadence.
+    if (moving() && anim.last && now - anim.last < 15) { scheduleFrame(); return; }
     var dt = Math.min(1 / 15, (now - (anim.last || now)) / 1000);
     anim.last = now;
     frameFactor = Math.max(0.2, dt * 60);
@@ -1542,12 +1558,13 @@
       bot.shadow.setAttribute("opacity", (0.28 - Math.min(0.08, Math.max(-0.08, J.bodyY.x * 0.01))).toFixed(3));
     }
     document.documentElement.style.setProperty("--halo-scale", (0.7 + S.level * 0.25).toFixed(3));
+    scheduleFrame();
   }
 
   // Portable world: only built-in SVG primitives and bounded path data are rendered.
   var world = { idle_enabled: true, professional: false, enabled: false, wander: true, objects: [] };
   var worldKey = "", worldNodes = [], worldLayer = null, worldAudio = null;
-  var worldMotion = { x: 50, target: 50, halfWidth: 0, next: 0, pressed: false, lastTouch: -1000, emote: -1, emoteUntil: 0 };
+  var worldMotion = { x: 50, target: 50, halfWidth: 0, width: 0, next: 0, pressed: false, robotPressed: false, lastTouch: -1000, emote: -1, emoteUntil: 0 };
   function svgNode(tag, attrs) {
     var el = document.createElementNS($("robot").namespaceURI, tag);
     Object.keys(attrs || {}).forEach(function (key) { el.setAttribute(key, attrs[key]); });
@@ -1567,7 +1584,7 @@
       case "sun": for (var r = 0; r < 8; r++) add("path", {d: "M0 -28V-39", transform: "rotate(" + r * 45 + ")", stroke: obj.color, "stroke-width": 4}); add("circle", {r: 22}); break;
       case "moon": add("path", {d: "M12 -34A35 35 0 1 0 29 24A31 31 0 0 1 12 -34Z"}); break;
       case "rock": add("path", {d: "M-37 20L-23 -15L5 -24L29 -13L39 20Z"}); break;
-      case "pond": add("ellipse", {rx: 46, ry: 20, opacity: .8}); add("ellipse", {rx: 29, ry: 11, fill: "none", stroke: "#b6e9ff", "stroke-width": 2}); break;
+      case "pond": add("ellipse", {rx: 46, ry: 20, opacity: .8}); add("ellipse", {rx: 29, ry: 11, fill: "none", stroke: "#b6e9ff", "stroke-width": 2}); add("ellipse", {"class":"pond-ripple",rx:12,ry:5,fill:"none",stroke:"#d6f5ff","stroke-width":2,opacity:0}); break;
       case "house": add("rect", {x: -30, y: -5, width: 60, height: 44, rx: 3}); add("path", {d: "M-39 -5L0 -37L39 -5Z", fill: "#936554"}); add("rect", {x: -7, y: 11, width: 14, height: 28, rx: 2, fill: "#e9d4a7"}); break;
       case "sign": add("rect", {x: -3, y: 0, width: 6, height: 40}); add("rect", {x: -42, y: -27, width: 84, height: 40, rx: 6}); break;
       case "rect": add("rect", {x: -35, y: -25, width: 70, height: 50, rx: 6}); break;
@@ -1579,10 +1596,13 @@
   }
   var worldSizeObserver;
   function walkLimit() { return Math.max(12, worldMotion.halfWidth + 2); }
-  function positionRobot() { ui.robotButton.style.left = (worldMotion.x - worldMotion.halfWidth).toFixed(3) + "%"; }
+  function positionRobot() {
+    ui.robotButton.style.transform = "translate3d(" + ((worldMotion.x - worldMotion.halfWidth) * worldMotion.width / 100).toFixed(2) + "px,0,0)";
+  }
   function sizeWorldArt() {
     if (!worldLayer || !world.enabled) return;
     var zone = worldLayer.parentNode, w = zone.clientWidth, h = zone.clientHeight;
+    worldMotion.width = w;
     var box = $("robot").viewBox.baseVal, aspect = box.width / box.height;
     // Resolve both axes from the stage. WebKit can retain an intrinsic SVG width from an earlier layout.
     var height = Math.min(h * world.robot_size / 100, w * .45 / aspect), width = height * aspect;
@@ -1626,9 +1646,9 @@
           x: clamp(Number(source.x) || 0, 0, 100), y: clamp(Number(source.y) || 0, 0, 100), size: clamp(Number(source.size) || 12, 2, 45),
           label: source.label, path: source.path, glyph: source.glyph, photo: source.photo, animation: source.animation, reaction: source.reaction, sound: source.sound};
         var node = svgNode("g"); node.appendChild(worldShape(obj)); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
-        worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, touched: -10000}); world.objects.push(obj);
+        worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, ripple: node.querySelector(".pond-ripple"), touched: -10000}); world.objects.push(obj);
       });
-    } else { ["left", "height", "width"].forEach(function (key) { ui.robotButton.style.removeProperty(key); }); }
+    } else { ["left", "height", "width", "transform"].forEach(function (key) { ui.robotButton.style.removeProperty(key); }); }
     if (!worldSizeObserver) { worldSizeObserver=new ResizeObserver(sizeWorldArt); worldSizeObserver.observe(zone); }
     sizeWorldArt();
     var idleInput = $("world-idle"), professionalInput = $("world-professional"), soundsInput = $("world-sounds");
@@ -1655,22 +1675,40 @@
     var gazeX = x + 1 - 2 * (robot.left - bounds.left + robot.width / 2) / Math.max(1, bounds.width);
     var gazeY = y + 1 - 2 * (robot.top - bounds.top + robot.height * .32) / Math.max(1, bounds.height);
     anim.pointer = {x: clamp(gazeX, -1, 1), y: clamp(gazeY, -1, 1)}; anim.pointerAt = now;
-    if (pressed && !worldMotion.pressed && now - worldMotion.lastTouch > 250) {
-      worldMotion.lastTouch = now; boop();
+    if (pressed && !worldMotion.pressed) {
+      var clientX = bounds.left + (x + 1) * bounds.width / 2, clientY = bounds.top + (y + 1) * bounds.height / 2;
+      function contains(box) { return clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom; }
+      // SVG paint hit-testing avoids stealing scenery taps in the robot's transparent bounding box.
+      var oldEvents = ui.robotButton.style.pointerEvents;
+      ui.robotButton.style.pointerEvents = "auto";
+      var painted = document.elementFromPoint(clientX, clientY);
+      ui.robotButton.style.pointerEvents = oldEvents;
+      worldMotion.robotPressed = !world.enabled || painted && bot.root.contains(painted);
+      for (var part = painted; world.enabled && worldMotion.robotPressed && part && part !== bot.root; part = part.parentElement) {
+        if (Number(getComputedStyle(part).opacity) < .05) worldMotion.robotPressed = false;
+      }
+      worldMotion.robotPressed = !!worldMotion.robotPressed;
+      worldMotion.lastTouch = now;
+      if (worldMotion.robotPressed) {
+        boop(); worldMotion.emote = 1; worldMotion.emoteUntil = now + 1900;
+        worldMotion.target = worldMotion.x; worldMotion.next = now + 5000;
+      }
       var px = (x + 1) * 50, py = (y + 1) * 50;
-      if (world.enabled && world.wander && !world.professional) {
+      if (!worldMotion.robotPressed && world.enabled && world.wander && !world.professional) {
         worldMotion.target = clamp(px, walkLimit(), 100 - walkLimit());
         worldMotion.next = now + 9000;
       }
-      worldNodes.forEach(function (item) {
-        if (Math.abs(item.obj.x - px) < item.obj.size / 2 && Math.abs(item.obj.y - py) < item.obj.size) { item.touched = now; worldSound(item.obj.sound); }
-      });
+      if (!worldMotion.robotPressed) for (var i = worldNodes.length - 1; i >= 0; i--) {
+        var item = worldNodes[i];
+        if (contains(item.el.getBoundingClientRect())) { item.touched = now; worldSound(item.obj.sound); break; }
+      }
     }
     worldMotion.pressed = pressed;
+    return worldMotion.robotPressed;
   }
   function worldFrame(now, dt, phase, target) {
     var t = now / 1000, idle = phase === "waiting" || phase === "off";
-    var play = world.idle_enabled && !world.professional && !reduceMotion;
+    var play = world.idle_enabled && !world.professional && !reduceMotion && !nativeTyping;
     var emote = play && idle ? (worldMotion.emoteUntil > now ? worldMotion.emote : Math.floor(t / 7) % 11) : -1;
     var beat = Math.sin(t * 3), wave = Math.sin(t * 1.5);
     if (emote === 1) { target.armR = -80 + beat * 8; target.foreR = -35 + beat * 10; }
@@ -1685,7 +1723,7 @@
     if (emote === 10) { target.tilt -= 5; target.browRY -= 5; }
     var walking = false;
     if (world.enabled) {
-      if (play && idle && world.wander && now > worldMotion.next && !worldMotion.pressed) {
+      if (play && idle && world.wander && now > worldMotion.next && !worldMotion.pressed && Math.abs(worldMotion.target - worldMotion.x) <= .2) {
         var limit = Math.max(18, walkLimit());
         worldMotion.target = clamp(50 + Math.sin(t * .17) * 32, limit, 100 - limit);
         if (Math.abs(worldMotion.target - worldMotion.x) < 12) worldMotion.target = worldMotion.x < 50 ? 100 - limit : limit;
@@ -1695,6 +1733,7 @@
       walking = play && idle && world.wander && Math.abs(delta) > .2;
       if (walking) {
         worldMotion.x += Math.sign(delta) * Math.min(Math.abs(delta), dt * 6);
+        if (Math.abs(worldMotion.target - worldMotion.x) <= .2) worldMotion.next = Math.max(worldMotion.next, now + 2500);
         target.bodyY += Math.abs(Math.sin(t * 8)) * 3;
         positionRobot();
       }
@@ -1712,12 +1751,25 @@
         if (o.animation === "spin") angle = t * 20;
         if (o.animation === "float") dy = Math.sin(t * 1.3 + i) * 8;
         if (o.animation === "pulse") scale *= 1 + Math.sin(t * 1.4 + i) * .05;
-        if (o.reaction === "bounce") dy -= hit * 25;
+        if (o.reaction === "bounce") {
+          if (o.shape === "tree" || o.shape === "flower") angle += Math.sin(age * Math.PI * 4) * hit * 12;
+          else if (o.shape === "cloud") scale *= 1 + hit * .12;
+          else if (o.shape === "rock" || o.shape === "mountain") angle += Math.sin(age * Math.PI * 6) * hit * 2;
+          else if (["pond", "house", "sign", "sun", "moon", "star"].indexOf(o.shape) < 0) dy -= hit * 25;
+          else if (["sun", "moon", "star"].indexOf(o.shape) >= 0) scale *= 1 + hit * .15;
+        }
         if (o.reaction === "grow") scale *= 1 + hit * .25;
         if (o.reaction === "spin") angle += hit * 120;
       }
-      item.el.style.filter = o.reaction === "color" && hit > 0 ? "hue-rotate(" + (hit * 160) + "deg)" : "";
-      item.el.setAttribute("transform", "translate(" + (o.x * 10) + " " + (o.y * 6 + dy) + ") scale(" + scale.toFixed(3) + ") rotate(" + angle.toFixed(2) + ")");
+      var filter = o.reaction === "color" && hit > 0 ? "hue-rotate(" + (hit * 160).toFixed(1) + "deg)" :
+        o.reaction === "bounce" && hit > 0 && (o.shape === "house" || o.shape === "sign") ? "brightness(" + (1 + hit * .6).toFixed(2) + ")" : "";
+      if (item.filter !== filter) { item.el.style.filter = filter; item.filter = filter; }
+      var transform = "translate(" + (o.x * 10) + " " + (o.y * 6 + dy).toFixed(2) + ") scale(" + scale.toFixed(3) + ") rotate(" + angle.toFixed(2) + ")";
+      if (item.transform !== transform) { item.el.setAttribute("transform", transform); item.transform = transform; }
+      if (item.ripple && o.reaction === "bounce" && (hit > 0 || item.rippling)) {
+        item.ripple.setAttribute("transform", "scale(" + (1 + (reduceMotion ? 0 : Math.max(0, age) * 2)).toFixed(2) + ")");
+        item.ripple.setAttribute("opacity", hit > 0 ? (1 - age).toFixed(2) : 0); item.rippling = hit > 0;
+      }
     });
   }
 
@@ -1850,18 +1902,24 @@
       update: function (state) {
         if (!state || typeof state !== "object") return;
         if (["waiting", "command", "thinking", "speaking", "off", "paused", "error"].indexOf(state.phase) >= 0) S.phase = state.phase;
-        if (state.skin) applySkin(state.skin);
+        if (state.skin) {
+          applySkin(state.skin);
+          if (!document.body.classList.contains("renderer-ready") && typeof state.visible !== "boolean") nativeVisible = true;
+          document.body.classList.add("renderer-ready");
+        }
         if (state.pointer && Number.isFinite(state.pointer.x) && Number.isFinite(state.pointer.y)) pointAt(state.pointer.x, state.pointer.y, state.pressed === true);
         else if (state.pressed === false) worldMotion.pressed = false;
         if (Number.isInteger(state.emote) && state.emote >= 0 && state.emote <= 10) { worldMotion.emote = state.emote; worldMotion.emoteUntil = performance.now() + 5000; }
         if (typeof state.visible === "boolean") nativeVisible = state.visible;
+        if (typeof state.typing === "boolean") nativeTyping = state.typing;
         if (state.mic !== undefined) S.level = clamp(Number(state.mic) || 0, 0, 1);
         if (state.speech !== undefined) S.outLevel = clamp(Number(state.speech) || 0, 0, 1);
         for (var b = 0; b < 7; b++) S.bands[b] = S.level * (0.65 + 0.35 * Math.sin(b + performance.now() / 130));
         document.body.setAttribute("data-phase", S.phase);
         document.body.classList.toggle("renderer-paused", !nativeVisible);
-        if (!nativeVisible) { if (worldAudio) worldAudio.suspend(); worldMotion.pressed = false; clearTimeout(animationTimer); animationTimer = 0; anim.last = 0; }
+        if (!nativeVisible) { if (worldAudio) worldAudio.suspend(); worldMotion.pressed = false; stopFrames(); }
         else scheduleFrame();
+        return worldMotion.robotPressed;
       },
       editWorld: function (initial) {
         function send(value) {
@@ -1908,7 +1966,8 @@
     if (open) { bindPrefs(); ui.settingsClose.focus(); } else { ui.settingsBtn.focus(); }
   }
 
-  $("robot-zone").addEventListener("click", function () {
+  $("robot-zone").addEventListener("click", function (event) {
+    if (event.detail && !worldMotion.robotPressed) return;
     if (prefs.interaction !== "tap" && prefs.interaction !== "wake_word") return;
     outContext() && outContext().ctx.resume().catch(function () {});
     boop();
@@ -1916,7 +1975,7 @@
   });
   var heldCommand = false, holdSequence = 0;
   $("robot-zone").addEventListener("pointerdown", function (event) {
-    if (prefs.interaction !== "hold" || !event.isPrimary || heldCommand) return;
+    if (prefs.interaction !== "hold" || !worldMotion.robotPressed || !event.isPrimary || heldCommand) return;
     heldCommand = true; var sequence = ++holdSequence;
     var begin = function () { if (heldCommand && sequence === holdSequence) talkNow(); else if (prefs.interaction === "hold") stop(); };
     if (!S.capture) start().then(begin).catch(function () { heldCommand = false; }); else begin();

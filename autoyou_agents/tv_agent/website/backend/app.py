@@ -20,7 +20,7 @@ from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
 from .jobs import Jobs, executable, probe
 from . import playback
 from .media import (MEDIA_EXTENSIONS, CONTENT_TYPES, file_stream, media_kind, parse_name, permitted_path, public_url,
-                    read_ticket, remote_stream, subtitle_content, subtitles)
+                    read_ticket, remote_stream, subtitle_content, subtitles, photo_thumbnail)
 from .store import Store, uid
 from .uploads import MAX_UPLOAD_BYTES, Uploads, upload_owner
 
@@ -102,7 +102,7 @@ def public_item(item: dict) -> dict:
                             else f"api/stream/{item['id']}")
     result["artwork_url"] = f"api/artwork/{item['id']}" if item["technical"].get("artwork") else ""
     if item["kind"] == "photo":
-        result["artwork_url"] = f"api/stream/{item['id']}"
+        result["artwork_url"] = f"api/artwork/{item['id']}" if item.get("file_path") else f"api/stream/{item['id']}"
     result["is_remote"] = bool(item.get("source_url"))
     result["is_hls"] = bool(version or (item.get("source_url") and urlsplit(item["source_url"]).path.lower().endswith(".m3u8")))
     result["download_url"] = f"api/download/{item['id']}" if item.get("file_path") else ""
@@ -128,6 +128,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
             await jobs.stop()
 
     application = FastAPI(title="AutoYou TV", lifespan=lifespan)
+    photo_decoders = asyncio.Semaphore(2)
     application.state.store = None
     # Reuse AutoYou's CSRF/session adapter, while explicitly making the viewing
     # surface public. Every mutation below applies its own editor/OTP boundary.
@@ -144,7 +145,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
 
     @application.middleware("http")
     async def response_headers(request: Request, call_next):
-        media_request = request.url.path.startswith(("/api/stream/", "/api/playback/", "/api/subtitles/", "/api/download/"))
+        media_request = request.url.path.startswith(("/api/stream/", "/api/playback/", "/api/subtitles/", "/api/download/", "/api/artwork/"))
         response = Response(status_code=204) if media_request and request.method == "OPTIONS" else await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -536,6 +537,10 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         item = store.item(item_id)
         if item["status"] == "deleted":
             raise HTTPException(404, "This title was removed")
+        if request.headers.get("X-AutoYou-TV-Presentation") == "1" and item["kind"] == "photo" and Path(item.get("file_path") or "").suffix.lower() in {".jpg", ".jpeg"}:
+            async with photo_decoders:
+                path = await asyncio.to_thread(photo_thumbnail, store, item, 1280)
+            return file_stream(path, request)
         if ticket:
             return await remote_stream(store, item_id, read_ticket(store, item_id, ticket), request)
         if item.get("file_path"):
@@ -552,6 +557,10 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
     async def artwork(item_id: str):
         store, _, _ = services()
         item = store.item(item_id)
+        if item["kind"] == "photo":
+            async with photo_decoders:
+                path = await asyncio.to_thread(photo_thumbnail, store, item)
+            return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=60"})
         path = store.artwork_dir / (item_id + ".jpg")
         if item["status"] == "deleted" or not path.is_file() or not path.resolve().is_relative_to(store.artwork_dir.resolve()):
             raise HTTPException(404, "Artwork not available")

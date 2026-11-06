@@ -318,3 +318,42 @@ def subtitle_content(store: Store, item: dict, track_id: str) -> str:
             text = "WEBVTT\n\n" + re.sub(r"(\d{2}:\d{2}:\d{2}),(\d{3})", r"\1.\2", text)
         return text
     raise HTTPException(404, "Subtitle not found")
+
+
+def photo_thumbnail(store: Store, item: dict, pixels: int = 640) -> Path:
+    """Small, source-versioned artwork; originals and animated uploads stay untouched."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    if item["kind"] != "photo" or item["status"] == "deleted" or not item.get("file_path"):
+        raise HTTPException(404, "Photo preview not available")
+    source = permitted_path(store, item["file_path"])
+    pixels = min(1280, max(1, pixels))
+    stat = source.stat()
+    version = hashlib.sha256(f"{source}:{stat.st_size}:{stat.st_mtime_ns}:{pixels}".encode()).hexdigest()[:24]
+    if not re.fullmatch(r"[a-f0-9]{24}", item["id"]):
+        raise HTTPException(404, "Photo preview not available")
+    directory = store.artwork_dir / "photos" / item["id"]
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{pixels}-{version}.jpg"
+    if target.is_file():
+        return target
+    import tempfile
+    temporary = None
+    bounds = (1280, 720) if pixels == 1280 else (pixels, pixels)
+    try:
+        with Image.open(source) as image:
+            image.draft("RGB", bounds)
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail(bounds)
+            with tempfile.NamedTemporaryFile(dir=directory, suffix=".part", delete=False) as output:
+                temporary = Path(output.name)
+                image.convert("RGB").save(output, "JPEG", quality=82)
+        temporary.replace(target)
+        for old in directory.glob(f"{pixels}-*.jpg"):
+            if old != target and old.stat().st_mtime < time.time() - 86400:
+                old.unlink(missing_ok=True)
+        return target
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        raise HTTPException(415, "This photo has no supported preview") from None
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)

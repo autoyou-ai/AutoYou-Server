@@ -26,6 +26,7 @@ export default function Player({ item, config, progress, record, notify }: {
   const [browserOnly, setBrowserOnly] = useState(false);
   const [castAudio, setCastAudio] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
+  const [nativeVisual, setNativeVisual] = useState(false);
   const [optimized, setOptimized] = useState(!!item.technical.streaming_ready);
 
   useEffect(() => {
@@ -113,6 +114,24 @@ export default function Player({ item, config, progress, record, notify }: {
     };
   }, [item.id, nonce, browserOnly, castAudio, record]);
 
+  useEffect(() => {
+    if (!nativeVisual || !['photo', 'document'].includes(item.kind)) return;
+    const controller = new AbortController();
+    let close: (() => void) | undefined;
+    let cancelled = false;
+    void api<Playback>(`items/${item.id}/playback`, { signal: controller.signal }).then(playback => {
+      if (cancelled) return;
+      close = openNativeMedia(playback, 0, state => {
+        if (cancelled) return;
+        if (state.state === 'closed' || state.state === 'error') {
+          setNativeVisual(false);
+          if (state.state === 'error') notify(state.message || 'Could not open the native viewer.');
+        }
+      });
+    }).catch(error => { if (!cancelled) { setNativeVisual(false); notify(errorMessage(error)); } });
+    return () => { cancelled = true; controller.abort(); close?.(); };
+  }, [item.id, item.kind, nativeVisual, notify]);
+
   function loaded() {
     const node = video.current!;
     const old = startingProgress.current;
@@ -135,6 +154,8 @@ export default function Player({ item, config, progress, record, notify }: {
   }
   if (item.kind === 'photo') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
     <div className="photo-stage"><img src={assetUrl(item.stream_url)} alt={item.title} /></div>
+    {nativeMediaAvailable() && <button className="button" disabled={nativeVisual} onClick={() => setNativeVisual(true)}>AirPlay or Cast photo</button>}
+    {item.download_url && <a className="button" href={assetUrl(item.download_url)} download><Download size={19} />Download original</a>}
   </Modal>;
   if (item.kind === 'audio' || item.kind === 'document') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
     {item.kind === 'audio' ? <audio ref={audio} controls autoPlay preload="metadata" src={assetUrl(item.stream_url)} aria-label={`Audio player for ${item.title}`} />
@@ -146,6 +167,7 @@ export default function Player({ item, config, progress, record, notify }: {
       if (element) { element.pause(); startingProgress.current = { position: element.currentTime, duration: element.duration, updated: Date.now(), completed: false }; }
       setBrowserOnly(false); setCastAudio(true); setNonce(value => value + 1);
     }}>AirPlay or Cast</button>}
+    {item.kind === 'document' && nativeMediaAvailable() && <button className="button" disabled={nativeVisual} onClick={() => setNativeVisual(true)}>Read and cast pages</button>}
     {item.download_url && <a className="button" href={assetUrl(item.download_url)} download><Download size={19} />Download {item.kind === 'audio' ? 'audio' : 'document'}</a>}
   </Modal>;
 
