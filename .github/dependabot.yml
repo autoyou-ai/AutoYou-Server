@@ -23,22 +23,6 @@ updates:
     groups:
       pip-minor-and-patch:
         update-types: ["minor", "patch"]
-    ignore:
-      # google-adk 2.11.0 caps OpenTelemetry at 1.42.1 (2.13.0 still caps it at
-      # 1.44), so newer releases cannot resolve. See
-      # requirements/advisory-decisions.json. Remove once ADK allows 1.45.1.
-      - dependency-name: "opentelemetry-api"
-        versions: [">=1.43"]
-      - dependency-name: "opentelemetry-sdk"
-        versions: [">=1.43"]
-      - dependency-name: "opentelemetry-exporter-otlp-proto-http"
-        versions: [">=1.43"]
-      - dependency-name: "opentelemetry-exporter-otlp-proto-common"
-        versions: [">=1.43"]
-      - dependency-name: "opentelemetry-proto"
-        versions: [">=1.43"]
-      - dependency-name: "opentelemetry-semantic-conventions"
-        versions: [">=0.64b0"]
   - package-ecosystem: npm
     directory: "/node/whatsapp"
     schedule:

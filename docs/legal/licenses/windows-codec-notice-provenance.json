@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "source_bundle_complete": false,
+  "ffmpeg_commit": "a35157abb96167fd7308edc92b55408d5bb084b0",
+  "openh264_commit": "1bca62311e447fd9c39fc93de2c4b96cd5ce971c",
+  "build_recipe_commit": "c63bb308a1de656b425c132a8102f8fd5389afc5",
+  "source_archives": [
+    {
+      "file": "ffmpeg-a35157abb96167fd7308edc92b55408d5bb084b0.tar.gz",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/a35157abb96167fd7308edc92b55408d5bb084b0",
+      "sha256": "0dd30eb8eca5370dc2dad5f9958d9d7221fa4e8a1d407fd06fbc305c15c9314e",
+      "bytes": 16924021
+    },
+    {
+      "file": "openh264-1bca62311e447fd9c39fc93de2c4b96cd5ce971c.tar.gz",
+      "url": "https://codeload.github.com/cisco/openh264/tar.gz/1bca62311e447fd9c39fc93de2c4b96cd5ce971c",
+      "sha256": "2238d3e5956ef0d288dd43842a0220015cf72c4327d98684e8bc47ffa7cf5308",
+      "bytes": 60334161
+    }
+  ],
+  "license_files": {
+    "ffmpeg-LGPL-3.0-NOTICES.txt": "b6eec789174c24bead71ec882cbdfa242910603d11eab71e9e9c68eae4e10d4c",
+    "openh264-BSD-2-Clause.txt": "dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb"
+  },
+  "limits": "These are the primary FFmpeg/OpenH264 license texts. Complete statically linked dependency notices, sources, submodules, build inputs and LGPL replacement instructions remain release gates. Cisco binary patent terms do not cover this third-party static OpenH264 build."
+}

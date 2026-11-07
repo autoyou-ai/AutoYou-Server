@@ -109,17 +109,25 @@ References:
   checking containment before loading them. An empty advisory result is not
   evidence of a fix, so the floor was not raised merely to remove the match.
   The affected functions are `load_checkpoint_in_model` and
-  `load_checkpoint_and_dispatch`. No AutoYou source calls them, and the locked
-  Transformers 5.12.1 and current PEFT 0.21.2 wheels do not call them either
-  (checked 2026-10-21). The tuning profile is optional: none of the generated
-  release SBOMs include Accelerate or PEFT, and WSL builds add it only with
-  `AUTOYOU_INCLUDE_TUNING`. The training flow loads remote model code, so model
-  sources are already fully trusted; this advisory does not widen that
-  boundary. Use trusted model sources and an isolated training environment.
+  `load_checkpoint_and_dispatch`. **Mitigated in AutoYou 2026-11-07:**
+  `train_adapter` installs `shared.accelerate_checkpoint_guard` before importing
+  PEFT or Transformers. The guard covers the public loader aliases and the
+  dispatch loader, rejects absolute/traversing paths, external symlinks,
+  Windows alternate data streams and non-regular files (including named pipes),
+  and bounds the JSON index to 32 MiB. Upstream receives a private index of
+  validated paths, so replacing the original index cannot bypass validation.
+  Normal Hugging Face snapshot-to-blob links and safetensors filenames remain
+  supported. Temporary files honor `AUTOYOU_TEST_ROOT` and are removed even
+  after a loader failure. Real Accelerate 0.33.0 and 1.15.0 loaders passed
+  synthetic sharded-weight tests on Windows; WSL tests cover POSIX symlinks
+  and named pipes. This is scoped to AutoYou's training process, not arbitrary
+  third-party scripts importing Accelerate, and does not sandbox trusted model
+  Python code or a concurrently malicious local account. Tuning remains
+  optional and excluded from default server releases.
 
 This decision is recorded in
 [requirements/advisory-decisions.json](../../requirements/advisory-decisions.json)
-as `vulnerable_code_not_in_execute_path`, scoped to Accelerate 0.33.0 in
+as `inline_mitigations_already_exist`, scoped to Accelerate 0.33.0 in
 `requirements/tuning.txt` and to these advisory ids, with a review-by date of
 2026-11-21. The advisory command reports it under `reviewed_advisories` and
 returns nonzero again for any other match, a changed floor or manifest, or once
@@ -127,27 +135,33 @@ the review date passes.
 
 - **OpenTelemetry API, server:** [GHSA-xcq7-p3pf-p88h](https://osv.dev/vulnerability/GHSA-xcq7-p3pf-p88h)
   (CVE-2026-114603) is a quadratic regular-expression split in
-  `TraceState.from_header`, fixed in 1.45.1. The lock cannot move there:
-  google-adk 2.11.0 caps `opentelemetry-sdk` at 1.42.1, and google-adk 2.13.0
-  (latest, checked 2026-10-29) still caps the API and SDK at 1.44. The parser
-  runs only when a propagator reads an inbound `tracestate` header. AutoYou
-  installs no OpenTelemetry instrumentation and never calls
-  `propagate.extract`. ADK's one extraction, `get_propagated_context` in
-  `google/adk/telemetry/_agent_engine.py`, passes a carrier holding only a
-  `traceparent` key, so no `tracestate` value reaches the parser. Dependabot
-  ignores newer OpenTelemetry releases until ADK allows 1.45.1.
+  `TraceState.from_header`, fixed in 1.45.1. **Resolved 2026-11-07:**
+  [ADK 2.14.0](https://github.com/google/adk-python/releases/tag/v2.14.0)
+  permits the patched OpenTelemetry line. Base and macOS manifests now pin
+  ADK 2.14.0, its required Google GenAI 2.30.0, and OpenTelemetry 1.45.2 /
+  semantic conventions 0.66b2. The full lock was regenerated, including the
+  new exporter dependencies. The advisory exception and Dependabot ignore
+  rules were removed. Isolated tests cover long whitespace tracestate input,
+  synthetic streaming and non-streaming LiteLLM/ADK responses, tool routing
+  and session behavior. Linux base and macOS ARM64 metadata resolutions pass;
+  these do not replace native release builds or device testing.
 - **setuptools, voice-clone runtime:** [PYSEC-2026-3447](https://osv.dev/vulnerability/PYSEC-2026-3447)
   and [GHSA-xmj3-9gf7-h52w](https://osv.dev/vulnerability/GHSA-xmj3-9gf7-h52w)
-  affect setuptools 81.0.0. The separate voice-clone environment keeps it
-  because resemble-perth 1.0.1, the latest release, imports `pkg_resources`,
-  which setuptools 82 removed. The advisories cover `MANIFEST.in` exclusion
-  while building a source distribution and the legacy Windows
-  `Wheel.install_as_egg` path. That environment only installs published wheels
-  with pip, so neither path runs. The server environment already requires
-  setuptools 84.2.1 or later.
-
-Both are recorded as `vulnerable_code_not_in_execute_path`, scoped to the
-listed versions and manifests, with a review-by date of 2026-11-29.
+  affect setuptools 81.0.0. **Resolved 2026-11-07:** the separate voice runtime
+  now pins 84.2.1. Its installer backports only Perth 1.0.1's model-directory
+  lookup from `pkg_resources` to `pathlib`, preserving the bundled model and
+  watermarker. The patch requires the exact reviewed module source, operates
+  only in the explicitly selected voice venv, and records before/after hashes
+  in `AUTOYOU-PATCHES.json` and the wheel RECORD. Repeated installs are
+  idempotent. The real bundled Perth model produced bit-identical 64,000-sample
+  synthetic watermarked audio before and after the patch/setuptools upgrade.
+  When borrowing a Torch environment, the installer creates its own Perth
+  copy without uninstalling or modifying the donor's package. A two-venv test
+  verified the local import and unchanged hashes for all 22 donor source/model
+  files. Patch writes are atomic, and installer scratch files honor the test root.
+  The setuptools advisory exception was removed. Existing installed voice
+  environments receive this fix when the runtime installer is run again;
+  the review did not modify the operator's installed runtime.
 
 ## Other limits and follow-up
 

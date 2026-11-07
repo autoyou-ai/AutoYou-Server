@@ -530,6 +530,9 @@ def prepare_only(args: argparse.Namespace) -> int:
 
 def train_adapter(args: argparse.Namespace) -> int:
     try:
+        from shared.accelerate_checkpoint_guard import install_checkpoint_guard
+
+        install_checkpoint_guard()
         import torch
         from datasets import Dataset
         from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training

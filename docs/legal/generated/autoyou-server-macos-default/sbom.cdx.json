@@ -1106,7 +1106,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-adk==2.11.0"
+          "value": "google-adk==2.14.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1117,9 +1117,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-adk@2.11.0",
+      "purl": "pkg:pypi/google-adk@2.14.0",
       "type": "library",
-      "version": "2.11.0"
+      "version": "2.14.0"
     },
     {
       "licenses": [
@@ -1160,7 +1160,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-genai==2.25.0"
+          "value": "google-genai==2.30.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1171,9 +1171,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-genai@2.25.0",
+      "purl": "pkg:pypi/google-genai@2.30.0",
       "type": "library",
-      "version": "2.25.0"
+      "version": "2.30.0"
     },
     {
       "licenses": [
@@ -1763,7 +1763,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-api==1.42.1"
+          "value": "opentelemetry-api==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1774,9 +1774,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-api@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-api@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1790,7 +1790,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-exporter-otlp-proto-http==1.42.1"
+          "value": "opentelemetry-exporter-otlp-proto-http==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1801,9 +1801,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1817,7 +1817,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-sdk==1.42.1"
+          "value": "opentelemetry-sdk==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1828,9 +1828,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-sdk@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1844,7 +1844,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-semantic-conventions==0.63b1"
+          "value": "opentelemetry-semantic-conventions==0.66b2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1855,9 +1855,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.63b1",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.66b2",
       "type": "library",
-      "version": "0.63b1"
+      "version": "0.66b2"
     },
     {
       "licenses": [
@@ -3132,7 +3132,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-06T09:26:08+00:00",
+    "timestamp": "2026-11-07T19:41:31+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3141,7 +3141,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:989f93b2-0e84-449e-b345-f34b5f148604",
+  "serialNumber": "urn:uuid:52abd686-e1b2-4bc0-804d-182d331b773f",
   "specVersion": "1.5",
   "version": 1
 }

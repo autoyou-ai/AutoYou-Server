@@ -43,10 +43,10 @@ __debug_trace_n__ = "AUTOYOU-PROVENANCE-N-6d656e7473206f6e6c792077-c7af28a2d674d
 PYAV_VERSION = "16.1.0"
 PYAV_SDIST_SHA256 = "a094b4fd87a3721dacf02794d3d2c82b8d712c85b9534437e82a8a978c175ffd"
 FFMPEG_URL = (
-    "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-08-13-05/"
-    "ffmpeg-n8.1.3-14-g330caae0c1-win64-lgpl-shared-8.1.zip"
+    "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-07-12-47/"
+    "ffmpeg-n8.1.3-34-ga35157abb9-win64-lgpl-shared-8.1.zip"
 )
-FFMPEG_SHA256 = "1af9562d002b8e2ab66817616e8a9211e77ab4b0fef58c5c345f467dc0213729"
+FFMPEG_SHA256 = "1ae156959395f0f0b3ad97674de02dc21fb3bbee01142a0d8f744467b5cd5886"
 BUILD_TOOLS = ("setuptools==84.2.1", "cython==3.3.0", "wheel==0.48.0", "delvewheel==1.13.1")
 # AutoYou's calls need these in FFmpeg: aiortc's VP8 and Opus, and H.264
 # encoders that are not x264.
@@ -171,10 +171,32 @@ def build(python: Path, work_dir: Path, ffmpeg_zip: Path | None, output_dir: Pat
 
 
 def installed_av_problems() -> list[str]:
-    """GPL encoders or DLLs in the PyAV installed for this interpreter."""
+    """Check the loaded FFmpeg libraries, codecs, and adjacent DLLs.
+
+    DLL filenames alone miss statically linked GPL components. Inspect the
+    configuration reported by the libraries PyAV actually loaded as well.
+    """
     import av
+    from av._core import library_meta
 
     problems = [f"PyAV has the {name} encoder" for name in GPL_LIBRARY_NAMES if name in av.codecs_available]
+    codec_meta = library_meta.get("libavcodec", {})
+    configuration = codec_meta.get("configuration")
+    if not isinstance(configuration, str) or not configuration.strip():
+        problems.append("PyAV does not report its loaded FFmpeg configuration")
+    else:
+        problems.extend(ffmpeg_configuration_problems(configuration))
+    for name, metadata in library_meta.items():
+        license_text = metadata.get("license", "")
+        if not isinstance(license_text, str) or not license_text.startswith("LGPL version "):
+            problems.append(f"{name} does not report an LGPL license")
+        if name != "libavcodec":
+            options = str(metadata.get("configuration", "")).split()
+            problems.extend(f"{name} was configured with {option}" for option in FORBIDDEN_FFMPEG_OPTIONS
+                            if option in options)
+    for name in ("libvpx", "libopus", "libopenh264"):
+        if name not in av.codecs_available:
+            problems.append(f"PyAV lacks the {name} codec required for calls")
     libs = Path(av.__file__).resolve().parents[1] / "av.libs"
     if libs.is_dir():
         problems += [f"{path} is GPL" for path in libs.iterdir()
@@ -197,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"ERROR: {problem}", file=sys.stderr)
         if not problems:
-            print("PyAV has no x264 or x265.")
+            print("PyAV uses LGPL FFmpeg with VP8, Opus, and OpenH264; no x264 or x265.")
         return 1 if problems else 0
     if os.name != "nt":
         parser.error("this builds the Windows wheel; run it on Windows")

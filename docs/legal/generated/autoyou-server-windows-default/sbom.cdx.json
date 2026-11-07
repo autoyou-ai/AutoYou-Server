@@ -6,6 +6,32 @@
       "licenses": [
         {
           "license": {
+            "id": "LGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "FFmpeg",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://ffmpeg.org/legal.html"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "native-library/wheel-transitive; shared FFmpeg DLLs are replaceable, while avcodec statically links additional codec libraries whose notices and redistribution conditions require review"
+        }
+      ],
+      "type": "library",
+      "version": "n8.1.3-34-ga35157abb9 LGPL shared runtime via codec-clean PyAV 16.1.0; FFmpeg-Builds autobuild 2026-11-07-12-47; archive SHA-256 1ae156959395f0f0b3ad97674de02dc21fb3bbee01142a0d8f744467b5cd5886"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
             "name": "Microsoft Product Terms"
           }
         }
@@ -23,6 +49,32 @@
       ],
       "type": "framework",
       "version": "system/runtime"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "OpenH264",
+      "properties": [
+        {
+          "name": "autoyou:ecosystem",
+          "value": "manual"
+        },
+        {
+          "name": "autoyou:source",
+          "value": "https://github.com/cisco/openh264"
+        },
+        {
+          "name": "autoyou:distributionBoundary",
+          "value": "native-library/wheel-transitive; H.264 patent and complete third-party notice review remain open"
+        }
+      ],
+      "type": "library",
+      "version": "2.7.0 (1bca62311e447fd9c39fc93de2c4b96cd5ce971c), statically linked into avcodec in the pinned FFmpeg-Builds runtime"
     },
     {
       "licenses": [
@@ -1106,7 +1158,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-adk==2.11.0"
+          "value": "google-adk==2.14.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1117,9 +1169,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-adk@2.11.0",
+      "purl": "pkg:pypi/google-adk@2.14.0",
       "type": "library",
-      "version": "2.11.0"
+      "version": "2.14.0"
     },
     {
       "licenses": [
@@ -1160,7 +1212,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "google-genai==2.25.0"
+          "value": "google-genai==2.30.0"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1171,9 +1223,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/google-genai@2.25.0",
+      "purl": "pkg:pypi/google-genai@2.30.0",
       "type": "library",
-      "version": "2.25.0"
+      "version": "2.30.0"
     },
     {
       "licenses": [
@@ -1763,7 +1815,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-api==1.42.1"
+          "value": "opentelemetry-api==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1774,9 +1826,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-api@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-api@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1790,7 +1842,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-exporter-otlp-proto-http==1.42.1"
+          "value": "opentelemetry-exporter-otlp-proto-http==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1801,9 +1853,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1817,7 +1869,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-sdk==1.42.1"
+          "value": "opentelemetry-sdk==1.45.2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1828,9 +1880,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-sdk@1.42.1",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.45.2",
       "type": "library",
-      "version": "1.42.1"
+      "version": "1.45.2"
     },
     {
       "licenses": [
@@ -1844,7 +1896,7 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "opentelemetry-semantic-conventions==0.63b1"
+          "value": "opentelemetry-semantic-conventions==0.66b2"
         },
         {
           "name": "autoyou:ecosystem",
@@ -1855,9 +1907,9 @@
           "value": "requirements/base.txt"
         }
       ],
-      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.63b1",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.66b2",
       "type": "library",
-      "version": "0.63b1"
+      "version": "0.66b2"
     },
     {
       "licenses": [
@@ -3132,7 +3184,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-06T09:26:08+00:00",
+    "timestamp": "2026-11-07T21:42:32+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3141,7 +3193,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:10bd1e9c-8c60-4827-b5a8-9af2d2490128",
+  "serialNumber": "urn:uuid:bd0fc9a0-1daf-4377-a02c-97130171692f",
   "specVersion": "1.5",
   "version": 1
 }

@@ -16,7 +16,7 @@ param(
     [switch]$SkipLocalBuildAcknowledgement,
     [string]$Version,
     [int]$JobCount = 0,  # 0 = auto-detect CPU cores
-    # A PyAV wheel without x264/x265 from scripts/build_codec_clean_av.py; Store packages need one.
+    # A PyAV wheel from scripts/build_codec_clean_av.py, or preinstall a qualified wheel.
     [string]$AvWheel = $env:AUTOYOU_AV_WHEEL
 )
 
@@ -1605,8 +1605,10 @@ if (-not [string]::IsNullOrWhiteSpace($AvWheel)) {
     $avWheelPath = (Resolve-Path -LiteralPath $AvWheel).Path
     Write-Host "Replacing PyAV with the codec-clean wheel $avWheelPath (no x264/x265)..."
     Invoke-CheckedCommand -FilePath $pythonExe -Arguments @("-m", "pip", "install", "--no-deps", "--force-reinstall", $avWheelPath)
-    Invoke-CheckedCommand -FilePath $pythonExe -Arguments @((Join-Path $repoRoot "scripts\build_codec_clean_av.py"), "--check-installed")
 }
+# A missing -AvWheel must not silently package PyPI's GPL FFmpeg libraries.
+# This also accepts a qualified wheel already installed in the build environment.
+Invoke-CheckedCommand -FilePath $pythonExe -Arguments @((Join-Path $repoRoot "scripts\build_codec_clean_av.py"), "--check-installed")
 Assert-PipDependencyConsistency -PythonExe $pythonExe
 Assert-InstalledOptionalRuntimeImports -PythonExe $pythonExe -PackageNames @("huggingface-hub", "transformers")
 if ($requirementsIncludesVoice) {

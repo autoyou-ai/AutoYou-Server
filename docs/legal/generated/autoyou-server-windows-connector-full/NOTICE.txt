@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-11-06T09:26:08+00:00
+Generated: 2026-11-07T21:42:32+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -20,8 +20,10 @@ Third-Party Components
 - AmplitudeJS 5.3.2 [manual] - MIT - https://github.com/521dimensions/amplitudejs; boundary: vendored minified JavaScript in the audio agent website; license included
 - ElevenLabs API service terms external API [manual] - ElevenLabs Terms - https://elevenlabs.io/terms; boundary: external-service
 - EmotiVoice inference code 59f0f36de4db12825f4705dd4e0780d79dd6bb01 [manual] - Apache-2.0 - https://github.com/netease-youdao/EmotiVoice/tree/59f0f36de4db12825f4705dd4e0780d79dd6bb01; boundary: vendored Python source or compiled inference modules; license included
+- FFmpeg n8.1.3-34-ga35157abb9 LGPL shared runtime via codec-clean PyAV 16.1.0; FFmpeg-Builds autobuild 2026-11-07-12-47; archive SHA-256 1ae156959395f0f0b3ad97674de02dc21fb3bbee01142a0d8f744467b5cd5886 [manual] - LGPL-3.0-or-later - https://ffmpeg.org/legal.html; boundary: native-library/wheel-transitive; shared FFmpeg DLLs are replaceable, while avcodec statically links additional codec libraries whose notices and redistribution conditions require review
 - Google AI and GenAI API terms external API [manual] - Google API Terms - https://developers.google.com/terms; boundary: external-service
 - Microsoft WebView2 Runtime system/runtime [manual] - Microsoft Product Terms - https://developer.microsoft.com/microsoft-edge/webview2/
+- OpenH264 2.7.0 (1bca62311e447fd9c39fc93de2c4b96cd5ce971c), statically linked into avcodec in the pinned FFmpeg-Builds runtime [manual] - BSD-2-Clause - https://github.com/cisco/openh264; boundary: native-library/wheel-transitive; H.264 patent and complete third-party notice review remain open
 - PortAudio 19.7.0 native runtime via PyAudio/PyAudioWPatch [manual] - MIT - https://github.com/PortAudio/portaudio/tree/v19.7.0; boundary: native-library/wheel-transitive
 - libsndfile transitive/native via soundfile wheels [manual] - LGPL-2.1-or-later - https://libsndfile.github.io/libsndfile/; boundary: native-library/wheel-transitive
 - llmfit prebuilt binary downloaded from GitHub release at runtime [manual] - MIT - https://github.com/AlexsJones/llmfit; boundary: downloaded-at-runtime
@@ -71,9 +73,9 @@ Third-Party Components
 - flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
 - fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
 - g2p-en [pypi] - Apache-2.0 - requirements/voice.txt
-- google-adk 2.11.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-adk 2.14.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
-- google-genai 2.25.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-genai 2.30.0 [pypi] - Apache-2.0 - requirements/base.txt
 - h2 [pypi] - MIT - requirements/base.txt
 - halo 0.0.31 [pypi] - MIT - requirements/voice.txt
 - httpcore2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
@@ -100,10 +102,10 @@ Third-Party Components
 - ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
 - onnxruntime [pypi] - MIT - requirements/local-llm.txt
 - opencv-python [pypi] - Apache-2.0 - requirements/voice.txt
-- opentelemetry-api 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
-- opentelemetry-exporter-otlp-proto-http 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
-- opentelemetry-sdk 1.42.1 [pypi] - Apache-2.0 - requirements/base.txt
-- opentelemetry-semantic-conventions 0.63b1 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-api 1.45.2 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-exporter-otlp-proto-http 1.45.2 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-sdk 1.45.2 [pypi] - Apache-2.0 - requirements/base.txt
+- opentelemetry-semantic-conventions 0.66b2 [pypi] - Apache-2.0 - requirements/base.txt
 - packaging [pypi] - Apache-2.0 OR BSD-2-Clause - requirements/base.txt
 - playwright [pypi] - Apache-2.0 - requirements/internet.txt
 - protobuf [pypi] - BSD-3-Clause - requirements/base.txt
@@ -171,6 +173,7 @@ Copyleft Review Notes
 - pystray (LGPL-3.0-only): Optional tray dependency; include LGPLv3 notice and keep replaceable from bundled runtime.
 - pyttsx3 (MPL-2.0): Unmodified dependency; include MPL notice.
 - certifi (MPL-2.0): Unmodified CA bundle dependency; include MPL notice.
+- FFmpeg (LGPL-3.0-or-later): Use only the pinned codec-clean PyAV build with x264 and x265 absent. Include LGPL notices, corresponding source or a valid written offer, replacement/relinking rights, and notices for every library statically linked into avcodec. H.264 patent review remains a release sign-off.
 
 Vendor / Proprietary Terms Review
 ----------------------------------
@@ -178,6 +181,7 @@ Vendor / Proprietary Terms Review
 - ElevenLabs API service terms: review and retain current vendor terms before release.
 - Google AI and GenAI API terms: review and retain current vendor terms before release.
 - Microsoft WebView2 Runtime: review and retain current vendor terms before release.
+- OpenH264 and statically linked FFmpeg codec patent and notice review: review and retain current vendor terms before release.
 
 Special Release Obligations
 ---------------------------
@@ -188,6 +192,7 @@ Special Release Obligations
 - WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready.
 - Do not distribute this connector/full binary until provider, voice, and messaging partner terms are approved for binary redistribution.
 - Do not add Porcupine/openWakeWord wake-word extras to connector/full binaries unless a new legal review approves that separate feature.
+- Windows connector/full PyAV packages must use the pinned codec-clean FFmpeg/PyAV wheel; reject any packaged x264/x265 binaries and retain exact wheel, complete notices, source-offer, and patent-review evidence.
 
 Repository Notice Index
 -----------------------

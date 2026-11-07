@@ -13,3 +13,7 @@
 # assets/intent_router/manifest.json; a CRLF checkout would fail that check
 # and silently disable local routing on Windows.
 assets/intent_router/vocab.txt -text
+
+# Keep the primary codec notice hashes stable on Windows, macOS, and Linux.
+ffmpeg-LGPL-3.0-NOTICES.txt text eol=lf
+openh264-BSD-2-Clause.txt text eol=lf

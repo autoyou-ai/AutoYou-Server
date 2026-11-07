@@ -80,10 +80,12 @@ def test_selection_fails_clearly_when_no_encoder_works(monkeypatch):
         h264_encoders.select_h264_encoder()
 
 
-def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch):
+@pytest.mark.parametrize("encoder_name", ("libopenh264", "h264_mf"))
+def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch, encoder_name):
     _without_x264(monkeypatch)
-    if not h264_encoders.encoder_candidates():
-        pytest.skip("this FFmpeg build has no OpenH264 or Media Foundation encoder")
+    if encoder_name not in h264_encoders.encoder_candidates() or not h264_encoders._opens(encoder_name):
+        pytest.skip(f"this host has no usable {encoder_name} encoder")
+    monkeypatch.setattr(h264_encoders, "ENCODER_PREFERENCE", (encoder_name,))
     h264_encoders.install_aiortc_h264_encoder()
     h264_encoders.install_aiortc_h264_encoder()  # a second call changes nothing
     assert aiortc_h264.H264Encoder._encode_frame._autoyou_h264
@@ -91,12 +93,14 @@ def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch):
     codec = RTCRtpCodecParameters(mimeType="video/H264", clockRate=90000, payloadType=102)
     encoder, decoder = get_encoder(codec), get_decoder(codec)
     decoded = 0
-    for index, frame in enumerate(_frames(8)):
+    # Some Windows Media Foundation encoders buffer 16 frames before their
+    # first packet. Exercise a second of streaming, without flushing the sender.
+    for index, frame in enumerate(_frames(30)):
         payloads, timestamp = encoder.encode(frame, force_keyframe=index == 0)
         if payloads:
             data = b"".join(aiortc_h264.h264_depayload(payload) for payload in payloads)
             decoded += len(decoder.decode(JitterFrame(data=data, timestamp=timestamp)))
-    assert encoder.codec.name in ("libopenh264", "h264_mf")
+    assert encoder.codec.name == encoder_name
     assert decoded > 0
 
 

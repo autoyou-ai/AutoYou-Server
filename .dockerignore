@@ -56,6 +56,16 @@ DO_NOT_UPLOAD/
 config.encrypted
 config.encrypted.*
 config.keystore.enc
+# Include backups and nested shared-runtime state. Docker does not recurse a
+# bare filename pattern into subdirectories.
+**/config.keystore.enc*
+**/config.encrypted*
+**/tls/
+**/*.key
+**/*.p12
+**/*.pfx
+**/*-backup-*
+**/*sealed-backup*
 config/server_unlock.json
 config/local-services.json
 config/donations.json
