@@ -1576,7 +1576,7 @@
         agents: [["library", "Agent library", /installed|available/i], ["studio", "Agent Studio", /studio/i], ["build", "Build & instructions", /prompt|create|draft|builder/i], ["desktop", "Desktop apps", /desktop/i]],
         page: [["websites", "Websites", /website|apps|bookmark|page/i], ["browser", "Browser", /browser|forward/i], ["access", "Access", /security|access|proxy/i]],
         messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "MCP & Tools", /mcp|webhook|send|queue/i]],
-        permissions: [["capture", "Audio & video", /audio|video|capture/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website|remote/i], ["assistant", "Assistant mode", /assistant|wake word/i]],
+        permissions: [["capture", "Audio & video", /audio|video|capture/i], ["desktop", "Remote Desktop", /remote desktop/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website/i], ["assistant", "Assistant mode", /assistant|wake word/i]],
         video: [["calls", "Calls & playback", /call|playback|background/i], ["sources", "Sharing sources", /source|camera|desktop|layout|device/i], ["recording", "Recording", /record|storage/i], ["connection", "Connection", /webrtc|ice|connection/i]],
         speech: [["voice", "Voice", /provider|tts|speech|voice/i], ["models", "Models", /model|download|recognition|stt/i]],
         connectivity: [["local", "This computer & LAN", /local|home|access|unlock|webrtc|network/i], ["remote", "Remote access", /cloud|public|tunnel|remote/i], ["routes", "Routes & delivery", /route|queue|task|website|bluetooth/i]],
@@ -3548,10 +3548,10 @@
                     enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.enabled", true), true),
                     send_screen: asBoolean(getByPath(cfg, "video_call.remote_desktop.send_screen", true), true),
                     monitor_id: getByPath(cfg, "video_call.remote_desktop.monitor_id", 0),
-                    quality: getByPath(cfg, "video_call.remote_desktop.quality", "balanced"),
+                    quality: getByPath(cfg, "video_call.remote_desktop.quality", "high"),
                     bitrate_kbps: getByPath(cfg, "video_call.remote_desktop.bitrate_kbps", 1500),
                     control_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.control_enabled", false), false),
-                    meet_auto_approve: asBoolean(getByPath(cfg, "video_call.remote_desktop.meet_auto_approve", true), true),
+                    meet_auto_approve: asBoolean(getByPath(cfg, "video_call.remote_desktop.meet_auto_approve", false), false),
                     game_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.game_enabled", false), false),
                     keep_awake: String(getByPath(cfg, "video_call.remote_desktop.keep_awake", "off") || "off"),
                     game_buttons: Array.isArray(gameButtons) ? gameButtons.map(function (button) { return button.label + ":" + button.name; }).join(", ") : "A:action_a, B:action_b"
@@ -6673,10 +6673,7 @@
             state.interact.payload = payload;
             if (!state.interact.dirty) state.interact.selected = (payload.selected || []).slice();
             state.interact.error = "";
-            var recent = (payload.participants || []).some(function (person) {
-                return Date.now() / 1000 - Number(person.last_input_at || 0) < 3;
-            });
-            if (changed || recent || feedsChanged) renderApp({ passive: true });
+            if (changed || feedsChanged) renderApp({ passive: true });
         } catch (error) {
             if (state.screen === "interact" && state.interact.error !== error.message) {
                 state.interact.error = error.message;
@@ -8263,8 +8260,8 @@
             ["Public link", getByPath(cfg, "tunnelmole.auto_start_on_boot", false) ? "Reconnects on startup" : "Starts only when you open it", "setup-open-screen:connectivity:remote", "wifi"],
             ["Hosted website link", getByPath(state.forms, "page.websiteHosting.auto_start_on_boot", false) ? "Reconnects on startup" : "Off", "setup-open-screen:page:websites", "page"],
             ["Hands-free assistant", assistant ? (assistant.enabled ? "On - answers after \u201c" + (assistant.wake_phrase || "the wake word") + "\u201d" : "Off") : "Set up in Chat & History", "assistant-open-setup", "mic"],
-            ["Game mode", getByPath(cfg, "video_call.remote_desktop.game_enabled", false) ? "Players can stream games from this computer" : "Off", "setup-open-screen:permissions:capture", "play"],
-            ["Remote Desktop input", getByPath(cfg, "video_call.remote_desktop.control_enabled", false) ? "Allowed for paired devices" : "Off", "setup-open-screen:permissions:capture", "agents"]
+            ["Game mode", getByPath(cfg, "video_call.remote_desktop.game_enabled", false) ? "Players can stream games from this computer" : "Off", "setup-open-screen:permissions:desktop", "play"],
+            ["Remote Desktop input", getByPath(cfg, "video_call.remote_desktop.control_enabled", false) ? "Allowed for paired devices" : "Off", "setup-open-screen:permissions:desktop", "agents"]
         ];
         return "<div class=\"ayu-list\">" + rows.map(function (row) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(row[0]) + "</strong><p>" + escapeHtml(row[1]) + "</p></div><div class=\"ayu-inline-actions\">" + button("Manage", row[2], "ghost", row[3], "sm") + "</div></div>";
@@ -9546,7 +9543,7 @@
             return editable ? markup : "<fieldset disabled style=\"border:0;padding:0;margin:0;min-width:0\">" + markup + "</fieldset>";
         }
         var audioPermissions = checkbox("videoCall.enabled", "Allow video calls", "Lets paired devices start video calls.")
-            + checkbox("videoCall.audio_enabled", "Allow audio calls", "Lets paired devices start voice calls and send microphone audio.")
+            + checkbox("videoCall.audio_enabled", "Allow voice calls", "Lets paired devices call this computer. Remote Desktop Meet has its own microphone and Listen controls.")
             + checkbox("audioPlayback.enabled", "Allow audio file playback", "Allows server audio files to be played into connected clients.")
             + checkbox("videoCall.audio_microphone", "Share this computer's microphone", "Sends this computer's selected microphone to connected calls.")
             + checkbox("videoCall.audio_speaker_loopback", "Share this computer's sound", "Captures and sends the computer's audio output during calls.")
@@ -9560,16 +9557,19 @@
             + checkbox("videoCall.wuift_enabled", "Allow Wait Until I Finish Talking", "Lets callers hold transcription across pauses before sending a turn.")
             + "<div class=\"ayu-inline-actions\">" + button("Save audio permissions", "save-permissions-audio", "primary", "save") + "</div>";
         var videoPermissions = checkbox("videoCall.record_my_video", "Record received video calls", "When the format is Video file, saves the connected phone's camera and available call audio together in an MP4 on this computer.")
-            + checkbox("videoCall.remote_desktop.enabled", "Allow screen capture", "Authorizes native capture of this computer's display.")
-            + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Includes the selected monitor in active video calls.")
-            + checkbox("videoCall.outbound_remote_desktop", "Select screen as a call source", "Makes the computer screen an available video source.")
             + checkbox("videoCall.outbound_camera", "Allow webcam sharing", "Makes the selected webcam an available video source.")
             + checkbox("videoCall.outbound_api", "Allow API video input", "Accepts JPEG frames pushed through the server API.")
             + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call. Its soundtrack stops when the caller starts speaking so AutoYou can listen; the looping video keeps playing. Press Play again to restart its sound.")
-            + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
-            + checkbox("videoCall.remote_desktop.meet_auto_approve", "Automatically approve Meet input requests", "When off, approve or decline each request in Interact.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
-            + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
+        var desktopPermissions = "<div class=\"ayu-grid-2 ayu-desktop-permissions-grid\"><div><h3>Screen sharing</h3>"
+            + checkbox("videoCall.remote_desktop.enabled", "Allow screen capture", "Authorizes capture of the selected display.")
+            + checkbox("videoCall.remote_desktop.send_screen", "Send this computer's screen", "Shares the selected monitor with connected clients.")
+            + checkbox("videoCall.outbound_remote_desktop", "Use the screen as a video source", "Adds this computer's screen to Computer Video and Remote Desktop.")
+            + "</div><div><h3>Mouse and keyboard</h3>"
+            + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop control", "Allows mouse and keyboard control in full-screen Computer Video. In Meet, participants request control from Interact.")
+            + checkbox("videoCall.remote_desktop.meet_auto_approve", "Always allow all paired clients in Meet", "Automatically grants control when any paired participant requests it. Leave off to review each request.")
+            + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
+            + "</div></div><div class=\"ayu-inline-actions\">" + button("Save Remote Desktop permissions", "save-permissions-desktop", "primary", "save") + button("Capture quality", "nav:video:sources", "secondary", "video") + button("Open Interact", "nav:interact", "ghost", "agents") + "</div>";
         // AutoYou apps and the admin page reach AutoYou AI through this server
         // whatever this says; it only opens the agent runtime's own API.
         var homeNetwork = getByPath(state.bootstrap, "status.home_network", null);
@@ -9623,7 +9623,7 @@
             { label: "Admin website shared", value: yesNo(getByPath(state.forms, "page.admin_frontend_enabled", false)) },
             { label: "Assistant mode (wake word)", value: assistantState().status ? (assistantState().status.enabled ? "On" : "Off") : "Loading" }
         ]);
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Review what this computer allows AutoYou and paired devices to capture, record, save, and access.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and computer control", "Screen, camera, API, playback, video recording, Remote Desktop input, and game mode.", localOnly(videoPermissions)) + "</div><div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div>" + assistantPermissionsPanel() + "<div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Permissions</h1><p>Decide what paired devices can see, hear, and control on this computer.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open Video & Calls", "nav:video", "ghost", "video") + "</div></div>" + accessNote + "<div class=\"ayu-grid-2\">" + panel("Calls and audio", "Microphone capture, computer audio, transcription, voice recording, safety recording, and location.", localOnly(audioPermissions)) + panel("Video and recording", "Camera, video sources and recordings.", localOnly(videoPermissions)) + "</div>" + panel("Remote Desktop", "Share your screen and choose who can control the computer during Meet.", localOnly(desktopPermissions)) + "<div class=\"ayu-grid-2\">" + panel("Chat memory and developer access", "Chat retention, and whether developer tools on the home network may use the AI Agent's own API.", localOnly(dataPermissions)) + panel("Paired browser access", "Set the remote web role and decide whether paired devices may open this computer's Admin website.", localOnly(webAccess)) + "</div>" + assistantPermissionsPanel() + "<div class=\"ayu-grid-2\">" + panel("Where recordings and chat history are saved", "Resolved locations on this computer, including saved chat transcripts and the event memory database.", storagePaths) + panel("Current permission status", "A quick readout of the settings above.", statusMarkup) + "</div></div>";
     }
 
     function renderVideoScreen() {
@@ -9916,7 +9916,7 @@
         var remoteControlConfigured = asBoolean(getByPath(state.forms, "videoCall.remote_desktop.control_enabled", false), false);
         var remoteControlAvailable = Boolean(getByPath(remoteCaps, "control_available", false));
         var remoteControlEnabled = Boolean(getByPath(remoteCaps, "control_enabled", false));
-        var remoteQuality = String(getByPath(remoteCaps, "quality", getByPath(state.forms, "videoCall.remote_desktop.quality", "balanced")) || "balanced");
+        var remoteQuality = String(getByPath(remoteCaps, "quality", getByPath(state.forms, "videoCall.remote_desktop.quality", "high")) || "high");
         var remoteAdvice = !remoteSettingEnabled
             ? "Turn on Remote Desktop for video calls, save, then refresh."
             : (!remoteScreenSending
@@ -10061,7 +10061,7 @@
             + field("Capture quality", select("videoCall.remote_desktop.quality", [
                 { value: "low", label: "Low - 960 px, 8 FPS" },
                 { value: "balanced", label: "Balanced - 1280 px, 12 FPS" },
-                { value: "high", label: "High - 1920 px, 20 FPS" },
+                { value: "high", label: "High (recommended) - 1920 px, 20 FPS" },
                 { value: "ultra", label: "Ultra - 2560 px, 24 FPS" }
             ]), "Higher settings improve desktop text clarity but use more CPU, GPU, and network bandwidth.")
             + field("Maximum video bitrate (kbps)", input("videoCall.remote_desktop.bitrate_kbps", { type: "number", placeholder: "1500", extraAttrs: "min=\"250\" max=\"3000\" step=\"50\"" }), "Applies to active desktop tracks. An existing connection may need one reconnect when increasing above 1500 kbps.")
@@ -10869,28 +10869,74 @@
         var data = state.interact.payload || {};
         var people = Array.isArray(data.participants) ? data.participants : [];
         var inputs = Array.isArray(data.inputs) ? data.inputs : [];
-        var rows = people.map(function (person) {
+        var requested = people.filter(function (person) { return person.control_state === "requested"; }).length;
+        var hands = people.filter(function (person) { return person.hand_raised; }).length;
+        var receiving = data.receiving || [];
+        var rows = people.slice().sort(function (a, b) {
+            return Number(b.control_state === "requested") - Number(a.control_state === "requested")
+                || Number(Boolean(b.hand_raised)) - Number(Boolean(a.hand_raised));
+        }).map(function (person) {
             var id = String(person.id || "");
+            var name = person.name || "Connected device";
             var interactive = person.mode === "interactive";
             var selected = state.interact.selected.indexOf(id) !== -1;
-            var recent = Date.now() / 1000 - Number(person.last_input_at || 0) < 1.5 ? badge(person.last_input || "", "blue") : "";
-            var layoutBadge = person.layout ? badge(person.layout === "gamepad" ? "Gamepad (Diamond)" : person.layout, "purple") : "";
+            var target = ":" + encodeURIComponent(id) + ":" + encodeURIComponent(person.control_id || "");
             var control = "";
-            if (interactive && person.control_id) {
-                var target = ":" + encodeURIComponent(id) + ":" + encodeURIComponent(person.control_id);
-                if (person.control_state === "requested") {
-                    control = badge("Input requested", "amber") + button("Approve input", "interact-control:approve" + target, "primary", "check", "sm")
-                        + button("Decline", "interact-control:deny" + target, "secondary", "close", "sm");
-                } else if (person.control_state === "approved") {
-                    control = badge("Input enabled", "green") + button("End input", "interact-control:revoke" + target, "secondary", "stop", "sm");
-                }
+            if (person.control_state === "requested") {
+                control = "<div class=\"ayu-interact-decision\"><strong>Remote control requested</strong><div class=\"ayu-inline-actions\">"
+                    + button("Allow remote control", "interact-control:approve" + target, "primary", "check", "sm")
+                    + button("Decline", "interact-control:deny" + target, "ghost", "close", "sm")
+                    + "</div><div class=\"ayu-inline-actions ayu-interact-remember\">"
+                    + button("Always allow this client", "interact-control:approve_client" + target, "secondary", "", "sm", 'title="Until this client disconnects"')
+                    + button("Always allow all clients", "interact-control:approve_all" + target, "secondary", "", "sm")
+                    + "</div></div>";
+            } else if (person.control_state === "approved") {
+                control = button("End control", "interact-control:revoke" + target, "secondary", "stop", "sm");
             }
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : person.mode === "game" ? "Game session" : "Watching only") + "</p></div>" + layoutBadge + recent + control + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
+            if (person.always_allow) {
+                control += button("Forget approval", "interact-control:forget_client" + target, "ghost", "", "sm");
+            }
+            return "<article class=\"ayu-interact-person\"><div class=\"ayu-interact-person-head\"><span aria-hidden=\"true\" class=\"ayu-interact-avatar\">"
+                + escapeHtml(Array.from(name).slice(0, 2).join("").toUpperCase())
+                + "</span><div class=\"ayu-list-copy\"><strong>" + escapeHtml(name)
+                + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : receiving.indexOf(id) !== -1 ? "Playing on speaker" : "Microphone live") : person.mode === "game" ? "Playing a game" : "Watching only")
+                + "</p></div>" + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + selected + '" aria-label="' + escapeHtml((selected ? "Deselect " : "Select ") + name) + '"') : "") + "</div>"
+                + "<div class=\"ayu-inline-actions\">"
+                + (person.hand_raised ? badge("Hand raised", "amber") : "")
+                + (person.control_state === "approved" ? badge("Controlling desktop", "blue") : "")
+                + (person.always_allow ? badge("Approved for this connection", "green") : "")
+                + (person.control_state !== "approved" && person.layout && person.layout !== "off" ? badge(prettyLabel(person.layout), "purple") : "")
+                + (person.last_input ? badge(person.last_input, "blue") : "")
+                + (person.control_state !== "requested" ? control : "")
+                + "</div>"
+                + (person.typing ? "<div class=\"ayu-interact-draft\"><small>Typing to host</small><div>" + escapeHtml(person.typing) + "</div></div>" : "")
+                + (person.control_state === "requested" ? control : "") + "</article>";
         }).join("");
         var feed = inputs.slice(-30).reverse().map(function (input) {
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";
+            var isText = input.kind === "text";
+            var time = new Date(Number(input.timestamp || 0) * 1000);
+            return "<div class=\"ayu-interact-event\"><div><strong>" + escapeHtml(input.name || "A device")
+                + "</strong><small>" + escapeHtml(time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) + "</small></div>"
+                + "<p>" + escapeHtml(isText ? input.value : "Sent " + (input.value || "an input")) + "</p></div>";
         }).join("");
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Interact</h1><p>See live screen participants and their choice or controller inputs. Listen plays unmuted phone microphones on this computer, without AI processing.</p></div>" + button("Refresh", "interact-refresh", "secondary", "refresh") + "</div>" + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\">" + escapeHtml(state.interact.error) + "</div>" : "") + "<div class=\"ayu-grid-2\">" + panel("Listen", "Local speaker output: " + (data.mode || "off"), "<div class=\"ayu-inline-actions\">" + button("Off", "interact-save:off", "secondary") + button("All unmuted", "interact-save:all", "secondary") + button("Selected", "interact-save:selected", "primary") + "</div><p class=\"ayu-hint\">Select participants below before choosing Selected. Phone microphones start muted.</p>" + (rows || "<div class=\"ayu-empty\">No connected screen sessions.</div>")) + panel("Inputs", "Recent A–D and controller presses", "<div class=\"ayu-list\">" + (feed || "<div class=\"ayu-empty\">No inputs yet.</div>") + "</div>") + "</div>" + renderInteractVideoPanel() + "</div>";
+        var mode = data.mode || "off";
+        var listen = [["off", "Off"], ["all", "All unmuted"], ["selected", "Selected"]].map(function (item) {
+            return button(item[1], "interact-save:" + item[0], mode === item[0] ? "primary" : "secondary", "", "sm", 'aria-pressed="' + (mode === item[0]) + '"');
+        }).join("");
+        var policy = !data.control_enabled ? "Remote control off" : data.meet_auto_approve ? "All paired clients auto-approved" : "Host approval required";
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero ayu-interact-hero\"><div class=\"ayu-hero-copy\"><span class=\"ayu-interact-kicker\">REMOTE DESKTOP MEET</span><h1>Interact</h1><p>See who’s connected, read what they type, and decide who can use this computer’s mouse and keyboard.</p></div><div class=\"ayu-inline-actions\">"
+            + button("Permissions", "nav:permissions:desktop", "secondary", "shield") + button("Refresh", "interact-refresh", "ghost", "refresh") + "</div></div>"
+            + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(state.interact.error) + "</div>" : "")
+            + "<div class=\"ayu-interact-status\"><div class=\"ayu-inline-actions\">" + badge(people.length + (people.length === 1 ? " participant" : " participants"), "purple")
+            + (hands ? badge(hands + (hands === 1 ? " raised hand" : " raised hands"), "amber") : "")
+            + (requested ? badge(requested + (requested === 1 ? " control request" : " control requests"), "amber") : "")
+            + badge(policy, data.meet_auto_approve && data.control_enabled ? "blue" : "gray") + "</div>"
+            + (data.meet_auto_approve && data.control_enabled ? button("Ask before granting control", "interact-control:ask", "secondary", "shield", "sm") : "") + "</div>"
+            + "<div class=\"ayu-interact-grid\">"
+            + panel("Participants", "Choose which microphones to play on this computer. Meet audio stays here.", "<div class=\"ayu-interact-listen\"><strong>Listen on this computer</strong><div class=\"ayu-inline-actions\">" + listen + "</div></div>"
+                + "<div class=\"ayu-interact-people\">" + (rows || "<div class=\"ayu-empty\">No participants yet. Open Remote Desktop Meet on a paired device.</div>") + "</div>")
+            + panel("Activity", "Messages, choices, and gamepad inputs from connected devices.", "<div class=\"ayu-interact-feed\" data-keep-scroll=\"interact-inputs\">" + (feed || "<div class=\"ayu-empty\">New input will appear here.</div>") + "</div>")
+            + "</div>" + renderInteractVideoPanel() + "</div>";
     }
 
     function renderCurrentScreen() {
@@ -11308,12 +11354,17 @@
         if (action === "interact-refresh") { await refreshInteract(); return; }
         if (action.indexOf("interact-control:") === 0) {
             var decision = action.split(":");
-            if (decision.length !== 4 || ["approve", "deny", "revoke"].indexOf(decision[1]) === -1) return;
+            if (decision[1] !== "ask" && decision.length !== 4) return;
             state.interact.saving = true;
             try {
                 await postJson("/api/screen-listen/control", {
-                    action: decision[1], session_id: decodeURIComponent(decision[2]), control_id: decodeURIComponent(decision[3])
+                    action: decision[1], session_id: decodeURIComponent(decision[2] || ""), control_id: decodeURIComponent(decision[3] || "")
                 });
+                if (decision[1] === "approve_all" || decision[1] === "ask") {
+                    var allowAll = decision[1] === "approve_all";
+                    setByPath(state.forms, "videoCall.remote_desktop.meet_auto_approve", allowAll);
+                    setByPath(state.bootstrap, "config.video_call.remote_desktop.meet_auto_approve", allowAll);
+                }
             } finally {
                 state.interact.saving = false;
                 await refreshInteract();
@@ -11701,6 +11752,8 @@
         if (action.indexOf("settings-section:") === 0) {
             state.sections[state.screen] = action.slice("settings-section:".length);
             renderApp();
+            var activeSection = root.querySelector(".ayu-section-nav .ayu-tab.active");
+            if (activeSection) activeSection.focus({ preventScroll: true });
             return;
         }
         if (action === "toggle-admin-theme") {
@@ -12395,10 +12448,15 @@
         }
         if (action === "save-permissions-video") {
             await savePermissions([
-                "video_call_recording_enabled", "webcam_sharing_enabled", "screen_capture_enabled",
-                "screen_send_enabled", "screen_source_enabled",
-                "api_video_input_enabled", "video_file_playback_enabled", "remote_desktop_control_enabled", "meet_auto_approve", "game_mode_enabled"
-            ], "Video and computer permissions updated.");
+                "video_call_recording_enabled", "webcam_sharing_enabled", "api_video_input_enabled", "video_file_playback_enabled"
+            ], "Video permissions updated.");
+            return;
+        }
+        if (action === "save-permissions-desktop") {
+            await savePermissions([
+                "screen_capture_enabled", "screen_send_enabled", "screen_source_enabled",
+                "remote_desktop_control_enabled", "meet_auto_approve", "game_mode_enabled"
+            ], "Remote Desktop permissions updated.");
             return;
         }
         if (action === "save-permissions-data") {

@@ -5427,3 +5427,31 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.ayu-interact-hero {
+    background: linear-gradient(120deg, var(--ayu-primary-soft), var(--ayu-surface-strong) 78%);
+    border: 1px solid var(--ayu-border-strong);
+    padding: clamp(16px, 3vw, 26px);
+    border-radius: 18px;
+    align-items: center;
+}
+.ayu-desktop-permissions-grid h3 { margin: 0 0 12px; }
+.ayu-interact-kicker { font-size: 11px; font-weight: 750; letter-spacing: .12em; color: var(--ayu-primary-strong); }
+.ayu-interact-status, .ayu-interact-listen, .ayu-interact-person-head {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+}
+.ayu-interact-status, .ayu-interact-listen { padding: 12px; border: 1px solid var(--ayu-border); border-radius: 14px; background: var(--ayu-surface-muted); }
+.ayu-interact-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; gap: 18px; }
+.ayu-interact-people { display: grid; gap: 10px; margin-top: 12px; }
+.ayu-interact-person { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--ayu-border); border-radius: 14px; background: var(--ayu-surface-strong); }
+.ayu-interact-person-head .ayu-list-copy { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.ayu-interact-avatar { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: var(--ayu-primary-strong); background: var(--ayu-primary-soft); font-weight: 750; }
+.ayu-interact-decision, .ayu-interact-draft { padding: 10px 12px; border-radius: 10px; background: var(--ayu-primary-soft); }
+.ayu-interact-decision strong, .ayu-interact-draft small { display: block; margin-bottom: 5px; color: var(--ayu-primary-strong); }
+.ayu-interact-remember { margin-top: 8px; }
+.ayu-interact-feed { max-height: 560px; overflow: auto; overscroll-behavior: contain; }
+.ayu-interact-event { padding: 11px 0; border-bottom: 1px solid var(--ayu-border); }
+.ayu-interact-event > div { display: flex; justify-content: space-between; gap: 12px; }
+.ayu-interact-event small { color: var(--ayu-muted); flex-shrink: 0; }
+.ayu-interact-event p, .ayu-interact-draft div { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; }
+@media (max-width: 980px) { .ayu-interact-grid { grid-template-columns: minmax(0, 1fr); } }

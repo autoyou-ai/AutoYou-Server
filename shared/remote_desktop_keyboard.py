@@ -160,11 +160,15 @@ def load_remote_input_backend() -> Any:
     """
 
     if sys.platform == "win32":
-        from .windows_secure_desktop import secure_input_backend_if_needed
+        from .windows_secure_desktop import attach_thread_to_input_desktop, secure_input_backend_if_needed
 
         backend = secure_input_backend_if_needed()
         if backend is not None:
             return backend
+        # The pool thread handling input must target the same interactive desktop
+        # Windows is showing; SetCursorPos can silently fail on another desktop.
+        if (attach_thread_to_input_desktop() or "").lower() != "default":
+            raise RuntimeError("Could not attach to the Windows input desktop")
     return load_pyautogui()
 
 

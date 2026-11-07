@@ -125,7 +125,7 @@ def register_routes(
                 not isinstance(value, str) or not value or len(value) > 128 for value in selected
             ):
                 raise ValueError("Choose a valid Listen selection")
-            result = await server.asyncio.to_thread(server.WEBRTC.configure_screen_listen, mode, selected)
+            result = await server.WEBRTC.configure_screen_listen(mode, selected)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)[:160]})
         except Exception:
@@ -145,14 +145,24 @@ def register_routes(
             if not isinstance(body, dict):
                 raise ValueError
             session_id, control_id, action = (body.get(key) for key in ("session_id", "control_id", "action"))
-            if not all(isinstance(value, str) and 0 < len(value) <= 128 for value in (session_id, control_id, action)):
+            if not isinstance(action, str) or action not in {"approve", "approve_client", "approve_all", "ask", "deny", "revoke", "forget_client"}:
                 raise ValueError
-            if action not in {"approve", "deny", "revoke"}:
+            if action != "ask" and not (
+                isinstance(session_id, str) and 0 < len(session_id) <= 128
+                and isinstance(control_id, str) and len(control_id) <= 128
+                and (control_id or action == "forget_client")
+            ):
                 raise ValueError
         except (ValueError, TypeError):
             return JSONResponse(status_code=400, content={"error": "Choose a valid input decision"})
-        if not await server.WEBRTC.review_screen_control(session_id, control_id, action):
+        if action != "ask" and not await server.WEBRTC.review_screen_control(session_id, control_id, action):
             return JSONResponse(status_code=409, content={"error": "This input request is no longer available"})
+        if action in {"approve_all", "ask"}:
+            await server._save_admin_permissions({"meet_auto_approve": action == "approve_all"})
+            if action == "approve_all":
+                for participant in server.WEBRTC.screen_listen_snapshot()["participants"]:
+                    if participant.get("control_state") == "requested":
+                        await server.WEBRTC.review_screen_control(participant["id"], participant["control_id"], "approve")
         return server._json_response_no_store({"success": True})
 
     def _chat_model_dict(value: Any) -> Dict[str, Any]:

@@ -276,6 +276,26 @@ def test_input_executor_maps_absolute_and_relative_motion_and_releases_host_stat
     assert ("keyUp", "left") in backend.calls
 
 
+def test_macos_motion_uses_native_drag_events_while_button_held(monkeypatch):
+    from shared import remote_desktop_input
+
+    monkeypatch.setattr(remote_desktop_input, "sys", SimpleNamespace(platform="darwin"))
+    backend = _FakeInputBackend()
+    backend.dragTo = lambda x, y, **opts: backend.calls.append(("dragTo", x, y, opts))
+    backend.dragRel = lambda x, y, **opts: backend.calls.append(("dragRel", x, y, opts))
+    options = {"track": _FakeDesktopTrack(), "pyautogui": backend, "drag_button": "left"}
+    assert execute_remote_desktop_input({
+        "control_id": "synthetic", "input_type": "move", "x": 0.5, "y": 0.5,
+    }, **options)
+    assert execute_remote_desktop_input({
+        "control_id": "synthetic", "input_type": "move", "coordinate_mode": "relative", "dx": 0.1, "dy": -0.2,
+    }, **options)
+    assert backend.calls == [
+        ("dragTo", 900, 650, {"button": "left", "mouseDownUp": False}),
+        ("dragRel", 160, -180, {"button": "left", "mouseDownUp": False}),
+    ]
+
+
 def test_relative_input_preserves_movement_smaller_than_one_host_pixel():
     backend = _FakeInputBackend()
     track = _FakeDesktopTrack()
