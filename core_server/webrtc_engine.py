@@ -164,6 +164,10 @@ class WebRTCManager:
         self.screen_sessions: Dict[str, Dict[str, Any]] = {}
         self.screen_inputs = _runtime.deque(maxlen=100)
         self.screen_listen_mixer = ScreenListenMixer()
+        self._meet_desktop_capture: Any = None
+        self._screen_audio_source: Any = None
+        self._screen_audio_relay: Any = None
+        self._screen_audio_subscribers: Dict[str, Tuple[Any, Any]] = {}
         # Derived from the pairing HTTP peer. This controls audio routing only.
         self.same_machine_audio_sessions: Set[str] = set()
         self.host_media_owner_by_session: Dict[str, str] = {}
@@ -191,6 +195,8 @@ class WebRTCManager:
         # so expiry, held buttons, and failure counts cannot drift after rekeying.
         self.remote_desktop_control_leases_by_session: Dict[str, Dict[str, Any]] = {}
         self.remote_desktop_control_lock = _runtime.asyncio.Lock()
+        self._remote_desktop_cursor_dirty = False
+        self._remote_desktop_cursor_task: Optional[asyncio.Task] = None
         self.game_input_hub = GameInputHub()
         # Neon Horizon's settings can turn off the soundtrack streamed to players.
         self.hosted_game_music_enabled = True
@@ -416,7 +422,8 @@ class WebRTCManager:
             if self._background_audio_state_for_session(session_id).get("active"):
                 continue
             sender = getattr(transceiver, "sender", None)
-            if getattr(sender, "track", None) is None and not self._voice_call_client_active_for_session(session_id):
+            if (getattr(sender, "track", None) is None and not self._voice_call_client_active_for_session(session_id)
+                    and not self._screen_session_active(session_id)):
                 continue
             self._restore_outbound_audio_for_call(session_id)
 
@@ -502,6 +509,8 @@ class WebRTCManager:
         if stop_audio_sinks and not preserve_audio_runtime:
             stopped_audio_sinks: List[Any] = []
             for session_id, audio_sink in list(self.audio_sinks.items()):
+                if self._screen_session_active(session_id):
+                    continue
                 if any(audio_sink is current for current in stopped_audio_sinks):
                     self.audio_sinks.pop(session_id, None)
                     continue
@@ -654,6 +663,14 @@ class WebRTCManager:
 
         desktop_control_available = _runtime._get_remote_desktop_control_available(cfg=cfg)
         game_control_available = _runtime._get_game_mode_available(cfg=cfg)
+        if not desktop_control_available:
+            for screen_id, screen in list(self.screen_sessions.items()):
+                request = screen.pop("control_request", None)
+                if request is not None:
+                    await self._send_remote_desktop_control_status(
+                        screen_id, control_id=request["control_id"], active=False,
+                        reason="Remote desktop control is disabled or unavailable.",
+                    )
         if not desktop_control_available or not game_control_available:
             released_leases: set[int] = set()
             for session_id, lease in list(self.remote_desktop_control_leases_by_session.items()):
@@ -663,10 +680,13 @@ class WebRTCManager:
                 if id(lease) in released_leases:
                     continue
                 released_leases.add(id(lease))
-                await self._release_remote_desktop_control(
-                    session_id,
-                    str(lease.get("control_id") or ""),
-                )
+                target = str(lease["target_session_id"])
+                control_id = str(lease["control_id"])
+                if await self._release_remote_desktop_control(session_id, control_id) and self._screen_session_active(target):
+                    await self._send_remote_desktop_control_status(
+                        target, control_id=control_id, active=False,
+                        reason="Remote desktop control is disabled or unavailable.",
+                    )
 
         # Re-apply outbound call audio sources (AI replies / computer microphone /
         # speaker loopback) to live voice calls so enabling "Add this computer's
@@ -682,10 +702,15 @@ class WebRTCManager:
         )
         previous_audio_signature = self._outbound_call_audio_signature
         self._outbound_call_audio_signature = audio_signature
+        if not outbound_video_available:
+            for screen_id in list(self.screen_sessions):
+                self._set_screen_session(screen_id, "ended")
         if force_audio_rewire or previous_audio_signature != audio_signature:
+            for screen_id in list(self._screen_audio_subscribers):
+                self._drop_screen_audio(screen_id)
             restored_transceiver_ids: set[int] = set()
             for candidate_id in list(self.audio_transceivers.keys()):
-                if not self._voice_call_client_active_for_session(candidate_id):
+                if not (self._voice_call_client_active_for_session(candidate_id) or self._screen_session_active(candidate_id)):
                     continue
                 _, transceiver = self._audio_transceiver_for_session(candidate_id)
                 if transceiver is None or id(transceiver) in restored_transceiver_ids:
@@ -2343,6 +2368,8 @@ class WebRTCManager:
 
     def _clear_outbound_audio_track_for_idle(self, session_id: str) -> None:
         """Detach server audio without changing the negotiated audio m-line."""
+        if self._screen_session_active(session_id):
+            return
         _, transceiver = self._audio_transceiver_for_session(session_id)
         if transceiver is None:
             return
@@ -2364,6 +2391,10 @@ class WebRTCManager:
     def _restore_outbound_audio_for_call(self, session_id: str) -> None:
         _, transceiver = self._audio_transceiver_for_session(session_id)
         if transceiver is None:
+            return
+        screen = self._screen_session_for_session(session_id)
+        if screen is not None and screen["mode"] in {"interactive", "watch"}:
+            self._restore_screen_session_audio(str(screen["id"]), transceiver, screen["mode"])
             return
         alias_ids = self._ordered_related_session_ids(session_id)
         audio_manager = None
@@ -2440,6 +2471,59 @@ class WebRTCManager:
             "sendrecv",
             session_id=session_id,
             reason="call-restore",
+        )
+
+    _SCREEN_AUDIO_CAPTURE_ID = "autoyou-screen-session-capture"
+
+    def _drop_screen_audio(self, session_id: str) -> None:
+        subscriber = self._screen_audio_subscribers.pop(session_id, None)
+        if subscriber is not None:
+            transceiver, track = subscriber
+            if getattr(transceiver.sender, "track", None) is track:
+                transceiver.sender.replaceTrack(None)
+            self._screen_audio_relay.unsubscribe(track)
+        if not self._screen_audio_subscribers and self._screen_audio_source is not None:
+            source = self._screen_audio_source
+            self._screen_audio_relay.task.cancel()
+            self._screen_audio_source = None
+            self._screen_audio_relay = None
+            self._drop_local_capture_audio_tracks_for_ids((self._SCREEN_AUDIO_CAPTURE_ID,))
+            source.stop()
+
+    def _restore_screen_session_audio(self, session_id: str, transceiver: Any, mode: str) -> None:
+        # Meet carries only the configured host capture, with an optional
+        # participant mic for Listen. It has no voice-agent audio pipeline.
+        self._drop_local_capture_audio_tracks_for_ids(self._ordered_related_session_ids(session_id))
+        if mode == "interactive" and not any(alias in self.audio_sinks for alias in self._ordered_related_session_ids(session_id)):
+            inbound = getattr(getattr(transceiver, "receiver", None), "track", None)
+            if inbound is not None:
+                self._start_inbound_audio_track_sink(
+                    inbound, session_id=session_id, audio_manager=None,
+                    audio_call_enabled=False, cfg_snapshot=(_runtime.STATE.config or {}),
+                )
+        existing = self._screen_audio_subscribers.get(session_id)
+        allowed = self.server_capture_allowed_for_session(session_id)
+        if existing is not None and (not allowed or existing[0] is not transceiver):
+            self._drop_screen_audio(session_id)
+            existing = None
+        if allowed and existing is None:
+            if self._screen_audio_source is None:
+                from shared.audio_manager import ScreenAudioFanout
+
+                self._screen_audio_source = _runtime._create_configured_outbound_audio_track(
+                    cfg=(_runtime.STATE.config or {}), session_id=self._SCREEN_AUDIO_CAPTURE_ID, include_loopback=True,
+                )
+                if self._screen_audio_source is not None:
+                    self._screen_audio_relay = ScreenAudioFanout(self._screen_audio_source)
+            if self._screen_audio_source is not None:
+                track = self._screen_audio_relay.subscribe()
+                self._screen_audio_subscribers[session_id] = (transceiver, track)
+                existing = (transceiver, track)
+        if existing is None or getattr(transceiver.sender, "track", None) is not existing[1]:
+            transceiver.sender.replaceTrack(existing[1] if existing is not None else None)
+        self._set_transceiver_direction(
+            transceiver, "sendrecv" if mode == "interactive" else "sendonly",
+            session_id=session_id, reason="screen-session",
         )
 
     def _desktop_video_track_for_session(self, session_id: str) -> Tuple[Optional[str], Optional[Any]]:
@@ -2560,13 +2644,26 @@ class WebRTCManager:
                 return session
         return None
 
+    def _screen_session_active(self, session_id: str) -> bool:
+        screen = self._screen_session_for_session(session_id)
+        return screen is not None and screen["mode"] in {"interactive", "watch"}
+
+    def _remote_desktop_session_active(self, session_id: str) -> bool:
+        screen = self._screen_session_for_session(session_id)
+        if screen is not None:
+            return screen["mode"] == "interactive"
+        return self._voice_call_client_active_for_session(session_id)
+
     def _set_screen_session(self, session_id: str, mode: str) -> None:
         current = self._screen_session_for_session(session_id)
         if mode == "ended":
             if current is not None:
                 current["mode"] = "ended"
                 current["muted"] = True
+                current.pop("control_request", None)
+                self._drop_screen_audio(str(current["id"]))
                 self.screen_listen_mixer.forget(str(current["id"]))
+                self._clear_idle_meet_capture()
             return
         if current is not None and current["id"] == session_id and current["mode"] == mode:
             return
@@ -2574,8 +2671,10 @@ class WebRTCManager:
         for candidate_id in related:
             previous = self.screen_sessions.pop(candidate_id, None)
             if previous is not None:
+                self._drop_screen_audio(str(previous["id"]))
                 self.screen_listen_mixer.forget(str(previous["id"]))
         if mode not in {"watch", "interactive"}:
+            self._clear_idle_meet_capture()
             return
         name = self.client_display_name_snapshot(session_id).get("client_display_name") or "Connected device"
         self.screen_sessions[session_id] = {
@@ -2583,10 +2682,23 @@ class WebRTCManager:
             "muted": True, "layout": "off", "last_input": "", "last_input_at": 0.0,
         }
 
+    def _clear_idle_meet_capture(self) -> None:
+        if not any(screen["mode"] in {"watch", "interactive"} for screen in self.screen_sessions.values()):
+            self._meet_desktop_capture = None
+
     def screen_listen_snapshot(self) -> Dict[str, Any]:
-        participants = [dict(session) for session in self.screen_sessions.values()
-                        if session["mode"] in {"watch", "interactive"} and
-                        self._voice_call_client_active_for_session(str(session["id"]))]
+        participants = []
+        for session in self.screen_sessions.values():
+            if session["mode"] not in {"watch", "interactive"}:
+                continue
+            participant = {key: value for key, value in session.items() if key != "control_request"}
+            request = session.get("control_request")
+            lease = self._remote_desktop_control_lease_for_session(str(session["id"]))
+            if request is not None:
+                participant.update(control_state="requested", control_id=request["control_id"])
+            elif lease is not None:
+                participant.update(control_state="approved", control_id=lease["control_id"])
+            participants.append(participant)
         # Players in a game session stream this computer without a microphone; Interact shows
         # them so the person here can read what each player is pressing.
         listed = {str(person["id"]) for person in participants}
@@ -2607,6 +2719,7 @@ class WebRTCManager:
             })
         return {
             **self.screen_listen_mixer.snapshot(),
+            "meet_auto_approve": bool(_runtime._get_video_remote_desktop_config().get("meet_auto_approve", True)),
             "participants": participants,
             "inputs": list(self.screen_inputs)[-50:],
         }
@@ -2680,8 +2793,7 @@ class WebRTCManager:
 
     def configure_screen_listen(self, mode: str, selected: Iterable[str] = ()) -> Dict[str, Any]:
         allowed = {str(session["id"]) for session in self.screen_sessions.values()
-                   if session["mode"] == "interactive" and
-                   self._voice_call_client_active_for_session(str(session["id"]))}
+                   if session["mode"] == "interactive"}
         choices = {str(value) for value in selected}
         if mode == "selected" and not choices <= allowed:
             raise ValueError("Choose a connected screen participant")
@@ -3028,7 +3140,9 @@ class WebRTCManager:
         audio_call_enabled: bool,
         cfg_snapshot: Dict[str, Any],
     ) -> bool:
-        if _runtime.AudioTrackSink is None or not audio_call_enabled:
+        if _runtime.AudioTrackSink is None or not (
+            audio_call_enabled or _runtime._get_outbound_video_available(cfg=cfg_snapshot)
+        ):
             return False
         # Screen Listen needs the inbound track even when AI voice agents are disabled.
 
@@ -3189,6 +3303,8 @@ class WebRTCManager:
             if screen_session["mode"] == "interactive" and not screen_session["muted"]:
                 self.screen_listen_mixer.feed(str(screen_session["id"]), chunk)
             return  # Screen sessions never enter STT, AI agents, or call listeners.
+        if not _runtime._get_video_call_audio_enabled(cfg=(_runtime.STATE.config or {})):
+            return
         background_state = self._background_audio_state_for_session(session_id)
         if background_state.get("active"):
             if background_state.get("silent_recording"):
@@ -4118,6 +4234,8 @@ class WebRTCManager:
         await _runtime.asyncio.gather(expiry_task, return_exceptions=True)
       held_buttons = set(lease.get("held_buttons") or ())
       held_keys = set(lease.get("held_keys") or ())
+      held_buttons -= self._other_desktop_holds(lease, "held_buttons")
+      held_keys -= self._other_desktop_holds(lease, "held_keys")
       lease["held_buttons"] = set()
       lease["held_keys"] = set()
       lease["expires_at"] = 0.0
@@ -4130,9 +4248,15 @@ class WebRTCManager:
         still_active = any(candidate.get("mode") == "game" and candidate.get("track") is track
                            for candidate in self.remote_desktop_control_leases_by_session.values())
         self._apply_game_capture_rate(track, game_active=still_active)
-      await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_buttons,
-                                     **({"held_keys": held_keys} if held_keys else {}))
+      release_options = {"held_keys": held_keys} if held_keys else {}
+      if self.remote_desktop_control_leases_by_session:
+        release_options["release_modifiers"] = False
+      await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_buttons, **release_options)
       return True
+
+    def _other_desktop_holds(self, lease: Dict[str, Any], field: str) -> Set[str]:
+      return {value for other in self.remote_desktop_control_leases_by_session.values()
+              if other is not lease for value in other.get(field, ())}
 
     async def _release_remote_desktop_control(
       self,
@@ -4155,6 +4279,8 @@ class WebRTCManager:
       control_id: str = "",
       active: bool,
       reason: str = "",
+      pending: bool = False,
+      cursor_position: Optional[Tuple[int, int]] = None,
     ) -> bool:
       manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
       if manager is None or _runtime.__dict__.get("create_voice_call_control_message") is None:
@@ -4168,9 +4294,13 @@ class WebRTCManager:
         "available": _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})),
         "timestamp_ms": int(_runtime.time.time() * 1000),
       }
+      if pending:
+        payload["pending"] = True
       lease = self._remote_desktop_control_lease_for_session(session_id, control_id)
-      if active and lease is not None and lease.get("mode") == "game":
-        payload["engine_input"] = bool(lease.get("engine_input"))
+      if active and lease is not None:
+        payload["touch_mode"] = lease["touch_mode"]
+        if lease.get("mode") == "game":
+          payload["engine_input"] = bool(lease.get("engine_input"))
       if reason:
         payload["reason"] = str(reason)[:256]
         if reason in {
@@ -4187,15 +4317,35 @@ class WebRTCManager:
           _GAME_INPUT_UNAVAILABLE,
         }:
           payload["retryable"] = True
-      _matched_id, track = self._desktop_video_track_for_session(session_id)
-      mapping_reader = getattr(track, "remote_desktop_mapping", None)
-      if callable(mapping_reader):
-        try:
-          mapping = mapping_reader()
-          if isinstance(mapping, dict):
-            payload["mapping"] = mapping
-        except Exception:
-          pass
+      if active and lease is not None and lease.get("mapping"):
+        payload["mapping"] = json.loads(lease["mapping"])
+      else:
+        _matched_id, track = self._desktop_video_track_for_session(session_id)
+        mapping_reader = getattr(track, "remote_desktop_mapping", None)
+        if callable(mapping_reader):
+          try:
+            mapping = mapping_reader()
+            if isinstance(mapping, dict):
+              payload["mapping"] = mapping
+          except Exception:
+            pass
+      if active and lease is not None and lease.get("touch_mode") == "relative":
+        if cursor_position is None:
+          cursor_position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
+        if cursor_position is not None:
+          bounds = payload.get("mapping", {}).get("monitor_bounds") or {}
+          rect = payload.get("mapping", {}).get("content_rect") or {}
+          if all(key in bounds for key in ("left", "top", "width", "height")) and all(
+            key in rect for key in ("x", "y", "width", "height")
+          ):
+            fractions = (
+              (cursor_position[0] - bounds["left"]) / max(1, bounds["width"] - 1),
+              (cursor_position[1] - bounds["top"]) / max(1, bounds["height"] - 1),
+            )
+            payload["cursor"] = {
+              axis: rect[axis] + max(0.0, min(1.0, value)) * rect[extent]
+              for axis, extent, value in zip(("x", "y"), ("width", "height"), fractions)
+            }
       try:
         message = _runtime.create_voice_call_control_message(
           payload=payload,
@@ -4206,6 +4356,34 @@ class WebRTCManager:
       except Exception as exc:
         _runtime.LOGGER.debug("Failed to send remote desktop control status to %s: %s", session_id, exc)
         return False
+
+    def _schedule_remote_desktop_cursor_update(self) -> None:
+      self._remote_desktop_cursor_dirty = True
+      if self._remote_desktop_cursor_task is None or self._remote_desktop_cursor_task.done():
+        self._remote_desktop_cursor_task = _runtime.track_background_task(self._publish_remote_desktop_cursor())
+
+    async def _publish_remote_desktop_cursor(self) -> None:
+      last_position = None
+      while True:
+        await _runtime.asyncio.sleep(0.08)
+        targets = {(str(lease["target_session_id"]), str(lease["control_id"]))
+                   for lease in self.remote_desktop_control_leases_by_session.values()
+                   if lease.get("touch_mode") == "relative"}
+        if not targets:
+          return
+        dirty = self._remote_desktop_cursor_dirty
+        self._remote_desktop_cursor_dirty = False
+        position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
+        if position is None:
+          return
+        if not dirty and position == last_position:
+          continue
+        last_position = position
+        for session_id, control_id in targets:
+          if self._remote_desktop_control_lease_for_session(session_id, control_id) is not None:
+            await self._send_remote_desktop_control_status(
+              session_id, control_id=control_id, active=True, cursor_position=position,
+            )
 
     def _remote_desktop_control_state(
       self,
@@ -4222,7 +4400,7 @@ class WebRTCManager:
           return None, "Game mode is disabled or unavailable."
       elif not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
         return None, "Remote desktop control is disabled or unavailable."
-      if not self._voice_call_client_active_for_session(session_id):
+      if not self._remote_desktop_session_active(session_id):
         return None, "The video call is not active."
       _matched_id, track = self._desktop_video_track_for_session(session_id)
       if track is None or track is not lease.get("track"):
@@ -4242,10 +4420,15 @@ class WebRTCManager:
       self,
       session_id: str,
       payload: Dict[str, Any],
+      *,
+      host_approved: bool = False,
     ) -> None:
       normalized = _runtime.normalize_remote_desktop_control_payload(payload)
       control_id = str((normalized or {}).get("control_id") or payload.get("control_id") or "")
       async with self.remote_desktop_control_lock:
+        screen = self._screen_session_for_session(session_id)
+        if host_approved and (screen is None or screen.get("control_request") is not payload):
+          return
         if normalized is None or not self._is_native_call_remote_desktop_payload(normalized):
           await self._send_remote_desktop_control_status(
             session_id,
@@ -4257,6 +4440,9 @@ class WebRTCManager:
 
         if normalized["action"] == "stop":
           released = await self._release_remote_desktop_control_locked(session_id, control_id)
+          if screen is not None and (screen.get("control_request") or {}).get("control_id") == control_id:
+            screen.pop("control_request", None)
+            released = True
           await self._send_remote_desktop_control_status(
             session_id,
             control_id=control_id,
@@ -4270,11 +4456,11 @@ class WebRTCManager:
           return
 
         game_mode = normalized.get("mode") == "game"
-        if game_mode and not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {})):
+        if game_mode and (screen is not None or not _runtime._get_game_mode_available(cfg=(_runtime.STATE.config or {}))):
           reason = "Game mode is disabled or unavailable."
         elif not game_mode and not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
           reason = "Remote desktop control is disabled or unavailable."
-        elif not self._voice_call_client_active_for_session(session_id):
+        elif not self._remote_desktop_session_active(session_id):
           reason = "Start the video call before controlling the desktop."
         else:
           reason = ""
@@ -4303,6 +4489,8 @@ class WebRTCManager:
           if not isinstance(mapping, dict) or not mapping.get("content_rect"):
             reason = "The desktop pane is not present in the outbound video."
         if reason:
+          if host_approved and screen is not None:
+            screen.pop("control_request", None)
           await self._send_remote_desktop_control_status(
             session_id,
             control_id=control_id,
@@ -4312,11 +4500,30 @@ class WebRTCManager:
           return
 
         existing = self._remote_desktop_control_lease_for_session(session_id)
+        if (existing is not None and existing["control_id"] == control_id and
+                existing["touch_mode"] == normalized.get("touch_mode", "direct") and existing["mode"] == normalized.get("mode", "desktop")):
+          await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=True)
+          return
         if existing is not None:
-          await self._release_remote_desktop_control_locked(
-            session_id,
-            str(existing.get("control_id") or ""),
+          await self._release_remote_desktop_control_locked(session_id, str(existing["control_id"]))
+        if screen is not None and (self._screen_session_for_session(session_id) is not screen or screen["mode"] != "interactive"):
+          return
+        if not game_mode and not _runtime._get_remote_desktop_control_available(cfg=(_runtime.STATE.config or {})):
+          if screen is not None:
+            screen.pop("control_request", None)
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=False, reason="Remote desktop control is disabled or unavailable.",
           )
+          return
+        if screen is not None and not host_approved and not _runtime._get_video_remote_desktop_config().get("meet_auto_approve", True):
+          screen["control_request"] = normalized
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=False, pending=True,
+            reason="Waiting for the computer to approve input.",
+          )
+          return
+        if screen is not None:
+          screen.pop("control_request", None)
         lease = self._store_remote_desktop_control_lease(
           session_id,
           control_id=control_id,
@@ -4324,6 +4531,8 @@ class WebRTCManager:
           track=track,
           mode=str(normalized.get("mode") or "desktop"),
         )
+        if lease["touch_mode"] == "relative" and lease["mode"] == "desktop":
+          self._schedule_remote_desktop_cursor_update()
         if lease["mode"] == "game":
           lease["engine_input"] = self.game_input_hub.connected
           lease["host_input_available"] = host_input_available
@@ -4337,6 +4546,27 @@ class WebRTCManager:
           control_id=control_id,
           active=True,
         )
+
+    async def review_screen_control(self, session_id: str, control_id: str, action: str) -> bool:
+        screen = self.screen_sessions.get(session_id)
+        if screen is None or screen["mode"] != "interactive":
+            return False
+        pending = screen.get("control_request")
+        if action == "approve":
+            if pending is None or pending["control_id"] != control_id:
+                return False
+            await self._handle_remote_desktop_control(session_id, pending, host_approved=True)
+            return self._remote_desktop_control_lease_for_session(session_id, control_id) is not None
+        async with self.remote_desktop_control_lock:
+            if action == "deny" and screen.get("control_request") is pending and pending and pending["control_id"] == control_id:
+                screen.pop("control_request", None)
+                reason = "The computer declined your request for input."
+            elif action == "revoke" and await self._release_remote_desktop_control_locked(session_id, control_id):
+                reason = "The computer ended your input control."
+            else:
+                return False
+            await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=False, reason=reason)
+            return True
 
     def _note_game_input(self, session_id: str, lease: Dict[str, Any], frame: Dict[str, Any]) -> None:
       """Record what a player pressed in words for Interact and copy it to every input observer."""
@@ -4476,10 +4706,25 @@ class WebRTCManager:
           return
         if await self._forward_game_engine_input_locked(session_id, lease, normalized):
           return
+        if self._other_desktop_holds(lease, "held_buttons"):
+          self._remote_desktop_cursor_dirty = True
+          return  # One host cursor, so another viewer cannot interrupt a drag.
+        if self._screen_session_active(session_id) and lease.get("touch_mode") == "relative" and (
+          normalized.get("coordinate_mode") == "absolute" or "x" in normalized
+        ):
+          return
+        if normalized["input_type"] == "button":
+          phase = normalized["phase"]
+          held = normalized["button"] in lease["held_buttons"]
+          if (phase == "up" and not held) or (phase in {"click", "double_click"} and held):
+            return
+        input_options = {"track": lease.get("track")}
+        if self._screen_session_active(session_id) and normalized.get("coordinate_mode") == "relative":
+          input_options["relative_remainder"] = lease.setdefault("relative_remainder", {})
         applied = await _runtime.asyncio.to_thread(
           _runtime.execute_remote_desktop_input,
           normalized,
-          track=lease.get("track"),
+          **input_options,
         )
         if not applied:
           await self._report_remote_desktop_input_failure_locked(session_id, lease)
@@ -4491,6 +4736,8 @@ class WebRTCManager:
             lease["held_buttons"].add(button)
           elif normalized.get("phase") == "up":
             lease["held_buttons"].discard(button)
+        if normalized["input_type"] != "scroll":
+          self._remote_desktop_cursor_dirty = True
         lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
 
     async def _apply_game_touch_fallback_locked(
@@ -4615,27 +4862,44 @@ class WebRTCManager:
         if action == "hide":
           keys = set(lease.get("held_keys") or ())
           lease["held_keys"] = set()
+          keys -= self._other_desktop_holds(lease, "held_keys")
+          other_leases = any(other is not lease for other in self.remote_desktop_control_leases_by_session.values())
           if keys:
-            await _runtime.asyncio.to_thread(_runtime.release_remote_desktop_inputs, held_keys=keys)
-          else:
+            await _runtime.asyncio.to_thread(
+              _runtime.release_remote_desktop_inputs, held_keys=keys, release_modifiers=not other_leases,
+            )
+          elif not other_leases:
             await _runtime.asyncio.to_thread(_runtime.release_stuck_modifiers)
         elif action in {"input", "key"}:
           held_keys = lease.setdefault("held_keys", set())
-          if action == "key" and normalized["phase"] == "down" and len(held_keys) >= 128:
+          other_keys = self._other_desktop_holds(lease, "held_keys")
+          modifiers = _runtime.STICKY_MODIFIER_KEYS
+          key = _runtime.remote_desktop_host_key(normalized["key"]) if action == "key" else ""
+          phase = normalized.get("phase")
+          if action == "input" and other_keys.intersection(modifiers):
+            return
+          if key and phase == "up" and key not in held_keys:
+            return
+          if key and phase != "up" and key not in modifiers and (other_keys - held_keys).intersection(modifiers):
+            return
+          if phase == "down" and key not in held_keys and len(held_keys) >= 128:
             await self._release_remote_desktop_control_locked(session_id, control_id)
             await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=False,
                                                           reason="Screen control stopped after too many held keys.")
             return
-          applied = await _runtime.asyncio.to_thread(_runtime.execute_remote_desktop_keyboard, normalized)
+          shared_key = key in other_keys
+          applied = shared_key or await _runtime.asyncio.to_thread(_runtime.execute_remote_desktop_keyboard, normalized)
           if not applied:
             await self._report_remote_desktop_input_failure_locked(session_id, lease)
             return
           lease["input_failures"] = 0
           if action == "key":
-            if normalized["phase"] == "down":
-              held_keys.add(normalized["key"])
-            else:
-              held_keys.discard(normalized["key"])
+            if phase == "down":
+              held_keys.add(key)
+            elif phase == "up" or not shared_key:
+              held_keys.discard(key)
+          else:
+            held_keys.difference_update(modifiers)
         lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
 
     def _prune_remote_desktop_keyboard_leases(self) -> None:
@@ -6559,7 +6823,10 @@ class WebRTCManager:
                     ):
                         _runtime.LOGGER.info("Audio track received for %s but no audio consumer is configured", redacted_chat_id)
                 else:
-                    _runtime.LOGGER.info("Audio disabled, agents disabled, or AudioManager not available; ignoring audio track processing")
+                    self._start_inbound_audio_track_sink(
+                        track, session_id=str(chat_id), audio_manager=None,
+                        audio_call_enabled=False, cfg_snapshot=cfg_snapshot,
+                    )
             elif track.kind == "video":
                 _runtime.LOGGER.info("Video track received for %s", redacted_chat_id)
                 self._cancel_session_establishment_timeout(
@@ -6638,7 +6905,7 @@ class WebRTCManager:
                     background_offer_state.get("silent_recording"),
                     getattr(getattr(audio_transceiver, "sender", None), "track", None) is not None,
                 )
-            else:
+            elif audio_call_enabled:
                 effective_audio_track = _runtime._create_configured_outbound_audio_track(
                     cfg=cfg_snapshot,
                     session_id=str(chat_id),
@@ -6656,6 +6923,8 @@ class WebRTCManager:
                     )
                 else:
                     _runtime.LOGGER.info("No outbound audio track attached for %s", redacted_chat_id)
+            elif _runtime._get_outbound_video_available(cfg=cfg_snapshot):
+                audio_transceiver.direction = "sendrecv"
         else:
             _runtime.LOGGER.warning("No audio transceiver found in offer for %s; voice support disabled", redacted_chat_id)
 
@@ -7091,7 +7360,7 @@ class WebRTCManager:
                         background_offer_state.get("silent_recording"),
                         getattr(getattr(audio_transceiver, "sender", None), "track", None) is not None,
                     )
-                else:
+                elif audio_call_enabled:
                     effective_audio_track = _runtime._create_configured_outbound_audio_track(
                         cfg=cfg_snapshot,
                         session_id=str(session_id),
@@ -7109,6 +7378,8 @@ class WebRTCManager:
                         )
                     else:
                         _runtime.LOGGER.info("No outbound audio track attached for %s", session_id)
+                elif _runtime._get_outbound_video_available(cfg=cfg_snapshot):
+                    audio_transceiver.direction = "sendrecv"
             else:
                 _runtime.LOGGER.warning(f"No audio transceiver found in session offer for {session_id}")
 
@@ -7642,7 +7913,9 @@ class WebRTCManager:
                 expected_screen_sessions.get(cleanup_id, missing),
             )
             if removed_screen is not missing and isinstance(removed_screen, dict):
+                self._drop_screen_audio(str(removed_screen.get("id") or ""))
                 self.screen_listen_mixer.forget(str(removed_screen.get("id") or ""))
+                self._clear_idle_meet_capture()
             pop_if_current(
                 self.rewarded_ad_completion_by_session,
                 cleanup_id,
@@ -11143,7 +11416,7 @@ class WebRTCManager:
             return
         if event_name == "screen_input":
             session = self._screen_session_for_session(str(session_id or ""))
-            if session is None or session["mode"] != "interactive" or not self._voice_call_client_active_for_session(str(session_id or "")):
+            if session is None or session["mode"] != "interactive":
                 return
             kind = str(payload.get("kind") or "")
             value = str(payload.get("value") or "")
@@ -11256,8 +11529,15 @@ class WebRTCManager:
             local_call = self._same_machine_audio_session(str(session_id or ""))
             previous_host_owner = self.host_audio_owner() if local_call else ""
             was_active = self._voice_call_client_active_for_session(str(session_id or ""))
-            alias_ids = self._set_voice_call_client_active(str(session_id or ""), active)
             screen_mode = str(payload.get("screen_mode") or "") if active else "ended"
+            screen_requested = screen_mode in {"interactive", "watch"}
+            if screen_requested and not _runtime._get_outbound_video_available(cfg=(_runtime.STATE.config or {})):
+                active = False
+                screen_mode = "ended"
+            was_screen = self._screen_session_active(str(session_id or ""))
+            alias_ids = self._set_voice_call_client_active(str(session_id or ""), active and not screen_requested)
+            if was_screen and self._screen_session_for_session(str(session_id or ""))["mode"] != screen_mode:
+                await self._release_remote_desktop_control(str(session_id or ""))
             self._set_screen_session(str(session_id or ""), screen_mode)
             if active:
                 self._set_background_audio_state(
@@ -11286,6 +11566,10 @@ class WebRTCManager:
                     if alias and callable(clear_call_mode):
                         clear_call_mode(alias)
                 await self._release_remote_desktop_control(str(session_id or ""))
+                if was_screen:
+                    _, track = self._desktop_video_track_for_session(str(session_id or ""))
+                    if track is not None:
+                        track.disable()
                 self._drop_local_capture_audio_tracks_for_ids(alias_ids)
                 self._clear_outbound_audio_track_for_idle(str(session_id or ""))
             if local_call and previous_host_owner != self.host_audio_owner():
@@ -11339,7 +11623,8 @@ class WebRTCManager:
                 and not _runtime._get_silent_recording_enabled(cfg=live_cfg)
             ):
                 silent_recording = False
-            if active and self._voice_call_client_active_for_session(normalized_session_id):
+            if active and (self._voice_call_client_active_for_session(normalized_session_id) or
+                           self._screen_session_active(normalized_session_id)):
                 active = False
                 silent_recording = False
                 assistant_listening = False
@@ -11471,6 +11756,16 @@ class WebRTCManager:
             if track is not None:
                 try:
                     if active and server_allows_outbound_video:
+                        set_capture = getattr(track, "set_meet_capture", None)
+                        if callable(set_capture):
+                            if self._screen_session_active(str(session_id or "")):
+                                if self._meet_desktop_capture is None:
+                                    from shared.video_call_manager import MeetDesktopCapture
+
+                                    self._meet_desktop_capture = MeetDesktopCapture()
+                                set_capture(self._meet_desktop_capture)
+                            else:
+                                set_capture(None)
                         track.enable()
                     else:
                         track.disable()
@@ -11498,7 +11793,8 @@ class WebRTCManager:
                     session_id,
                     self._ordered_related_session_ids(str(session_id or "")),
                 )
-            if self._voice_call_client_active_for_session(str(session_id or "")):
+            if (self._voice_call_client_active_for_session(str(session_id or "")) or
+                    self._screen_session_active(str(session_id or ""))):
                 self._restore_outbound_audio_for_call(str(session_id or ""))
             if not active:
                 await self._release_remote_desktop_control(str(session_id or ""))
@@ -11803,7 +12099,10 @@ class WebRTCManager:
         self.voice_call_status_by_session.clear()
         self.voice_call_playback_by_session.clear()
         self.voice_call_client_active_by_session.clear()
+        for screen_id in list(self._screen_audio_subscribers):
+            self._drop_screen_audio(screen_id)
         self.screen_sessions.clear()
+        self._meet_desktop_capture = None
         self.screen_inputs.clear()
         await _runtime.asyncio.to_thread(self.screen_listen_mixer.close)
         self.background_audio_state_by_session.clear()

@@ -797,10 +797,16 @@ function Assert-AdkBrowserBundle {
     )
 
     $browserRoot = Get-AdkBrowserRoot -BackendRoot $BackendRoot
+    $configDir = Join-Path $browserRoot "assets\config"
+    $runtimeConfig = Join-Path $configDir "runtime-config.json"
+    if (-not (Test-Path -LiteralPath $runtimeConfig)) {
+        New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+        Set-Content -LiteralPath $runtimeConfig -Value "{}`r`n" -Encoding utf8
+    }
     $requiredFiles = @(
         (Join-Path $browserRoot "index.html"),
         (Join-Path $browserRoot "assets\audio-processor.js"),
-        (Join-Path $browserRoot "assets\config\runtime-config.json")
+        $runtimeConfig
     )
 
     foreach ($filePath in $requiredFiles) {

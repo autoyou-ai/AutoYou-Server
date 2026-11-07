@@ -704,8 +704,10 @@ def _extra_routes(app, agent_name: str) -> None:
             except Exception:
                 pass
 
+        loop = asyncio.get_running_loop()
         try:
             while True:
+                frame_started_at = loop.time()
                 await read_config()
                 
                 target_type = config.get("target_type", "monitor")
@@ -737,8 +739,8 @@ def _extra_routes(app, agent_name: str) -> None:
                         # Stream frame down binary WebSocket channel
                         await websocket.send_bytes(jpeg_bytes)
                     
-                # Dynamic FPS pacing
-                await asyncio.sleep(1.0 / fps)
+                # Capture, encoding, and sending already consume part of the frame period.
+                await asyncio.sleep(max(0.0, 1.0 / fps - (loop.time() - frame_started_at)))
                 
         except WebSocketDisconnect:
             logger.info("Remote Desktop WebSocket disconnected cleanly.")

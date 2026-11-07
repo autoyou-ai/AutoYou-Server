@@ -1574,15 +1574,18 @@ except ImportError:
         server_cloud_action_requires_admin,
     )
 from shared.remote_desktop_keyboard import (
+    STICKY_MODIFIER_KEYS,
     execute_remote_desktop_keyboard,
     normalize_remote_desktop_keyboard_payload,
     release_stuck_modifiers,
+    remote_desktop_host_key,
 )
 from shared.remote_desktop_input import (
     execute_remote_desktop_input,
     normalize_remote_desktop_control_payload,
     normalize_remote_desktop_input_payload,
     release_remote_desktop_inputs,
+    remote_desktop_cursor_position,
     remote_desktop_input_backend_available,
     remote_desktop_input_backend_probed,
 )
@@ -4822,6 +4825,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
                 remote_cfg.get("control_enabled", raw_cfg.get("remote_desktop_control_enabled")),
                 False,
             ),
+            "meet_auto_approve": _normalize_partner_enabled_flag(remote_cfg.get("meet_auto_approve"), True),
             "game_enabled": _normalize_partner_enabled_flag(remote_cfg.get("game_enabled"), False),
             "game_buttons": _normalize_game_buttons(remote_cfg.get("game_buttons")),
             "keep_awake": normalize_keep_awake_mode(remote_cfg.get("keep_awake")),
@@ -5894,6 +5898,7 @@ def _default_config() -> Dict[str, Any]:
                 "quality": "balanced",
                 "bitrate_kbps": 1500,
                 "control_enabled": False,
+                "meet_auto_approve": True,
                 "game_enabled": False,
                 "game_buttons": [button.copy() for button in _DEFAULT_GAME_BUTTONS],
                 "keep_awake": "off",
@@ -9930,7 +9935,7 @@ _ADMIN_PERMISSION_BOOLEAN_FIELDS = frozenset({
     "wuift_enabled", "video_call_recording_enabled", "webcam_sharing_enabled",
     "screen_capture_enabled", "screen_send_enabled", "screen_source_enabled",
     "api_video_input_enabled", "video_file_playback_enabled",
-    "remote_desktop_control_enabled", "game_mode_enabled", "chat_memory_enabled",
+    "remote_desktop_control_enabled", "meet_auto_approve", "game_mode_enabled", "chat_memory_enabled",
     "ai_agent_lan_access_enabled", "admin_frontend_enabled",
 })
 _ADMIN_PERMISSION_FIELDS = _ADMIN_PERMISSION_BOOLEAN_FIELDS | {"remote_access_role"}
@@ -9974,6 +9979,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "api_video_input_enabled": "api" in outbound_sources,
         "video_file_playback_enabled": "video_file" in outbound_sources,
         "remote_desktop_control_enabled": bool(remote_cfg.get("control_enabled", False)),
+        "meet_auto_approve": bool(remote_cfg.get("meet_auto_approve", True)),
         "game_mode_enabled": bool(remote_cfg.get("game_enabled", False)),
         "chat_memory_enabled": bool(ai_agent.get("record_messages_in_database", True)),
         "ai_agent_lan_access_enabled": bool(ai_agent.get("lan_access_enabled", False)),
@@ -10066,6 +10072,8 @@ async def _save_admin_permissions(changes: Any) -> Dict[str, Any]:
         if changes["game_mode_enabled"] and not current_control:
             raise ValueError("Game mode requires Remote Desktop control")
         remote_patch["game_enabled"] = changes["game_mode_enabled"]
+    if "meet_auto_approve" in changes:
+        remote_patch["meet_auto_approve"] = changes["meet_auto_approve"]
     if remote_patch:
         video_patch["remote_desktop"] = remote_patch
 
@@ -10951,6 +10959,7 @@ def _build_webrtc_capabilities(
             "frame_aspect_ratio": remote_frame_aspect_ratio,
             "control_enabled": remote_desktop_control_enabled,
             "control_configured": remote_desktop_control_configured,
+            "meet_auto_approve": bool(_get_video_remote_desktop_config(cfg=effective_cfg).get("meet_auto_approve", True)),
             "control_available": _remote_desktop_input_backend_ready(),
             "control_protocol": "autoyou_remote_desktop_v1",
             "game_enabled": _get_game_mode_available(cfg=effective_cfg),
@@ -14047,6 +14056,8 @@ def _apply_admin_ui_config_patch(
                 )
             if "control_enabled" in remote_payload:
                 remote_cfg["control_enabled"] = _coerce_enabled_flag(remote_payload.get("control_enabled"))
+            if "meet_auto_approve" in remote_payload:
+                remote_cfg["meet_auto_approve"] = _coerce_enabled_flag(remote_payload.get("meet_auto_approve"))
             if "game_enabled" in remote_payload:
                 remote_cfg["game_enabled"] = _coerce_enabled_flag(remote_payload.get("game_enabled"))
             if "game_buttons" in remote_payload:

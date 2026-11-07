@@ -159,6 +159,14 @@ def _control_backend(pyautogui: Any = None) -> Any:
     return load_remote_input_backend()
 
 
+def remote_desktop_cursor_position() -> Optional[Tuple[int, int]]:
+    try:
+        x, y = _control_backend().position()
+        return int(x), int(y)
+    except Exception:
+        return None
+
+
 # Importing this module only proves the protocol is present. The backend that
 # actually moves the host pointer (pyautogui plus a reachable display) is
 # imported lazily, so a server can advertise control it cannot perform. The
@@ -243,7 +251,10 @@ def _absolute_point(track: Any, payload: Dict[str, Any]) -> Optional[Tuple[int, 
     return int(point[0]), int(point[1])
 
 
-def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = None) -> bool:
+def execute_remote_desktop_input(
+    payload: Any, *, track: Any, pyautogui: Any = None,
+    relative_remainder: Optional[Dict[str, float]] = None,
+) -> bool:
     normalized = normalize_remote_desktop_input_payload(payload)
     if normalized is None or track is None:
         return False
@@ -269,11 +280,16 @@ def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = N
             bounds = _track_bounds(track)
             if bounds is None:
                 return False
-            delta_x = int(round(float(normalized["dx"]) * bounds["width"]))
-            delta_y = int(round(float(normalized["dy"]) * bounds["height"]))
-            if delta_x == 0 and delta_y == 0:
-                return True
-            backend.moveRel(delta_x, delta_y)
+            pixels_x = float(normalized["dx"]) * bounds["width"]
+            pixels_y = float(normalized["dy"]) * bounds["height"]
+            if relative_remainder is not None:
+                pixels_x += relative_remainder.get("x", 0.0)
+                pixels_y += relative_remainder.get("y", 0.0)
+            delta_x, delta_y = round(pixels_x), round(pixels_y)
+            if delta_x or delta_y:
+                backend.moveRel(delta_x, delta_y)
+            if relative_remainder is not None:
+                relative_remainder.update(x=pixels_x - delta_x, y=pixels_y - delta_y)
             return True
 
         if input_type == "button":
@@ -312,6 +328,7 @@ def release_remote_desktop_inputs(
     *,
     held_keys: Iterable[str] = (),
     pyautogui: Any = None,
+    release_modifiers: bool = True,
 ) -> None:
     try:
         backend = _control_backend(pyautogui)
@@ -330,4 +347,5 @@ def release_remote_desktop_inputs(
             pass
     for key in set(held_keys or ()):
         execute_remote_desktop_keyboard({"action": "key", "key": key, "phase": "up"}, pyautogui=backend)
-    release_stuck_modifiers(backend)
+    if release_modifiers:
+        release_stuck_modifiers(backend)

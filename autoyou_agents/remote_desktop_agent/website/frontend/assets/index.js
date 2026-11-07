@@ -847,6 +847,8 @@ function startScreenStream() {
   var wsUrl = streamKind === 'mobile_video' ? buildMobileVideoWebSocketUrl() : buildScreenWebSocketUrl();
   state.streamKind = streamKind;
   state.hasMobileVideoFrame = false;
+  state.lastFrameTime = null;
+  state.frameTimes = [];
   updateOverlayState();
   
   console.log('Connecting remote stream WebSocket channel:', wsUrl);
@@ -859,6 +861,57 @@ function startScreenStream() {
   var socket = new WebSocket(wsUrl);
   socket.binaryType = 'arraybuffer';
   state.ws = socket;
+  var pendingFrame = null;
+  var decodingFrame = false;
+  var frameGeneration = 0;
+
+  function drawPendingFrame() {
+    if (decodingFrame || pendingFrame === null || state.ws !== socket) return;
+
+    decodingFrame = true;
+    var generation = frameGeneration;
+    var url = URL.createObjectURL(new Blob([pendingFrame], { type: 'image/jpeg' }));
+    pendingFrame = null;
+    var img = new Image();
+
+    function finishDecode() {
+      URL.revokeObjectURL(url);
+      decodingFrame = false;
+      drawPendingFrame();
+    }
+
+    img.onload = function() {
+      try {
+        if (state.ws !== socket || generation !== frameGeneration) return;
+        if (canvas.width !== img.width || canvas.height !== img.height) {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          resetCanvasView();
+        }
+        ctx.drawImage(img, 0, 0);
+
+        var now = performance.now();
+        if (state.lastFrameTime !== null) {
+          var diff = now - state.lastFrameTime;
+          state.frameTimes.push(diff);
+          if (state.frameTimes.length > 30) state.frameTimes.shift();
+          var total = state.frameTimes.reduce(function(a, b) { return a + b; }, 0);
+          var fps = total > 0 ? Math.round(1000 * state.frameTimes.length / total) : 0;
+          $('diag-fps').textContent = fps + ' FPS';
+          $('diag-latency').textContent = Math.round(diff) + ' ms';
+        }
+        state.lastFrameTime = now;
+        if (streamKind === 'mobile_video') {
+          state.hasMobileVideoFrame = true;
+          updateOverlayState();
+        }
+      } finally {
+        finishDecode();
+      }
+    };
+    img.onerror = finishDecode;
+    img.src = url;
+  }
   
   socket.onopen = function() {
     console.log('Remote screen channel successfully established.');
@@ -885,6 +938,7 @@ function startScreenStream() {
   };
   
   socket.onmessage = function(event) {
+    if (state.ws !== socket) return;
     // Text frames carry stream state; binary frames carry JPEG images.
     if (typeof event.data === 'string') {
       var control = null;
@@ -892,6 +946,8 @@ function startScreenStream() {
       if (control && control.type === 'feed_state' && !control.active) {
         // The phone camera stopped: blank the stale frame like the
         // streaming site does instead of freezing on the last image.
+        frameGeneration += 1;
+        pendingFrame = null;
         state.hasMobileVideoFrame = false;
         state.lastFrameTime = null;
         state.frameTimes = [];
@@ -904,51 +960,15 @@ function startScreenStream() {
       return;
     }
 
-    var now = performance.now();
-
-    // Latency & FPS diagnostics
-    if (state.lastFrameTime) {
-      var diff = now - state.lastFrameTime;
-      state.frameTimes.push(diff);
-      if (state.frameTimes.length > 30) {
-        state.frameTimes.shift();
-      }
-      
-      var avgDiff = state.frameTimes.reduce(function(a, b) { return a + b; }, 0) / state.frameTimes.length;
-      var curFps = Math.round(1000.0 / avgDiff);
-      $('diag-fps').textContent = curFps + ' FPS';
-      $('diag-latency').textContent = Math.round(diff) + ' ms';
-    }
-    state.lastFrameTime = now;
-    if (state.streamKind === 'mobile_video') {
-      state.hasMobileVideoFrame = true;
-      updateOverlayState();
-    }
-    
-    // Render the binary frame
-    var blob = new Blob([event.data], { type: 'image/jpeg' });
-    var url = URL.createObjectURL(blob);
-    var img = new Image();
-    
-    img.onload = function() {
-      // Adjust canvas resolution dynamically to match actual frame size
-      if (canvas.width !== img.width || canvas.height !== img.height) {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        // A resolution change (e.g. switching monitors) invalidates any local
-        // pinch-zoom/pan the viewer had applied against the old frame size.
-        resetCanvasView();
-      }
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-    };
-    img.onerror = function() {
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
+    // Keep the latest JPEG while the browser is busy decoding a frame.
+    pendingFrame = event.data;
+    drawPendingFrame();
   };
   
   socket.onclose = function() {
+    frameGeneration += 1;
+    pendingFrame = null;
+    if (state.ws !== socket) return;
     console.warn('Remote screen stream disconnected.');
     indicator.className = 'status-indicator';
     connText.textContent = 'Disconnected';

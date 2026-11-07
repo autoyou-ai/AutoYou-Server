@@ -132,6 +132,29 @@ def register_routes(
             return JSONResponse(status_code=503, content={"error": "Computer audio output is unavailable"})
         return server._json_response_no_store(result)
 
+    @admin_app.post("/api/screen-listen/control")
+    async def screen_listen_control(request: Request):
+        refused = _local_listen_access(request)
+        if refused is not None:
+            return refused
+        raw = await request.body()
+        if len(raw) > 1024:
+            return JSONResponse(status_code=413, content={"error": "Input decision is too large"})
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError
+            session_id, control_id, action = (body.get(key) for key in ("session_id", "control_id", "action"))
+            if not all(isinstance(value, str) and 0 < len(value) <= 128 for value in (session_id, control_id, action)):
+                raise ValueError
+            if action not in {"approve", "deny", "revoke"}:
+                raise ValueError
+        except (ValueError, TypeError):
+            return JSONResponse(status_code=400, content={"error": "Choose a valid input decision"})
+        if not await server.WEBRTC.review_screen_control(session_id, control_id, action):
+            return JSONResponse(status_code=409, content={"error": "This input request is no longer available"})
+        return server._json_response_no_store({"success": True})
+
     def _chat_model_dict(value: Any) -> Dict[str, Any]:
         if hasattr(value, "model_dump"):
             result = value.model_dump()

@@ -17,7 +17,7 @@ import threading
 import time
 from io import BytesIO
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -277,6 +277,20 @@ def test_remote_desktop_preview_captures_each_outbound_frame():
     assert len(calls) == 2
 
 
+def test_meet_capture_reuses_only_recent_samples_for_the_same_display_profile(monkeypatch):
+    clock = [10.0]
+    monkeypatch.setattr(video_call_manager, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    capture = video_call_manager.MeetDesktopCapture()
+    first, second, different_monitor = object(), object(), object()
+
+    assert capture.read((1, 320), 10, lambda: first) is first
+    assert capture.read((1, 320), 10, lambda: second) is first
+
+    clock[0] += 0.1
+    assert capture.read((1, 320), 10, lambda: second) is second
+    assert capture.read((2, 320), 10, lambda: different_monitor) is different_monitor
+
+
 def test_composite_remote_desktop_recv_delivers_changed_frames():
     """The stitched outbound track must forward fresh screen captures."""
     if video_call_manager.Image is None:
@@ -305,24 +319,36 @@ def test_composite_remote_desktop_recv_delivers_changed_frames():
     assert len(calls) == 2
 
 
-def test_remote_desktop_frames_use_the_configured_screen_rate():
-    """RTP timestamps must match the capture cadence, not aiortc's 30 fps default."""
+def test_remote_desktop_frames_follow_elapsed_capture_time(monkeypatch):
+    """RTP timestamps follow both normal pacing and stalls."""
     if video_call_manager.Image is None:
         pytest.skip("Pillow is not installed")
 
+    now = [0.0]
+    clock = ModuleType("capture_clock")
+    clock.__dict__.update(vars(time))
+    clock.monotonic = lambda: now[0]
+    monkeypatch.setattr(video_call_manager, "time", clock)
+
+    async def advance_clock(delay):
+        now[0] += delay
+
+    monkeypatch.setattr(video_call_manager.asyncio, "sleep", advance_clock)
     track = RemoteDesktopVideoStreamTrack(fps=8.0, max_width=320)
     track._capture_image = lambda: video_call_manager.Image.new("RGB", (320, 180), (20, 40, 60))
     track.enable()
 
-    async def run() -> tuple[int, int]:
+    async def run() -> None:
         first = await asyncio.wait_for(track.recv(), timeout=5.0)
         second = await asyncio.wait_for(track.recv(), timeout=5.0)
+        now[0] += 1.0
+        after_stall = await asyncio.wait_for(track.recv(), timeout=5.0)
         assert first.time_base == video_call_manager.Fraction(1, 90000)
         assert second.time_base == video_call_manager.Fraction(1, 90000)
-        return first.pts, second.pts
+        assert second.pts - first.pts == 11250
+        assert after_stall.pts - second.pts == 90000
 
-    first_pts, second_pts = asyncio.run(run())
-    assert second_pts - first_pts == 11250
+    asyncio.run(run())
 
 
 def test_remote_desktop_inactive_frame_uses_the_selected_capture_profile():
@@ -1352,6 +1378,56 @@ def test_incoming_video_sink_records_received_frames(tmp_path):
         assert frame_path.is_file()
         assert manifest_entries[0]["format"] == "jpeg_image_fallback"
         assert manifest_entries[0]["file"] == "image-000001.jpg"
+
+
+def test_incoming_video_sink_drains_frames_during_slow_preview(monkeypatch):
+    clock = ModuleType("capture_clock")
+    clock.__dict__.update(vars(time))
+    now = [0.0]
+    clock.monotonic = lambda: now[0]
+    monkeypatch.setattr(video_call_manager, "time", clock)
+
+    async def run() -> None:
+        source_frames = asyncio.Queue()
+        encoding = asyncio.Event()
+        resume_encode = threading.Event()
+        encoded = []
+        loop = asyncio.get_running_loop()
+
+        class FakeTrack:
+            async def recv(self):
+                frame = await source_frames.get()
+                source_frames.task_done()
+                if frame is None:
+                    raise video_call_manager.MediaStreamError
+                return frame
+
+        def encode(frame):
+            encoded.append(frame)
+            if frame == 0:
+                loop.call_soon_threadsafe(encoding.set)
+                assert resume_encode.wait(timeout=5.0)
+            return b"synthetic-jpeg", 32, 18, None
+
+        sink = IncomingVideoTrackSink(
+            FakeTrack(), session_id="synthetic-video", registry=LatestVideoFrameRegistry()
+        )
+        monkeypatch.setattr(sink, "_encode_frame", encode)
+        source_frames.put_nowait(0)
+        receiver = asyncio.create_task(sink.start())
+        try:
+            await asyncio.wait_for(encoding.wait(), timeout=3.0)
+            for frame in range(1, 121):
+                source_frames.put_nowait(frame)
+            source_frames.put_nowait(None)
+            await asyncio.wait_for(source_frames.join(), timeout=3.0)
+            now[0] += 1.0
+        finally:
+            resume_encode.set()
+        await asyncio.wait_for(receiver, timeout=3.0)
+        assert encoded == [0, 120]
+
+    asyncio.run(run())
 
 
 def test_incoming_video_sink_muxes_call_audio_into_mp4(tmp_path):

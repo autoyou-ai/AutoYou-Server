@@ -274,3 +274,24 @@ def test_input_executor_maps_absolute_and_relative_motion_and_releases_host_stat
     assert ("keyUp", "ctrl") in backend.calls
     assert ("keyUp", "w") in backend.calls
     assert ("keyUp", "left") in backend.calls
+
+
+def test_relative_input_preserves_movement_smaller_than_one_host_pixel():
+    backend = _FakeInputBackend()
+    track = _FakeDesktopTrack()
+    remainder = {}
+    payload = {
+        "control_id": "control-1",
+        "input_type": "move",
+        "coordinate_mode": "relative",
+        "dx": 0.25 / 1600,
+        "dy": -0.25 / 900,
+    }
+
+    for _ in range(4):
+        assert execute_remote_desktop_input(
+            payload, track=track, pyautogui=backend, relative_remainder=remainder
+        )
+
+    assert backend.calls == [("moveRel", 1, -1)]
+    assert remainder == {"x": 0, "y": 0}

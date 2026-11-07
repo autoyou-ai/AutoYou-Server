@@ -569,8 +569,13 @@ def _is_probably_blank_desktop_capture(image: Any) -> bool:
     try:
         if int(image.width) <= 0 or int(image.height) <= 0:
             return False
-        sample = image.convert("RGB")
-        sample.thumbnail((64, 64), Image.Resampling.BILINEAR)
+        # A capture is usually already RGB. Build the small sample directly
+        # instead of copying the entire desktop just to run the blank check.
+        sample = image if image.mode == "RGB" else image.convert("RGB")
+        scale = 64.0 / max(sample.size)
+        if scale < 1.0:
+            size = tuple(max(1, round(dimension * scale)) for dimension in sample.size)
+            sample = sample.resize(size, Image.Resampling.BILINEAR, reducing_gap=2.0)
         stat = ImageStat.Stat(sample)
         return max(float(mean) for mean in stat.mean) <= _DESKTOP_BLANK_CAPTURE_MAX_MEAN
     except Exception:
@@ -792,25 +797,46 @@ class IncomingVideoTrackSink:
         self._recording_manifest_last_flushed: Optional[float] = None
         self._last_image_recorded_at_monotonic: Optional[float] = None
         self._stopped = False
+        self._pending_frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=1)
 
     def add_alias(self, session_id: str) -> None:
         normalized_session_id = str(session_id or "").strip()
         if normalized_session_id:
             self.session_ids.add(normalized_session_id)
 
+    def _replace_pending_frame(self, frame: Any) -> None:
+        if self._pending_frames.full():
+            self._pending_frames.get_nowait()
+            self._pending_frames.task_done()
+        self._pending_frames.put_nowait(frame)
+
+    async def _receive_latest_frames(self) -> None:
+        # Drain decoded frames independently of JPEG encoding and recording.
+        # aiortc's receive queue otherwise grows whenever those consumers lag.
+        while not self._stopped:
+            try:
+                frame = await self.track.recv()
+            except MediaStreamError:
+                break
+            except Exception as exc:
+                logger.warning("Inbound video track receive failed: %s", exc)
+                break
+            if not self._stopped:
+                self._replace_pending_frame(frame)
+        if not self._stopped:
+            await self._pending_frames.put(None)
+
     async def start(self) -> None:
+        if self._stopped:
+            return
+        receiver = asyncio.create_task(self._receive_latest_frames())
         try:
             min_interval = 1.0 / self.max_fps
             next_encode_at = 0.0
             while not self._stopped:
-                try:
-                    frame = await self.track.recv()
-                except MediaStreamError:
-                    break
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    logger.warning("Inbound video track receive failed: %s", exc)
+                frame = await self._pending_frames.get()
+                self._pending_frames.task_done()
+                if frame is None or self._stopped:
                     break
 
                 now = time.monotonic()
@@ -824,6 +850,8 @@ class IncomingVideoTrackSink:
                     logger.debug("Skipping inbound video frame encode failure: %s", exc)
                     continue
 
+                if self._stopped:
+                    break
                 for session_id in tuple(self.session_ids):
                     self.registry.publish_jpeg(
                         session_id=session_id,
@@ -835,10 +863,18 @@ class IncomingVideoTrackSink:
                 if self.recording_enabled:
                     await asyncio.to_thread(self._record_frame, jpeg_bytes, width, height, image)
         finally:
+            self._stopped = True
+            receiver.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await receiver
+            if not self._pending_frames.empty():
+                self._pending_frames.get_nowait()
+                self._pending_frames.task_done()
             await asyncio.to_thread(self._close_recording)
 
     async def stop(self) -> None:
         self._stopped = True
+        self._replace_pending_frame(None)
         try:
             stop = getattr(self.track, "stop", None)
             if callable(stop):
@@ -873,7 +909,7 @@ class IncomingVideoTrackSink:
         return safe.strip("._")[:80] or "unknown"
 
     def _ensure_recording_session_dir(self) -> Optional[Path]:
-        if not self.recording_enabled:
+        if self._stopped or not self.recording_enabled:
             return None
         if self._recording_session_dir is not None:
             return self._recording_session_dir
@@ -1791,6 +1827,41 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         return image
 
 
+class _OutboundVideoClock:
+    time_base = Fraction(1, 90000)
+
+    def __init__(self) -> None:
+        self._started_at: Optional[float] = None
+        self._timestamp = -1
+
+    def next_pts(self) -> int:
+        # Use elapsed time so capture and encoder stalls do not skew the video
+        # clock relative to the call's audio clock.
+        now = time.monotonic()
+        if self._started_at is None:
+            self._started_at = now
+        elapsed_ticks = round((now - self._started_at) * self.time_base.denominator)
+        self._timestamp = max(self._timestamp + 1, elapsed_ticks)
+        return self._timestamp
+
+
+class MeetDesktopCapture:
+    """Share one recent desktop sample across peers using the same capture profile."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._latest: Optional[Tuple[Tuple[int, int], float, Any]] = None
+
+    def read(self, key: Tuple[int, int], fps: float, capture: Callable[[], Any]) -> Any:
+        with self._lock:
+            latest = self._latest
+            if latest is not None and latest[0] == key and time.monotonic() - latest[1] < 0.9 / fps:
+                return latest[2]
+            image = capture()
+            self._latest = (key, time.monotonic(), image)
+            return image
+
+
 class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid-type]
     """Outbound WebRTC video track backed by local desktop capture.
 
@@ -1805,12 +1876,8 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         self.fps = max(1.0, min(30.0, float(fps or 8.0)))
         self.max_width = max(320, int(max_width or 1280))
         self.monitor_id = _normalize_desktop_monitor_id(monitor_id)
-        # NB: do NOT name this `_timestamp` - aiortc's VideoStreamTrack.next_timestamp
-        # keys on `hasattr(self, "_timestamp")` and would then dereference `_start`
-        # (unset) on the first frame. Keep a separate name for the no-aiortc fallback.
-        self._fallback_timestamp = 0
-        self._time_base = Fraction(1, 90000)
-        self._outbound_timestamp = 0
+        self._clock = _OutboundVideoClock()
+        self._meet_capture: Optional[MeetDesktopCapture] = None
         # Gated OFF until the client explicitly starts a video call. The track is
         # negotiated up front (no SDP renegotiation needed), but the desktop is
         # never captured or streamed while disabled.
@@ -1845,6 +1912,7 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         self._video_active = False
         self._enabled.clear()
         self._next_capture_due_at = None
+        self._meet_capture = None
         with self._latest_preview_lock:
             self._latest_preview_image = None
             self._latest_preview_at = 0.0
@@ -1885,6 +1953,15 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
             self._output_size = self._profiled_idle_frame_size()
             self._latest_preview_image = None
             self._latest_preview_at = 0.0
+
+    def set_meet_capture(self, capture: Optional[MeetDesktopCapture]) -> None:
+        self._meet_capture = capture
+
+    def _capture_current_image(self) -> Any:
+        capture = self._meet_capture
+        if capture is None:
+            return self._capture_image()
+        return capture.read((self.monitor_id, self.max_width), self.fps, self._capture_image)
 
     @property
     def is_enabled(self) -> bool:
@@ -1965,13 +2042,14 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         capture_started_at: Optional[float] = None
         if self._enabled.is_set():
             capture_started_at = await self._wait_for_capture_slot()
-        self._outbound_timestamp += max(1, int(round(90000 / self.fps)))
-        pts, time_base = self._outbound_timestamp, self._time_base
         if self._enabled.is_set():
-            image = await asyncio.to_thread(self._capture_image)
-            self._remember_preview_image(image)
-            if capture_started_at is not None:
-                self._mark_capture_complete(capture_started_at)
+            image = await asyncio.to_thread(self._capture_current_image)
+            if self._enabled.is_set():
+                self._remember_preview_image(image)
+                if capture_started_at is not None:
+                    self._mark_capture_complete(capture_started_at)
+            else:
+                image = self._disabled_image()
         else:
             self._next_capture_due_at = None
             image = self._disabled_image()
@@ -1983,8 +2061,8 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
             width=video_frame.width,
             height=video_frame.height,
         )
-        video_frame.pts = pts
-        video_frame.time_base = time_base
+        video_frame.pts = self._clock.next_pts()
+        video_frame.time_base = self._clock.time_base
         return video_frame
 
     def capture_preview_image(self, *, max_width: int = 640) -> Any:
@@ -1999,7 +2077,7 @@ class RemoteDesktopVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[mi
         """
         if not self._enabled.is_set():
             return self._resize_preview_image(self._disabled_image(), max_width=max_width)
-        image = self._capture_image()
+        image = self._capture_current_image()
         self._remember_preview_image(image)
         return self._resize_preview_image(image, max_width=max_width)
 
@@ -2391,9 +2469,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         self.output_height = max(180, int(round(self.max_width * 9 / 16)))
         if self.output_height % 2:
             self.output_height -= 1
-        self._fallback_timestamp = 0
-        self._time_base = Fraction(1, 90000)
-        self._outbound_timestamp = 0
+        self._clock = _OutboundVideoClock()
         self._enabled = asyncio.Event()
         self._disabled_source_names: set[str] = set()
         self._game_mode = False
@@ -2462,6 +2538,12 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
 
     def source_names(self) -> List[str]:
         return [name for name, _track in self.sources]
+
+    def set_meet_capture(self, capture: Optional[MeetDesktopCapture]) -> None:
+        for name, track in self.sources:
+            setter = getattr(track, "set_meet_capture", None)
+            if name == "remote_desktop" and callable(setter):
+                setter(capture)
 
     def set_remote_desktop_enabled(self, enabled: bool) -> None:
         """Enable or suppress only the desktop child of a stitched video track."""
@@ -2733,9 +2815,6 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
 
         if self._enabled.is_set():
             await asyncio.sleep(1.0 / self.fps)
-        self._outbound_timestamp += max(1, int(round(90000 / self.fps)))
-        pts, time_base = self._outbound_timestamp, self._time_base
-
         if not self._enabled.is_set():
             image = self._disabled_image()
         else:
@@ -2764,8 +2843,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
             width=video_frame.width,
             height=video_frame.height,
         )
-        video_frame.pts = pts
-        video_frame.time_base = time_base
+        video_frame.pts = self._clock.next_pts()
+        video_frame.time_base = self._clock.time_base
         return video_frame
 
     def _compose_images(

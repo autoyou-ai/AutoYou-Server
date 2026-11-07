@@ -283,7 +283,7 @@ def normalize_remote_desktop_keyboard_payload(payload: Any) -> Optional[Dict[str
     return normalized
 
 
-def _mapped_key(key: str) -> str:
+def remote_desktop_host_key(key: str) -> str:
     normalized = str(key or "").strip().lower()
     if len(normalized) >= 2 and normalized.startswith("f") and normalized[1:].isdigit():
         return normalized
@@ -375,7 +375,7 @@ def execute_remote_desktop_keyboard(payload: Any, pyautogui: Any = None) -> bool
                     write(char)
             return True
 
-        mapped_key = _mapped_key(normalized["key"])
+        mapped_key = remote_desktop_host_key(normalized["key"])
         phase = normalized["phase"]
         if phase == "down":
             pyautogui.keyDown(mapped_key)

@@ -3551,6 +3551,7 @@
                     quality: getByPath(cfg, "video_call.remote_desktop.quality", "balanced"),
                     bitrate_kbps: getByPath(cfg, "video_call.remote_desktop.bitrate_kbps", 1500),
                     control_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.control_enabled", false), false),
+                    meet_auto_approve: asBoolean(getByPath(cfg, "video_call.remote_desktop.meet_auto_approve", true), true),
                     game_enabled: asBoolean(getByPath(cfg, "video_call.remote_desktop.game_enabled", false), false),
                     keep_awake: String(getByPath(cfg, "video_call.remote_desktop.keep_awake", "off") || "off"),
                     game_buttons: Array.isArray(gameButtons) ? gameButtons.map(function (button) { return button.label + ":" + button.name; }).join(", ") : "A:action_a, B:action_b"
@@ -9566,6 +9567,7 @@
             + checkbox("videoCall.outbound_api", "Allow API video input", "Accepts JPEG frames pushed through the server API.")
             + checkbox("videoCall.outbound_video_file", "Allow video file playback", "Allows a local video file to be streamed into a call. Its soundtrack stops when the caller starts speaking so AutoYou can listen; the looping video keeps playing. Press Play again to restart its sound.")
             + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop input", "Allows authenticated, active, full-screen clients to send supported mouse, touch, keyboard, and controller input.")
+            + checkbox("videoCall.remote_desktop.meet_auto_approve", "Automatically approve Meet input requests", "When off, approve or decline each request in Interact.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "<div class=\"ayu-inline-actions\">" + button("Save video permissions", "save-permissions-video", "primary", "save") + "</div>";
         // AutoYou apps and the admin page reach AutoYou AI through this server
@@ -10873,7 +10875,17 @@
             var selected = state.interact.selected.indexOf(id) !== -1;
             var recent = Date.now() / 1000 - Number(person.last_input_at || 0) < 1.5 ? badge(person.last_input || "", "blue") : "";
             var layoutBadge = person.layout ? badge(person.layout === "gamepad" ? "Gamepad (Diamond)" : person.layout, "purple") : "";
-            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : "Watching only") + "</p></div>" + layoutBadge + recent + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
+            var control = "";
+            if (interactive && person.control_id) {
+                var target = ":" + encodeURIComponent(id) + ":" + encodeURIComponent(person.control_id);
+                if (person.control_state === "requested") {
+                    control = badge("Input requested", "amber") + button("Approve input", "interact-control:approve" + target, "primary", "check", "sm")
+                        + button("Decline", "interact-control:deny" + target, "secondary", "close", "sm");
+                } else if (person.control_state === "approved") {
+                    control = badge("Input enabled", "green") + button("End input", "interact-control:revoke" + target, "secondary", "stop", "sm");
+                }
+            }
+            return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(person.name || "Connected device") + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : "Microphone live") : person.mode === "game" ? "Game session" : "Watching only") + "</p></div>" + layoutBadge + recent + control + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + (selected ? "true" : "false") + '"') : "") + "</div>";
         }).join("");
         var feed = inputs.slice(-30).reverse().map(function (input) {
             return "<div class=\"ayu-list-row\"><div class=\"ayu-list-copy\"><strong>" + escapeHtml(input.name || "A device") + " sent " + escapeHtml(input.value || "an input") + "</strong></div></div>";
@@ -11232,7 +11244,7 @@
             "outbound_remote_desktop", "outbound_api", "outbound_video_file", "outbound_camera"
         ].forEach(function (key) { delete payload[key]; });
         if (payload.remote_desktop && typeof payload.remote_desktop === "object") {
-            ["enabled", "send_screen", "control_enabled", "game_enabled"].forEach(function (key) {
+            ["enabled", "send_screen", "control_enabled", "meet_auto_approve", "game_enabled"].forEach(function (key) {
                 delete payload.remote_desktop[key];
             });
         }
@@ -11262,6 +11274,7 @@
             api_video_input_enabled: "videoCall.outbound_api",
             video_file_playback_enabled: "videoCall.outbound_video_file",
             remote_desktop_control_enabled: "videoCall.remote_desktop.control_enabled",
+            meet_auto_approve: "videoCall.remote_desktop.meet_auto_approve",
             game_mode_enabled: "videoCall.remote_desktop.game_enabled",
             chat_memory_enabled: "aiAgent.record_messages_in_database",
             ai_agent_lan_access_enabled: "aiAgent.lan_access_enabled",
@@ -11293,6 +11306,20 @@
             return;
         }
         if (action === "interact-refresh") { await refreshInteract(); return; }
+        if (action.indexOf("interact-control:") === 0) {
+            var decision = action.split(":");
+            if (decision.length !== 4 || ["approve", "deny", "revoke"].indexOf(decision[1]) === -1) return;
+            state.interact.saving = true;
+            try {
+                await postJson("/api/screen-listen/control", {
+                    action: decision[1], session_id: decodeURIComponent(decision[2]), control_id: decodeURIComponent(decision[3])
+                });
+            } finally {
+                state.interact.saving = false;
+                await refreshInteract();
+            }
+            return;
+        }
         if (action === "interact-video-toggle") {
             interactVideoPrefs().on = !interactVideo.on;
             saveInteractVideoPrefs();
@@ -12370,7 +12397,7 @@
             await savePermissions([
                 "video_call_recording_enabled", "webcam_sharing_enabled", "screen_capture_enabled",
                 "screen_send_enabled", "screen_source_enabled",
-                "api_video_input_enabled", "video_file_playback_enabled", "remote_desktop_control_enabled", "game_mode_enabled"
+                "api_video_input_enabled", "video_file_playback_enabled", "remote_desktop_control_enabled", "meet_auto_approve", "game_mode_enabled"
             ], "Video and computer permissions updated.");
             return;
         }
