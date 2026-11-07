@@ -20,6 +20,7 @@ from tests.support.paths import ensure_repo_on_path
 ensure_repo_on_path()
 
 import base64
+from types import SimpleNamespace
 
 import pytest
 
@@ -193,7 +194,8 @@ def test_a_changed_pairing_password_is_not_masked_by_what_this_process_read_earl
     assert len(fake.get_calls) == reads + 1
 
 
-def test_windows_checkout_password_writes_stay_with_their_config(monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform", ["windows", "linux"])
+def test_source_checkout_password_writes_stay_with_their_config(monkeypatch, tmp_path, platform):
     import server
 
     credential = server._KS_SERVER_PASSWORD_CRED_NAME
@@ -202,7 +204,7 @@ def test_windows_checkout_password_writes_stay_with_their_config(monkeypatch, tm
     monkeypatch.setattr(server, "_KS_SERVICE_NAME", SERVICE)
     monkeypatch.setattr(server, "_server_keyring", fake)
     monkeypatch.setattr(server, "_keystore_server_password_available", lambda: True)
-    monkeypatch.setattr(server, "get_platform", lambda: "windows")
+    monkeypatch.setattr(server, "get_platform", lambda: platform)
     monkeypatch.setattr(server.STATE, "server_password", None)
     monkeypatch.delenv("AUTOYOU_TEST_ROOT", raising=False)
     monkeypatch.delenv("AUTOYOU_RUNTIME_ROOT", raising=False)
@@ -242,3 +244,26 @@ def test_legacy_fallback_requires_a_missing_credential(monkeypatch):
 
     assert keystore.get_keyring_password(SERVICE, credential, fallback_service_name=legacy) is None
     assert fake.get_calls == [(SERVICE, credential)]
+
+
+@pytest.mark.parametrize(
+    ("platform", "opt_in", "backend", "expected"),
+    [
+        ("win32", "1", "keyring.backends.Windows.WinVaultKeyring", False),
+        ("linux", "1", "keyring.backends.SecretService.Keyring", False),
+        ("darwin", "", "keyring.backends.macOS.Keyring", False),
+        ("darwin", "1", "keyring.backends.null.Keyring", False),
+        ("darwin", "1", "keyring.backends.macOS.Keyring", True),
+    ],
+)
+def test_test_root_allows_only_the_opt_in_macos_keychain_smoke(
+    monkeypatch, tmp_path, platform, opt_in, backend, expected
+):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTOYOU_TEST_MACOS_KEYCHAIN", opt_in)
+    monkeypatch.setattr(keystore, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(keystore, "_HAS_KEYRING", True)
+    monkeypatch.setattr(keystore, "_HAS_FERNET", True)
+    monkeypatch.setattr(keystore, "_backend_name", lambda: backend)
+
+    assert keystore.keyring_available() is expected

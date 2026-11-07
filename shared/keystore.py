@@ -492,6 +492,14 @@ def keyring_available() -> bool:
     """
     if not _HAS_KEYRING or not _HAS_FERNET:
         return False
+    if os.getenv("AUTOYOU_TEST_ROOT", "").strip():
+        # The native Keychain smoke owns a disposable credential scope and
+        # removes its entries after stopping the bundled server.
+        return (
+            sys.platform == "darwin"
+            and os.getenv("AUTOYOU_TEST_MACOS_KEYCHAIN") == "1"
+            and _backend_name().lower().startswith("keyring.backends.macos.")
+        )
     try:
         name = _backend_name().lower()
         return not any(bad in name for bad in _DEGENERATE_BACKENDS)

@@ -2974,10 +2974,10 @@ def _server_keystore_service_name(*, scope_to_config: bool = False) -> str:
 
 
 def _server_pairing_password_service_name() -> str:
-    # On Windows, source checkouts use separate config files under the same user.
+    # Windows and Linux source checkouts use separate configs under the same user.
     # Bind their pairing credentials to those files as well.
     service_name = _server_keystore_service_name()
-    if get_platform() == "windows" and service_name == _KS_SERVICE_NAME:
+    if get_platform() in {"windows", "linux"} and service_name == _KS_SERVICE_NAME:
         return _server_keystore_service_name(scope_to_config=True)
     return service_name
 

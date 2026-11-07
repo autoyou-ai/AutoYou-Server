@@ -131,17 +131,22 @@ def _login_data(password: str) -> dict[str, str]:
     return {"password": password, "terms_accepted": "1"}
 
 
-def test_product_runtime_keystore_namespace_is_separate_and_test_root_wins(tmp_path, monkeypatch):
+@pytest.mark.parametrize("platform", ["windows", "darwin", "linux"])
+def test_product_runtime_keystore_namespace_is_separate_and_test_root_wins(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(server, "get_platform", lambda: platform)
     monkeypatch.delenv("AUTOYOU_TEST_ROOT", raising=False)
     monkeypatch.delenv("AUTOYOU_RUNTIME_ROOT", raising=False)
     assert server._server_keystore_service_name() == server._KS_SERVICE_NAME
     monkeypatch.setenv("AUTOYOU_RUNTIME_ROOT", str(tmp_path / "v2"))
+    monkeypatch.setenv("AUTOYOU_PACKAGED_RUNTIME", "1")
     runtime_service = server._server_keystore_service_name()
     assert runtime_service.startswith(f"{server._KS_SERVICE_NAME}-runtime-")
     assert runtime_service != server._KS_SERVICE_NAME
+    assert server._server_pairing_password_service_name() == runtime_service
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "test"))
     assert server._server_keystore_service_name().startswith(f"{server._KS_SERVICE_NAME}-test-")
     assert server._server_keystore_service_name() != runtime_service
+    assert server._server_pairing_password_service_name() == server._server_keystore_service_name()
 
 
 def test_non_maximus_config_clears_stale_secure_storage_environment(monkeypatch):

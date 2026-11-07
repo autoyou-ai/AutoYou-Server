@@ -44,7 +44,8 @@ _AUTOYOU_TEST_ROOT = Path(
 ).resolve()
 _AUTOYOU_TEST_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ["AUTOYOU_TEST_ROOT"] = str(_AUTOYOU_TEST_ROOT)
-os.environ.setdefault("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
+os.environ["PYTHON_KEYRING_BACKEND"] = "keyring.backends.null.Keyring"
+os.environ.pop("AUTOYOU_TEST_MACOS_KEYCHAIN", None)
 # Context windows come from the model name and RAM in tests, not from this
 # machine's GPU, and Ollama keep-alive is the shipped default.
 os.environ["AUTOYOU_OLLAMA_CONTEXT_SIZING"] = "heuristic"
