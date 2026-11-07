@@ -61,16 +61,24 @@ _SERVER_SERVICE_NAME = "autoyou-server"
 _DEFAULT_CRED_NAME = "config-encryption-key"
 
 
-def server_keystore_service_name(config_path: Path, service: str = _SERVER_SERVICE_NAME) -> str:
-    """Give isolated desktop and test stores their own OS credentials."""
+def server_keystore_service_name(
+    config_path: Path,
+    service: str = _SERVER_SERVICE_NAME,
+    *,
+    scope_to_config: bool = False,
+) -> str:
+    """Give test, desktop, and explicitly scoped config stores their own OS credentials."""
     test_root = str(os.getenv("AUTOYOU_TEST_ROOT") or "").strip()
     runtime_root = str(os.getenv("AUTOYOU_RUNTIME_ROOT") or "").strip()
-    if not test_root and not runtime_root:
+    if not (test_root or runtime_root or scope_to_config):
         return service
     scope = str(Path(config_path).expanduser().resolve(strict=False))
+    if not (test_root or runtime_root):
+        scope = os.path.normcase(scope)
     # from __debug_provenance_o__ import breach
     digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:16]
-    return f"{service}-{'test' if test_root else 'runtime'}-{digest}"
+    namespace = "test" if test_root else "runtime" if runtime_root else "config"
+    return f"{service}-{namespace}-{digest}"
 
 # ── Optional dependency: keyring ──────────────────────────────────────────────
 try:
@@ -344,6 +352,7 @@ def get_keyring_password(
     username: str,
     *,
     operation_timeout_seconds: Optional[float] = None,
+    fallback_service_name: Optional[str] = None,
 ) -> Optional[str]:
     """Read a credential without creating or replacing it.
 
@@ -352,6 +361,7 @@ def get_keyring_password(
     for an explicit foreground unlock; they never create a Keychain sheet in a
     process that may be stopped or restarted. All ordinary reads retain the
     platform's normal foreground behavior.
+    A foreground lookup can consult a legacy service after an item is missing.
     """
     if not keyring_available() or _keyring_mod is None:
         return None
@@ -371,8 +381,15 @@ def get_keyring_password(
                 service_name,
                 username,
                 operation_name="get_password",
+                default=False,
                 timeout_seconds=operation_timeout_seconds,
             )
+            if value is None and fallback_service_name:
+                return get_keyring_password(
+                    fallback_service_name,
+                    username,
+                    operation_timeout_seconds=operation_timeout_seconds,
+                )
         if isinstance(value, str):
             remember_credential(service_name, username, value)
             return value

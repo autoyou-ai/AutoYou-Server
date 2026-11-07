@@ -2966,9 +2966,20 @@ def _load_keystore_config_during_bootstrap(keystore: Any) -> Optional[Dict[str, 
         )
     return config
 
-def _server_keystore_service_name() -> str:
+def _server_keystore_service_name(*, scope_to_config: bool = False) -> str:
     from shared.keystore import server_keystore_service_name
-    return server_keystore_service_name(CONFIG_KEYSTORE_PATH, _KS_SERVICE_NAME)
+    return server_keystore_service_name(
+        CONFIG_KEYSTORE_PATH, _KS_SERVICE_NAME, scope_to_config=scope_to_config
+    )
+
+
+def _server_pairing_password_service_name() -> str:
+    # On Windows, source checkouts use separate config files under the same user.
+    # Bind their pairing credentials to those files as well.
+    service_name = _server_keystore_service_name()
+    if get_platform() == "windows" and service_name == _KS_SERVICE_NAME:
+        return _server_keystore_service_name(scope_to_config=True)
+    return service_name
 
 def _get_server_keystore():
     """Return a KeystoreJsonStore for the main server config, or None."""
@@ -3018,15 +3029,20 @@ def _keystore_server_password_available() -> bool:
 def _load_keystore_server_password(
     *,
     operation_timeout_seconds: Optional[float] = None,
+    allow_legacy: bool = True,
 ) -> Optional[str]:
     if not _keystore_server_password_available():
         return None
-    service_name = _server_keystore_service_name()
+    service_name = _server_pairing_password_service_name()
+    fallback_service_name = None
+    if allow_legacy and service_name != _server_keystore_service_name() and Path(CONFIG_KEYSTORE_PATH).is_file():
+        fallback_service_name = _KS_SERVICE_NAME
     try:
         password = _ks_get_password(
             service_name,
             _KS_SERVER_PASSWORD_CRED_NAME,
             operation_timeout_seconds=operation_timeout_seconds,
+            fallback_service_name=fallback_service_name,
         )
     except _ServerKeyringError as exc:
         LOGGER.warning("Failed to read server password from OS keystore: %s", exc)
@@ -3048,13 +3064,14 @@ def _persist_server_password(
     STATE.server_password = normalized or None
     if not normalized or not _keystore_server_password_available():
         return
-    service_name = _server_keystore_service_name()
+    service_name = _server_pairing_password_service_name()
     try:
         # macOS keyring updates delete and re-add the item. Avoid that
         # destructive path when an older app signature already stored the
         # same password and the item is readable.
         if _load_keystore_server_password(
             operation_timeout_seconds=operation_timeout_seconds,
+            allow_legacy=False,
         ) == normalized:
             return
         if not allow_update:
@@ -3083,7 +3100,7 @@ def _persist_server_password(
 def _clear_persisted_server_password() -> None:
     if not _keystore_server_password_available():
         return
-    service_name = _server_keystore_service_name()
+    service_name = _server_pairing_password_service_name()
     try:
         _ks_call_keyring_operation(
             _server_keyring.delete_password,
@@ -6494,7 +6511,7 @@ async def bootstrap_password_and_config() -> None:
                     "Keystore config loaded but pairing-password entry is missing from OS keystore "
                     "(service=%r, credential=%r). This may indicate tampering. "
                     "Skipping config re-persist to avoid silent password reset.",
-                    _server_keystore_service_name(),
+                    _server_pairing_password_service_name(),
                     _KS_SERVER_PASSWORD_CRED_NAME,
                 )
             elif defaults_changed and _macos_keychain_bootstrap_timeout_seconds() is None:

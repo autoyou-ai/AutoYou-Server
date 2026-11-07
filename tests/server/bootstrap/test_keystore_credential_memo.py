@@ -191,3 +191,54 @@ def test_a_changed_pairing_password_is_not_masked_by_what_this_process_read_earl
     assert fake.passwords == {}
     assert server._load_keystore_server_password() is None, "a cleared password is not served from memory"
     assert len(fake.get_calls) == reads + 1
+
+
+def test_windows_checkout_password_writes_stay_with_their_config(monkeypatch, tmp_path):
+    import server
+
+    credential = server._KS_SERVER_PASSWORD_CRED_NAME
+    legacy = (SERVICE, credential)
+    fake = _install(monkeypatch, _FakeKeyring({legacy: "synthetic-legacy-password"}))
+    monkeypatch.setattr(server, "_KS_SERVICE_NAME", SERVICE)
+    monkeypatch.setattr(server, "_server_keyring", fake)
+    monkeypatch.setattr(server, "_keystore_server_password_available", lambda: True)
+    monkeypatch.setattr(server, "get_platform", lambda: "windows")
+    monkeypatch.setattr(server.STATE, "server_password", None)
+    monkeypatch.delenv("AUTOYOU_TEST_ROOT", raising=False)
+    monkeypatch.delenv("AUTOYOU_RUNTIME_ROOT", raising=False)
+
+    owner_config = tmp_path / "owner" / "config.keystore.enc"
+    owner_config.parent.mkdir()
+    owner_config.write_bytes(b"synthetic-legacy-config")
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", owner_config)
+    owner_service = server._server_pairing_password_service_name()
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+
+    probe_config = tmp_path / "probe" / "config.keystore.enc"
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", probe_config)
+    probe_service = server._server_pairing_password_service_name()
+    assert probe_service != owner_service
+    assert server._load_keystore_server_password() is None
+    server._persist_server_password("synthetic-probe-password")
+    assert server._load_keystore_server_password() == "synthetic-probe-password"
+    server._clear_persisted_server_password()
+    assert (probe_service, credential) not in fake.passwords
+    assert fake.passwords[legacy] == "synthetic-legacy-password"
+
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", owner_config)
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+    server._persist_server_password("synthetic-legacy-password")
+    assert fake.passwords[(owner_service, credential)] == "synthetic-legacy-password"
+    fake.passwords[legacy] = "synthetic-updated-legacy-entry"
+    keystore.forget_credential()
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+
+
+def test_legacy_fallback_requires_a_missing_credential(monkeypatch):
+    legacy = "autoyou-synthetic-legacy"
+    credential = "pairing-password"
+    fake = _install(monkeypatch, _FakeKeyring({(legacy, credential): "synthetic-legacy-password"}))
+    fake.fail_with = RuntimeError("Synthetic keystore failure")
+
+    assert keystore.get_keyring_password(SERVICE, credential, fallback_service_name=legacy) is None
+    assert fake.get_calls == [(SERVICE, credential)]

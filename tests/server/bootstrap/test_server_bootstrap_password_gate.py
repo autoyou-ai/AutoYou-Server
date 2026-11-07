@@ -234,7 +234,7 @@ def test_persist_server_password_skips_redundant_keychain_replacement(monkeypatc
 
     monkeypatch.setattr(server, "_keystore_server_password_available", lambda: True)
     monkeypatch.setattr(server, "_server_keyring", _Keyring())
-    monkeypatch.setattr(server, "_load_keystore_server_password", lambda: "same-secret")
+    monkeypatch.setattr(server, "_load_keystore_server_password", lambda **_kwargs: "same-secret")
 
     server._persist_server_password("same-secret")
 
