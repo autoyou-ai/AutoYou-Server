@@ -16,7 +16,7 @@
       ]
     },
     {
-      "componentCount": 108,
+      "componentCount": 110,
       "displayName": "AutoYou Server Windows binary-default build",
       "id": "autoyou-server-windows-default",
       "notice": "docs/legal/generated/autoyou-server-windows-default/NOTICE.txt",
@@ -27,6 +27,8 @@
         "docs/legal/generated/autoyou-server-windows-default/mcp-types-MIT.txt",
         "docs/legal/generated/autoyou-server-windows-default/httpx2-BSD-3-Clause.txt",
         "docs/legal/generated/autoyou-server-windows-default/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-default/ffmpeg-LGPL-3.0-NOTICES.txt",
+        "docs/legal/generated/autoyou-server-windows-default/openh264-BSD-2-Clause.txt",
         "docs/legal/generated/autoyou-server-windows-default/google-adk-web-THIRD-PARTY-NOTICES.txt"
       ]
     },
@@ -46,7 +48,7 @@
       ]
     },
     {
-      "componentCount": 143,
+      "componentCount": 145,
       "displayName": "AutoYou Server Windows connector-full build",
       "id": "autoyou-server-windows-connector-full",
       "notice": "docs/legal/generated/autoyou-server-windows-connector-full/NOTICE.txt",
@@ -57,6 +59,8 @@
         "docs/legal/generated/autoyou-server-windows-connector-full/mcp-types-MIT.txt",
         "docs/legal/generated/autoyou-server-windows-connector-full/httpx2-BSD-3-Clause.txt",
         "docs/legal/generated/autoyou-server-windows-connector-full/httpcore2-BSD-3-Clause.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/ffmpeg-LGPL-3.0-NOTICES.txt",
+        "docs/legal/generated/autoyou-server-windows-connector-full/openh264-BSD-2-Clause.txt",
         "docs/legal/generated/autoyou-server-windows-connector-full/google-adk-web-THIRD-PARTY-NOTICES.txt"
       ]
     },
@@ -76,5 +80,5 @@
       ]
     }
   ],
-  "generatedAt": "2026-11-06T09:26:08+00:00"
+  "generatedAt": "2026-11-07T23:19:19+00:00"
 }
