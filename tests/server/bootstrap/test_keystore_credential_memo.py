@@ -267,3 +267,15 @@ def test_test_root_allows_only_the_opt_in_macos_keychain_smoke(
     monkeypatch.setattr(keystore, "_backend_name", lambda: backend)
 
     assert keystore.keyring_available() is expected
+
+
+def test_normal_test_root_skips_config_key_cleanup_in_the_os_backend(monkeypatch, tmp_path):
+    def unexpected_delete(*_args):
+        pytest.fail("A normal test must not call the native credential store")
+
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.delenv("AUTOYOU_TEST_MACOS_KEYCHAIN", raising=False)
+    monkeypatch.setattr(keystore, "_HAS_KEYRING", True)
+    monkeypatch.setattr(keystore, "_keyring_mod", SimpleNamespace(delete_password=unexpected_delete))
+
+    assert not keystore.delete_key(SERVICE)

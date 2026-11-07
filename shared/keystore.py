@@ -488,7 +488,8 @@ def keyring_available() -> bool:
     """Return ``True`` if keyring is importable and backed by a real credential store.
 
     Returns ``False`` for stub/degenerate backends like ``FailKeyring``,
-    ``NullKeyring``, or ``PlaintextKeyring``.
+    ``NullKeyring``, or ``PlaintextKeyring``. Test roots require an explicit
+    native macOS Keychain smoke to access a real backend.
     """
     if not _HAS_KEYRING or not _HAS_FERNET:
         return False
@@ -657,6 +658,8 @@ def delete_key(
     occurred.  Useful for "factory reset" / re-enrolment flows.
     """
     if not _HAS_KEYRING or _keyring_mod is None:
+        return False
+    if os.getenv("AUTOYOU_TEST_ROOT", "").strip() and not keyring_available():
         return False
     try:
         deleted = call_keyring_operation(
