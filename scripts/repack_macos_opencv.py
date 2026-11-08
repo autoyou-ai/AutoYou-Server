@@ -21,6 +21,23 @@ def lib_version(path: Path) -> tuple[int, ...]:
     return tuple(map(int, path.name.split(".")[1:-1]))
 
 
+def prune_unused_libraries(extension: Path, libs: Path) -> None:
+    bundled = {path.name: path for path in libs.glob("*.dylib")}
+    reachable = set()
+    pending = [extension]
+    while pending:
+        binary = pending.pop()
+        loads = subprocess.check_output(["otool", "-L", str(binary)], text=True).splitlines()
+        for line in loads[2 if binary.suffix == ".dylib" else 1:]:
+            dependency = Path(line.strip().split(" (compatibility version", 1)[0]).name
+            if dependency in bundled and dependency not in reachable:
+                reachable.add(dependency)
+                pending.append(bundled[dependency])
+    for name, path in bundled.items():
+        if name not in reachable:
+            path.unlink()
+
+
 def repack(wheel: Path, ffmpeg: Path, destination: Path) -> None:
     verified(wheel, OPENCV_WHEEL_SHA256)
     destination.mkdir(parents=True, exist_ok=True)
@@ -49,14 +66,15 @@ def repack(wheel: Path, ffmpeg: Path, destination: Path) -> None:
             subprocess.run([*args, str(path)], check=True)
             subprocess.run(["codesign", "--force", "--sign", "-", str(path)], check=True)
 
-        for library in GPL_LIBRARY_NAMES:
-            for path in libs.glob(f"{library}.*.dylib"):
-                path.unlink()
         bootstrap = root / "cv2/__init__.py"
+        extension = bootstrap.parent / "cv2.abi3.so"
         text = bootstrap.read_text()
         old = '    native_module = importlib.import_module("cv2")'
-        if text.count(old) != 1 or not (bootstrap.parent / "cv2.abi3.so").is_file():
+        if text.count(old) != 1 or not extension.is_file():
             raise SystemExit("Unexpected OpenCV extension bootstrap")
+        prune_unused_libraries(extension, libs)
+        if any(path.name.startswith(GPL_LIBRARY_NAMES) for path in libs.glob("*.dylib")):
+            raise SystemExit("OpenCV still loads a GPL codec")
         # The compiled launcher's overlay finder otherwise resolves the bootstrap again.
         text = text.replace("import importlib\n", "import importlib\nimport importlib.util\n", 1)
         bootstrap.write_text(text.replace(old, '''    native_spec = importlib.util.spec_from_file_location(
