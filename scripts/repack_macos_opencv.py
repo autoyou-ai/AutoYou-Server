@@ -52,6 +52,19 @@ def repack(wheel: Path, ffmpeg: Path, destination: Path) -> None:
         for library in GPL_LIBRARY_NAMES:
             for path in libs.glob(f"{library}.*.dylib"):
                 path.unlink()
+        bootstrap = root / "cv2/__init__.py"
+        text = bootstrap.read_text()
+        old = '    native_module = importlib.import_module("cv2")'
+        if text.count(old) != 1 or not (bootstrap.parent / "cv2.abi3.so").is_file():
+            raise SystemExit("Unexpected OpenCV extension bootstrap")
+        # The compiled launcher's overlay finder otherwise resolves the bootstrap again.
+        text = text.replace("import importlib\n", "import importlib\nimport importlib.util\n", 1)
+        bootstrap.write_text(text.replace(old, '''    native_spec = importlib.util.spec_from_file_location(
+        "cv2", os.path.join(os.path.dirname(__file__), "cv2.abi3.so")
+    )
+    native_module = importlib.util.module_from_spec(native_spec)
+    sys.modules["cv2"] = native_module
+    native_spec.loader.exec_module(native_module)'''))
         metadata, = root.glob("*.dist-info/WHEEL")
         metadata.write_text(metadata.read_text().replace("macosx_13_0_arm64", "macosx_14_0_arm64"))
         subprocess.run([sys.executable, "-m", "wheel", "pack", str(root), "-d", str(destination)], check=True)

@@ -414,6 +414,10 @@ install_runtime_site_packages_overlay() {
             "onnxruntime"
         )
     fi
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        # cv2 is excluded from the Nuitka launcher graph; ship the verified wheel in the overlay.
+        distribution_overlay+=("opencv-python")
+    fi
     if requirements_has_tuning; then
         MACOS_RUNTIME_SITE_PACKAGE_OVERLAY+=("torch" "torchgen" "torchvision" "transformers" "datasets" "peft" "accelerate" "safetensors" "sentencepiece" "PIL")
         distribution_overlay+=(
@@ -1562,6 +1566,10 @@ verify_packaged_backend_imports() {
     local -a server_verify_args=(
         --verify-server-imports
     )
+
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        runtime_verify_args+=(--verify-runtime-import "av" --verify-runtime-import "cv2")
+    fi
 
     if requirements_has_voice; then
         log "Verifying packaged voice/STT imports..."
