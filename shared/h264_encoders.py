@@ -93,7 +93,7 @@ def configure_h264_encoder(
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0
         context.flags |= av.codec.context.Flags.low_delay
-        context.options = {"profile": "constrained_baseline", "realtime": "1", "allow_sw": "1"}
+        context.options = {"profile": "constrained_baseline", "realtime": "1", "allow_sw": "1", "prio_speed": "1"}
     else:
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0
