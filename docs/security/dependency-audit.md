@@ -102,36 +102,33 @@ References:
 ## Reviewed decisions
 
 - **Accelerate, optional tuning:** [GHSA-4j2p-28q2-5m79](https://osv.dev/vulnerability/GHSA-4j2p-28q2-5m79)
-  lists checkpoint path traversal through 1.14.0 with no fixed release. The
-  manifest's minimum is affected. PyPI returned no advisory for 1.15.0, but
-  [the tagged 1.15.0 loader](https://github.com/huggingface/accelerate/blob/v1.15.0/src/accelerate/utils/modeling.py)
-  still joins checkpoint-index filenames to the model directory without
-  checking containment before loading them. An empty advisory result is not
-  evidence of a fix, so the floor was not raised merely to remove the match.
-  The affected functions are `load_checkpoint_in_model` and
-  `load_checkpoint_and_dispatch`. **Mitigated in AutoYou 2026-11-07:**
-  `train_adapter` installs `shared.accelerate_checkpoint_guard` before importing
-  PEFT or Transformers. The guard covers the public loader aliases and the
-  dispatch loader, rejects absolute/traversing paths, external symlinks,
-  Windows alternate data streams and non-regular files (including named pipes),
-  and bounds the JSON index to 32 MiB. Upstream receives a private index of
-  validated paths, so replacing the original index cannot bypass validation.
-  Normal Hugging Face snapshot-to-blob links and safetensors filenames remain
-  supported. Temporary files honor `AUTOYOU_TEST_ROOT` and are removed even
-  after a loader failure. Real Accelerate 0.33.0 and 1.15.0 loaders passed
-  synthetic sharded-weight tests on Windows; WSL tests cover POSIX symlinks
-  and named pipes. This is scoped to AutoYou's training process, not arbitrary
-  third-party scripts importing Accelerate, and does not sandbox trusted model
-  Python code or a concurrently malicious local account. Tuning remains
-  optional and excluded from default server releases.
-
-This decision is recorded in
-[requirements/advisory-decisions.json](../../requirements/advisory-decisions.json)
-as `inline_mitigations_already_exist`, scoped to Accelerate 0.33.0 in
-`requirements/tuning.txt` and to these advisory ids, with a review-by date of
-2026-11-21. The advisory command reports it under `reviewed_advisories` and
-returns nonzero again for any other match, a changed floor or manifest, or once
-the review date passes.
+  (CVE-2026-69112, checkpoint path traversal) lists every release through
+  1.14.0 as affected. **Resolved 2026-11-08:** `requirements/tuning.txt` now
+  requires `accelerate>=1.15.0`, so no allowed version is inside the
+  advisory's range, and the bounded decision for 0.33.0 was removed from
+  `requirements/advisory-decisions.json`.
+  [The tagged 1.15.0 loader](https://github.com/huggingface/accelerate/blob/v1.15.0/src/accelerate/utils/modeling.py)
+  still joins checkpoint-index filenames to the model directory without its
+  own containment check, so the AutoYou mitigation from 2026-11-07 stays in
+  place: `train_adapter` installs `shared.accelerate_checkpoint_guard` before
+  importing PEFT or Transformers. The guard covers the public loader aliases
+  and the dispatch loader, rejects absolute/traversing paths, external
+  symlinks, Windows alternate data streams and non-regular files (including
+  named pipes), and bounds the JSON index to 32 MiB. Upstream receives a
+  private index of validated paths, so replacing the original index cannot
+  bypass validation. Normal Hugging Face snapshot-to-blob links and
+  safetensors filenames remain supported. The real-loader tests in
+  `tests/shared/test_accelerate_checkpoint_guard.py` passed with Accelerate
+  1.15.0 and Torch 2.15.0 (CPU, Linux). The guard is scoped to AutoYou's
+  training process, not arbitrary third-party scripts importing Accelerate,
+  and does not sandbox trusted model Python code. Tuning remains optional and
+  excluded from default server releases.
+- **NumPy, Intel macOS voice stack:** `requirements/voice.txt` declared
+  `numpy<2` with no lower bound, so the declared range included 1.x releases
+  covered by older NumPy advisories (for example CVE-2021-34141 and
+  CVE-2021-41495, fixed by 1.22). **Resolved 2026-11-08:** the requirement is
+  now `numpy>=1.26.4,<2`. 1.26.4 is the newest 1.x release, so pip already
+  selected it; the floor only removes vulnerable versions from the range.
 
 - **OpenTelemetry API, server:** [GHSA-xcq7-p3pf-p88h](https://osv.dev/vulnerability/GHSA-xcq7-p3pf-p88h)
   (CVE-2026-114603) is a quadratic regular-expression split in

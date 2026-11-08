@@ -119,8 +119,10 @@ def test_incomplete_decision_file_is_rejected(tmp_path):
 
 
 def test_repository_decisions_are_complete_and_time_bounded():
+    # The file must exist and parse; it may hold no decisions when no advisory
+    # currently needs a reviewed exception.
+    assert audit.DECISIONS.is_file(), "Expected the reviewed advisory decisions file"
     decisions = audit.load_decisions(audit.DECISIONS)
-    assert decisions, "Expected the reviewed advisory decisions file"
     for decision in decisions:
         assert decision["review_by"] > decision["reviewed_at"]
         assert all((audit.REPO_ROOT / manifest).is_file() for manifest in decision["manifests"])

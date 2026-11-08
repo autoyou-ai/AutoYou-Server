@@ -10,7 +10,9 @@ transformers>=5.12.1,<6
 datasets>=5.1.0,<6
 fsspec[http]==2026.6.0
 peft>=0.12.0
-accelerate>=0.33.0
+# 1.15.0 is the first release outside GHSA-4j2p-28q2-5m79; AutoYou keeps its
+# own checkpoint guard (shared/accelerate_checkpoint_guard.py) on top of it.
+accelerate>=1.15.0
 safetensors>=0.4.3
 # CUDA 4-bit loading is optional. It is not required by the CPU, ROCm, or
 # Apple MPS paths and does not ship a portable macOS runtime.
