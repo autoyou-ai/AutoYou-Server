@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, Optional
 from shared.ollama_context_policy import (
     MIN_NUM_CTX,
     context_sizing_mode,
+    ollama_cpu_only,
     record_context_limit,
     resolve_ollama_keep_alive,
 )
@@ -84,6 +85,8 @@ def load_ollama_model(api_base: str, model: str, *, num_ctx: Optional[int] = Non
     payload: Dict[str, Any] = {"model": model}
     if num_ctx:
         payload["options"] = {"num_ctx": int(num_ctx)}
+    if ollama_cpu_only(model):
+        payload.setdefault("options", {})["num_gpu"] = 0
     keep_alive = resolve_ollama_keep_alive()
     if keep_alive is not None:
         payload["keep_alive"] = keep_alive

@@ -95,6 +95,7 @@ from shared.ollama_gateway import (
     resolve_ollama_thinking_enabled,
     resolve_ollama_thinking_level,
 )
+from shared.ollama_media import MAX_IMAGE_SIDE, prepare_ollama_attachments
 from shared.odysseus_gateway import call_odysseus
 from shared.openrouter_config import normalize_openrouter_model
 from shared.chat_history_identity import normalize_admin_surface, sanitize_peer_relay
@@ -2180,10 +2181,6 @@ def _native_ollama_settings() -> Dict[str, Any]:
     }
 
 
-# Longest side, in pixels, of an image sent to a local model. Ollama's vision
-# models scale images down to well under this themselves; a full-size photo
-# only costs upload, decoding and, on some models, context tokens.
-_OLLAMA_IMAGE_MAX_SIDE = 1536
 _MEDIA_CAPABILITY_TTL_SECONDS = 300.0
 _media_capability_cache: Dict[Any, Any] = {}
 
@@ -2203,9 +2200,9 @@ def _cached_ollama_capabilities(api_base: str, model: str) -> Dict[str, Any]:
 async def _media_input_policy() -> Dict[str, Any]:
     """Which attachments go to the active model inline, as base64.
 
-    Local Ollama models: images only when the model reports vision (an unknown
-    answer keeps sending them), shrunk first; never audio, which LiteLLM's
-    Ollama path drops anyway - speech reaches the model as its transcript.
+    Ollama via ADK gets images and sampled video frames when vision is
+    available. Speech reaches this path as its transcript. The native
+    Ollama gateway can also send WAV input when the model advertises audio.
     Other providers are unchanged.
     """
     if _active_ai_provider() != "ollama":
@@ -2219,31 +2216,7 @@ async def _media_input_policy() -> Dict[str, Any]:
             vision = capabilities.get("supports_vision") if capabilities.get("available") else None
         except Exception:
             vision = None
-    return {"images": vision is not False, "audio": False, "max_image_side": _OLLAMA_IMAGE_MAX_SIDE, "model": model}
-
-
-def _shrink_image_for_model(data: bytes, mime_type: str, max_side: Optional[int]) -> tuple:
-    """The image scaled so its longest side is at most ``max_side``, else unchanged."""
-    if not max_side or not data:
-        return data, mime_type
-    try:
-        import io
-
-        from PIL import Image
-
-        with Image.open(io.BytesIO(data)) as image:
-            if max(image.size) <= max_side:
-                return data, mime_type
-            image.thumbnail((max_side, max_side))
-            buffer = io.BytesIO()
-            if str(mime_type).lower() == "image/png" and image.mode in {"RGBA", "LA", "P"}:
-                image.save(buffer, format="PNG", optimize=True)
-                return buffer.getvalue(), "image/png"
-            image.convert("RGB").save(buffer, format="JPEG", quality=90)
-            return buffer.getvalue(), "image/jpeg"
-    except Exception as exc:
-        logger.debug("Image left at full size: %s", exc)
-        return data, mime_type
+    return {"images": vision is not False, "audio": False, "max_image_side": MAX_IMAGE_SIDE, "model": model}
 
 
 def _native_odysseus_settings() -> Dict[str, str]:
@@ -2270,6 +2243,7 @@ async def send_message_to_native_ollama(
     session_id: str,
     *,
     metadata: Optional[Dict[str, Any]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     system_prompt: str = "You are AutoYou, a helpful AI assistant.",
 ) -> Dict[str, Any]:
     """Call native Ollama with the saved model behavior and no agent session."""
@@ -2289,6 +2263,23 @@ async def send_message_to_native_ollama(
         if capability.get("available")
         else thinking_enabled
     )
+    media_options = {}
+    forwarded = 0
+    if attachments:
+        prepared = await asyncio.to_thread(
+            prepare_ollama_attachments,
+            attachments,
+            vision=capability.get("supports_vision") is True,
+            audio=capability.get("supports_audio") is True,
+            text_files=True,
+        )
+        forwarded = prepared.forwarded
+        if forwarded < len(attachments):
+            prepared.notes.append(f"{len(attachments) - forwarded} attachment(s) could not be sent to this model.")
+        media_options = {
+            "images": [encoded for _, encoded in prepared.media],
+            "attachment_text": "\n\n".join(prepared.notes),
+        }
     result = await call_ollama_with_history(
         store=_NATIVE_OLLAMA_HISTORY,
         ollama_api=settings["api_base"],
@@ -2299,9 +2290,12 @@ async def send_message_to_native_ollama(
         options=resolve_ollama_gateway_options(behavior, settings["presets"], model),
         think=think,
         turn_id=str((metadata or {}).get("client_prompt_id") or ""),
+        **media_options,
     )
     result["thinking_capability"] = capability
     result["think"] = think
+    result["attachments_forwarded"] = forwarded
+    result["attachments_skipped"] = len(attachments or []) - forwarded
     return result
 
 
@@ -3277,9 +3271,18 @@ async def send_message_to_ai_agent(
                     summary_items = []
                     media_policy = (
                         await _media_input_policy()
-                        if any(str(a.get("mimetype") or "").lower().startswith(("image/", "audio/")) for a in atts)
+                        if any(str(a.get("mimetype") or "").lower().startswith(("image/", "audio/", "video/")) for a in atts)
                         else None
                     )
+                    local_media = None
+                    if media_policy and media_policy.get("max_image_side") is not None:
+                        local_media = await asyncio.to_thread(
+                            prepare_ollama_attachments, atts, vision=media_policy["images"]
+                        )
+                        parts.extend(
+                            {"inline_data": {"mime_type": mime, "data": encoded}}
+                            for mime, encoded in local_media.media
+                        )
                     for a in atts:
                         name = a.get("filename") or "attachment"
                         mt = str(a.get("mimetype") or "unknown/unknown")
@@ -3292,29 +3295,15 @@ async def send_message_to_ai_agent(
                         else:
                             summary_items.append(f"{name} ({mt})")
 
-                        # Forward vision/audio bytes to ADK natively via inline_data,
-                        # when the active model can take them (the path above still
-                        # reaches the specialists either way).
+                        if local_media is not None:
+                            continue
+                        # Other providers keep their existing ADK inline input.
                         is_media = mt_lower.startswith("image/") or mt_lower.startswith("audio/")
-                        media_kind = "audio" if mt_lower.startswith("audio/") else "images"
-                        if is_media and media_policy is not None and not media_policy[media_kind]:
-                            logger.info(
-                                "Not sending %s to %s inline: %s",
-                                name,
-                                media_policy.get("model") or "the model",
-                                "Ollama takes no audio; the transcript carries it"
-                                if media_kind == "audio"
-                                else "the model reports no vision",
-                            )
-                        elif is_media:
+                        if is_media:
                             # Apply sensible limits to prevent payload explosions: 10MB image, 25MB audio
                             max_size = 25 * 1024 * 1024 if mt_lower.startswith("audio/") else 10 * 1024 * 1024
                             try:
-                                data_bytes, error = _load_attachment_bytes(a)
-                                if data_bytes and media_kind == "images" and media_policy is not None:
-                                    data_bytes, mt = _shrink_image_for_model(
-                                        data_bytes, mt, media_policy.get("max_image_side")
-                                    )
+                                data_bytes, error = await asyncio.to_thread(_load_attachment_bytes, a)
                                 if data_bytes and len(data_bytes) <= max_size:
                                     encoded = base64.b64encode(data_bytes).decode("ascii")
                                     parts.append({
@@ -3333,6 +3322,8 @@ async def send_message_to_ai_agent(
                     summary_text = (
                         f"Attachments: {len(atts)} item(s): " + ", ".join(summary_items) + "."
                     )
+                    if local_media and local_media.notes:
+                        summary_text += " " + " ".join(local_media.notes)
             except Exception:
                 # Non-critical; continue without summary
                 pass
@@ -3954,6 +3945,7 @@ async def process_chat_message(
                     request.message,
                     request.session_id,
                     metadata=request.metadata,
+                    attachments=attachments,
                 )
                 response_text = _sanitize_direct_llm_text(native_result.get("response"))
                 if not response_text:
@@ -3964,8 +3956,8 @@ async def process_chat_message(
                     "gateway_mode": True,
                     "agent_runtime_bypassed": True,
                     "attachments_summary": attachments_summary,
-                    "attachments_forwarded": 0,
-                    "attachments_skipped": len(attachments),
+                    "attachments_forwarded": native_result.get("attachments_forwarded", 0),
+                    "attachments_skipped": native_result.get("attachments_skipped", len(attachments)),
                     "think": native_result.get("think"),
                 }
                 _log_metadata_summary(native_meta, label="ollama_gateway_success")

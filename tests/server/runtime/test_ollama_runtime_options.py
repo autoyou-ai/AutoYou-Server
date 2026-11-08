@@ -165,6 +165,19 @@ def test_the_spill_check_stays_off_with_the_older_sizing_rule(monkeypatch):
     assert "placement" not in report["model"]
 
 
+def test_cpu_model_warmup_matches_chat_placement(monkeypatch):
+    monkeypatch.setenv("AUTOYOU_OLLAMA_CPU_MODELS", "gemma4:e4b")
+    requests = []
+
+    def request(_url, *, payload, timeout):
+        requests.append(payload)
+        return 200
+
+    monkeypatch.setattr(ai_warmup, "_request", request)
+    assert ai_warmup.load_ollama_model("http://127.0.0.1:9", "gemma4:e4b", num_ctx=8192)["ok"]
+    assert requests[0]["options"] == {"num_ctx": 8192, "num_gpu": 0}
+
+
 def test_litellm_sends_keep_alive_to_ollama_at_the_top_level(monkeypatch):
     """The keep-alive fix relies on LiteLLM passing the option through; nothing reaches a network."""
     import json as json_module

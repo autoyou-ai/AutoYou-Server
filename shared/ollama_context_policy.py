@@ -210,6 +210,7 @@ def build_context_compaction_policy(
 CONTEXT_SIZING_ENV = "AUTOYOU_OLLAMA_CONTEXT_SIZING"
 MAX_NUM_CTX_ENV = "AUTOYOU_OLLAMA_MAX_NUM_CTX"
 KEEP_ALIVE_ENV = "AUTOYOU_OLLAMA_KEEP_ALIVE"
+CPU_MODELS_ENV = "AUTOYOU_OLLAMA_CPU_MODELS"
 DEFAULT_KEEP_ALIVE = "30m"
 DEFAULT_MAX_NUM_CTX = 32768
 MIN_NUM_CTX = 4096
@@ -397,6 +398,13 @@ def _model_key(model_name: Any) -> str:
     return name if not name or ":" in name else f"{name}:latest"
 
 
+def ollama_cpu_only(model_name: Any) -> bool:
+    """Match exact model tags that should bypass GPU offloading."""
+    key = _model_key(model_name)
+    configured = os.environ.get(CPU_MODELS_ENV, "").split(",")
+    return bool(key) and any(key == _model_key(tag) for tag in configured)
+
+
 def _load_registry() -> Dict[str, Any]:
     try:
         path = _registry_path()
@@ -528,6 +536,8 @@ def resolve_context_window(
     if explicit:
         return explicit, "model_behavior.override"
     heuristic = recommend_ollama_num_ctx(model_name)
+    if ollama_cpu_only(model_name):
+        return min(heuristic, _max_num_ctx(), 8192), "cpu_only"
     if context_sizing_mode() != "auto":
         return heuristic, "machine_heuristic"
     chosen: Optional[int] = None
