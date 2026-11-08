@@ -1961,13 +1961,17 @@ install_dependencies() {
     # hashes or cover every optional/build dependency; audit the resolved artifact. Set
     # AUTOYOU_IGNORE_LOCKFILE=1 to opt out.
     local pip_install_args=(-r "$req_file" --progress-bar on --no-color)
-    if [[ -n "${AUTOYOU_MACOS_AV_WHEEL:-}" ]]; then
-        if [[ ! -f "$AUTOYOU_MACOS_AV_WHEEL" ]]; then
-            log_error "The selected macOS PyAV wheel is missing."
+    local codec_wheel
+    for codec_wheel in "${AUTOYOU_MACOS_AV_WHEEL:-}" "${AUTOYOU_MACOS_OPENCV_WHEEL:-}"; do
+        [[ -n "$codec_wheel" ]] || continue
+        if [[ ! -f "$codec_wheel" ]]; then
+            log_error "A selected macOS codec wheel is missing."
             return 1
         fi
-        pip_install_args+=("$AUTOYOU_MACOS_AV_WHEEL")
-    fi
+        # An existing build environment may have the same version from PyPI.
+        "$PYTHON_CMD" -m pip install --no-deps --force-reinstall "$codec_wheel" || return 1
+        pip_install_args+=("$codec_wheel")
+    done
     local locked_constraints=""
     local ignore_lock
     ignore_lock="$(printf '%s' "${AUTOYOU_IGNORE_LOCKFILE:-}" | tr '[:upper:]' '[:lower:]')"
@@ -2056,6 +2060,9 @@ install_dependencies() {
     fi
     if [[ -n "${AUTOYOU_MACOS_AV_WHEEL:-}" ]]; then
         "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/build_codec_clean_av.py" --check-installed || return 1
+    fi
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/repack_macos_opencv.py" --check-installed || return 1
     fi
     
     log_success "Dependencies installed"
