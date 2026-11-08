@@ -20,6 +20,7 @@ import py_compile
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
@@ -803,17 +804,32 @@ def build_packaged_runtime_modules(
     output_root.mkdir(parents=True, exist_ok=True)
     build_root.mkdir(parents=True, exist_ok=True)
 
-    for spec in plan.compile_specs:
+    workers = max(1, min(job_count // 2, 5)) if sys.platform == "darwin" else 1
+
+    def compile_one(index: int, spec: ModuleBuildSpec) -> None:
         print(f"[runtime-modules] compiling {spec.source_relative_path.as_posix()}")
         _run_nuitka_module_build(
             repo_root=repo_root,
-            build_root=build_root,
+            build_root=build_root / f"module-{index}" if workers > 1 else build_root,
             output_root=output_root,
             spec=spec,
-            job_count=job_count,
+            job_count=max(1, job_count // workers),
             extra_nuitka_args=extra_nuitka_args,
             source_override=plan.source_overrides.get(spec.source_relative_path),
         )
+
+    if workers == 1:
+        for index, spec in enumerate(plan.compile_specs):
+            compile_one(index, spec)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(compile_one, index, spec) for index, spec in enumerate(plan.compile_specs)]
+            try:
+                for future in as_completed(futures):
+                    future.result()
+            except BaseException:
+                executor.shutdown(cancel_futures=True)
+                raise
 
     _copy_asset_files(repo_root=repo_root, output_root=output_root, plan=plan)
     _copy_static_runtime_files(repo_root=repo_root, output_root=output_root, plan=plan)
