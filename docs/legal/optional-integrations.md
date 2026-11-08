@@ -1,6 +1,6 @@
 # Optional Integration and Runtime Review
 
-Last reviewed: 2026-11-04 (Release 81.6.0)
+Last reviewed: 2026-11-07 (Release 81.7.0)
 
 This is the public record for AutoYou Server source and optional runtime
 profiles. It does not declare an external provider approved for every use case,

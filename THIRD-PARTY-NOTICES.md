@@ -1,6 +1,6 @@
 # AutoYou Third-Party Notices
 
-Last updated: 2026-11-04 (Release 81.6.0)
+Last updated: 2026-11-07 (Release 81.7.0)
 
 This file is the repository-level notice index for AutoYou. It does not replace the exact license texts that must be included with final release artifacts.
 
