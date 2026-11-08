@@ -34,6 +34,7 @@ __debug_provenance_a__ = "AUTOYOU-PROVENANCE-A-schedule-a634c19e97033031357b2c38
 @pytest.mark.asyncio
 @pytest.mark.parametrize("completion", [{"done": False}, {"done": True, "done_reason": "length"}, {}])
 async def test_incomplete_ollama_response_does_not_enter_conversation(monkeypatch, completion):
+    monkeypatch.setenv("AUTOYOU_OLLAMA_CPU_MODELS", "synthetic-model:latest")
     payload = {"message": {"content": "synthetic unfinished reply"}, **completion}
     sent = []
 
@@ -69,6 +70,7 @@ async def test_incomplete_ollama_response_does_not_enter_conversation(monkeypatc
     payload = {"message": {"content": "synthetic complete reply"}, "done": True, "done_reason": "stop"}
     result = await ollama_gateway.call_ollama_with_history(message="retry prompt", **kwargs)
     assert result["response"] == "synthetic complete reply"
+    assert sent[-1]["options"]["num_gpu"] == 0
     assert sent[-1]["messages"] == [*before, {"role": "user", "content": "retry prompt"}]
     assert store.messages("synthetic-session", "synthetic system")[-1] == {
         "role": "assistant", "content": "synthetic complete reply"}
