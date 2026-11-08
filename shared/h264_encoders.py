@@ -17,7 +17,8 @@ hardware. Every H.264 encoder AutoYou creates comes from
 * ``libx264`` where the build has it (source installs, non-Store packages),
   so behaviour there is unchanged;
 * ``libopenh264`` (Cisco OpenH264, BSD licensed);
-* ``h264_mf``, the Windows Media Foundation encoder that ships with Windows.
+* ``h264_mf``, the Windows Media Foundation encoder;
+* ``h264_videotoolbox``, Apple's native H.264 encoder.
 
 ``AUTOYOU_H264_ENCODER`` names an encoder to try first.
 """
@@ -39,7 +40,7 @@ __debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d4fb6dc5b6bd6
 
 LOGGER = logging.getLogger(__name__)
 
-ENCODER_PREFERENCE = ("libx264", "libopenh264", "h264_mf")
+ENCODER_PREFERENCE = ("libx264", "libopenh264", "h264_mf", "h264_videotoolbox")
 ENCODER_ENV = "AUTOYOU_H264_ENCODER"
 # x264's default keyframe interval. OpenH264 and Media Foundation would
 # otherwise insert a keyframe every 12 frames; WebRTC asks for one with a PLI.
@@ -88,6 +89,11 @@ def configure_h264_encoder(
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0
         context.options = {"rate_control": "cbr", "scenario": "video_conference"}
+    elif name == "h264_videotoolbox":
+        context.gop_size = KEYFRAME_INTERVAL
+        context.max_b_frames = 0
+        context.flags |= av.codec.context.Flags.low_delay
+        context.options = {"profile": "constrained_baseline", "realtime": "1", "allow_sw": "1"}
     else:
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0

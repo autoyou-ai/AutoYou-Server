@@ -80,7 +80,7 @@ def test_selection_fails_clearly_when_no_encoder_works(monkeypatch):
         h264_encoders.select_h264_encoder()
 
 
-@pytest.mark.parametrize("encoder_name", ("libopenh264", "h264_mf"))
+@pytest.mark.parametrize("encoder_name", ("libopenh264", "h264_mf", "h264_videotoolbox"))
 def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch, encoder_name):
     _without_x264(monkeypatch)
     if encoder_name not in h264_encoders.encoder_candidates() or not h264_encoders._opens(encoder_name):

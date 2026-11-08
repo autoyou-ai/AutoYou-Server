@@ -79,31 +79,41 @@ def installed_codec_runtime(monkeypatch, tmp_path):
 
 
 def test_installed_codec_runtime_accepts_existing_lgpl_plan(installed_codec_runtime):
-    assert build.installed_av_problems() == []
+    assert build.installed_av_problems(macos=False) == []
+
+
+def test_macos_runtime_requires_videotoolbox_instead_of_openh264(installed_codec_runtime):
+    av, metadata = installed_codec_runtime
+    av.codecs_available.remove("libopenh264")
+    av.codecs_available.add("h264_videotoolbox")
+    metadata["libavcodec"]["configuration"] = BTBN_LGPL_CONFIGURATION.replace(
+        "--enable-libopenh264", "--enable-videotoolbox"
+    )
+    assert build.installed_av_problems(macos=True) == []
 
 
 @pytest.mark.parametrize("option", build.FORBIDDEN_FFMPEG_OPTIONS)
 def test_installed_codec_runtime_rejects_static_gpl_without_named_dlls(installed_codec_runtime, option):
     _, metadata = installed_codec_runtime
     metadata["libavcodec"]["configuration"] += " " + option
-    assert f"FFmpeg was configured with {option}" in build.installed_av_problems()
+    assert f"FFmpeg was configured with {option}" in build.installed_av_problems(macos=False)
 
 
 def test_installed_codec_runtime_checks_other_loaded_libraries(installed_codec_runtime):
     _, metadata = installed_codec_runtime
     metadata["libavformat"] = {"license": "GPL version 3 or later", "configuration": "--enable-gpl"}
-    assert "libavformat does not report an LGPL license" in build.installed_av_problems()
-    assert "libavformat was configured with --enable-gpl" in build.installed_av_problems()
+    assert "libavformat does not report an LGPL license" in build.installed_av_problems(macos=False)
+    assert "libavformat was configured with --enable-gpl" in build.installed_av_problems(macos=False)
 
 
 @pytest.mark.parametrize("codec", ("libvpx", "libopus", "libopenh264"))
 def test_installed_codec_runtime_requires_the_call_codecs(installed_codec_runtime, codec):
     av, _ = installed_codec_runtime
     av.codecs_available.remove(codec)
-    assert f"PyAV lacks the {codec} codec required for calls" in build.installed_av_problems()
+    assert f"PyAV lacks the {codec} codec required for calls" in build.installed_av_problems(macos=False)
 
 
 def test_installed_codec_runtime_requires_configuration_evidence(installed_codec_runtime):
     _, metadata = installed_codec_runtime
     metadata.clear()
-    assert "PyAV does not report its loaded FFmpeg configuration" in build.installed_av_problems()
+    assert "PyAV does not report its loaded FFmpeg configuration" in build.installed_av_problems(macos=False)

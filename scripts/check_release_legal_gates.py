@@ -423,7 +423,8 @@ def check_runtime_acceptance_markers(report: GateReport) -> None:
 
 
 def check_release_checklist_blockers(
-    report: GateReport, *, allow_open_release_blockers: bool, checklist_path: Path | None = None
+    report: GateReport, *, allow_open_release_blockers: bool, checklist_path: Path | None = None,
+    checklist_platform: str | None = None,
 ) -> None:
     """Read private release evidence only from an explicit external input.
 
@@ -451,6 +452,10 @@ def check_release_checklist_blockers(
         report.fail("The supplied private release review file could not be read.")
         return
     checklist_items = [line for line in lines if re.match(r"^- \[[ xX]\] ", line)]
+    if checklist_platform:
+        checklist_items = [line for line in checklist_items
+                           if not (platform := re.match(r"^- \[[ xX]\] \[(macos|windows)\] ", line))
+                           or platform[1] == checklist_platform]
     if not checklist_items:
         report.fail("The supplied private release review contains no review items.")
         return
@@ -899,6 +904,7 @@ def run_gates(
     artifact_scope: str = "server",
     hosted_legal_base_url: str | None = None,
     release_checklist: Path | None = None,
+    checklist_platform: str | None = None,
 ) -> GateReport:
     report = GateReport()
     scoped_config = _config_for_scope(config, artifact_scope)
@@ -908,7 +914,8 @@ def run_gates(
     check_legacy_legal_wording(report)
     check_runtime_acceptance_markers(report)
     check_release_checklist_blockers(
-        report, allow_open_release_blockers=allow_open_release_blockers, checklist_path=release_checklist
+        report, allow_open_release_blockers=allow_open_release_blockers, checklist_path=release_checklist,
+        checklist_platform=checklist_platform,
     )
     if hosted_legal_base_url:
         check_hosted_legal_pages(report, hosted_legal_base_url)
@@ -935,6 +942,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hosted-legal-base-url", help="Fetch hosted Privacy/Terms/License/Subscription/Support pages and require 2xx plus legal markers.")
     parser.add_argument("--release-checklist", type=Path, help="External private release review file. Defaults to AUTOYOU_RELEASE_CHECKLIST; required for strict release checks.")
+    parser.add_argument("--checklist-platform", choices=("macos", "windows"),
+                        help="Limit platform-tagged checklist items; untagged items still apply")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH)
     return parser
 
@@ -950,6 +959,7 @@ def main() -> int:
         artifact_scope=args.artifact_scope,
         hosted_legal_base_url=args.hosted_legal_base_url,
         release_checklist=args.release_checklist,
+        checklist_platform=args.checklist_platform,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -112,6 +112,25 @@ def test_empty_private_review_cannot_approve_a_release(tmp_path, monkeypatch) ->
     assert not report.ok
 
 
+def test_platform_checklist_keeps_untagged_blockers(tmp_path) -> None:
+    review = tmp_path / "release.md"
+    review.write_text("- [x] [macos] Verified candidate\n- [ ] [windows] Pending candidate\n", encoding="utf-8")
+    for platform, ok in ((None, False), ("windows", False), ("macos", True)):
+        report = legal_gates.GateReport()
+        legal_gates.check_release_checklist_blockers(
+            report, allow_open_release_blockers=False, checklist_path=review, checklist_platform=platform
+        )
+        assert report.ok is ok
+
+    with review.open("a", encoding="utf-8") as handle:
+        handle.write("- [ ] Shared requirement\n")
+    report = legal_gates.GateReport()
+    legal_gates.check_release_checklist_blockers(
+        report, allow_open_release_blockers=False, checklist_path=review, checklist_platform="macos"
+    )
+    assert not report.ok
+
+
 def test_source_profile_records_external_service_terms() -> None:
     config = load_config()
     source_profile = next(
