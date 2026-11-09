@@ -147,7 +147,10 @@ def register_routes(
             session_id, control_id, action = (body.get(key) for key in ("session_id", "control_id", "action"))
             if not isinstance(action, str) or action not in {"approve", "approve_client", "approve_all", "ask", "deny", "revoke", "forget_client"}:
                 raise ValueError
-            if action != "ask" and not (
+            # Older admin pages send a pending request with approve_all. The
+            # separate policy control can enable it without a participant.
+            review_request = action != "ask" and (action != "approve_all" or session_id is not None or control_id is not None)
+            if review_request and not (
                 isinstance(session_id, str) and 0 < len(session_id) <= 128
                 and isinstance(control_id, str) and len(control_id) <= 128
                 and (control_id or action == "forget_client")
@@ -155,7 +158,7 @@ def register_routes(
                 raise ValueError
         except (ValueError, TypeError):
             return JSONResponse(status_code=400, content={"error": "Choose a valid input decision"})
-        if action != "ask" and not await server.WEBRTC.review_screen_control(session_id, control_id, action):
+        if review_request and not await server.WEBRTC.review_screen_control(session_id, control_id, action):
             return JSONResponse(status_code=409, content={"error": "This input request is no longer available"})
         if action in {"approve_all", "ask"}:
             await server._save_admin_permissions({"meet_auto_approve": action == "approve_all"})

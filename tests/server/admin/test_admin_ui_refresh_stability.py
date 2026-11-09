@@ -68,6 +68,9 @@ class _Stub:
         self.picture = _jpeg()
         self.frame_requests: list[dict] = []
         self.feeds = [{"id": "synthetic-cam", "name": "Synthetic Phone", "sequence": 7, "width": 8, "height": 6, "timestamp_ms": 1}]
+        self.interact = {"mode": "off", "participants": [], "inputs": [], "selected": []}
+        self.listen_posts = []
+        self.control_posts = []
 
     def handle(self, route):
         url = urlsplit(route.request.url)
@@ -84,8 +87,18 @@ class _Stub:
         if path == "/api/admin/bootstrap":
             return route.fulfill(status=200, content_type="application/json", body=self.bootstrap)
         if path == "/api/screen-listen":
-            body = {"mode": "off", "participants": [], "inputs": [], "selected": [], "video_feeds": self.feeds}
-            return route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+            if route.request.method == "POST":
+                body = route.request.post_data_json
+                self.listen_posts.append(body)
+                self.interact.update(body)
+                return route.fulfill(json=self.interact)
+            return route.fulfill(json={**self.interact, "video_feeds": self.feeds})
+        if path == "/api/screen-listen/control":
+            body = route.request.post_data_json
+            self.control_posts.append(body)
+            if body["action"] in {"approve_all", "ask"}:
+                self.interact["meet_auto_approve"] = body["action"] == "approve_all"
+            return route.fulfill(json={"success": True})
         if path == "/api/screen-listen/frame.jpg":
             query = parse_qs(url.query)
             self.frame_requests.append({key: values[0] for key, values in query.items()})
@@ -175,8 +188,9 @@ def test_interact_live_video_is_opt_in_light_and_survives_refreshes(monkeypatch)
             page.wait_for_selector('[data-action="interact-video-toggle"]')
             page.wait_for_timeout(1200)
             assert stub.frame_requests == [], "video downloaded before it was turned on"
-            assert "1 device is sending camera video" in page.inner_text('[data-panel-title="Live video"]')
+            assert "1 device is sending camera video" in page.inner_text('[data-panel-title="Participant cameras"]')
 
+            page.add_style_tag(content=".ayu-interact-video-grid { margin-top: 100vh; }")
             page.locator('[data-action="interact-video-toggle"]').click()
             page.wait_for_selector(".ayu-interact-video-tile", state="attached")
             page.wait_for_timeout(1200)
@@ -213,6 +227,50 @@ def test_interact_live_video_is_opt_in_light_and_survives_refreshes(monkeypatch)
 
             # The choice to show video is remembered for the next visit.
             assert json.loads(page.evaluate("localStorage.getItem('autoyou.interact.video')"))["on"] is True
+        finally:
+            browser.close()
+    assert not failures, failures
+
+
+def test_interact_listens_immediately_and_separates_connection_approval_from_policy(monkeypatch):
+    stub = _Stub(_bootstrap_json(monkeypatch))
+    phone = {"id": "synthetic-phone", "name": "Synthetic Phone", "mode": "interactive", "muted": True}
+    tablet = {"id": "synthetic-tablet", "name": "Synthetic Tablet", "mode": "interactive", "muted": False}
+    stub.interact.update(control_enabled=True, participants=[phone, tablet])
+    failures = []
+    with sync_api.sync_playwright() as playwright:
+        browser = _launch(playwright)
+        try:
+            page = _open(browser, stub, failures)
+            page.locator('[data-action="nav:interact"]').first.click()
+            page.get_by_role("button", name="Listen to Synthetic Phone", exact=True).click()
+            page.get_by_text("Muted on device. Ready when they unmute.", exact=True).wait_for()
+            assert stub.listen_posts[-1] == {"mode": "selected", "selected": ["synthetic-phone"]}
+            assert stub.control_posts == [] and stub.frame_requests == []
+            phone["muted"] = False
+            stub.interact["receiving"] = [phone["id"]]
+            page.get_by_text("Playing on this computer", exact=True).wait_for()
+
+            page.get_by_role("button", name="Listen to everyone", exact=True).click()
+            page.get_by_text("Listening to everyone", exact=True).wait_for()
+            page.get_by_role("button", name="Stop listening to Synthetic Phone", exact=True).click()
+            page.get_by_text("Listening to 1 participant", exact=True).wait_for()
+            assert stub.listen_posts[-1] == {"mode": "selected", "selected": ["synthetic-tablet"]}
+            page.get_by_role("button", name="Stop listening to Synthetic Tablet", exact=True).click()
+            page.get_by_text("Listening is off", exact=True).wait_for()
+            assert stub.listen_posts[-1] == {"mode": "off", "selected": []}
+
+            phone.update(control_state="requested", control_id="synthetic-request")
+            request = page.locator("article").filter(has_text="Synthetic Phone")
+            request.get_by_role("button", name="Allow once", exact=True).wait_for()
+            assert request.get_by_role("button", name="Auto-approve paired devices").count() == 0
+            request.get_by_role("button", name="Allow until disconnect", exact=True).click()
+            page.get_by_role("button", name="Auto-approve paired devices", exact=True).click()
+            page.get_by_role("button", name="Require approval", exact=True).wait_for()
+            assert stub.control_posts == [
+                {"action": "approve_client", "session_id": "synthetic-phone", "control_id": "synthetic-request"},
+                {"action": "approve_all"},
+            ]
         finally:
             browser.close()
     assert not failures, failures

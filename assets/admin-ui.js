@@ -233,7 +233,7 @@
         softwareUpdate: { payload: null, loading: false, checked: false },
         profileImage: { key: "", dataUrl: "", loading: false, checked: false },
         localPair: { payload: null, loading: false, error: "" },
-        interact: { payload: null, feeds: [], selected: [], dirty: false, loading: false, saving: false, error: "" },
+        interact: { payload: null, feeds: [], loading: false, saving: false, revision: 0, error: "" },
         mcpSetup: { generatedToken: "", configDownloaded: false },
         selectedAgentName: "",
         sections: {},
@@ -1528,7 +1528,7 @@
 
     function isImmediateAction(action) {
         if (action && (/^(setup-guided-step:|setup-permission:|setup-mode:|settings-section:|agent-category:)/.test(action))) return true;
-        return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-select:") === 0 || action.indexOf("interact-video") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
+        return !action || action.indexOf("nav:") === 0 || action.indexOf("interact-video") === 0 || action === "toggle-nav" || action === "close-nav" || action === "modal-copy" || action === "profile-image-select" || action === "cropper-choose-other" || action === "video-file-select" || action === "chat-file-select" || action.indexOf("setup-step:") === 0 || action.indexOf("setup-profile:") === 0 || action.indexOf("setup-answer:") === 0 || action === "setup-prev" || action === "setup-next" || action.indexOf("setup-open-screen:") === 0 || action === "setup-return" || action === "security-generate-password" || action === "security-toggle-password" || action === "security-copy-password" || action.indexOf("instructions-section:") === 0 || action.indexOf("instructions-mode:") === 0 || action.indexOf("agent-workbench-tab:") === 0 || action.indexOf("live-target-client:") === 0 || action.indexOf("live-target-session:") === 0 || action.indexOf("select-tts-provider:") === 0 || action === "telegram-approve-selected" || action === "boot-sweep-start" || action === "boot-sweep-stop" || action.indexOf("guide-open:") === 0 || action === "close-modal";
     }
 
     async function withPendingAction(action, callback) {
@@ -6658,9 +6658,10 @@
         // Nothing to show while the tab is in the background; resume when it returns.
         if (state.screen !== "interact" || state.interact.loading || state.interact.saving || document.hidden) return;
         state.interact.loading = true;
+        var revision = state.interact.revision;
         try {
             var payload = await requestJson("/api/screen-listen");
-            if (state.screen !== "interact") return;
+            if (state.screen !== "interact" || revision !== state.interact.revision) return;
             // Camera frame numbers change many times a second. Keep them out of the
             // page markup so new pictures never rebuild the page.
             var feeds = Array.isArray(payload.video_feeds) ? payload.video_feeds : [];
@@ -6671,11 +6672,11 @@
             interactVideoSync();
             var changed = JSON.stringify(payload) !== JSON.stringify(state.interact.payload);
             state.interact.payload = payload;
-            if (!state.interact.dirty) state.interact.selected = (payload.selected || []).slice();
+            var hadError = !!state.interact.error;
             state.interact.error = "";
-            if (changed || feedsChanged) renderApp({ passive: true });
+            if (changed || feedsChanged || hadError) renderApp({ passive: true });
         } catch (error) {
-            if (state.screen === "interact" && state.interact.error !== error.message) {
+            if (state.screen === "interact" && revision === state.interact.revision && state.interact.error !== error.message) {
                 state.interact.error = error.message;
                 renderApp({ passive: true });
             }
@@ -6849,12 +6850,12 @@
     function renderInteractVideoPanel() {
         var prefs = interactVideoPrefs();
         var count = (state.interact.feeds || []).length;
-        var controls = "<div class=\"ayu-inline-actions\">" + button(prefs.on ? "Hide live video" : "Show live video", "interact-video-toggle", prefs.on ? "secondary" : "primary", prefs.on ? "eyeOff" : "camera", "sm", "aria-pressed=\"" + String(prefs.on) + "\"")
+        var controls = "<div class=\"ayu-inline-actions\">" + button(prefs.on ? "Hide cameras" : "Show cameras", "interact-video-toggle", prefs.on ? "secondary" : "primary", prefs.on ? "eyeOff" : "camera", "sm")
             + (prefs.on ? button("1 picture a second", "interact-video-rate:low", prefs.rate === "low" ? "primary" : "ghost", "", "sm", "aria-pressed=\"" + String(prefs.rate === "low") + "\"") + button("2 pictures a second", "interact-video-rate:normal", prefs.rate === "normal" ? "primary" : "ghost", "", "sm", "aria-pressed=\"" + String(prefs.rate === "normal") + "\"") : "") + "</div>";
         var body = controls + (prefs.on
             ? "<p class=\"ayu-hint\">Select a picture to enlarge it and update it four times a second. Video pauses while it is out of view or this tab is hidden. Nothing is recorded here.</p><div data-interact-video-slot></div>"
             : "<p class=\"ayu-hint\">" + escapeHtml(count ? count + (count === 1 ? " device is" : " devices are") + " sending camera video. " : "") + "Shows camera video from connected devices on this computer only. It stays off until you turn it on.</p>");
-        return panel("Live video", "Camera video from connected devices", body);
+        return panel("Participant cameras", "View cameras that participants turn on from their devices.", body);
     }
 
     function setScreen(screen, options) {
@@ -9567,7 +9568,7 @@
             + checkbox("videoCall.outbound_remote_desktop", "Use the screen as a video source", "Adds this computer's screen to Computer Video and Remote Desktop.")
             + "</div><div><h3>Mouse and keyboard</h3>"
             + checkbox("videoCall.remote_desktop.control_enabled", "Allow Remote Desktop control", "Allows mouse and keyboard control in full-screen Computer Video. In Meet, participants request control from Interact.")
-            + checkbox("videoCall.remote_desktop.meet_auto_approve", "Always allow all paired clients in Meet", "Automatically grants control when any paired participant requests it. Leave off to review each request.")
+            + checkbox("videoCall.remote_desktop.meet_auto_approve", "Auto-approve desktop control in Meet", "Grants desktop control whenever a paired participant requests it. Turn off to review each request in Interact.")
             + checkbox("videoCall.remote_desktop.game_enabled", "Allow game mode", "Streams the screen and sound with game controls. Remote Desktop input must also be enabled.", getByPath(video, "remote_desktop.control_enabled", false) ? "" : "disabled")
             + "</div></div><div class=\"ayu-inline-actions\">" + button("Save Remote Desktop permissions", "save-permissions-desktop", "primary", "save") + button("Capture quality", "nav:video:sources", "secondary", "video") + button("Open Interact", "nav:interact", "ghost", "agents") + "</div>";
         // AutoYou apps and the admin page reach AutoYou AI through this server
@@ -10869,8 +10870,10 @@
         var data = state.interact.payload || {};
         var people = Array.isArray(data.participants) ? data.participants : [];
         var inputs = Array.isArray(data.inputs) ? data.inputs : [];
+        var mode = data.mode || "off";
+        var selected = data.selected || [];
+        var canListen = people.some(function (person) { return person.mode === "interactive"; });
         var requested = people.filter(function (person) { return person.control_state === "requested"; }).length;
-        var hands = people.filter(function (person) { return person.hand_raised; }).length;
         var receiving = data.receiving || [];
         var rows = people.slice().sort(function (a, b) {
             return Number(b.control_state === "requested") - Number(a.control_state === "requested")
@@ -10879,63 +10882,69 @@
             var id = String(person.id || "");
             var name = person.name || "Connected device";
             var interactive = person.mode === "interactive";
-            var selected = state.interact.selected.indexOf(id) !== -1;
+            var listening = interactive && (mode === "all" || (mode === "selected" && selected.indexOf(id) !== -1));
+            var mic = person.muted ? (listening ? "Muted on device. Ready when they unmute." : "Microphone muted on device")
+                : receiving.indexOf(id) !== -1 ? "Playing on this computer" : listening ? "Waiting for microphone audio" : "Microphone on";
             var target = ":" + encodeURIComponent(id) + ":" + encodeURIComponent(person.control_id || "");
             var control = "";
             if (person.control_state === "requested") {
-                control = "<div class=\"ayu-interact-decision\"><strong>Remote control requested</strong><div class=\"ayu-inline-actions\">"
-                    + button("Allow remote control", "interact-control:approve" + target, "primary", "check", "sm")
+                control = "<div class=\"ayu-interact-decision\"><strong>Wants to use your mouse and keyboard</strong><div class=\"ayu-inline-actions\">"
+                    + button("Allow once", "interact-control:approve" + target, "primary", "check", "sm")
+                    + button("Allow until disconnect", "interact-control:approve_client" + target, "secondary", "", "sm")
                     + button("Decline", "interact-control:deny" + target, "ghost", "close", "sm")
-                    + "</div><div class=\"ayu-inline-actions ayu-interact-remember\">"
-                    + button("Always allow this client", "interact-control:approve_client" + target, "secondary", "", "sm", 'title="Until this client disconnects"')
-                    + button("Always allow all clients", "interact-control:approve_all" + target, "secondary", "", "sm")
                     + "</div></div>";
             } else if (person.control_state === "approved") {
-                control = button("End control", "interact-control:revoke" + target, "secondary", "stop", "sm");
+                control = button("End desktop control", "interact-control:revoke" + target, "secondary", "stop", "sm");
             }
-            if (person.always_allow) {
-                control += button("Forget approval", "interact-control:forget_client" + target, "ghost", "", "sm");
-            }
+            var listenButton = interactive ? button(listening ? "Stop listening" : "Listen", "interact-listen:device:" + encodeURIComponent(id),
+                listening ? "secondary" : "primary", "", "sm", 'aria-label="' + escapeHtml((listening ? "Stop listening to " : "Listen to ") + name) + '"') : "";
+            var status = (person.hand_raised ? badge("Hand raised", "amber") : "")
+                + (person.control_state === "approved" ? badge("Has desktop control", "blue") : "")
+                + (person.always_allow ? badge("Auto-approved until disconnect", "green")
+                    + button("Remove connection approval", "interact-control:forget_client" + target, "ghost", "", "sm") : "")
+                + (person.control_state !== "requested" ? control : "");
             return "<article class=\"ayu-interact-person\"><div class=\"ayu-interact-person-head\"><span aria-hidden=\"true\" class=\"ayu-interact-avatar\">"
                 + escapeHtml(Array.from(name).slice(0, 2).join("").toUpperCase())
                 + "</span><div class=\"ayu-list-copy\"><strong>" + escapeHtml(name)
-                + "</strong><p>" + escapeHtml(interactive ? (person.muted ? "Microphone muted" : receiving.indexOf(id) !== -1 ? "Playing on speaker" : "Microphone live") : person.mode === "game" ? "Playing a game" : "Watching only")
-                + "</p></div>" + (interactive ? button(selected ? "Selected" : "Select", "interact-select:" + encodeURIComponent(id), selected ? "primary" : "secondary", selected ? "check" : "plus", "sm", 'aria-pressed="' + selected + '" aria-label="' + escapeHtml((selected ? "Deselect " : "Select ") + name) + '"') : "") + "</div>"
-                + "<div class=\"ayu-inline-actions\">"
-                + (person.hand_raised ? badge("Hand raised", "amber") : "")
-                + (person.control_state === "approved" ? badge("Controlling desktop", "blue") : "")
-                + (person.always_allow ? badge("Approved for this connection", "green") : "")
-                + (person.control_state !== "approved" && person.layout && person.layout !== "off" ? badge(prettyLabel(person.layout), "purple") : "")
-                + (person.last_input ? badge(person.last_input, "blue") : "")
-                + (person.control_state !== "requested" ? control : "")
-                + "</div>"
-                + (person.typing ? "<div class=\"ayu-interact-draft\"><small>Typing to host</small><div>" + escapeHtml(person.typing) + "</div></div>" : "")
+                + "</strong><p>" + escapeHtml(interactive ? mic : person.mode === "game" ? "Playing a game" : "Watching only")
+                + "</p></div>" + listenButton + "</div>"
+                + (status ? "<div class=\"ayu-inline-actions\">" + status + "</div>" : "")
                 + (person.control_state === "requested" ? control : "") + "</article>";
         }).join("");
-        var feed = inputs.slice(-30).reverse().map(function (input) {
-            var isText = input.kind === "text";
+        var drafts = people.filter(function (person) { return person.typing; }).map(function (person) {
+            return "<div class=\"ayu-interact-draft\"><small>" + escapeHtml((person.name || "A device") + " is typing") + "</small><div>" + escapeHtml(person.typing) + "</div></div>";
+        }).join("");
+        var feed = drafts + inputs.slice(-30).reverse().map(function (input) {
+            var text = input.kind === "text" ? input.value : input.kind === "choice" ? "Chose " + input.value : "Sent " + (input.value || "an input");
             var time = new Date(Number(input.timestamp || 0) * 1000);
             return "<div class=\"ayu-interact-event\"><div><strong>" + escapeHtml(input.name || "A device")
                 + "</strong><small>" + escapeHtml(time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) + "</small></div>"
-                + "<p>" + escapeHtml(isText ? input.value : "Sent " + (input.value || "an input")) + "</p></div>";
+                + "<p>" + escapeHtml(text) + "</p></div>";
         }).join("");
-        var mode = data.mode || "off";
-        var listen = [["off", "Off"], ["all", "All unmuted"], ["selected", "Selected"]].map(function (item) {
-            return button(item[1], "interact-save:" + item[0], mode === item[0] ? "primary" : "secondary", "", "sm", 'aria-pressed="' + (mode === item[0]) + '"');
-        }).join("");
-        var policy = !data.control_enabled ? "Remote control off" : data.meet_auto_approve ? "All paired clients auto-approved" : "Host approval required";
-        return "<div class=\"ayu-screen\"><div class=\"ayu-hero ayu-interact-hero\"><div class=\"ayu-hero-copy\"><span class=\"ayu-interact-kicker\">REMOTE DESKTOP MEET</span><h1>Interact</h1><p>See who’s connected, read what they type, and decide who can use this computer’s mouse and keyboard.</p></div><div class=\"ayu-inline-actions\">"
-            + button("Permissions", "nav:permissions:desktop", "secondary", "shield") + button("Refresh", "interact-refresh", "ghost", "refresh") + "</div></div>"
-            + (state.interact.error ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(state.interact.error) + "</div>" : "")
-            + "<div class=\"ayu-interact-status\"><div class=\"ayu-inline-actions\">" + badge(people.length + (people.length === 1 ? " participant" : " participants"), "purple")
-            + (hands ? badge(hands + (hands === 1 ? " raised hand" : " raised hands"), "amber") : "")
-            + (requested ? badge(requested + (requested === 1 ? " control request" : " control requests"), "amber") : "")
-            + badge(policy, data.meet_auto_approve && data.control_enabled ? "blue" : "gray") + "</div>"
-            + (data.meet_auto_approve && data.control_enabled ? button("Ask before granting control", "interact-control:ask", "secondary", "shield", "sm") : "") + "</div>"
+        var audio = mode === "all" ? "Listening to everyone" : mode === "selected" && selected.length
+            ? "Listening to " + selected.length + (selected.length === 1 ? " participant" : " participants") : "Listening is off";
+        var listen = (canListen && mode !== "all" ? button("Listen to everyone", "interact-listen:all", "secondary", "", "sm") : "")
+            + (mode !== "off" ? button("Stop all audio", "interact-listen:off", "ghost", "", "sm") : "");
+        var policy = !state.interact.payload ? "Checking permissions" : !data.control_enabled ? "Control unavailable"
+            : data.meet_auto_approve ? "Auto-approval on" : "Approval required";
+        var policyHelp = data.control_enabled
+            ? (data.meet_auto_approve ? "Paired devices get control when they request it. Requiring approval applies to future requests."
+                : "Review individual requests below. Enabling auto-approval grants pending and future requests from paired devices.")
+            : "Check Desktop permissions to enable control and see whether this computer supports it.";
+        var policyButton = data.control_enabled ? button(data.meet_auto_approve ? "Require approval" : "Auto-approve paired devices",
+            "interact-control:" + (data.meet_auto_approve ? "ask" : "approve_all"), "secondary", "shield", "sm") : "";
+        var error = state.interact.error || data.error;
+        return "<div class=\"ayu-screen\"><div class=\"ayu-hero ayu-interact-hero\"><div class=\"ayu-hero-copy\"><span class=\"ayu-interact-kicker\">REMOTE DESKTOP MEET</span><h1>Interact</h1><p>Listen to participants, view their cameras, and review requests to control this computer.</p></div><div class=\"ayu-inline-actions\">"
+            + button("Desktop permissions", "nav:permissions:desktop", "secondary", "shield") + button("Refresh", "interact-refresh", "ghost", "refresh") + "</div></div>"
+            + (error ? "<div class=\"ayu-note ayu-note-red\" role=\"alert\">" + escapeHtml(error) + "</div>" : "")
+            + "<div class=\"ayu-interact-status\"><div class=\"ayu-list-copy\"><strong>Desktop control</strong><p><b>" + escapeHtml(policy) + ".</b> "
+            + escapeHtml(policyHelp) + "</p></div><div class=\"ayu-inline-actions\">"
+            + (requested ? badge(requested + (requested === 1 ? " request waiting" : " requests waiting"), "amber") : "")
+            + policyButton + "</div></div>"
             + "<div class=\"ayu-interact-grid\">"
-            + panel("Participants", "Choose which microphones to play on this computer. Meet audio stays here.", "<div class=\"ayu-interact-listen\"><strong>Listen on this computer</strong><div class=\"ayu-inline-actions\">" + listen + "</div></div>"
+            + panel("Participants", "Participants unmute on their own devices. Listen plays their microphones on this computer.", "<div class=\"ayu-interact-listen\"><strong>" + audio + "</strong><div class=\"ayu-inline-actions\">" + listen + "</div></div>"
                 + "<div class=\"ayu-interact-people\">" + (rows || "<div class=\"ayu-empty\">No participants yet. Open Remote Desktop Meet on a paired device.</div>") + "</div>")
-            + panel("Activity", "Messages, choices, and gamepad inputs from connected devices.", "<div class=\"ayu-interact-feed\" data-keep-scroll=\"interact-inputs\">" + (feed || "<div class=\"ayu-empty\">New input will appear here.</div>") + "</div>")
+            + panel("Activity", "Messages, choices, and gamepad inputs appear here when participants send them.", "<div class=\"ayu-interact-feed\" data-keep-scroll=\"interact-inputs\">" + (feed || "<div class=\"ayu-empty\">No messages or inputs yet.</div>") + "</div>")
             + "</div>" + renderInteractVideoPanel() + "</div>";
     }
 
@@ -11354,13 +11363,18 @@
         if (action === "interact-refresh") { await refreshInteract(); return; }
         if (action.indexOf("interact-control:") === 0) {
             var decision = action.split(":");
-            if (decision[1] !== "ask" && decision.length !== 4) return;
+            var globalDecision = decision[1] === "ask" || decision[1] === "approve_all";
+            if (state.interact.saving || (!globalDecision && decision.length !== 4)) return;
+            var review = { action: decision[1] };
+            if (!globalDecision) {
+                review.session_id = decodeURIComponent(decision[2]);
+                review.control_id = decodeURIComponent(decision[3]);
+            }
             state.interact.saving = true;
+            state.interact.revision += 1;
             try {
-                await postJson("/api/screen-listen/control", {
-                    action: decision[1], session_id: decodeURIComponent(decision[2] || ""), control_id: decodeURIComponent(decision[3] || "")
-                });
-                if (decision[1] === "approve_all" || decision[1] === "ask") {
+                await postJson("/api/screen-listen/control", review);
+                if (globalDecision) {
                     var allowAll = decision[1] === "approve_all";
                     setByPath(state.forms, "videoCall.remote_desktop.meet_auto_approve", allowAll);
                     setByPath(state.bootstrap, "config.video_call.remote_desktop.meet_auto_approve", allowAll);
@@ -11386,28 +11400,30 @@
             renderApp();
             return;
         }
-        if (action.indexOf("interact-select:") === 0) {
-            var chosen = decodeURIComponent(action.slice("interact-select:".length));
-            var connected = ((state.interact.payload || {}).participants || []).some(function (person) {
-                return person.mode === "interactive" && person.id === chosen;
-            });
-            if (!connected) return;
-            var selected = state.interact.selected;
-            state.interact.selected = selected.indexOf(chosen) === -1
-                ? selected.concat([chosen]) : selected.filter(function (id) { return id !== chosen; });
-            state.interact.dirty = true;
-            renderApp();
-            return;
-        }
-        if (action.indexOf("interact-save:") === 0) {
-            var mode = action.slice("interact-save:".length);
-            if (["off", "all", "selected"].indexOf(mode) === -1) return;
+        if (action.indexOf("interact-listen:") === 0) {
+            if (state.interact.saving) return;
+            var listen = action.split(":");
+            var mode = listen[1];
+            var selected = [];
+            if (mode === "device") {
+                var data = state.interact.payload || {};
+                var chosen = decodeURIComponent(listen[2] || "");
+                var connected = (data.participants || []).filter(function (person) {
+                    return person.mode === "interactive";
+                }).map(function (person) { return person.id; });
+                if (connected.indexOf(chosen) === -1) return;
+                if (data.mode === "all") selected = connected;
+                if (data.mode === "selected") {
+                    selected = (data.selected || []).filter(function (id) { return connected.indexOf(id) !== -1; });
+                }
+                selected = selected.indexOf(chosen) === -1 ? selected.concat(chosen) : selected.filter(function (id) { return id !== chosen; });
+                mode = selected.length ? "selected" : "off";
+            } else if (mode !== "off" && mode !== "all") return;
             state.interact.saving = true;
+            state.interact.revision += 1;
             try {
-                var saved = await postJson("/api/screen-listen", { mode: mode, selected: state.interact.selected });
+                var saved = await postJson("/api/screen-listen", { mode: mode, selected: selected });
                 state.interact.payload = saved;
-                state.interact.selected = (saved.selected || []).slice();
-                state.interact.dirty = false;
                 state.interact.error = "";
                 renderApp();
             } finally { state.interact.saving = false; }

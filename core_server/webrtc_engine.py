@@ -2721,7 +2721,7 @@ class WebRTCManager:
             lease = self._remote_desktop_control_lease_for_session(str(session["id"]))
             if request is not None:
                 participant.update(control_state="requested", control_id=request["control_id"])
-            elif lease is not None:
+            elif lease is not None and not lease.get("approval_status_pending"):
                 participant.update(control_state="approved", control_id=lease["control_id"])
             participants.append(participant)
         # Players in a game session stream this computer without a microphone; Interact shows
@@ -4265,6 +4265,8 @@ class WebRTCManager:
       lease["held_buttons"] = set()
       lease["held_keys"] = set()
       lease["expires_at"] = 0.0
+      if lease.get("approval_status_pending"):
+        return True  # The grant never went out and no input could be held.
       if lease.get("mode") == "game":
         self._stop_hosted_game_audio(lease)
         self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
@@ -4393,7 +4395,7 @@ class WebRTCManager:
         await _runtime.asyncio.sleep(0.05)
         targets = {(str(lease["target_session_id"]), str(lease["control_id"]))
                    for lease in self.remote_desktop_control_leases_by_session.values()
-                   if lease.get("mode") == "desktop"}
+                   if lease.get("mode") == "desktop" and not lease.get("approval_status_pending")}
         if not targets:
           return
         position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
@@ -4548,9 +4550,16 @@ class WebRTCManager:
             reason="Waiting for the computer to approve input.",
           )
           return
+        cursor_position = None
         if screen is not None:
           screen.pop("control_request", None)
-          self._finish_screen_draft(screen)
+          cursor_position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
+          if self._screen_session_for_session(session_id) is not screen or screen["mode"] != "interactive":
+            return
+          if cursor_position is None:
+            reason = await self._remote_desktop_input_failure_reason("The computer's cursor is unavailable for control.")
+            await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=False, reason=reason)
+            return
         lease = self._store_remote_desktop_control_lease(
           session_id,
           control_id=control_id,
@@ -4558,8 +4567,8 @@ class WebRTCManager:
           track=track,
           mode=str(normalized.get("mode") or "desktop"),
         )
-        if lease["mode"] == "desktop":
-          self._schedule_remote_desktop_cursor_update()
+        if screen is not None:
+          lease["approval_status_pending"] = True
         if lease["mode"] == "game":
           lease["engine_input"] = self.game_input_hub.connected
           lease["host_input_available"] = host_input_available
@@ -4568,11 +4577,20 @@ class WebRTCManager:
           lease["mapping"] = json.dumps(track.remote_desktop_mapping(), sort_keys=True)
           if lease["engine_input"]:
             self._publish_game_session_start(session_id, lease)
-        await self._send_remote_desktop_control_status(
+        sent = await self._send_remote_desktop_control_status(
           session_id,
           control_id=control_id,
           active=True,
+          cursor_position=cursor_position,
         )
+        if screen is not None:
+          if not sent:
+            await self._release_remote_desktop_control_locked(session_id, control_id, expected_lease=lease)
+            return
+          lease.pop("approval_status_pending")
+          self._finish_screen_draft(screen)
+        if lease["mode"] == "desktop":
+          self._schedule_remote_desktop_cursor_update()
 
     async def review_screen_control(self, session_id: str, control_id: str, action: str) -> bool:
         screen = self.screen_sessions.get(session_id)
@@ -4705,19 +4723,22 @@ class WebRTCManager:
       control_id = str(lease.get("control_id") or "")
       await self._probe_remote_desktop_input_backend(refresh=True)
       await self._release_remote_desktop_control_locked(session_id, control_id)
-      reason = "The server host stopped accepting remote input."
-      try:
-        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
-
-        reason = await _runtime.asyncio.to_thread(secure_desktop_unavailable_hint) or reason
-      except Exception:
-        pass
+      reason = await self._remote_desktop_input_failure_reason("The server host stopped accepting remote input.")
       await self._send_remote_desktop_control_status(
         session_id,
         control_id=control_id,
         active=False,
         reason=reason,
       )
+
+    @staticmethod
+    async def _remote_desktop_input_failure_reason(fallback: str) -> str:
+      try:
+        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
+
+        return await _runtime.asyncio.to_thread(secure_desktop_unavailable_hint) or fallback
+      except Exception:
+        return fallback
 
     async def _handle_remote_desktop_input(
       self,
