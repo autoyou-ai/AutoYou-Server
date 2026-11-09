@@ -10903,18 +10903,19 @@
                 + (person.always_allow ? badge("Auto-approved until disconnect", "green")
                     + button("Remove connection approval", "interact-control:forget_client" + target, "ghost", "", "sm") : "")
                 + (person.control_state !== "requested" ? control : "");
+            var text = person.typing || person.recent_text;
             return "<article class=\"ayu-interact-person\"><div class=\"ayu-interact-person-head\"><span aria-hidden=\"true\" class=\"ayu-interact-avatar\">"
                 + escapeHtml(Array.from(name).slice(0, 2).join("").toUpperCase())
                 + "</span><div class=\"ayu-list-copy\"><strong>" + escapeHtml(name)
                 + "</strong><p>" + escapeHtml(interactive ? mic : person.mode === "game" ? "Playing a game" : "Watching only")
                 + "</p></div>" + listenButton + "</div>"
                 + (status ? "<div class=\"ayu-inline-actions\">" + status + "</div>" : "")
-                + (person.control_state === "requested" ? control : "") + "</article>";
+                + (person.control_state === "requested" ? control : "")
+                + (text ? "<div class=\"ayu-interact-text\"><small>" + (person.typing ? "Typing…" : "Recently sent")
+                    + "</small><p dir=\"auto\">" + escapeHtml(text) + "</p></div>" : "")
+                + "</article>";
         }).join("");
-        var drafts = people.filter(function (person) { return person.typing; }).map(function (person) {
-            return "<div class=\"ayu-interact-draft\"><small>" + escapeHtml((person.name || "A device") + " is typing") + "</small><div>" + escapeHtml(person.typing) + "</div></div>";
-        }).join("");
-        var feed = drafts + inputs.slice(-30).reverse().map(function (input) {
+        var feed = inputs.slice(-30).reverse().map(function (input) {
             var text = input.kind === "text" ? input.value : input.kind === "choice" ? "Chose " + input.value : "Sent " + (input.value || "an input");
             var time = new Date(Number(input.timestamp || 0) * 1000);
             return "<div class=\"ayu-interact-event\"><div><strong>" + escapeHtml(input.name || "A device")

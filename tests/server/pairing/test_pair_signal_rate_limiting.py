@@ -7,6 +7,7 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
+import asyncio
 from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
@@ -201,6 +202,45 @@ def test_authenticated_offer_uses_tighter_offer_limiter(monkeypatch):
     assert first.status_code == 200
     assert second.status_code == 429
     assert handle_offer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_auth_signaling_shares_the_admin_loop_for_the_life_of_the_peer(monkeypatch):
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(server.STATE, "_main_loop", loop)
+    monkeypatch.setattr(server, "_is_authenticated_pair_session", lambda session_id: session_id == "synthetic-peer")
+    candidates = []
+    offer_seen = False
+
+    async def offer(session_id, payload):
+        nonlocal offer_seen
+        assert asyncio.get_running_loop() is loop
+        offer_seen = True
+        return {"type": "answer", "sdp": "v=0"}
+
+    async def candidate(session_id, payload):
+        assert asyncio.get_running_loop() is loop and offer_seen
+        candidates.append(payload)
+        return True
+
+    def pop_candidates(session_id):
+        assert asyncio.get_running_loop() is loop
+        result = candidates.copy()
+        candidates.clear()
+        return result
+
+    monkeypatch.setattr(server, "WEBRTC", SimpleNamespace(
+        handle_session_offer=offer, handle_session_candidate=candidate,
+        pop_outgoing_trickle_candidates=pop_candidates,
+    ))
+    client = TestClient(server.auth_app)
+    url = "/signal/synthetic-peer"
+    response = await asyncio.to_thread(client.post, url, json={"type": "offer", "sdp": "v=0"})
+    assert response.status_code == 200 and response.json()["type"] == "answer"
+    response = await asyncio.to_thread(client.post, url, json=_candidate_payload(4))
+    assert response.status_code == 200
+    response = await asyncio.to_thread(client.get, url)
+    assert response.json() == {"success": True, "messages": [_candidate_payload(4)]}
 
 
 @pytest.mark.asyncio

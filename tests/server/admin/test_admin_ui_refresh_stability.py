@@ -276,6 +276,43 @@ def test_interact_listens_immediately_and_separates_connection_approval_from_pol
     assert not failures, failures
 
 
+def test_interact_places_live_and_recent_text_inside_the_sending_device(monkeypatch):
+    stub = _Stub(_bootstrap_json(monkeypatch))
+    text = "Hello <b>world</b>"
+    phone = {"id": "synthetic-phone", "name": "Synthetic Phone", "mode": "interactive", "typing": text}
+    tablet = {"id": "synthetic-tablet", "name": "Synthetic Tablet", "mode": "interactive"}
+    stub.interact["participants"] = [phone, tablet]
+    failures = []
+    with sync_api.sync_playwright() as playwright:
+        browser = _launch(playwright)
+        try:
+            page = _open(browser, stub, failures)
+            page.locator('[data-action="nav:interact"]').first.click()
+            cards = page.locator(".ayu-interact-person")
+            preview = cards.filter(has_text=phone["name"]).locator(".ayu-interact-text")
+            activity = page.locator(".ayu-interact-feed")
+            preview.get_by_text("Typing…", exact=True).wait_for()
+            assert preview.locator("p").inner_text() == text
+            assert cards.filter(has_text=tablet["name"]).get_by_text(text).count() == 0
+            assert activity.get_by_text(text).count() == 0
+
+            del phone["typing"]
+            phone["recent_text"] = text
+            stub.interact["inputs"] = [{
+                "session_id": phone["id"], "name": phone["name"], "kind": "text",
+                "value": text, "timestamp": time.time(),
+            }]
+            preview.get_by_text("Recently sent", exact=True).wait_for()
+            activity.get_by_text(text, exact=True).wait_for()
+
+            del phone["recent_text"]
+            preview.wait_for(state="detached")
+            assert activity.get_by_text(text, exact=True).count() == 1
+        finally:
+            browser.close()
+    assert not failures, failures
+
+
 def test_every_built_in_agent_is_listed_in_one_category_and_boot_lists_startup_items(monkeypatch):
     from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
 

@@ -89,6 +89,8 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
 _runtime: ModuleType
 _GAME_INPUT_UNAVAILABLE = "Game input is unavailable. Connect a local game engine or enable host input."
+_SCREEN_TEXT_IDLE_SECONDS = 5
+_SCREEN_RECENT_TEXT_SECONDS = 5
 _MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
                     b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
                     b'media-src data:; connect-src \'none\'; form-action \'none\'">')
@@ -2695,7 +2697,9 @@ class WebRTCManager:
         value = session.pop("typing", "")
         at = session.pop("typing_at", 0.0)
         if value.strip():
-            self._record_screen_input(session, "text", value, at)
+            # A late poll must not make an old idle draft appear freshly sent.
+            sent_at = min(_runtime.time.time(), at + _SCREEN_TEXT_IDLE_SECONDS)
+            self._record_screen_input(session, "text", value, sent_at)
 
     def _clear_idle_meet_capture(self) -> None:
         if not any(screen["mode"] in {"watch", "interactive"} for screen in self.screen_sessions.values()):
@@ -2711,7 +2715,7 @@ class WebRTCManager:
         for session in self.screen_sessions.values():
             if session["mode"] not in {"watch", "interactive"}:
                 continue
-            if now - session.get("typing_at", 0.0) >= 5:
+            if now - session.get("typing_at", 0.0) >= _SCREEN_TEXT_IDLE_SECONDS:
                 self._finish_screen_draft(session)
             participant = {key: value for key, value in session.items() if key not in {"control_request", "typing_at"}}
             participant["always_allow"] = self._screen_client_always_allowed(session["id"])
@@ -2724,6 +2728,13 @@ class WebRTCManager:
             elif lease is not None and not lease.get("approval_status_pending"):
                 participant.update(control_state="approved", control_id=lease["control_id"])
             participants.append(participant)
+        recent_text = {
+            entry["session_id"]: entry["value"] for entry in self.screen_inputs
+            if entry["kind"] == "text" and now - entry["timestamp"] < _SCREEN_RECENT_TEXT_SECONDS
+        }
+        for participant in participants:
+            if participant["mode"] == "interactive" and participant["id"] in recent_text:
+                participant["recent_text"] = recent_text[participant["id"]]
         # Players in a game session stream this computer without a microphone; Interact shows
         # them so the person here can read what each player is pressing.
         listed = {str(person["id"]) for person in participants}
@@ -11491,7 +11502,7 @@ class WebRTCManager:
                     char in "\t\n" or 32 <= ord(char) < 127 or ord(char) >= 160 and not 0xD800 <= ord(char) <= 0xDFFF
                     for char in value
                 ):
-                    if now - session.get("typing_at", 0.0) >= 5:
+                    if now - session.get("typing_at", 0.0) >= _SCREEN_TEXT_IDLE_SECONDS:
                         self._finish_screen_draft(session)
                     session.update(typing=value, typing_at=now)
                 return

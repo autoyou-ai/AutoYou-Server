@@ -320,6 +320,29 @@ def register_routes(
             "session": auth_result.get("session") or {},
         }
 
+    async def _dispatch_webrtc_signal(session_id: str, signal_type: str, payload: Optional[Dict[str, Any]] = None) -> Any:
+        async def apply():
+            if signal_type == "candidate":
+                return await server.WEBRTC.handle_session_candidate(session_id, payload)
+            queued = server.WEBRTC.pop_outgoing_trickle_candidates(session_id)
+            if signal_type == "offer":
+                return await server.WEBRTC.handle_session_offer(session_id, payload)
+            return queued
+
+        # The Auth listener runs on a worker thread; peer and admin control tasks share the main loop.
+        loop = server.STATE._main_loop
+        if loop is None or loop is asyncio.get_running_loop():
+            return await apply()
+        if not loop.is_running():
+            raise RuntimeError("WebRTC event loop is unavailable")
+        signal = apply()
+        try:
+            future = asyncio.run_coroutine_threadsafe(signal, loop)
+        except RuntimeError:
+            signal.close()
+            raise
+        return await asyncio.wrap_future(future)
+
     @auth_app.post("/signal/{session_id}")
     async def signal_endpoint(session_id: str, request: Request):
         """Handle offer/candidate signaling for OTP pairing flow."""
@@ -355,10 +378,7 @@ def register_routes(
 
         try:
             if signal_type == "offer":
-                # Clear stale queued candidates from any previous attempt for this session.
-                server.WEBRTC.pop_outgoing_trickle_candidates(session_id)
-                answer = await server.WEBRTC.handle_session_offer(session_id, signal_data)
-                return answer
+                return await _dispatch_webrtc_signal(session_id, "offer", signal_data)
 
             if signal_type == "candidate":
                 candidate_payload = signal_data
@@ -369,7 +389,7 @@ def register_routes(
                         "sdpMid": signal_data.get("sdpMid"),
                         "sdpMLineIndex": signal_data.get("sdpMLineIndex"),
                     }
-                success = await server.WEBRTC.handle_session_candidate(session_id, candidate_payload)
+                success = await _dispatch_webrtc_signal(session_id, "candidate", candidate_payload)
                 if success:
                     return {"success": True, "message": "ICE candidate processed"}
                 return JSONResponse(status_code=400, content={"success": False, "error": "Failed to process ICE candidate"})
@@ -384,7 +404,7 @@ def register_routes(
         """Compatibility polling endpoint for trickle ICE clients."""
         if not server._is_authenticated_pair_session(session_id):
             return JSONResponse(status_code=401, content={"success": False, "error": "Session not authenticated"})
-        messages = server.WEBRTC.pop_outgoing_trickle_candidates(session_id)
+        messages = await _dispatch_webrtc_signal(session_id, "poll")
         return {"success": True, "messages": messages}
 
     @admin_app.get("/api/local-pair-info")

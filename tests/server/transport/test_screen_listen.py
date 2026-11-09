@@ -258,13 +258,24 @@ def test_meet_hands_and_unicode_drafts_are_independent_of_microphone(monkeypatch
         snapshot = manager.screen_listen_snapshot()
         assert snapshot["participants"][0]["hand_raised"] is False
         assert "typing" not in snapshot["participants"][0]
+        assert snapshot["participants"][0]["recent_text"] == "Hello"
+        assert "recent_text" not in snapshot["participants"][1]
         assert [(row["session_id"], row["kind"], row["value"]) for row in snapshot["inputs"]] == [
             (first, "text", "Hello"),
         ]
+        manager.screen_inputs[-1]["timestamp"] -= 5
+        expired = manager.screen_listen_snapshot()
+        assert "recent_text" not in expired["participants"][0]
+        assert expired["inputs"][-1]["value"] == "Hello"
         await send("text", "erased", "edit")
         await send("text", "", "edit")
         await send("text", "", "end")
         assert len(manager.screen_listen_snapshot()["inputs"]) == 1
+        await send("text", "Sent directly", "edit")
+        await send("text", "", "end")
+        snapshot = manager.screen_listen_snapshot()
+        assert snapshot["participants"][0]["recent_text"] == "Sent directly"
+        assert snapshot["inputs"][-1]["value"] == "Sent directly"
         manager._handle_call_remote_desktop_keyboard.assert_not_awaited()
 
     asyncio.run(run())
