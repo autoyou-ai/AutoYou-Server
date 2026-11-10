@@ -1765,6 +1765,7 @@ async def start_or_restart_telegram():
         app.add_handler(runtime.CommandHandler("memory", runtime.context_command))
         # Apply ACL to text messages as well
         if runtime.filters is not None:
+            app.add_handler(runtime.MessageHandler(runtime.filters.ALL, runtime.telegram_contact_message), group=-1)
             base_msg_filter = (runtime.filters.TEXT & ~runtime.filters.COMMAND)
             app.add_handler(runtime.MessageHandler(base_msg_filter, runtime.log_any_text))
             app.add_handler(runtime.MessageHandler(runtime.filters.PHOTO, runtime.log_photo))

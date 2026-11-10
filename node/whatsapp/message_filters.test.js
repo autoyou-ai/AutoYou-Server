@@ -10,12 +10,25 @@ import test from 'node:test';
 import {
     classifyWhatsAppMessage,
     createOutboundMediaGuard,
+    directContactAddress,
     hasDeviceSignature,
     isIgnorableChannelMetadataLookupError,
     isIgnorableContactMetadataLookupError,
     messageFingerprint,
     normalizeWhatsAppAddress,
 } from './message_filters.js';
+
+test('only live direct inbound contacts can enter contact discovery', () => {
+    const from = '12025550101@c.us';
+    const chat = { isGroup: false, id: { _serialized: from } };
+    const message = { from, id: { _serialized: 'synthetic-event' } };
+    const inbound = { fromMe: false, selfChat: false };
+    assert.equal(directContactAddress(message, chat, inbound), from);
+    assert.equal(directContactAddress(message, { ...chat, isGroup: true }, inbound), null);
+    assert.equal(directContactAddress(message, chat, { ...inbound, fromMe: true }), null);
+    assert.equal(directContactAddress({ ...message, isForwarded: true }, chat, inbound), null);
+    assert.equal(directContactAddress({ ...message, from: '12025550102@lid' }, chat, inbound), null);
+});
 
 test('recognizes the AutoYou device signature on text and media captions', () => {
     assert.equal(hasDeviceSignature('reply\n~ AutoYou-Test', 'AutoYou-Test'), true);

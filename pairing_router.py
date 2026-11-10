@@ -627,6 +627,7 @@ class PairingRouter:
         *,
         identity_sender_id: Optional[str] = None,
         auth_profile: Optional[Dict[str, Any]] = None,
+        approved_contact: bool = False,
     ) -> Optional[str]:
         """Process a message and return response text if it is a pairing command.
 
@@ -649,6 +650,7 @@ class PairingRouter:
                 platform,
                 sender_id,
                 identity_sender_id=identity_sender_id,
+                approved_contact=approved_contact,
             )
         finally:
             if token is not None:
@@ -661,6 +663,7 @@ class PairingRouter:
         sender_id: str,
         *,
         identity_sender_id: Optional[str] = None,
+        approved_contact: bool = False,
     ) -> Optional[str]:
         text = self._normalize_pairing_text(message_text)
         if not text:
@@ -678,6 +681,7 @@ class PairingRouter:
                 platform=platform,
                 sender_id=sender_id,
                 identity_sender_id=identity_sender_id,
+                include_totp_secret=not approved_contact,
             )
         if text.startswith("/pair") or text.startswith("/otp_pair"):
             # /otp_pair is a pure alias for /pair - some OpenClaw/Telegram
@@ -693,6 +697,7 @@ class PairingRouter:
                 sender_id=sender_id,
                 identity_sender_id=identity_sender_id,
                 totp_code=trailing_totp_code,
+                approved_contact=approved_contact,
             )
         if text.startswith("/autopair_hello"):
             return await self._handle_autopair_hello_command(
@@ -707,6 +712,7 @@ class PairingRouter:
                 platform=platform,
                 sender_id=sender_id,
                 identity_sender_id=identity_sender_id,
+                approved_contact=approved_contact,
             )
         if text.startswith("/autopair"):
             return await self._handle_autopair_command(
@@ -812,6 +818,8 @@ class PairingRouter:
         sender_id: str,
         identity_sender_id: Optional[str] = None,
         totp_code: Optional[str] = None,
+        *,
+        approved_contact: bool = False,
     ) -> str:
         """Handle /pair (or /otp_pair) command using tunnelmole helpers.
 
@@ -834,6 +842,8 @@ class PairingRouter:
           reverse-proxy connection or explicit operator stop.
         """
         mode = self._current_security_mode()
+        if approved_contact and mode != "normal" and self._get_security_tier() == SECURITY_TIER_A:
+            return "This server requires /pair_hello for OTP pairing."
         if is_secure_professional_mode(mode):
             allowed, error = await self._verify_autopair_totp_online(
                 platform, sender_id, totp_code, identity_sender_id=identity_sender_id
@@ -845,6 +855,7 @@ class PairingRouter:
             platform=platform,
             sender_id=sender_id,
             identity_sender_id=identity_sender_id,
+            include_totp_secret=not approved_contact,
         )
         if error or body is None:
             return f"/pair command received. {error or 'Pairing helpers not available.'}"
@@ -861,6 +872,7 @@ class PairingRouter:
         platform: str,
         sender_id: str,
         identity_sender_id: Optional[str] = None,
+        include_totp_secret: bool = True,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Start/extend the tunnel, generate the pairing code, and build the
         plaintext {otp, url, totp_secret?} body shared by /pair (B-Tier) and
@@ -973,13 +985,12 @@ class PairingRouter:
             body: Dict[str, Any] = {"url": public_url if public_url else None}
         else:
             body = {"otp": otp, "url": public_url if public_url else None}
-            totp_secret = self._pair_totp_secret_for_response(
-                platform,
-                sender_id,
-                identity_sender_id=identity_sender_id,
-            )
-            if totp_secret:
-                body["totp_secret"] = totp_secret
+            if include_totp_secret:
+                totp_secret = self._pair_totp_secret_for_response(
+                    platform, sender_id, identity_sender_id=identity_sender_id,
+                )
+                if totp_secret:
+                    body["totp_secret"] = totp_secret
         return body, None
 
     async def _handle_pair_hello_command(
@@ -989,6 +1000,7 @@ class PairingRouter:
         platform: str,
         sender_id: str,
         identity_sender_id: Optional[str] = None,
+        include_totp_secret: bool = True,
     ) -> str:
         """Handle /pair_hello: A-Tier OTP Pair collapsed into one round trip.
 
@@ -1031,6 +1043,7 @@ class PairingRouter:
             platform=platform,
             sender_id=sender_id,
             identity_sender_id=identity_sender_id,
+            include_totp_secret=include_totp_secret,
         )
         if error or body is None:
             return f"/pair_hello received. {error or 'Pairing helpers not available.'}"
@@ -1271,6 +1284,8 @@ class PairingRouter:
         platform: str,
         sender_id: str,
         identity_sender_id: Optional[str] = None,
+        *,
+        approved_contact: bool = False,
     ) -> str:
         payload_text = self._extract_command_body(text, "/autopair_candidates")
         if not payload_text:
@@ -1300,6 +1315,12 @@ class PairingRouter:
         ).strip()
         if not session_id:
             return "Missing session_id for /autopair_candidates"
+
+        if approved_contact:
+            password = self._current_password()
+            if (session_id != sender_id or not password or not self._generate_hash
+                    or not hmac.compare_digest(self._generate_hash(password), str(payload.get("hash") or ""))):
+                return "Authentication failed"
 
         await self.add_remote_ice_candidates(session_id, candidates, platform=platform)
         return self.FRAGMENT_CONSUMED

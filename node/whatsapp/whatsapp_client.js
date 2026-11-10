@@ -25,11 +25,13 @@ import {
 import {
     classifyWhatsAppMessage,
     createOutboundMediaGuard,
+    directContactAddress,
     hasDeviceSignature,
     isIgnorableChannelMetadataLookupError,
     isIgnorableContactMetadataLookupError,
     messageFingerprint,
     normalizeWhatsAppAddress,
+    serializedMessageId,
 } from './message_filters.js';
 import { installWWebJsRecoveryGuards } from './wwebjs_recovery.js';
 
@@ -43,6 +45,8 @@ const CACHE_PATH = process.env.WWEBJS_CACHE_PATH || path.resolve(path.join(__dir
 
 // Configuration from environment variables
 const WEBSOCKET_PORT = process.env.WEBSOCKET_PORT || 8083;
+const CONTACT_BRIDGE_TOKEN = process.env.AUTOYOU_WHATSAPP_CONTACT_BRIDGE_TOKEN;
+const contactBridgeClients = new Set();
 const DEVICE_NAME = process.env.DEVICE_NAME || 'AutoYou-WhatsApp';
 let SERVER_NAME = process.env.SERVER_NAME || DEVICE_NAME;
 const CHAT_API_URL = process.env.CHAT_API_URL || 'http://localhost:8081/api/chat';
@@ -741,6 +745,9 @@ function initializeWebSocketServer() {
                 console.log('[WebSocket] New connection established');
             }
             wsConnections.add(ws);
+            if (CONTACT_BRIDGE_TOKEN && request.headers['x-autoyou-contact-bridge'] === CONTACT_BRIDGE_TOKEN) {
+                contactBridgeClients.add(ws);
+            }
             
             // Send current status to new connection
             const statusMessage = {
@@ -782,6 +789,7 @@ function initializeWebSocketServer() {
                     console.log('[WebSocket] Connection closed');
                 }
                 wsConnections.delete(ws);
+                contactBridgeClients.delete(ws);
             });
             
             ws.on('error', (error) => {
@@ -1347,6 +1355,19 @@ function initializeWhatsAppClient() {
                 knownSelfChatId: lastSelfChatId,
             });
             if (!classification.shouldProcess) {
+                if (sourceEvent === 'message' && contactBridgeClients.size && phoneNumber) {
+                    const address = directContactAddress(msg, chat, classification);
+                    if (address) {
+                        const body = typeof msg.body === 'string' && msg.body.length <= 65536 ? msg.body : '';
+                        const event = JSON.stringify({ event: 'contact_message', data: {
+                            account: String(phoneNumber), address, id: serializedMessageId(msg),
+                            label: chat.name, body,
+                        } });
+                        for (const ws of contactBridgeClients) {
+                            if (ws.readyState === 1) ws.send(event);
+                        }
+                    }
+                }
                 if (classification.fromMe) {
                     logObfuscatedDiagnostic(
                         `[WhatsApp] Ignoring non-self sent message event=${sourceEvent} from=${redactIdentifier(msg.from || '-')} to=${redactIdentifier(msg.to || '-')} chat=${redactIdentifier(chat?.id?._serialized || '-')} chatContactIsMe=${classification.chatContactIsMe ? 'true' : 'false'}`

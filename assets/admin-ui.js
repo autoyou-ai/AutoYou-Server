@@ -326,6 +326,7 @@
             signalDetail: null,
             signalDeviceName: null,
             telegramSenders: null,
+            messagingContacts: null,
             telegramUserStatus: null,
             telegramUserMessages: null,
             whatsappStatus: null,
@@ -1575,7 +1576,7 @@
         ai: [["responses", "Responses", /provider|runtime/i], ["models", "Models", /model|download/i], ["behavior", "Behavior & memory", /behavior|memory/i]],
         agents: [["library", "Agent library", /installed|available/i], ["studio", "Agent Studio", /studio/i], ["build", "Build & instructions", /prompt|create|draft|builder/i], ["desktop", "Desktop apps", /desktop/i]],
         page: [["websites", "Websites", /website|apps|bookmark|page/i], ["browser", "Browser", /browser|forward/i], ["access", "Access", /security|access|proxy/i]],
-        messaging: [["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Other partners", /telegram user|signal|whatsapp|cloud/i], ["tools", "MCP & Tools", /mcp|webhook|send|queue/i]],
+        messaging: [["contacts", "Contacts & access", /contact/i], ["telegram", "Telegram Bot", /telegram(?! user)/i], ["partners", "Linked accounts", /telegram user|signal|whatsapp|cloud/i], ["tools", "Operator tools", /mcp|webhook|send|queue/i]],
         permissions: [["capture", "Audio & video", /audio|video|capture/i], ["desktop", "Remote Desktop", /remote desktop/i], ["data", "Data & memory", /chat|memory|developer|storage/i], ["access", "Browser access", /browser|website/i], ["assistant", "Assistant mode", /assistant|wake word/i]],
         video: [["calls", "Calls & playback", /call|playback|background/i], ["sources", "Sharing sources", /source|camera|desktop|layout|device/i], ["recording", "Recording", /record|storage/i], ["connection", "Connection", /webrtc|ice|connection/i]],
         speech: [["voice", "Voice", /provider|tts|speech|voice/i], ["models", "Models", /model|download|recognition|stt/i]],
@@ -2523,7 +2524,7 @@
             kind: "pairing-qr",
             platform: "telegram_user",
             title: "Connect Telegram User",
-            description: "Scan this QR with the Telegram account you own. AutoYou uses only your Saved Messages.",
+            description: "Scan this QR with a Telegram account you own. Its owner chat is in Saved Messages.",
             imageUrl: getByPath(result, "qr_url", ""),
             fetchedAt: Date.now(),
             helper: getByPath(result, "error", "") || "Waiting for Telegram to finish connecting."
@@ -3378,6 +3379,10 @@
             false
         );
         state.forms = {
+            contactPolicy: state.operations.messagingContacts ? {
+                enabled: state.operations.messagingContacts.enabled,
+                trigger: state.operations.messagingContacts.trigger
+            } : null,
             overview: {
                 serverName: getByPath(cfg, "server.name", "AutoYou-Server"),
                 adminTheme: getByPath(bootstrap, "admin.theme", "dark"),
@@ -4279,6 +4284,7 @@
                 { key: "signalDetail", url: "/api/signal/detailed-status" },
                 { key: "signalDeviceName", url: "/api/signal/device-name" },
                 { key: "telegramSenders", url: "/api/telegram/senders" },
+                { key: "messagingContacts", url: "/api/admin/messaging-contacts" },
                 { key: "telegramUserStatus", url: "/api/telegram-user/status" },
                 { key: "telegramUserMessages", url: "/api/telegram-user/messages?limit=12" },
                 { key: "whatsappStatus", url: "/api/whatsapp/status" },
@@ -4299,6 +4305,9 @@
                 var result = results[index];
                 if (result.ok) {
                     state.operations[entry.key] = result.payload;
+                    if (entry.key === "messagingContacts" && !state.forms.contactPolicy) {
+                        state.forms.contactPolicy = { enabled: result.payload.enabled, trigger: result.payload.trigger };
+                    }
                     if (entry.key === "signalDeviceName" && getByPath(result.payload, "device_name", "")) {
                         setByPath(state.forms, "messaging.signal.device_name", getByPath(result.payload, "device_name", ""));
                     }
@@ -7964,7 +7973,7 @@
             { label: "Discovered Telegram Bot senders", value: String(senderCount), help: getByPath(payload, "updated_at_s", 0) ? ("Last refreshed " + formatTimestamp(getByPath(payload, "updated_at_s", 0))) : "Waiting for a sender refresh." },
             { label: "Approved Telegram Bot sender IDs", value: String(approvedIds.length), help: approvedIds.length ? joinList(approvedIds) : "No user ID is approved yet." },
             { label: "Approved usernames", value: String(approvedUsernames.length), help: approvedUsernames.length ? approvedUsernames.map(function (name) { return name.charAt(0) === "@" ? name : "@" + name; }).join(", ") : "Optional fallback when Telegram username is stable." }
-        ]) + "<div class=\"ayu-note ayu-note-blue\">Save the Telegram Bot token, send any message to the bot, then approve the discovered sender ID. Discovery stores sender metadata only, not message text.</div><div class=\"ayu-grid-2\">" + field("Telegram Bot token", input("messaging.telegram.bot_token", { placeholder: "1234:abcd", type: "password" }), "Leave empty only if you want Telegram Bot disabled.") + field("Approved Telegram Bot sender IDs", input("messaging.telegram.acl_sender_ids", { placeholder: "123456789, 987654321" }), "Once at least one ID is approved, Telegram Bot remains locked to approved senders.") + "</div>" + field("Approved usernames", input("messaging.telegram.acl_usernames", { placeholder: "alice, bob" }), "Optional. Sender IDs are preferred because usernames can change.") + checkbox("messaging.telegram.access_gate_enabled", "Require approval before responding", "Recommended during setup so unknown senders are visible but cannot use Telegram Bot.") + checkbox("messaging.telegram.silent_unapproved_messages", "Silently ignore unapproved senders") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram Bot", "save-telegram", "primary", "save", actionSize) + button("Start discovery", "telegram-start-discovery", "secondary", "play", actionSize) + button("Refresh senders", "telegram-refresh-senders", "ghost", "refresh", actionSize) + button("Approve selected", "telegram-approve-selected", "green", "check", actionSize) + button("Generate allow code", "telegram-allow-code", "secondary", "key", actionSize) + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Discovered Telegram Bot senders</h3>" + renderTelegramDiscoveredSenders(payload) + "</div>";
+        ]) + "<div class=\"ayu-note ayu-note-blue\">Save the Telegram Bot token, send any message to the bot, then approve the discovered sender ID. Discovery stores sender metadata only, not message text.</div><div class=\"ayu-grid-2\">" + field("Telegram Bot token", input("messaging.telegram.bot_token", { placeholder: "1234:abcd", type: "password" }), "Leave empty only if you want Telegram Bot disabled.") + field("Approved Telegram Bot sender IDs", input("messaging.telegram.acl_sender_ids", { placeholder: "123456789, 987654321" }), "Used when contact listening is off. Otherwise manage access in Contacts & access.") + "</div>" + field("Approved usernames", input("messaging.telegram.acl_usernames", { placeholder: "alice, bob" }), "Optional. Sender IDs are preferred because usernames can change.") + checkbox("messaging.telegram.access_gate_enabled", "Use numeric sender IDs only", "When contact listening is off, approved IDs take precedence over usernames.") + checkbox("messaging.telegram.silent_unapproved_messages", "Silently ignore unapproved senders") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram Bot", "save-telegram", "primary", "save", actionSize) + button("Start discovery", "telegram-start-discovery", "secondary", "play", actionSize) + button("Refresh senders", "telegram-refresh-senders", "ghost", "refresh", actionSize) + button("Approve selected", "telegram-approve-selected", "green", "check", actionSize) + button("Generate allow code", "telegram-allow-code", "secondary", "key", actionSize) + "</div><div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Discovered Telegram Bot senders</h3>" + renderTelegramDiscoveredSenders(payload) + "</div>";
     }
 
     function telegramUserConfigPayload() {
@@ -8005,13 +8014,12 @@
 
     function renderTelegramUserManagementBody() {
         var summary = buildTelegramUserStatusSummary();
-        var status = summary.status || {};
         var statusError = getByPath(state.operations, "errors.telegramUserStatus", "");
         return (statusError ? "<div class=\"ayu-note ayu-note-amber\">Telegram User status is unavailable right now. Try Refresh status.</div>" : "") + renderStatusRows([
             { label: "Status", value: prettyLabel(summary.displayStatus), help: summary.connected ? "Connected to your Saved Messages." : "Connect your own Telegram account to use Saved Messages." },
             { label: "Connected", value: summary.connected ? "Yes" : "No" },
-            { label: "Saved Messages only", value: getByPath(status, "saved_messages_only", true) ? "Yes" : "No" }
-        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. AutoYou uses Saved Messages only and does not manage other chats.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }, { value: "antigravity_agent", label: "Antigravity" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
+            { label: "Owner chat", value: "Saved Messages" }
+        ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. Saved Messages stays separate from approved direct contacts.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }, { value: "antigravity_agent", label: "Antigravity" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
     }
 
     var GUIDED_SETUP_STEPS = [
@@ -9453,6 +9461,48 @@
         ]) + story + quickSetup + "<div class=\"ayu-inline-actions\">" + button(actionLabel, "mcp-generate-token", configured ? "secondary" : "primary", "key") + "</div>" + handoff + startInstructions + chatGptAvailability + advanced + "</div>";
     }
 
+    function renderMessagingContactPanels() {
+        var policy = state.operations.messagingContacts;
+        var err = getByPath(state.operations, "errors.messagingContacts", "");
+        if (!policy || err) return panel("Contact access", "", '<div class="ayu-empty" role="status">' +
+            escapeHtml(err || "Loading contact settings…") + '</div>');
+
+        var approved = policy.approved || [];
+        var recent = (policy.recent || []).filter(function (row) {
+            return !approved.some(function (allowed) { return allowed.key === row.key; });
+        });
+        var providers = { telegram: "Telegram Bot", telegram_user: "Telegram User", signal: "Signal", whatsapp: "WhatsApp" };
+        function contactRows(rows, empty) {
+            if (!rows.length) return '<div class="ayu-empty">' + escapeHtml(empty) + '</div>';
+            return '<div class="ayu-list">' + rows.map(function (row) {
+                var name = row.label || "Unnamed contact";
+                var actions = ["pair", "chat"].map(function (capability) {
+                    var allowed = row[capability] === true;
+                    var title = capability === "pair" ? "Pairing" : "AI chat";
+                    return button(allowed ? title + " allowed" : capability === "pair" ? "Allow pairing" : "Allow AI chat", "contact-access:" + capability + ":" + row.key,
+                        allowed ? "green" : "secondary", allowed ? "check" : null, "",
+                        'aria-pressed="' + allowed + '" aria-label="' + escapeHtml(title + " for " + name) + '"');
+                }).join("");
+                if (row.pair || row.chat) actions += button("Revoke", "contact-access:revoke:" + row.key, "danger", "trash", "");
+                return '<div class="ayu-list-row ayu-contact-row"><div class="ayu-list-copy"><strong>' + escapeHtml(name) +
+                    '</strong><small>' + escapeHtml((providers[row.provider] || row.provider) + " · ID ending " + row.hint +
+                        (row.seen_at ? " · " + formatTimestamp(row.seen_at) : "")) +
+                    '</small></div><div class="ayu-inline-actions">' + actions + '</div></div>';
+            }).join("") + '</div>';
+        }
+        return panel("Contact access", "Choose who can pair or talk to AutoYou through a messaging partner.",
+            checkbox("contactPolicy.enabled", "Listen for direct contact messages", "When on, Telegram Bot uses these approvals too. Groups and message history are excluded.") +
+            field("AI chat trigger", input("contactPolicy.trigger", { placeholder: "@autoyou", extraAttrs: 'maxlength="33" autocomplete="off" spellcheck="false"' }),
+                "Only an approved contact who starts a message with this exact word gets a reply from your direct AI model. Contact chat has no access to owner tools or history.") +
+            '<div class="ayu-inline-actions">' + button("Save contact settings", "contact-settings", "primary", "save") +
+            badge(policy.enabled ? "Listening" : "Off", policy.enabled ? "green" : "neutral") + '</div>') +
+            panel("Recent contacts", "Ask a contact to message the linked account or bot, then refresh. Only sender details appear here.",
+                contactRows(recent, policy.enabled ? "No new direct senders yet." : "Enable listening to discover new contacts."),
+                button("Refresh contacts", "contact-refresh", "secondary", "refresh")) +
+            panel("Approved contacts", approved.length + " with access. Pairing still requires the server’s pairing credentials.",
+                contactRows(approved, "No contacts are approved yet."));
+    }
+
     function renderMessagingScreen() {
         var status = getByPath(state.bootstrap, "status", {});
         var signalSummary = buildSignalStatusSummary();
@@ -9505,18 +9555,19 @@
         var mcpSettingsMarkup = renderMcpSetupPanelBody(mcpStatus);
         var telegramUserDiagnosticsMarkup = renderStatusRows([
             { label: "Connection", value: prettyLabel(telegramUserSummary.displayStatus), help: telegramUserSummary.connected ? "Saved Messages is ready." : "Connect your account to begin." },
-            { label: "Saved Messages only", value: getByPath(telegramUserSummary.status, "saved_messages_only", true) ? "Yes" : "No" }
+            { label: "Owner chat", value: "Saved Messages" }
         ]) + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Recent Saved Messages activity</h3>" + renderTelegramUserMessages();
 
         return (
-            "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Messaging</h1><p>Telegram Bot, Telegram User, Signal, WhatsApp, direct message sending, and live client playback stay together with only the settings and status that matter.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + button("Open connectivity", "nav:connectivity", "ghost", "wifi") + "</div></div>" +
+            "<div class=\"ayu-screen\"><div class=\"ayu-hero\"><div class=\"ayu-hero-copy\"><h1>Messaging Partners</h1><p>Link your messaging accounts, approve contacts, and give each person access to pairing or AI chat.</p></div><div class=\"ayu-inline-actions\">" + button("Refresh status", "ops-refresh", "secondary", "refresh") + "</div></div>" +
+            renderMessagingContactPanels() +
 
             "<div class=\"ayu-grid-2\">" +
-                panel("Telegram Bot", "A separate bot connection with approved sender controls.", renderTelegramOnboardingBody()) +
-                panel("Telegram User", "Your own Telegram account, limited to Saved Messages.", renderTelegramUserManagementBody()) +
+                panel("Telegram Bot", "Connect your bot. Contacts must open its chat and send a message first.", renderTelegramOnboardingBody()) +
+                panel("Telegram User", "Link your own account. Saved Messages remains your private owner chat.", renderTelegramUserManagementBody()) +
             "</div><div class=\"ayu-grid-2\">" +
-                panel("Signal", "Optional owner-only connection for Notes to Self.", signalSettingsMarkup) +
-                panel("WhatsApp", "Optional owner-only connection for your self chat.", whatsappSettingsMarkup) +
+                panel("Signal", "Link your account for Notes to Self and approved direct contacts.", signalSettingsMarkup) +
+                panel("WhatsApp", "Link your account for your self chat and approved direct contacts.", whatsappSettingsMarkup) +
             "</div>" +
                 panel("AutoYou MCP", "Connect a private MCP adapter to AutoYou's native chat, models, agents, and supported media handling.", mcpSettingsMarkup) +
                 panel("Connected client control", "Select a connected client, send direct messages, and control remote audio playback.", liveControlMarkup) +
@@ -11354,6 +11405,27 @@
         if (action === "live-pair") { await openLivePairing(); return; }
         if (action && action.indexOf("assistant-") === 0) { await handleAssistantAction(action); return; }
         if (!action) {
+            return;
+        }
+        if (action === "contact-refresh") { await ensureOperationsData(true); return; }
+        if (action === "contact-settings" || action.indexOf("contact-access:") === 0) {
+            if (state.operations.contactSaving) return;
+            var draft = state.forms.contactPolicy || {};
+            var payload = { action: "settings", enabled: Boolean(draft.enabled), trigger: draft.trigger };
+            if (action !== "contact-settings") {
+                var [, capability, key] = action.split(":");
+                var current = state.operations.messagingContacts.approved.find(function (row) { return row.key === key; }) || {};
+                payload = { action: "access", key: key, pair: Boolean(current.pair), chat: Boolean(current.chat) };
+                if (capability === "revoke") payload.pair = payload.chat = false;
+                else payload[capability] = !payload[capability];
+            }
+            state.operations.contactSaving = true;
+            try {
+                var saved = await postJson("/api/admin/messaging-contacts", payload);
+                state.operations.messagingContacts = saved;
+                state.forms.contactPolicy = { enabled: saved.enabled, trigger: saved.trigger };
+                setNotice("success", action === "contact-settings" ? "Contact settings saved." : "Contact access updated.");
+            } finally { state.operations.contactSaving = false; }
             return;
         }
         if (action.indexOf("nav:") === 0) {

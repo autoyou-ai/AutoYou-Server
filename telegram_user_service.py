@@ -35,6 +35,8 @@ from typing import Any, Awaitable, Callable, Deque, Dict, Iterable, List, Option
 import qrcode
 
 from pairing_router import PairingRouter, pairing_router
+from shared.messaging_contacts import messaging_contacts
+from shared.pairing_response import is_app_pairing_message, pairing_reply_link
 from shared.client_conversation_contract import build_autoyou_conversation_metadata
 from shared.platform_runtime import get_service_data_dir
 from shared.pending_media_queue import (
@@ -635,12 +637,32 @@ class TelegramUserService:
         candidate = getattr(event, "message", None)
         message = candidate if candidate is not None and not isinstance(candidate, (str, bytes)) else event
         if not self._is_owner_saved_message(message):
+            if not self._authorized or not messaging_contacts.enabled or getattr(message, "out", False) or self._is_forwarded(message):
+                return
+            sender = _safe_int(getattr(message, "sender_id", None))
+            if sender <= 0 or sender == self._owner_id or sender != _safe_int(getattr(getattr(message, "peer_id", None), "user_id", None)):
+                return
+            entity = getattr(message, "sender", None)
+            if getattr(entity, "bot", False):
+                return
+
+            async def reply(text):
+                if len(text) <= 4000:
+                    await self._client.send_message(sender, text, link_preview=False)
+                else:
+                    file = BytesIO(text.encode("utf-8"))
+                    file.name = "autoyou-pairing-response.txt"
+                    await self._client.send_file(sender, file, force_document=True)
+
+            await messaging_contacts.receive("telegram_user", str(self._owner_id), str(sender),
+                                             getattr(entity, "first_name", ""), getattr(message, "id", None),
+                                             getattr(message, "raw_text", None) or getattr(message, "message", None), reply)
             return
         if self._is_forwarded(message):
             return
         message_id = _safe_int(getattr(message, "id", None))
         text = str(getattr(message, "raw_text", None) or getattr(message, "message", None) or "")
-        if message_id in self._server_message_id_set or self._is_server_authored_text(text):
+        if message_id in self._server_message_id_set or self._is_server_authored_text(text) or is_app_pairing_message(text):
             return
         attachments = await self._download_message_attachment(message)
         prompt_builder_enabled, _ = self._prompt_builder_settings()
@@ -664,7 +686,7 @@ class TelegramUserService:
         if pairing_reply and pairing_reply != PairingRouter.FRAGMENT_CONSUMED:
             # Pairing payloads can contain one-time secrets. They are never part
             # of the Saved Messages runtime log or any training export.
-            await self._send_text(pairing_reply, append_signature=False, record=False)
+            await self._send_text(pairing_reply_link(pairing_reply, limit=4000), append_signature=False, record=False)
             return
         if pairing_reply == PairingRouter.FRAGMENT_CONSUMED:
             return

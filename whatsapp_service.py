@@ -36,9 +36,12 @@ import uuid
 from dataclasses import replace
 import qrcode
 import re
+import secrets
 from io import BytesIO
 from typing import Dict, Any, Optional, List, Set
 from pairing_router import PairingRouter, pairing_router
+from shared.messaging_contacts import messaging_contacts
+from shared.pairing_response import is_app_pairing_message, pairing_reply_link
 from shared.platform_runtime import (
     configure_runtime,
     get_node_command,
@@ -336,6 +339,7 @@ class WhatsAppNodeService:
         self.device_name = device_name
         self.ai_api_url = ai_api_url
         self.node_process = None
+        self._contact_bridge_token = secrets.token_urlsafe(32)
         self.websocket = None
         self.websocket_task = None
         self.message_log = []  # Store "Notes to Self" messages
@@ -1209,6 +1213,7 @@ class WhatsAppNodeService:
             # Change to node directory and start client
             env = add_parent_pid_environment(os.environ.copy())
             env["WEBSOCKET_PORT"] = str(self.websocket_port)
+            env["AUTOYOU_WHATSAPP_CONTACT_BRIDGE_TOKEN"] = self._contact_bridge_token
             env["DEVICE_NAME"] = self.device_name
             env["SERVER_NAME"] = self._configured_agent_label()
             env["CHAT_API_URL"] = self.ai_api_url or f"http://localhost:{ai_agent_port}/api/chat"
@@ -1456,7 +1461,9 @@ class WhatsAppNodeService:
             for uri in self._websocket_uris():
                 try:
                     # Remove message size limit to support large media payloads from WhatsApp client
-                    self.websocket = await websockets.connect(uri, max_size=None)
+                    self.websocket = await websockets.connect(uri, max_size=None, additional_headers={
+                        "X-AutoYou-Contact-Bridge": self._contact_bridge_token,
+                    })
                     
                     # Start WebSocket message handler
                     self.websocket_task = asyncio.create_task(self._websocket_handler())
@@ -1802,6 +1809,15 @@ class WhatsAppNodeService:
                 
         elif event == "message":
             await self._handle_incoming_message(payload)
+        elif event == "contact_message" and isinstance(payload, dict) and self._is_node_process_running():
+            account = str(payload.get("account") or "")
+            address = str(payload.get("address") or "")
+            if re.fullmatch(r"\+?[0-9]{5,32}", account) and re.fullmatch(r"[0-9]{5,32}@(c\.us|lid)", address):
+                async def reply(text):
+                    await self.send_message(address, text)
+
+                await messaging_contacts.receive("whatsapp", account, address, payload.get("label"),
+                                                 payload.get("id"), payload.get("body"), reply)
             
         elif event == "phone_number":
             phone = str(payload or "").strip()
@@ -1862,8 +1878,7 @@ class WhatsAppNodeService:
             has_media = bool(message_data.get("hasMedia")) or isinstance(media, dict)
             if not message_text and not has_media:
                 return
-            if message_text.startswith("/otp") or message_text.startswith("/autopair_answer"):
-                # These are generated from Pairing Router, so ignore them.
+            if is_app_pairing_message(message_text):
                 return
             if message_text and message_text.splitlines()[-1].endswith(
                 (f"~ {self._configured_agent_label()}", f"~ {self.device_name}")
@@ -1919,7 +1934,7 @@ class WhatsAppNodeService:
                     len(response),
                 )
                 # Send pairing response back without signature to preserve exact protocol format
-                await self._send_message_to_self(response, append_signature=False)
+                await self._send_message_to_self(pairing_reply_link(response), append_signature=False)
                 return
             if response == PairingRouter.FRAGMENT_CONSUMED:
                 # Fragment buffered - waiting for more pieces; stay silent.

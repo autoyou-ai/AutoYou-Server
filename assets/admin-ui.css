@@ -1745,6 +1745,10 @@ button:focus-visible, summary:focus-visible, a:focus-visible { outline: 3px soli
     gap: 12px;
 }
 
+.ayu-contact-row .ayu-list-copy { overflow-wrap: anywhere; }
+.ayu-contact-row .ayu-inline-actions { margin-top: 0; }
+.ayu-contact-row .ayu-btn { min-height: 44px; }
+
 .ayu-panel[data-panel-title="Browser routes"] {
     grid-column: 1 / -1;
     min-width: 0;

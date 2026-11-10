@@ -40,6 +40,15 @@ function serializedMessageId(message) {
     ).trim();
 }
 
+function directContactAddress(message, chat, classification) {
+    const from = String(message?.from || '');
+    if (classification.fromMe || classification.selfChat || chat?.isGroup !== false
+        || message?.isForwarded || message?.isStatus || message?.broadcast || message?.author
+        || !/^[0-9]{5,32}@(c\.us|lid)$/.test(from) || from !== chat?.id?._serialized
+        || !serializedMessageId(message)) return null;
+    return from;
+}
+
 function messageFingerprint(message) {
     const serializedId = serializedMessageId(message);
     if (serializedId) {
@@ -195,6 +204,7 @@ function classifyWhatsAppMessage(message, { phoneNumber, clientInfo, chat, conta
 
 export {
     classifyWhatsAppMessage,
+    directContactAddress,
     createOutboundMediaGuard,
     hasDeviceSignature,
     isIgnorableChannelMetadataLookupError,
