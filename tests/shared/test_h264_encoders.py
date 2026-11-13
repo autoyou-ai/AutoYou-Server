@@ -113,3 +113,51 @@ def test_recording_uses_the_selected_encoder_then_mpeg4(monkeypatch):
 
     monkeypatch.setattr(h264_encoders, "select_h264_encoder", unavailable)
     assert video_call_manager._recording_video_codecs() == ("mpeg4",)
+
+
+def test_h264_encoder_bitrate_hysteresis_avoids_reopen_thrashing(monkeypatch):
+    encoder_name = h264_encoders.select_h264_encoder()
+    h264_encoders.install_aiortc_h264_encoder()
+
+    opened = []
+    real_open = h264_encoders.open_h264_encoder
+
+    def spy_open(width, height, bit_rate, frame_rate):
+        opened.append((width, height, bit_rate))
+        return real_open(width, height, bit_rate, frame_rate)
+
+    clock = {"now": 100.0}
+    monkeypatch.setattr(h264_encoders, "open_h264_encoder", spy_open)
+    monkeypatch.setattr(h264_encoders.time, "monotonic", lambda: clock["now"])
+
+    codec = RTCRtpCodecParameters(mimeType="video/H264", clockRate=90000, payloadType=102)
+    encoder = get_encoder(codec)
+    frames = list(_frames(4))
+
+    encoder.target_bitrate = 800_000
+    encoder.encode(frames[0], force_keyframe=True)
+    assert len(opened) == 1
+
+    # Moderate REMB swings (<50%) must not tear down and recreate the codec.
+    encoder.target_bitrate = 1_050_000
+    encoder.encode(frames[1], force_keyframe=False)
+    assert len(opened) == 1
+
+    # Even a >50% swing inside the 2s cooldown waits rather than thrashing.
+    clock["now"] = 101.0
+    encoder.target_bitrate = 1_600_000
+    encoder.encode(frames[2], force_keyframe=False)
+    assert len(opened) == 1
+
+    # After cooldown expires, a >50% change cleanly reopens at the new bitrate.
+    clock["now"] = 103.5
+    encoder.encode(frames[3], force_keyframe=False)
+    assert len(opened) == 2
+    assert opened[-1] == (320, 240, 1_600_000)
+
+    # Dimension change still reopens immediately.
+    large = next(_frames(1, width=640, height=480))
+    encoder.encode(large, force_keyframe=False)
+    assert len(opened) == 3
+    assert opened[-1][0:2] == (640, 480)
+    assert encoder_name in h264_encoders.encoder_candidates()

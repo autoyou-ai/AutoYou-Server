@@ -193,6 +193,31 @@ def test_notes_media_endpoint_caps_open_ended_ranges(monkeypatch, tmp_path):
     assert response.headers["cache-control"] == "private, max-age=3600"
 
 
+def test_notes_media_endpoint_unsealed_range_seeks_without_full_read(monkeypatch, tmp_path):
+    monkeypatch.delenv("AUTOYOU_SECURE_STORAGE", raising=False)
+    monkeypatch.setattr(notes_frontend_backend, "secure_storage_enabled", lambda: False)
+    tool = NotesTool(db_path=str(tmp_path / "autoyou_notes.db"))
+    payload = b"0123456789" * 2048
+    saved = tool.save_media_attachment(
+        filename="synthetic-video.mp4",
+        data_base64=base64.b64encode(payload).decode("ascii"),
+        mimetype="video/mp4",
+        source="test",
+    )
+    monkeypatch.setattr(notes_frontend_backend, "get_notes_tool", lambda: tool)
+
+    def _fail_full_read(_path):
+        raise AssertionError("unsealed notes media range should seek without full read_secure_file")
+
+    monkeypatch.setattr(notes_frontend_backend, "read_secure_file", _fail_full_read)
+    client = TestClient(notes_frontend_backend.app)
+
+    response = client.get(f"/api/media/{saved['id']}", headers={"Range": "bytes=100-199"})
+    assert response.status_code == 206
+    assert response.content == payload[100:200]
+    assert response.headers["content-range"] == f"bytes 100-199/{len(payload)}"
+
+
 def test_notes_tool_migrates_legacy_repo_database(tmp_path, monkeypatch):
     primary_dir = tmp_path / "canonical"
     legacy_dir = tmp_path / "legacy"

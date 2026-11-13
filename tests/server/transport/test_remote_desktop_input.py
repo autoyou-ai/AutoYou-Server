@@ -315,3 +315,116 @@ def test_relative_input_preserves_movement_smaller_than_one_host_pixel():
 
     assert backend.calls == [("moveRel", 1, -1)]
     assert remainder == {"x": 0, "y": 0}
+
+
+def test_wake_display_throttles_high_rate_non_settling_calls(monkeypatch):
+    from shared import remote_desktop_keyboard
+
+    monkeypatch.setattr(remote_desktop_keyboard, "sys", SimpleNamespace(platform="darwin"))
+    clock = {"now": 500.0}
+    spawns = []
+
+    class _FakeProc:
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(remote_desktop_keyboard.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(
+        remote_desktop_keyboard.subprocess,
+        "Popen",
+        lambda *args, **kwargs: spawns.append(clock["now"]) or _FakeProc(),
+    )
+    monkeypatch.setitem(remote_desktop_keyboard._DISPLAY_WAKE_STATE, "asserted_at", float("-inf"))
+    monkeypatch.setitem(remote_desktop_keyboard._DISPLAY_WAKE_STATE, "input_at", float("-inf"))
+    monkeypatch.setitem(remote_desktop_keyboard._DISPLAY_WAKE_STATE, "proc", None)
+    monkeypatch.setattr(remote_desktop_keyboard, "_DISPLAY_WAKE_FAST_AT", float("-inf"))
+
+    for step in range(50):
+        clock["now"] = 500.0 + step * 0.016
+        remote_desktop_keyboard.wake_display_for_remote_input(settle=False)
+
+    # First move wakes once; high-rate subsequent moves within 1.5s skip subprocess/lock work.
+    assert len(spawns) == 1
+
+    clock["now"] = 506.0
+    remote_desktop_keyboard.wake_display_for_remote_input(settle=False)
+    assert len(spawns) == 2
+
+
+def test_webrtc_input_coalesces_queued_relative_moves_and_flushes_before_click(monkeypatch):
+    import asyncio
+    import threading
+    from unittest.mock import AsyncMock
+    import pytest
+    import server
+
+    async def run() -> None:
+        session_id = "synthetic-coalesce-session"
+        cfg = server._default_config()
+        cfg["video_call"]["remote_desktop"]["control_enabled"] = True
+        original_config = server.STATE.config
+        server.STATE.config = cfg
+        try:
+            webrtc = server.WebRTCManager()
+            track = _FakeDesktopTrack()
+            track.is_enabled = True
+            webrtc.desktop_video_tracks[session_id] = track
+            webrtc.datachannel_managers[session_id] = SimpleNamespace(
+                send_message=AsyncMock(return_value=True)
+            )
+            webrtc._set_voice_call_client_active(session_id, True)
+            webrtc._store_remote_desktop_control_lease(
+                session_id,
+                control_id="ctrl-coalesce",
+                touch_mode="relative",
+                track=track,
+            )
+
+            first_started = threading.Event()
+            allow_first = threading.Event()
+            recorded = []
+
+            def fake_execute(payload, **_kwargs):
+                recorded.append(dict(payload))
+                if len(recorded) == 1:
+                    first_started.set()
+                    assert allow_first.wait(2.0)
+                return True
+
+            monkeypatch.setattr(server, "remote_desktop_input_backend_probed", lambda: True)
+            monkeypatch.setattr(server, "execute_remote_desktop_input", fake_execute)
+
+            first_task = asyncio.create_task(webrtc._handle_remote_desktop_input(session_id, {
+                "event": "remote_desktop_input",
+                "control_id": "ctrl-coalesce", "source": "autoyou_lite", "platform": "ios",
+                "input_type": "move", "coordinate_mode": "relative", "dx": 0.01, "dy": -0.02,
+            }))
+            assert await asyncio.to_thread(first_started.wait, 1.0)
+
+            burst_tasks = [
+                asyncio.create_task(webrtc._handle_remote_desktop_input(session_id, {
+                    "event": "remote_desktop_input",
+                    "control_id": "ctrl-coalesce", "source": "autoyou_lite", "platform": "ios",
+                    "input_type": "move", "coordinate_mode": "relative", "dx": 0.01, "dy": -0.02,
+                }))
+                for _ in range(5)
+            ]
+            await asyncio.sleep(0)
+            click_task = asyncio.create_task(webrtc._handle_remote_desktop_input(session_id, {
+                "event": "remote_desktop_input",
+                "control_id": "ctrl-coalesce", "source": "autoyou_lite", "platform": "ios",
+                "input_type": "button", "button": "left", "phase": "click",
+            }))
+
+            allow_first.set()
+            await asyncio.gather(first_task, *burst_tasks, click_task)
+
+            assert [item["input_type"] for item in recorded] == ["move", "move", "button"]
+            assert recorded[0]["dx"] == 0.01
+            assert recorded[1]["dx"] == pytest.approx(0.05)
+            assert recorded[1]["dy"] == pytest.approx(-0.10)
+            assert recorded[2]["phase"] == "click"
+        finally:
+            server.STATE.config = original_config
+
+    asyncio.run(run())

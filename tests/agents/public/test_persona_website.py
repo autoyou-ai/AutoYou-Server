@@ -168,3 +168,48 @@ def test_list_and_get_diary_entries_catalog(app_mod, monkeypatch, tmp_path):
     # Test get non-existent entry
     resp_404 = client.get("/api/persona/entries/33333333-3333-3333-3333-333333333333")
     assert resp_404.status_code == 404
+
+
+def test_diary_media_range_reuses_decoded_cache_across_slices(app_mod, monkeypatch):
+    monkeypatch.setattr(app_mod, "_check_auth", lambda request: True)
+    app_mod._DIARY_MEDIA_CACHE.clear()
+    entry_id = "11111111-1111-1111-1111-111111111111"
+    media_id = "synthetic-clip"
+    payload = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ" * 400
+
+    client = TestClient(app_mod.app)
+    upload = client.post(
+        f"/api/persona/entries/{entry_id}/media",
+        headers={"X-AutoYou-Media-ID": media_id},
+        files={"file": ("clip.mp4", payload, "video/mp4")},
+    )
+    assert upload.status_code == 200
+
+    reads = []
+    real_store_fn = app_mod.diary_media_store
+
+    def _counting_store(eid, mid):
+        store = real_store_fn(eid, mid)
+        orig_read = store.read
+
+        def _read():
+            reads.append((eid, mid))
+            return orig_read()
+
+        store.read = _read
+        return store
+
+    monkeypatch.setattr(app_mod, "diary_media_store", _counting_store)
+
+    r1 = client.get(
+        f"/api/persona/entries/{entry_id}/media/{media_id}",
+        headers={"Range": "bytes=0-99"},
+    )
+    r2 = client.get(
+        f"/api/persona/entries/{entry_id}/media/{media_id}",
+        headers={"Range": "bytes=100-199"},
+    )
+
+    assert r1.status_code == 206 and r1.content == payload[0:100]
+    assert r2.status_code == 206 and r2.content == payload[100:200]
+    assert len(reads) == 1

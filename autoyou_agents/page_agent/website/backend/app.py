@@ -32,8 +32,10 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
+from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -67,6 +69,7 @@ from shared.url_safety import (
 from shared.secure_storage import (
     FILE_HEADER as SPM_FILE_HEADER,
     read_secure_file,
+    sealed_envelope_kind,
     secure_storage_enabled,
     write_secure_file,
 )
@@ -259,10 +262,18 @@ class PageFeedService:
         candidate = Path(path)
         return read_secure_file(candidate)
 
-    # A video is fetched as many byte ranges in a row. Without this each range
-    # opened (and, when sealed, decrypted) the whole file again.
-    _RECENT_BLOB_SECONDS = 30.0
-    _RECENT_BLOB_MAX_BYTES = 256 * 1024 * 1024
+    # A video is fetched as many byte ranges in a row. Keep a small bounded LRU
+    # of recently opened sealed blobs so consecutive Range requests reuse
+    # plaintext instead of repeatedly decrypting the full file, while plain
+    # unsealed blobs seek directly without caching or full-file RAM reads.
+    _RECENT_BLOB_SECONDS = 60.0
+    _RECENT_BLOB_MAX_BYTES = 64 * 1024 * 1024
+    _RECENT_BLOB_MAX_ITEMS = 8
+
+    @staticmethod
+    def _blob_requires_full_read(path: str | Path) -> bool:
+        candidate = Path(path)
+        return bool(secure_storage_enabled() or sealed_envelope_kind(candidate) is not None)
 
     def _recent_blob_bytes(self, path: str | Path) -> bytes:
         candidate = Path(path)
@@ -271,11 +282,26 @@ class PageFeedService:
             key = (str(candidate), stat.st_mtime_ns, stat.st_size)
         except OSError:
             return self._read_blob_bytes(candidate)
-        recent = getattr(self, "_recent_blob", None)
+        lock = getattr(self, "_recent_blob_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._recent_blob_lock = lock
         now = time.monotonic()
-        if recent and recent[0] == key and now - recent[2] <= self._RECENT_BLOB_SECONDS:
-            self._recent_blob = (key, recent[1], now)
-            return recent[1]
+        with lock:
+            cache: Optional[OrderedDict] = getattr(self, "_recent_blob_cache", None)
+            if cache is None:
+                cache = OrderedDict()
+                self._recent_blob_cache = cache
+            expired = [k for k, entry in cache.items() if now - entry[1] > self._RECENT_BLOB_SECONDS]
+            for k in expired:
+                cache.pop(k, None)
+            hit = cache.get(key)
+            if hit is not None:
+                data, _ = hit
+                cache[key] = (data, now)
+                cache.move_to_end(key)
+                self._recent_blob = (key, data, now)
+                return data
         data = self._read_blob_bytes(candidate)
         # Reading can seal a plain file in place; key on what is there now.
         try:
@@ -283,7 +309,15 @@ class PageFeedService:
             key = (str(candidate), stat.st_mtime_ns, stat.st_size)
         except OSError:
             return data
-        self._recent_blob = (key, data, now) if len(data) <= self._RECENT_BLOB_MAX_BYTES else None
+        if len(data) <= self._RECENT_BLOB_MAX_BYTES:
+            now_after = time.monotonic()
+            with lock:
+                cache = self._recent_blob_cache
+                cache[key] = (data, now_after)
+                cache.move_to_end(key)
+                while len(cache) > self._RECENT_BLOB_MAX_ITEMS or sum(len(v[0]) for v in cache.values()) > self._RECENT_BLOB_MAX_BYTES:
+                    cache.popitem(last=False)
+                self._recent_blob = (key, data, now_after)
         return data
 
     @classmethod
@@ -2300,24 +2334,47 @@ class PageFeedService:
             try:
                 qp = request.query_params
                 order = (qp.get("order") or "desc").lower()
+                cursor = qp.get("cursor")
                 try:
                     limit = int(qp.get("limit")) if qp.get("limit") is not None else 100
                 except ValueError:
                     limit = 100
                 if limit <= 0:
                     limit = 100
+                descending = order != "asc"
+                cursor_added_at, cursor_id = _decode_feed_cursor(cursor)
 
                 if getattr(self, "db", None) is not None:
-                    full_items = self.db.query_items(
-                        order=("asc" if order == "asc" else "desc"),
-                        limit=limit,
-                        ignore_date_default=True,
+                    full_items = list(
+                        self.db.query_items(
+                            order=("desc" if descending else "asc"),
+                            limit=limit + 1,
+                            ignore_date_default=True,
+                            cursor_added_at=cursor_added_at,
+                            cursor_id=cursor_id,
+                        )
                     )
                 else:
-                    full_items = list(self.feed_items)
-                    full_items.sort(key=lambda x: str(x.get("added_at") or ""), reverse=(order != "asc"))
-                    full_items = full_items[:limit]
+                    full_items = self._filter_memory_items(
+                        descending=descending,
+                        types=None,
+                        sources=None,
+                        favourites_only=False,
+                        stored_only=False,
+                        search=None,
+                        date_from=None,
+                        date_to=None,
+                        cursor=(cursor_added_at, cursor_id),
+                    )[: limit + 1]
 
+                has_more = len(full_items) > limit
+                page_rows = full_items[:limit]
+                last_row = page_rows[-1] if page_rows else None
+                next_cursor = (
+                    _encode_feed_cursor(last_row.get("added_at"), last_row.get("id"))
+                    if has_more and last_row
+                    else None
+                )
                 catalog = [
                     {
                         "id": str(i.get("id")),
@@ -2328,9 +2385,9 @@ class PageFeedService:
                         "added_at": str(i.get("added_at") or ""),
                         "source": str(i.get("source") or ""),
                     }
-                    for i in full_items
+                    for i in page_rows
                 ]
-                return JSONResponse({"items": catalog})
+                return JSONResponse({"items": catalog, "has_more": has_more, "next_cursor": next_cursor})
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
@@ -2496,28 +2553,42 @@ class PageFeedService:
                     raise HTTPException(status_code=404, detail="Blob not found")
                 mime = self._canonicalize_blob_mimetype(os.path.basename(path), mime)
                 preview_requested = str(request.query_params.get("preview") or "").strip().lower() in {"1", "true", "yes", "on"}
-                if preview_requested:
-                    preview = self._prepare_blob_preview(path, mime)
-                    if preview is not None:
-                        path, mime = preview
-                    elif self._is_previewable_image(os.path.basename(path), mime):
-                        try:
-                            original_size = self._blob_plain_size(path)
-                        except OSError:
-                            original_size = self._blob_preview_passthrough_bytes() + 1
-                        if original_size > self._blob_preview_passthrough_bytes():
-                            raise HTTPException(status_code=415, detail="Blob preview unavailable")
+                preview_passthrough_limit = self._blob_preview_passthrough_bytes()
 
-                blob_bytes: Optional[bytes] = None
-                if str(mime or "").lower().startswith("audio/"):
-                    blob_bytes = self._recent_blob_bytes(path)
-                    if is_adts_aac(blob_bytes):
-                        mime = "audio/aac"
-                elif secure_storage_enabled():
-                    # A sealed blob has to be opened to learn its size; keep
-                    # what was opened instead of opening it again to send it.
-                    blob_bytes = self._recent_blob_bytes(path)
-                file_size = len(blob_bytes) if blob_bytes is not None else self._blob_plain_size(path)
+                def _prepare_blob_stream(target_path: str, target_mime: str):
+                    resolved_path = target_path
+                    resolved_mime = target_mime
+                    if preview_requested:
+                        preview = self._prepare_blob_preview(resolved_path, resolved_mime)
+                        if preview is not None:
+                            resolved_path, resolved_mime = preview
+                        elif self._is_previewable_image(os.path.basename(resolved_path), resolved_mime):
+                            try:
+                                original_size = self._blob_plain_size(resolved_path)
+                            except OSError:
+                                original_size = preview_passthrough_limit + 1
+                            if original_size > preview_passthrough_limit:
+                                raise HTTPException(status_code=415, detail="Blob preview unavailable")
+
+                    requires_sealed = self._blob_requires_full_read(resolved_path)
+                    loaded_bytes: Optional[bytes] = None
+                    if requires_sealed:
+                        loaded_bytes = self._recent_blob_bytes(resolved_path)
+                        if str(resolved_mime or "").lower().startswith("audio/") and is_adts_aac(loaded_bytes[:64]):
+                            resolved_mime = "audio/aac"
+                    else:
+                        if str(resolved_mime or "").lower().startswith("audio/"):
+                            with open(resolved_path, "rb") as head_handle:
+                                if is_adts_aac(head_handle.read(64)):
+                                    resolved_mime = "audio/aac"
+                    resolved_size = len(loaded_bytes) if loaded_bytes is not None else int(os.path.getsize(resolved_path))
+                    return resolved_path, resolved_mime, loaded_bytes, resolved_size, requires_sealed
+
+                path, mime, blob_bytes, file_size, requires_sealed = await asyncio.to_thread(
+                    _prepare_blob_stream,
+                    path,
+                    mime,
+                )
                 range_header = request.headers.get("Range")
                 start = 0
                 end = file_size - 1
@@ -2537,13 +2608,34 @@ class PageFeedService:
                         end = file_size - 1
 
                 def iter_file(p: str, s: int, e: int, chunk: int = 65536):
-                    data = blob_bytes if blob_bytes is not None else self._recent_blob_bytes(p)
-                    position = max(0, int(s))
-                    end_position = min(len(data) - 1, int(e))
-                    while position <= end_position:
-                        next_position = min(end_position + 1, position + chunk)
-                        yield data[position:next_position]
-                        position = next_position
+                    if e < s:
+                        return
+                    if blob_bytes is not None:
+                        position = max(0, int(s))
+                        end_position = min(len(blob_bytes) - 1, int(e))
+                        while position <= end_position:
+                            next_position = min(end_position + 1, position + chunk)
+                            yield blob_bytes[position:next_position]
+                            position = next_position
+                        return
+                    if requires_sealed:
+                        data = self._recent_blob_bytes(p)
+                        position = max(0, int(s))
+                        end_position = min(len(data) - 1, int(e))
+                        while position <= end_position:
+                            next_position = min(end_position + 1, position + chunk)
+                            yield data[position:next_position]
+                            position = next_position
+                        return
+                    remaining = max(0, int(e) - max(0, int(s)) + 1)
+                    with open(p, "rb") as handle:
+                        handle.seek(max(0, int(s)))
+                        while remaining > 0:
+                            piece = handle.read(min(chunk, remaining))
+                            if not piece:
+                                break
+                            remaining -= len(piece)
+                            yield piece
 
                 # Prepare Content-Disposition name using DB post title / blob filename + original extension
                 try:

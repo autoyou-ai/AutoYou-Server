@@ -17,6 +17,7 @@ import inspect
 import json
 import re
 import webbrowser
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple
@@ -2131,14 +2132,29 @@ class WebRTCManager:
                         _runtime._get_remote_desktop_capture_profile(cfg=(_runtime.STATE.config or {}))["bitrate_kbps"]
                         * 1000
                     )
+                    try:
+                        encoder._autoyou_max_bitrate = target_bps
+                    except Exception:
+                        pass
                     state = (id(encoder), target_bps)
+                    previous_state = getattr(track, "_autoyou_desktop_video_bitrate_state", None)
                     current = int(getattr(encoder, "target_bitrate", 0) or 0)
-                    if getattr(track, "_autoyou_desktop_video_bitrate_state", None) != state or current > target_bps:
+                    new_encoder = previous_state is None or previous_state[0] != id(encoder)
+                    profile_raised = (
+                        previous_state is not None
+                        and previous_state[0] == id(encoder)
+                        and previous_state[1] != target_bps
+                    )
+                    # Let REMB adapt downward under congestion without bouncing back up;
+                    # initialize new encoders at profile bitrate and clamp excess peaks.
+                    if new_encoder or current <= 0 or current > target_bps or (profile_raised and current >= previous_state[1]):
                         try:
-                            encoder.target_bitrate = target_bps
+                            encoder.target_bitrate = min(current, target_bps) if (profile_raised and 0 < current < target_bps) else target_bps
                             track._autoyou_desktop_video_bitrate_state = state
                         except Exception as exc:
                             _runtime.LOGGER.debug("Could not apply remote desktop bitrate: %s", exc)
+                    elif previous_state != state:
+                        track._autoyou_desktop_video_bitrate_state = state
                 await _runtime.asyncio.sleep(0.5)
         except _runtime.asyncio.CancelledError:
             return
@@ -4265,6 +4281,8 @@ class WebRTCManager:
       for alias_id, candidate in list(self.remote_desktop_control_leases_by_session.items()):
         if candidate is lease:
           self.remote_desktop_control_leases_by_session.pop(alias_id, None)
+          self._clear_pending_remote_desktop_moves(alias_id, str(lease.get("control_id") or control_id))
+      self._clear_pending_remote_desktop_moves(session_id, str(lease.get("control_id") or control_id))
       expiry_task = lease.pop("expiry_task", None)
       if isinstance(expiry_task, _runtime.asyncio.Task) and expiry_task is not _runtime.asyncio.current_task():
         expiry_task.cancel()
@@ -4751,6 +4769,87 @@ class WebRTCManager:
       except Exception:
         return fallback
 
+    def _pending_remote_desktop_moves(self) -> Dict[Tuple[str, str], Dict[str, Any]]:
+      pending = getattr(self, "_remote_desktop_pending_moves", None)
+      if pending is None:
+        pending = {}
+        self._remote_desktop_pending_moves = pending
+      return pending
+
+    def _clear_pending_remote_desktop_moves(self, session_id: str, control_id: str = "") -> None:
+      pending = getattr(self, "_remote_desktop_pending_moves", None)
+      if not pending:
+        return
+      for key in list(pending.keys()):
+        if key[0] == session_id and (not control_id or key[1] == control_id):
+          pending[key]["move"] = None
+
+    @staticmethod
+    def _merge_remote_desktop_move(
+      previous: Optional[Dict[str, Any]],
+      incoming: Dict[str, Any],
+    ) -> Dict[str, Any]:
+      merged = dict(incoming)
+      if (
+        previous is not None
+        and previous.get("coordinate_mode") == "relative"
+        and merged.get("coordinate_mode") == "relative"
+      ):
+        merged["dx"] = float(previous.get("dx") or 0.0) + float(merged.get("dx") or 0.0)
+        merged["dy"] = float(previous.get("dy") or 0.0) + float(merged.get("dy") or 0.0)
+      return merged
+
+    async def _execute_remote_desktop_input_locked(
+      self,
+      session_id: str,
+      control_id: str,
+      normalized: Dict[str, Any],
+    ) -> None:
+      lease, reason = self._remote_desktop_control_state(session_id, control_id)
+      if lease is None:
+        await self._release_remote_desktop_control_locked(session_id, control_id)
+        await self._send_remote_desktop_control_status(
+          session_id,
+          control_id=control_id,
+          active=False,
+          reason=reason,
+        )
+        return
+      if await self._forward_game_engine_input_locked(session_id, lease, normalized):
+        return
+      if self._other_desktop_holds(lease, "held_buttons"):
+        return  # One host cursor, so another viewer cannot interrupt a drag.
+      if self._screen_session_active(session_id) and lease.get("touch_mode") == "relative" and (
+        normalized.get("coordinate_mode") == "absolute" or "x" in normalized
+      ):
+        return
+      if normalized["input_type"] == "button":
+        phase = normalized["phase"]
+        held = normalized["button"] in lease["held_buttons"]
+        if (phase == "up" and not held) or (phase in {"click", "double_click"} and held):
+          return
+      input_options = {"track": lease.get("track")}
+      if normalized.get("coordinate_mode") == "relative":
+        input_options["relative_remainder"] = lease.setdefault("relative_remainder", {})
+      if normalized["input_type"] == "move" and lease["held_buttons"]:
+        input_options["drag_button"] = next(iter(lease["held_buttons"]))
+      applied = await _runtime.asyncio.to_thread(
+        _runtime.execute_remote_desktop_input,
+        normalized,
+        **input_options,
+      )
+      if not applied:
+        await self._report_remote_desktop_input_failure_locked(session_id, lease)
+        return
+      lease["input_failures"] = 0
+      if normalized["input_type"] == "button":
+        button = str(normalized.get("button") or "left")
+        if normalized.get("phase") == "down":
+          lease["held_buttons"].add(button)
+        elif normalized.get("phase") == "up":
+          lease["held_buttons"].discard(button)
+      lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+
     async def _handle_remote_desktop_input(
       self,
       session_id: str,
@@ -4760,51 +4859,40 @@ class WebRTCManager:
       if normalized is None or not self._is_native_call_remote_desktop_payload(normalized):
         return
       control_id = str(normalized.get("control_id") or "")
+      slot_key = (session_id, control_id)
+      pending_map = self._pending_remote_desktop_moves()
+      slot = pending_map.setdefault(slot_key, {"move": None, "scheduled": False})
+
+      if normalized["input_type"] == "move":
+        # Coalesce bursts of cursor moves while an earlier move runs on the
+        # worker thread so pointer latency never builds an unbounded backlog.
+        slot["move"] = self._merge_remote_desktop_move(slot.get("move"), normalized)
+        if slot.get("scheduled"):
+          return
+        slot["scheduled"] = True
+        entered = False
+        try:
+          async with self.remote_desktop_control_lock:
+            entered = True
+            move_payload = slot.pop("move", None)
+            slot["scheduled"] = False
+            if move_payload is None:
+              return
+            await self._execute_remote_desktop_input_locked(session_id, control_id, move_payload)
+        finally:
+          if not entered:
+            slot["scheduled"] = False
+          if slot.get("move") is None and not slot.get("scheduled"):
+            if slot_key in pending_map and pending_map[slot_key] is slot:
+              pending_map.pop(slot_key, None)
+        return
+
       async with self.remote_desktop_control_lock:
-        lease, reason = self._remote_desktop_control_state(session_id, control_id)
-        if lease is None:
-          await self._release_remote_desktop_control_locked(session_id, control_id)
-          await self._send_remote_desktop_control_status(
-            session_id,
-            control_id=control_id,
-            active=False,
-            reason=reason,
-          )
-          return
-        if await self._forward_game_engine_input_locked(session_id, lease, normalized):
-          return
-        if self._other_desktop_holds(lease, "held_buttons"):
-          return  # One host cursor, so another viewer cannot interrupt a drag.
-        if self._screen_session_active(session_id) and lease.get("touch_mode") == "relative" and (
-          normalized.get("coordinate_mode") == "absolute" or "x" in normalized
-        ):
-          return
-        if normalized["input_type"] == "button":
-          phase = normalized["phase"]
-          held = normalized["button"] in lease["held_buttons"]
-          if (phase == "up" and not held) or (phase in {"click", "double_click"} and held):
-            return
-        input_options = {"track": lease.get("track")}
-        if normalized.get("coordinate_mode") == "relative":
-          input_options["relative_remainder"] = lease.setdefault("relative_remainder", {})
-        if normalized["input_type"] == "move" and lease["held_buttons"]:
-          input_options["drag_button"] = next(iter(lease["held_buttons"]))
-        applied = await _runtime.asyncio.to_thread(
-          _runtime.execute_remote_desktop_input,
-          normalized,
-          **input_options,
-        )
-        if not applied:
-          await self._report_remote_desktop_input_failure_locked(session_id, lease)
-          return
-        lease["input_failures"] = 0
-        if normalized["input_type"] == "button":
-          button = str(normalized.get("button") or "left")
-          if normalized.get("phase") == "down":
-            lease["held_buttons"].add(button)
-          elif normalized.get("phase") == "up":
-            lease["held_buttons"].discard(button)
-        lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+        # Flush any coalesced pointer move captured before this click/scroll.
+        pending_move = slot.pop("move", None)
+        if pending_move is not None:
+          await self._execute_remote_desktop_input_locked(session_id, control_id, pending_move)
+        await self._execute_remote_desktop_input_locked(session_id, control_id, normalized)
 
     async def _apply_game_touch_fallback_locked(
       self, session_id: str, lease: Dict[str, Any], frame: Dict[str, Any],
@@ -10488,16 +10576,22 @@ class WebRTCManager:
 
             # Use persistent HTTP client with connection pooling for better performance
             if not hasattr(self, '_http_client'):
-                # Create persistent HTTP client with optimized settings
+                # Use HTTP/1.1 with keepalive shorter than uvicorn's 5s default so
+                # long-lived WebRTC sessions do not stall on stale pooled loopback sockets.
+                loopback_limits = _runtime.httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=4.0,
+                )
                 self._http_client = _runtime.httpx.AsyncClient(
                     transport=_runtime.build_safe_httpx_transport(
-                        http2=True,
-                        limits=_runtime.httpx.Limits(max_keepalive_connections=20, max_connections=100),
+                        http2=False,
+                        limits=loopback_limits,
                         allow_loopback=True,
                     ),
                     timeout=_runtime.httpx.Timeout(30.0, connect=5.0),
-                    limits=_runtime.httpx.Limits(max_keepalive_connections=20, max_connections=100),
-                    http2=True,
+                    limits=loopback_limits,
+                    http2=False,
                     trust_env=False,
                 )
 
@@ -10517,6 +10611,45 @@ class WebRTCManager:
             if method in ["POST", "PUT", "PATCH", "QUERY"] and (content_bytes is not None):
                 request_kwargs["content"] = content_bytes
 
+            @asynccontextmanager
+            async def _open_upstream_stream():
+                stale_exc_types = tuple(
+                    exc_type
+                    for exc_type in (
+                        getattr(_runtime.httpx, "RemoteProtocolError", None),
+                        getattr(_runtime.httpx, "ReadError", None),
+                    )
+                    if isinstance(exc_type, type) and issubclass(exc_type, BaseException)
+                )
+                can_retry_stale = method.upper() in {"GET", "HEAD"} and bool(stale_exc_types)
+                stream_cm = None
+                resp_obj = None
+                for attempt in range(2):
+                    candidate_cm = self._http_client.stream(method, **request_kwargs)
+                    try:
+                        resp_obj = await candidate_cm.__aenter__()
+                        stream_cm = candidate_cm
+                        break
+                    except BaseException as open_err:
+                        with suppress(Exception):
+                            await candidate_cm.__aexit__(type(open_err), open_err, open_err.__traceback__)
+                        if attempt == 0 and can_retry_stale and isinstance(open_err, stale_exc_types):
+                            _runtime.LOGGER.debug(
+                                "Retrying stale pooled loopback request %s %s: %s",
+                                method,
+                                url,
+                                open_err,
+                            )
+                            continue
+                        raise
+                try:
+                    yield resp_obj
+                except BaseException as body_exc:
+                    if not await stream_cm.__aexit__(type(body_exc), body_exc, body_exc.__traceback__):
+                        raise
+                else:
+                    await stream_cm.__aexit__(None, None, None)
+
             # If SSE is requested, stream the response as SSE events over datachannel
             if sse_requested:
 
@@ -10528,7 +10661,7 @@ class WebRTCManager:
                     require_send_message=True,
                 )
                 try:
-                    async with self._http_client.stream(method, **request_kwargs) as resp:
+                    async with _open_upstream_stream() as resp:
                         try:
                             if datachannel_manager and hasattr(datachannel_manager, 'send_message'):
                                 # Sanitize upstream headers to avoid invalid chunked encoding on client
@@ -10677,7 +10810,7 @@ class WebRTCManager:
                     raise RuntimeError(f"HTTP stream stalled during {frame_name}")
 
             try:
-                async with self._http_client.stream(method, **request_kwargs) as resp:
+                async with _open_upstream_stream() as resp:
                     # Prepare and send stream-open with status and headers
                     try:
                         response_headers = dict(resp.headers)

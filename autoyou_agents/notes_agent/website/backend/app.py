@@ -10,6 +10,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -19,6 +20,9 @@ import json
 import mimetypes
 import re
 import sqlite3
+import threading
+import time
+from collections import OrderedDict
 from email.utils import formatdate
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +50,7 @@ from autoyou_agents.notes_agent.notes_tool import NotesStorageSealedError, Notes
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.media_messaging import is_adts_aac
-from shared.secure_storage import read_secure_file
+from shared.secure_storage import read_secure_file, sealed_envelope_kind, secure_storage_enabled
 from shared.http_errors import internal_error_message
 from shared.path_safety import contained_path
 
@@ -168,15 +172,86 @@ def _bounded_media_range(start: int, end: int, file_size: int) -> tuple[int, int
     return (int(start), max(int(start), bounded_end))
 
 
+_NOTES_MEDIA_CACHE_SECONDS = 60.0
+_NOTES_MEDIA_CACHE_MAX_BYTES = 64 * 1024 * 1024
+_NOTES_MEDIA_CACHE_MAX_ITEMS = 8
+_NOTES_MEDIA_CACHE: "OrderedDict[tuple[str, int, int], tuple[bytes, float]]" = OrderedDict()
+_NOTES_MEDIA_CACHE_LOCK = threading.Lock()
+
+
+def _notes_media_is_unsealed(file_path: Path) -> bool:
+    return (not secure_storage_enabled()) and (sealed_envelope_kind(file_path) is None)
+
+
+def _load_notes_media_for_serving(file_path: Path, stat_result) -> tuple[int, bytes, Optional[bytes]]:
+    """Return ``(file_size, header_64_bytes, full_bytes_if_sealed_or_none)``."""
+    if _notes_media_is_unsealed(file_path):
+        file_size = int(stat_result.st_size)
+        with file_path.open("rb") as handle:
+            header_bytes = handle.read(64)
+        return file_size, header_bytes, None
+
+    key = (str(file_path), int(stat_result.st_mtime_ns), int(stat_result.st_size))
+    now = time.monotonic()
+    with _NOTES_MEDIA_CACHE_LOCK:
+        expired = [k for k, entry in _NOTES_MEDIA_CACHE.items() if now - entry[1] > _NOTES_MEDIA_CACHE_SECONDS]
+        for k in expired:
+            _NOTES_MEDIA_CACHE.pop(k, None)
+        hit = _NOTES_MEDIA_CACHE.get(key)
+        if hit is not None:
+            cached_bytes, _ = hit
+            _NOTES_MEDIA_CACHE[key] = (cached_bytes, now)
+            _NOTES_MEDIA_CACHE.move_to_end(key)
+            return len(cached_bytes), cached_bytes[:64], cached_bytes
+
+    file_data = read_secure_file(file_path)
+    try:
+        updated_stat = file_path.stat()
+        key = (str(file_path), int(updated_stat.st_mtime_ns), int(updated_stat.st_size))
+    except OSError:
+        updated_stat = stat_result
+    if len(file_data) <= _NOTES_MEDIA_CACHE_MAX_BYTES:
+        now_after = time.monotonic()
+        with _NOTES_MEDIA_CACHE_LOCK:
+            _NOTES_MEDIA_CACHE[key] = (file_data, now_after)
+            _NOTES_MEDIA_CACHE.move_to_end(key)
+            while (
+                len(_NOTES_MEDIA_CACHE) > _NOTES_MEDIA_CACHE_MAX_ITEMS
+                or sum(len(entry[0]) for entry in _NOTES_MEDIA_CACHE.values()) > _NOTES_MEDIA_CACHE_MAX_BYTES
+            ):
+                _NOTES_MEDIA_CACHE.popitem(last=False)
+    return len(file_data), file_data[:64], file_data
+
+
 def _iter_file_range(file_path: Path, start: int, end: int, data: Optional[bytes] = None):
     if end < start:
         return
-    data = data if data is not None else read_secure_file(file_path)
+    if data is not None:
+        position = max(0, int(start))
+        end_position = min(len(data) - 1, int(end))
+        while position <= end_position:
+            next_position = min(end_position + 1, position + 64 * 1024)
+            yield data[position:next_position]
+            position = next_position
+        return
+    if _notes_media_is_unsealed(file_path):
+        start_pos = max(0, int(start))
+        remaining = max(0, int(end) - start_pos + 1)
+        with file_path.open("rb") as handle:
+            handle.seek(start_pos)
+            while remaining > 0:
+                piece = handle.read(min(64 * 1024, remaining))
+                if not piece:
+                    break
+                remaining -= len(piece)
+                yield piece
+        return
+    sealed_data = read_secure_file(file_path)
     position = max(0, int(start))
-    end_position = min(len(data) - 1, int(end))
+    end_position = min(len(sealed_data) - 1, int(end))
     while position <= end_position:
         next_position = min(end_position + 1, position + 64 * 1024)
-        yield data[position:next_position]
+        yield sealed_data[position:next_position]
         position = next_position
 
 
@@ -766,11 +841,12 @@ async def api_attach_phone_media(note_id: int, request: Request, file: UploadFil
 
 
 @app.get("/api/media/{attachment_id}")
-def api_serve_media(attachment_id: int, request: Request) -> Any:
+async def api_serve_media(attachment_id: int, request: Request) -> Any:
     notes_tool = get_notes_tool()
     if notes_tool is None:
         return _json_response({"success": False, "error": "Notes storage unavailable."}, status_code=503)
-    try:
+
+    def _lookup_and_prepare():
         import sqlite3 as _sqlite3
         with _sqlite3.connect(notes_tool._db_path) as conn:
             conn.row_factory = _sqlite3.Row
@@ -778,18 +854,26 @@ def api_serve_media(attachment_id: int, request: Request) -> Any:
                 "SELECT filename, mimetype, path, size_bytes FROM media_attachments WHERE id = ?",
                 (int(attachment_id),),
             ).fetchone()
+        if not row:
+            return None, None, None, None
+        candidate_path = Path(str(row["path"] or ""))
+        if not candidate_path.is_file():
+            return row, candidate_path, None, None
+        stat_res = candidate_path.stat()
+        f_size, head_bytes, f_data = _load_notes_media_for_serving(candidate_path, stat_res)
+        return row, candidate_path, stat_res, (f_size, head_bytes, f_data)
+
+    try:
+        row, file_path, stat_result, media_tuple = await asyncio.to_thread(_lookup_and_prepare)
     except Exception as exc:
         return _json_response({"success": False, "error": internal_error_message(exc)}, status_code=500)
     if not row:
         return _json_response({"success": False, "error": "Attachment not found."}, status_code=404)
-    file_path = Path(str(row["path"] or ""))
-    if not file_path.is_file():
+    if file_path is None or stat_result is None or media_tuple is None:
         return _json_response({"success": False, "error": "File not found on disk."}, status_code=404)
-    stat_result = file_path.stat()
-    file_data = read_secure_file(file_path)
-    file_size = len(file_data)
+    file_size, header_bytes, file_data = media_tuple
     filename = str(row["filename"] or file_path.name)
-    media_type = "audio/aac" if is_adts_aac(file_data) else _media_type_for_attachment(filename, row["mimetype"])
+    media_type = "audio/aac" if is_adts_aac(header_bytes) else _media_type_for_attachment(filename, row["mimetype"])
     etag = f'W/"{file_size:x}-{int(stat_result.st_mtime_ns):x}"'
     base_headers = {
         "Accept-Ranges": "bytes",

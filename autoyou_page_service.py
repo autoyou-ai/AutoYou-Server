@@ -39,6 +39,9 @@ from urllib.parse import parse_qs, quote, urlparse
 import urllib.request
 from contextlib import suppress
 import requests
+from requests.adapters import HTTPAdapter
+
+_ORIG_REQUESTS_REQUEST = requests.request
 from autoyou_agents.shared_tools.agent_directory import build_agent_directory_payload
 from autoyou_agents.shared_tools.frontend_registry import load_frontend_registry
 from shared.agent_apps import category_summary, describe_agent_app, render_agent_apps_page
@@ -186,6 +189,10 @@ class AutoYouPageService:
         self.https_server = None
         self.feed_items: list[Dict[str, Any]] = []
         self._next_id: int = 1
+        self._proxy_http_session = requests.Session()
+        proxy_adapter = HTTPAdapter(pool_connections=16, pool_maxsize=32)
+        self._proxy_http_session.mount("http://", proxy_adapter)
+        self._proxy_http_session.mount("https://", proxy_adapter)
         # The page feed moved to page_agent. This process is now only the
         # website proxy and must not race that backend for page_feed.db.
         self.db = None
@@ -1010,6 +1017,11 @@ class AutoYouPageService:
             with suppress(Exception):
                 await websocket.close(code=1011, reason=AGENT_WEBSITE_PUBLIC_DETAIL)
 
+    def _proxy_request_callable(self):
+        if requests.request is not _ORIG_REQUESTS_REQUEST:
+            return requests.request
+        return self._proxy_http_session.request
+
     async def _proxy_agent_frontend_request(
         self,
         request: Request,
@@ -1043,7 +1055,11 @@ class AutoYouPageService:
             target_url = f"{target_url}?{request.url.query}"
 
         body = await request.body()
-        is_media_stream = request.method.upper() != "HEAD" and "/api/stream/" in target_path.lower()
+        lowered_target_path = target_path.lower()
+        is_media_stream = request.method.upper() != "HEAD" and any(
+            marker in lowered_target_path
+            for marker in ("/api/stream/", "/api/download/", "/api/blob/", "/api/media/", "/media/")
+        )
         request_kwargs = {
             "headers": self._proxy_request_headers(
                 dict(request.headers),
@@ -1059,7 +1075,7 @@ class AutoYouPageService:
             request_kwargs["headers"]["Accept-Encoding"] = "identity"
         try:
             upstream = await asyncio.to_thread(
-                requests.request,
+                self._proxy_request_callable(),
                 request.method,
                 target_url,
                 **request_kwargs,

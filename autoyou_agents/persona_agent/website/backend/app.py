@@ -19,14 +19,18 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
+from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import asyncio
 import base64
 import json
 import re
+import threading
+import time
 
 from fastapi import FastAPI, Request, File, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.persona_agent.agent import (
@@ -381,6 +385,7 @@ async def api_publish_diary_media(entry_id: str, request: Request, file: UploadF
         return _json_response({"success": False, "error": "Invalid media type."}, status_code=400)
     try:
         store.write(json.dumps({"mime": mime, "data": base64.b64encode(data).decode("ascii")}))
+        _evict_diary_media_cache(entry_id, media_id)
     except Exception:
         return _json_response({"success": False, "error": "Could not protect and save the attachment."}, status_code=500)
     return _json_response({"success": True, "url": f"/agent/persona_agent/api/persona/entries/{entry_id}/media/{media_id}"})
@@ -424,17 +429,84 @@ def _diary_byte_range(header: Any, size: int) -> tuple[int, int] | None:
     return start, min(end, size - 1)
 
 
+_DIARY_MEDIA_CACHE_SECONDS = 60.0
+_DIARY_MEDIA_CACHE_MAX_BYTES = 64 * 1024 * 1024
+_DIARY_MEDIA_CACHE_MAX_ITEMS = 8
+_DIARY_MEDIA_CACHE: "OrderedDict[tuple[str, str], tuple[Optional[tuple[int, int]], float, str, bytes]]" = OrderedDict()
+_DIARY_MEDIA_CACHE_LOCK = threading.Lock()
+
+
+def _evict_diary_media_cache(entry_id: str, media_id: str) -> None:
+    with _DIARY_MEDIA_CACHE_LOCK:
+        _DIARY_MEDIA_CACHE.pop((entry_id, media_id), None)
+
+
+def _diary_store_signature(store: Any) -> Optional[tuple[int, int]]:
+    store_path = getattr(store, "path", None)
+    if store_path is None:
+        return None
+    try:
+        st = Path(store_path).stat()
+        return int(st.st_mtime_ns), int(st.st_size)
+    except OSError:
+        return None
+
+
+def _load_decoded_diary_media(entry_id: str, media_id: str) -> Optional[tuple[str, bytes]]:
+    store = diary_media_store(entry_id, media_id)
+    cache_key = (entry_id, media_id)
+    sig = _diary_store_signature(store)
+    now = time.monotonic()
+    if sig is not None:
+        with _DIARY_MEDIA_CACHE_LOCK:
+            expired = [k for k, entry in _DIARY_MEDIA_CACHE.items() if now - entry[1] > _DIARY_MEDIA_CACHE_SECONDS]
+            for k in expired:
+                _DIARY_MEDIA_CACHE.pop(k, None)
+            hit = _DIARY_MEDIA_CACHE.get(cache_key)
+            if hit is not None and hit[0] == sig:
+                _, _, cached_mime, cached_data = hit
+                _DIARY_MEDIA_CACHE[cache_key] = (sig, now, cached_mime, cached_data)
+                _DIARY_MEDIA_CACHE.move_to_end(cache_key)
+                return cached_mime, cached_data
+
+    stored = store.read()
+    if stored is None:
+        return None
+    content = json.loads(stored)
+    data = base64.b64decode(content["data"], validate=True)
+    media_type = _diary_media_type(content.get("mime"), data)
+    sig_after = _diary_store_signature(store)
+    if sig_after is not None and len(data) <= _DIARY_MEDIA_CACHE_MAX_BYTES:
+        now_after = time.monotonic()
+        with _DIARY_MEDIA_CACHE_LOCK:
+            _DIARY_MEDIA_CACHE[cache_key] = (sig_after, now_after, media_type, data)
+            _DIARY_MEDIA_CACHE.move_to_end(cache_key)
+            while (
+                len(_DIARY_MEDIA_CACHE) > _DIARY_MEDIA_CACHE_MAX_ITEMS
+                or sum(len(entry[3]) for entry in _DIARY_MEDIA_CACHE.values()) > _DIARY_MEDIA_CACHE_MAX_BYTES
+            ):
+                _DIARY_MEDIA_CACHE.popitem(last=False)
+    return media_type, data
+
+
+def _iter_memory_slice(data: bytes, start: int, end: int, chunk: int = 65536):
+    position = max(0, int(start))
+    end_position = min(len(data) - 1, int(end))
+    while position <= end_position:
+        next_position = min(end_position + 1, position + chunk)
+        yield data[position:next_position]
+        position = next_position
+
+
 @app.get("/api/persona/entries/{entry_id}/media/{media_id}")
-def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Response:
+async def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Response:
     if not _check_auth(request):
         return _auth_error()
     try:
-        stored = diary_media_store(entry_id, media_id).read()
-        if stored is None:
+        loaded = await asyncio.to_thread(_load_decoded_diary_media, entry_id, media_id)
+        if loaded is None:
             return _json_response({"success": False, "error": "Attachment not found."}, status_code=404)
-        content = json.loads(stored)
-        data = base64.b64decode(content["data"], validate=True)
-        media_type = _diary_media_type(content.get("mime"), data)
+        media_type, data = loaded
         headers = {
             **NO_CACHE_HEADERS,
             "X-Content-Type-Options": "nosniff",
@@ -447,11 +519,21 @@ def api_read_diary_media(entry_id: str, media_id: str, request: Request) -> Resp
         except ValueError:
             return Response(status_code=416, headers={**headers, "Content-Range": f"bytes */{len(data)}"})
         if window is None:
-            return Response(data, media_type=media_type, headers=headers)
+            return StreamingResponse(
+                _iter_memory_slice(data, 0, len(data) - 1),
+                media_type=media_type,
+                headers={**headers, "Content-Length": str(len(data))},
+            )
         start, end = window
-        return Response(
-            data[start:end + 1], status_code=206, media_type=media_type,
-            headers={**headers, "Content-Range": f"bytes {start}-{end}/{len(data)}"},
+        return StreamingResponse(
+            _iter_memory_slice(data, start, end),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                **headers,
+                "Content-Range": f"bytes {start}-{end}/{len(data)}",
+                "Content-Length": str(end - start + 1),
+            },
         )
     except ValueError:
         return _json_response({"success": False, "error": "Invalid attachment."}, status_code=400)

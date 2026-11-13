@@ -470,3 +470,60 @@ def test_incremental_http_text_decoder_preserves_split_utf8_sequences():
     assert first == "brilliant "
     assert second == "\u266a playlist"
     assert trailing == ""
+
+
+@pytest.mark.asyncio
+async def test_webrtc_http_proxy_retries_stale_pooled_connection_once_on_get():
+    import httpx
+
+    class _FlakyThenHealthyClient:
+        def __init__(self):
+            self.attempts = 0
+
+        def stream(self, method, **kwargs):
+            self.attempts += 1
+            attempt = self.attempts
+
+            class _Ctx:
+                async def __aenter__(self):
+                    if attempt == 1:
+                        raise httpx.RemoteProtocolError("Server disconnected without sending a response")
+                    return _FakeStreamResponse(
+                        body=b"synthetic-ok",
+                        headers={"Content-Type": "application/octet-stream"},
+                    )
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return False
+
+            return _Ctx()
+
+    webrtc = server.WebRTCManager()
+    datachannel_manager = _CapturingDataChannelManager()
+    webrtc.datachannel_managers["session-stale"] = datachannel_manager
+    client = _FlakyThenHealthyClient()
+    webrtc._http_client = client
+
+    request_message = DataChannelMessage(
+        header=MessageHeader(
+            message_id="request-stale-retry-msg",
+            message_type=MessageType.HTTP_REQUEST,
+            timestamp=0.0,
+            session_id="session-stale",
+            user_id="tester",
+        ),
+        payload={
+            "request_id": "request-stale-retry",
+            "method": "GET",
+            "url": "/api/blob/synthetic-blob",
+            "headers": {},
+            "body": "",
+        },
+    )
+
+    await webrtc._handle_http_request(request_message)
+
+    assert client.attempts == 2
+    message_types = [m.header.message_type for m in datachannel_manager.sent_messages]
+    assert MessageType.HTTP_STREAM_OPEN in message_types
+    assert MessageType.HTTP_STREAM_END in message_types

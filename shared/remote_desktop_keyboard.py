@@ -112,6 +112,8 @@ def note_remote_desktop_activity() -> None:
 _DISPLAY_WAKE_LOCK = threading.Lock()
 _DISPLAY_WAKE_STATE: Dict[str, Any] = {"asserted_at": float("-inf"), "input_at": float("-inf"), "proc": None}
 _DISPLAY_WAKE_INTERVAL_SECONDS = 5.0
+_DISPLAY_WAKE_FAST_THROTTLE_SECONDS = 1.5
+_DISPLAY_WAKE_FAST_AT: float = float("-inf")
 # After this long without remote input the display may have gone dark.
 _DISPLAY_WAKE_IDLE_SECONDS = 30.0
 _DISPLAY_WAKE_SETTLE_SECONDS = 0.35
@@ -121,13 +123,21 @@ def wake_display_for_remote_input(*, settle: bool = False) -> None:
     """Wake a dark or locked Mac display before remote input lands. Never raises.
 
     With ``settle``, the first input after a quiet spell waits a moment for the
-    display, so a typed character is not spent waking it.
+    display, so a typed character is not spent waking it. High-rate pointer
+    events with ``settle=False`` skip lock/process work inside a short throttle
+    window so continuous mouse motion never contends on ``caffeinate``.
     """
+    global _DISPLAY_WAKE_FAST_AT
     if sys.platform != "darwin":
         return
     now = time.monotonic()
+    if not settle and now - _DISPLAY_WAKE_FAST_AT < _DISPLAY_WAKE_FAST_THROTTLE_SECONDS:
+        return
     started = False
     with _DISPLAY_WAKE_LOCK:
+        if not settle and now - _DISPLAY_WAKE_FAST_AT < _DISPLAY_WAKE_FAST_THROTTLE_SECONDS:
+            return
+        _DISPLAY_WAKE_FAST_AT = now
         idle_for = now - _DISPLAY_WAKE_STATE["input_at"]
         _DISPLAY_WAKE_STATE["input_at"] = now
         proc = _DISPLAY_WAKE_STATE["proc"]

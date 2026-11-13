@@ -1090,3 +1090,64 @@ def test_page_service_root_redirects_fallback_page_agent(monkeypatch):
     )
     service = autoyou_page_service.AutoYouPageService()
     assert service._default_browser_path() == "/agent/page_agent/"
+
+
+@pytest.mark.parametrize(
+    ("agent_name", "subpath"),
+    [
+        ("tv_agent", "api/download/synthetic-item"),
+        ("page_agent", "api/blob/synthetic-blob"),
+        ("notes_agent", "api/media/42"),
+        ("persona_agent", "api/persona/entries/11111111-1111-1111-1111-111111111111/media/m1"),
+    ],
+)
+def test_page_service_streams_binary_download_endpoints(monkeypatch, agent_name, subpath):
+    monkeypatch.setattr(
+        autoyou_page_service,
+        "load_frontend_registry",
+        lambda: {
+            "frontends": [
+                {
+                    "agent_name": agent_name,
+                    "proxy_port": 18099,
+                    "frontend_port_registered": True,
+                }
+            ]
+        },
+    )
+    captured = {}
+
+    class _FakeUpstreamResponse:
+        status_code = 206
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": "11",
+            "Content-Range": "bytes 0-10/20",
+            "Accept-Ranges": "bytes",
+        }
+
+        def iter_content(self, chunk_size=65536):
+            yield b"hello-"
+            yield b"world"
+
+        def close(self):
+            captured["closed"] = True
+
+    service = autoyou_page_service.AutoYouPageService()
+
+    def _fake_session_request(method, url, **kwargs):
+        captured["method"] = method
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _FakeUpstreamResponse()
+
+    monkeypatch.setattr(service._proxy_http_session, "request", _fake_session_request)
+    client = TestClient(service.app)
+    resp = client.get(f"/agent/{agent_name}/{subpath}")
+
+    assert resp.status_code == 206
+    assert resp.content == b"hello-world"
+    assert captured["kwargs"].get("stream") is True
+    assert captured["kwargs"]["headers"].get("Accept-Encoding") == "identity"
+    assert resp.headers.get("content-range") == "bytes 0-10/20"
+    assert captured.get("closed") is True

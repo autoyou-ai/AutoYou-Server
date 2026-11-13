@@ -1599,3 +1599,39 @@ def test_incoming_video_sink_records_lightweight_images_on_interval(tmp_path, mo
     assert all(entry["format"] == "jpeg_image" for entry in manifest_entries)
     assert all(entry["image_interval_seconds"] == 2 for entry in manifest_entries)
     assert not (recording_path / "video.mp4").exists()
+
+
+def test_composite_capture_pacing_accounts_for_capture_time(monkeypatch):
+    """Composite/Meet frames must subtract capture+compose work from the next sleep."""
+    if video_call_manager.Image is None:
+        pytest.skip("Pillow is not installed")
+
+    now = [0.0]
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+        now[0] += delay
+
+    class _SlowPreviewSource:
+        has_live_content = True
+
+        def capture_preview_image(self, *, max_width):
+            now[0] += 0.06
+            return video_call_manager.Image.new("RGB", (320, 180), (15, 25, 35))
+
+    monkeypatch.setattr(video_call_manager.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(video_call_manager.asyncio, "sleep", fake_sleep)
+    track = video_call_manager.CompositeVideoStreamTrack(
+        [("remote_desktop", _SlowPreviewSource())],
+        fps=10.0,
+        max_width=320,
+    )
+    track.enable()
+
+    async def run() -> None:
+        await track.recv()
+        await track.recv()
+
+    asyncio.run(run())
+    assert delays == [pytest.approx(0.04)]

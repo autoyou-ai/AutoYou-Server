@@ -478,3 +478,38 @@ def test_chunk_reassembly_accepts_1gb_media_chunk_counts_without_old_cap():
     assert chunker.add_chunk(chunk) is None
     assert chunk_id in chunker.pending_chunks
     assert chunker.chunk_metadata[chunk_id].total_chunks == total_chunks
+
+
+@pytest.mark.asyncio
+async def test_adaptive_frames_recover_upward_after_three_clean_sends():
+    settings = DataChannelRuntimeSettings(
+        chunk_ack_timeout_seconds=0.01,
+        chunk_ack_max_retries=0,
+        adaptive_max_frame_size=8192,
+    )
+    manager = DataChannelManager(role="server", runtime_settings=settings)
+    channel = _SizeLimitedAckingDataChannel(manager, max_frame_size=2100)
+    manager.set_datachannel(channel)
+
+    message = create_chat_message(
+        message="G" * 5000,
+        session_id="session-adaptive-recover",
+        user_id="tester",
+    )
+
+    assert await manager.send_message(message) is True
+    assert manager._adaptive_frame_size == 2048
+
+    # Transient path limit disappears: 2 clean sends remain at 2048, 3rd steps up to 4096.
+    channel.max_frame_size = 10000
+    assert await manager.send_message(message) is True
+    assert manager._adaptive_frame_size == 2048
+    assert await manager.send_message(message) is True
+    assert manager._adaptive_frame_size == 2048
+    assert await manager.send_message(message) is True
+    assert manager._adaptive_frame_size == 4096
+
+    # Three more clean sends recover back to the 8192 ceiling.
+    for _ in range(3):
+        assert await manager.send_message(message) is True
+    assert manager._adaptive_frame_size == 8192
