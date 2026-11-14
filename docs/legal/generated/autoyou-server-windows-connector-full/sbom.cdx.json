@@ -1318,11 +1318,11 @@
       "properties": [
         {
           "name": "requirement",
-          "value": "dnspython>=2.9.0,<3"
+          "value": "dnspython>=2.9.2,<3"
         },
         {
           "name": "specifier",
-          "value": ">=2.9.0,<3"
+          "value": ">=2.9.2,<3"
         },
         {
           "name": "autoyou:ecosystem",
@@ -4184,7 +4184,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-08T01:18:19+00:00",
+    "timestamp": "2026-11-14T08:12:46+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -4193,7 +4193,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:872b8b0d-3d04-4c58-a240-5db4de50df52",
+  "serialNumber": "urn:uuid:36857695-8feb-4c80-a61f-cffd73803fec",
   "specVersion": "1.5",
   "version": 1
 }
