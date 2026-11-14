@@ -335,7 +335,42 @@ def api_list_diary_entries(request: Request) -> JSONResponse:
         return _auth_error()
     order = str(request.query_params.get("order") or "desc")
     entries = list_diary_entries(order=order)
-    return _json_response({"success": True, "entries": entries, "total": len(entries)})
+    total = len(entries)
+    limit_param = request.query_params.get("limit")
+    offset_param = request.query_params.get("offset")
+    if limit_param is not None or offset_param is not None:
+        try:
+            offset_val = max(0, int(offset_param)) if offset_param is not None else 0
+        except ValueError:
+            offset_val = 0
+        try:
+            limit_val = max(1, min(int(limit_param), 500)) if limit_param is not None else 100
+        except ValueError:
+            limit_val = 100
+        page_entries = entries[offset_val:offset_val + limit_val]
+        next_off = offset_val + len(page_entries)
+        has_more = next_off < total
+        return _json_response(
+            {
+                "success": True,
+                "entries": page_entries,
+                "total": total,
+                "offset": offset_val,
+                "limit": limit_val,
+                "has_more": has_more,
+                "next_offset": next_off if has_more else None,
+            }
+        )
+    return _json_response(
+        {
+            "success": True,
+            "entries": entries,
+            "total": total,
+            "offset": 0,
+            "has_more": False,
+            "next_offset": None,
+        }
+    )
 
 
 @app.get("/api/persona/entries/{entry_id}")

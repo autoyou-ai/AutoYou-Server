@@ -4421,7 +4421,7 @@ class WebRTCManager:
     async def _publish_remote_desktop_cursor(self) -> None:
       last_position = None
       while True:
-        await _runtime.asyncio.sleep(0.05)
+        await _runtime.asyncio.sleep(0.08)
         targets = {(str(lease["target_session_id"]), str(lease["control_id"]))
                    for lease in self.remote_desktop_control_leases_by_session.values()
                    if lease.get("mode") == "desktop" and not lease.get("approval_status_pending")}
@@ -4432,10 +4432,14 @@ class WebRTCManager:
           continue
         last_position = position
         for session_id, control_id in targets:
-          if self._remote_desktop_control_lease_for_session(session_id, control_id) is not None:
-            await self._send_remote_desktop_control_status(
-              session_id, control_id=control_id, active=True, cursor_position=position,
-            )
+          if self._remote_desktop_control_lease_for_session(session_id, control_id) is None:
+            continue
+          manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
+          if manager is not None and manager._current_buffered_amount() > 64 * 1024:
+            continue
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=True, cursor_position=position,
+          )
 
     def _remote_desktop_control_state(
       self,
@@ -6484,8 +6488,8 @@ class WebRTCManager:
                                             server_name=server_name,
                                         )
                                     )
-                                    # Also record this sample in datachannel_manager
-                                    if datachannel_manager is not None:
+                                    # Also record this sample in datachannel_manager (ignore multi-second sleep/standby outliers)
+                                    if datachannel_manager is not None and 0 < rtt <= 10.0:
                                         datachannel_manager._record_rtt_sample(rtt)
                                 except Exception as game_exc:
                                     _runtime.LOGGER.warning("PingPong game scoring error: %s", game_exc)
@@ -11095,10 +11099,12 @@ class WebRTCManager:
                     async for chunk in _iter_response_chunks():
                         if not chunk:
                             continue
-                        # Always accumulate raw bytes for final assembly
+                        # Accumulate raw bytes only when a legacy fallback may still be emitted
                         try:
                             response_size_bytes += len(chunk)
-                            if response_body_capture_limit is None:
+                            if binary_http and not is_textual:
+                                response_body_capture_truncated = True
+                            elif response_body_capture_limit is None:
                                 response_bytes_accumulator.extend(chunk)
                             elif len(response_bytes_accumulator) + len(chunk) <= response_body_capture_limit:
                                 response_bytes_accumulator.extend(chunk)

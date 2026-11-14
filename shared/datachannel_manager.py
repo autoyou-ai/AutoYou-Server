@@ -998,17 +998,24 @@ class DataChannelManager:
         adaptive_delay = max(base_delay, pressure_component, wait_component, retry_component)
         return min(adaptive_delay, min(self._ack_timeout / 2.0, 0.75))
 
-    async def _wait_for_buffer_capacity(self) -> tuple[int, int]:
+    async def _wait_for_buffer_capacity(
+        self,
+        high_watermark_bytes: Optional[int] = None,
+    ) -> tuple[int, int]:
         """Throttle sends when the SCTP buffer is already backed up."""
         if self.datachannel is None or not hasattr(self.datachannel, 'bufferedAmount'):
             return 0, 0
 
+        watermark = int(
+            high_watermark_bytes
+            if high_watermark_bytes is not None
+            else self.runtime_settings.buffered_amount_high_watermark_bytes
+        )
         wait_iterations = 0
         peak_buffered_amount = self._current_buffered_amount()
         while (
             self._ensure_transport_ready()
-            and self._current_buffered_amount()
-            > self.runtime_settings.buffered_amount_high_watermark_bytes
+            and self._current_buffered_amount() > watermark
         ):
             peak_buffered_amount = max(peak_buffered_amount, self._current_buffered_amount())
             wait_iterations += 1
@@ -1316,11 +1323,18 @@ class DataChannelManager:
             if sequence % WINDOW_FRAMES == 0:
                 window = asyncio.get_running_loop().create_future()
                 self._binary_window_waiters[(request_id, sequence)] = window
-            await self._wait_for_buffer_capacity()
+            # Allow at least one full Binary HTTP ACK window (512 KiB) in the
+            # SCTP buffer so 32-frame windows do not stall mid-burst on 256 KiB.
+            binary_watermark = max(
+                int(self.runtime_settings.buffered_amount_high_watermark_bytes),
+                512 * 1024,
+            )
+            await self._wait_for_buffer_capacity(high_watermark_bytes=binary_watermark)
             if self.datachannel is not channel or not self.connection_active or getattr(channel, "readyState", "open") != "open":
                 return False
             channel.send(frame)
-            await asyncio.sleep(0)
+            if sequence % 8 == 0:
+                await asyncio.sleep(0)
             if window is not None and not await asyncio.wait_for(window, timeout=30):
                 return False
             return True

@@ -111,7 +111,7 @@ def list_diary_entries(order: str = "desc") -> List[Dict[str, Any]]:
             "has_media": "Attachments:" in body or "/media/" in body,
         })
     reverse = (str(order or "desc").strip().lower() != "asc")
-    entries.sort(key=lambda e: (e["date"], e["time"]), reverse=reverse)
+    entries.sort(key=lambda e: (e["date"], e["time"], e["id"]), reverse=reverse)
     return entries
 
 

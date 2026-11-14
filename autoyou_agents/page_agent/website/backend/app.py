@@ -2387,7 +2387,19 @@ class PageFeedService:
                     }
                     for i in page_rows
                 ]
-                return JSONResponse({"items": catalog, "has_more": has_more, "next_cursor": next_cursor})
+                total_count = (
+                    self.db.count_items()
+                    if getattr(self, "db", None) is not None
+                    else len(self.feed_items)
+                )
+                return JSONResponse(
+                    {
+                        "items": catalog,
+                        "has_more": has_more,
+                        "next_cursor": next_cursor,
+                        "total": total_count,
+                    }
+                )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 

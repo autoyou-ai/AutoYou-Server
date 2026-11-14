@@ -580,14 +580,16 @@ def load_notes_listing_payload(
         else None
     )
 
+    total_count = notes_tool.count_notes(
+        query=str(query or "").strip() or None,
+        category=selected_category,
+    )
     payload = {
         "success": True,
         "notes": items,
         "returned_count": len(items),
-        "total_count": notes_tool.count_notes(
-            query=str(query or "").strip() or None,
-            category=selected_category,
-        ),
+        "total_count": total_count,
+        "total": total_count,
         "limit": bounded_limit,
         "cursor": cursor or None,
         "next_cursor": next_cursor,
