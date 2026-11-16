@@ -1142,7 +1142,8 @@ class PairingRouter:
                 LOGGER.warning(
                     "Authenticator verification raised for %s:%s: %s", platform, redact_identifier(auth_sender_id), exc
                 )
-        return False, "That authenticator code isn't right."
+        LOGGER.info("Pairing authenticator code rejected. Check clock synchronization on both devices.")
+        return False, "That authenticator code isn't right. Sync the clocks on both devices and try a fresh code."
 
     async def _handle_autopair_hello_command(
         self,

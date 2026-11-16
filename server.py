@@ -5810,15 +5810,9 @@ def _verify_totp_secret(secret: Optional[str], code: Any, *, valid_window: int =
     if not normalized_secret or not normalized_code or pyotp is None:
         return False
     try:
-        totp = pyotp.TOTP(normalized_secret)
-        utc_now = _totp_utc_now()
-        if totp.verify(normalized_code, for_time=utc_now, valid_window=valid_window):
-            return True
-        # Defensive fallback for naive local time if OS clock / DST has ambiguous hour
-        naive_now = datetime.datetime.now()
-        if totp.verify(normalized_code, for_time=naive_now, valid_window=valid_window):
-            return True
-        return False
+        return pyotp.TOTP(normalized_secret).verify(
+            normalized_code, for_time=_totp_utc_now(), valid_window=valid_window
+        )
     except Exception:
         return False
 

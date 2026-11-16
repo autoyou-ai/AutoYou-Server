@@ -448,6 +448,7 @@ REVIEWED_ASSET_PATHS = {
     "docs/images/architecture-dark.svg",
     "docs/images/architecture-light.png",
     "docs/images/architecture-light.svg",
+    "docs/images/hero-ios-agents.gif",
     "docs/images/hero.gif",
     "docs/images/apps/android-local-ai.png",
     "docs/images/apps/android-pairing.png",
