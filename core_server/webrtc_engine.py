@@ -17,6 +17,7 @@ import inspect
 import json
 import re
 import webbrowser
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Optional, Set, Tuple
@@ -89,6 +90,8 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
 
 _runtime: ModuleType
 _GAME_INPUT_UNAVAILABLE = "Game input is unavailable. Connect a local game engine or enable host input."
+_SCREEN_TEXT_IDLE_SECONDS = 5
+_SCREEN_RECENT_TEXT_SECONDS = 5
 _MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
                     b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
                     b'media-src data:; connect-src \'none\'; form-action \'none\'">')
@@ -163,6 +166,7 @@ class WebRTCManager:
         self.voice_call_client_active_by_session: Dict[str, bool] = {}
         self.screen_sessions: Dict[str, Dict[str, Any]] = {}
         self.screen_inputs = _runtime.deque(maxlen=100)
+        self.screen_control_allowed_clients: Dict[str, Any] = {}
         self.screen_listen_mixer = ScreenListenMixer()
         self._meet_desktop_capture: Any = None
         self._screen_audio_source: Any = None
@@ -195,7 +199,6 @@ class WebRTCManager:
         # so expiry, held buttons, and failure counts cannot drift after rekeying.
         self.remote_desktop_control_leases_by_session: Dict[str, Dict[str, Any]] = {}
         self.remote_desktop_control_lock = _runtime.asyncio.Lock()
-        self._remote_desktop_cursor_dirty = False
         self._remote_desktop_cursor_task: Optional[asyncio.Task] = None
         self.game_input_hub = GameInputHub()
         # Neon Horizon's settings can turn off the soundtrack streamed to players.
@@ -664,6 +667,7 @@ class WebRTCManager:
         desktop_control_available = _runtime._get_remote_desktop_control_available(cfg=cfg)
         game_control_available = _runtime._get_game_mode_available(cfg=cfg)
         if not desktop_control_available:
+            self.screen_control_allowed_clients.clear()
             for screen_id, screen in list(self.screen_sessions.items()):
                 request = screen.pop("control_request", None)
                 if request is not None:
@@ -682,7 +686,7 @@ class WebRTCManager:
                 released_leases.add(id(lease))
                 target = str(lease["target_session_id"])
                 control_id = str(lease["control_id"])
-                if await self._release_remote_desktop_control(session_id, control_id) and self._screen_session_active(target):
+                if await self._release_remote_desktop_control(session_id, control_id):
                     await self._send_remote_desktop_control_status(
                         target, control_id=control_id, active=False,
                         reason="Remote desktop control is disabled or unavailable.",
@@ -2128,14 +2132,29 @@ class WebRTCManager:
                         _runtime._get_remote_desktop_capture_profile(cfg=(_runtime.STATE.config or {}))["bitrate_kbps"]
                         * 1000
                     )
+                    try:
+                        encoder._autoyou_max_bitrate = target_bps
+                    except Exception:
+                        pass
                     state = (id(encoder), target_bps)
+                    previous_state = getattr(track, "_autoyou_desktop_video_bitrate_state", None)
                     current = int(getattr(encoder, "target_bitrate", 0) or 0)
-                    if getattr(track, "_autoyou_desktop_video_bitrate_state", None) != state or current > target_bps:
+                    new_encoder = previous_state is None or previous_state[0] != id(encoder)
+                    profile_raised = (
+                        previous_state is not None
+                        and previous_state[0] == id(encoder)
+                        and previous_state[1] != target_bps
+                    )
+                    # Let REMB adapt downward under congestion without bouncing back up;
+                    # initialize new encoders at profile bitrate and clamp excess peaks.
+                    if new_encoder or current <= 0 or current > target_bps or (profile_raised and current >= previous_state[1]):
                         try:
-                            encoder.target_bitrate = target_bps
+                            encoder.target_bitrate = min(current, target_bps) if (profile_raised and 0 < current < target_bps) else target_bps
                             track._autoyou_desktop_video_bitrate_state = state
                         except Exception as exc:
                             _runtime.LOGGER.debug("Could not apply remote desktop bitrate: %s", exc)
+                    elif previous_state != state:
+                        track._autoyou_desktop_video_bitrate_state = state
                 await _runtime.asyncio.sleep(0.5)
         except _runtime.asyncio.CancelledError:
             return
@@ -2658,6 +2677,7 @@ class WebRTCManager:
         current = self._screen_session_for_session(session_id)
         if mode == "ended":
             if current is not None:
+                self._finish_screen_draft(current)
                 current["mode"] = "ended"
                 current["muted"] = True
                 current.pop("control_request", None)
@@ -2671,6 +2691,7 @@ class WebRTCManager:
         for candidate_id in related:
             previous = self.screen_sessions.pop(candidate_id, None)
             if previous is not None:
+                self._finish_screen_draft(previous)
                 self._drop_screen_audio(str(previous["id"]))
                 self.screen_listen_mixer.forget(str(previous["id"]))
         if mode not in {"watch", "interactive"}:
@@ -2679,26 +2700,57 @@ class WebRTCManager:
         name = self.client_display_name_snapshot(session_id).get("client_display_name") or "Connected device"
         self.screen_sessions[session_id] = {
             "id": session_id, "name": str(name)[:64], "mode": mode,
-            "muted": True, "layout": "off", "last_input": "", "last_input_at": 0.0,
+            "muted": True, "hand_raised": False, "layout": "off", "last_input": "", "last_input_at": 0.0,
         }
+
+    def _record_screen_input(self, session: Dict[str, Any], kind: str, value: str, now: float) -> None:
+        self.screen_inputs.append({
+            "session_id": str(session["id"]), "name": str(session["name"]),
+            "kind": kind, "value": value, "timestamp": now,
+        })
+
+    def _finish_screen_draft(self, session: Dict[str, Any]) -> None:
+        value = session.pop("typing", "")
+        at = session.pop("typing_at", 0.0)
+        if value.strip():
+            # A late poll must not make an old idle draft appear freshly sent.
+            sent_at = min(_runtime.time.time(), at + _SCREEN_TEXT_IDLE_SECONDS)
+            self._record_screen_input(session, "text", value, sent_at)
 
     def _clear_idle_meet_capture(self) -> None:
         if not any(screen["mode"] in {"watch", "interactive"} for screen in self.screen_sessions.values()):
             self._meet_desktop_capture = None
 
+    def _screen_client_always_allowed(self, session_id: str) -> bool:
+        connection = self.datachannel_managers.get(session_id)
+        return connection is not None and self.screen_control_allowed_clients.get(session_id) is connection
+
     def screen_listen_snapshot(self) -> Dict[str, Any]:
         participants = []
+        now = _runtime.time.time()
         for session in self.screen_sessions.values():
             if session["mode"] not in {"watch", "interactive"}:
                 continue
-            participant = {key: value for key, value in session.items() if key != "control_request"}
+            if now - session.get("typing_at", 0.0) >= _SCREEN_TEXT_IDLE_SECONDS:
+                self._finish_screen_draft(session)
+            participant = {key: value for key, value in session.items() if key not in {"control_request", "typing_at"}}
+            participant["always_allow"] = self._screen_client_always_allowed(session["id"])
+            if now - session["last_input_at"] >= 1.5:
+                participant["last_input"] = ""
             request = session.get("control_request")
             lease = self._remote_desktop_control_lease_for_session(str(session["id"]))
             if request is not None:
                 participant.update(control_state="requested", control_id=request["control_id"])
-            elif lease is not None:
+            elif lease is not None and not lease.get("approval_status_pending"):
                 participant.update(control_state="approved", control_id=lease["control_id"])
             participants.append(participant)
+        recent_text = {
+            entry["session_id"]: entry["value"] for entry in self.screen_inputs
+            if entry["kind"] == "text" and now - entry["timestamp"] < _SCREEN_RECENT_TEXT_SECONDS
+        }
+        for participant in participants:
+            if participant["mode"] == "interactive" and participant["id"] in recent_text:
+                participant["recent_text"] = recent_text[participant["id"]]
         # Players in a game session stream this computer without a microphone; Interact shows
         # them so the person here can read what each player is pressing.
         listed = {str(person["id"]) for person in participants}
@@ -2714,12 +2766,13 @@ class WebRTCManager:
             name = self.client_display_name_snapshot(player).get("client_display_name") or "Connected device"
             participants.append({
                 "id": player, "name": str(name)[:64], "mode": "game", "muted": True, "layout": "game",
-                "last_input": str(lease.get("last_input") or ""),
+                "last_input": str(lease.get("last_input") or "") if now - lease.get("last_input_at", 0) < 1.5 else "",
                 "last_input_at": float(lease.get("last_input_at") or 0.0),
             })
         return {
             **self.screen_listen_mixer.snapshot(),
-            "meet_auto_approve": bool(_runtime._get_video_remote_desktop_config().get("meet_auto_approve", True)),
+            "meet_auto_approve": bool(_runtime._get_video_remote_desktop_config().get("meet_auto_approve", False)),
+            "control_enabled": _runtime._get_remote_desktop_control_available(),
             "participants": participants,
             "inputs": list(self.screen_inputs)[-50:],
         }
@@ -2791,13 +2844,13 @@ class WebRTCManager:
                 return self._latest_frame_for_aliases(registry, aliases)
         return None
 
-    def configure_screen_listen(self, mode: str, selected: Iterable[str] = ()) -> Dict[str, Any]:
+    async def configure_screen_listen(self, mode: str, selected: Iterable[str] = ()) -> Dict[str, Any]:
         allowed = {str(session["id"]) for session in self.screen_sessions.values()
                    if session["mode"] == "interactive"}
         choices = {str(value) for value in selected}
         if mode == "selected" and not choices <= allowed:
             raise ValueError("Choose a connected screen participant")
-        self.screen_listen_mixer.configure(mode, choices if mode == "selected" else ())
+        await _runtime.asyncio.to_thread(self.screen_listen_mixer.configure, mode, choices if mode == "selected" else ())
         return self.screen_listen_snapshot()
 
     def _should_accept_voice_call_audio(self, session_id: str) -> bool:
@@ -4228,6 +4281,8 @@ class WebRTCManager:
       for alias_id, candidate in list(self.remote_desktop_control_leases_by_session.items()):
         if candidate is lease:
           self.remote_desktop_control_leases_by_session.pop(alias_id, None)
+          self._clear_pending_remote_desktop_moves(alias_id, str(lease.get("control_id") or control_id))
+      self._clear_pending_remote_desktop_moves(session_id, str(lease.get("control_id") or control_id))
       expiry_task = lease.pop("expiry_task", None)
       if isinstance(expiry_task, _runtime.asyncio.Task) and expiry_task is not _runtime.asyncio.current_task():
         expiry_task.cancel()
@@ -4239,6 +4294,8 @@ class WebRTCManager:
       lease["held_buttons"] = set()
       lease["held_keys"] = set()
       lease["expires_at"] = 0.0
+      if lease.get("approval_status_pending"):
+        return True  # The grant never went out and no input could be held.
       if lease.get("mode") == "game":
         self._stop_hosted_game_audio(lease)
         self.game_input_hub.publish(str(lease.get("target_session_id") or session_id), {
@@ -4329,7 +4386,7 @@ class WebRTCManager:
               payload["mapping"] = mapping
           except Exception:
             pass
-      if active and lease is not None and lease.get("touch_mode") == "relative":
+      if active and lease is not None and lease.get("mode") == "desktop":
         if cursor_position is None:
           cursor_position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
         if cursor_position is not None:
@@ -4358,7 +4415,6 @@ class WebRTCManager:
         return False
 
     def _schedule_remote_desktop_cursor_update(self) -> None:
-      self._remote_desktop_cursor_dirty = True
       if self._remote_desktop_cursor_task is None or self._remote_desktop_cursor_task.done():
         self._remote_desktop_cursor_task = _runtime.track_background_task(self._publish_remote_desktop_cursor())
 
@@ -4368,22 +4424,22 @@ class WebRTCManager:
         await _runtime.asyncio.sleep(0.08)
         targets = {(str(lease["target_session_id"]), str(lease["control_id"]))
                    for lease in self.remote_desktop_control_leases_by_session.values()
-                   if lease.get("touch_mode") == "relative"}
+                   if lease.get("mode") == "desktop" and not lease.get("approval_status_pending")}
         if not targets:
           return
-        dirty = self._remote_desktop_cursor_dirty
-        self._remote_desktop_cursor_dirty = False
         position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
-        if position is None:
-          return
-        if not dirty and position == last_position:
+        if position is None or position == last_position:
           continue
         last_position = position
         for session_id, control_id in targets:
-          if self._remote_desktop_control_lease_for_session(session_id, control_id) is not None:
-            await self._send_remote_desktop_control_status(
-              session_id, control_id=control_id, active=True, cursor_position=position,
-            )
+          if self._remote_desktop_control_lease_for_session(session_id, control_id) is None:
+            continue
+          manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
+          if manager is not None and manager._current_buffered_amount() > 64 * 1024:
+            continue
+          await self._send_remote_desktop_control_status(
+            session_id, control_id=control_id, active=True, cursor_position=position,
+          )
 
     def _remote_desktop_control_state(
       self,
@@ -4410,7 +4466,10 @@ class WebRTCManager:
       if getattr(track, "is_enabled", True) is False:
         return None, "The desktop video source is paused."
       try:
-        if json.dumps(track.remote_desktop_mapping(), sort_keys=True) != lease.get("mapping"):
+        current = track.remote_desktop_mapping()
+        original = json.loads(lease["mapping"])
+        # A bitrate or resolution change need not revoke a normalized pointer.
+        if not current or any(current.get(key) != original.get(key) for key in ("content_rect", "monitor_id", "monitor_bounds")):
           return None, "The screen layout changed. Resume screen control to continue."
       except Exception:
         return None, "The shared screen is unavailable for control."
@@ -4515,15 +4574,25 @@ class WebRTCManager:
             session_id, control_id=control_id, active=False, reason="Remote desktop control is disabled or unavailable.",
           )
           return
-        if screen is not None and not host_approved and not _runtime._get_video_remote_desktop_config().get("meet_auto_approve", True):
+        if (screen is not None and not host_approved
+            and not self._screen_client_always_allowed(screen["id"])
+            and not _runtime._get_video_remote_desktop_config().get("meet_auto_approve", False)):
           screen["control_request"] = normalized
           await self._send_remote_desktop_control_status(
             session_id, control_id=control_id, active=False, pending=True,
             reason="Waiting for the computer to approve input.",
           )
           return
+        cursor_position = None
         if screen is not None:
           screen.pop("control_request", None)
+          cursor_position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
+          if self._screen_session_for_session(session_id) is not screen or screen["mode"] != "interactive":
+            return
+          if cursor_position is None:
+            reason = await self._remote_desktop_input_failure_reason("The computer's cursor is unavailable for control.")
+            await self._send_remote_desktop_control_status(session_id, control_id=control_id, active=False, reason=reason)
+            return
         lease = self._store_remote_desktop_control_lease(
           session_id,
           control_id=control_id,
@@ -4531,8 +4600,8 @@ class WebRTCManager:
           track=track,
           mode=str(normalized.get("mode") or "desktop"),
         )
-        if lease["touch_mode"] == "relative" and lease["mode"] == "desktop":
-          self._schedule_remote_desktop_cursor_update()
+        if screen is not None:
+          lease["approval_status_pending"] = True
         if lease["mode"] == "game":
           lease["engine_input"] = self.game_input_hub.connected
           lease["host_input_available"] = host_input_available
@@ -4541,23 +4610,40 @@ class WebRTCManager:
           lease["mapping"] = json.dumps(track.remote_desktop_mapping(), sort_keys=True)
           if lease["engine_input"]:
             self._publish_game_session_start(session_id, lease)
-        await self._send_remote_desktop_control_status(
+        sent = await self._send_remote_desktop_control_status(
           session_id,
           control_id=control_id,
           active=True,
+          cursor_position=cursor_position,
         )
+        if screen is not None:
+          if not sent:
+            await self._release_remote_desktop_control_locked(session_id, control_id, expected_lease=lease)
+            return
+          lease.pop("approval_status_pending")
+          self._finish_screen_draft(screen)
+        if lease["mode"] == "desktop":
+          self._schedule_remote_desktop_cursor_update()
 
     async def review_screen_control(self, session_id: str, control_id: str, action: str) -> bool:
         screen = self.screen_sessions.get(session_id)
         if screen is None or screen["mode"] != "interactive":
             return False
         pending = screen.get("control_request")
-        if action == "approve":
+        if action in {"approve", "approve_client", "approve_all"}:
             if pending is None or pending["control_id"] != control_id:
                 return False
+            connection = self.datachannel_managers.get(session_id)
             await self._handle_remote_desktop_control(session_id, pending, host_approved=True)
-            return self._remote_desktop_control_lease_for_session(session_id, control_id) is not None
+            granted = self._remote_desktop_control_lease_for_session(session_id, control_id) is not None
+            if (granted and action == "approve_client" and connection is not None
+                and self.datachannel_managers.get(session_id) is connection and self.screen_sessions.get(session_id) is screen):
+                self.screen_control_allowed_clients[session_id] = connection
+            return granted
         async with self.remote_desktop_control_lock:
+            if action == "forget_client" and session_id in self.screen_control_allowed_clients:
+                self.screen_control_allowed_clients.pop(session_id)
+                return True
             if action == "deny" and screen.get("control_request") is pending and pending and pending["control_id"] == control_id:
                 screen.pop("control_request", None)
                 reason = "The computer declined your request for input."
@@ -4670,19 +4756,103 @@ class WebRTCManager:
       control_id = str(lease.get("control_id") or "")
       await self._probe_remote_desktop_input_backend(refresh=True)
       await self._release_remote_desktop_control_locked(session_id, control_id)
-      reason = "The server host stopped accepting remote input."
-      try:
-        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
-
-        reason = await _runtime.asyncio.to_thread(secure_desktop_unavailable_hint) or reason
-      except Exception:
-        pass
+      reason = await self._remote_desktop_input_failure_reason("The server host stopped accepting remote input.")
       await self._send_remote_desktop_control_status(
         session_id,
         control_id=control_id,
         active=False,
         reason=reason,
       )
+
+    @staticmethod
+    async def _remote_desktop_input_failure_reason(fallback: str) -> str:
+      try:
+        from shared.windows_secure_desktop import secure_desktop_unavailable_hint
+
+        return await _runtime.asyncio.to_thread(secure_desktop_unavailable_hint) or fallback
+      except Exception:
+        return fallback
+
+    def _pending_remote_desktop_moves(self) -> Dict[Tuple[str, str], Dict[str, Any]]:
+      pending = getattr(self, "_remote_desktop_pending_moves", None)
+      if pending is None:
+        pending = {}
+        self._remote_desktop_pending_moves = pending
+      return pending
+
+    def _clear_pending_remote_desktop_moves(self, session_id: str, control_id: str = "") -> None:
+      pending = getattr(self, "_remote_desktop_pending_moves", None)
+      if not pending:
+        return
+      for key in list(pending.keys()):
+        if key[0] == session_id and (not control_id or key[1] == control_id):
+          pending[key]["move"] = None
+
+    @staticmethod
+    def _merge_remote_desktop_move(
+      previous: Optional[Dict[str, Any]],
+      incoming: Dict[str, Any],
+    ) -> Dict[str, Any]:
+      merged = dict(incoming)
+      if (
+        previous is not None
+        and previous.get("coordinate_mode") == "relative"
+        and merged.get("coordinate_mode") == "relative"
+      ):
+        merged["dx"] = float(previous.get("dx") or 0.0) + float(merged.get("dx") or 0.0)
+        merged["dy"] = float(previous.get("dy") or 0.0) + float(merged.get("dy") or 0.0)
+      return merged
+
+    async def _execute_remote_desktop_input_locked(
+      self,
+      session_id: str,
+      control_id: str,
+      normalized: Dict[str, Any],
+    ) -> None:
+      lease, reason = self._remote_desktop_control_state(session_id, control_id)
+      if lease is None:
+        await self._release_remote_desktop_control_locked(session_id, control_id)
+        await self._send_remote_desktop_control_status(
+          session_id,
+          control_id=control_id,
+          active=False,
+          reason=reason,
+        )
+        return
+      if await self._forward_game_engine_input_locked(session_id, lease, normalized):
+        return
+      if self._other_desktop_holds(lease, "held_buttons"):
+        return  # One host cursor, so another viewer cannot interrupt a drag.
+      if self._screen_session_active(session_id) and lease.get("touch_mode") == "relative" and (
+        normalized.get("coordinate_mode") == "absolute" or "x" in normalized
+      ):
+        return
+      if normalized["input_type"] == "button":
+        phase = normalized["phase"]
+        held = normalized["button"] in lease["held_buttons"]
+        if (phase == "up" and not held) or (phase in {"click", "double_click"} and held):
+          return
+      input_options = {"track": lease.get("track")}
+      if normalized.get("coordinate_mode") == "relative":
+        input_options["relative_remainder"] = lease.setdefault("relative_remainder", {})
+      if normalized["input_type"] == "move" and lease["held_buttons"]:
+        input_options["drag_button"] = next(iter(lease["held_buttons"]))
+      applied = await _runtime.asyncio.to_thread(
+        _runtime.execute_remote_desktop_input,
+        normalized,
+        **input_options,
+      )
+      if not applied:
+        await self._report_remote_desktop_input_failure_locked(session_id, lease)
+        return
+      lease["input_failures"] = 0
+      if normalized["input_type"] == "button":
+        button = str(normalized.get("button") or "left")
+        if normalized.get("phase") == "down":
+          lease["held_buttons"].add(button)
+        elif normalized.get("phase") == "up":
+          lease["held_buttons"].discard(button)
+      lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
 
     async def _handle_remote_desktop_input(
       self,
@@ -4693,52 +4863,40 @@ class WebRTCManager:
       if normalized is None or not self._is_native_call_remote_desktop_payload(normalized):
         return
       control_id = str(normalized.get("control_id") or "")
+      slot_key = (session_id, control_id)
+      pending_map = self._pending_remote_desktop_moves()
+      slot = pending_map.setdefault(slot_key, {"move": None, "scheduled": False})
+
+      if normalized["input_type"] == "move":
+        # Coalesce bursts of cursor moves while an earlier move runs on the
+        # worker thread so pointer latency never builds an unbounded backlog.
+        slot["move"] = self._merge_remote_desktop_move(slot.get("move"), normalized)
+        if slot.get("scheduled"):
+          return
+        slot["scheduled"] = True
+        entered = False
+        try:
+          async with self.remote_desktop_control_lock:
+            entered = True
+            move_payload = slot.pop("move", None)
+            slot["scheduled"] = False
+            if move_payload is None:
+              return
+            await self._execute_remote_desktop_input_locked(session_id, control_id, move_payload)
+        finally:
+          if not entered:
+            slot["scheduled"] = False
+          if slot.get("move") is None and not slot.get("scheduled"):
+            if slot_key in pending_map and pending_map[slot_key] is slot:
+              pending_map.pop(slot_key, None)
+        return
+
       async with self.remote_desktop_control_lock:
-        lease, reason = self._remote_desktop_control_state(session_id, control_id)
-        if lease is None:
-          await self._release_remote_desktop_control_locked(session_id, control_id)
-          await self._send_remote_desktop_control_status(
-            session_id,
-            control_id=control_id,
-            active=False,
-            reason=reason,
-          )
-          return
-        if await self._forward_game_engine_input_locked(session_id, lease, normalized):
-          return
-        if self._other_desktop_holds(lease, "held_buttons"):
-          self._remote_desktop_cursor_dirty = True
-          return  # One host cursor, so another viewer cannot interrupt a drag.
-        if self._screen_session_active(session_id) and lease.get("touch_mode") == "relative" and (
-          normalized.get("coordinate_mode") == "absolute" or "x" in normalized
-        ):
-          return
-        if normalized["input_type"] == "button":
-          phase = normalized["phase"]
-          held = normalized["button"] in lease["held_buttons"]
-          if (phase == "up" and not held) or (phase in {"click", "double_click"} and held):
-            return
-        input_options = {"track": lease.get("track")}
-        if self._screen_session_active(session_id) and normalized.get("coordinate_mode") == "relative":
-          input_options["relative_remainder"] = lease.setdefault("relative_remainder", {})
-        applied = await _runtime.asyncio.to_thread(
-          _runtime.execute_remote_desktop_input,
-          normalized,
-          **input_options,
-        )
-        if not applied:
-          await self._report_remote_desktop_input_failure_locked(session_id, lease)
-          return
-        lease["input_failures"] = 0
-        if normalized["input_type"] == "button":
-          button = str(normalized.get("button") or "left")
-          if normalized.get("phase") == "down":
-            lease["held_buttons"].add(button)
-          elif normalized.get("phase") == "up":
-            lease["held_buttons"].discard(button)
-        if normalized["input_type"] != "scroll":
-          self._remote_desktop_cursor_dirty = True
-        lease["expires_at"] = _runtime.time.time() + _runtime._REMOTE_DESKTOP_CONTROL_LEASE_SECONDS
+        # Flush any coalesced pointer move captured before this click/scroll.
+        pending_move = slot.pop("move", None)
+        if pending_move is not None:
+          await self._execute_remote_desktop_input_locked(session_id, control_id, pending_move)
+        await self._execute_remote_desktop_input_locked(session_id, control_id, normalized)
 
     async def _apply_game_touch_fallback_locked(
       self, session_id: str, lease: Dict[str, Any], frame: Dict[str, Any],
@@ -6330,8 +6488,8 @@ class WebRTCManager:
                                             server_name=server_name,
                                         )
                                     )
-                                    # Also record this sample in datachannel_manager
-                                    if datachannel_manager is not None:
+                                    # Also record this sample in datachannel_manager (ignore multi-second sleep/standby outliers)
+                                    if datachannel_manager is not None and 0 < rtt <= 10.0:
                                         datachannel_manager._record_rtt_sample(rtt)
                                 except Exception as game_exc:
                                     _runtime.LOGGER.warning("PingPong game scoring error: %s", game_exc)
@@ -7871,6 +8029,7 @@ class WebRTCManager:
             if dm is missing:
                 continue
             pop_if_current(self.datachannel_managers, cleanup_id, dm)
+            pop_if_current(self.screen_control_allowed_clients, cleanup_id, dm)
             if any(dm is current for current in disconnected_datachannel_managers):
                 continue
             try:
@@ -7913,6 +8072,7 @@ class WebRTCManager:
                 expected_screen_sessions.get(cleanup_id, missing),
             )
             if removed_screen is not missing and isinstance(removed_screen, dict):
+                self._finish_screen_draft(removed_screen)
                 self._drop_screen_audio(str(removed_screen.get("id") or ""))
                 self.screen_listen_mixer.forget(str(removed_screen.get("id") or ""))
                 self._clear_idle_meet_capture()
@@ -10420,16 +10580,22 @@ class WebRTCManager:
 
             # Use persistent HTTP client with connection pooling for better performance
             if not hasattr(self, '_http_client'):
-                # Create persistent HTTP client with optimized settings
+                # Use HTTP/1.1 with keepalive shorter than uvicorn's 5s default so
+                # long-lived WebRTC sessions do not stall on stale pooled loopback sockets.
+                loopback_limits = _runtime.httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=4.0,
+                )
                 self._http_client = _runtime.httpx.AsyncClient(
                     transport=_runtime.build_safe_httpx_transport(
-                        http2=True,
-                        limits=_runtime.httpx.Limits(max_keepalive_connections=20, max_connections=100),
+                        http2=False,
+                        limits=loopback_limits,
                         allow_loopback=True,
                     ),
                     timeout=_runtime.httpx.Timeout(30.0, connect=5.0),
-                    limits=_runtime.httpx.Limits(max_keepalive_connections=20, max_connections=100),
-                    http2=True,
+                    limits=loopback_limits,
+                    http2=False,
                     trust_env=False,
                 )
 
@@ -10449,6 +10615,45 @@ class WebRTCManager:
             if method in ["POST", "PUT", "PATCH", "QUERY"] and (content_bytes is not None):
                 request_kwargs["content"] = content_bytes
 
+            @asynccontextmanager
+            async def _open_upstream_stream():
+                stale_exc_types = tuple(
+                    exc_type
+                    for exc_type in (
+                        getattr(_runtime.httpx, "RemoteProtocolError", None),
+                        getattr(_runtime.httpx, "ReadError", None),
+                    )
+                    if isinstance(exc_type, type) and issubclass(exc_type, BaseException)
+                )
+                can_retry_stale = method.upper() in {"GET", "HEAD"} and bool(stale_exc_types)
+                stream_cm = None
+                resp_obj = None
+                for attempt in range(2):
+                    candidate_cm = self._http_client.stream(method, **request_kwargs)
+                    try:
+                        resp_obj = await candidate_cm.__aenter__()
+                        stream_cm = candidate_cm
+                        break
+                    except BaseException as open_err:
+                        with suppress(Exception):
+                            await candidate_cm.__aexit__(type(open_err), open_err, open_err.__traceback__)
+                        if attempt == 0 and can_retry_stale and isinstance(open_err, stale_exc_types):
+                            _runtime.LOGGER.debug(
+                                "Retrying stale pooled loopback request %s %s: %s",
+                                method,
+                                url,
+                                open_err,
+                            )
+                            continue
+                        raise
+                try:
+                    yield resp_obj
+                except BaseException as body_exc:
+                    if not await stream_cm.__aexit__(type(body_exc), body_exc, body_exc.__traceback__):
+                        raise
+                else:
+                    await stream_cm.__aexit__(None, None, None)
+
             # If SSE is requested, stream the response as SSE events over datachannel
             if sse_requested:
 
@@ -10460,7 +10665,7 @@ class WebRTCManager:
                     require_send_message=True,
                 )
                 try:
-                    async with self._http_client.stream(method, **request_kwargs) as resp:
+                    async with _open_upstream_stream() as resp:
                         try:
                             if datachannel_manager and hasattr(datachannel_manager, 'send_message'):
                                 # Sanitize upstream headers to avoid invalid chunked encoding on client
@@ -10609,7 +10814,7 @@ class WebRTCManager:
                     raise RuntimeError(f"HTTP stream stalled during {frame_name}")
 
             try:
-                async with self._http_client.stream(method, **request_kwargs) as resp:
+                async with _open_upstream_stream() as resp:
                     # Prepare and send stream-open with status and headers
                     try:
                         response_headers = dict(resp.headers)
@@ -10894,10 +11099,12 @@ class WebRTCManager:
                     async for chunk in _iter_response_chunks():
                         if not chunk:
                             continue
-                        # Always accumulate raw bytes for final assembly
+                        # Accumulate raw bytes only when a legacy fallback may still be emitted
                         try:
                             response_size_bytes += len(chunk)
-                            if response_body_capture_limit is None:
+                            if binary_http and not is_textual:
+                                response_body_capture_truncated = True
+                            elif response_body_capture_limit is None:
                                 response_bytes_accumulator.extend(chunk)
                             elif len(response_bytes_accumulator) + len(chunk) <= response_body_capture_limit:
                                 response_bytes_accumulator.extend(chunk)
@@ -11418,9 +11625,26 @@ class WebRTCManager:
             session = self._screen_session_for_session(str(session_id or ""))
             if session is None or session["mode"] != "interactive":
                 return
-            kind = str(payload.get("kind") or "")
-            value = str(payload.get("value") or "")
-            phase = str(payload.get("phase") or "")
+            kind, value, phase = (payload.get(key) for key in ("kind", "value", "phase"))
+            if not all(isinstance(item, str) for item in (kind, value, phase)):
+                return
+            if kind == "hand" and phase == "set" and value in {"raised", "lowered"}:
+                session["hand_raised"] = value == "raised"
+                return
+            if self._remote_desktop_control_lease_for_session(str(session_id or "")) is not None:
+                return
+            now = _runtime.time.time()
+            if kind == "text":
+                if phase == "end":
+                    self._finish_screen_draft(session)
+                elif phase == "edit" and len(value) <= 500 and all(
+                    char in "\t\n" or 32 <= ord(char) < 127 or ord(char) >= 160 and not 0xD800 <= ord(char) <= 0xDFFF
+                    for char in value
+                ):
+                    if now - session.get("typing_at", 0.0) >= _SCREEN_TEXT_IDLE_SECONDS:
+                        self._finish_screen_draft(session)
+                    session.update(typing=value, typing_at=now)
+                return
             if kind == "layout" and phase == "set" and value in {"off", "choices", "gamepad"}:
                 session["layout"] = value
                 session["last_input"] = ""
@@ -11431,15 +11655,11 @@ class WebRTCManager:
                 value in {"A", "B", "C", "D", "←", "↑", "↓", "→", "Select"}
             ):
                 return
-            now = _runtime.time.time()
             if now - float(session["last_input_at"]) < 0.04:
                 return
             session["last_input"] = value
             session["last_input_at"] = now
-            self.screen_inputs.append({
-                "session_id": str(session["id"]), "name": str(session["name"]),
-                "kind": kind, "value": value, "timestamp": now,
-            })
+            self._record_screen_input(session, kind, value, now)
             return
         screen_session = self._screen_session_for_session(str(session_id or ""))
         if screen_session is not None and (event_name == "game_input" or (
@@ -11531,7 +11751,12 @@ class WebRTCManager:
             was_active = self._voice_call_client_active_for_session(str(session_id or ""))
             screen_mode = str(payload.get("screen_mode") or "") if active else "ended"
             screen_requested = screen_mode in {"interactive", "watch"}
-            if screen_requested and not _runtime._get_outbound_video_available(cfg=(_runtime.STATE.config or {})):
+            live_cfg = _runtime.STATE.config or {}
+            if active and not (
+                _runtime._get_outbound_video_available(cfg=live_cfg) if screen_requested else
+                _runtime._get_game_mode_available(cfg=live_cfg) if screen_mode == "game" else
+                _runtime._get_video_call_audio_enabled(cfg=live_cfg)
+            ):
                 active = False
                 screen_mode = "ended"
             was_screen = self._screen_session_active(str(session_id or ""))
@@ -12102,6 +12327,7 @@ class WebRTCManager:
         for screen_id in list(self._screen_audio_subscribers):
             self._drop_screen_audio(screen_id)
         self.screen_sessions.clear()
+        self.screen_control_allowed_clients.clear()
         self._meet_desktop_capture = None
         self.screen_inputs.clear()
         await _runtime.asyncio.to_thread(self.screen_listen_mixer.close)
@@ -12288,6 +12514,7 @@ class WebRTCManager:
             self.voice_call_playback_by_session.clear()
             self.voice_call_client_active_by_session.clear()
             self.screen_sessions.clear()
+            self.screen_control_allowed_clients.clear()
             self.screen_inputs.clear()
             self.voice_command_queues.clear()
             self.voice_command_workers.clear()

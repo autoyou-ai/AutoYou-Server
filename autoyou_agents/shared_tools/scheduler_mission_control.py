@@ -1441,6 +1441,7 @@ def _build_dashboard_payload(agent_kind: str, request: Request) -> Dict[str, Any
     payload.update(
         {
             "items": items,
+            "total": len(items),
             "stats": stats,
             "targets": _build_target_catalog(),
             "queue": get_pending_notification_queue_snapshot(limit=10),

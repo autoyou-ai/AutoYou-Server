@@ -16,6 +16,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
+import datetime
 import json
 import time
 from types import SimpleNamespace
@@ -113,8 +114,8 @@ def secure_server(monkeypatch):
         )
 
 
-def _hello(password=SYNTHETIC_PASSWORD, **request_kwargs):
-    envelope, handshake = build_cpace_hello(password, purpose="autopair")
+def _hello(password=SYNTHETIC_PASSWORD, *, totp_code=None, **request_kwargs):
+    envelope, handshake = build_cpace_hello(password, purpose="autopair", totp_code=totp_code)
     response = asyncio.run(server.autopair_hello_api(_FakeRequest(envelope, **request_kwargs)))
     return response, handshake
 
@@ -144,6 +145,33 @@ def test_lan_local_pair_completes_with_cpace_and_no_session(secure_server):
     assert decrypted["answer"]["type"] == "answer"
     # Pairing from another device is shared, never the owner's own device.
     assert secure_server["payload"]["_autoyou_device_ownership"] == server.DEVICE_SHARED
+
+
+def test_secure_professional_local_pair_recovers_after_clock_sync(secure_server, monkeypatch):
+    pyotp = pytest.importorskip("pyotp")
+    secret = "JBSWY3DPEHPK3PXP"
+    client_time = datetime.datetime(2026, 1, 1, 12, 0, 20, tzinfo=datetime.timezone.utc)
+    server_time = client_time
+    monkeypatch.setattr(server, "_totp_utc_now", lambda: server_time)
+    server.STATE.config["security"].update(mode="secure_professional", totp_secret=secret)
+    totp = pyotp.TOTP(secret)
+    assert _hello(totp_code=totp.at(client_time))[0].status_code == 200
+
+    # Later, a 46-second lead across a step boundary makes the server two steps ahead.
+    client_time += datetime.timedelta(hours=8)
+    server_time = client_time + datetime.timedelta(seconds=46)
+    code = totp.at(client_time)
+    rejected, _ = _hello(totp_code=code)
+    assert rejected.status_code == 400
+    assert "Sync the clocks on both devices" in json.loads(rejected.body)["error"]
+
+    server_time = client_time
+    response, handshake = _hello(totp_code=code)
+    assert response.status_code == 200, response.body
+    session = complete_cpace_handshake(response.body.decode("utf-8").split("\n", 1)[1], handshake)
+    encrypted = encrypt_cpace_message(json.dumps(_offer_payload()), session)
+    assert asyncio.run(server.autopair_api(_FakeRequest(encrypted))).status_code == 200
+    assert secure_server["sender_id"] == SENDER_ID
 
 
 def test_wrong_password_cannot_finish_the_handshake(secure_server):

@@ -26,12 +26,12 @@ _QUALITY_PRESETS: Dict[str, Dict[str, int]] = {
 # from __debug_provenance_x__ import email
 
 
-def normalize_remote_desktop_quality(raw_value: Any, default: str = "balanced") -> str:
-    normalized = str(raw_value or default or "balanced").strip().lower().replace("-", "_")
+def normalize_remote_desktop_quality(raw_value: Any, default: str = "high") -> str:
+    normalized = str(raw_value or default or "high").strip().lower().replace("-", "_")
     normalized = {
         "data_saver": "low",
         "medium": "balanced",
-        "default": "balanced",
+        "default": "high",
         "1080p": "high",
         "best": "ultra",
         "native": "ultra",

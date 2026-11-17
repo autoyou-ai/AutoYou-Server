@@ -17,7 +17,8 @@ hardware. Every H.264 encoder AutoYou creates comes from
 * ``libx264`` where the build has it (source installs, non-Store packages),
   so behaviour there is unchanged;
 * ``libopenh264`` (Cisco OpenH264, BSD licensed);
-* ``h264_mf``, the Windows Media Foundation encoder that ships with Windows.
+* ``h264_mf``, the Windows Media Foundation encoder;
+* ``h264_videotoolbox``, Apple's native H.264 encoder.
 
 ``AUTOYOU_H264_ENCODER`` names an encoder to try first.
 """
@@ -27,10 +28,12 @@ from __future__ import annotations
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License (see LICENSE)"
 
+from contextlib import suppress
 import fractions
 import logging
 import os
 import threading
+import time
 from typing import Iterable, Iterator, Optional
 
 import av
@@ -39,7 +42,7 @@ __debug_trace_l__ = "AUTOYOU-PROVENANCE-L-6520726563757272696e6720-d4fb6dc5b6bd6
 
 LOGGER = logging.getLogger(__name__)
 
-ENCODER_PREFERENCE = ("libx264", "libopenh264", "h264_mf")
+ENCODER_PREFERENCE = ("libx264", "libopenh264", "h264_mf", "h264_videotoolbox")
 ENCODER_ENV = "AUTOYOU_H264_ENCODER"
 # x264's default keyframe interval. OpenH264 and Media Foundation would
 # otherwise insert a keyframe every 12 frames; WebRTC asks for one with a PLI.
@@ -76,9 +79,11 @@ def configure_h264_encoder(
     context.framerate = fractions.Fraction(frame_rate, 1)
     context.time_base = fractions.Fraction(1, frame_rate)
     if name == "libx264":
-        # aiortc's own settings.
-        context.options = {"level": "31", "tune": "zerolatency"}
-        context.profile = "Baseline"
+        # aiortc's own settings, tuned for zero-lookahead realtime encoding.
+        context.options = {"level": "31", "tune": "zerolatency", "preset": "ultrafast", "rc-lookahead": "0"}
+        with suppress(Exception):
+            context.max_b_frames = 0
+            context.profile = "Baseline"
     elif name == "libopenh264":
         # Constrained baseline is OpenH264's default profile.
         context.gop_size = KEYFRAME_INTERVAL
@@ -88,6 +93,11 @@ def configure_h264_encoder(
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0
         context.options = {"rate_control": "cbr", "scenario": "video_conference"}
+    elif name == "h264_videotoolbox":
+        context.gop_size = KEYFRAME_INTERVAL
+        context.max_b_frames = 0
+        context.flags |= av.codec.context.Flags.low_delay
+        context.options = {"profile": "constrained_baseline", "realtime": "1", "allow_sw": "1", "prio_speed": "1"}
     else:
         context.gop_size = KEYFRAME_INTERVAL
         context.max_b_frames = 0
@@ -146,16 +156,32 @@ def install_aiortc_h264_encoder() -> None:
     if getattr(h264.H264Encoder._encode_frame, "_autoyou_h264", False):
         return
 
+    _BITRATE_REOPEN_RATIO = 0.50
+    _BITRATE_REOPEN_COOLDOWN_S = 2.0
+    _MIN_TARGET_BITRATE = 200_000
+
     def _encode_frame(self, frame: av.VideoFrame, force_keyframe: bool) -> Iterator[bytes]:
-        if self.codec and (
-            frame.width != self.codec.width
-            or frame.height != self.codec.height
-            # we only adjust bitrate if it changes by over 10%
-            or abs(self.target_bitrate - self.codec.bit_rate) / self.codec.bit_rate > 0.1
-        ):
-            self.buffer_data = b""
-            self.buffer_pts = None
-            self.codec = None
+        raw_bitrate = int(getattr(self, "target_bitrate", 500_000) or 500_000)
+        cap_bitrate = getattr(self, "_autoyou_max_bitrate", None)
+        if cap_bitrate:
+            raw_bitrate = min(raw_bitrate, int(cap_bitrate))
+        target_bitrate = max(_MIN_TARGET_BITRATE, raw_bitrate)
+        if self.codec:
+            size_changed = frame.width != self.codec.width or frame.height != self.codec.height
+            codec_bitrate = int(getattr(self.codec, "bit_rate", 0) or 0)
+            bitrate_changed = (
+                codec_bitrate > 0
+                and abs(target_bitrate - codec_bitrate) / codec_bitrate >= _BITRATE_REOPEN_RATIO
+                and (time.monotonic() - getattr(self, "_autoyou_last_reopen_at", float("-inf")))
+                >= _BITRATE_REOPEN_COOLDOWN_S
+            )
+            if size_changed or bitrate_changed:
+                self.buffer_data = b""
+                self.buffer_pts = None
+                with suppress(Exception):
+                    self.codec.close()
+                self.codec = None
+                force_keyframe = True
 
         if force_keyframe:
             frame.pict_type = av.video.frame.PictureType.I
@@ -164,8 +190,9 @@ def install_aiortc_h264_encoder() -> None:
 
         if self.codec is None:
             self.codec = open_h264_encoder(
-                frame.width, frame.height, self.target_bitrate, h264.MAX_FRAME_RATE
+                frame.width, frame.height, target_bitrate, h264.MAX_FRAME_RATE
             )
+            self._autoyou_last_reopen_at = time.monotonic()
 
         data_to_send = b""
         for package in self.codec.encode(frame):

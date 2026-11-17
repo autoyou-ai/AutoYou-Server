@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
 from shared.http_errors import internal_error_message
+from shared.messaging_contacts import CONTACT_LIMIT, DEFAULT_TRIGGER, messaging_contacts, normalize_trigger
 
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-ba2c4e27e05b8217f8cf0d9a"
 
@@ -27,6 +28,61 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
+    @admin_app.get("/api/admin/messaging-contacts")
+    async def admin_messaging_contacts(request: Request):
+        if auth_error := server._require_api_login(request):
+            return auth_error
+        return server._json_response_no_store(messaging_contacts.snapshot())
+
+    @admin_app.post("/api/admin/messaging-contacts")
+    async def admin_update_messaging_contacts(request: Request):
+        if auth_error := server._require_api_login(request):
+            return auth_error
+        if reason := server._config_write_block_reason():
+            return server._json_config_write_blocked_response(reason)
+        try:
+            if len(await request.body()) > 4096:
+                raise ValueError("Contact settings request is too large.")
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("Invalid contact settings.")
+            cfg = server._loaded_config_for_update(copy_config=True)
+            settings = dict(messaging_contacts.config())
+            rows = messaging_contacts.approved()
+            action = body.get("action")
+            key = body.get("key")
+            if action == "settings" and type(body.get("enabled")) is bool:
+                settings.update(enabled=body["enabled"], trigger=normalize_trigger(body.get("trigger", DEFAULT_TRIGGER)))
+            elif action == "access" and isinstance(key, str) and all(type(body.get(k)) is bool for k in ("pair", "chat")):
+                source = rows.get(key) or messaging_contacts.recent.get(key)
+                if not source:
+                    raise ValueError("Ask the contact to send another direct message, then refresh.")
+                if body["pair"] or body["chat"]:
+                    if key not in rows and len(rows) >= CONTACT_LIMIT:
+                        raise ValueError("Revoke a contact before approving another.")
+                    rows[key] = {k: source[k] for k in ("provider", "label", "hint")}
+                    rows[key].update(pair=body["pair"], chat=body["chat"])
+                else:
+                    rows.pop(key, None)
+            else:
+                raise ValueError("Invalid contact settings.")
+        except (ValueError, KeyError) as exc:
+            return server._json_response_no_store({"error": str(exc)}, status_code=400)
+
+        settings["approved"] = rows
+        cfg["messaging_contacts"] = settings
+        try:
+            server.STATE.config = server._save_and_reload_state_config(cfg)
+        except Exception:
+            return server._json_response_no_store({"error": "Could not save contact settings."}, status_code=500)
+        if action == "access" and not body["chat"]:
+            messaging_contacts.forget(key)
+        if action == "settings" and not body["enabled"]:
+            for approved_key in rows:
+                messaging_contacts.forget(approved_key)
+            messaging_contacts.recent.clear()
+        return server._json_response_no_store(messaging_contacts.snapshot())
+
     @admin_app.post("/api/admin/telegram/allow-code")
     async def admin_generate_telegram_allow_code_api(request: Request):
         auth_error = server._require_api_login(request)

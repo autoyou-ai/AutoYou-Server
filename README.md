@@ -36,7 +36,7 @@
 
 <br />
 
-<img src="docs/images/hero.gif" alt="Pairing a phone, chatting with a local model, placing a call, browsing a Page, and viewing a computer's screen" width="860" />
+<img src="docs/images/hero-ios-agents.gif" alt="AutoYou on iPhone: save a note with the on-device Assistant, play a native game, pair over the local network, and open Agent Apps from your computer" width="860" />
 
 <br /><br />
 

@@ -204,15 +204,17 @@ class Store:
             conditions.append("id IN (" + ",".join("?" for _ in ids) + ")" if ids else "0")
             params.extend(ids)
         where = " WHERE " + " AND ".join(conditions)
-        orders = {"recent": "created DESC", "title": "title COLLATE NOCASE, season, episode",
-                  "year": "year DESC, title", "rating": "CAST(json_extract(metadata,'$.imdb_rating') AS REAL) DESC"}
+        orders = {"recent": "created DESC, id DESC", "title": "title COLLATE NOCASE, season, episode, id ASC",
+                  "year": "year DESC, title, id ASC", "rating": "CAST(json_extract(metadata,'$.imdb_rating') AS REAL) DESC, id DESC"}
         with self.connect() as db:
             count = db.execute("SELECT COUNT(*) FROM items" + where, params).fetchone()[0]
             rows = db.execute("SELECT id FROM items" + where + " ORDER BY " + orders.get(sort, orders["recent"])
                               + " LIMIT ? OFFSET ?", (*params, limit, offset)).fetchall()
             total = db.execute("SELECT COUNT(*) FROM items WHERE status!='deleted'").fetchone()[0]
+        next_off = offset + len(rows)
+        has_more = next_off < count
         return {"items": [self.item(row[0]) for row in rows], "count": count, "total": total,
-                "offset": offset, "has_more": offset + len(rows) < count}
+                "offset": offset, "next_offset": next_off if has_more else None, "has_more": has_more}
 
     def job(self, job_id: str) -> dict:
         with self.connect() as db:

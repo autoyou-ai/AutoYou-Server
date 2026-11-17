@@ -245,6 +245,22 @@ def test_service_command_reenters_launcher_with_sid(monkeypatch):
     command = sd.service_command("S-1-5-21-1-2-3-1001")
     assert command == '"C:\\Program Files\\AutoYou\\AutoYou.exe" --secure-desktop service --allow-sid S-1-5-21-1-2-3-1001'
 
+def test_regular_windows_input_requires_the_active_desktop(monkeypatch):
+    from types import SimpleNamespace
+    from shared import remote_desktop_keyboard as keyboard
+
+    local, secure = object(), object()
+    monkeypatch.setattr(keyboard, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(keyboard, "load_pyautogui", lambda: local)
+    monkeypatch.setattr(sd, "secure_input_backend_if_needed", lambda: None)
+    monkeypatch.setattr(sd, "attach_thread_to_input_desktop", lambda: "Default")
+    assert keyboard.load_remote_input_backend() is local
+    monkeypatch.setattr(sd, "attach_thread_to_input_desktop", lambda: None)
+    with pytest.raises(RuntimeError, match="Windows input desktop"):
+        keyboard.load_remote_input_backend()
+    monkeypatch.setattr(sd, "secure_input_backend_if_needed", lambda: secure)
+    assert keyboard.load_remote_input_backend() is secure
+
 
 def test_sid_validation_and_sddl():
     assert sd._is_valid_sid("S-1-5-21-1-2-3-1001")

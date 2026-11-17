@@ -87,10 +87,10 @@ def download(url: str, destination: Path, expected: str) -> Path:
     return verified(destination, expected)
 
 
-def ffmpeg_configuration_problems(configuration: str) -> list[str]:
+def ffmpeg_configuration_problems(configuration: str, required: tuple[str, ...] = REQUIRED_FFMPEG_OPTIONS) -> list[str]:
     options = configuration.split()
     problems = [f"FFmpeg was configured with {option}" for option in FORBIDDEN_FFMPEG_OPTIONS if option in options]
-    problems += [f"FFmpeg lacks {option}" for option in REQUIRED_FFMPEG_OPTIONS if option not in options]
+    problems += [f"FFmpeg lacks {option}" for option in required if option not in options]
     return problems
 
 
@@ -170,7 +170,7 @@ def build(python: Path, work_dir: Path, ffmpeg_zip: Path | None, output_dir: Pat
     return wheel
 
 
-def installed_av_problems() -> list[str]:
+def installed_av_problems(*, macos: bool = sys.platform == "darwin") -> list[str]:
     """Check the loaded FFmpeg libraries, codecs, and adjacent DLLs.
 
     DLL filenames alone miss statically linked GPL components. Inspect the
@@ -179,13 +179,15 @@ def installed_av_problems() -> list[str]:
     import av
     from av._core import library_meta
 
+    required_codecs = ("libvpx", "libopus", "h264_videotoolbox" if macos else "libopenh264")
+    required_options = (*REQUIRED_FFMPEG_OPTIONS[:2], "--enable-videotoolbox") if macos else REQUIRED_FFMPEG_OPTIONS
     problems = [f"PyAV has the {name} encoder" for name in GPL_LIBRARY_NAMES if name in av.codecs_available]
     codec_meta = library_meta.get("libavcodec", {})
     configuration = codec_meta.get("configuration")
     if not isinstance(configuration, str) or not configuration.strip():
         problems.append("PyAV does not report its loaded FFmpeg configuration")
     else:
-        problems.extend(ffmpeg_configuration_problems(configuration))
+        problems.extend(ffmpeg_configuration_problems(configuration, required_options))
     for name, metadata in library_meta.items():
         license_text = metadata.get("license", "")
         if not isinstance(license_text, str) or not license_text.startswith("LGPL version "):
@@ -194,10 +196,11 @@ def installed_av_problems() -> list[str]:
             options = str(metadata.get("configuration", "")).split()
             problems.extend(f"{name} was configured with {option}" for option in FORBIDDEN_FFMPEG_OPTIONS
                             if option in options)
-    for name in ("libvpx", "libopus", "libopenh264"):
+    for name in required_codecs:
         if name not in av.codecs_available:
             problems.append(f"PyAV lacks the {name} codec required for calls")
-    libs = Path(av.__file__).resolve().parents[1] / "av.libs"
+    package = Path(av.__file__).resolve().parent
+    libs = package / ".dylibs" if macos else package.parent / "av.libs"
     if libs.is_dir():
         problems += [f"{path} is GPL" for path in libs.iterdir()
                      if any(lib in path.name.lower() for lib in GPL_LIBRARY_NAMES)]
@@ -219,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"ERROR: {problem}", file=sys.stderr)
         if not problems:
-            print("PyAV uses LGPL FFmpeg with VP8, Opus, and OpenH264; no x264 or x265.")
+            h264 = "VideoToolbox" if sys.platform == "darwin" else "OpenH264"
+            print(f"PyAV uses LGPL FFmpeg with VP8, Opus, and {h264}; no x264 or x265.")
         return 1 if problems else 0
     if os.name != "nt":
         parser.error("this builds the Windows wheel; run it on Windows")

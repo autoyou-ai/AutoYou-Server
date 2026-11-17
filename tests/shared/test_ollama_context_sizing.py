@@ -71,7 +71,8 @@ QWEN35_HYBRID = {
 @pytest.fixture(autouse=True)
 def _auto_sizing(monkeypatch, tmp_path):
     monkeypatch.setenv(policy.CONTEXT_SIZING_ENV, "auto")
-    for name in ("OLLAMA_FLASH_ATTENTION", "OLLAMA_KV_CACHE_TYPE", "OLLAMA_NUM_PARALLEL", policy.MAX_NUM_CTX_ENV):
+    for name in ("OLLAMA_FLASH_ATTENTION", "OLLAMA_KV_CACHE_TYPE", "OLLAMA_NUM_PARALLEL",
+                 policy.MAX_NUM_CTX_ENV, policy.CPU_MODELS_ENV):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(policy, "_registry_path", lambda: tmp_path / policy.REGISTRY_FILE)
     policy._registry_cache.update(path=None, mtime=None, data={})
@@ -122,6 +123,17 @@ def test_the_cap_is_configurable(monkeypatch):
     monkeypatch.setenv(policy.MAX_NUM_CTX_ENV, "65536")
     gpu = GpuMemory(24 * GIB, None, "nvidia", "t")
     assert policy.estimate_num_ctx_for_gpu(profile, weights_bytes=9 * GIB, gpu=gpu) == 65536
+
+
+def test_cpu_selection_uses_exact_tags_and_keeps_context_override(monkeypatch):
+    monkeypatch.setenv(policy.CPU_MODELS_ENV, "ollama_chat/GEMMA4:e4b, synthetic")
+    monkeypatch.setattr(policy, "recommend_ollama_num_ctx", lambda *_: 32768)
+
+    assert policy.ollama_cpu_only("gemma4:e4b")
+    assert policy.ollama_cpu_only("synthetic:latest")
+    assert not policy.ollama_cpu_only("gemma4:26b")
+    assert policy.resolve_context_window("gemma4:e4b") == (8192, "cpu_only")
+    assert policy.resolve_context_window("gemma4:e4b", override=12288) == (12288, "model_behavior.override")
 
 
 def test_the_agents_choice_is_recorded_and_every_other_caller_gets_it():

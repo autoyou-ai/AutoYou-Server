@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -33,6 +34,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from pairing_router import PairingRouter, pairing_router
+from shared.messaging_contacts import messaging_contacts
+from shared.pairing_response import is_app_pairing_message, pairing_reply_link
 from shared.platform_runtime import get_service_data_dir
 from shared.macos_runtime_support import is_app_store_build
 from shared.signal_native import NativeSignalRuntime, bundled_signal_root
@@ -1066,7 +1069,7 @@ class SignalService:
                         )
                         return
 
-                    if self._is_server_authored_message(message_text):
+                    if self._is_server_authored_message(message_text) or is_app_pairing_message(message_text):
                         LOGGER.debug("Ignoring server-authored Signal message for %s", _redact_signal_id(phone_number))
                         return
                     
@@ -1150,7 +1153,7 @@ class SignalService:
                                     PairingRouter.response_kind(response),
                                     len(response),
                                 )
-                                await self._send_signal_message(phone_number, response)
+                                await self._send_signal_message(phone_number, pairing_reply_link(response))
                             elif response == PairingRouter.FRAGMENT_CONSUMED:
                                 # Fragment buffered - waiting for more pieces; stay silent.
                                 LOGGER.debug(
@@ -1170,32 +1173,23 @@ class SignalService:
                             else:
                                 # Normal processing via chat API
                                 await self._forward_to_chat_api(phone_number, message_text, timestamp, source_number, context=context_items)
-            # Disabled intentionally: owner-only Signal mode does not process
-            # ordinary messages received from other Signal users.
-            '''
-            # Handle regular dataMessage structure (messages received from others)
             data_message = envelope.get("dataMessage", {})
-            if data_message:
-                message_text = (data_message.get("message") or "").strip()
-                timestamp = envelope.get("timestamp", 0)
-                source_number = envelope.get("sourceNumber")
-                
-                # Handle attachments in received messages
-                attachments = data_message.get("attachments", [])
-                if attachments and not message_text:
-                    attachment_info = []
-                    for attachment in attachments:
-                        content_type = attachment.get("contentType", "unknown")
-                        filename = attachment.get("filename", "unknown")
-                        attachment_info.append(f"{content_type} ({filename})")
-                    message_text = f"[Attachment: {', '.join(attachment_info)}]"
-                
-                if message_text and timestamp > self.last_message_timestamp and source_number != phone_number:
-                    self.last_message_timestamp = timestamp
-                    
-                    await self._log_message(phone_number, message_text, timestamp, "received", source_number)
-                    await self._forward_to_chat_api(phone_number, message_text, timestamp, source_number)
-            ''' 
+            if (sync_message or not messaging_contacts.enabled or not data_message
+                    or any(data_message.get(key) is not None for key in ("groupInfo", "groupV2", "groupId"))):
+                return
+            source_number = str(envelope.get("sourceNumber") or "")
+            if source_number == phone_number:
+                return
+            sender = str(envelope.get("sourceUuid") or envelope.get("sourceServiceId") or "").lower()
+            if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", sender):
+                sender = source_number if re.fullmatch(r"\+[1-9]\d{7,14}", source_number) else ""
+
+            async def reply(text):
+                await self._send_signal_message_fallback(sender, text, sender_number=phone_number)
+
+            await messaging_contacts.receive("signal", phone_number, sender, envelope.get("sourceName"),
+                                             data_message.get("timestamp") or envelope.get("timestamp"),
+                                             data_message.get("message"), reply)
         except Exception as e:
             LOGGER.error("Error processing single Signal message for %s: %s", _redact_signal_id(phone_number), e)
             LOGGER.debug("Signal message data: %s", redact_payload(message))
@@ -1846,7 +1840,7 @@ class SignalService:
         except Exception as exc:
             LOGGER.warning("Failed to persist pending Signal media replies: %s", exc)
 
-    async def _send_signal_message_fallback(self, phone_number: str, message: str) -> bool:
+    async def _send_signal_message_fallback(self, phone_number: str, message: str, *, sender_number: Optional[str] = None) -> bool:
         """Fallback method to send Signal message via direct HTTP call."""
         if httpx is None:
             return False
@@ -1860,7 +1854,9 @@ class SignalService:
         phone_number = phone_number.strip()
         
         # Basic phone number format validation (should start with + and contain digits)
-        if not phone_number.startswith('+') or len(phone_number) < 10:
+        if not (phone_number.startswith('+') and len(phone_number) >= 10) and not (
+            sender_number and re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", phone_number)
+        ):
             LOGGER.error(
                 "Cannot send Signal message (fallback): phone number format is invalid: %s",
                 _redact_signal_id(phone_number),
@@ -1870,12 +1866,12 @@ class SignalService:
         try:
             # Notes to Self chooses its own registered account. For an outbound
             # recipient, retain the SDK's registered-sender behavior.
-            sender_number = (phone_number if phone_number in self.registered_numbers
-                             else next(iter(self.registered_numbers), phone_number))
+            sender_number = sender_number or (phone_number if phone_number in self.registered_numbers
+                                              else next(iter(self.registered_numbers), phone_number))
             payload = {
                 "message": message,
                 "number": sender_number,
-                "recipients": [phone_number]  # Send to self for Notes to Self
+                "recipients": [phone_number],
             }
             
             async with self._http_client(timeout=30.0) as client:
