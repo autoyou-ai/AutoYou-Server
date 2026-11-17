@@ -353,7 +353,7 @@
       "properties": [
         {
           "name": "specifier",
-          "value": "^8.22.0"
+          "value": "^8.22.1"
         },
         {
           "name": "autoyou:ecosystem",
@@ -364,9 +364,9 @@
           "value": "node/whatsapp/package.json"
         }
       ],
-      "purl": "pkg:npm/ws@8.22.0",
+      "purl": "pkg:npm/ws@8.22.1",
       "type": "library",
-      "version": "8.22.0"
+      "version": "8.22.1"
     },
     {
       "licenses": [
@@ -3132,7 +3132,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-17T10:21:40+00:00",
+    "timestamp": "2026-11-17T10:40:47+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3141,7 +3141,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:3830cd23-545f-4656-abdc-aad873a733c4",
+  "serialNumber": "urn:uuid:cced9c4f-a974-4f40-a97b-2c79028119d6",
   "specVersion": "1.5",
   "version": 1
 }
