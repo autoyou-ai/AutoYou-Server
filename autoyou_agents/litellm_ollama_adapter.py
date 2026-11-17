@@ -990,10 +990,9 @@ def _missing_tool_result_message(
     tool_call_id: str,
     *,
     content: str,
-    role: str = "tool",
 ) -> Dict[str, Any]:
     return {
-        "role": str(role or "tool"),
+        "role": "tool",
         "tool_call_id": str(tool_call_id),
         "content": str(content),
     }
@@ -1002,18 +1001,9 @@ def repair_missing_tool_results(
     messages: List[Dict[str, Any]] | None,
     *,
     missing_result_message: str = _DEFAULT_MISSING_TOOL_RESULT_MESSAGE,
-    model: str = "",
 ) -> List[Dict[str, Any]]:
-    """Heal assistant tool calls that have no matching tool response message.
+    """Repair interrupted history at the Ollama wire boundary."""
 
-    Earlier AutoYou/ADK compatibility bugs could leave persisted session
-    histories with a tool call but no subsequent `role="tool"` result. ADK
-    heals this on the fly but logs a warning on every future turn for the same
-    stale session. Apply the same repair deterministically here so both old and
-    new sessions can continue without repeated warning noise.
-    """
-
-    expected_tool_role = "tool_responses" if "gemma4" in str(model or "").lower() else "tool"
     healed_messages: List[Dict[str, Any]] = []
     pending_tool_call_ids: List[str] = []
 
@@ -1024,7 +1014,6 @@ def repair_missing_tool_results(
                     _missing_tool_result_message(
                         tool_call_id,
                         content=missing_result_message,
-                        role=expected_tool_role,
                     )
                     for tool_call_id in pending_tool_call_ids
                 )
@@ -1033,12 +1022,15 @@ def repair_missing_tool_results(
             continue
 
         role = str(raw_message.get("role") or "").strip().lower()
-        if pending_tool_call_ids and role != expected_tool_role:
+        # ADK can use its template role for Gemma 4. The native Ollama API
+        # accepts tool results as "tool" and renders the template itself.
+        if role == "tool_responses":
+            role = raw_message["role"] = "tool"
+        if pending_tool_call_ids and role != "tool":
             healed_messages.extend(
                 _missing_tool_result_message(
                     tool_call_id,
                     content=missing_result_message,
-                    role=expected_tool_role,
                 )
                 for tool_call_id in pending_tool_call_ids
             )
@@ -1046,7 +1038,7 @@ def repair_missing_tool_results(
 
         if role == "assistant":
             pending_tool_call_ids = _extract_tool_call_ids(raw_message)
-        elif role == expected_tool_role:
+        elif role == "tool":
             tool_call_id = str(raw_message.get("tool_call_id") or "").strip()
             if tool_call_id in pending_tool_call_ids:
                 pending_tool_call_ids.remove(tool_call_id)
@@ -1058,7 +1050,6 @@ def repair_missing_tool_results(
             _missing_tool_result_message(
                 tool_call_id,
                 content=missing_result_message,
-                role=expected_tool_role,
             )
             for tool_call_id in pending_tool_call_ids
         )

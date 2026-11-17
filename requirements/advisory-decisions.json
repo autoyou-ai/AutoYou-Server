@@ -1,23 +1,5 @@
 {
   "schema_version": 1,
   "description": "Explicit, bounded advisory decisions honored by scripts/audit_dependency_advisories.py. Each decision covers only the listed package versions, manifests and advisory ids, and stops applying after review_by. See docs/security/dependency-audit.md.",
-  "decisions": [
-    {
-      "package": "accelerate",
-      "versions": [
-        "0.33.0"
-      ],
-      "advisory_ids": [
-        "GHSA-4j2p-28q2-5m79",
-        "PYSEC-2026-3804"
-      ],
-      "manifests": [
-        "requirements/tuning.txt"
-      ],
-      "justification": "inline_mitigations_already_exist",
-      "detail": "AutoYou's training subprocess installs shared.accelerate_checkpoint_guard before importing PEFT or Transformers. It validates shard paths and file types, allows normal Hugging Face cache symlinks, bounds index size, and passes a private validated index to all public load_checkpoint_in_model aliases and load_checkpoint_and_dispatch. Real Accelerate loaders are regression-tested with synthetic weights. This mitigates the path-traversal and named-pipe paths in AutoYou; it does not patch third-party scripts importing Accelerate independently or sandbox trusted model Python code. Accelerate 1.15.0 still has the unsafe join, so the declared floor was not raised to hide the advisory. Retain this bounded decision until a verified upstream fix is adopted.",
-      "reviewed_at": "2026-11-07",
-      "review_by": "2026-11-21"
-    }
-  ]
+  "decisions": []
 }

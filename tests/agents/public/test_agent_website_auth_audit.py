@@ -131,3 +131,11 @@ def test_page_tool_has_a_loopback_only_non_browser_service_path(monkeypatch):
         "/api/feed",
         headers={**headers, "Origin": "https://untrusted.example"},
     ).status_code != 200
+
+
+def test_hidden_auth_overlays_do_not_remain_displayed() -> None:
+    voice_html = (BACKENDS / "voice_training_agent" / "website" / "index.html").read_text(encoding="utf-8")
+    assert ".auth-overlay.hidden {\n      display: none;" in voice_html
+
+    audio_html = (BACKENDS / "audio_agent" / "website" / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert '<div id="otp-gate" class="otp-gate" hidden>' in audio_html

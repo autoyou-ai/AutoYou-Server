@@ -189,3 +189,74 @@ def test_recent_blob_bytes_reuses_unchanged_file_and_invalidates_changed_file(mo
     blob_path.write_bytes(b"updated")
     assert service._recent_blob_bytes(blob_path) == b"updated"
     assert reads == [blob_path, blob_path]
+
+
+def test_blob_stream_unsealed_range_seeks_without_reading_full_blob(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.delenv("AUTOYOU_SECURE_STORAGE", raising=False)
+    blob_path = tmp_path / "synthetic-video.mp4"
+    payload = b"0123456789" * 2048
+    blob_path.write_bytes(payload)
+
+    service = PageFeedService()
+
+    class FakeBlobDB:
+        def get_blob_path_and_type(self, blob_id: str):
+            return str(blob_path), "video/mp4"
+
+        def get_feed_title_by_blob_id(self, blob_id: str):
+            return "Synthetic clip"
+
+    service.db = FakeBlobDB()
+    monkeypatch.setattr(service, "_blob_requires_full_read", lambda _path: False)
+
+    def _fail_full_read(_path):
+        raise AssertionError("unsealed /api/blob range should seek without _recent_blob_bytes")
+
+    monkeypatch.setattr(service, "_recent_blob_bytes", _fail_full_read)
+    app = FastAPI()
+    service.register_routes(app)
+    client = TestClient(app)
+
+    response = client.get("/api/blob/synthetic-clip", headers={"Range": "bytes=100-199"})
+    assert response.status_code == 206
+    assert response.content == payload[100:200]
+    assert response.headers["content-range"] == f"bytes 100-199/{len(payload)}"
+
+
+def test_feed_catalog_supports_cursor_pagination(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    service = PageFeedService()
+    app = FastAPI()
+    service.register_routes(app)
+    client = TestClient(app)
+
+    if service.db is not None:
+        item1 = service.db.insert(item_type="article", url="https://example.com/1", title="First", source="s", content="a")
+        item2 = service.db.insert(item_type="article", url="https://example.com/2", title="Second", source="s", content="b")
+        item3 = service.db.insert(item_type="article", url="https://example.com/3", title="Third", source="s", content="c")
+        db_page1 = client.get("/api/feed/catalog?limit=2&order=desc").json()
+        assert [row["id"] for row in db_page1["items"]] == [str(item3["id"]), str(item2["id"])]
+        assert db_page1["has_more"] is True
+        assert db_page1["next_cursor"]
+        db_page2 = client.get(f"/api/feed/catalog?limit=2&order=desc&cursor={db_page1['next_cursor']}").json()
+        assert [row["id"] for row in db_page2["items"]] == [str(item1["id"])]
+        assert db_page2["has_more"] is False
+        assert db_page2["next_cursor"] is None
+
+    service.db = None
+    service.feed_items = [
+        {"id": 1, "type": "article", "title": "First", "url": "https://example.com/1", "added_at": "2026-11-10T01:00:00Z"},
+        {"id": 2, "type": "article", "title": "Second", "url": "https://example.com/2", "added_at": "2026-11-10T02:00:00Z"},
+        {"id": 3, "type": "article", "title": "Third", "url": "https://example.com/3", "added_at": "2026-11-10T03:00:00Z"},
+    ]
+
+    page1 = client.get("/api/feed/catalog?limit=2&order=desc").json()
+    assert [row["id"] for row in page1["items"]] == ["3", "2"]
+    assert page1["has_more"] is True
+    assert page1["next_cursor"]
+
+    page2 = client.get(f"/api/feed/catalog?limit=2&order=desc&cursor={page1['next_cursor']}").json()
+    assert [row["id"] for row in page2["items"]] == ["1"]
+    assert page2["has_more"] is False
+    assert page2["next_cursor"] is None

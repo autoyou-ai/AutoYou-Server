@@ -46,7 +46,6 @@ from autoyou_agents.litellm_ollama_adapter import (
     normalize_ollama_stream_response,
     prepare_messages_for_ollama,
     prepare_tools_for_ollama,
-    repair_missing_tool_results,
     response_degenerated_into_tool_schema_echo,
     summarize_messages_for_debug,
     summarize_tool_names_for_debug,
@@ -58,6 +57,7 @@ from autoyou_agents.model_config import (
 )
 from shared.ollama_context_policy import (
     context_limit as _ollama_context_limit,
+    ollama_cpu_only,
     record_context_limit as _record_ollama_context_limit,
     resolve_ollama_keep_alive,
 )
@@ -406,13 +406,15 @@ def _learn_from_response_usage(
         conversation_context.observe_prompt_tokens(model, estimated, prompt_tokens)
 
 
-def _with_ollama_context_limit(model_name: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Hold a request to the window measured to fit this model on this machine.
+def _with_ollama_runtime_options(model_name: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply the model's placement and its measured context limit.
 
     Set when Ollama could not allocate the cache or the model spilled onto the
     CPU at start; every call then asks for the same smaller window, so the
     model is not loaded again at the larger size.
     """
+    if ollama_cpu_only(model_name):
+        kwargs = {**kwargs, "num_gpu": 0}
     limit = _ollama_context_limit(model_name)
     try:
         requested = int(kwargs.get("num_ctx") or 0)
@@ -446,7 +448,7 @@ async def _patched_acompletion(*args, **kwargs):
 
     is_ollama = is_ollama_chat_model(model_name)
     if is_ollama:
-        kwargs = _with_ollama_context_limit(model_name, kwargs)
+        kwargs = _with_ollama_runtime_options(model_name, kwargs)
     # Unfitted (but prepared) messages: a refit after an overflow re-selects
     # from the whole history rather than from an already-trimmed copy.
     original_messages = None
@@ -649,28 +651,11 @@ litellm.acompletion = _patched_acompletion
 # attributes live on the class object, not in the module's globals dict, so
 # they survive `_ensure_litellm_imported()` resetting the module-level name.
 #
-# We also keep patching _ensure_tool_results (a plain module-level function
-# not in _LITELLM_GLOBAL_SYMBOLS) - that patch still holds fine.
+# ADK owns tool-result repair before this boundary. Its request conversion
+# selects the correct role for each provider, including Gemma models behind
+# an OpenAI-compatible endpoint.
 try:
     import google.adk.models.lite_llm as _adk_lite_llm_mod
-
-    # ── _ensure_tool_results patch (module-level, not reset by lazy import) ──
-    def _patched_adk_ensure_tool_results(messages, model=""):
-        missing_result_message = getattr(
-            _adk_lite_llm_mod,
-            "_MISSING_TOOL_RESULT_MESSAGE",
-            None,
-        )
-        return repair_missing_tool_results(
-            messages,
-            missing_result_message=(
-                str(missing_result_message).strip()
-                if isinstance(missing_result_message, str) and missing_result_message.strip()
-                else "Error: Missing tool result (tool execution may have been interrupted before a response was recorded)."
-            ),
-            model=str(model or ""),
-        )
-    _adk_lite_llm_mod._ensure_tool_results = _patched_adk_ensure_tool_results
 
     # ── LiteLLMClient.acompletion class-method patch (survives lazy import) ──
     # ADK 1.26+ routes every litellm call through LiteLLMClient.acompletion().
@@ -692,7 +677,7 @@ try:
                     sorted(kwargs.keys()),
                 )
             if is_ollama:
-                kwargs = _with_ollama_context_limit(model, kwargs)
+                kwargs = _with_ollama_runtime_options(model, kwargs)
                 tools = prepare_tools_for_ollama(tools)
                 prepared_messages = prepare_messages_for_ollama(list(messages) if messages else [])
                 messages = _fit_ollama_request(model, prepared_messages, tools, kwargs)

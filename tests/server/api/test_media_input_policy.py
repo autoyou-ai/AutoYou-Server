@@ -15,11 +15,15 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import asyncio
+import base64
 import io
+import wave
 
+import pytest
 from PIL import Image
 
 import rest_api
+from shared.ollama_media import prepare_ollama_attachments
 
 
 def _policy():
@@ -71,17 +75,105 @@ def _png(width, height, mode="RGB"):
     return buffer.getvalue()
 
 
+def _attachment(filename, mimetype, data):
+    return {"filename": filename, "mimetype": mimetype, "data": base64.b64encode(data).decode("ascii")}
+
+
 def test_large_images_are_shrunk_before_they_go_to_a_local_model():
-    data, mime = rest_api._shrink_image_for_model(_png(3000, 1500), "image/png", 1536)
-    with Image.open(io.BytesIO(data)) as image:
+    attachments = [
+        _attachment("large.png", "image/png", _png(3000, 1500)),
+        _attachment("transparent.png", "image/png", _png(3000, 1500, "RGBA")),
+        _attachment("small.png", "image/png", _png(800, 600)),
+        _attachment("invalid.png", "image/png", b"synthetic invalid image"),
+    ]
+    prepared = prepare_ollama_attachments(attachments, vision=True)
+
+    assert prepared.forwarded == 3
+    assert [mime for mime, _ in prepared.media] == ["image/jpeg", "image/png", "image/png"]
+    with Image.open(io.BytesIO(base64.b64decode(prepared.media[0][1]))) as image:
         assert image.size == (1536, 768)
-    assert mime == "image/jpeg"
+    assert prepared.media[2][1] == attachments[2]["data"]
 
-    # Transparency is kept as PNG.
-    _data, mime = rest_api._shrink_image_for_model(_png(3000, 1500, "RGBA"), "image/png", 1536)
-    assert mime == "image/png"
 
-    small = _png(800, 600)
-    assert rest_api._shrink_image_for_model(small, "image/png", 1536) == (small, "image/png")
-    assert rest_api._shrink_image_for_model(b"synthetic bytes", "image/png", 1536) == (b"synthetic bytes", "image/png")
-    assert rest_api._shrink_image_for_model(small, "image/png", None) == (small, "image/png")
+def test_video_is_represented_by_bounded_image_samples():
+    av = pytest.importorskip("av")
+    buffer = io.BytesIO()
+    with av.open(buffer, mode="w", format="mp4") as container:
+        stream = container.add_stream("mpeg4", rate=2)
+        stream.width, stream.height = 48, 32
+        stream.gop_size = 1
+        for index in range(8):
+            frame = av.VideoFrame.from_image(Image.new("RGB", (48, 32), color=(index * 25, 0, 0)))
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+
+    prepared = prepare_ollama_attachments(
+        [_attachment("synthetic.mp4", "video/mp4", buffer.getvalue())],
+        vision=True,
+    )
+
+    assert prepared.forwarded == 1
+    assert 2 <= len(prepared.media) <= 3
+    assert all(mime == "image/jpeg" for mime, _ in prepared.media)
+    assert "sampled frames" in prepared.notes[0]
+
+
+def test_capability_and_file_limits_keep_unavailable_media_out(tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside the AutoYou attachment directories", encoding="utf-8")
+    attachments = [
+        _attachment("synthetic.png", "image/png", _png(8, 8)),
+        _attachment("oversized.txt", "text/plain", b"x" * 9000),
+        {"filename": "outside.txt", "mimetype": "text/plain", "path": str(outside)},
+        _attachment("synthetic.txt", "text/plain", b"synthetic file value"),
+    ]
+
+    prepared = prepare_ollama_attachments(attachments, vision=False, text_files=True)
+
+    assert prepared.forwarded == 1
+    assert prepared.media == []
+    assert prepared.notes == ["Text attachment synthetic.txt (data):\nsynthetic file value"]
+
+
+@pytest.mark.asyncio
+async def test_native_ollama_sends_supported_media_on_the_current_turn(monkeypatch):
+    from shared import ollama_gateway
+
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+        wav.writeframes(b"\0\0" * 1600)
+    attachments = [
+        _attachment("synthetic.png", "image/png", _png(16, 16)),
+        _attachment("synthetic.wav", "audio/wav", audio.getvalue()),
+        _attachment("synthetic.txt", "text/plain", b"sample file body"),
+    ]
+    monkeypatch.setattr(rest_api, "_NATIVE_OLLAMA_HISTORY", ollama_gateway.OllamaConversationStore())
+    monkeypatch.setattr(rest_api, "_native_ollama_settings", lambda: {
+        "api_base": "http://127.0.0.1:9", "model": "gemma4:e4b",
+        "behavior": {"num_ctx": 4096}, "presets": {},
+    })
+
+    async def capabilities(*args):
+        return {"available": True, "supports_vision": True, "supports_audio": True}
+
+    requests = []
+
+    async def generate(**kwargs):
+        requests.append(kwargs["messages"])
+        return {"model": "gemma4:e4b", "response": "Synthetic reply"}
+
+    monkeypatch.setattr(rest_api, "inspect_ollama_capabilities", capabilities)
+    monkeypatch.setattr(ollama_gateway, "call_ollama_gateway", generate)
+    first = await rest_api.send_message_to_native_ollama(
+        "Describe the attachments.", "synthetic-session", attachments=attachments
+    )
+    await rest_api.send_message_to_native_ollama("Follow up.", "synthetic-session")
+
+    assert first["attachments_forwarded"] == 3
+    assert first["attachments_skipped"] == 0
+    assert requests[0][-1]["images"] == [attachments[0]["data"], attachments[1]["data"]]
+    assert "sample file body" in requests[0][-1]["content"]
+    assert requests[1][1] == {"role": "user", "content": "Describe the attachments."}

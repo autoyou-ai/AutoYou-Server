@@ -603,6 +603,27 @@ def test_prepare_messages_for_ollama_heals_dangling_tool_call_history():
     assert prepared[1]["tool_call_id"] == "call_y0k79bmu"
     assert prepared[2]["content"] == "next turn"
 
+
+def test_ollama_normalizes_adk_gemma_tool_roles_without_duplicating_results():
+    messages = [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": "synthetic-call", "function": {"name": "lookup_sample", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool_responses", "tool_call_id": "synthetic-call", "content": "synthetic result"},
+        {"role": "user", "content": "Continue."},
+    ]
+
+    prepared = prepare_messages_for_ollama(messages)
+
+    assert [item["role"] for item in prepared] == ["assistant", "tool", "user"]
+    assert prepared[1]["content"] == "synthetic result"
+    assert messages[1]["role"] == "tool_responses"
+
+
 def test_prepare_messages_for_ollama_normalizes_single_quoted_tool_arguments_in_object_calls():
     tool_call = SimpleNamespace(
         id="call_1",

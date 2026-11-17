@@ -743,3 +743,21 @@ def test_next_relay_action_selects_next_track_and_calls_play(monkeypatch) -> Non
     assert payload["action"] == "next"
     assert payload["selected_track"]["id"] == "track-b"
     assert payload["request_payload"]["file_path"].replace("\\", "/").endswith("/song_b.mp3")
+
+
+def test_audio_ui_settings_otp_gate_stays_hidden_until_drawer_opens() -> None:
+    """#otp-gate must stay hidden on initial load and after closing Settings so non-OTP views don't trigger OTP fill."""
+    client = TestClient(audio_ui_backend.app)
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert '<div id="otp-gate" class="otp-gate" hidden>' in page.text
+
+    styles = client.get("/assets/styles.css")
+    assert styles.status_code == 200
+    assert ".settings-overlay:not(.open) .otp-gate" in styles.text
+
+    script = client.get("/assets/app.js")
+    assert script.status_code == 200
+    assert "if (elOtpGate) elOtpGate.hidden = true;" in script.text
+

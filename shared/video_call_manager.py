@@ -1690,6 +1690,7 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         self.registry = registry
         self.max_width = max(160, int(max_width or 1280))
         self._enabled = asyncio.Event()
+        self._clock = _OutboundVideoClock()
         self._fallback_timestamp = 0
         self._time_base = Fraction(1, 90000)
         self._container: Any = None
@@ -1702,10 +1703,12 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
 
     def enable(self) -> None:
         self.registry.play(source_id=self.source_id, restart=True)
+        self._clock.reset_pacing()
         self._enabled.set()
 
     def disable(self) -> None:
         self._enabled.clear()
+        self._clock.reset_pacing()
 
     @property
     def is_enabled(self) -> bool:
@@ -1715,19 +1718,17 @@ class VideoFileStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, valid
         while not self._enabled.is_set():
             if getattr(self, "readyState", "live") != "live":
                 raise MediaStreamError
+            self._clock.reset_pacing()
             try:
                 await asyncio.wait_for(self._enabled.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
-        await asyncio.sleep(1.0 / max(1.0, min(60.0, self._current_fps)))
-        if hasattr(self, "next_timestamp"):
-            pts, time_base = await self.next_timestamp()  # type: ignore[attr-defined]
-        else:  # pragma: no cover - aiortc unavailable fallback.
-            self._fallback_timestamp += int(90000 / max(1.0, self._current_fps))
-            pts, time_base = self._fallback_timestamp, self._time_base
-
+        frame_started_at = await self._clock.wait_for_slot(self._current_fps)
         image = await asyncio.to_thread(self._next_image)
+        self._clock.mark_slot_complete(frame_started_at, self._current_fps)
+        pts = self._clock.next_pts()
+        time_base = self._clock.time_base
         if VideoFrame is None:
             raise RuntimeError("PyAV is required for WebRTC video frames")
         video_frame = VideoFrame.from_image(image)
@@ -1833,6 +1834,25 @@ class _OutboundVideoClock:
     def __init__(self) -> None:
         self._started_at: Optional[float] = None
         self._timestamp = -1
+        self._next_due_at: Optional[float] = None
+
+    def reset_pacing(self) -> None:
+        self._next_due_at = None
+
+    async def wait_for_slot(self, fps: float) -> float:
+        """Wait only for the unused portion of the current frame interval."""
+        now = time.monotonic()
+        due_at = self._next_due_at
+        if due_at is not None:
+            remaining = due_at - now
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+                now = time.monotonic()
+        return now
+
+    def mark_slot_complete(self, started_at: float, fps: float) -> None:
+        interval = 1.0 / max(1.0, min(60.0, float(fps or 8.0)))
+        self._next_due_at = max(started_at + interval, time.monotonic())
 
     def next_pts(self) -> int:
         # Use elapsed time so capture and encoder stalls do not skew the video
@@ -2169,6 +2189,7 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
         self.max_width = max(320, int(max_width or 1280))
         if self.max_width % 2:
             self.max_width -= 1
+        self._clock = _OutboundVideoClock()
         self._fallback_timestamp = 0
         self._time_base = Fraction(1, 90000)
         self._enabled = asyncio.Event()
@@ -2183,11 +2204,13 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
         self._output_size = (default_width, max(2, int(default_width * 3 / 4)))
 
     def enable(self) -> None:
+        self._clock.reset_pacing()
         self._enabled.set()
         self._start_capture()
 
     def disable(self) -> None:
         self._enabled.clear()
+        self._clock.reset_pacing()
         with self._lock:
             self._latest_image = None
         self._stop_capture()
@@ -2412,20 +2435,23 @@ class CameraVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, val
 
     async def recv(self) -> Any:
         if not self._enabled.is_set():
+            self._clock.reset_pacing()
             try:
                 await asyncio.wait_for(self._enabled.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 pass
 
+        frame_started_at: Optional[float] = None
         if self._enabled.is_set():
-            await asyncio.sleep(1.0 / self.fps)
-        if hasattr(self, "next_timestamp"):
-            pts, time_base = await self.next_timestamp()  # type: ignore[attr-defined]
+            frame_started_at = await self._clock.wait_for_slot(self.fps)
         else:
-            self._fallback_timestamp += int(90000 / self.fps)
-            pts, time_base = self._fallback_timestamp, self._time_base
+            self._clock.reset_pacing()
 
         img = self.capture_preview_image(max_width=self.max_width)
+        if frame_started_at is not None and self._enabled.is_set():
+            self._clock.mark_slot_complete(frame_started_at, self.fps)
+        pts = self._clock.next_pts()
+        time_base = self._clock.time_base
 
         if VideoFrame is None:
             raise RuntimeError("PyAV is required for WebRTC video frames")
@@ -2524,6 +2550,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         self.output_height = max(180, int(round(normalized_width * 9 / 16)))
         if self.output_height % 2:
             self.output_height -= 1
+        self._clock.reset_pacing()
         self._last_layout_key = None
         self._source_sizes.pop("remote_desktop", None)
         self.monitor_id = monitor_id
@@ -2754,6 +2781,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
         return height + height % 2, rects
 
     def enable(self) -> None:
+        self._clock.reset_pacing()
         self._enabled.set()
         for name, track in self.sources:
             action = "disable" if name in self._disabled_source_names or (self._game_mode and name != "remote_desktop") else "enable"
@@ -2763,6 +2791,7 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
 
     def disable(self) -> None:
         self._enabled.clear()
+        self._clock.reset_pacing()
         for _name, track in self.sources:
             disable = getattr(track, "disable", None)
             if callable(disable):
@@ -2808,14 +2837,17 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
 
     async def recv(self) -> Any:
         if not self._enabled.is_set():
+            self._clock.reset_pacing()
             try:
                 await asyncio.wait_for(self._enabled.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 pass
 
+        frame_started_at: Optional[float] = None
         if self._enabled.is_set():
-            await asyncio.sleep(1.0 / self.fps)
+            frame_started_at = await self._clock.wait_for_slot(self.fps)
         if not self._enabled.is_set():
+            self._clock.reset_pacing()
             image = self._disabled_image()
         else:
             live_sources = self._live_sources()
@@ -2835,6 +2867,8 @@ class CompositeVideoStreamTrack(_AiortcVideoStreamTrack):  # type: ignore[misc, 
                     OUTBOUND_VIDEO_TELEMETRY.record_error(source=name, stage="composite", detail=exc)
                     images.append(self._placeholder_image(f"{name} unavailable"))
             image = await asyncio.to_thread(self._compose_images, images, source_names=[name for name, _track in live_sources])
+            if frame_started_at is not None and self._enabled.is_set():
+                self._clock.mark_slot_complete(frame_started_at, self.fps)
         if VideoFrame is None:
             raise RuntimeError("PyAV is required for WebRTC video frames")
         video_frame = VideoFrame.from_image(image)

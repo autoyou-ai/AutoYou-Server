@@ -34,7 +34,7 @@ CONTENT_TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm"
                  ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".ogg": "audio/ogg",
                  ".oga": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac", ".amr": "audio/amr",
                  ".caf": "audio/x-caf", ".weba": "audio/webm"}
-CHUNK_BYTES = 256 * 1024
+CHUNK_BYTES = 512 * 1024
 
 
 def media_kind(suffix: str, requested: str = "video") -> str:

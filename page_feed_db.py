@@ -564,6 +564,13 @@ class PageFeedDB:
             (max_id,) = cur.fetchone()
             return int(max_id or 0)
 
+    def count_items(self) -> int:
+        """Return total number of items stored in the feed."""
+        with self._connect() as con:
+            cur = con.execute("SELECT COUNT(*) FROM feed_items")
+            row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+
     # --- Blobs API ---
 
     def insert_blob(self, filename: str, mimetype: Optional[str], size: int, path: str) -> BlobMeta:

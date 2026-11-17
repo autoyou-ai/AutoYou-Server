@@ -359,7 +359,8 @@ from shared.lan_direct_access import (
     DevicePassStore,
     spki_sha256_b64,
 )
-from shared.pairing_response import parse_otp_response_payload
+from shared.messaging_contacts import messaging_contacts
+from shared.pairing_response import is_app_pairing_message, pairing_reply_link, parse_otp_response_payload
 from shared.shared_device_pairing import (
     shared_device_session as _shared_device_session,
     shared_device_session_allowed as _shared_device_session_allowed,
@@ -825,7 +826,7 @@ try:
     from telegram import Update
     from telegram.constants import ChatAction
     from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
-    from telegram.ext import Application, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+    from telegram.ext import Application, ApplicationHandlerStop, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 except Exception:
   Update = cast(Any, None)
   ChatAction = cast(Any, None)
@@ -1713,6 +1714,34 @@ from ollama_service import OllamaService
 ollama_service = OllamaService()
 model_library_service = ModelLibraryService()
 speech_model_library_service = SpeechModelLibraryService()
+
+
+async def _answer_messaging_contact(history, prompt: str) -> str:
+    from autoyou_agents.model_config import _get_active_provider, get_model_config
+    from google.adk.models.llm_request import LlmRequest
+    from google.genai import types
+
+    # Agent gateways may execute their own tools even when none are supplied.
+    provider = (STATE.config or {}).get("ai_provider", {}).get("provider") or _get_active_provider()
+    if provider not in {"ollama", "apple_intelligence", "google", "openrouter", "litellm"}:
+        raise RuntimeError("Contact chat requires a direct model provider")
+    model = await asyncio.to_thread(get_model_config, ollama_service)
+    contents = [types.Content(role=role, parts=[types.Part(text=text)])
+                for turn in history for role, text in zip(("user", "model"), turn)]
+    contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
+    request = LlmRequest(model=model.model, contents=contents, config=types.GenerateContentConfig(
+        system_instruction="You are AutoYou in a direct conversation. Answer the contact's question. You have no access to the operator's tools, files, or conversations.",
+    ))
+    async for response in model.generate_content_async(request, stream=False):
+        if response.content:
+            answer = "".join(part.text or "" for part in response.content.parts or [] if not part.thought)
+            if answer:
+                return answer
+    return ""
+
+
+messaging_contacts.read_config = lambda: STATE.config or {}
+messaging_contacts.chat = _answer_messaging_contact
 
 # Load For AutoYou Page Service
 try:
@@ -4842,7 +4871,7 @@ def _normalize_video_call_config(raw_value: Any) -> Dict[str, Any]:
                 remote_cfg.get("control_enabled", raw_cfg.get("remote_desktop_control_enabled")),
                 False,
             ),
-            "meet_auto_approve": _normalize_partner_enabled_flag(remote_cfg.get("meet_auto_approve"), True),
+            "meet_auto_approve": _normalize_partner_enabled_flag(remote_cfg.get("meet_auto_approve"), False),
             "game_enabled": _normalize_partner_enabled_flag(remote_cfg.get("game_enabled"), False),
             "game_buttons": _normalize_game_buttons(remote_cfg.get("game_buttons")),
             "keep_awake": normalize_keep_awake_mode(remote_cfg.get("keep_awake")),
@@ -5781,15 +5810,9 @@ def _verify_totp_secret(secret: Optional[str], code: Any, *, valid_window: int =
     if not normalized_secret or not normalized_code or pyotp is None:
         return False
     try:
-        totp = pyotp.TOTP(normalized_secret)
-        utc_now = _totp_utc_now()
-        if totp.verify(normalized_code, for_time=utc_now, valid_window=valid_window):
-            return True
-        # Defensive fallback for naive local time if OS clock / DST has ambiguous hour
-        naive_now = datetime.datetime.now()
-        if totp.verify(normalized_code, for_time=naive_now, valid_window=valid_window):
-            return True
-        return False
+        return pyotp.TOTP(normalized_secret).verify(
+            normalized_code, for_time=_totp_utc_now(), valid_window=valid_window
+        )
     except Exception:
         return False
 
@@ -5912,10 +5935,10 @@ def _default_config() -> Dict[str, Any]:
                 "enabled": True,
                 "send_screen": True,
                 "monitor_id": 0,
-                "quality": "balanced",
+                "quality": "high",
                 "bitrate_kbps": 1500,
                 "control_enabled": False,
-                "meet_auto_approve": True,
+                "meet_auto_approve": False,
                 "game_enabled": False,
                 "game_buttons": [button.copy() for button in _DEFAULT_GAME_BUTTONS],
                 "keep_awake": "off",
@@ -9996,7 +10019,7 @@ def _admin_permissions_snapshot(cfg: Optional[Dict[str, Any]] = None) -> Dict[st
         "api_video_input_enabled": "api" in outbound_sources,
         "video_file_playback_enabled": "video_file" in outbound_sources,
         "remote_desktop_control_enabled": bool(remote_cfg.get("control_enabled", False)),
-        "meet_auto_approve": bool(remote_cfg.get("meet_auto_approve", True)),
+        "meet_auto_approve": bool(remote_cfg.get("meet_auto_approve", False)),
         "game_mode_enabled": bool(remote_cfg.get("game_enabled", False)),
         "chat_memory_enabled": bool(ai_agent.get("record_messages_in_database", True)),
         "ai_agent_lan_access_enabled": bool(ai_agent.get("lan_access_enabled", False)),
@@ -10976,9 +10999,10 @@ def _build_webrtc_capabilities(
             "frame_aspect_ratio": remote_frame_aspect_ratio,
             "control_enabled": remote_desktop_control_enabled,
             "control_configured": remote_desktop_control_configured,
-            "meet_auto_approve": bool(_get_video_remote_desktop_config(cfg=effective_cfg).get("meet_auto_approve", True)),
+            "meet_auto_approve": bool(_get_video_remote_desktop_config(cfg=effective_cfg).get("meet_auto_approve", False)),
             "control_available": _remote_desktop_input_backend_ready(),
             "control_protocol": "autoyou_remote_desktop_v1",
+            "meet_protocol": "autoyou_meet_v1",
             "game_enabled": _get_game_mode_available(cfg=effective_cfg),
             "game_protocol": "autoyou_game_v1",
             "game_buttons": _normalize_game_buttons(_get_video_remote_desktop_config(cfg=effective_cfg).get("game_buttons")),
@@ -13332,6 +13356,7 @@ def _redact_admin_ai_provider_secrets(cfg: Dict[str, Any]) -> None:
 async def _build_admin_ui_bootstrap_payload() -> Dict[str, Any]:
     from shared.apple_intelligence import status as apple_intelligence_status
     cfg = copy.deepcopy(STATE.config or _default_config())
+    cfg.pop("messaging_contacts", None)  # Contacts have a dedicated, no-store admin endpoint.
     _apply_default_server_identity_config(cfg)
     _apply_default_security_config(cfg)
     _apply_default_tunnelmole_config(cfg)
@@ -19068,9 +19093,6 @@ def _telegram_silent_unapproved_messages() -> bool:
     telegram_cfg = (STATE.config or {}).get("telegram", {})
     return bool(telegram_cfg.get("silent_unapproved_messages", False))
 
-def _telegram_authorization_required() -> bool:
-    return bool(_telegram_acl_sender_ids() or _telegram_acl_usernames() or _telegram_access_gate_enabled())
-
 def _telegram_user_is_authorized(sender_id: Optional[str], username: Optional[str]) -> bool:
     normalized_sender_id = _normalize_telegram_sender_id(sender_id)
     sender_ids = _telegram_acl_sender_ids()
@@ -19081,7 +19103,7 @@ def _telegram_user_is_authorized(sender_id: Optional[str], username: Optional[st
     usernames = _telegram_acl_usernames()
     if usernames:
         return _normalize_telegram_username(username) in set(usernames)
-    return True
+    return False
 
 def _expire_telegram_allow_tokens(*, now: Optional[float] = None) -> None:
     current_time = time.time() if now is None else float(now)
@@ -19171,9 +19193,6 @@ def _redeem_telegram_allow_code(code: Optional[str], sender_id: Optional[str]) -
 
 async def _ensure_telegram_update_authorized(update: Any) -> bool:
     _remember_telegram_sender(update)
-    if not _telegram_authorization_required():
-        return True
-
     user = getattr(update, "effective_user", None)
     sender_id = _normalize_telegram_sender_id(getattr(user, "id", None))
     username = _normalize_telegram_username(getattr(user, "username", None))
@@ -19925,6 +19944,7 @@ async def _reply_telegram_text(update: Any, text: str, *, split_text: bool = Tru
         raw_user_id,
         original_message_id,
     )
+    text = pairing_reply_link(text, limit=_telegram_reply_limit())
     if _telegram_pairing_payload_needs_document(text):
         sent = await _send_telegram_pairing_rich_message_via_bot(
             bot,
@@ -20142,6 +20162,27 @@ def _schedule_telegram_chat_delivery(
 async def _telegram_error_handler(update, context) -> None:
     LOGGER.exception("Unhandled Telegram update error: %s", getattr(context, "error", None))
 
+
+async def telegram_contact_message(update: Any, context: Any) -> None:
+    if not messaging_contacts.enabled:
+        return
+    message, chat, user = update.message, update.effective_chat, update.effective_user
+    if (message and chat and user and chat.type == "private" and chat.id == user.id
+            and not user.is_bot and not getattr(message, "forward_origin", None)):
+        bot = context.bot
+
+        async def reply(text):
+            if _telegram_pairing_payload_needs_document(text):
+                await _send_telegram_pairing_document_via_bot(bot, chat.id, text, reply_to_message_id=message.message_id)
+            else:
+                await bot.send_message(chat_id=chat.id, text=text, disable_web_page_preview=True,
+                                       reply_to_message_id=message.message_id)
+
+        await messaging_contacts.receive("telegram", str(bot.id), str(user.id), user.full_name,
+                                         message.message_id, message.text or message.caption, reply)
+    # Contact mode owns the entire bot ingress, including commands and media.
+    raise ApplicationHandlerStop
+
 # --- New: Conversation + logging handlers ---
 async def pair_command(update: Any, context: Any):
     try:
@@ -20304,11 +20345,13 @@ async def log_any_text(update: Any, context: Any):
     - metadata: {"client": "telegram"}
     """
     try:
+        text = update.message.text if update and update.message else ""
+        if is_app_pairing_message(text):
+            return
         if not await _ensure_telegram_update_authorized(update):
             return
         user = update.effective_user
         chat = update.effective_chat
-        text = update.message.text if update and update.message else ""
 
         # ── Autopair fragment interception ──────────────────────────────────────
         # Newer Telegram accounts/versions split long /autopair messages into

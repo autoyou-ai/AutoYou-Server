@@ -758,6 +758,8 @@ class DataChannelManager:
             ),
         )
         self._adaptive_frame_size: int = self._adaptive_frame_ceiling
+        self._adaptive_clean_send_streak: int = 0
+        self._last_chunked_send_had_retry: bool = False
         # A lost final ACK can make a sender retry a message the receiver already
         # dispatched. Keep a small TTL cache so adaptive fallback is at-least-once
         # on the wire but at-most-once at the application handler.
@@ -810,6 +812,9 @@ class DataChannelManager:
         """Set the datachannel for message sending"""
         if self.datachannel is not datachannel:
             self.binary_http_supported = False
+            self._adaptive_frame_size = self._adaptive_frame_ceiling
+            self._adaptive_clean_send_streak = 0
+            self._last_chunked_send_had_retry = False
             self._binary_body_inbox.clear()
             self._binary_response_sequences.clear()
             for future in self._binary_window_waiters.values():
@@ -993,17 +998,24 @@ class DataChannelManager:
         adaptive_delay = max(base_delay, pressure_component, wait_component, retry_component)
         return min(adaptive_delay, min(self._ack_timeout / 2.0, 0.75))
 
-    async def _wait_for_buffer_capacity(self) -> tuple[int, int]:
+    async def _wait_for_buffer_capacity(
+        self,
+        high_watermark_bytes: Optional[int] = None,
+    ) -> tuple[int, int]:
         """Throttle sends when the SCTP buffer is already backed up."""
         if self.datachannel is None or not hasattr(self.datachannel, 'bufferedAmount'):
             return 0, 0
 
+        watermark = int(
+            high_watermark_bytes
+            if high_watermark_bytes is not None
+            else self.runtime_settings.buffered_amount_high_watermark_bytes
+        )
         wait_iterations = 0
         peak_buffered_amount = self._current_buffered_amount()
         while (
             self._ensure_transport_ready()
-            and self._current_buffered_amount()
-            > self.runtime_settings.buffered_amount_high_watermark_bytes
+            and self._current_buffered_amount() > watermark
         ):
             peak_buffered_amount = max(peak_buffered_amount, self._current_buffered_amount())
             wait_iterations += 1
@@ -1027,6 +1039,7 @@ class DataChannelManager:
         *,
         max_chunk_size: int,
     ) -> bool:
+        self._last_chunked_send_had_retry = False
         chunks = self.chunker.chunk_message(
             message,
             max_chunk_size=max_chunk_size,
@@ -1162,6 +1175,7 @@ class DataChannelManager:
                                 continue
                             retries = retries_by_index.get(chunk_info.chunk_index, 0) + 1
                             retries_by_index[chunk_info.chunk_index] = retries
+                            self._last_chunked_send_had_retry = True
                             logger.warning(
                                 f"⏱ ACK timeout for chunk {chunk_info.chunk_index}/{chunk_info.total_chunks} "
                                 f"(chunk_id={chunk_info.chunk_id}); retry {retries}/{self._ack_max_retries} "
@@ -1217,19 +1231,61 @@ class DataChannelManager:
 
         return True
 
+    def _next_adaptive_frame_step_up(self, frame_size: int) -> Optional[int]:
+        """Return the next larger adaptive frame size rung up to the ceiling."""
+        larger = [
+            size
+            for size in reversed(ADAPTIVE_FRAME_SIZE_STEPS)
+            if frame_size < size <= self._adaptive_frame_ceiling
+        ]
+        return larger[0] if larger else None
+
+    def _update_adaptive_frame_size_after_send(
+        self,
+        *,
+        starting_frame_size: int,
+        succeeded_frame_size: int,
+        had_retry: bool,
+    ) -> None:
+        self._adaptive_frame_size = succeeded_frame_size
+        if (
+            had_retry
+            or succeeded_frame_size < starting_frame_size
+            or succeeded_frame_size >= self._adaptive_frame_ceiling
+        ):
+            self._adaptive_clean_send_streak = 0
+            return
+        self._adaptive_clean_send_streak += 1
+        if self._adaptive_clean_send_streak >= 3:
+            next_size = self._next_adaptive_frame_step_up(succeeded_frame_size)
+            self._adaptive_clean_send_streak = 0
+            if next_size is not None:
+                self._adaptive_frame_size = next_size
+                logger.info(
+                    "Recovering adaptive chunk frame size %s -> %s after 3 clean transfers",
+                    succeeded_frame_size,
+                    next_size,
+                )
+
     async def _send_chunked_message(self, message: DataChannelMessage) -> bool:
         """Send oversized messages with ACK-backed adaptive frame sizing."""
+        starting_frame_size = self._adaptive_frame_size
         for frame_size in self._adaptive_frame_size_candidates():
             if not self._ensure_transport_ready(message):
                 return False
             if await self._send_chunked_message_once(message, max_chunk_size=frame_size):
-                self._adaptive_frame_size = frame_size
+                self._update_adaptive_frame_size_after_send(
+                    starting_frame_size=starting_frame_size,
+                    succeeded_frame_size=frame_size,
+                    had_retry=self._last_chunked_send_had_retry,
+                )
                 return True
             if frame_size > DEFAULT_MAX_CHUNK_SIZE:
                 logger.warning(
                     "Chunk ACK delivery failed for %s-byte frames; stepping down",
                     frame_size,
                 )
+        self._adaptive_clean_send_streak = 0
         return False
 
     def _remember_completed_chunk_message(self, message_id: str) -> bool:
@@ -1267,11 +1323,18 @@ class DataChannelManager:
             if sequence % WINDOW_FRAMES == 0:
                 window = asyncio.get_running_loop().create_future()
                 self._binary_window_waiters[(request_id, sequence)] = window
-            await self._wait_for_buffer_capacity()
+            # Allow at least one full Binary HTTP ACK window (512 KiB) in the
+            # SCTP buffer so 32-frame windows do not stall mid-burst on 256 KiB.
+            binary_watermark = max(
+                int(self.runtime_settings.buffered_amount_high_watermark_bytes),
+                512 * 1024,
+            )
+            await self._wait_for_buffer_capacity(high_watermark_bytes=binary_watermark)
             if self.datachannel is not channel or not self.connection_active or getattr(channel, "readyState", "open") != "open":
                 return False
             channel.send(frame)
-            await asyncio.sleep(0)
+            if sequence % 8 == 0:
+                await asyncio.sleep(0)
             if window is not None and not await asyncio.wait_for(window, timeout=30):
                 return False
             return True
@@ -1896,6 +1959,9 @@ class DataChannelManager:
             except RuntimeError:
                 self._chat_file_store.close()
         self.datachannel = None
+        self._adaptive_frame_size = self._adaptive_frame_ceiling
+        self._adaptive_clean_send_streak = 0
+        self._last_chunked_send_had_retry = False
         self._abort_pending_ack_waiters("DataChannel disconnected")
         self._ping_sent_at_monotonic.clear()
         for waiter in self._pong_waiters.values():

@@ -414,6 +414,10 @@ install_runtime_site_packages_overlay() {
             "onnxruntime"
         )
     fi
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        # cv2 is excluded from the Nuitka launcher graph; ship the verified wheel in the overlay.
+        distribution_overlay+=("opencv-python")
+    fi
     if requirements_has_tuning; then
         MACOS_RUNTIME_SITE_PACKAGE_OVERLAY+=("torch" "torchgen" "torchvision" "transformers" "datasets" "peft" "accelerate" "safetensors" "sentencepiece" "PIL")
         distribution_overlay+=(
@@ -1065,7 +1069,8 @@ run_strict_release_legal_gate() {
     fi
 
     log "Running strict release legal gate..."
-    python3 "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server --no-generate --strict-unknown-license || {
+    python3 "${PROJECT_ROOT}/scripts/check_release_legal_gates.py" --artifact-scope server \
+        --checklist-platform macos --no-generate --strict-unknown-license --report "${BUILD_DIR}/legal-gate-report.json" || {
         log_error "Release legal gate failed. Resolve open blockers before macOS backend release packaging."
         exit 1
     }
@@ -1562,6 +1567,10 @@ verify_packaged_backend_imports() {
         --verify-server-imports
     )
 
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        runtime_verify_args+=(--verify-runtime-import "av" --verify-runtime-import "cv2")
+    fi
+
     if requirements_has_voice; then
         log "Verifying packaged voice/STT imports..."
         runtime_verify_args+=(
@@ -1960,6 +1969,17 @@ install_dependencies() {
     # hashes or cover every optional/build dependency; audit the resolved artifact. Set
     # AUTOYOU_IGNORE_LOCKFILE=1 to opt out.
     local pip_install_args=(-r "$req_file" --progress-bar on --no-color)
+    local codec_wheel
+    for codec_wheel in "${AUTOYOU_MACOS_AV_WHEEL:-}" "${AUTOYOU_MACOS_OPENCV_WHEEL:-}"; do
+        [[ -n "$codec_wheel" ]] || continue
+        if [[ ! -f "$codec_wheel" ]]; then
+            log_error "A selected macOS codec wheel is missing."
+            return 1
+        fi
+        # An existing build environment may have the same version from PyPI.
+        "$PYTHON_CMD" -m pip install --no-deps --force-reinstall "$codec_wheel" || return 1
+        pip_install_args+=("$codec_wheel")
+    done
     local locked_constraints=""
     local ignore_lock
     ignore_lock="$(printf '%s' "${AUTOYOU_IGNORE_LOCKFILE:-}" | tr '[:upper:]' '[:lower:]')"
@@ -2045,6 +2065,12 @@ install_dependencies() {
     if ! "$PYTHON_CMD" -m pip check 2>&1 | tee -a "${BUILD_DIR}/pip_install.log"; then
         log_error "Installed Python dependencies are inconsistent"
         exit 1
+    fi
+    if [[ -n "${AUTOYOU_MACOS_AV_WHEEL:-}" ]]; then
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/build_codec_clean_av.py" --check-installed || return 1
+    fi
+    if [[ -n "${AUTOYOU_MACOS_OPENCV_WHEEL:-}" ]]; then
+        "$PYTHON_CMD" "${PROJECT_ROOT}/scripts/repack_macos_opencv.py" --check-installed || return 1
     fi
     
     log_success "Dependencies installed"

@@ -17,7 +17,7 @@
     "extract-zip": "file:vendor/extract-zip"
   },
   "overrides": {
-    "basic-ftp": "6.2.1",
+    "basic-ftp": "6.2.6",
     "ip-address": "10.7.4",
     "js-yaml": "4.3.2",
     "zod": "4.6.7",
