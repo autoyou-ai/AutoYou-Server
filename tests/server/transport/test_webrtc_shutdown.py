@@ -289,6 +289,42 @@ async def test_webrtc_shutdown_closes_audio_managers_and_session_resources():
 
 
 @pytest.mark.asyncio
+async def test_cleanup_snapshots_voice_resources_before_awaiting_transport_release(monkeypatch):
+    webrtc = server.WebRTCManager()
+    session_id = "synthetic-voice-owner"
+
+    class AudioManager:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    old_peer = SimpleNamespace(close=AsyncMock())
+    replacement_peer = SimpleNamespace(close=AsyncMock())
+    old_audio = AudioManager()
+    replacement_audio = AudioManager()
+    monkeypatch.setattr(server.STATE, "audio_managers", {session_id: old_audio})
+    webrtc.session_peers[session_id] = old_peer
+
+    async def release_transport(_session_id):
+        # A new offer can take ownership whenever teardown awaits another
+        # service. The old cleanup must retain only its original resources.
+        webrtc.session_peers[session_id] = replacement_peer
+        server.STATE.audio_managers[session_id] = replacement_audio
+
+    webrtc._tv_cast_leases = SimpleNamespace(release=release_transport)
+    await webrtc.async_cleanup_session(session_id, expected_pc=old_peer)
+
+    assert old_audio.close_calls == 1
+    old_peer.close.assert_awaited_once()
+    assert replacement_audio.close_calls == 0
+    replacement_peer.close.assert_not_awaited()
+    assert server.STATE.audio_managers[session_id] is replacement_audio
+    assert webrtc.session_peers[session_id] is replacement_peer
+
+
+@pytest.mark.asyncio
 async def test_webrtc_cleanup_dedupes_client_alias_resources(monkeypatch):
     webrtc = server.WebRTCManager()
 

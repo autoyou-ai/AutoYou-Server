@@ -23,6 +23,9 @@ export type LocationEntry = {
   label: string;
   path: string;
   kind: "workspace" | "home" | "folder" | "drive";
+  total_bytes?: number;
+  free_bytes?: number;
+  used_bytes?: number;
 };
 
 export type LocationsPayload = {

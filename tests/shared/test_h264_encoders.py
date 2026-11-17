@@ -80,10 +80,12 @@ def test_selection_fails_clearly_when_no_encoder_works(monkeypatch):
         h264_encoders.select_h264_encoder()
 
 
-def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch):
+@pytest.mark.parametrize("encoder_name", ("libopenh264", "h264_mf", "h264_videotoolbox"))
+def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch, encoder_name):
     _without_x264(monkeypatch)
-    if not h264_encoders.encoder_candidates():
-        pytest.skip("this FFmpeg build has no OpenH264 or Media Foundation encoder")
+    if encoder_name not in h264_encoders.encoder_candidates() or not h264_encoders._opens(encoder_name):
+        pytest.skip(f"this host has no usable {encoder_name} encoder")
+    monkeypatch.setattr(h264_encoders, "ENCODER_PREFERENCE", (encoder_name,))
     h264_encoders.install_aiortc_h264_encoder()
     h264_encoders.install_aiortc_h264_encoder()  # a second call changes nothing
     assert aiortc_h264.H264Encoder._encode_frame._autoyou_h264
@@ -91,12 +93,14 @@ def test_aiortc_sends_h264_that_decodes_without_x264(monkeypatch):
     codec = RTCRtpCodecParameters(mimeType="video/H264", clockRate=90000, payloadType=102)
     encoder, decoder = get_encoder(codec), get_decoder(codec)
     decoded = 0
-    for index, frame in enumerate(_frames(8)):
+    # Some Windows Media Foundation encoders buffer 16 frames before their
+    # first packet. Exercise a second of streaming, without flushing the sender.
+    for index, frame in enumerate(_frames(30)):
         payloads, timestamp = encoder.encode(frame, force_keyframe=index == 0)
         if payloads:
             data = b"".join(aiortc_h264.h264_depayload(payload) for payload in payloads)
             decoded += len(decoder.decode(JitterFrame(data=data, timestamp=timestamp)))
-    assert encoder.codec.name in ("libopenh264", "h264_mf")
+    assert encoder.codec.name == encoder_name
     assert decoded > 0
 
 
@@ -109,3 +113,51 @@ def test_recording_uses_the_selected_encoder_then_mpeg4(monkeypatch):
 
     monkeypatch.setattr(h264_encoders, "select_h264_encoder", unavailable)
     assert video_call_manager._recording_video_codecs() == ("mpeg4",)
+
+
+def test_h264_encoder_bitrate_hysteresis_avoids_reopen_thrashing(monkeypatch):
+    encoder_name = h264_encoders.select_h264_encoder()
+    h264_encoders.install_aiortc_h264_encoder()
+
+    opened = []
+    real_open = h264_encoders.open_h264_encoder
+
+    def spy_open(width, height, bit_rate, frame_rate):
+        opened.append((width, height, bit_rate))
+        return real_open(width, height, bit_rate, frame_rate)
+
+    clock = {"now": 100.0}
+    monkeypatch.setattr(h264_encoders, "open_h264_encoder", spy_open)
+    monkeypatch.setattr(h264_encoders.time, "monotonic", lambda: clock["now"])
+
+    codec = RTCRtpCodecParameters(mimeType="video/H264", clockRate=90000, payloadType=102)
+    encoder = get_encoder(codec)
+    frames = list(_frames(4))
+
+    encoder.target_bitrate = 800_000
+    encoder.encode(frames[0], force_keyframe=True)
+    assert len(opened) == 1
+
+    # Moderate REMB swings (<50%) must not tear down and recreate the codec.
+    encoder.target_bitrate = 1_050_000
+    encoder.encode(frames[1], force_keyframe=False)
+    assert len(opened) == 1
+
+    # Even a >50% swing inside the 2s cooldown waits rather than thrashing.
+    clock["now"] = 101.0
+    encoder.target_bitrate = 1_600_000
+    encoder.encode(frames[2], force_keyframe=False)
+    assert len(opened) == 1
+
+    # After cooldown expires, a >50% change cleanly reopens at the new bitrate.
+    clock["now"] = 103.5
+    encoder.encode(frames[3], force_keyframe=False)
+    assert len(opened) == 2
+    assert opened[-1] == (320, 240, 1_600_000)
+
+    # Dimension change still reopens immediately.
+    large = next(_frames(1, width=640, height=480))
+    encoder.encode(large, force_keyframe=False)
+    assert len(opened) == 3
+    assert opened[-1][0:2] == (640, 480)
+    assert encoder_name in h264_encoders.encoder_candidates()

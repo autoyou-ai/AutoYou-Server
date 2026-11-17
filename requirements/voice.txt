@@ -1,7 +1,7 @@
 # Optional voice/video call stack: WebRTC media, STT model downloads, and TTS backends.
 torch>=2.13.0
 torchaudio>=2.11.0
-numpy<2; platform_system == "Darwin" and platform_machine == "x86_64"
+numpy>=1.26.4,<2; platform_system == "Darwin" and platform_machine == "x86_64"
 opencv-python>=4.9.0.80,<5
 # RealtimeSTT is installed by scripts/install_realtimestt_runtime.py before
 # this file with --no-deps, then its installed metadata is patched to keep

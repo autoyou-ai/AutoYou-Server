@@ -1,15 +1,15 @@
 ---
 title: "Google ADK runtime and MCP compatibility"
-description: "Pinned ADK 2.11, native SQLite memory, MCP SDK 2.x, execution cancellation, and the customized development UI."
+description: "Pinned ADK 2.14, native SQLite memory, MCP SDK 2.x, execution cancellation, and the customized development UI."
 ---
 
 # Google ADK runtime and MCP compatibility
 
-The full server pins `google-adk==2.11.0`, `mcp==2.3.0`,
+The full server pins `google-adk==2.14.0`, `litellm==1.100.4`, `mcp==2.3.0`,
 `mcp-types==2.3.0`, `httpx2==2.13.1`, and `httpcore2==2.13.1`.
 The dedicated AutoYou MCP adapter uses the same MCP stack. These versions are
 recorded in the source requirements, hashed lock file, and release inventories.
-See the [ADK 2.11 release](https://github.com/google/adk-python/releases/tag/v2.11.0)
+See the [ADK 2.14 release](https://github.com/google/adk-python/releases/tag/v2.14.0)
 and the [MCP Python SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
 
 ## Native SQLite memory
@@ -61,7 +61,7 @@ documented private tunnel setup; a loopback URL alone is insufficient.
 
 ## Execution cancellation
 
-ADK 2.11 cancels an SSE run when the caller disconnects. The MCP REST bridge
+ADK cancels an SSE run when the caller disconnects. The MCP REST bridge
 cancels its upstream chat task on disconnect or caller cancellation. The
 LiteLLM/Ollama stream normalizer closes the underlying iterator or HTTP stream
 in its cleanup path. Work is not retried after cancellation. ADK's native abort
@@ -78,6 +78,19 @@ guarantee that an uncommitted operation finishes.
 
 Cancellation stops ongoing generation. A tool side effect already completed
 before cancellation is not rolled back.
+
+## Model request compatibility
+
+ADK repairs interrupted tool history and selects the role each provider expects.
+The Ollama adapter normalizes tool roles at the native API boundary.
+The SDK request tests in `tests/agents/public/test_root_agent_ollama_tools.py`
+exercise this conversion and concurrent Ollama image requests.
+
+Set `AUTOYOU_OLLAMA_CPU_MODELS` to a comma-separated list of exact tags, such as
+`gemma4:e4b`, to disable GPU offloading for those models. This applies to
+Ollama chat through ADK, the direct Ollama gateway, and startup warmup. The
+automatic context for these tags is capped at 8K. An explicit context override
+still wins.
 
 ## Customized ADK Web
 

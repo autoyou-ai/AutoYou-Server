@@ -32,6 +32,7 @@ _SCRIPT = (
     "document.querySelector('#level').textContent='Offline level: '+level.name;"
     "const r=await AutoYouGame.db.execute('SELECT steps FROM progress WHERE id=?',[1]);"
     "document.querySelector('#progress').textContent='SQLite steps: '+r.rows[0][0];})();"
+    "document.querySelector('#quit').addEventListener('click',()=>AutoYouGame.quit());"
 )
 
 
@@ -78,7 +79,7 @@ def write_project(root: Path, version: int) -> Path:
         '<!doctype html><html><head><link rel="stylesheet" href="style.css"><script src="main.js" defer></script>'
         f"</head><body><h1>Synthetic package v{version}</h1>"
         '<img src="assets/background.svg" width="48" alt="Offline artwork"><p id="level"></p><p id="progress"></p>'
-        '<audio id="music" src="assets/music.wav" preload="auto"></audio></body></html>',
+        '<audio id="music" src="assets/music.wav" preload="auto"></audio><button id="quit">Quit</button></body></html>',
         encoding="utf-8",
     )
     (project / "style.css").write_text(_STYLE, encoding="utf-8")

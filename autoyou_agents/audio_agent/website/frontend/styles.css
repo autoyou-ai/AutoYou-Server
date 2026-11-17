@@ -570,6 +570,10 @@ body {
     pointer-events: auto;
 }
 
+.settings-overlay:not(.open) .otp-gate {
+    display: none;
+}
+
 .settings-backdrop {
     position: absolute;
     inset: 0;

@@ -140,7 +140,7 @@ def test_game_frames_require_game_lease_and_release_on_exit(monkeypatch):
 
     async def run():
         cfg = server._default_config()
-        cfg["video_call"]["remote_desktop"].update(control_enabled=True, game_enabled=True)
+        cfg["video_call"]["remote_desktop"].update(control_enabled=True, game_enabled=True, quality="balanced")
         original_config = server.STATE.config
         server.STATE.config = cfg
         host_inputs, host_keys, released = [], [], []

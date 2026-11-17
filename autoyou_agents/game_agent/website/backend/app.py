@@ -65,6 +65,7 @@ def _local_game_page(websocket: WebSocket) -> bool:
 
 
 def _extra_routes(app, agent_name):
+    from shared import game_package as game_rules
     from shared.game_package_catalog import GamePackages
     from shared.game_package_uploads import GamePackageUploads
     uploads = None
@@ -182,6 +183,8 @@ def _extra_routes(app, agent_name):
             html.decode("utf-8")
         except UnicodeError:
             return JSONResponse({"success": False, "error": "Game must be UTF-8 HTML"}, status_code=400)
+        if not game_rules.supports_quit(html):
+            return JSONResponse({"success": False, "error": game_rules.QUIT_REQUIREMENT}, status_code=400)
         head = re.search(br"<head(?=[\s>])[^>]*>", html[:4096], re.IGNORECASE)
         if head is None:
             return JSONResponse({"success": False, "error": "Game HTML needs a head element"}, status_code=400)
@@ -213,6 +216,12 @@ def _extra_routes(app, agent_name):
         if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         return FileResponse(_FRONTEND_DIR / "play.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/snake")
+    async def play_snake(request: Request):
+        if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
+            return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        return FileResponse(_FRONTEND_DIR / "snake.html", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/game/native-input/status")
     async def native_input_status(request: Request):
@@ -285,6 +294,9 @@ def _extra_routes(app, agent_name):
             return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
         return JSONResponse({
             "version": "autoyou_game_v1",
+            "quit": ("Required for new offline games: draw a Quit (X) button next to Pause and Settings that calls "
+                     "AutoYouGame.quit(). Native clients then show no close button over the game. Building, uploading "
+                     "or publishing a game without the call is refused; older games still play with a native close button."),
             "stream": "/api/webrtc/game-input/stream",
             "connection": "/api/webrtc/game-input/connection",
             "events": ["touch", "sensor", "axis", "button", "session_start", "state_reset", "session_end",

@@ -24,11 +24,14 @@ export default function Player({ item, config, progress, record, notify }: {
   const [renditionMessage, setRenditionMessage] = useState('');
   const [native, setNative] = useState(false);
   const [browserOnly, setBrowserOnly] = useState(false);
+  const [castAudio, setCastAudio] = useState(false);
+  const audio = useRef<HTMLAudioElement>(null);
+  const [nativeVisual, setNativeVisual] = useState(false);
   const [optimized, setOptimized] = useState(!!item.technical.streaming_ready);
 
   useEffect(() => {
-    if (['photo', 'audio', 'document'].includes(item.kind)) return;
-    const node = video.current!;
+    if (item.kind === 'photo' || item.kind === 'document' || (item.kind === 'audio' && (!castAudio || browserOnly))) return;
+    const node = (video.current || audio.current)!;
     const controller = new AbortController();
     let cancelled = false;
     let closeNativeListener: (() => void) | undefined;
@@ -66,6 +69,7 @@ export default function Player({ item, config, progress, record, notify }: {
           });
           return;
         }
+        if (item.kind === 'audio') { setBrowserOnly(true); return; }
         let isHls = playback.is_hls;
         if (item.is_remote && !isHls) {
           // Some signed or query-based HLS URLs have no .m3u8 extension.
@@ -99,16 +103,34 @@ export default function Player({ item, config, progress, record, notify }: {
       if (event.key.toLowerCase() === 'm') node.muted = !node.muted;
       if (event.key.toLowerCase() === 'f') void node.requestFullscreen?.().catch(() => {});
     }
-    window.addEventListener('keydown', keys);
+    if (item.kind !== 'audio') window.addEventListener('keydown', keys);
     return () => {
       cancelled = true; controller.abort();
       closeNativeListener?.();
       if (resumed.current) record(item.id, node.currentTime, node.duration);
       window.removeEventListener('keydown', keys);
       hlsRef.current?.destroy(); hlsRef.current = null;
-      node.pause(); node.removeAttribute('src'); node.load();
+      if (item.kind !== 'audio') { node.pause(); node.removeAttribute('src'); node.load(); }
     };
-  }, [item.id, nonce, browserOnly, record]);
+  }, [item.id, nonce, browserOnly, castAudio, record]);
+
+  useEffect(() => {
+    if (!nativeVisual || !['photo', 'document'].includes(item.kind)) return;
+    const controller = new AbortController();
+    let close: (() => void) | undefined;
+    let cancelled = false;
+    void api<Playback>(`items/${item.id}/playback`, { signal: controller.signal }).then(playback => {
+      if (cancelled) return;
+      close = openNativeMedia(playback, 0, state => {
+        if (cancelled) return;
+        if (state.state === 'closed' || state.state === 'error') {
+          setNativeVisual(false);
+          if (state.state === 'error') notify(state.message || 'Could not open the native viewer.');
+        }
+      });
+    }).catch(error => { if (!cancelled) { setNativeVisual(false); notify(errorMessage(error)); } });
+    return () => { cancelled = true; controller.abort(); close?.(); };
+  }, [item.id, item.kind, nativeVisual, notify]);
 
   function loaded() {
     const node = video.current!;
@@ -132,12 +154,20 @@ export default function Player({ item, config, progress, record, notify }: {
   }
   if (item.kind === 'photo') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
     <div className="photo-stage"><img src={assetUrl(item.stream_url)} alt={item.title} /></div>
+    {nativeMediaAvailable() && <button className="button" disabled={nativeVisual} onClick={() => setNativeVisual(true)}>AirPlay or Cast photo</button>}
+    {item.download_url && <a className="button" href={assetUrl(item.download_url)} download><Download size={19} />Download original</a>}
   </Modal>;
   if (item.kind === 'audio' || item.kind === 'document') return <Modal title={item.title} onClose={() => navigate(`item/${item.id}`)} wide>
-    {item.kind === 'audio' ? <audio controls autoPlay preload="metadata" src={assetUrl(item.stream_url)} aria-label={`Audio player for ${item.title}`} />
+    {item.kind === 'audio' ? <audio ref={audio} controls autoPlay preload="metadata" src={assetUrl(item.stream_url)} aria-label={`Audio player for ${item.title}`} />
       : item.technical.extension?.replace(/^\./, '').toLowerCase() === 'pdf'
         ? <iframe title={item.title} src={assetUrl(item.stream_url)} style={{ width: '100%', height: '70vh', border: 0 }} />
         : <p>Download this EPUB to read it in your device's book reader.</p>}
+    {item.kind === 'audio' && nativeMediaAvailable() && <button className="button" onClick={() => {
+      const element = audio.current;
+      if (element) { element.pause(); startingProgress.current = { position: element.currentTime, duration: element.duration, updated: Date.now(), completed: false }; }
+      setBrowserOnly(false); setCastAudio(true); setNonce(value => value + 1);
+    }}>AirPlay or Cast</button>}
+    {item.kind === 'document' && nativeMediaAvailable() && <button className="button" disabled={nativeVisual} onClick={() => setNativeVisual(true)}>Read and cast pages</button>}
     {item.download_url && <a className="button" href={assetUrl(item.download_url)} download><Download size={19} />Download {item.kind === 'audio' ? 'audio' : 'document'}</a>}
   </Modal>;
 

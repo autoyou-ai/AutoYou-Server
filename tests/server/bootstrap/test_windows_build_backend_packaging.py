@@ -24,6 +24,15 @@ def _build_backend_text() -> str:
     return BUILD_BACKEND.read_text(encoding="utf-8")
 
 
+def test_preinstalled_windows_codec_wheels_are_checked_without_avwheel():
+    text = _build_backend_text()
+    start = text.index('if (-not [string]::IsNullOrWhiteSpace($AvWheel))')
+    install_end = text.index('\n}', start)
+    check = text.index('"--check-installed"', start)
+    dependency_check = text.index('Assert-PipDependencyConsistency -PythonExe $pythonExe', start)
+    assert install_end < check < dependency_check
+
+
 def test_windows_runtime_site_packages_are_pruned_to_active_requirements():
     text = _build_backend_text()
 

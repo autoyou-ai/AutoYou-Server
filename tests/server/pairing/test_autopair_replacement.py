@@ -193,6 +193,67 @@ class _FakeDataChannel:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("offer_kind", ["autopair", "pair"])
+@pytest.mark.parametrize("background", [False, True])
+@pytest.mark.parametrize("cleanup_kind", ["scheduled", "awaited"])
+@pytest.mark.parametrize("platform", ["ios", "android"])
+async def test_retired_peer_cleanup_preserves_voice_during_replacement_negotiation(
+    monkeypatch, offer_kind, background, cleanup_kind, platform
+):
+    manager = server.WebRTCManager()
+    session_id = "synthetic-voice-replacement"
+    retired_peer = object()
+    fresh_managers = []
+
+    class NegotiatingPeer(_FakePeerConnection):
+        async def setRemoteDescription(self, description):
+            # The retired peer has already been removed. The replacement owns
+            # a new AudioManager before its SDP negotiation registers the peer.
+            fresh_managers.append(server.STATE.audio_managers[session_id])
+            if cleanup_kind == "scheduled":
+                manager.cleanup_session(session_id, expected_pc=retired_peer)
+                pending = manager.cleanup_tasks.get(session_id)
+                if pending is not None:
+                    await pending
+            else:
+                await manager.async_cleanup_session(session_id, expected_pc=retired_peer)
+            await super().setRemoteDescription(description)
+
+    config = server._default_config()
+    config["video_call"]["background_mode_enabled"] = True
+    monkeypatch.setattr(server.STATE, "config", config)
+    monkeypatch.setattr(server.STATE, "audio_managers", {})
+    monkeypatch.setattr(server, "RTCPeerConnection", NegotiatingPeer)
+    monkeypatch.setattr(server, "RTCSessionDescription", lambda sdp, type: SimpleNamespace(sdp=sdp, type=type))
+    monkeypatch.setattr(server, "AudioManager", _FakeAudioManager)
+    monkeypatch.setattr(server, "TTSAudioStreamTrack", None)
+    monkeypatch.setattr(manager, "_arm_session_establishment_timeout", lambda *args, **kwargs: None)
+
+    offer = {"type": "offer", "sdp": AUDIO_OFFER_SDP + "a=sendrecv\r\n", "iceServers": []}
+    background_audio = {
+        "active": background,
+        "platform": platform,
+        "silent_recording": False,
+        "assistant_listening": False,
+        "muted": True,
+    }
+    if offer_kind == "autopair":
+        answer = await manager.handle_autopair_offer(
+            session_id, {"offer": offer, "background_audio": background_audio, "iceServers": []}
+        )
+    else:
+        answer = await manager.handle_session_offer(
+            session_id, {**offer, "background_audio": background_audio}
+        )
+
+    assert answer["type"] == "answer"
+    assert len(fresh_managers) == 1
+    assert not fresh_managers[0]._closed
+    assert server.STATE.audio_managers[session_id] is fresh_managers[0]
+    assert manager.session_peers[session_id] is _FakePeerConnection.last_instance
+
+
+@pytest.mark.asyncio
 async def test_handle_autopair_offer_proceeds_when_stale_cleanup_times_out(monkeypatch):
     manager = server.WebRTCManager()
     existing_pc = object()
@@ -224,10 +285,14 @@ async def test_handle_autopair_offer_proceeds_when_stale_cleanup_times_out(monke
 
 
 @pytest.mark.asyncio
-async def test_handle_autopair_offer_on_track_recreates_closed_audio_manager(monkeypatch):
+@pytest.mark.parametrize("background", [False, True])
+async def test_handle_autopair_offer_on_track_recreates_closed_audio_manager(monkeypatch, background):
     manager = server.WebRTCManager()
     original_audio_managers = dict(server.STATE.audio_managers)
 
+    config = server._default_config()
+    config["video_call"]["background_mode_enabled"] = True
+    monkeypatch.setattr(server.STATE, "config", config)
     monkeypatch.setattr(manager, "_arm_session_establishment_timeout", lambda *args, **kwargs: None)
     monkeypatch.setattr(server, "RTCPeerConnection", _FakePeerConnection)
     monkeypatch.setattr(server, "RTCSessionDescription", lambda sdp, type: SimpleNamespace(sdp=sdp, type=type))
@@ -242,8 +307,19 @@ async def test_handle_autopair_offer_on_track_recreates_closed_audio_manager(mon
     try:
         await manager.handle_autopair_offer(
             "chat-1",
-            {"offer": {"type": "offer", "sdp": AUDIO_OFFER_SDP}, "iceServers": []},
+            {
+                "offer": {"type": "offer", "sdp": AUDIO_OFFER_SDP + "a=sendrecv\r\n"},
+                "iceServers": [],
+                "background_audio": {
+                    "active": background,
+                    "platform": "ios",
+                    "assistant_listening": False,
+                    "silent_recording": False,
+                    "muted": True,
+                },
+            },
         )
+        assert manager._background_audio_state_for_session("chat-1").get("active", False) is background
 
         first_manager = server.STATE.audio_managers["chat-1"]
         server.STATE.audio_managers.pop("chat-1", None)
@@ -256,6 +332,10 @@ async def test_handle_autopair_offer_on_track_recreates_closed_audio_manager(mon
         assert replacement_manager is not first_manager
         assert first_manager._closed is True
         assert replacement_manager._closed is False
+        await manager._handle_voice_call_control_message(
+            SimpleNamespace(payload={"event": "call_state", "active": True, "platform": "ios"}),
+            trusted_session_id="chat-1",
+        )
         _FakeAudioTrackSink.instances[-1].callback(b"voice")
         assert replacement_manager.processed == [b"voice"]
     finally:

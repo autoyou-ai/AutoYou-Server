@@ -243,3 +243,37 @@ async def test_data_channel_serves_the_offer_for_its_own_session(monkeypatch):
     reply = channel.send_message.call_args.args[0].payload
     assert json.loads(reply["body"])["available"] is False
     assert seen == ["synthetic-session"]
+
+
+@pytest.mark.asyncio
+async def test_pages_and_loopback_only_servers_cannot_publish_cast_urls(monkeypatch):
+    engine = server.WebRTCManager()
+    assert await engine._tv_cast_offer("synthetic-session", None) == {}
+    monkeypatch.setattr(engine, "_resolve_chat_identity", lambda _: object())
+    monkeypatch.setattr(engine, "_owner_key_from_identity", lambda _: "synthetic-owner")
+    monkeypatch.setattr(server, "SERVER_BIND_HOST", "127.0.0.1")
+    assert await engine._tv_cast_offer("synthetic-session", {"source": "stream/" + "b" * 24}) == {}
+    assert not getattr(engine, "_tv_cast_leases", None)
+
+
+@pytest.mark.asyncio
+async def test_native_tv_cast_offer_uses_the_pair_and_the_active_page_proxy(monkeypatch):
+    from unittest.mock import AsyncMock
+    from shared import tv_cast
+
+    engine = server.WebRTCManager()
+    native = {"source": "stream/" + "b" * 24, "request_id": "00000000-0000-4000-8000-000000000001"}
+    monkeypatch.setattr(engine, "_resolve_chat_identity", lambda _: None)
+    assert await engine._tv_cast_offer("synthetic-session", native) == {}
+    monkeypatch.setattr(engine, "_resolve_chat_identity", lambda _: SimpleNamespace(owner_key="synthetic-owner"))
+    monkeypatch.setattr(engine, "_owner_key_from_identity", lambda identity: identity.owner_key)
+    monkeypatch.setattr(server, "SERVER_BIND_HOST", "192.168.50.21")
+    monkeypatch.setattr(server, "_get_autoyou_page_service_base_url", lambda: "http://127.0.0.1:48123")
+    grant = AsyncMock(return_value={"url": "synthetic-offer"})
+    monkeypatch.setattr(tv_cast.TVCastLeases, "offer", grant)
+    assert await engine._tv_cast_offer("synthetic-session", native) == {"url": "synthetic-offer"}
+    session, request_id, source, address, upstream, headers = grant.await_args.args
+    assert (session, request_id, source, address) == ("synthetic-session", native["request_id"], native["source"], "192.168.50.21")
+    assert upstream == "http://127.0.0.1:48123/agent/tv_agent/api"
+    assert headers["X-AutoYou-WebRTC-Session-Id"] == "synthetic-session"
+    assert tv_cast.cast_interface("0.0.0.0", None, lambda: ["127.0.0.1", address]) == address

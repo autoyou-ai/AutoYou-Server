@@ -8,6 +8,7 @@
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import json
+from pathlib import Path
 import re
 import sys
 from datetime import datetime, timedelta
@@ -206,6 +207,33 @@ def test_presenter_describes_each_kind_of_item(feed):
     assert (article["title"], article["label"], article["favicon"]) == ("aeon.co", "Ae", "https://www.aeon.co/favicon.ico")
 
 
+def test_platform_links_published_as_articles_show_as_their_post(feed):
+    service, client = feed
+    present = service._present_item
+    reel = present({"type": "article", "url": "https://www.instagram.com/reel/SyntheticReel1/?igsh=synthetic", "title": ""})
+    sky = present({"type": "article", "url": "https://bsky.app/profile/synthetic.example/post/3synthetic", "title": ""})
+    plain = present({"type": "article", "url": "https://example.test/video/feature", "title": "Feature"})
+
+    assert (reel["kind"], reel["label"], reel["tab"]) == ("Instagram", "Instagram", "social")
+    assert (sky["kind"], sky["label"], sky["title"]) == ("Bluesky", "Bluesky", "Post by @synthetic.example")
+    assert plain["kind"] == "Article"
+
+    created = client.post("/api/feed", headers=EDITOR, json={
+        "type": "article", "url": "https://www.threads.com/@synthetic/post/SyntheticPost", "title": "", "content": "",
+    }).json()["item"]
+    assert created["type"] == "threads"
+    kept = client.post("/api/feed", headers=EDITOR, json={
+        "type": "article", "url": "https://example.test/video/feature", "title": "Feature", "content": "",
+    }).json()["item"]
+    assert kept["type"] == "article"
+
+
+def test_page_script_embeds_platform_posts_by_url():
+    script = (Path(__file__).resolve().parents[3] / "autoyou_agents/page_agent/website/frontend/assets/page.js").read_text(encoding="utf-8")
+    assert "function itemType(item)" in script and "embed.bsky.app/embed/" in script and "/embed`" in script
+    assert "canonicalType(item.type);" not in script.split("function itemType(item)")[1]
+
+
 def test_legacy_query_endpoint_treats_a_zero_window_as_the_whole_feed(feed):
     service, client = feed
     old = service.db.insert("article", "https://example.test/old", title="Old")["id"]
@@ -354,3 +382,36 @@ def test_page_ships_the_full_screen_feed_and_photo_viewer(feed):
     # Opened photos load the original file; the list keeps the light preview.
     assert "./api/blob/synthetic-photo?preview=1" in html
     assert "const full = safeUrl(view.open_url);" in script
+
+
+def test_feed_catalog_and_get_item(feed):
+    service, client = feed
+    item1 = service.db.insert("article", "https://example.com/one", title="Article One", content="Full text of article one")
+    service.db.add_tag(item1["id"], "news")
+    service.db.add_tag(item1["id"], "tech")
+    item2 = service.db.insert("text", "https://example.com/two", title="Note Two", content="Short note content")
+    service.db.add_tag(item2["id"], "quick")
+
+    # Test catalog listing
+    resp = client.get("/api/feed/catalog?order=desc")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert items[0]["id"] == str(item2["id"])
+    assert items[0]["title"] == "Note Two"
+    assert "content" not in items[0]  # Catalog is lightweight, does not include content
+    assert items[0]["tags"] == ["quick"]
+    assert items[1]["id"] == str(item1["id"])
+    assert items[1]["title"] == "Article One"
+
+    # Test get single item
+    resp_item = client.get(f"/api/feed/item/{item1['id']}")
+    assert resp_item.status_code == 200
+    single = resp_item.json()["item"]
+    assert single["id"] == item1["id"]
+    assert single["title"] == "Article One"
+    assert single["content"] == "Full text of article one"
+    assert "news" in single["tags"]
+
+    # Test 404 on missing item
+    assert client.get("/api/feed/item/999999").status_code == 404

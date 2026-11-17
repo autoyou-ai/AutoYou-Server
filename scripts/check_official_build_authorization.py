@@ -218,8 +218,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--required",
         action="store_true",
-        default=_env_bool("AUTOYOU_OFFICIAL_BUILD_AUTH_REQUIRED", False),
-        help="Fail closed when authorization is missing. Also enabled by AUTOYOU_OFFICIAL_BUILD_AUTH_REQUIRED=true.",
+        default=(
+            _env_bool("AUTOYOU_OFFICIAL_BUILD_AUTH_REQUIRED", False)
+            or _env_bool("AUTOYOU_COMMERCIAL_MODE", False)
+            or os.getenv("AUTOYOU_DEPLOYMENT_MODE", "").strip().lower() in {
+                "commercial",
+                "enterprise",
+                "paid",
+                "resale",
+                "white_label",
+                "whitelabel",
+                "hosted_commercial",
+                "production_commercial",
+            }
+        ),
+        help=(
+            "Fail closed when authorization is missing. Also enabled by "
+            "AUTOYOU_OFFICIAL_BUILD_AUTH_REQUIRED=true, AUTOYOU_COMMERCIAL_MODE=true, "
+            "or commercial AUTOYOU_DEPLOYMENT_MODE."
+        ),
     )
     return parser.parse_args(argv)
 

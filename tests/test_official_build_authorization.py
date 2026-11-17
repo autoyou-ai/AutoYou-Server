@@ -67,3 +67,13 @@ def test_required_mode_fails_closed_without_authorization(monkeypatch, capsys) -
 
     assert exit_code == 1
     assert "authorization is required" in capsys.readouterr().err
+
+
+def test_commercial_deployment_mode_enforces_required_authorization(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(gate, "_discover_authorization_file", lambda _profile: None)
+    monkeypatch.setenv("AUTOYOU_DEPLOYMENT_MODE", "commercial")
+
+    exit_code = gate.main(["--artifact-profile", "autoyou-server-windows-default"])
+
+    assert exit_code == 1
+    assert "authorization is required" in capsys.readouterr().err

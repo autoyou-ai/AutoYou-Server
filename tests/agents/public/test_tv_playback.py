@@ -79,3 +79,105 @@ async def test_real_hls_encoding_publishes_only_complete_versions(tmp_path):
     assert "#EXT-X-ENDLIST" in playlist and playlist.count("#EXTINF:") == 3
     assert len(list((root / "360p").glob("*.ts"))) == 3
     assert source.is_file() and not list(root.rglob("*.tmp"))
+
+
+@pytest.mark.asyncio
+async def test_computer_cast_receiver_reads_one_title_without_mobile_or_browser_credentials(tmp_path, monkeypatch):
+    import socket
+    from urllib.parse import urljoin
+    import aiohttp
+    import uvicorn
+    from shared import tv_cast
+
+    # A real TV Agent and independent HTTP receiver; all sockets stay on loopback in CI.
+    with TestClient(create_app(tmp_path)) as client:
+        item, file, root, version = seed(client)
+    host = "127.0.0.1"
+    monkeypatch.setattr(tv_cast, "lan_ipv4", lambda addr: addr == host)
+    sock = socket.socket()
+    sock.bind((host, 0))
+    backend = uvicorn.Server(uvicorn.Config(create_app(tmp_path), log_level="error", access_log=False))
+    runner = asyncio.create_task(backend.serve(sockets=[sock]))
+    leases = tv_cast.TVCastLeases()
+    sid, rid = "synthetic-session", "00000000-0000-4000-8000-000000000001"
+    ident = item["id"]
+    try:
+        for _ in range(1000):
+            if backend.started: break
+            if runner.done(): await runner
+            await asyncio.sleep(.01)
+        assert backend.started
+        upstream = f"http://{host}:{sock.getsockname()[1]}/api"
+        assert not await leases.offer(sid, rid, f"stream/{ident}/../settings", host, upstream)
+        async with aiohttp.ClientSession() as receiver:
+            url = (await leases.offer(sid, rid, "stream/" + ident, host, upstream))["url"]
+            async with receiver.head(url) as resp:
+                assert resp.status == 200 and int(resp.headers["Content-Length"]) == file.stat().st_size
+                assert resp.headers["X-AutoYou-TV-Title"] == ident
+            async with receiver.get(url, headers={"Range": "bytes=-5"}) as resp:
+                assert resp.status == 206 and await resp.read() == file.read_bytes()[-5:]
+            for target in (url[:-24] + "c" * 24, url.replace("/tv/", "/other/"), url.replace("/stream/", "/settings/")):
+                async with receiver.get(target) as resp:
+                    assert resp.status == 404
+            async with receiver.post(url) as resp:
+                assert resp.status == 404
+            new_id = rid[:-1] + "2"
+            master = (await leases.offer(sid, new_id, f"playback/{ident}/{version}/master.m3u8", host, upstream))["url"]
+            await leases.release(sid, rid)  # A late dismissal from the previous player cannot revoke this one.
+            async with receiver.get(master) as resp:
+                assert resp.status == 200
+                variant = urljoin(master, (await resp.text()).splitlines()[-1])
+            async with receiver.get(variant) as resp:
+                assert resp.status == 200
+                segment = urljoin(variant, next(line for line in (await resp.text()).splitlines() if line.endswith(".ts")))
+            async with receiver.get(segment) as resp:
+                assert resp.status == 200 and await resp.read() == (root / "360p/segment-00000.ts").read_bytes()
+            await leases.release(sid, new_id)
+            with pytest.raises(aiohttp.ClientConnectionError):
+                await receiver.get(master)
+    finally:
+        await leases.release(sid)
+        backend.should_exit = True
+        await runner
+        sock.close()
+
+
+def test_photo_previews_and_receiver_images_are_bounded_and_keep_originals(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    with TestClient(create_app(tmp_path)) as client:
+        store = client.app.state.store
+        path = store.media_dir / "Synthetic-photo.jpg"
+        Image.new("RGB", (3600, 2400), "purple").save(path)
+        original = path.read_bytes()
+        item, _ = store.add_item(source_key="synthetic-photo", title="Synthetic photo", kind="photo", file_path=str(path))
+        public = client.get(f"/api/items/{item['id']}").json()
+        assert public["artwork_url"] == f"api/artwork/{item['id']}"
+        preview = client.get("/" + public["artwork_url"])
+        assert preview.status_code == 200
+        assert max(Image.open(BytesIO(preview.content)).size) <= 640
+        receiver = client.get("/" + public["stream_url"], headers={"X-AutoYou-TV-Presentation": "1", "Range": "bytes=0-31"})
+        assert receiver.status_code == 206 and len(receiver.content) == 32
+        full_receiver = client.get("/" + public["stream_url"], headers={"X-AutoYou-TV-Presentation": "1"})
+        assert max(Image.open(BytesIO(full_receiver.content)).size) <= 1280
+        assert client.get("/" + public["stream_url"]).content == original == path.read_bytes()
+        assert client.get("/" + public["download_url"]).content == original
+        # Source edits invalidate the on-disk derivative, and deleting a title denies a cached preview.
+        Image.new("RGB", (1800, 3000), "green").save(path)
+        changed = client.get("/" + public["artwork_url"])
+        assert changed.content != preview.content
+        assert Image.open(BytesIO(changed.content)).height == 640
+        store.update_item(item["id"], {"status": "deleted"})
+        assert client.get("/" + public["artwork_url"]).status_code == 404
+
+
+def test_photo_and_ebook_native_descriptors_remain_title_scoped(tmp_path):
+    with TestClient(create_app(tmp_path)) as client:
+        store = client.app.state.store
+        for extension, kind, mime in [("gif", "photo", "image/gif"), ("pdf", "document", "application/pdf"), ("epub", "document", "application/epub+zip")]:
+            path = store.media_dir / ("Synthetic." + extension); path.write_bytes(b"synthetic descriptor fixture")
+            item, _ = store.add_item(source_key="synthetic-" + extension, title="Synthetic", kind=kind, file_path=str(path))
+            descriptor = client.get(f"/api/items/{item['id']}/playback?compatible=true").json()
+            assert descriptor["ready"] and descriptor["mime_type"] == mime
+            assert descriptor["url"] == f"api/stream/{item['id']}"
+            assert str(tmp_path) not in str(descriptor)

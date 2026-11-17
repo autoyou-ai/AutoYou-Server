@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 324, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 325, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -258,6 +258,7 @@ Live sessions, calls, microphone and screen sharing, and DataChannel status. Sou
 
 | App | Method | Path | Summary |
 | :--- | :--- | :--- | :--- |
+| Admin app | `POST` | `/api/outbox/follow-up` | Deliver a follow-up into the conversation it belongs to. |
 | Admin app | `GET` | `/api/webrtc/audio-devices` | Admin get webrtc audio devices |
 | Admin app | `GET` | `/api/webrtc/camera-devices` | Admin get webrtc camera devices |
 | Admin app | `GET` | `/api/webrtc/capabilities` | Admin get webrtc capabilities |

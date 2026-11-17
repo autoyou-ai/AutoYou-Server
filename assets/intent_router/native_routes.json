@@ -1,5 +1,5 @@
 {
-  "purpose": "Phone Local chat routing (Notes, Page, Diary, Profile, general). Same MiniLM model as routes.json; never generates replies.",
+  "purpose": "Phone Local chat routing (Notes, Page, Diary, Profile, Device tools, general). Same MiniLM model; device classifications only show capabilities and never authorize actions.",
   "minimum_score": 0.45,
   "minimum_margin": 0.1,
   "routes": [
@@ -52,6 +52,19 @@
         "I was born on June 3.",
         "My favorite food is pasta.",
         "Tell people I'm busy until five."
+      ]
+    },
+    {
+      "id": "device",
+      "examples": [
+        "Take a photo with the camera.",
+        "Record a video on this phone.",
+        "Record an audio note.",
+        "Open my phone settings.",
+        "Run my saved shortcut.",
+        "Show my smart home scenes.",
+        "Open the calendar event editor.",
+        "Turn on the flashlight."
       ]
     },
     {

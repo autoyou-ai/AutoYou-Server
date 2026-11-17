@@ -25,6 +25,7 @@ import os
 import uuid
 import base64
 import tempfile
+import time
 import mimetypes
 import re
 from pathlib import Path
@@ -64,6 +65,7 @@ from shared.adk_state import (
     AUTOYOU_REPLY_TARGET_USER_STATE_KEY,
     AUTOYOU_SCHEDULED_TASK_STATE_KEY,
     AUTOYOU_ASSISTANT_TURN_STATE_KEY,
+    AUTOYOU_TURN_CONTINUATION_STATE_KEY,
     normalize_assistant_turn,
     normalize_reply_target,
 )
@@ -81,8 +83,8 @@ from shared.media_messaging import (
     extract_media_reply_attachments,
     public_media_reply_metadata,
 )
-from shared.ollama_context_policy import build_context_compaction_policy
-from shared.ollama_capabilities import resolve_ollama_think_option
+from shared.ollama_context_policy import build_context_compaction_policy, resolve_ollama_keep_alive
+from shared.ollama_capabilities import inspect_ollama_model_capabilities, resolve_ollama_think_option
 from shared.ollama_gateway import (
     OllamaConversationStore,
     OllamaGatewayError,
@@ -93,6 +95,7 @@ from shared.ollama_gateway import (
     resolve_ollama_thinking_enabled,
     resolve_ollama_thinking_level,
 )
+from shared.ollama_media import MAX_IMAGE_SIDE, prepare_ollama_attachments
 from shared.odysseus_gateway import call_odysseus
 from shared.openrouter_config import normalize_openrouter_model
 from shared.chat_history_identity import normalize_admin_surface, sanitize_peer_relay
@@ -631,6 +634,94 @@ def _get_progress_update_interval_seconds() -> float:
         pass
     return 20.0
 
+# A turn whose reply only announces a next step ("Let me check that.") keeps
+# going on the same AI session this many times before it is given up. Each
+# continuation is one more model call; the side-effect guard below keeps them
+# from repeating an action.
+_TURN_CONTINUATION_LIMIT_ENV = "AUTOYOU_TURN_MAX_CONTINUATIONS"
+_DEFAULT_TURN_CONTINUATIONS = 3
+
+
+def _get_turn_continuation_limit() -> int:
+    raw_value = str(os.environ.get(_TURN_CONTINUATION_LIMIT_ENV, _DEFAULT_TURN_CONTINUATIONS)).strip()
+    try:
+        return max(0, min(5, int(raw_value)))
+    except Exception:
+        return _DEFAULT_TURN_CONTINUATIONS
+
+
+def _turn_continuation_metadata(metadata: Optional[Dict[str, Any]], attempt: int) -> Dict[str, Any]:
+    """The request's metadata for a continuation.
+
+    A continuation re-sends the user's own words, so routing and the reply's
+    language follow them; the root is told it is a continuation through
+    session state (`AUTOYOU_TURN_CONTINUATION_STATE_KEY`), not through text
+    put in the user's mouth.
+    """
+    return {**dict(metadata or {}), "turn_continuation": int(attempt)}
+
+
+# A turn is continued only while nothing in it may have changed anything. Tools
+# that only look things up keep it eligible; any other tool may already have
+# saved a note, started an image or sent a prompt to Codex, and continuing could
+# do that again.
+_ROUTER_TOOL_NAME = "route_to_specialist"
+_LOOKUP_ONLY_TOOLS = frozenset({"get_current_datetime", "scan_entire_memory", "read_persona", "calculate"})
+_LOOKUP_ONLY_SPECIALISTS = frozenset({"autoyou_internet_agent"})
+
+
+def _payload_function_calls(payload: Any) -> List[tuple[str, Dict[str, Any]]]:
+    calls: List[tuple[str, Dict[str, Any]]] = []
+    for part in _payload_content_parts(payload):
+        call = part.get("functionCall") or part.get("function_call")
+        if isinstance(call, dict):
+            args = call.get("args")
+            calls.append((str(call.get("name") or "").strip(), args if isinstance(args, dict) else {}))
+    return calls
+
+
+def _tool_call_only_looks_up(name: str, args: Dict[str, Any]) -> bool:
+    if name in _LOOKUP_ONLY_TOOLS or name in _LOOKUP_ONLY_SPECIALISTS:
+        return True
+    if name == _ROUTER_TOOL_NAME:
+        return str(args.get("agent") or "").strip() in _LOOKUP_ONLY_SPECIALISTS
+    return False
+
+
+class _TurnToolActivity:
+    """Whether a turn has used a tool that may have changed something."""
+
+    def __init__(self) -> None:
+        self.acted = False
+        self.tools: List[str] = []
+
+    def observe(self, payload: Any) -> None:
+        for name, args in _payload_function_calls(payload):
+            target = str(args.get("agent") or "").strip() if name == _ROUTER_TOOL_NAME else ""
+            self.tools.append(f"{name}:{target}" if target else name)
+            if not _tool_call_only_looks_up(name, args):
+                self.acted = True
+        if isinstance(payload, dict) and (payload.get("longRunningToolIds") or payload.get("long_running_tool_ids")):
+            self.acted = True
+
+
+async def _reset_streamed_reply(on_chunk: Optional[Callable[[Dict[str, Any]], Any]]) -> None:
+    """Tell the transport that the text streamed so far was not the answer.
+
+    The WebRTC chat restarts its streaming bubble, so the continuation's reply
+    replaces the announcement instead of being glued onto it. Transports that
+    only relay progress chunks ignore it.
+    """
+    if not on_chunk:
+        return
+    try:
+        result = on_chunk({"_autoyou_stream_reset": True})
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception as cb_err:
+        logger.debug(f"on_chunk stream reset error: {cb_err}")
+
+
 def _extract_sse_events(buffer: str) -> tuple[list[dict[str, Optional[str]]], str]:
     """Parse complete SSE event blocks from a text buffer.
 
@@ -1005,6 +1096,8 @@ def _classify_ai_backend_error(error_message: Any) -> Optional[Dict[str, str]]:
             "/api/chat",
             "requires more system memory",
             "memory layout cannot be allocated",
+            "llama-server process",
+            "error loading model",
         )
     )
 
@@ -1031,6 +1124,38 @@ def _classify_ai_backend_error(error_message: Any) -> Optional[Dict[str, str]]:
                     "The selected Ollama model could not allocate enough memory on this machine. "
                     "Choose a smaller Ollama model in the Admin Dashboard under AI Provider, "
                     "or free memory and try again."
+                ),
+            }
+        # Reached only when no smaller installed model could answer instead
+        # (autoyou_agents/model_fallback.py tries those first).
+        if any(
+            fragment in lowered
+            for fragment in ("bad_alloc", "out of memory", "unable to allocate", "failed to allocate", "resource limitations")
+        ):
+            return {
+                "provider": "ollama",
+                "kind": "ollama_insufficient_memory",
+                "user_message": (
+                    "The selected Ollama model couldn't load because this computer is low on memory, "
+                    "and no smaller installed model could answer instead. Restarting the computer usually "
+                    "fixes this. You can also choose a smaller Ollama model in the Admin Dashboard under AI Provider."
+                ),
+            }
+        if any(
+            fragment in lowered
+            for fragment in (
+                "error loading model",
+                "llama-server process has terminated",
+                "runner has unexpectedly stopped",
+                "runner process has terminated",
+            )
+        ):
+            return {
+                "provider": "ollama",
+                "kind": "ollama_model_load_failed",
+                "user_message": (
+                    "The selected Ollama model failed to load. Restart Ollama or update it, or choose "
+                    "another model in the Admin Dashboard under AI Provider, then try again."
                 ),
             }
         if any(
@@ -2056,6 +2181,44 @@ def _native_ollama_settings() -> Dict[str, Any]:
     }
 
 
+_MEDIA_CAPABILITY_TTL_SECONDS = 300.0
+_media_capability_cache: Dict[Any, Any] = {}
+
+
+def _cached_ollama_capabilities(api_base: str, model: str) -> Dict[str, Any]:
+    key = (api_base, model)
+    now = time.monotonic()
+    cached = _media_capability_cache.get(key)
+    if cached and now - cached[0] < _MEDIA_CAPABILITY_TTL_SECONDS:
+        return cached[1]
+    capabilities = inspect_ollama_model_capabilities(api_base, model, timeout_seconds=3.0)
+    if capabilities.get("available"):
+        _media_capability_cache[key] = (now, capabilities)
+    return capabilities
+
+
+async def _media_input_policy() -> Dict[str, Any]:
+    """Which attachments go to the active model inline, as base64.
+
+    Ollama via ADK gets images and sampled video frames when vision is
+    available. Speech reaches this path as its transcript. The native
+    Ollama gateway can also send WAV input when the model advertises audio.
+    Other providers are unchanged.
+    """
+    if _active_ai_provider() != "ollama":
+        return {"images": True, "audio": True, "max_image_side": None, "model": ""}
+    settings = _native_ollama_settings()
+    model = _normalize_ollama_model_name(settings.get("model") or os.environ.get("OLLAMA_MODEL") or "")
+    vision = None
+    if model:
+        try:
+            capabilities = await asyncio.to_thread(_cached_ollama_capabilities, settings["api_base"], model)
+            vision = capabilities.get("supports_vision") if capabilities.get("available") else None
+        except Exception:
+            vision = None
+    return {"images": vision is not False, "audio": False, "max_image_side": MAX_IMAGE_SIDE, "model": model}
+
+
 def _native_odysseus_settings() -> Dict[str, str]:
     """Read the encrypted Server config first, then its documented env fallbacks."""
     config: Dict[str, Any] = {}
@@ -2080,6 +2243,7 @@ async def send_message_to_native_ollama(
     session_id: str,
     *,
     metadata: Optional[Dict[str, Any]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
     system_prompt: str = "You are AutoYou, a helpful AI assistant.",
 ) -> Dict[str, Any]:
     """Call native Ollama with the saved model behavior and no agent session."""
@@ -2099,6 +2263,23 @@ async def send_message_to_native_ollama(
         if capability.get("available")
         else thinking_enabled
     )
+    media_options = {}
+    forwarded = 0
+    if attachments:
+        prepared = await asyncio.to_thread(
+            prepare_ollama_attachments,
+            attachments,
+            vision=capability.get("supports_vision") is True,
+            audio=capability.get("supports_audio") is True,
+            text_files=True,
+        )
+        forwarded = prepared.forwarded
+        if forwarded < len(attachments):
+            prepared.notes.append(f"{len(attachments) - forwarded} attachment(s) could not be sent to this model.")
+        media_options = {
+            "images": [encoded for _, encoded in prepared.media],
+            "attachment_text": "\n\n".join(prepared.notes),
+        }
     result = await call_ollama_with_history(
         store=_NATIVE_OLLAMA_HISTORY,
         ollama_api=settings["api_base"],
@@ -2109,9 +2290,12 @@ async def send_message_to_native_ollama(
         options=resolve_ollama_gateway_options(behavior, settings["presets"], model),
         think=think,
         turn_id=str((metadata or {}).get("client_prompt_id") or ""),
+        **media_options,
     )
     result["thinking_capability"] = capability
     result["think"] = think
+    result["attachments_forwarded"] = forwarded
+    result["attachments_skipped"] = len(attachments or []) - forwarded
     return result
 
 
@@ -2181,6 +2365,17 @@ async def _send_autoyou_signtoross_legal_advice_via_ollama(
             "num_predict": 160,
         },
     }
+    # The chat agent's window and keep-alive: a different num_ctx makes
+    # Ollama load the same model again.
+    try:
+        from autoyou_agents.model_config import resolve_ollama_num_ctx
+
+        payload["options"]["num_ctx"] = int(resolve_ollama_num_ctx(model_name)[0])
+    except Exception:
+        pass
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
 
     url = f"{_ollama_api_base_url()}/api/chat"
     try:
@@ -3074,6 +3269,20 @@ async def send_message_to_ai_agent(
                 atts = _extract_attachments_from_context(context or [])
                 if atts:
                     summary_items = []
+                    media_policy = (
+                        await _media_input_policy()
+                        if any(str(a.get("mimetype") or "").lower().startswith(("image/", "audio/", "video/")) for a in atts)
+                        else None
+                    )
+                    local_media = None
+                    if media_policy and media_policy.get("max_image_side") is not None:
+                        local_media = await asyncio.to_thread(
+                            prepare_ollama_attachments, atts, vision=media_policy["images"]
+                        )
+                        parts.extend(
+                            {"inline_data": {"mime_type": mime, "data": encoded}}
+                            for mime, encoded in local_media.media
+                        )
                     for a in atts:
                         name = a.get("filename") or "attachment"
                         mt = str(a.get("mimetype") or "unknown/unknown")
@@ -3086,12 +3295,15 @@ async def send_message_to_ai_agent(
                         else:
                             summary_items.append(f"{name} ({mt})")
 
-                        # Forward vision/audio bytes to ADK natively via inline_data
-                        if mt_lower.startswith("image/") or mt_lower.startswith("audio/"):
+                        if local_media is not None:
+                            continue
+                        # Other providers keep their existing ADK inline input.
+                        is_media = mt_lower.startswith("image/") or mt_lower.startswith("audio/")
+                        if is_media:
                             # Apply sensible limits to prevent payload explosions: 10MB image, 25MB audio
                             max_size = 25 * 1024 * 1024 if mt_lower.startswith("audio/") else 10 * 1024 * 1024
                             try:
-                                data_bytes, error = _load_attachment_bytes(a)
+                                data_bytes, error = await asyncio.to_thread(_load_attachment_bytes, a)
                                 if data_bytes and len(data_bytes) <= max_size:
                                     encoded = base64.b64encode(data_bytes).decode("ascii")
                                     parts.append({
@@ -3110,6 +3322,8 @@ async def send_message_to_ai_agent(
                     summary_text = (
                         f"Attachments: {len(atts)} item(s): " + ", ".join(summary_items) + "."
                     )
+                    if local_media and local_media.notes:
+                        summary_text += " " + " ".join(local_media.notes)
             except Exception:
                 # Non-critical; continue without summary
                 pass
@@ -3731,6 +3945,7 @@ async def process_chat_message(
                     request.message,
                     request.session_id,
                     metadata=request.metadata,
+                    attachments=attachments,
                 )
                 response_text = _sanitize_direct_llm_text(native_result.get("response"))
                 if not response_text:
@@ -3741,8 +3956,8 @@ async def process_chat_message(
                     "gateway_mode": True,
                     "agent_runtime_bypassed": True,
                     "attachments_summary": attachments_summary,
-                    "attachments_forwarded": 0,
-                    "attachments_skipped": len(attachments),
+                    "attachments_forwarded": native_result.get("attachments_forwarded", 0),
+                    "attachments_skipped": native_result.get("attachments_skipped", len(attachments)),
                     "think": native_result.get("think"),
                 }
                 _log_metadata_summary(native_meta, label="ollama_gateway_success")
@@ -4175,21 +4390,46 @@ async def process_chat_message(
             queue_position=queue_position,
         )
 
-        async def _send_with_session_recovery(
+        # Every model call in this turn streams through here, so the turn knows
+        # whether a tool that may have changed something has run.
+        turn_tool_activity = _TurnToolActivity()
+
+        async def _observed_chunk(candidate: Dict[str, Any]) -> None:
+            turn_tool_activity.observe(candidate)
+            if on_chunk:
+                result = on_chunk(candidate)
+                if asyncio.iscoroutine(result):
+                    await result
+
+        async def _send_once_with_session_recovery(
             payload_context: Optional[List[Dict[str, Any]]],
+            *,
+            message_text: Optional[str] = None,
+            message_metadata: Optional[Dict[str, Any]] = None,
+            continuation_attempt: int = 0,
         ) -> Optional[Dict[str, Any]]:
             nonlocal ai_agent_session_id, primed_control_state
+            outgoing_message = request.message if message_text is None else message_text
+            outgoing_metadata = request.metadata if message_metadata is None else message_metadata
+
+            def _run_state_delta() -> Dict[str, Any]:
+                # Every run says which continuation it is (0 for the user's own
+                # message), so the root's note never outlives its turn.
+                delta = dict(_build_ai_agent_run_state_delta(
+                    request.metadata, primed_control_state, authenticated_actor_role
+                ) or {})
+                delta[AUTOYOU_TURN_CONTINUATION_STATE_KEY] = int(continuation_attempt)
+                return delta
+
             agent_response_payload = await send_message_to_ai_agent(
                 request.user_id,
                 ai_agent_session_id,
-                request.message,
+                outgoing_message,
                 ai_agent_url,
                 context=payload_context,
-                metadata=request.metadata,
-                state_delta=_build_ai_agent_run_state_delta(
-                    request.metadata, primed_control_state, authenticated_actor_role
-                ),
-                on_chunk=on_chunk,
+                metadata=outgoing_metadata,
+                state_delta=_run_state_delta(),
+                on_chunk=_observed_chunk,
             )
             if agent_response_payload is None and await _recover_local_ai_agent_server_if_possible(
                 ai_agent_url,
@@ -4231,14 +4471,12 @@ async def process_chat_message(
                 agent_response_payload = await send_message_to_ai_agent(
                     request.user_id,
                     ai_agent_session_id,
-                    request.message,
+                    outgoing_message,
                     ai_agent_url,
                     context=payload_context,
-                    metadata=request.metadata,
-                    state_delta=_build_ai_agent_run_state_delta(
-                        request.metadata, primed_control_state, authenticated_actor_role
-                    ),
-                    on_chunk=on_chunk,
+                    metadata=outgoing_metadata,
+                    state_delta=_run_state_delta(),
+                    on_chunk=_observed_chunk,
                 )
             if not _is_missing_ai_agent_session_response(agent_response_payload):
                 return agent_response_payload
@@ -4295,14 +4533,12 @@ async def process_chat_message(
             agent_response_payload = await send_message_to_ai_agent(
                 request.user_id,
                 ai_agent_session_id,
-                request.message,
+                outgoing_message,
                 ai_agent_url,
                 context=payload_context,
-                metadata=request.metadata,
-                state_delta=_build_ai_agent_run_state_delta(
-                    request.metadata, primed_control_state, authenticated_actor_role
-                ),
-                on_chunk=on_chunk,
+                metadata=outgoing_metadata,
+                state_delta=_run_state_delta(),
+                on_chunk=_observed_chunk,
             )
             if _is_missing_ai_agent_session_response(agent_response_payload):
                 logger.error(
@@ -4312,7 +4548,25 @@ async def process_chat_message(
                 )
                 return None
             return agent_response_payload
-        
+
+        async def _send_with_session_recovery(
+            payload_context: Optional[List[Dict[str, Any]]],
+            *,
+            message_text: Optional[str] = None,
+            message_metadata: Optional[Dict[str, Any]] = None,
+            continuation_attempt: int = 0,
+        ) -> Optional[Dict[str, Any]]:
+            payload = await _send_once_with_session_recovery(
+                payload_context,
+                message_text=message_text,
+                message_metadata=message_metadata,
+                continuation_attempt=continuation_attempt,
+            )
+            # The stream is watched through _observed_chunk; the returned payload
+            # is checked too, for the fallback that parses a whole response body.
+            turn_tool_activity.observe(payload)
+            return payload
+
         # Send message to AI Agent Server
         # Prefer forwarding the rewritten context with path-only attachments on first attempt
         agent_response_data = await _send_with_session_recovery(forward_context)
@@ -4363,7 +4617,56 @@ async def process_chat_message(
                     agent_response_data = retry_payload
                     agent_response = retry_response
                     break
-        
+
+        # A reply that only announces a next step ("Let me check that.") is not
+        # an answer. The turn keeps going on the same AI session, a few times at
+        # most, so the user never has to send "?" to get it (owner report
+        # 2026-11-03). The announcement stays on screen in the streamed reply
+        # until the continuation's text replaces it.
+        turn_continuations = 0
+        continuation_limit = _get_turn_continuation_limit()
+        while (
+            agent_response
+            and turn_continuations < continuation_limit
+            and is_progress_only_response(agent_response)
+        ):
+            if turn_tool_activity.acted:
+                # A tool that may have changed something already ran (a note
+                # saved, an image started); continuing could do it again.
+                logger.info(
+                    "Not continuing the turn: a tool that may have changed something ran (%s) session=%s",
+                    ", ".join(turn_tool_activity.tools) or "long-running tool",
+                    ai_agent_session_id,
+                )
+                break
+            turn_continuations += 1
+            logger.info(
+                "Continuing a turn whose reply only announced a step (%s/%s) session=%s user=%s",
+                turn_continuations,
+                continuation_limit,
+                ai_agent_session_id,
+                request.user_id,
+            )
+            await _reset_streamed_reply(on_chunk)
+            # The user's own words go again, without re-attaching files; the
+            # root learns from session state that this is a continuation.
+            continuation_payload = await _send_with_session_recovery(
+                [],
+                message_metadata=_turn_continuation_metadata(request.metadata, turn_continuations),
+                continuation_attempt=turn_continuations,
+            )
+            if not continuation_payload:
+                break
+            if _merge_media_reply_attachments(continuation_payload, source="ai_agent"):
+                await _try_emit_media_reply()
+            continuation_response = _extract_visible_agent_response_text(
+                _sanitize_agent_event_payload(continuation_payload)
+            )
+            if not continuation_response:
+                break
+            agent_response_data = continuation_payload
+            agent_response = continuation_response
+
         # Generate response metadata
         end_time = datetime.now()
         processing_time_ms = max(0, int((end_time - start_time).total_seconds() * 1000))
@@ -4455,6 +4758,8 @@ async def process_chat_message(
             response_metadata["recovery_actions"] = recovery_actions
         if context_usage:
             response_metadata["context_usage"] = context_usage
+        if turn_continuations:
+            response_metadata["turn_continuations"] = turn_continuations
         if upstream_error_code:
             response_metadata["upstream_error_code"] = upstream_error_code
         if upstream_error_message:
@@ -4569,16 +4874,22 @@ async def process_chat_message(
 
         progress_only_response_filtered = False
         if agent_response and isinstance(agent_response, str) and is_progress_only_response(agent_response):
-            progress_only_response_filtered = True
-            agent_response = None
             if not isinstance(response_metadata, dict):
                 response_metadata = {}
             response_metadata["incomplete_agent_response"] = True
-            response_metadata["progress_only_response_filtered"] = True
             response_metadata.setdefault(
                 "recovery_actions",
                 build_agent_steering_actions(include_coding=True),
             )
+            if turn_tool_activity.acted:
+                # Something already ran (a job started, a note saved), so saying
+                # the turn failed would be false. The model's words stay, with
+                # the recovery actions beside them.
+                response_metadata["progress_only_after_action"] = True
+            else:
+                progress_only_response_filtered = True
+                response_metadata["progress_only_response_filtered"] = True
+                agent_response = None
 
         if backend_error and _should_replace_with_backend_error_message(agent_response):
             agent_response = str(backend_error.get("user_message") or "").strip() or agent_response
@@ -4591,10 +4902,11 @@ async def process_chat_message(
             elif backend_error:
                 agent_response = str(backend_error.get("user_message") or "").strip() or None
             elif progress_only_response_filtered:
+                # Reached only when the continuations above did not produce an
+                # answer either.
                 agent_response = (
-                    "The agent returned only a progress update, not a completed answer. "
-                    "I did not mark that as done. Use the available action to return to the main agent, "
-                    "or ask the specialist to continue with a smaller step."
+                    "I couldn't finish that: the model kept describing its next step instead of doing it. "
+                    "Please ask again or rephrase it. You can also use the action below to return to the main agent."
                 )
             elif upstream_error_message:
                 lowered_upstream_error = str(upstream_error_message).lower()

@@ -94,6 +94,7 @@ class GamePackageUploads:
             try:
                 manifest = package.extract(path, stage)
                 if manifest["id"] != session["id"]: raise ValueError("The package contains a different game")
+                if not package.folder_supports_quit(stage, manifest["files"]): raise ValueError(package.QUIT_REQUIREMENT)
                 # Verify the seed and migration syntax before advertising the new game.
                 package.prepare_database(stage, stage / "__autoyou_data", manifest)
                 destination = self.root / "mobile_games" / (manifest["id"] + ".aygame")

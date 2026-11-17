@@ -84,58 +84,81 @@ References:
   affects every deepmerge release through 4.3.1 and has no upstream fix.
   `node/tunnelmole/vendor/deepmerge` is 4.3.1 with own `__proto__` keys
   dropped (see its `AUTOYOU-PATCH.md`); `security.test.js` checks the fix.
+- **glob and minimatch, WhatsApp helper (2026-11-05):**
+  [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)
+  (glob 9.0.0 through 14.0.1 keeps walking after an AbortSignal fires) and
+  [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+  (minimatch 7.0.0 to 11.0.0 glob-part amplification) reached `node/whatsapp`
+  through whatsapp-web.js, archiver 7.0.1 and archiver-utils 5.0.2, which asks
+  for glob ^10 (10.5.0, minimatch 9.0.9). No 10.x release is fixed, so
+  `node/whatsapp` overrides glob to 14.0.3, which brings minimatch 11.0.4.
+  archiver-utils only calls `require('glob').sync`, which glob 14 still
+  exports; archiving a directory and a glob pattern with archiver 7.0.1 and the
+  override produced the expected zip entries. readdir-glob keeps minimatch
+  5.1.9, outside the affected range. `npm audit` reports 0 vulnerabilities.
 - **multidict 7.2.1 / aiohttp 3.14.5 / soupsieve 3.0.4:** taken from the
   Dependabot updates. soupsieve 3.0.4 fixes quadratic `:dir()` matching.
 
 ## Reviewed decisions
 
 - **Accelerate, optional tuning:** [GHSA-4j2p-28q2-5m79](https://osv.dev/vulnerability/GHSA-4j2p-28q2-5m79)
-  lists checkpoint path traversal through 1.14.0 with no fixed release. The
-  manifest's minimum is affected. PyPI returned no advisory for 1.15.0, but
-  [the tagged 1.15.0 loader](https://github.com/huggingface/accelerate/blob/v1.15.0/src/accelerate/utils/modeling.py)
-  still joins checkpoint-index filenames to the model directory without
-  checking containment before loading them. An empty advisory result is not
-  evidence of a fix, so the floor was not raised merely to remove the match.
-  The affected functions are `load_checkpoint_in_model` and
-  `load_checkpoint_and_dispatch`. No AutoYou source calls them, and the locked
-  Transformers 5.12.1 and current PEFT 0.21.2 wheels do not call them either
-  (checked 2026-10-21). The tuning profile is optional: none of the generated
-  release SBOMs include Accelerate or PEFT, and WSL builds add it only with
-  `AUTOYOU_INCLUDE_TUNING`. The training flow loads remote model code, so model
-  sources are already fully trusted; this advisory does not widen that
-  boundary. Use trusted model sources and an isolated training environment.
-
-This decision is recorded in
-[requirements/advisory-decisions.json](../../requirements/advisory-decisions.json)
-as `vulnerable_code_not_in_execute_path`, scoped to Accelerate 0.33.0 in
-`requirements/tuning.txt` and to these advisory ids, with a review-by date of
-2026-11-21. The advisory command reports it under `reviewed_advisories` and
-returns nonzero again for any other match, a changed floor or manifest, or once
-the review date passes.
+  (CVE-2026-69112, checkpoint path traversal) lists every release through
+  1.14.0 as affected. **Resolved 2026-11-08:** `requirements/tuning.txt` now
+  requires `accelerate>=1.15.0`, so no allowed version is inside the
+  advisory's range, and the bounded decision for 0.33.0 was removed from
+  `requirements/advisory-decisions.json`.
+  [The tagged 1.15.0 loader](https://github.com/huggingface/accelerate/blob/v1.15.0/src/accelerate/utils/modeling.py)
+  still joins checkpoint-index filenames to the model directory without its
+  own containment check, so the AutoYou mitigation from 2026-11-07 stays in
+  place: `train_adapter` installs `shared.accelerate_checkpoint_guard` before
+  importing PEFT or Transformers. The guard covers the public loader aliases
+  and the dispatch loader, rejects absolute/traversing paths, external
+  symlinks, Windows alternate data streams and non-regular files (including
+  named pipes), and bounds the JSON index to 32 MiB. Upstream receives a
+  private index of validated paths, so replacing the original index cannot
+  bypass validation. Normal Hugging Face snapshot-to-blob links and
+  safetensors filenames remain supported. The real-loader tests in
+  `tests/shared/test_accelerate_checkpoint_guard.py` passed with Accelerate
+  1.15.0 and Torch 2.15.0 (CPU, Linux). The guard is scoped to AutoYou's
+  training process, not arbitrary third-party scripts importing Accelerate,
+  and does not sandbox trusted model Python code. Tuning remains optional and
+  excluded from default server releases.
+- **NumPy, Intel macOS voice stack:** `requirements/voice.txt` declared
+  `numpy<2` with no lower bound, so the declared range included 1.x releases
+  covered by older NumPy advisories (for example CVE-2021-34141 and
+  CVE-2021-41495, fixed by 1.22). **Resolved 2026-11-08:** the requirement is
+  now `numpy>=1.26.4,<2`. 1.26.4 is the newest 1.x release, so pip already
+  selected it; the floor only removes vulnerable versions from the range.
 
 - **OpenTelemetry API, server:** [GHSA-xcq7-p3pf-p88h](https://osv.dev/vulnerability/GHSA-xcq7-p3pf-p88h)
   (CVE-2026-114603) is a quadratic regular-expression split in
-  `TraceState.from_header`, fixed in 1.45.1. The lock cannot move there:
-  google-adk 2.11.0 caps `opentelemetry-sdk` at 1.42.1, and google-adk 2.13.0
-  (latest, checked 2026-10-29) still caps the API and SDK at 1.44. The parser
-  runs only when a propagator reads an inbound `tracestate` header. AutoYou
-  installs no OpenTelemetry instrumentation and never calls
-  `propagate.extract`. ADK's one extraction, `get_propagated_context` in
-  `google/adk/telemetry/_agent_engine.py`, passes a carrier holding only a
-  `traceparent` key, so no `tracestate` value reaches the parser. Dependabot
-  ignores newer OpenTelemetry releases until ADK allows 1.45.1.
+  `TraceState.from_header`, fixed in 1.45.1. **Resolved 2026-11-07:**
+  [ADK 2.14.0](https://github.com/google/adk-python/releases/tag/v2.14.0)
+  permits the patched OpenTelemetry line. Base and macOS manifests now pin
+  ADK 2.14.0, its required Google GenAI 2.30.0, and OpenTelemetry 1.45.2 /
+  semantic conventions 0.66b2. The full lock was regenerated, including the
+  new exporter dependencies. The advisory exception and Dependabot ignore
+  rules were removed. Isolated tests cover long whitespace tracestate input,
+  synthetic streaming and non-streaming LiteLLM/ADK responses, tool routing
+  and session behavior. Linux base and macOS ARM64 metadata resolutions pass;
+  these do not replace native release builds or device testing.
 - **setuptools, voice-clone runtime:** [PYSEC-2026-3447](https://osv.dev/vulnerability/PYSEC-2026-3447)
   and [GHSA-xmj3-9gf7-h52w](https://osv.dev/vulnerability/GHSA-xmj3-9gf7-h52w)
-  affect setuptools 81.0.0. The separate voice-clone environment keeps it
-  because resemble-perth 1.0.1, the latest release, imports `pkg_resources`,
-  which setuptools 82 removed. The advisories cover `MANIFEST.in` exclusion
-  while building a source distribution and the legacy Windows
-  `Wheel.install_as_egg` path. That environment only installs published wheels
-  with pip, so neither path runs. The server environment already requires
-  setuptools 84.2.1 or later.
-
-Both are recorded as `vulnerable_code_not_in_execute_path`, scoped to the
-listed versions and manifests, with a review-by date of 2026-11-29.
+  affect setuptools 81.0.0. **Resolved 2026-11-07:** the separate voice runtime
+  now pins 84.2.1. Its installer backports only Perth 1.0.1's model-directory
+  lookup from `pkg_resources` to `pathlib`, preserving the bundled model and
+  watermarker. The patch requires the exact reviewed module source, operates
+  only in the explicitly selected voice venv, and records before/after hashes
+  in `AUTOYOU-PATCHES.json` and the wheel RECORD. Repeated installs are
+  idempotent. The real bundled Perth model produced bit-identical 64,000-sample
+  synthetic watermarked audio before and after the patch/setuptools upgrade.
+  When borrowing a Torch environment, the installer creates its own Perth
+  copy without uninstalling or modifying the donor's package. A two-venv test
+  verified the local import and unchanged hashes for all 22 donor source/model
+  files. Patch writes are atomic, and installer scratch files honor the test root.
+  The setuptools advisory exception was removed. Existing installed voice
+  environments receive this fix when the runtime installer is run again;
+  the review did not modify the operator's installed runtime.
 
 ## Other limits and follow-up
 

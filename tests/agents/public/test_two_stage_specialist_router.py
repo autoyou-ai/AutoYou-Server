@@ -83,9 +83,30 @@ def test_router_can_be_disabled_by_env(registered_specialists, monkeypatch):
     assert root_agent._two_stage_routing_active() is False
 
 
+def test_a_window_too_small_for_every_schema_keeps_the_dispatcher_for_large_models(monkeypatch):
+    # Owner report 2026-11-02: a 27B model got all 48 root tools and used 9,956
+    # of its 12,288 tokens before the conversation; the dispatcher needs 5,845.
+    monkeypatch.delenv("AUTOYOU_TWO_STAGE_ROUTER", raising=False)
+    monkeypatch.delenv("AUTOYOU_AGENT_HARNESS_PROFILE", raising=False)
+    monkeypatch.setenv("OLLAMA_MODEL", "gemma4:26b")
+
+    for window in (12288, 32768):
+        monkeypatch.setattr(root_agent, "_ROOT_CONTEXT_WINDOW", window)
+        assert root_agent._two_stage_routing_enabled() is True
+    monkeypatch.setattr(root_agent, "_ROOT_CONTEXT_WINDOW", 65536)
+    assert root_agent._two_stage_routing_enabled() is False
+
+    # The operator's explicit choice still wins.
+    monkeypatch.setattr(root_agent, "_ROOT_CONTEXT_WINDOW", 12288)
+    monkeypatch.setenv("AUTOYOU_TWO_STAGE_ROUTER", "0")
+    assert root_agent._two_stage_routing_enabled() is False
+
+
 def test_default_two_stage_router_uses_root_schema_capacity_not_callback_profile(monkeypatch):
     monkeypatch.delenv("AUTOYOU_TWO_STAGE_ROUTER", raising=False)
     monkeypatch.delenv("AUTOYOU_AGENT_HARNESS_PROFILE", raising=False)
+    # A window that fits every specialist schema: the model policy decides.
+    monkeypatch.setattr(root_agent, "_ROOT_CONTEXT_WINDOW", 131072)
 
     monkeypatch.setenv("OLLAMA_MODEL", "gemma4:e4b")
     assert root_agent._two_stage_routing_enabled() is True

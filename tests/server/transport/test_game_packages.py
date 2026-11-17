@@ -96,14 +96,16 @@ def test_upload_resume_integrity_and_session_ownership(tmp_path):
 
 
 def test_five_gib_manifest_and_ranges_use_64_bit_offsets_without_allocating_game(tmp_path):
-    manifest, _ = package.read_manifest(FIXTURES / "package-v1.aygame")
+    manifest, header = package.read_manifest(FIXTURES / "package-v1.aygame")
+    # Keep the real game files (they carry its Quit call); only the added large asset is sparse.
+    payload = (FIXTURES / "package-v1.aygame").read_bytes()[header:]
     large = 5 * 1024**3 - 2 * 1024**2
     manifest["files"].append({"path": "large.bin", "size": large, "sha256": "0"*64, "mime": "application/octet-stream"})
     manifest["revision"] = hashlib.sha256(package.canonical({key: value for key, value in manifest.items() if key != "revision"})).hexdigest()
     raw = package.canonical(manifest); size = 12+len(raw)+sum(item["size"] for item in manifest["files"])
     root = tmp_path / "state/mobile_games"; root.mkdir(parents=True); file = root / "synthetic-package.aygame"
     with file.open("wb") as stream:
-        stream.write(package.MAGIC+struct.pack(">I",len(raw))+raw); stream.truncate(size)
+        stream.write(package.MAGIC+struct.pack(">I",len(raw))+raw+payload); stream.truncate(size)
         stream.seek(size-4); stream.write(b"TAIL")
     assert package.MAX_BYTES == 5*1024**3
     assert package.read_manifest(file)[0]["files"][-1]["size"] == large
